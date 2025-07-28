@@ -10,6 +10,7 @@
 
 - **Core API Gateway**: Unified interface for all modules
 - **Modular Architecture**: Containerized, loosely-coupled components
+- **Visual Rendering System**: Basic avatar/embodiment display capabilities
 - **Local Database**: Encrypted storage with vector capabilities
 - **Plugin System**: Hot-reloadable module framework
 - **Privacy Controller**: Data governance and consent management
@@ -22,6 +23,7 @@
 
 **Core Features**:
 - **Chat Interface**: Real-time text conversation
+- **Visual Embodiment**: Basic avatar or visual representation on screen
 - **LLM Integration**: Local language model (Llama.cpp/Ollama)
 - **Basic Memory**: Conversation history and context
 - **Simple Personality**: Consistent character traits
@@ -32,7 +34,7 @@
   - Meta-cognitive self-awareness
 - **Privacy Controls**: Local-first data management
 
-**Success Criteria**: Users experience an autonomous AI companion with its own goals and interests that initiates meaningful interactions, learns independently, remembers context, maintains consistent personality, and respects privacy.
+**Success Criteria**: Users experience a visually embodied, autonomous AI companion with its own goals and interests that initiates meaningful interactions, learns independently, remembers context, maintains consistent personality, and respects privacy.
 
 ### 3. Proof of Concepts (PoCs)
 **Goal**: Validate technical feasibility of advanced features
