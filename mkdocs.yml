@@ -109,13 +109,14 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started:
-    - Overview: getting-started/overview.md
+    - Overview: getting-started/index.md
     - Installation: getting-started/installation.md
     - Quick Start: getting-started/quick-start.md
+  - Architecture:
+    - Overview: architecture/index.md
   - Development:
     - Contributing: development/contributing.md
   # Additional sections will be added as features are implemented:
-  # - Architecture:
   # - Features:
   # - API Reference:
   # - Ethics & Privacy:
