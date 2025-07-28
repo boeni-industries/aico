@@ -1,7 +1,5 @@
 # AICO – The AI+Companion Project
 
----
-
 **Purpose**
 
 This project is about building not just another virtual assistant, but a real companion: an AI that is present, curious, and grows with you. The goal is an AI sidekick that is emotionally aware, even a little quirky, with a genuine sense of agency and presence—something closer to a friend or co-adventurer than a glorified notepad.
@@ -9,8 +7,6 @@ This project is about building not just another virtual assistant, but a real co
 I'm not after “superintelligence”. I want an AI sidekick that’s embodied (hologram, robotic, animated avatar—doesn’t matter at the start), that sees you, hears you, learns your moods, and sometimes nudges you first without being told.
 
 I’m building this because I’ve always wanted it for myself. Not just productivity, but real resonance—a sidekick as confidante, as mirror, as challenger and supporter—all while respecting trust, boundaries, and privacy.
-
----
 
 ## Vision
 
@@ -36,7 +32,6 @@ I’m building this because I’ve always wanted it for myself. Not just product
 7. **Trust & Privacy First:**  
    - Local-first where possible. Long-term: user chooses what stays private, what is shared, and when.
 
----
 
 ## Who’s This For?
 
@@ -44,7 +39,6 @@ I’m building this because I’ve always wanted it for myself. Not just product
 - People who feel a bit outside the “noise” and want their own private, supportive AI presence
 - Anyone who believes technology should care, not just calculate
 
----
 
 ## Contributing
 
@@ -52,7 +46,6 @@ I’m building this because I’ve always wanted it for myself. Not just product
 - If you want to add features, challenge assumptions, or help build the ethics framework, you’re welcome.
 - Respect is non-negotiable—this project is about trust and authenticity, not swagger or showmanship.
 
----
 
 **Author:** Michael Böni ([boeni.industries](https://boeni.industries))  
 **Contact:** [michael@boeni.industries]
