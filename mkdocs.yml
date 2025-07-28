@@ -18,8 +18,8 @@ copyright: Copyright &copy; 2024 Michael Böni
 # Configuration
 theme:
   name: material
-  logo: material/robot-happy
-  favicon: material/robot-happy
+  logo: assets/images/logo.png
+  favicon: assets/images/logo.png
   palette:
     # Palette toggle for automatic mode
     - media: "(prefers-color-scheme)"
