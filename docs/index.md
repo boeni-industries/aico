@@ -19,7 +19,8 @@ Building not just another virtual assistant, but a real companion: an AI that is
 !!! note "Implementation Status"
     These features are planned but not yet implemented. Documentation will be added as development progresses.
 
-- **Audio-Visual Embodiment**: More than a voice or chatbot
+- **Audio-Visual Representation**: More than a voice or chatbot
+- **Embodyment**: Hologram, robotic, animated avatar or anything in between
 - **Emotion & Behavior Recognition**: Camera and mic integration for emotional awareness
 - **Personality & Character**: Develops quirks and values over time
 - **Confidante Mode**: Listens, remembers, provides emotional support

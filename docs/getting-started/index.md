@@ -1,4 +1,4 @@
-# Overview
+# Getting Started
 
 !!! warning "Coming Soon"
     This section will be populated as AICO development progresses.
