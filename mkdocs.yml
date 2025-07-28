@@ -11,6 +11,10 @@ edit_uri: edit/main/docs/
 # Copyright
 copyright: Copyright &copy; 2024 Michael Böni
 
+# Build directory (default: site)
+# Note: GitHub Actions will handle deployment to gh-pages branch
+# No need to change site_dir for GitHub Pages deployment
+
 # Configuration
 theme:
   name: material
