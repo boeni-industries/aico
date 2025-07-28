@@ -148,7 +148,7 @@ AICO's autonomous agency is built on a multi-layered architecture that enables g
 | **Curiosity Engine** | Intrinsic motivation and exploration drive | RND, ICM, novelty detection algorithms |
 | **Planning System** | Strategic reasoning and multi-step execution | Monte Carlo Tree Search, hierarchical planning |
 | **Voice & Audio** | Speech-to-text and text-to-speech | Whisper.cpp, Coqui, Piper |
-| **Avatar System** | Visual embodiment and animation | Unity, Three.js, avatar rendering |
+| **Avatar System** | Real-time 3D avatar with lip-sync and expressions | Three.js, Ready Player Me, TalkingHead.js |
 | **Privacy Controller** | Advanced privacy and consent management | Homomorphic encryption, ZK proofs |
 | **API Gateway** | Unified interface for all modules | FastAPI/gRPC, local web server |
 | **Plugin Manager** | Dynamic plugin loading and management | Hot-reload system, sandboxing |
@@ -158,9 +158,12 @@ AICO's autonomous agency is built on a multi-layered architecture that enables g
 ### Technology Stack
 
 #### Interface Layer
-- **Cross-platform Apps**: Electron.js, Tauri, or Flutter
-- **AR/VR Avatars**: Unity or Unreal Engine for 3D embodiment
-- **Management Panel**: Secure local web app for settings and data review
+- **Primary UI**: Flutter cross-platform application
+- **Avatar Integration**: WebView embedding Three.js + Ready Player Me + TalkingHead.js
+- **Native Performance**: Flutter for app logic, WebView for 3D avatar rendering
+- **JavaScript Bridge**: Real-time communication between Flutter and avatar system
+- **Management Panel**: Flutter-based settings and data management UI
+- **Advanced Embodiment**: Unity/Unreal for future AR/VR expansion
 
 #### AI/ML Layer
 - **Local LLMs**: Llama.cpp, Ollama, Mistral (quantized models)
