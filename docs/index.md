@@ -14,19 +14,7 @@ Building not just another virtual assistant, but a real companion: an AI that is
 - **Personality and values** - moods, likes/dislikes, things it stands for
 - **Companionship comes before tasks**
 
-## Documentation Index
-
-### 🚀 Getting Started
-
-- **[Overview](getting-started/overview.md)** - Learn about AICO's vision and goals
-- **[Installation](getting-started/installation.md)** - Setup instructions (coming soon)
-- **[Quick Start](getting-started/quick-start.md)** - Get up and running quickly (coming soon)
-
-### 👥 Development
-
-- **[Contributing](development/contributing.md)** - How to contribute to the AICO project
-
-### 🔮 Planned Features
+## 🔮 Planned Features
 
 !!! note "Implementation Status"
     These features are planned but not yet implemented. Documentation will be added as development progresses.
