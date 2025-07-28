@@ -26,7 +26,12 @@ I’m building this because I’ve always wanted it for myself. Not just product
 4. **Confidante Mode:**  
    - Beyond answering: listens, remembers, asks how you are. Offers challenge or support, depending on what it “sees.”
 5. **Agency & Intrinsic Motivation:**  
-   - Sometimes AICO will initiate—remind you to check in, suggest a walk, comment on your mood, etc., even without direct prompts. AICO is active, not just reactive.
+   - **Autonomous Goal Generation**: AICO formulates its own objectives and sub-goals using hierarchical planning
+   - **Curiosity-Driven Exploration**: Uses intrinsic motivation algorithms to discover and learn about new topics
+   - **Interest Development**: Autonomously develops preferences and pursues topics that capture its attention
+   - **Multi-Step Planning**: Engages in strategic reasoning to achieve complex, self-directed objectives
+   - **Meta-Cognitive Awareness**: Understands its own learning progress and capability boundaries
+   - **Genuine Initiative**: Acts from authentic interest rather than programmed responses
 6. **Continual Learning:**  
    - Over time, AICO adapts to you—language, topics, boundaries, and chosen “rituals.”
 7. **Trust & Privacy First:**  
