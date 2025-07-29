@@ -69,9 +69,9 @@ AICO's features are organized into logical modules for development and deploymen
 - **Automated Updates**: Self-updating system with user control
 - **Self-Restart Management**: Graceful restarts with state preservation
 
-## Architecture Overview
+## System Architecture
 
-AICO follows a **modular, local-first AI agent framework** with cloud or edge-optional integrations, designed for privacy, extensibility, and natural interaction.
+AICO follows a **modular, message-driven architecture** designed for local-first privacy, extensibility, and autonomous behavior. The system is organized into modules containing related components that communicate through a central message bus, enabling loose coupling and real-time, event-driven interactions.
 
 ### Core Design Principles
 
@@ -141,6 +141,7 @@ AICO's autonomous agency is built on a multi-layered architecture that enables g
 | **LLM Interface** | Language model integration and prompt management | Llama.cpp, Ollama, OpenAI adapters |
 | **Personality Engine** | Dynamic personality modeling and adaptation | Local ML models, behavior trees |
 | **Emotion Recognition** | Multi-modal emotion detection (visual, audio, text) | ONNX models, TensorFlow Lite |
+| **Emotion Simulation** | Sophisticated emotion generation using AppraisalCloudPCT | Component Process Model, appraisal theory, optional cloud enhancement |
 | **Memory System** | Episodic and semantic memory with encryption | SQLite, DuckDB, LiteFS |
 | **Vector Store** | Embedding storage and similarity search | ChromaDB, Qdrant, FAISS |
 | **Autonomous Agent** | Multi-faceted autonomous behavior system | Goal generation, curiosity engine, planning system |

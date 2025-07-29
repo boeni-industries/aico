@@ -114,8 +114,17 @@ nav:
     - Quick Start: getting-started/quick-start.md
   - Architecture:
     - Overview: architecture/index.md
+    - System Context: architecture/context.md
+    - System Modules: architecture/modules.md
+    - Emotion Simulation:
+      - Architecture: architecture/emotion_sim.md
+      - Message Formats: architecture/emotion_sim_msg.md
+  - Concepts:
+    - Emotion:
+      - Emotion Simulation: concepts/emotion/emotion_sim.md
   - Development:
     - Contributing: development/contributing.md
+    - Roadmap: roadmap/index.md
   # Additional sections will be added as features are implemented:
   # - Features:
   # - API Reference:

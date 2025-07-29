@@ -2,30 +2,50 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://boeni-industries.github.io/aico/</loc>
-         <lastmod>2025-07-28</lastmod>
+         <lastmod>2025-07-29</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/</loc>
-         <lastmod>2025-07-28</lastmod>
+         <lastmod>2025-07-29</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/architecture/context/</loc>
+         <lastmod>2025-07-29</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/architecture/emotion_sim/</loc>
+         <lastmod>2025-07-29</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/architecture/emotion_sim_msg/</loc>
+         <lastmod>2025-07-29</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/architecture/modules/</loc>
+         <lastmod>2025-07-29</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/concepts/emotion/emotion_sim/</loc>
+         <lastmod>2025-07-29</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/development/contributing/</loc>
-         <lastmod>2025-07-28</lastmod>
+         <lastmod>2025-07-29</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/getting-started/</loc>
-         <lastmod>2025-07-28</lastmod>
+         <lastmod>2025-07-29</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/getting-started/installation/</loc>
-         <lastmod>2025-07-28</lastmod>
+         <lastmod>2025-07-29</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/getting-started/quick-start/</loc>
-         <lastmod>2025-07-28</lastmod>
+         <lastmod>2025-07-29</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/roadmap/</loc>
-         <lastmod>2025-07-28</lastmod>
+         <lastmod>2025-07-29</lastmod>
     </url>
 </urlset>
