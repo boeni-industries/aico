@@ -1,11 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://boeni-industries.github.io/aico/</loc>
-         <lastmod>2025-07-29</lastmod>
-    </url>
-    <url>
-         <loc>https://boeni-industries.github.io/aico/architecture/</loc>
+         <loc>https://boeni-industries.github.io/aico/welcome/</loc>
          <lastmod>2025-07-29</lastmod>
     </url>
     <url>
@@ -57,10 +53,6 @@
          <lastmod>2025-07-29</lastmod>
     </url>
     <url>
-         <loc>https://boeni-industries.github.io/aico/getting-started/</loc>
-         <lastmod>2025-07-29</lastmod>
-    </url>
-    <url>
          <loc>https://boeni-industries.github.io/aico/getting-started/getting_started_overview/</loc>
          <lastmod>2025-07-29</lastmod>
     </url>
@@ -70,10 +62,6 @@
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/getting-started/quick-start/</loc>
-         <lastmod>2025-07-29</lastmod>
-    </url>
-    <url>
-         <loc>https://boeni-industries.github.io/aico/roadmap/</loc>
          <lastmod>2025-07-29</lastmod>
     </url>
     <url>

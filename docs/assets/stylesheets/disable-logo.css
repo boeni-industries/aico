@@ -1,0 +1,10 @@
+/* Disable logo link */
+.md-header__button.md-logo {
+  pointer-events: none;
+  cursor: default;
+}
+
+/* Remove hover effect */
+.md-header__button.md-logo:hover {
+  opacity: 1;
+}
