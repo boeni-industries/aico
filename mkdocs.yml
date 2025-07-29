@@ -119,9 +119,15 @@ nav:
     - Emotion Simulation:
       - Architecture: architecture/emotion_sim.md
       - Message Formats: architecture/emotion_sim_msg.md
+    - Personality Simulation:
+      - Architecture: architecture/personality_sim.md
+      - Message Formats: architecture/personality_sim_msg.md
   - Concepts:
     - Emotion:
       - Emotion Simulation: concepts/emotion/emotion_sim.md
+    - Personality:
+      - Personality Simulation: concepts/personality/personality_sim.md
+      - Personality Definition: concepts/personality/personality_definition.md
   - Development:
     - Contributing: development/contributing.md
     - Roadmap: roadmap/index.md

@@ -28,7 +28,12 @@ AICO's features are organized into logical modules for development and deploymen
 - **Interruption Handling**: Natural conversation interruption and resumption
 
 ### 🧠 Intelligence & Memory
-- **Personality Engine**: Dynamic personality modeling and adaptation
+- **Personality Simulation**: Multi-dimensional trait-based personality modeling with:
+  - **Trait Vector System**: Management of personality traits (Big Five, HEXACO)
+  - **Value System**: Ethical principles and preference management
+  - **Expression Mapper**: Translation of traits to behavioral parameters
+  - **Consistency Validator**: Ensuring behavioral coherence over time
+  - **Personality Evolution**: Gradual adaptation based on interactions
 - **Episodic Memory**: Personal experience and interaction history
 - **Semantic Memory**: Knowledge base and learned concepts
 - **Vector Storage**: Embedding-based similarity search and retrieval
@@ -100,7 +105,7 @@ Central user-governed dashboard for:
 
 ## Autonomous Agency Architecture
 
-AICO's autonomous agency is built on a multi-layered architecture that enables genuine self-directed behavior:
+AICO's autonomous agency is built on a multi-layered architecture that enables genuine self-directed behavior, working in concert with the Personality Simulation and Emotion Simulation modules:
 
 ### Agency Layers
 
@@ -124,6 +129,16 @@ AICO's autonomous agency is built on a multi-layered architecture that enables g
 - **Learning Progress Monitoring**: Awareness of knowledge acquisition and skill development
 - **Adaptive Behavior**: Self-modification based on performance and outcomes
 
+#### 🧠 Decision-Making Layer
+- **Reasoning Engine**: Logical and causal reasoning capabilities
+- **Ethical Framework**: Value-aligned decision making
+- **Risk Assessment**: Evaluation of action consequences
+- **Personality-Agency Fusion**: Ensures autonomous behavior aligns with personality traits through:
+  - **Trait Expression Parameters**: Decision-making parameters from Personality Simulation
+  - **Value System Integration**: Ethical boundaries and priorities from personality traits
+  - **Coherence Validation**: Consistency checking against personality model
+- **Human-Agency Balance**: Maintains appropriate boundaries and user control
+
 ### Agency Integration
 - **Unified Agency Controller**: Coordinates all autonomous behaviors
 - **Goal-Memory Interface**: Links autonomous objectives with episodic/semantic memory
@@ -137,6 +152,7 @@ AICO's autonomous agency is built on a multi-layered architecture that enables g
 | Component | Purpose | Technology |
 |-----------|---------|------------|
 | **Chat Engine** | Real-time conversation management and threading | WebSocket, FastAPI, conversation state |
+| **Personality Simulation** | Trait-based personality modeling and expression | TraitEmergence architecture, multi-dimensional vector modeling |
 | **Context Manager** | Conversation context and thread management | Redis, conversation graphs |
 | **LLM Interface** | Language model integration and prompt management | Llama.cpp, Ollama, OpenAI adapters |
 | **Personality Engine** | Dynamic personality modeling and adaptation | Local ML models, behavior trees |
