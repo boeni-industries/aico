@@ -3,6 +3,9 @@ site_description: Building an emotionally present, interactive AI companion
 site_author: Michael Böni
 site_url: https://boeni-industries.github.io/aico
 
+# Configuration
+use_directory_urls: true
+
 # Repository
 repo_name: boeni-industries/aico
 repo_url: https://github.com/boeni-industries/aico
@@ -120,7 +123,8 @@ markdown_extensions:
 
 # Page tree
 nav:
-  - Home: index.md
+  - Home:
+      - Welcome: welcome.md
   - Getting Started:
     - Overview: getting-started/getting_started_overview.md
     - Installation: getting-started/installation.md
@@ -184,8 +188,11 @@ extra:
     - icon: fontawesome/solid/globe
       link: https://boeni.industries
   
-# Custom CSS
+# Custom CSS and JavaScript
 extra_css:
   - assets/stylesheets/extra.css
+  - assets/stylesheets/disable-logo.css
+extra_javascript:
+  - assets/javascripts/extra.js
 # version:
     # provider: mike
