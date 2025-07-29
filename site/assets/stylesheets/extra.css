@@ -1,0 +1,69 @@
+/* Custom styles for AICO documentation */
+
+/* Make navigation section headers more visually distinct */
+.md-nav__item--section > .md-nav__link {
+  font-weight: 700 !important;
+  color: var(--md-primary-fg-color) !important;
+  font-size: 1.05em !important;
+  padding-top: 0.6em !important;
+  padding-bottom: 0.1em !important;
+  margin-bottom: 0 !important;
+  letter-spacing: 0.015em;
+  transition: all 0.2s ease;
+}
+
+/* Add subtle hover effect for section headers */
+.md-nav__item--section > .md-nav__link:hover {
+  transform: translateX(2px);
+}
+
+/* Style for regular navigation items */
+.md-nav__item .md-nav__link {
+  transition: color 0.15s ease;
+}
+
+/* Indent child items for better hierarchy */
+.md-nav__item .md-nav__item .md-nav__link {
+  padding-left: 0.8rem;
+  padding-top: 0.08em;
+  padding-bottom: 0.08em;
+  font-size: 0.92em;
+  opacity: 0.9;
+}
+
+/* Add subtle hover effect for all navigation items */
+.md-nav__link:hover {
+  color: var(--md-accent-fg-color) !important;
+}
+
+/* Improve active item visibility */
+.md-nav__link--active {
+  font-weight: 600 !important;
+  color: var(--md-accent-fg-color) !important;
+}
+
+/* Spacing for child navigation lists */
+.md-nav__list .md-nav__list {
+  margin-top: 0;
+  margin-bottom: 0.3em;
+  padding-top: 0;
+}
+
+/* Control spacing for all navigation items */
+.md-nav__item {
+  margin: 0;
+}
+
+/* Enhance the visual distinction of the current page */
+.md-nav__link--active {
+  background-color: rgba(var(--md-primary-fg-color--rgb), 0.05);
+  border-radius: 3px;
+  padding: 0.2em 0.4em;
+  margin-left: -0.4em;
+}
+
+/* Dark mode specific adjustments */
+[data-md-color-scheme="slate"] .md-nav__link--active {
+  background-color: rgba(var(--md-primary-fg-color--rgb), 0.15);
+}
+

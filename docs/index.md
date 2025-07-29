@@ -38,6 +38,11 @@ All code and progress are public and messy—join us if you want, fork it for yo
 
 **Ready to contribute?** Start with our [Contributing Guide](development/contributing.md).
 
+## Get in Touch
+
+If you have any questions, suggestions, or want to contribute, please reach out to [Michael Böni](mailto:michael@boeni.industries).
+
+
 ---
 
-**Author:** Michael Böni ([boeni.industries](https://boeni.industries))
+**Author:** Michael Böni ([michael@boeni.industries](mailto:michael@boeni.industries)) at [boeni.industries](https://boeni.industries)
