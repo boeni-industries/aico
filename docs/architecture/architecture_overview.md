@@ -76,29 +76,22 @@ AICO's features are organized into logical modules for development and deploymen
 - **Developer Tools**: SDKs and documentation for extensions
 - **Marketplace**: Plugin discovery and distribution platform
 - **Automated Updates**: Self-updating system with user control
-- **Self-Restart Management**: Graceful restarts with state preservation
 
 ## System Architecture
 
-AICO follows a **modular, message-driven architecture** designed for local-first privacy, extensibility, and autonomous behavior. The system is organized into a clear hierarchical structure that enables loose coupling and real-time, event-driven interactions through a central message bus.
-
-### Hierarchical System Structure
+AICO's architecture is organized into domains, modules, and components:
 
 ```
-System: AICO AI Companion
+AICO System
 ├── Domain: Core Infrastructure
 │   ├── Module: Message Bus
-│   │   ├── Component: ZeroMQ/MQTT Broker
 │   │   ├── Component: Topic Management
-│   │   ├── Component: Message Validation
-│   │   └── Component: JSON Schema Validation
+│   │   ├── Component: Message Routing
+│   │   └── Component: Plugin Integration
 │   ├── Module: Plugin Manager
-│   │   ├── Component: Extension Loader
-│   │   ├── Component: Sandbox Environment
-│   │   └── Component: Permission Broker
-│   ├── Module: Configuration System
-│   │   ├── Component: Settings Management
-│   │   └── Component: Runtime Configuration
+│   │   ├── Component: Plugin Discovery
+│   │   ├── Component: Sandbox Execution
+│   │   └── Component: Permission Management
 │   ├── Module: API Gateway
 │   │   ├── Component: External Interfaces
 │   │   └── Component: Protocol Adapters
@@ -111,13 +104,13 @@ System: AICO AI Companion
 │   │   ├── Component: Goal Prioritization
 │   │   └── Component: Goal Tracking
 │   ├── Module: Planning System
-│   │   ├── Component: MCTS Planner
-│   │   ├── Component: Action Selection
-│   │   └── Component: Path Planning
+│   │   ├── Component: Plan Formulation
+│   │   ├── Component: Plan Execution
+│   │   └── Component: Plan Adaptation
 │   ├── Module: Curiosity Engine
-│   │   ├── Component: RND Algorithm
-│   │   ├── Component: ICM Algorithm
-│   │   └── Component: Exploration Driver
+│   │   ├── Component: Novelty Detection
+│   │   ├── Component: Exploration Strategy
+│   │   └── Component: Interest Model
 │   └── Module: Initiative Manager
 │       ├── Component: Proactive Engagement
 │       └── Component: Conversation Starter

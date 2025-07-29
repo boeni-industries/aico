@@ -44,15 +44,22 @@ theme:
         icon: material/brightness-4
         name: Switch to system preference
   features:
-    - navigation.sections
-    - navigation.sections.collapse
-    - navigation.levels
-    - navigation.top
-    - navigation.tracking
+    # Navigation behavior
+    - navigation.instant    # Instant loading navigation
+    - navigation.tracking   # URL is automatically updated with anchor
+    - navigation.sections   # Render sections as groups
+    - navigation.indexes    # Section index pages
+    - navigation.top        # Back-to-top button
+    
+    # Important: Collapse all sections by default
+    - navigation.collapse   # Collapse all sections by default
+    
+    # Table of contents behavior
+    - toc.follow           # Table of contents follows scroll
+    - toc.integrate        # Integrate section TOCs into navigation
     - search.highlight
     - search.share
     - search.suggest
-    - toc.follow
     - toc.integrate
     - content.action.edit
     - content.action.view
@@ -62,6 +69,8 @@ theme:
 # Plugins
 plugins:
   - search
+
+
 
 
 # Extensions
@@ -113,21 +122,45 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started:
-    - Overview: getting-started/index.md
+    - Overview: getting-started/getting_started_overview.md
     - Installation: getting-started/installation.md
     - Quick Start: getting-started/quick-start.md
   - Architecture:
-    - Overview: architecture/index.md
-    - Core Systems:
-      - Message Bus: architecture/core_message_bus.md
-      - Message Formats: architecture/integration_msg.md
-    - Emotion Simulation:
-      - Architecture: architecture/emotion_sim.md
-      - Message Formats: architecture/emotion_sim_msg.md
-    - Personality Simulation:
-      - Architecture: architecture/personality_sim.md
-      - Message Formats: architecture/personality_sim_msg.md
-    - Technology Stack: architecture/tech_stack.md
+      - Overview: architecture/architecture_overview.md
+  - Core Infrastructure:
+    - Message Bus: architecture/core_message_bus.md
+    - Plugin Manager: '#'
+    - API Gateway: '#'
+    - Update System: '#'
+  - Autonomous Agency:
+    - Goal System: '#'
+    - Planning System: '#'
+    - Curiosity Engine: '#'
+    - Initiative Manager: '#'
+  - Personality & Emotion:
+    - Personality Simulation: architecture/personality_sim.md
+    - Emotion Simulation: architecture/emotion_sim.md
+    - Emotion Recognition: '#'
+  - Self-Awareness:
+    - State Monitoring: '#'
+    - Meta-Cognition: '#'
+  - Intelligence & Memory:
+    - Chat Engine: '#'
+    - Memory System: '#'
+    - Learning System: '#'
+  - User Interface:
+    - Context Manager: '#'
+    - Presentation Layer: '#'
+  - Privacy & Security:
+    - Consent Manager: '#'
+    - Encryption System: '#'
+    - Audit System: '#'
+  - Message Formats:
+    - Core Integration: architecture/integration_msg.md
+    - Emotion Simulation: architecture/emotion_sim_msg.md
+    - Personality Simulation: architecture/personality_sim_msg.md
+  - Technology Stack:
+      - Overview: architecture/tech_stack.md
   - Concepts:
     - Emotion:
       - Emotion Simulation: concepts/emotion/emotion_sim.md
@@ -136,7 +169,7 @@ nav:
       - Personality Definition: concepts/personality/personality_definition.md
   - Development:
     - Contributing: development/contributing.md
-    - Roadmap: roadmap/index.md
+    - Roadmap: roadmap/development_roadmap.md
   # Additional sections will be added as features are implemented:
   # - Features:
   # - API Reference:
@@ -150,5 +183,9 @@ extra:
       link: https://github.com/boeni-industries/aico
     - icon: fontawesome/solid/globe
       link: https://boeni.industries
+  
+# Custom CSS
+extra_css:
+  - assets/stylesheets/extra.css
 # version:
     # provider: mike

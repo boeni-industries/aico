@@ -1,3 +1,7 @@
+---
+title: Technology Stack
+---
+
 # Technology Stack
 
 This document centralizes all technology decisions for the AICO system. It provides a comprehensive overview of the technologies selected for each layer of the architecture.

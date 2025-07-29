@@ -10,35 +10,58 @@ I’m building this because I’ve always wanted it for myself. Not just product
 
 ## Vision
 
-- **AICO is an open experiment to create an emotionally present, interactive, and learning AI companion.**  
-- I want it to act—to have its own basic motivations and initiative (agency), not just follow orders.
-- It should have a sense of personality and values—moods, likes/dislikes, things it stands for.
-- The companionship comes before the tasks.
+AICO is an open-source experiment to build an **emotionally present, embodied, and proactive AI companion**—meant to act as more of a confidante and sidekick than a traditional assistant.
 
-## MVP (First Milestone) – What AICO Will Actually Do
+**Core Principles:**
+- **Autonomous agency** - AICO has its own goals, interests, and curiosities that drive self-directed behavior and learning
+- **Strong user-centric privacy** - Local-first with full user control
+- **Modular, extensible architecture** - Prioritizes companionship and long-term learning
+- **Real-time emotional awareness** - Multi-modal emotion recognition and adaptation
 
-1. **Audio-Visual Embodiment:**  
-   - AICO exists as more than a voice or chatbot: could be on screen, on your desk, or projected. It can look at you.
-2. **Emotion & Behavior Recognition:**  
-   - Uses camera (if allowed) and mic to spot basic emotions/facial cues, so it can react (or choose not to).
-3. **Emotional Expression & Simulation:**  
-   - AICO generates sophisticated emotions through cognitive appraisal processes (AppraisalCloudPCT), expressing believable emotions through voice, facial expressions, and behavior to create genuine companion presence with relationship awareness and ethical constraints.
-4. **Personality & Character:**  
-   - Not one-size-fits-all. AICO starts with a base "self," then develops quirks and values over time, as it interacts with you.
-5. **Confidante Mode:**  
-   - Beyond answering: listens, remembers, asks how you are. Offers challenge or support, depending on what it "sees."
-6. **Agency & Intrinsic Motivation:**  
-   - **Autonomous Goal Generation**: AICO formulates its own objectives and sub-goals using hierarchical planning
-   - **Curiosity-Driven Exploration**: Uses intrinsic motivation algorithms to discover and learn about new topics
-   - **Interest Development**: Autonomously develops preferences and pursues topics that capture its attention
-   - **Multi-Step Planning**: Engages in strategic reasoning to achieve complex, self-directed objectives
-   - **Meta-Cognitive Awareness**: Understands its own learning progress and capability boundaries
-   - **Genuine Initiative**: Acts from authentic interest rather than programmed responses
-7. **Continual Learning:**  
-   - Over time, AICO adapts to you—language, topics, boundaries, and chosen "rituals."
-8. **Trust & Privacy First:**  
-   - Local-first where possible. Long-term: user chooses what stays private, what is shared, and when.
+Unlike typical productivity-oriented virtual assistants, AICO is designed to sense and adapt to your moods, initiate engagement, and form an evolving, personality-rich relationship.
 
+### Key Capabilities
+
+AICO is being built with a comprehensive set of capabilities that work together to create a truly companionable AI:
+
+**🧠 Intelligent Conversation & Memory**
+- Real-time text and voice conversations with context awareness
+- Multi-turn dialogue management with natural interruption handling
+- Episodic and semantic memory systems that remember your interactions
+- Continual learning that adapts to your communication style and preferences
+
+**😊 Sophisticated Emotional Intelligence**
+- Multi-modal emotion recognition through facial, voice, and text analysis
+- Advanced emotion simulation using AppraisalCloudPCT (Component Process Model)
+- Mood tracking and empathetic response generation
+- Personality simulation with evolving traits, values, and behavioral consistency
+
+**🎮 Proactive Agency & Initiative**
+- Autonomous goal generation and hierarchical planning
+- Curiosity-driven exploration and learning
+- Interest development and preference formation
+- Meta-cognitive self-awareness of learning progress
+- Proactive engagement with conversation starters and suggestions
+
+**🎭 Embodied Presence**
+- Visual avatar system with animation and expression
+- Multi-device presence (desktop, mobile, AR/VR)
+- Gesture recognition and spatial awareness
+- Consistent experience across all interaction modes
+
+**🔒 Privacy-First Design**
+- Local-first processing with end-to-end encryption
+- Granular consent management and permission controls
+- Homomorphic encryption for privacy-preserving cloud computations
+- Transparent audit logging and zero-knowledge authentication
+
+**🔌 Extensible Platform**
+- Plugin system for community-developed extensions
+- Unified API gateway for system integration
+- Automated updates with rollback capabilities
+- Developer tools and SDKs for custom skill creation
+
+AICO represents a new paradigm in AI companionship—one that prioritizes emotional connection, personal growth, and genuine relationship over mere task completion.
 
 ## Who’s This For?
 
