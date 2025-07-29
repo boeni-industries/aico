@@ -116,6 +116,10 @@ nav:
     - Overview: architecture/index.md
     - System Context: architecture/context.md
     - System Modules: architecture/modules.md
+    - Core Message Bus: architecture/core_message_bus.md
+    - Technology Stack: architecture/tech_stack.md
+    - Integration:
+      - Message Formats: architecture/integration_msg.md
     - Emotion Simulation:
       - Architecture: architecture/emotion_sim.md
       - Message Formats: architecture/emotion_sim_msg.md

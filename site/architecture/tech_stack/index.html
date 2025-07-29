@@ -12,13 +12,13 @@
         <meta name="author" content="Michael Böni">
       
       
-        <link rel="canonical" href="https://boeni-industries.github.io/aico/development/contributing/">
+        <link rel="canonical" href="https://boeni-industries.github.io/aico/architecture/tech_stack/">
       
       
-        <link rel="prev" href="../../concepts/personality/personality_definition/">
+        <link rel="prev" href="../core_message_bus/">
       
       
-        <link rel="next" href="../../roadmap/">
+        <link rel="next" href="../integration_msg/">
       
       
       <link rel="icon" href="../../assets/images/logo.png">
@@ -26,7 +26,7 @@
     
     
       
-        <title>Contributing - AICO - AI Companion Project</title>
+        <title>Technology Stack - AICO - AI Companion Project</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#contributing" class="md-skip">
+        <a href="#technology-stack" class="md-skip">
           Skip to content
         </a>
       
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Contributing
+              Technology Stack
             
           </span>
         </div>
@@ -421,8 +421,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -433,13 +435,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-          
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
           <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
@@ -455,7 +455,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             Architecture
@@ -469,7 +469,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/" class="md-nav__link">
+      <a href="../" class="md-nav__link">
         
   
   
@@ -492,7 +492,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/context/" class="md-nav__link">
+      <a href="../context/" class="md-nav__link">
         
   
   
@@ -515,7 +515,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/modules/" class="md-nav__link">
+      <a href="../modules/" class="md-nav__link">
         
   
   
@@ -538,7 +538,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/core_message_bus/" class="md-nav__link">
+      <a href="../core_message_bus/" class="md-nav__link">
         
   
   
@@ -558,10 +558,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../architecture/tech_stack/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Technology Stack
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -572,6 +594,140 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#interface-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      Interface Layer
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aiml-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      AI/ML Layer
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-storage-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data &amp; Storage Layer
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#communication-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      Communication Layer
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-privacy-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security &amp; Privacy Layer
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deployment-distribution-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      Deployment &amp; Distribution Layer
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#development-testing-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      Development &amp; Testing Layer
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#module-specific-technologies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Module-Specific Technologies
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Module-Specific Technologies">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#personality-simulation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Personality Simulation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#emotion-simulation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Emotion Simulation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#autonomous-agency" class="md-nav__link">
+    <span class="md-ellipsis">
+      Autonomous Agency
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#avatar-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      Avatar System
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -626,7 +782,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/integration_msg/" class="md-nav__link">
+      <a href="../integration_msg/" class="md-nav__link">
         
   
   
@@ -699,7 +855,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/emotion_sim/" class="md-nav__link">
+      <a href="../emotion_sim/" class="md-nav__link">
         
   
   
@@ -722,7 +878,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/emotion_sim_msg/" class="md-nav__link">
+      <a href="../emotion_sim_msg/" class="md-nav__link">
         
   
   
@@ -795,7 +951,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/personality_sim/" class="md-nav__link">
+      <a href="../personality_sim/" class="md-nav__link">
         
   
   
@@ -818,7 +974,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/personality_sim_msg/" class="md-nav__link">
+      <a href="../personality_sim_msg/" class="md-nav__link">
         
   
   
@@ -1074,8 +1230,6 @@
       
   
   
-    
-  
   
   
     
@@ -1088,11 +1242,13 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
         
           
           <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
@@ -1108,7 +1264,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             Development
@@ -1119,32 +1275,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Contributing
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../development/contributing/" class="md-nav__link">
         
   
   
@@ -1155,95 +1289,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#getting-started" class="md-nav__link">
-    <span class="md-ellipsis">
-      Getting Started
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-to-contribute" class="md-nav__link">
-    <span class="md-ellipsis">
-      How to Contribute
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="How to Contribute">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#areas-where-we-need-help" class="md-nav__link">
-    <span class="md-ellipsis">
-      Areas Where We Need Help
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#development-process" class="md-nav__link">
-    <span class="md-ellipsis">
-      Development Process
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#code-of-conduct" class="md-nav__link">
-    <span class="md-ellipsis">
-      Code of Conduct
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#development-setup" class="md-nav__link">
-    <span class="md-ellipsis">
-      Development Setup
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#questions" class="md-nav__link">
-    <span class="md-ellipsis">
-      Questions?
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1295,7 +1340,7 @@
 
 
   
-    <a href="https://github.com/boeni-industries/aico/edit/main/docs/development/contributing.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/boeni-industries/aico/edit/main/docs/architecture/tech_stack.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1304,54 +1349,478 @@
     
       
     
-    <a href="https://github.com/boeni-industries/aico/raw/main/docs/development/contributing.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/boeni-industries/aico/raw/main/docs/architecture/tech_stack.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"/></svg>
     </a>
   
 
 
-<h1 id="contributing">Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h1>
-<p>Welcome to the AICO project! This guide will help you get started with contributing.</p>
-<h2 id="getting-started">Getting Started<a class="headerlink" href="#getting-started" title="Permanent link">&para;</a></h2>
-<p>AICO is in very early development. We welcome contributors who are interested in building an emotionally present AI companion.</p>
-<h2 id="how-to-contribute">How to Contribute<a class="headerlink" href="#how-to-contribute" title="Permanent link">&para;</a></h2>
-<h3 id="areas-where-we-need-help">Areas Where We Need Help<a class="headerlink" href="#areas-where-we-need-help" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Core Architecture</strong>: Designing the foundational systems</li>
-<li><strong>Emotion Recognition</strong>: Computer vision and audio processing</li>
-<li><strong>Personality Systems</strong>: AI behavior and learning models  </li>
-<li><strong>Privacy &amp; Security</strong>: Local-first architecture design</li>
-<li><strong>Documentation</strong>: As features are implemented</li>
-<li><strong>Testing</strong>: Automated testing frameworks</li>
-<li><strong>UI/UX</strong>: Interface design for human-AI interaction</li>
-</ul>
-<h3 id="development-process">Development Process<a class="headerlink" href="#development-process" title="Permanent link">&para;</a></h3>
-<ol>
-<li><strong>Fork the repository</strong> on GitHub</li>
-<li><strong>Create a feature branch</strong> for your contribution</li>
-<li><strong>Make your changes</strong> following our coding standards</li>
-<li><strong>Write tests</strong> for new functionality</li>
-<li><strong>Submit a pull request</strong> with a clear description</li>
-</ol>
-<h2 id="code-of-conduct">Code of Conduct<a class="headerlink" href="#code-of-conduct" title="Permanent link">&para;</a></h2>
-<p><strong>Respect is non-negotiable</strong>—this project is about trust and authenticity, not swagger or showmanship.</p>
-<ul>
-<li>Be respectful and inclusive</li>
-<li>Focus on constructive feedback</li>
-<li>Collaborate openly and transparently</li>
-<li>Respect privacy and ethical considerations</li>
-</ul>
-<h2 id="development-setup">Development Setup<a class="headerlink" href="#development-setup" title="Permanent link">&para;</a></h2>
-<p><em>Detailed development setup instructions will be added as the codebase develops.</em></p>
-<h2 id="questions">Questions?<a class="headerlink" href="#questions" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Open an issue on GitHub for bugs or feature requests</li>
-<li>Start a discussion for broader topics</li>
-<li>Check existing issues before creating new ones</li>
-</ul>
-<hr />
-<p><strong>Remember</strong>: We're building something that should care, not just calculate. Keep that spirit in your contributions.</p>
+<h1 id="technology-stack">Technology Stack<a class="headerlink" href="#technology-stack" title="Permanent link">&para;</a></h1>
+<p>This document centralizes all technology decisions for the AICO system. It provides a comprehensive overview of the technologies selected for each layer of the architecture.</p>
+<h2 id="interface-layer">Interface Layer<a class="headerlink" href="#interface-layer" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Purpose</th>
+<th>Justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Flutter</strong></td>
+<td>Cross-platform UI framework</td>
+<td>Single codebase for desktop/mobile, high performance, rich widget library</td>
+</tr>
+<tr>
+<td><strong>WebView</strong></td>
+<td>3D avatar rendering</td>
+<td>Embeds web-based avatar technologies within Flutter</td>
+</tr>
+<tr>
+<td><strong>Three.js</strong></td>
+<td>3D graphics library</td>
+<td>Industry standard for web-based 3D rendering</td>
+</tr>
+<tr>
+<td><strong>Ready Player Me</strong></td>
+<td>Avatar creation</td>
+<td>Customizable avatars with built-in animation support</td>
+</tr>
+<tr>
+<td><strong>TalkingHead.js</strong></td>
+<td>Lip-sync and expressions</td>
+<td>Real-time lip-sync and facial expression capabilities</td>
+</tr>
+<tr>
+<td><strong>JavaScript Bridge</strong></td>
+<td>Flutter-WebView communication</td>
+<td>Bidirectional communication between Flutter and web avatar</td>
+</tr>
+</tbody>
+</table>
+<h2 id="aiml-layer">AI/ML Layer<a class="headerlink" href="#aiml-layer" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Purpose</th>
+<th>Justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Llama.cpp</strong></td>
+<td>Local LLM inference</td>
+<td>Efficient quantized models, cross-platform support</td>
+</tr>
+<tr>
+<td><strong>Ollama</strong></td>
+<td>LLM management</td>
+<td>Simplified model management and API</td>
+</tr>
+<tr>
+<td><strong>Mistral</strong></td>
+<td>Base LLM architecture</td>
+<td>Strong performance in quantized form</td>
+</tr>
+<tr>
+<td><strong>LangChain/LangGraph</strong></td>
+<td>Agent orchestration</td>
+<td>Graph-based workflow for complex agent behaviors</td>
+</tr>
+<tr>
+<td><strong>CrewAI/Autogen</strong></td>
+<td>Multi-agent coordination</td>
+<td>Enables collaborative agent behaviors</td>
+</tr>
+<tr>
+<td><strong>RND</strong></td>
+<td>Curiosity algorithm</td>
+<td>Random Network Distillation for intrinsic motivation</td>
+</tr>
+<tr>
+<td><strong>ICM</strong></td>
+<td>Curiosity algorithm</td>
+<td>Intrinsic Curiosity Module for prediction-based rewards</td>
+</tr>
+<tr>
+<td><strong>HER</strong></td>
+<td>Goal-conditioned learning</td>
+<td>Hindsight Experience Replay for learning from failures</td>
+</tr>
+<tr>
+<td><strong>GCPO</strong></td>
+<td>Goal-conditioned learning</td>
+<td>Goal-Conditioned Policy Optimization for on-policy learning</td>
+</tr>
+<tr>
+<td><strong>MCTS</strong></td>
+<td>Planning system</td>
+<td>Monte Carlo Tree Search for decision making</td>
+</tr>
+<tr>
+<td><strong>Behavior Trees</strong></td>
+<td>Action modeling</td>
+<td>Goal-oriented behavior modeling and execution</td>
+</tr>
+<tr>
+<td><strong>AppraisalCloudPCT</strong></td>
+<td>Emotion simulation</td>
+<td>Component Process Model for sophisticated emotion generation</td>
+</tr>
+<tr>
+<td><strong>ONNX Runtime</strong></td>
+<td>Model inference</td>
+<td>Cross-platform inference optimization</td>
+</tr>
+<tr>
+<td><strong>OpenVINO</strong></td>
+<td>Edge inference</td>
+<td>Intel optimization for edge devices</td>
+</tr>
+<tr>
+<td><strong>Whisper.cpp</strong></td>
+<td>Speech-to-text</td>
+<td>Efficient local speech recognition</td>
+</tr>
+<tr>
+<td><strong>Coqui/Piper</strong></td>
+<td>Text-to-speech</td>
+<td>Local high-quality voice synthesis</td>
+</tr>
+</tbody>
+</table>
+<h2 id="data-storage-layer">Data &amp; Storage Layer<a class="headerlink" href="#data-storage-layer" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Purpose</th>
+<th>Justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SQLite</strong></td>
+<td>Local database</td>
+<td>Embedded, reliable, cross-platform</td>
+</tr>
+<tr>
+<td><strong>DuckDB</strong></td>
+<td>Analytical queries</td>
+<td>Fast in-process analytical database</td>
+</tr>
+<tr>
+<td><strong>ChromaDB</strong></td>
+<td>Vector database</td>
+<td>Efficient embedding storage and similarity search</td>
+</tr>
+<tr>
+<td><strong>Qdrant</strong></td>
+<td>Vector database</td>
+<td>Alternative for larger-scale vector operations</td>
+</tr>
+<tr>
+<td><strong>FAISS</strong></td>
+<td>Vector similarity</td>
+<td>Fast similarity search for embeddings</td>
+</tr>
+<tr>
+<td><strong>LiteFS</strong></td>
+<td>Replication</td>
+<td>Optional multi-device synchronization</td>
+</tr>
+<tr>
+<td><strong>Sentence Transformers</strong></td>
+<td>Embedding generation</td>
+<td>Efficient text embedding models</td>
+</tr>
+</tbody>
+</table>
+<h2 id="communication-layer">Communication Layer<a class="headerlink" href="#communication-layer" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Purpose</th>
+<th>Justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ZeroMQ</strong></td>
+<td>Message bus</td>
+<td>Lightweight, embedded pub/sub messaging</td>
+</tr>
+<tr>
+<td><strong>MQTT</strong></td>
+<td>Message bus alternative</td>
+<td>Better for distributed deployments</td>
+</tr>
+<tr>
+<td><strong>FastAPI</strong></td>
+<td>API framework</td>
+<td>Modern, fast Python web framework</td>
+</tr>
+<tr>
+<td><strong>gRPC</strong></td>
+<td>API protocol</td>
+<td>Efficient binary protocol for inter-service communication</td>
+</tr>
+<tr>
+<td><strong>WebSockets</strong></td>
+<td>Real-time communication</td>
+<td>Full-duplex communication for UI updates</td>
+</tr>
+<tr>
+<td><strong>JSON</strong></td>
+<td>Message format</td>
+<td>Human-readable, widely supported serialization</td>
+</tr>
+<tr>
+<td><strong>JSON Schema</strong></td>
+<td>Message validation</td>
+<td>Schema validation for message formats</td>
+</tr>
+</tbody>
+</table>
+<h2 id="security-privacy-layer">Security &amp; Privacy Layer<a class="headerlink" href="#security-privacy-layer" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Purpose</th>
+<th>Justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SQLCipher</strong></td>
+<td>Database encryption</td>
+<td>Transparent encryption for SQLite</td>
+</tr>
+<tr>
+<td><strong>AES-256</strong></td>
+<td>Data encryption</td>
+<td>Industry standard encryption</td>
+</tr>
+<tr>
+<td><strong>Homomorphic Encryption</strong></td>
+<td>Privacy-preserving computation</td>
+<td>Compute on encrypted data</td>
+</tr>
+<tr>
+<td><strong>Differential Privacy</strong></td>
+<td>Statistical privacy</td>
+<td>Privacy-preserving analytics</td>
+</tr>
+<tr>
+<td><strong>Zero-Knowledge Proofs</strong></td>
+<td>Authentication</td>
+<td>Verify without revealing data</td>
+</tr>
+<tr>
+<td><strong>Secure Multi-party Computation</strong></td>
+<td>Collaborative learning</td>
+<td>Learn without sharing raw data</td>
+</tr>
+</tbody>
+</table>
+<h2 id="deployment-distribution-layer">Deployment &amp; Distribution Layer<a class="headerlink" href="#deployment-distribution-layer" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Purpose</th>
+<th>Justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Docker/Podman</strong></td>
+<td>Containerization</td>
+<td>Isolated, reproducible environments</td>
+</tr>
+<tr>
+<td><strong>Alpine Linux</strong></td>
+<td>Base images</td>
+<td>Minimal footprint for containers</td>
+</tr>
+<tr>
+<td><strong>Electron</strong></td>
+<td>Desktop packaging</td>
+<td>Cross-platform desktop application packaging</td>
+</tr>
+<tr>
+<td><strong>Delta Updates</strong></td>
+<td>Efficient updates</td>
+<td>Bandwidth-efficient update mechanism</td>
+</tr>
+<tr>
+<td><strong>Cryptographic Signatures</strong></td>
+<td>Update verification</td>
+<td>Ensures update authenticity</td>
+</tr>
+</tbody>
+</table>
+<h2 id="development-testing-layer">Development &amp; Testing Layer<a class="headerlink" href="#development-testing-layer" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Purpose</th>
+<th>Justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Python</strong></td>
+<td>Core development</td>
+<td>Primary language for AI components</td>
+</tr>
+<tr>
+<td><strong>Dart/Flutter</strong></td>
+<td>UI development</td>
+<td>Cross-platform UI framework</td>
+</tr>
+<tr>
+<td><strong>JavaScript/TypeScript</strong></td>
+<td>Avatar development</td>
+<td>Web technologies for avatar system</td>
+</tr>
+<tr>
+<td><strong>Pytest</strong></td>
+<td>Testing framework</td>
+<td>Comprehensive Python testing</td>
+</tr>
+<tr>
+<td><strong>GitHub Actions</strong></td>
+<td>CI/CD</td>
+<td>Automated testing and deployment</td>
+</tr>
+<tr>
+<td><strong>MkDocs</strong></td>
+<td>Documentation</td>
+<td>Markdown-based documentation system</td>
+</tr>
+<tr>
+<td><strong>Material for MkDocs</strong></td>
+<td>Documentation theme</td>
+<td>Clean, responsive documentation UI</td>
+</tr>
+</tbody>
+</table>
+<h2 id="module-specific-technologies">Module-Specific Technologies<a class="headerlink" href="#module-specific-technologies" title="Permanent link">&para;</a></h2>
+<h3 id="personality-simulation">Personality Simulation<a class="headerlink" href="#personality-simulation" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Purpose</th>
+<th>Justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>TraitEmergence</strong></td>
+<td>Personality architecture</td>
+<td>Multi-dimensional trait-based modeling</td>
+</tr>
+<tr>
+<td><strong>Big Five &amp; HEXACO</strong></td>
+<td>Trait models</td>
+<td>Comprehensive personality representation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="emotion-simulation">Emotion Simulation<a class="headerlink" href="#emotion-simulation" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Purpose</th>
+<th>Justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>AppraisalCloudPCT</strong></td>
+<td>Emotion architecture</td>
+<td>Advanced Component Process Model variant</td>
+</tr>
+<tr>
+<td><strong>4-Stage Appraisal</strong></td>
+<td>Emotion generation</td>
+<td>Cognitive appraisal process (Relevance → Implication → Coping → Normative)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="autonomous-agency">Autonomous Agency<a class="headerlink" href="#autonomous-agency" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Purpose</th>
+<th>Justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>MCTS</strong></td>
+<td>Decision making</td>
+<td>Monte Carlo Tree Search for planning</td>
+</tr>
+<tr>
+<td><strong>Behavior Trees</strong></td>
+<td>Action execution</td>
+<td>Structured behavior representation</td>
+</tr>
+<tr>
+<td><strong>RND/ICM</strong></td>
+<td>Curiosity algorithms</td>
+<td>Intrinsic motivation for exploration</td>
+</tr>
+<tr>
+<td><strong>HER/GCPO</strong></td>
+<td>Goal learning</td>
+<td>Goal-conditioned reinforcement learning</td>
+</tr>
+</tbody>
+</table>
+<h3 id="avatar-system">Avatar System<a class="headerlink" href="#avatar-system" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Purpose</th>
+<th>Justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Three.js</strong></td>
+<td>3D rendering</td>
+<td>Web-based 3D graphics</td>
+</tr>
+<tr>
+<td><strong>Ready Player Me</strong></td>
+<td>Avatar models</td>
+<td>Customizable 3D avatars</td>
+</tr>
+<tr>
+<td><strong>TalkingHead.js</strong></td>
+<td>Facial animation</td>
+<td>Real-time lip-sync and expressions</td>
+</tr>
+<tr>
+<td><strong>WebView</strong></td>
+<td>Integration</td>
+<td>Embedding web technologies in Flutter</td>
+</tr>
+</tbody>
+</table>
 
 
 

@@ -27,6 +27,8 @@ All messages on the bus follow this common envelope structure:
 
 ## Input Message Formats
 
+> **Note**: In addition to the message formats described below, the Personality Simulation module also consumes integration-specific messages such as `crisis.detection`, `agency.initiative`, `expression.coordination`, and `learning.coordination`. These formats are defined in [`integration_msg.md`](./integration_msg.md).
+
 ### User Interaction History
 
 **Topic**: `user.interaction.history`  
@@ -628,7 +630,9 @@ All messages on the bus follow this common envelope structure:
 ### Decision Expression Parameters
 
 **Topic**: `personality.expression.decision`  
-**Description**: Decision-making parameters for the Autonomous Agent.
+**Description**: Decision-making parameters for Autonomous Agency module.
+
+> **Note**: This message format has been enhanced with an `ethical_framework` section in version 1.1. See [`integration_msg.md`](./integration_msg.md) for details on the enhanced format.
 
 ```json
 {
@@ -858,6 +862,38 @@ All messages on the bus follow this common envelope structure:
     }
   }
 }
+```
+
+## Message Bus Topics Summary
+
+### Input Topics (Subscriptions)
+```
+- user.interaction.history     # From Memory System
+- conversation.context         # From Context Manager
+- emotion.state.current        # From Emotion Simulation
+- memory.consolidation         # From Memory System
+- agency.goals.current         # From Autonomous Agent
+- user.feedback                # From Chat Engine
+- crisis.detection             # From any module detecting crisis
+- agency.initiative            # From Autonomous Agency
+- expression.coordination      # From Emotion Simulation
+- learning.coordination        # From Memory System
+- llm.conversation.events      # From Chat Engine
+- llm.prompt.conditioning.request  # From Chat Engine
+```
+
+### Output Topics (Publications)
+```
+- personality.state.current         # Current personality state
+- personality.expression.communication  # Communication parameters for LLM
+- personality.expression.decision   # Decision parameters for Agency
+- personality.expression.emotional  # Emotional tendency parameters
+- personality.memory.store          # Personality experiences to store
+- crisis.detection                  # Crisis detection (when detected by Personality)
+- agency.initiative                 # Proactive engagement (when initiated by Personality)
+- expression.coordination           # Cross-modal expression coordination
+- learning.coordination             # Learning feedback and coordination
+- llm.prompt.conditioning.response  # Personality conditioning parameters for LLM prompts
 ```
 
 ## Schema Validation
