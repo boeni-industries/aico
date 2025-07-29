@@ -15,10 +15,10 @@
         <link rel="canonical" href="https://boeni-industries.github.io/aico/architecture/core_message_bus/">
       
       
-        <link rel="prev" href="../modules/">
+        <link rel="prev" href="../">
       
       
-        <link rel="next" href="../tech_stack/">
+        <link rel="next" href="../integration_msg/">
       
       
       <link rel="icon" href="../../assets/images/logo.png">
@@ -26,7 +26,7 @@
     
     
       
-        <title>Core Message Bus - AICO - AI Companion Project</title>
+        <title>Message Bus - AICO - AI Companion Project</title>
       
     
     
@@ -87,10 +87,6 @@
       
     </div>
     
-      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
-        
-      </div>
-    
     
       
 
@@ -117,7 +113,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Core Message Bus
+              Message Bus
             
           </span>
         </div>
@@ -487,47 +483,43 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../context/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    System Context
     
-  </span>
   
-
-      </a>
-    </li>
   
-
-              
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../modules/" class="md-nav__link">
-        
   
   
   <span class="md-ellipsis">
-    System Modules
+    Core Systems
     
   </span>
   
 
-      </a>
-    </li>
-  
-
-              
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            Core Systems
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
             
               
                 
@@ -550,7 +542,7 @@
   
   
   <span class="md-ellipsis">
-    Core Message Bus
+    Message Bus
     
   </span>
   
@@ -563,7 +555,7 @@
   
   
   <span class="md-ellipsis">
-    Core Message Bus
+    Message Bus
     
   </span>
   
@@ -601,57 +593,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Design Principles">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#1-loose-coupling" class="md-nav__link">
-    <span class="md-ellipsis">
-      1. Loose Coupling
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#2-event-driven-architecture" class="md-nav__link">
-    <span class="md-ellipsis">
-      2. Event-Driven Architecture
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#3-standardized-communication" class="md-nav__link">
-    <span class="md-ellipsis">
-      3. Standardized Communication
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#4-topic-based-routing" class="md-nav__link">
-    <span class="md-ellipsis">
-      4. Topic-Based Routing
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#5-versioned-message-formats" class="md-nav__link">
-    <span class="md-ellipsis">
-      5. Versioned Message Formats
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -660,39 +601,6 @@
       Technical Implementation
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Technical Implementation">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#message-bus-technology" class="md-nav__link">
-    <span class="md-ellipsis">
-      Message Bus Technology
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#message-format" class="md-nav__link">
-    <span class="md-ellipsis">
-      Message Format
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#message-validation" class="md-nav__link">
-    <span class="md-ellipsis">
-      Message Validation
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -703,30 +611,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Topic Hierarchy">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#core-domains" class="md-nav__link">
-    <span class="md-ellipsis">
-      Core Domains
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#cross-cutting-concerns" class="md-nav__link">
-    <span class="md-ellipsis">
-      Cross-Cutting Concerns
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -735,30 +619,6 @@
       Module Integration Patterns
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Module Integration Patterns">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#publisher-subscriber-pattern" class="md-nav__link">
-    <span class="md-ellipsis">
-      Publisher-Subscriber Pattern
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example-emotion-personality-integration" class="md-nav__link">
-    <span class="md-ellipsis">
-      Example: Emotion-Personality Integration
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -778,30 +638,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Security and Privacy Considerations">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#message-security" class="md-nav__link">
-    <span class="md-ellipsis">
-      Message Security
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#privacy-protection" class="md-nav__link">
-    <span class="md-ellipsis">
-      Privacy Protection
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -810,30 +646,6 @@
       Performance Considerations
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Performance Considerations">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#message-throughput" class="md-nav__link">
-    <span class="md-ellipsis">
-      Message Throughput
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#optimization-strategies" class="md-nav__link">
-    <span class="md-ellipsis">
-      Optimization Strategies
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -863,69 +675,6 @@
   
 
               
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../tech_stack/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Technology Stack
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    
-    
-    
-    
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" >
-        
-          
-          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    Integration
-    
-  </span>
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_6">
-            <span class="md-nav__icon md-icon"></span>
-            Integration
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
             
               
                 
@@ -975,10 +724,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
         
           
-          <label class="md-nav__link" for="__nav_3_7" id="__nav_3_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
             
   
   
@@ -991,8 +740,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_7">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
             <span class="md-nav__icon md-icon"></span>
             Emotion Simulation
           </label>
@@ -1069,10 +818,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_8" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
         
           
-          <label class="md-nav__link" for="__nav_3_8" id="__nav_3_8_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
             
   
   
@@ -1085,8 +834,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_8_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_8">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
             <span class="md-nav__icon md-icon"></span>
             Personality Simulation
           </label>
@@ -1141,6 +890,29 @@
           </ul>
         </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tech_stack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Technology Stack
+    
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -1837,7 +1609,7 @@
       <div class="md-copyright">
   
     <div class="md-copyright__highlight">
-      Copyright &copy; 2024 Michael Böni
+      Copyright &copy; 2025 Boeni Industries AG
     </div>
   
   
@@ -1886,7 +1658,7 @@
     
     
       
-      <script id="__config" type="application/json">{"base": "../..", "features": ["navigation.sections", "navigation.sections.collapse", "navigation.levels", "navigation.top", "navigation.tracking", "search.highlight", "search.share", "search.suggest", "toc.follow", "toc.integrate", "content.action.edit", "content.action.view", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+      <script id="__config" type="application/json">{"base": "../..", "features": ["navigation.sections", "navigation.sections.collapse", "navigation.levels", "navigation.top", "navigation.tracking", "search.highlight", "search.share", "search.suggest", "toc.follow", "toc.integrate", "content.action.edit", "content.action.view", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../../assets/javascripts/bundle.50899def.min.js"></script>

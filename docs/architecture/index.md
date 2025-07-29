@@ -76,11 +76,102 @@ AICO's features are organized into logical modules for development and deploymen
 
 ## System Architecture
 
-AICO follows a **modular, message-driven architecture** designed for local-first privacy, extensibility, and autonomous behavior. The system is organized into modules containing related components that communicate through a central message bus, enabling loose coupling and real-time, event-driven interactions.
+AICO follows a **modular, message-driven architecture** designed for local-first privacy, extensibility, and autonomous behavior. The system is organized into a clear hierarchical structure that enables loose coupling and real-time, event-driven interactions through a central message bus.
 
-### Architectural Approach
+### Hierarchical System Structure
 
-#### Core Design Principles
+```
+System: AICO AI Companion
+├── Domain: Core Infrastructure
+│   ├── Module: Message Bus
+│   │   ├── Component: ZeroMQ/MQTT Broker
+│   │   ├── Component: Topic Management
+│   │   ├── Component: Message Validation
+│   │   └── Component: JSON Schema Validation
+│   ├── Module: Plugin Manager
+│   │   ├── Component: Extension Loader
+│   │   ├── Component: Sandbox Environment
+│   │   └── Component: Permission Broker
+│   ├── Module: Configuration System
+│   │   ├── Component: Settings Management
+│   │   └── Component: Runtime Configuration
+│   ├── Module: API Gateway
+│   │   ├── Component: External Interfaces
+│   │   └── Component: Protocol Adapters
+│   └── Module: Update System
+│       ├── Component: Version Management
+│       └── Component: Atomic Updates
+├── Domain: Autonomous Agency
+│   ├── Module: Goal System
+│   │   ├── Component: Goal Generation
+│   │   ├── Component: Goal Prioritization
+│   │   └── Component: Goal Tracking
+│   ├── Module: Planning System
+│   │   ├── Component: MCTS Planner
+│   │   ├── Component: Action Selection
+│   │   └── Component: Path Planning
+│   ├── Module: Curiosity Engine
+│   │   ├── Component: RND Algorithm
+│   │   ├── Component: ICM Algorithm
+│   │   └── Component: Exploration Driver
+│   └── Module: Initiative Manager
+│       ├── Component: Proactive Engagement
+│       └── Component: Conversation Starter
+├── Domain: Personality & Emotion
+│   ├── Module: Personality Simulation
+│   │   ├── Component: Trait Vector System
+│   │   ├── Component: Value System
+│   │   ├── Component: Expression Mapper
+│   │   └── Component: Consistency Validator
+│   ├── Module: Emotion Simulation
+│   │   ├── Component: Appraisal Engine
+│   │   ├── Component: Affect Derivation
+│   │   └── Component: Expression Synthesis
+│   └── Module: Emotion Recognition
+│       ├── Component: Facial Analysis
+│       ├── Component: Voice Analysis
+│       └── Component: Text Analysis
+├── Domain: Self-Awareness
+│   ├── Module: State Monitoring
+│   │   ├── Component: System Health
+│   │   └── Component: Performance Metrics
+│   └── Module: Meta-Cognition
+│       ├── Component: Reflection Engine
+│       └── Component: Self-Assessment
+├── Domain: Intelligence & Memory
+│   ├── Module: Chat Engine
+│   │   ├── Component: LLM Interface
+│   │   ├── Component: Prompt Conditioning
+│   │   └── Component: Response Generation
+│   ├── Module: Memory System
+│   │   ├── Component: Episodic Memory
+│   │   ├── Component: Semantic Memory
+│   │   ├── Component: Procedural Memory
+│   │   └── Component: Memory Consolidation
+│   └── Module: Learning System
+│       ├── Component: Continual Learning
+│       └── Component: Skill Acquisition
+├── Domain: User Interface
+│   ├── Module: Context Manager
+│   │   ├── Component: Conversation State
+│   │   └── Component: User Context
+│   └── Module: Presentation Layer
+│       ├── Component: Flutter UI
+│       ├── Component: Avatar System
+│       └── Component: Voice & Audio
+└── Domain: Privacy & Security
+    ├── Module: Consent Manager
+    │   ├── Component: Permission Control
+    │   └── Component: Data Governance
+    ├── Module: Encryption System
+    │   ├── Component: Data Encryption
+    │   └── Component: Secure Communication
+    └── Module: Audit System
+        ├── Component: Activity Logging
+        └── Component: Compliance Monitoring
+```
+
+### Core Design Principles
 
 - **Agency Over Pure Reactivity** - AICO initiates and acts, not just responds
 - **Local-First by Default** - All personal data and core inference runs locally
@@ -104,177 +195,3 @@ AICO follows a **modular, message-driven architecture** designed for local-first
 - **Homomorphic Encryption** - Privacy-preserving cloud computations when needed
 - **Sandboxed Plugin Execution** - Isolated environments with permission controls
 - **Atomic Updates** - Reliable system updates with rollback capabilities
-
-#### 🔒 Privacy Controller
-Central user-governed dashboard for:
-- Toggling features
-- Controlling cloud data sharing
-- Data lifecycle management
-- Audit logging
-
-## Autonomous Agency Architecture
-
-AICO's autonomous agency is built on a multi-layered architecture that enables genuine self-directed behavior, working in concert with the Personality Simulation and Emotion Simulation modules:
-
-### Agency Layers
-
-#### 🎯 Goal Generation Layer
-- **Autonomous Goal Formation**: Dynamic creation of objectives based on curiosity and interests
-- **Hierarchical Planning**: Multi-level goal decomposition and strategic planning
-- **Goal Prioritization**: Self-directed importance assessment and resource allocation
-
-#### 🔍 Curiosity & Exploration Layer
-- **Intrinsic Motivation Engine**: RND/ICM algorithms for curiosity-driven exploration
-- **Novelty Detection**: Identification of new experiences and learning opportunities
-- **Interest Tracking**: Development and evolution of autonomous preferences
-
-#### 🧠 Planning & Reasoning Layer
-- **Strategic Planning**: MCTS-based multi-step decision making
-- **Behavior Trees**: Goal-oriented action selection and execution
-- **Context Integration**: Environmental awareness and situational reasoning
-
-#### 🪞 Meta-Cognitive Layer
-- **Self-Assessment**: Understanding of own capabilities and limitations
-- **Learning Progress Monitoring**: Awareness of knowledge acquisition and skill development
-- **Adaptive Behavior**: Self-modification based on performance and outcomes
-
-#### 🧠 Decision-Making Layer
-- **Reasoning Engine**: Logical and causal reasoning capabilities
-- **Ethical Framework**: Value-aligned decision making
-- **Risk Assessment**: Evaluation of action consequences
-- **Personality-Agency Fusion**: Ensures autonomous behavior aligns with personality traits through:
-  - **Trait Expression Parameters**: Decision-making parameters from Personality Simulation
-  - **Value System Integration**: Ethical boundaries and priorities from personality traits
-  - **Coherence Validation**: Consistency checking against personality model
-- **Human-Agency Balance**: Maintains appropriate boundaries and user control
-
-### Agency Integration
-- **Unified Agency Controller**: Coordinates all autonomous behaviors
-- **Goal-Memory Interface**: Links autonomous objectives with episodic/semantic memory
-- **Personality-Agency Fusion**: Ensures autonomous behavior aligns with personality traits
-- **Human-Agency Balance**: Maintains appropriate boundaries and user control
-
-## System Architecture
-
-### Core Components
-
-| Component | Purpose | Technology |
-|-----------|---------|------------|
-| **Chat Engine** | Real-time conversation management and threading | WebSocket, FastAPI, conversation state |
-| **Personality Simulation** | Trait-based personality modeling and expression | TraitEmergence architecture, multi-dimensional vector modeling |
-| **Context Manager** | Conversation context and thread management | Redis, conversation graphs |
-| **LLM Interface** | Language model integration and prompt management | Llama.cpp, Ollama, OpenAI adapters |
-| **Personality Engine** | Dynamic personality modeling and adaptation | Local ML models, behavior trees |
-| **Emotion Recognition** | Multi-modal emotion detection (visual, audio, text) | ONNX models, TensorFlow Lite |
-| **Emotion Simulation** | Sophisticated emotion generation using AppraisalCloudPCT | Component Process Model, appraisal theory, optional cloud enhancement |
-| **Memory System** | Episodic and semantic memory with encryption | SQLite, DuckDB, LiteFS |
-| **Vector Store** | Embedding storage and similarity search | ChromaDB, Qdrant, FAISS |
-| **Autonomous Agent** | Multi-faceted autonomous behavior system | Goal generation, curiosity engine, planning system |
-| **Goal System** | Dynamic goal formation and hierarchical planning | MCTS, behavior trees, goal-conditioned RL |
-| **Curiosity Engine** | Intrinsic motivation and exploration drive | RND, ICM, novelty detection algorithms |
-| **Planning System** | Strategic reasoning and multi-step execution | Monte Carlo Tree Search, hierarchical planning |
-| **Voice & Audio** | Speech-to-text and text-to-speech | Whisper.cpp, Coqui, Piper |
-| **Avatar System** | Real-time 3D avatar with lip-sync and expressions | Three.js, Ready Player Me, TalkingHead.js |
-| **Privacy Controller** | Advanced privacy and consent management | Homomorphic encryption, ZK proofs |
-| **API Gateway** | Unified interface for all modules | FastAPI/gRPC, local web server |
-| **Plugin Manager** | Dynamic plugin loading and management | Hot-reload system, sandboxing |
-| **Update Manager** | Automated system updates with rollback | Version control, delta updates, integrity checks |
-| **Restart Controller** | Graceful system restarts and recovery | Process management, state persistence, health monitoring |
-
-### Technology Stack
-
-For a comprehensive overview of all technology decisions, please refer to the [Technology Stack](./tech_stack.md) document.
-
-Key technology categories include:
-- **Interface Layer**: UI frameworks and avatar technologies
-- **AI/ML Layer**: Language models, agent frameworks, and emotion systems
-- **Data & Storage Layer**: Databases, vector stores, and embedding models
-- **Communication Layer**: Message bus, API frameworks, and protocols
-- **Security & Privacy Layer**: Encryption and privacy-preserving technologies
-- **Deployment & Distribution Layer**: Containerization and update systems
-- **Development & Testing Layer**: Languages, frameworks, and CI/CD tools
-  - Conversation continuity preservation
-- **CI/CD**: Rapid development, easy upgrades, continuous security review
-
-
-
-## Module Integration Architecture
-
-AICO's modules communicate through a message bus system using standardized message formats. This integration architecture ensures coherent personality expression, emotional authenticity, and proactive agency across all system components.
-
-### Core Integration Patterns
-
-#### Message-Driven Communication
-- **Topic-Based Pub/Sub**: All modules use a publish/subscribe pattern via ZeroMQ/MQTT
-- **Standardized Envelopes**: Common message envelope structure with consistent metadata
-- **Versioned Schemas**: Message formats evolve with proper versioning
-- **JSON Format**: All messages use JSON for maximum interoperability
-
-#### Key Integration Flows
-
-##### Personality-Emotion-LLM Integration
-1. **Personality → LLM**: Personality module publishes communication parameters to influence LLM responses
-2. **Emotion → LLM**: Emotion module publishes emotional state to condition LLM output
-3. **LLM → Personality/Emotion**: Conversation events feed back for personality/emotion adaptation
-
-##### Proactive Agency Coordination
-1. **Personality → Agency**: Decision parameters guide autonomous behavior
-2. **Agency → All Modules**: Initiative signals coordinate proactive engagement
-3. **All Modules → Agency**: Feedback on initiative effectiveness
-
-##### Crisis Handling
-1. **Any Module → All Modules**: Crisis detection alerts for coordinated response
-2. **Personality/Emotion → LLM**: Enhanced guidance during crisis situations
-3. **Agency → External Resources**: Escalation paths when needed
-
-##### Cross-Modal Expression
-1. **Emotion/Personality → All Output Modules**: Synchronized expression parameters
-2. **Expression Coordination → Avatar/Voice/Text**: Timing and transition guidance
-
-#### Integration Message Types
-
-Detailed message formats for module integration are documented in:
-- [`personality_sim_msg.md`](./personality_sim_msg.md): Personality simulation messages
-- [`emotion_sim_msg.md`](./emotion_sim_msg.md): Emotion simulation messages
-- [`integration_msg.md`](./integration_msg.md): Cross-module integration messages including:
-  - Crisis detection and handling
-  - Proactive agency coordination
-  - Cross-modal expression synchronization
-  - Shared learning coordination
-  - Enhanced ethical decision framework
-
-## Privacy & Security
-
-### Data Governance
-- **Local-first**: All personal data stays on user's device by default
-- **Explicit Consent**: Clear opt-in for any cloud features
-- **Audit Logging**: Detailed, user-facing logs for transparency
-- **Data Lifecycle**: User controls retention, deletion, and export
-
-### Security Measures
-- **Encryption-at-rest**: All local data encrypted
-- **Homomorphic Encryption**: Privacy-preserving cloud computations
-- **Differential Privacy**: Analytics while preserving individual privacy
-- **Zero-knowledge Proofs**: Authentication without revealing data
-- **Secure Multi-party Computation**: Collaborative learning without data sharing
-- **Module Isolation**: Containerized components with limited permissions
-- **API Security**: Authenticated local API access
-- **Regular Security Reviews**: Continuous security assessment in CI/CD
-
-## Extensibility
-
-### Plugin Architecture
-- **Well-documented APIs**: Clear interfaces for community development
-- **Hot-reloadable Modules**: Update plugins without system restart
-- **Sandboxed Execution**: Safe plugin execution environment
-- **Community Marketplace**: Future plugin discovery and sharing
-
-### Integration Points
-- **Calendar/Email**: User-controlled data import
-- **Smart Home**: Optional IoT device integration
-- **External APIs**: Modular connectors for various services
-- **Custom Skills**: User-defined behaviors and responses
-
----
-
-*This architecture balances AICO's goals of privacy, embodiment, and extensibility while leveraging modern best practices in modular agents, edge AI, and user-centric design.*

@@ -9,7 +9,7 @@ repo_url: https://github.com/boeni-industries/aico
 edit_uri: edit/main/docs/
 
 # Copyright
-copyright: Copyright &copy; 2024 Michael Böni
+copyright: Copyright &copy; 2025 Boeni Industries AG
 
 # Build directory (default: site)
 # Note: GitHub Actions will handle deployment to gh-pages branch
@@ -118,11 +118,8 @@ nav:
     - Quick Start: getting-started/quick-start.md
   - Architecture:
     - Overview: architecture/index.md
-    - System Context: architecture/context.md
-    - System Modules: architecture/modules.md
-    - Core Message Bus: architecture/core_message_bus.md
-    - Technology Stack: architecture/tech_stack.md
-    - Integration:
+    - Core Systems:
+      - Message Bus: architecture/core_message_bus.md
       - Message Formats: architecture/integration_msg.md
     - Emotion Simulation:
       - Architecture: architecture/emotion_sim.md
@@ -130,6 +127,7 @@ nav:
     - Personality Simulation:
       - Architecture: architecture/personality_sim.md
       - Message Formats: architecture/personality_sim_msg.md
+    - Technology Stack: architecture/tech_stack.md
   - Concepts:
     - Emotion:
       - Emotion Simulation: concepts/emotion/emotion_sim.md
@@ -152,5 +150,5 @@ extra:
       link: https://github.com/boeni-industries/aico
     - icon: fontawesome/solid/globe
       link: https://boeni.industries
-  version:
-    provider: mike
+# version:
+    # provider: mike
