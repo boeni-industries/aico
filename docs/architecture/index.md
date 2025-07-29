@@ -28,7 +28,12 @@ AICO's features are organized into logical modules for development and deploymen
 - **Interruption Handling**: Natural conversation interruption and resumption
 
 ### 🧠 Intelligence & Memory
-- **Personality Engine**: Dynamic personality modeling and adaptation
+- **Personality Simulation**: Multi-dimensional trait-based personality modeling with:
+  - **Trait Vector System**: Management of personality traits (Big Five, HEXACO)
+  - **Value System**: Ethical principles and preference management
+  - **Expression Mapper**: Translation of traits to behavioral parameters
+  - **Consistency Validator**: Ensuring behavioral coherence over time
+  - **Personality Evolution**: Gradual adaptation based on interactions
 - **Episodic Memory**: Personal experience and interaction history
 - **Semantic Memory**: Knowledge base and learned concepts
 - **Vector Storage**: Embedding-based similarity search and retrieval
@@ -73,23 +78,32 @@ AICO's features are organized into logical modules for development and deploymen
 
 AICO follows a **modular, message-driven architecture** designed for local-first privacy, extensibility, and autonomous behavior. The system is organized into modules containing related components that communicate through a central message bus, enabling loose coupling and real-time, event-driven interactions.
 
-### Core Design Principles
+### Architectural Approach
 
-#### 🏠 Local-First by Default
-All personal data and core inference runs locally (PC, workstation, or powerful edge device). Only opt-in features use cloud or edge APIs when stronger compute is required.
+#### Core Design Principles
 
-#### 📦 Containerized Modules
-Each subsystem (personality engine, memory, emotion recognition) runs as a separate service or container (Docker, Podman). This enables:
-- Platform flexibility
-- Easy updates
-- Strict isolation for privacy
-- Independent scaling
+- **Agency Over Pure Reactivity** - AICO initiates and acts, not just responds
+- **Local-First by Default** - All personal data and core inference runs locally
+- **Modular Architecture** - Decoupled components with clear interfaces
+- **Message-Driven Integration** - Event-based communication via central message bus
+- **Multi-Modal Embodiment** - Visual, auditory, and textual presence
+- **Emotional Intelligence** - Sophisticated emotion recognition and simulation
+- **Privacy by Design** - User control of all data and processing
+- **Extensible Platform** - Plugin system for community extensions
+- **Continuous Evolution** - Self-updating with personality development
 
-#### 🌐 Unified API Gateway
-A local gRPC or HTTP API combines all modules. All frontends (avatar, chat, desktop widget, AR/VR) communicate through this unified interface.
+#### Key Architectural Decisions
 
-#### 🔌 Plugin System
-Expose a plugin interface for community extensions (skills, connectors, UI themes) in scripting languages (Python, Node.js).
+- **Hybrid Flutter + WebView UI** - Native app performance with web-based avatar
+- **AppraisalCloudPCT for Emotion** - Component Process Model for sophisticated emotions
+- **TraitEmergence for Personality** - Multi-dimensional trait-based modeling
+- **Multi-Faceted Agency** - Goal generation, curiosity, planning, meta-cognition
+- **Topic-Based Pub/Sub** - Standardized message formats with versioned schemas
+- **JSON Message Format** - Human-readable, widely supported serialization
+- **Plugin Manager as Gateway** - Mediated access for third-party extensions
+- **Homomorphic Encryption** - Privacy-preserving cloud computations when needed
+- **Sandboxed Plugin Execution** - Isolated environments with permission controls
+- **Atomic Updates** - Reliable system updates with rollback capabilities
 
 #### 🔒 Privacy Controller
 Central user-governed dashboard for:
@@ -100,7 +114,7 @@ Central user-governed dashboard for:
 
 ## Autonomous Agency Architecture
 
-AICO's autonomous agency is built on a multi-layered architecture that enables genuine self-directed behavior:
+AICO's autonomous agency is built on a multi-layered architecture that enables genuine self-directed behavior, working in concert with the Personality Simulation and Emotion Simulation modules:
 
 ### Agency Layers
 
@@ -124,6 +138,16 @@ AICO's autonomous agency is built on a multi-layered architecture that enables g
 - **Learning Progress Monitoring**: Awareness of knowledge acquisition and skill development
 - **Adaptive Behavior**: Self-modification based on performance and outcomes
 
+#### 🧠 Decision-Making Layer
+- **Reasoning Engine**: Logical and causal reasoning capabilities
+- **Ethical Framework**: Value-aligned decision making
+- **Risk Assessment**: Evaluation of action consequences
+- **Personality-Agency Fusion**: Ensures autonomous behavior aligns with personality traits through:
+  - **Trait Expression Parameters**: Decision-making parameters from Personality Simulation
+  - **Value System Integration**: Ethical boundaries and priorities from personality traits
+  - **Coherence Validation**: Consistency checking against personality model
+- **Human-Agency Balance**: Maintains appropriate boundaries and user control
+
 ### Agency Integration
 - **Unified Agency Controller**: Coordinates all autonomous behaviors
 - **Goal-Memory Interface**: Links autonomous objectives with episodic/semantic memory
@@ -137,6 +161,7 @@ AICO's autonomous agency is built on a multi-layered architecture that enables g
 | Component | Purpose | Technology |
 |-----------|---------|------------|
 | **Chat Engine** | Real-time conversation management and threading | WebSocket, FastAPI, conversation state |
+| **Personality Simulation** | Trait-based personality modeling and expression | TraitEmergence architecture, multi-dimensional vector modeling |
 | **Context Manager** | Conversation context and thread management | Redis, conversation graphs |
 | **LLM Interface** | Language model integration and prompt management | Llama.cpp, Ollama, OpenAI adapters |
 | **Personality Engine** | Dynamic personality modeling and adaptation | Local ML models, behavior trees |
@@ -158,54 +183,65 @@ AICO's autonomous agency is built on a multi-layered architecture that enables g
 
 ### Technology Stack
 
-#### Interface Layer
-- **Primary UI**: Flutter cross-platform application
-- **Avatar Integration**: WebView embedding Three.js + Ready Player Me + TalkingHead.js
-- **Native Performance**: Flutter for app logic, WebView for 3D avatar rendering
-- **JavaScript Bridge**: Real-time communication between Flutter and avatar system
-- **Management Panel**: Flutter-based settings and data management UI
-- **Advanced Embodiment**: Unity/Unreal for future AR/VR expansion
+For a comprehensive overview of all technology decisions, please refer to the [Technology Stack](./tech_stack.md) document.
 
-#### AI/ML Layer
-- **Local LLMs**: Llama.cpp, Ollama, Mistral (quantized models)
-- **Autonomous Agent Frameworks**: LangChain, LangGraph, CrewAI for agent orchestration
-- **Goal-Conditioned RL**: HER (Hindsight Experience Replay), GCPO for goal-oriented learning
-- **Curiosity Algorithms**: RND (Random Network Distillation), ICM (Intrinsic Curiosity Module)
-- **Planning Systems**: MCTS (Monte Carlo Tree Search), hierarchical planning algorithms
-- **Behavior Trees**: Goal-oriented behavior modeling and execution
-- **Emotion Models**: ONNX Runtime, OpenVINO for edge inference
-- **Cloud Fallback**: OpenAI, Gemini adapters (full opt-in)
-- **Voice Processing**: Whisper.cpp (STT), Coqui/Piper (TTS)
-
-#### Data & Storage
-- **Local Database**: SQLite, DuckDB for fast, private storage
-- **Vector Database**: ChromaDB, Qdrant for embedding storage and similarity search
-- **Encryption**: Encryption-at-rest for all personal data
-- **Memory Store**: Episodic and semantic memory with lifecycle management
-- **Embedding Models**: Sentence transformers for vector generation
-
-#### Communication & Orchestration
-- **Message Bus**: ZeroMQ or MQTT for inter-module communication
-- **API Gateway**: FastAPI/gRPC for unified module access
-- **Plugin System**: Hot-reloadable modules with well-documented APIs
-
-#### Deployment & Distribution
-- **Containerization**: Docker/Podman with optimized multi-stage builds
-- **Size Optimization**: Alpine base images, shared layers, minimal footprint
-- **Packaging**: One-click installers for Win/Mac/Linux
-- **Automated Updates**: Configurable self-updating system with:
-  - Delta updates for minimal bandwidth usage
-  - Cryptographic signature verification
-  - Atomic updates with rollback capabilities
-  - User-configurable update schedules and approval levels
-- **Self-Restart System**: Graceful restart management with:
-  - State persistence across restarts
-  - Health monitoring and automatic recovery
-  - Zero-downtime updates for non-critical components
+Key technology categories include:
+- **Interface Layer**: UI frameworks and avatar technologies
+- **AI/ML Layer**: Language models, agent frameworks, and emotion systems
+- **Data & Storage Layer**: Databases, vector stores, and embedding models
+- **Communication Layer**: Message bus, API frameworks, and protocols
+- **Security & Privacy Layer**: Encryption and privacy-preserving technologies
+- **Deployment & Distribution Layer**: Containerization and update systems
+- **Development & Testing Layer**: Languages, frameworks, and CI/CD tools
   - Conversation continuity preservation
 - **CI/CD**: Rapid development, easy upgrades, continuous security review
 
 
+
+## Module Integration Architecture
+
+AICO's modules communicate through a message bus system using standardized message formats. This integration architecture ensures coherent personality expression, emotional authenticity, and proactive agency across all system components.
+
+### Core Integration Patterns
+
+#### Message-Driven Communication
+- **Topic-Based Pub/Sub**: All modules use a publish/subscribe pattern via ZeroMQ/MQTT
+- **Standardized Envelopes**: Common message envelope structure with consistent metadata
+- **Versioned Schemas**: Message formats evolve with proper versioning
+- **JSON Format**: All messages use JSON for maximum interoperability
+
+#### Key Integration Flows
+
+##### Personality-Emotion-LLM Integration
+1. **Personality → LLM**: Personality module publishes communication parameters to influence LLM responses
+2. **Emotion → LLM**: Emotion module publishes emotional state to condition LLM output
+3. **LLM → Personality/Emotion**: Conversation events feed back for personality/emotion adaptation
+
+##### Proactive Agency Coordination
+1. **Personality → Agency**: Decision parameters guide autonomous behavior
+2. **Agency → All Modules**: Initiative signals coordinate proactive engagement
+3. **All Modules → Agency**: Feedback on initiative effectiveness
+
+##### Crisis Handling
+1. **Any Module → All Modules**: Crisis detection alerts for coordinated response
+2. **Personality/Emotion → LLM**: Enhanced guidance during crisis situations
+3. **Agency → External Resources**: Escalation paths when needed
+
+##### Cross-Modal Expression
+1. **Emotion/Personality → All Output Modules**: Synchronized expression parameters
+2. **Expression Coordination → Avatar/Voice/Text**: Timing and transition guidance
+
+#### Integration Message Types
+
+Detailed message formats for module integration are documented in:
+- [`personality_sim_msg.md`](./personality_sim_msg.md): Personality simulation messages
+- [`emotion_sim_msg.md`](./emotion_sim_msg.md): Emotion simulation messages
+- [`integration_msg.md`](./integration_msg.md): Cross-module integration messages including:
+  - Crisis detection and handling
+  - Proactive agency coordination
+  - Cross-modal expression synchronization
+  - Shared learning coordination
+  - Enhanced ethical decision framework
 
 ## Privacy & Security
 

@@ -12,13 +12,13 @@
         <meta name="author" content="Michael Böni">
       
       
-        <link rel="canonical" href="https://boeni-industries.github.io/aico/development/contributing/">
+        <link rel="canonical" href="https://boeni-industries.github.io/aico/architecture/core_message_bus/">
       
       
-        <link rel="prev" href="../../concepts/personality/personality_definition/">
+        <link rel="prev" href="../modules/">
       
       
-        <link rel="next" href="../../roadmap/">
+        <link rel="next" href="../tech_stack/">
       
       
       <link rel="icon" href="../../assets/images/logo.png">
@@ -26,7 +26,7 @@
     
     
       
-        <title>Contributing - AICO - AI Companion Project</title>
+        <title>Core Message Bus - AICO - AI Companion Project</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#contributing" class="md-skip">
+        <a href="#core-message-bus-architecture" class="md-skip">
           Skip to content
         </a>
       
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Contributing
+              Core Message Bus
             
           </span>
         </div>
@@ -421,8 +421,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -433,13 +435,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-          
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
           <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
@@ -455,7 +455,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             Architecture
@@ -469,7 +469,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/" class="md-nav__link">
+      <a href="../" class="md-nav__link">
         
   
   
@@ -492,7 +492,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/context/" class="md-nav__link">
+      <a href="../context/" class="md-nav__link">
         
   
   
@@ -515,7 +515,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/modules/" class="md-nav__link">
+      <a href="../modules/" class="md-nav__link">
         
   
   
@@ -535,10 +535,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../architecture/core_message_bus/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Core Message Bus
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -549,6 +571,296 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      Design Principles
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Design Principles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-loose-coupling" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Loose Coupling
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-event-driven-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Event-Driven Architecture
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-standardized-communication" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Standardized Communication
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-topic-based-routing" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Topic-Based Routing
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-versioned-message-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Versioned Message Formats
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#technical-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Technical Implementation
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Technical Implementation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#message-bus-technology" class="md-nav__link">
+    <span class="md-ellipsis">
+      Message Bus Technology
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#message-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      Message Format
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#message-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Message Validation
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#topic-hierarchy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Topic Hierarchy
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Topic Hierarchy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#core-domains" class="md-nav__link">
+    <span class="md-ellipsis">
+      Core Domains
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cross-cutting-concerns" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cross-Cutting Concerns
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#module-integration-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      Module Integration Patterns
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Module Integration Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#publisher-subscriber-pattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      Publisher-Subscriber Pattern
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-emotion-personality-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example: Emotion-Personality Integration
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plugin-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Plugin Integration
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-and-privacy-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security and Privacy Considerations
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Security and Privacy Considerations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#message-security" class="md-nav__link">
+    <span class="md-ellipsis">
+      Message Security
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#privacy-protection" class="md-nav__link">
+    <span class="md-ellipsis">
+      Privacy Protection
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Performance Considerations
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Considerations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#message-throughput" class="md-nav__link">
+    <span class="md-ellipsis">
+      Message Throughput
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optimization-strategies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Optimization Strategies
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-and-debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      Monitoring and Debugging
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conclusion" class="md-nav__link">
+    <span class="md-ellipsis">
+      Conclusion
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -561,7 +873,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/tech_stack/" class="md-nav__link">
+      <a href="../tech_stack/" class="md-nav__link">
         
   
   
@@ -626,7 +938,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/integration_msg/" class="md-nav__link">
+      <a href="../integration_msg/" class="md-nav__link">
         
   
   
@@ -699,7 +1011,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/emotion_sim/" class="md-nav__link">
+      <a href="../emotion_sim/" class="md-nav__link">
         
   
   
@@ -722,7 +1034,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/emotion_sim_msg/" class="md-nav__link">
+      <a href="../emotion_sim_msg/" class="md-nav__link">
         
   
   
@@ -795,7 +1107,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/personality_sim/" class="md-nav__link">
+      <a href="../personality_sim/" class="md-nav__link">
         
   
   
@@ -818,7 +1130,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/personality_sim_msg/" class="md-nav__link">
+      <a href="../personality_sim_msg/" class="md-nav__link">
         
   
   
@@ -1074,8 +1386,6 @@
       
   
   
-    
-  
   
   
     
@@ -1088,11 +1398,13 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
         
           
           <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
@@ -1108,7 +1420,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             Development
@@ -1119,32 +1431,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Contributing
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../development/contributing/" class="md-nav__link">
         
   
   
@@ -1155,95 +1445,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#getting-started" class="md-nav__link">
-    <span class="md-ellipsis">
-      Getting Started
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#how-to-contribute" class="md-nav__link">
-    <span class="md-ellipsis">
-      How to Contribute
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="How to Contribute">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#areas-where-we-need-help" class="md-nav__link">
-    <span class="md-ellipsis">
-      Areas Where We Need Help
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#development-process" class="md-nav__link">
-    <span class="md-ellipsis">
-      Development Process
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#code-of-conduct" class="md-nav__link">
-    <span class="md-ellipsis">
-      Code of Conduct
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#development-setup" class="md-nav__link">
-    <span class="md-ellipsis">
-      Development Setup
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#questions" class="md-nav__link">
-    <span class="md-ellipsis">
-      Questions?
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1295,7 +1496,7 @@
 
 
   
-    <a href="https://github.com/boeni-industries/aico/edit/main/docs/development/contributing.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/boeni-industries/aico/edit/main/docs/architecture/core_message_bus.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1304,54 +1505,319 @@
     
       
     
-    <a href="https://github.com/boeni-industries/aico/raw/main/docs/development/contributing.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/boeni-industries/aico/raw/main/docs/architecture/core_message_bus.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"/></svg>
     </a>
   
 
 
-<h1 id="contributing">Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h1>
-<p>Welcome to the AICO project! This guide will help you get started with contributing.</p>
-<h2 id="getting-started">Getting Started<a class="headerlink" href="#getting-started" title="Permanent link">&para;</a></h2>
-<p>AICO is in very early development. We welcome contributors who are interested in building an emotionally present AI companion.</p>
-<h2 id="how-to-contribute">How to Contribute<a class="headerlink" href="#how-to-contribute" title="Permanent link">&para;</a></h2>
-<h3 id="areas-where-we-need-help">Areas Where We Need Help<a class="headerlink" href="#areas-where-we-need-help" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Core Architecture</strong>: Designing the foundational systems</li>
-<li><strong>Emotion Recognition</strong>: Computer vision and audio processing</li>
-<li><strong>Personality Systems</strong>: AI behavior and learning models  </li>
-<li><strong>Privacy &amp; Security</strong>: Local-first architecture design</li>
-<li><strong>Documentation</strong>: As features are implemented</li>
-<li><strong>Testing</strong>: Automated testing frameworks</li>
-<li><strong>UI/UX</strong>: Interface design for human-AI interaction</li>
-</ul>
-<h3 id="development-process">Development Process<a class="headerlink" href="#development-process" title="Permanent link">&para;</a></h3>
+<h1 id="core-message-bus-architecture">Core Message Bus Architecture<a class="headerlink" href="#core-message-bus-architecture" title="Permanent link">&para;</a></h1>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>The Core Message Bus is the central nervous system of AICO, enabling modular, event-driven communication between all system components. It implements a publish-subscribe (pub/sub) pattern that allows modules to communicate without direct dependencies, supporting AICO's core principles of modularity, autonomy, and extensibility.</p>
+<p>This architecture document describes the design, implementation, and integration patterns of AICO's central message bus system, which serves as the foundation for inter-module communication and coordination.</p>
+<h2 id="design-principles">Design Principles<a class="headerlink" href="#design-principles" title="Permanent link">&para;</a></h2>
+<p>The Core Message Bus architecture is built on the following key principles:</p>
+<h3 id="1-loose-coupling">1. Loose Coupling<a class="headerlink" href="#1-loose-coupling" title="Permanent link">&para;</a></h3>
+<p>Modules communicate exclusively through the message bus rather than direct method calls, enabling:
+- Independent development and testing of modules
+- Ability to replace or upgrade modules without affecting others
+- Simplified integration of new capabilities</p>
+<h3 id="2-event-driven-architecture">2. Event-Driven Architecture<a class="headerlink" href="#2-event-driven-architecture" title="Permanent link">&para;</a></h3>
+<p>The system operates on an event-driven paradigm where:
+- Modules publish events (messages) when state changes occur
+- Interested modules subscribe to relevant topics
+- Processing occurs asynchronously and reactively</p>
+<h3 id="3-standardized-communication">3. Standardized Communication<a class="headerlink" href="#3-standardized-communication" title="Permanent link">&para;</a></h3>
+<p>All messages follow a consistent envelope structure:
+<div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">&quot;message_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uuid-string&quot;</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2025-07-29T14:48:25.123Z&quot;</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;module-name&quot;</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nt">&quot;message_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;topic.subtopic&quot;</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1.0&quot;</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="nt">&quot;payload&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="c1">// Message-specific content</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">}</span>
+</span></code></pre></div></p>
+<h3 id="4-topic-based-routing">4. Topic-Based Routing<a class="headerlink" href="#4-topic-based-routing" title="Permanent link">&para;</a></h3>
+<p>Messages are organized in a hierarchical topic structure:
+- Primary category (e.g., <code>emotion</code>, <code>personality</code>, <code>agency</code>)
+- Subcategory (e.g., <code>state</code>, <code>expression</code>, <code>goals</code>)
+- Action/type (e.g., <code>current</code>, <code>update</code>, <code>request</code>)</p>
+<h3 id="5-versioned-message-formats">5. Versioned Message Formats<a class="headerlink" href="#5-versioned-message-formats" title="Permanent link">&para;</a></h3>
+<p>All message formats are explicitly versioned to enable:
+- Backward compatibility
+- Graceful evolution of the system
+- Support for multiple message format versions simultaneously</p>
+<h2 id="technical-implementation">Technical Implementation<a class="headerlink" href="#technical-implementation" title="Permanent link">&para;</a></h2>
+<h3 id="message-bus-technology">Message Bus Technology<a class="headerlink" href="#message-bus-technology" title="Permanent link">&para;</a></h3>
+<p>The Core Message Bus is implemented using either:</p>
 <ol>
-<li><strong>Fork the repository</strong> on GitHub</li>
-<li><strong>Create a feature branch</strong> for your contribution</li>
-<li><strong>Make your changes</strong> following our coding standards</li>
-<li><strong>Write tests</strong> for new functionality</li>
-<li><strong>Submit a pull request</strong> with a clear description</li>
+<li><strong>ZeroMQ</strong> - A high-performance asynchronous messaging library</li>
+<li>Lightweight and embedded within the application</li>
+<li>Supports multiple messaging patterns (pub/sub, request/reply)</li>
+<li>
+<p>Provides reliable message delivery with minimal overhead</p>
+</li>
+<li>
+<p><strong>MQTT</strong> - A lightweight publish/subscribe messaging protocol</p>
+</li>
+<li>Optimized for high-latency or unreliable networks</li>
+<li>Provides quality of service levels for message delivery</li>
+<li>Well-suited for distributed deployments</li>
 </ol>
-<h2 id="code-of-conduct">Code of Conduct<a class="headerlink" href="#code-of-conduct" title="Permanent link">&para;</a></h2>
-<p><strong>Respect is non-negotiable</strong>—this project is about trust and authenticity, not swagger or showmanship.</p>
+<p>The specific technology choice depends on deployment requirements, with ZeroMQ preferred for single-device deployments and MQTT for distributed scenarios.</p>
+<h3 id="message-format">Message Format<a class="headerlink" href="#message-format" title="Permanent link">&para;</a></h3>
+<p>All messages use JSON for serialization, providing:
+- Human-readable format for debugging
+- Wide language and platform support
+- Flexible schema evolution
+- Native compatibility with web technologies</p>
+<h3 id="message-validation">Message Validation<a class="headerlink" href="#message-validation" title="Permanent link">&para;</a></h3>
+<p>Messages are validated against JSON Schema definitions to ensure:
+- Structural correctness
+- Type safety
+- Required fields presence
+- Version compatibility</p>
+<h2 id="topic-hierarchy">Topic Hierarchy<a class="headerlink" href="#topic-hierarchy" title="Permanent link">&para;</a></h2>
+<p>The message bus uses a hierarchical topic structure that organizes messages by functional domain and purpose:</p>
+<h3 id="core-domains">Core Domains<a class="headerlink" href="#core-domains" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Be respectful and inclusive</li>
-<li>Focus on constructive feedback</li>
-<li>Collaborate openly and transparently</li>
-<li>Respect privacy and ethical considerations</li>
+<li><strong>emotion.*</strong> - Emotion simulation related messages</li>
+<li><code>emotion.state.current</code> - Current emotional state</li>
+<li><code>emotion.state.update</code> - Emotional state changes</li>
+<li>
+<p><code>emotion.appraisal.event</code> - Emotional appraisal of events</p>
+</li>
+<li>
+<p><strong>personality.*</strong> - Personality simulation related messages</p>
+</li>
+<li><code>personality.state.current</code> - Current personality state</li>
+<li><code>personality.expression.communication</code> - Communication style parameters</li>
+<li><code>personality.expression.decision</code> - Decision-making parameters</li>
+<li>
+<p><code>personality.expression.emotional</code> - Emotional tendency parameters</p>
+</li>
+<li>
+<p><strong>agency.*</strong> - Autonomous agency related messages</p>
+</li>
+<li><code>agency.goals.current</code> - Current agent goals</li>
+<li><code>agency.initiative</code> - Proactive engagement initiatives</li>
+<li><code>agency.decision.request</code> - Decision-making requests</li>
+<li>
+<p><code>agency.decision.response</code> - Decision outcomes</p>
+</li>
+<li>
+<p><strong>conversation.*</strong> - Conversation and dialogue related messages</p>
+</li>
+<li><code>conversation.context</code> - Current conversation context</li>
+<li><code>conversation.history</code> - Historical conversation data</li>
+<li>
+<p><code>conversation.intent</code> - Detected user intents</p>
+</li>
+<li>
+<p><strong>memory.*</strong> - Memory and learning related messages</p>
+</li>
+<li><code>memory.store</code> - Memory storage requests</li>
+<li><code>memory.retrieve</code> - Memory retrieval requests/responses</li>
+<li>
+<p><code>memory.consolidation</code> - Consolidated memory data</p>
+</li>
+<li>
+<p><strong>user.*</strong> - User-related messages</p>
+</li>
+<li><code>user.interaction.history</code> - User interaction patterns</li>
+<li><code>user.feedback</code> - Explicit and implicit user feedback</li>
+<li>
+<p><code>user.state</code> - Inferred user state</p>
+</li>
+<li>
+<p><strong>llm.*</strong> - Large Language Model related messages</p>
+</li>
+<li><code>llm.conversation.events</code> - Conversation events from LLM</li>
+<li><code>llm.prompt.conditioning.request</code> - Requests for prompt conditioning</li>
+<li><code>llm.prompt.conditioning.response</code> - Prompt conditioning parameters</li>
 </ul>
-<h2 id="development-setup">Development Setup<a class="headerlink" href="#development-setup" title="Permanent link">&para;</a></h2>
-<p><em>Detailed development setup instructions will be added as the codebase develops.</em></p>
-<h2 id="questions">Questions?<a class="headerlink" href="#questions" title="Permanent link">&para;</a></h2>
+<h3 id="cross-cutting-concerns">Cross-Cutting Concerns<a class="headerlink" href="#cross-cutting-concerns" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Open an issue on GitHub for bugs or feature requests</li>
-<li>Start a discussion for broader topics</li>
-<li>Check existing issues before creating new ones</li>
+<li><strong>crisis.*</strong> - Crisis detection and handling</li>
+<li><code>crisis.detection</code> - Crisis signals and alerts</li>
+<li>
+<p><code>crisis.response</code> - Crisis response coordination</p>
+</li>
+<li>
+<p><strong>expression.*</strong> - Cross-modal expression coordination</p>
+</li>
+<li><code>expression.coordination</code> - Coordinated expression directives</li>
+<li>
+<p><code>expression.feedback</code> - Expression effectiveness feedback</p>
+</li>
+<li>
+<p><strong>learning.*</strong> - Shared learning coordination</p>
+</li>
+<li><code>learning.coordination</code> - Learning signals and coordination</li>
+<li><code>learning.feedback</code> - Learning effectiveness feedback</li>
 </ul>
-<hr />
-<p><strong>Remember</strong>: We're building something that should care, not just calculate. Keep that spirit in your contributions.</p>
+<h2 id="module-integration-patterns">Module Integration Patterns<a class="headerlink" href="#module-integration-patterns" title="Permanent link">&para;</a></h2>
+<h3 id="publisher-subscriber-pattern">Publisher-Subscriber Pattern<a class="headerlink" href="#publisher-subscriber-pattern" title="Permanent link">&para;</a></h3>
+<p>Modules interact with the message bus through a consistent pattern:</p>
+<ol>
+<li><strong>Initialization</strong>:</li>
+<li>Modules connect to the message bus on startup</li>
+<li>They declare topic subscriptions based on their functionality</li>
+<li>
+<p>They register message handlers for each subscribed topic</p>
+</li>
+<li>
+<p><strong>Message Publication</strong>:</p>
+</li>
+<li>Modules publish messages when their internal state changes</li>
+<li>Messages include standardized metadata and domain-specific payloads</li>
+<li>
+<p>Publication is non-blocking and asynchronous</p>
+</li>
+<li>
+<p><strong>Message Consumption</strong>:</p>
+</li>
+<li>Modules receive messages for their subscribed topics</li>
+<li>Message handlers process incoming messages</li>
+<li>Processing may trigger internal state changes or new message publications</li>
+</ol>
+<h3 id="example-emotion-personality-integration">Example: Emotion-Personality Integration<a class="headerlink" href="#example-emotion-personality-integration" title="Permanent link">&para;</a></h3>
+<p>The Emotion Simulation and Personality Simulation modules integrate through the message bus:</p>
+<ol>
+<li>Personality Simulation publishes <code>personality.expression.emotional</code> messages</li>
+<li>Emotion Simulation subscribes to these messages to adjust emotional tendencies</li>
+<li>Emotion Simulation publishes <code>emotion.state.current</code> messages</li>
+<li>Personality Simulation subscribes to these messages to inform personality expression</li>
+</ol>
+<p>This bidirectional communication happens without direct dependencies between the modules.</p>
+<h2 id="plugin-integration">Plugin Integration<a class="headerlink" href="#plugin-integration" title="Permanent link">&para;</a></h2>
+<p>The Plugin Manager mediates plugin access to the message bus:</p>
+<ol>
+<li><strong>Topic Access Control</strong>:</li>
+<li>Plugins request access to specific topics</li>
+<li>Plugin Manager enforces access policies based on plugin permissions</li>
+<li>
+<p>Unauthorized topic access attempts are blocked and logged</p>
+</li>
+<li>
+<p><strong>Message Validation</strong>:</p>
+</li>
+<li>All plugin-originated messages are validated before publication</li>
+<li>Malformed messages are rejected to prevent system instability</li>
+<li>
+<p>Message rate limiting prevents denial-of-service attacks</p>
+</li>
+<li>
+<p><strong>Sandboxed Publication</strong>:</p>
+</li>
+<li>Plugins publish through the Plugin Manager proxy</li>
+<li>Messages are tagged with plugin identity for traceability</li>
+<li>Plugin-specific topic prefixes isolate plugin messages</li>
+</ol>
+<h2 id="security-and-privacy-considerations">Security and Privacy Considerations<a class="headerlink" href="#security-and-privacy-considerations" title="Permanent link">&para;</a></h2>
+<h3 id="message-security">Message Security<a class="headerlink" href="#message-security" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Authentication</strong>:</li>
+<li>All modules authenticate to the message bus</li>
+<li>Unauthorized connections are rejected</li>
+<li>
+<p>Plugin authentication uses separate credentials</p>
+</li>
+<li>
+<p><strong>Authorization</strong>:</p>
+</li>
+<li>Topic-level access control limits which modules can publish/subscribe</li>
+<li>Sensitive topics have restricted access</li>
+<li>Plugin access is limited to approved topics</li>
+</ol>
+<h3 id="privacy-protection">Privacy Protection<a class="headerlink" href="#privacy-protection" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Data Minimization</strong>:</li>
+<li>Messages contain only necessary information</li>
+<li>Sensitive data is filtered before publication</li>
+<li>
+<p>User identifiers are anonymized where possible</p>
+</li>
+<li>
+<p><strong>Encryption</strong>:</p>
+</li>
+<li>Message payloads containing sensitive data are encrypted</li>
+<li>Transport-level encryption protects all message bus traffic</li>
+<li>Key rotation policies ensure long-term security</li>
+</ol>
+<h2 id="performance-considerations">Performance Considerations<a class="headerlink" href="#performance-considerations" title="Permanent link">&para;</a></h2>
+<h3 id="message-throughput">Message Throughput<a class="headerlink" href="#message-throughput" title="Permanent link">&para;</a></h3>
+<p>The message bus is designed to handle:
+- High-frequency emotional state updates
+- Real-time conversation events
+- Periodic memory consolidation
+- Burst traffic during multi-modal coordination</p>
+<h3 id="optimization-strategies">Optimization Strategies<a class="headerlink" href="#optimization-strategies" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Message Prioritization</strong>:</li>
+<li>Critical messages (e.g., crisis detection) receive higher priority</li>
+<li>
+<p>Non-time-sensitive messages may be queued during high load</p>
+</li>
+<li>
+<p><strong>Payload Optimization</strong>:</p>
+</li>
+<li>Large payloads may use compression</li>
+<li>References instead of full content where appropriate</li>
+<li>
+<p>Selective field inclusion for performance-critical paths</p>
+</li>
+<li>
+<p><strong>Subscription Optimization</strong>:</p>
+</li>
+<li>Fine-grained topic subscriptions to reduce unnecessary message processing</li>
+<li>Message filtering at the source when possible</li>
+<li>Local caching of frequently accessed message data</li>
+</ol>
+<h2 id="monitoring-and-debugging">Monitoring and Debugging<a class="headerlink" href="#monitoring-and-debugging" title="Permanent link">&para;</a></h2>
+<p>The message bus includes facilities for:</p>
+<ol>
+<li><strong>Message Tracing</strong>:</li>
+<li>Correlation IDs link related messages</li>
+<li>End-to-end tracing of message flows</li>
+<li>
+<p>Timing metrics for message processing</p>
+</li>
+<li>
+<p><strong>Traffic Monitoring</strong>:</p>
+</li>
+<li>Topic-level message volume metrics</li>
+<li>Latency measurements for critical paths</li>
+<li>
+<p>Queue depth monitoring for backpressure detection</p>
+</li>
+<li>
+<p><strong>Debugging Tools</strong>:</p>
+</li>
+<li>Message bus inspector for real-time monitoring</li>
+<li>Message replay capabilities for testing</li>
+<li>Topic subscription viewer to understand module connectivity</li>
+</ol>
+<h2 id="conclusion">Conclusion<a class="headerlink" href="#conclusion" title="Permanent link">&para;</a></h2>
+<p>The Core Message Bus architecture is fundamental to AICO's modular, event-driven design. It enables:</p>
+<ul>
+<li><strong>Modularity</strong>: Components can be developed, tested, and deployed independently</li>
+<li><strong>Extensibility</strong>: New modules and plugins can be integrated without modifying existing code</li>
+<li><strong>Resilience</strong>: Failures in one module don't cascade to others</li>
+<li><strong>Adaptability</strong>: The system can evolve through versioned message formats</li>
+<li><strong>Autonomy</strong>: Modules can operate independently based on events</li>
+</ul>
+<p>By providing a standardized communication backbone, the message bus facilitates the complex interactions required for AICO's proactive agency, emotional presence, personality consistency, and multi-modal embodiment.</p>
+<p>For specific message formats used by individual modules, refer to the respective message format documentation:
+- Emotion Simulation: <a href="../emotion_sim_msg/">emotion_sim_msg.md</a>
+- Personality Simulation: <a href="../personality_sim_msg/">personality_sim_msg.md</a>
+- Integration Messages: <a href="../integration_msg/">integration_msg.md</a></p>
 
 
 

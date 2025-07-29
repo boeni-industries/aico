@@ -8,6 +8,8 @@ This document defines the message schemas used by the Emotion Simulation module 
 
 ## Input Message Formats
 
+> **Note**: In addition to the message formats described below, the Emotion Simulation module also consumes integration-specific messages such as `crisis.detection`, `agency.initiative`, `expression.coordination`, and `learning.coordination`. These formats are defined in [`integration_msg.md`](./integration_msg.md).
+
 ### `user.emotion.detected`
 
 Emotional state information detected from user inputs across multiple modalities.
@@ -424,6 +426,12 @@ Emotional experience data for storage and learning.
 - `personality.state` - Personality configuration and mood
 - `memory.relevant` - Relevant memory retrieval results
 - `voice.analysis` - Voice analysis results
+- `crisis.detection` - Crisis detection and coordination
+- `agency.initiative` - Proactive engagement coordination
+- `expression.coordination` - Cross-modal expression synchronization
+- `learning.coordination` - Shared learning between modules
+- `llm.conversation.events` - Conversation events and feedback from LLM
+- `llm.prompt.conditioning.request` - Requests for emotional conditioning parameters
 
 ### Output Topics (Publications)
 - `emotion.state.current` - Current AICO emotional state
@@ -431,6 +439,10 @@ Emotional experience data for storage and learning.
 - `emotion.expression.avatar` - Avatar animation parameters
 - `emotion.expression.text` - Text generation context
 - `emotion.memory.store` - Emotional experiences for storage
+- `crisis.detection` - Crisis detection (when detected by Emotion Simulation)
+- `expression.coordination` - Cross-modal expression coordination
+- `learning.coordination` - Learning feedback and coordination
+- `llm.prompt.conditioning.response` - Emotional conditioning parameters for LLM prompts
 
 ## Implementation Notes
 
