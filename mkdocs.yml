@@ -20,7 +20,7 @@ theme:
   name: material
   logo: assets/images/logo.png
   favicon: assets/images/logo.png
-  navigation_depth: 3
+  navigation_depth: 2
   palette:
     # Palette toggle for automatic mode
     - media: "(prefers-color-scheme)"
