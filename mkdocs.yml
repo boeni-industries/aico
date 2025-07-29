@@ -20,6 +20,7 @@ theme:
   name: material
   logo: assets/images/logo.png
   favicon: assets/images/logo.png
+  navigation_depth: 3
   palette:
     # Palette toggle for automatic mode
     - media: "(prefers-color-scheme)"
@@ -44,7 +45,8 @@ theme:
         name: Switch to system preference
   features:
     - navigation.sections
-    - navigation.expand
+    - navigation.sections.collapse
+    - navigation.levels
     - navigation.top
     - navigation.tracking
     - search.highlight
@@ -60,6 +62,8 @@ theme:
 # Plugins
 plugins:
   - search
+
+
 
 # Extensions
 markdown_extensions:

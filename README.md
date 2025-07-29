@@ -53,6 +53,9 @@ I’m building this because I’ve always wanted it for myself. Not just product
 - If you want to add features, challenge assumptions, or help build the ethics framework, you’re welcome.
 - Respect is non-negotiable—this project is about trust and authenticity, not swagger or showmanship.
 
+## Want to know more? Read the docs!
+
+The [docs](https://boeni-industries.github.io/aico) are a work in progress, but they should give you a good overview of the project.
 
 **Author:** Michael Böni ([boeni.industries](https://boeni.industries))  
 **Contact:** [michael@boeni.industries]

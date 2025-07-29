@@ -1,6 +1,6 @@
 # System Context Diagram
 
-## C4 Model - Level 1: System Context
+## System Context
 
 This diagram shows AICO in the context of its users and external systems, illustrating the high-level relationships and data flows.
 
