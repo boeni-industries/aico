@@ -21,20 +21,22 @@ I’m building this because I’ve always wanted it for myself. Not just product
    - AICO exists as more than a voice or chatbot: could be on screen, on your desk, or projected. It can look at you.
 2. **Emotion & Behavior Recognition:**  
    - Uses camera (if allowed) and mic to spot basic emotions/facial cues, so it can react (or choose not to).
-3. **Personality & Character:**  
-   - Not one-size-fits-all. AICO starts with a base “self,” then develops quirks and values over time, as it interacts with you.
-4. **Confidante Mode:**  
-   - Beyond answering: listens, remembers, asks how you are. Offers challenge or support, depending on what it “sees.”
-5. **Agency & Intrinsic Motivation:**  
+3. **Emotional Expression & Simulation:**  
+   - AICO generates sophisticated emotions through cognitive appraisal processes (AppraisalCloudPCT), expressing believable emotions through voice, facial expressions, and behavior to create genuine companion presence with relationship awareness and ethical constraints.
+4. **Personality & Character:**  
+   - Not one-size-fits-all. AICO starts with a base "self," then develops quirks and values over time, as it interacts with you.
+5. **Confidante Mode:**  
+   - Beyond answering: listens, remembers, asks how you are. Offers challenge or support, depending on what it "sees."
+6. **Agency & Intrinsic Motivation:**  
    - **Autonomous Goal Generation**: AICO formulates its own objectives and sub-goals using hierarchical planning
    - **Curiosity-Driven Exploration**: Uses intrinsic motivation algorithms to discover and learn about new topics
    - **Interest Development**: Autonomously develops preferences and pursues topics that capture its attention
    - **Multi-Step Planning**: Engages in strategic reasoning to achieve complex, self-directed objectives
    - **Meta-Cognitive Awareness**: Understands its own learning progress and capability boundaries
    - **Genuine Initiative**: Acts from authentic interest rather than programmed responses
-6. **Continual Learning:**  
-   - Over time, AICO adapts to you—language, topics, boundaries, and chosen “rituals.”
-7. **Trust & Privacy First:**  
+7. **Continual Learning:**  
+   - Over time, AICO adapts to you—language, topics, boundaries, and chosen "rituals."
+8. **Trust & Privacy First:**  
    - Local-first where possible. Long-term: user chooses what stays private, what is shared, and when.
 
 
