@@ -143,9 +143,4 @@ AICO is an open experiment—all code and progress are public. Whether you want 
 
 ## Get in Touch
 
-If you have any questions, suggestions, or want to contribute, please reach out to [Michael Böni](mailto:michael@boeni.industries).
-
-
----
-
-**Lead Maintainer:** Michael Böni ([michael@boeni.industries](mailto:michael@boeni.industries)) at [boeni.industries](https://boeni.industries)
+If you have any questions, suggestions, or want to contribute, please reach out to **Lead Maintainer** [Michael Böni](mailto:michael@boeni.industries).
