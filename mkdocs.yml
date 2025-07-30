@@ -173,7 +173,9 @@ nav:
       - Personality Definition: concepts/personality/personality_definition.md
   - Development:
     - Contributing: development/contributing.md
-    - Roadmap: roadmap/development_roadmap.md
+  - Roadmap:
+    - Foundation: roadmap/foundation.md
+    - MVP: roadmap/mvp.md
   # Additional sections will be added as features are implemented:
   # - Features:
   # - API Reference:

@@ -602,15 +602,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#system-architecture" class="md-nav__link">
-    <span class="md-ellipsis">
-      System Architecture
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#design-principles" class="md-nav__link">
     <span class="md-ellipsis">
       Design Principles
@@ -623,6 +614,42 @@
   <a href="#architectural-decisions" class="md-nav__link">
     <span class="md-ellipsis">
       Architectural Decisions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#system-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      System Architecture
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      Architecture Patterns
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#frontend" class="md-nav__link">
+    <span class="md-ellipsis">
+      Frontend
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      Backend
     </span>
   </a>
   
@@ -1979,8 +2006,6 @@
       
         
       
-        
-      
     
     
     
@@ -2040,6 +2065,62 @@
 
               
             
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" >
+        
+          
+          <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Roadmap
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_15">
+            <span class="md-nav__icon md-icon"></span>
+            Roadmap
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
               
                 
   
@@ -2047,12 +2128,35 @@
   
   
     <li class="md-nav__item">
-      <a href="../../roadmap/development_roadmap/" class="md-nav__link">
+      <a href="../../roadmap/foundation/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    Roadmap
+    Foundation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/mvp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    MVP
     
   </span>
   
@@ -2177,6 +2281,29 @@
 <li><strong>Marketplace</strong>: Plugin discovery and distribution platform</li>
 <li><strong>Automated Updates</strong>: Self-updating system with user control</li>
 </ul>
+<h2 id="design-principles">Design Principles<a class="headerlink" href="#design-principles" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Agency Over Pure Reactivity</strong> - AICO initiates and acts, not just responds</li>
+<li><strong>Local-First by Default</strong> - All personal data and core inference runs locally</li>
+<li><strong>Modular Architecture</strong> - Decoupled components with clear interfaces</li>
+<li><strong>Message-Driven Integration</strong> - Event-based communication via central message bus</li>
+<li><strong>Multi-Modal Embodiment</strong> - Visual, auditory, and textual presence</li>
+<li><strong>Emotional Intelligence</strong> - Sophisticated emotion recognition and simulation</li>
+<li><strong>Privacy by Design</strong> - User control of all data and processing</li>
+</ul>
+<h2 id="architectural-decisions">Architectural Decisions<a class="headerlink" href="#architectural-decisions" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Hybrid Flutter + WebView UI</strong> - Native app performance with web-based avatar</li>
+<li><strong>AppraisalCloudPCT for Emotion</strong> - Component Process Model for sophisticated emotions</li>
+<li><strong>TraitEmergence for Personality</strong> - Multi-dimensional trait-based modeling</li>
+<li><strong>Multi-Faceted Agency</strong> - Goal generation, curiosity, planning, meta-cognition</li>
+<li><strong>Topic-Based Pub/Sub</strong> - Standardized message formats with versioned schemas</li>
+<li><strong>JSON Message Format</strong> - Human-readable, widely supported serialization</li>
+<li><strong>Plugin Manager as Gateway</strong> - Mediated access for third-party extensions</li>
+<li><strong>Homomorphic Encryption</strong> - Privacy-preserving cloud computations when needed</li>
+<li><strong>Sandboxed Plugin Execution</strong> - Isolated environments with permission controls</li>
+<li><strong>Atomic Updates</strong> - Reliable system updates with rollback capabilities</li>
+</ul>
 <h2 id="system-architecture">System Architecture<a class="headerlink" href="#system-architecture" title="Permanent link">&para;</a></h2>
 <p>AICO's architecture is organized into domains, modules, and components:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>AICO System
@@ -2192,102 +2319,359 @@
 </span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│   ├── Module: API Gateway
 </span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│   │   ├── Component: External Interfaces
 </span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>│   │   └── Component: Protocol Adapters
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│   └── Module: Update System
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│       ├── Component: Version Management
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│       └── Component: Atomic Updates
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>├── Domain: Autonomous Agency
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>│   ├── Module: Goal System
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>│   │   ├── Component: Goal Generation
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>│   │   ├── Component: Goal Prioritization
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│   │   └── Component: Goal Tracking
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│   ├── Module: Planning System
-</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│   │   ├── Component: Plan Formulation
-</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│   │   ├── Component: Plan Execution
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│   │   └── Component: Plan Adaptation
-</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>│   ├── Module: Curiosity Engine
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>│   │   ├── Component: Novelty Detection
-</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>│   │   ├── Component: Exploration Strategy
-</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>│   │   └── Component: Interest Model
-</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>│   └── Module: Initiative Manager
-</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>│       ├── Component: Proactive Engagement
-</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>│       └── Component: Conversation Starter
-</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>├── Domain: Personality &amp; Emotion
-</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>│   ├── Module: Personality Simulation
-</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>│   │   ├── Component: Trait Vector System
-</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>│   │   ├── Component: Value System
-</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>│   │   ├── Component: Expression Mapper
-</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>│   │   └── Component: Consistency Validator
-</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>│   ├── Module: Emotion Simulation
-</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>│   │   ├── Component: Appraisal Engine
-</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>│   │   ├── Component: Affect Derivation
-</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>│   │   └── Component: Expression Synthesis
-</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>│   └── Module: Emotion Recognition
-</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>│       ├── Component: Facial Analysis
-</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>│       ├── Component: Voice Analysis
-</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>│       └── Component: Text Analysis
-</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>├── Domain: Self-Awareness
-</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>│   ├── Module: State Monitoring
-</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>│   │   ├── Component: System Health
-</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>│   │   └── Component: Performance Metrics
-</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>│   └── Module: Meta-Cognition
-</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>│       ├── Component: Reflection Engine
-</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>│       └── Component: Self-Assessment
-</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>├── Domain: Intelligence &amp; Memory
-</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a>│   ├── Module: Chat Engine
-</span><span id="__span-0-56"><a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a>│   │   ├── Component: LLM Interface
-</span><span id="__span-0-57"><a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a>│   │   ├── Component: Prompt Conditioning
-</span><span id="__span-0-58"><a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a>│   │   └── Component: Response Generation
-</span><span id="__span-0-59"><a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a>│   ├── Module: Memory System
-</span><span id="__span-0-60"><a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a>│   │   ├── Component: Episodic Memory
-</span><span id="__span-0-61"><a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a>│   │   ├── Component: Semantic Memory
-</span><span id="__span-0-62"><a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a>│   │   ├── Component: Procedural Memory
-</span><span id="__span-0-63"><a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a>│   │   └── Component: Memory Consolidation
-</span><span id="__span-0-64"><a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a>│   └── Module: Learning System
-</span><span id="__span-0-65"><a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a>│       ├── Component: Continual Learning
-</span><span id="__span-0-66"><a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a>│       └── Component: Skill Acquisition
-</span><span id="__span-0-67"><a id="__codelineno-0-67" name="__codelineno-0-67" href="#__codelineno-0-67"></a>├── Domain: User Interface
-</span><span id="__span-0-68"><a id="__codelineno-0-68" name="__codelineno-0-68" href="#__codelineno-0-68"></a>│   ├── Module: Context Manager
-</span><span id="__span-0-69"><a id="__codelineno-0-69" name="__codelineno-0-69" href="#__codelineno-0-69"></a>│   │   ├── Component: Conversation State
-</span><span id="__span-0-70"><a id="__codelineno-0-70" name="__codelineno-0-70" href="#__codelineno-0-70"></a>│   │   └── Component: User Context
-</span><span id="__span-0-71"><a id="__codelineno-0-71" name="__codelineno-0-71" href="#__codelineno-0-71"></a>│   └── Module: Presentation Layer
-</span><span id="__span-0-72"><a id="__codelineno-0-72" name="__codelineno-0-72" href="#__codelineno-0-72"></a>│       ├── Component: Flutter UI
-</span><span id="__span-0-73"><a id="__codelineno-0-73" name="__codelineno-0-73" href="#__codelineno-0-73"></a>│       ├── Component: Avatar System
-</span><span id="__span-0-74"><a id="__codelineno-0-74" name="__codelineno-0-74" href="#__codelineno-0-74"></a>│       └── Component: Voice &amp; Audio
-</span><span id="__span-0-75"><a id="__codelineno-0-75" name="__codelineno-0-75" href="#__codelineno-0-75"></a>└── Domain: Privacy &amp; Security
-</span><span id="__span-0-76"><a id="__codelineno-0-76" name="__codelineno-0-76" href="#__codelineno-0-76"></a>    ├── Module: Consent Manager
-</span><span id="__span-0-77"><a id="__codelineno-0-77" name="__codelineno-0-77" href="#__codelineno-0-77"></a>    │   ├── Component: Permission Control
-</span><span id="__span-0-78"><a id="__codelineno-0-78" name="__codelineno-0-78" href="#__codelineno-0-78"></a>    │   └── Component: Data Governance
-</span><span id="__span-0-79"><a id="__codelineno-0-79" name="__codelineno-0-79" href="#__codelineno-0-79"></a>    ├── Module: Encryption System
-</span><span id="__span-0-80"><a id="__codelineno-0-80" name="__codelineno-0-80" href="#__codelineno-0-80"></a>    │   ├── Component: Data Encryption
-</span><span id="__span-0-81"><a id="__codelineno-0-81" name="__codelineno-0-81" href="#__codelineno-0-81"></a>    │   └── Component: Secure Communication
-</span><span id="__span-0-82"><a id="__codelineno-0-82" name="__codelineno-0-82" href="#__codelineno-0-82"></a>    └── Module: Audit System
-</span><span id="__span-0-83"><a id="__codelineno-0-83" name="__codelineno-0-83" href="#__codelineno-0-83"></a>        ├── Component: Activity Logging
-</span><span id="__span-0-84"><a id="__codelineno-0-84" name="__codelineno-0-84" href="#__codelineno-0-84"></a>        └── Component: Compliance Monitoring
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│   ├── Module: Resource Monitor
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│   │   ├── Component: CPU Usage
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│   │   ├── Component: Memory Usage
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>│   │   ├── Component: Battery Status
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>│   │   └── Component: System Load Metrics
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>│   └── Module: Update System
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>│       ├── Component: Version Management
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│       └── Component: Atomic Updates
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>├── Domain: Autonomous Agency
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│   ├── Module: Goal System
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│   │   ├── Component: Goal Generation
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│   │   ├── Component: Goal Prioritization
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>│   │   └── Component: Goal Tracking
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>│   ├── Module: Planning System
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>│   │   ├── Component: Plan Formulation
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>│   │   ├── Component: Plan Execution
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>│   │   └── Component: Plan Adaptation
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>│   ├── Module: Curiosity Engine
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>│   │   ├── Component: Novelty Detection
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>│   │   ├── Component: Exploration Strategy
+</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>│   │   └── Component: Interest Model
+</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>│   ├── Module: Job Scheduler
+</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>│   │   ├── Component: Task Queue
+</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>│   │   ├── Component: Priority Scheduling
+</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>│   │   └── Component: Idle Detection
+</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>│   └── Module: Initiative Manager
+</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>│       ├── Component: Proactive Engagement
+</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>│       └── Component: Conversation Starter
+</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>├── Domain: Personality &amp; Emotion
+</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>│   ├── Module: Personality Simulation
+</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>│   │   ├── Component: Trait Vector System
+</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>│   │   ├── Component: Value System
+</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>│   │   ├── Component: Expression Mapper
+</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>│   │   └── Component: Consistency Validator
+</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>│   ├── Module: Emotion Simulation
+</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>│   │   ├── Component: Appraisal Engine
+</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>│   │   ├── Component: Affect Derivation
+</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>│   │   └── Component: Expression Synthesis
+</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>│   └── Module: Emotion Recognition
+</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>│       ├── Component: Facial Analysis
+</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>│       ├── Component: Voice Analysis
+</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a>│       └── Component: Text Analysis
+</span><span id="__span-0-56"><a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a>├── Domain: Self-Awareness
+</span><span id="__span-0-57"><a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a>│   ├── Module: State Monitoring
+</span><span id="__span-0-58"><a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a>│   │   ├── Component: System Health
+</span><span id="__span-0-59"><a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a>│   │   └── Component: Performance Metrics
+</span><span id="__span-0-60"><a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a>│   └── Module: Meta-Cognition
+</span><span id="__span-0-61"><a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a>│       ├── Component: Reflection Engine
+</span><span id="__span-0-62"><a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a>│       └── Component: Self-Assessment
+</span><span id="__span-0-63"><a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a>├── Domain: Intelligence &amp; Memory
+</span><span id="__span-0-64"><a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a>│   ├── Module: Chat Engine
+</span><span id="__span-0-65"><a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a>│   │   ├── Component: LLM Interface
+</span><span id="__span-0-66"><a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a>│   │   ├── Component: Prompt Conditioning
+</span><span id="__span-0-67"><a id="__codelineno-0-67" name="__codelineno-0-67" href="#__codelineno-0-67"></a>│   │   └── Component: Response Generation
+</span><span id="__span-0-68"><a id="__codelineno-0-68" name="__codelineno-0-68" href="#__codelineno-0-68"></a>│   ├── Module: Memory System
+</span><span id="__span-0-69"><a id="__codelineno-0-69" name="__codelineno-0-69" href="#__codelineno-0-69"></a>│   │   ├── Component: Episodic Memory
+</span><span id="__span-0-70"><a id="__codelineno-0-70" name="__codelineno-0-70" href="#__codelineno-0-70"></a>│   │   ├── Component: Semantic Memory
+</span><span id="__span-0-71"><a id="__codelineno-0-71" name="__codelineno-0-71" href="#__codelineno-0-71"></a>│   │   ├── Component: Procedural Memory
+</span><span id="__span-0-72"><a id="__codelineno-0-72" name="__codelineno-0-72" href="#__codelineno-0-72"></a>│   │   └── Component: Memory Consolidation
+</span><span id="__span-0-73"><a id="__codelineno-0-73" name="__codelineno-0-73" href="#__codelineno-0-73"></a>│   └── Module: Learning System
+</span><span id="__span-0-74"><a id="__codelineno-0-74" name="__codelineno-0-74" href="#__codelineno-0-74"></a>│       ├── Component: Continual Learning
+</span><span id="__span-0-75"><a id="__codelineno-0-75" name="__codelineno-0-75" href="#__codelineno-0-75"></a>│       └── Component: Skill Acquisition
+</span><span id="__span-0-76"><a id="__codelineno-0-76" name="__codelineno-0-76" href="#__codelineno-0-76"></a>├── Domain: User Interface
+</span><span id="__span-0-77"><a id="__codelineno-0-77" name="__codelineno-0-77" href="#__codelineno-0-77"></a>│   ├── Module: Context Manager
+</span><span id="__span-0-78"><a id="__codelineno-0-78" name="__codelineno-0-78" href="#__codelineno-0-78"></a>│   │   ├── Component: Conversation State
+</span><span id="__span-0-79"><a id="__codelineno-0-79" name="__codelineno-0-79" href="#__codelineno-0-79"></a>│   │   └── Component: User Context
+</span><span id="__span-0-80"><a id="__codelineno-0-80" name="__codelineno-0-80" href="#__codelineno-0-80"></a>│   └── Module: Presentation Layer
+</span><span id="__span-0-81"><a id="__codelineno-0-81" name="__codelineno-0-81" href="#__codelineno-0-81"></a>│       ├── Component: Flutter UI
+</span><span id="__span-0-82"><a id="__codelineno-0-82" name="__codelineno-0-82" href="#__codelineno-0-82"></a>│       ├── Component: Avatar System
+</span><span id="__span-0-83"><a id="__codelineno-0-83" name="__codelineno-0-83" href="#__codelineno-0-83"></a>│       └── Component: Voice &amp; Audio
+</span><span id="__span-0-84"><a id="__codelineno-0-84" name="__codelineno-0-84" href="#__codelineno-0-84"></a>└── Domain: Privacy &amp; Security
+</span><span id="__span-0-85"><a id="__codelineno-0-85" name="__codelineno-0-85" href="#__codelineno-0-85"></a>    ├── Module: Consent Manager
+</span><span id="__span-0-86"><a id="__codelineno-0-86" name="__codelineno-0-86" href="#__codelineno-0-86"></a>    │   ├── Component: Permission Control
+</span><span id="__span-0-87"><a id="__codelineno-0-87" name="__codelineno-0-87" href="#__codelineno-0-87"></a>    │   └── Component: Data Governance
+</span><span id="__span-0-88"><a id="__codelineno-0-88" name="__codelineno-0-88" href="#__codelineno-0-88"></a>    ├── Module: Encryption System
+</span><span id="__span-0-89"><a id="__codelineno-0-89" name="__codelineno-0-89" href="#__codelineno-0-89"></a>    │   ├── Component: Data Encryption
+</span><span id="__span-0-90"><a id="__codelineno-0-90" name="__codelineno-0-90" href="#__codelineno-0-90"></a>    │   └── Component: Secure Communication
+</span><span id="__span-0-91"><a id="__codelineno-0-91" name="__codelineno-0-91" href="#__codelineno-0-91"></a>    └── Module: Audit System
+</span><span id="__span-0-92"><a id="__codelineno-0-92" name="__codelineno-0-92" href="#__codelineno-0-92"></a>        ├── Component: Activity Logging
+</span><span id="__span-0-93"><a id="__codelineno-0-93" name="__codelineno-0-93" href="#__codelineno-0-93"></a>        └── Component: Compliance Monitoring
 </span></code></pre></div>
-<h2 id="design-principles">Design Principles<a class="headerlink" href="#design-principles" title="Permanent link">&para;</a></h2>
+<hr />
+<h2 id="architecture-patterns">Architecture Patterns<a class="headerlink" href="#architecture-patterns" title="Permanent link">&para;</a></h2>
+<p>AICO's core architecture is designed to maximize modularity and maintain low coupling, with clear boundaries between domains (e.g. Personality, Emotion, Agency, Memory, etc.). The system uses a message-driven architecture with distinct frontend and backend components.</p>
+<h3 id="modular-message-driven-design">Modular Message-Driven Design<a class="headerlink" href="#modular-message-driven-design" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Agency Over Pure Reactivity</strong> - AICO initiates and acts, not just responds</li>
-<li><strong>Local-First by Default</strong> - All personal data and core inference runs locally</li>
-<li><strong>Modular Architecture</strong> - Decoupled components with clear interfaces</li>
-<li><strong>Message-Driven Integration</strong> - Event-based communication via central message bus</li>
-<li><strong>Multi-Modal Embodiment</strong> - Visual, auditory, and textual presence</li>
-<li><strong>Emotional Intelligence</strong> - Sophisticated emotion recognition and simulation</li>
-<li><strong>Privacy by Design</strong> - User control of all data and processing</li>
-<li><strong>Extensible Platform</strong> - Plugin system for community extensions</li>
-<li><strong>Continuous Evolution</strong> - Self-updating with personality development</li>
+<li><strong>Each domain/module is a distinct code package or subsystem</strong> with its own internal state, logic, and strict interface.</li>
+<li><strong>All communication between modules is via the internal message bus</strong> (ZeroMQ), within the backend service.</li>
+<li><strong>No direct function calls or shared state between modules</strong> (except for startup/configuration)—all data exchange is through published/subscribed messages.</li>
+<li><strong>Each module subscribes to topics and publishes outputs on its own topics</strong>, using versioned, validated JSON schemas.</li>
+<li><strong>Modules can be developed, tested, and even replaced independently</strong> as long as they honor the message contracts.</li>
 </ul>
-<h2 id="architectural-decisions">Architectural Decisions<a class="headerlink" href="#architectural-decisions" title="Permanent link">&para;</a></h2>
+<h3 id="low-coupling-and-contract-guarantees">Low Coupling and Contract Guarantees<a class="headerlink" href="#low-coupling-and-contract-guarantees" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Hybrid Flutter + WebView UI</strong> - Native app performance with web-based avatar</li>
-<li><strong>AppraisalCloudPCT for Emotion</strong> - Component Process Model for sophisticated emotions</li>
-<li><strong>TraitEmergence for Personality</strong> - Multi-dimensional trait-based modeling</li>
-<li><strong>Multi-Faceted Agency</strong> - Goal generation, curiosity, planning, meta-cognition</li>
-<li><strong>Topic-Based Pub/Sub</strong> - Standardized message formats with versioned schemas</li>
-<li><strong>JSON Message Format</strong> - Human-readable, widely supported serialization</li>
-<li><strong>Plugin Manager as Gateway</strong> - Mediated access for third-party extensions</li>
-<li><strong>Homomorphic Encryption</strong> - Privacy-preserving cloud computations when needed</li>
-<li><strong>Sandboxed Plugin Execution</strong> - Isolated environments with permission controls</li>
-<li><strong>Atomic Updates</strong> - Reliable system updates with rollback capabilities</li>
+<li><strong>Loose Coupling:</strong> Modules are only coupled by the message schemas and topic contracts—not by code dependencies or shared state.</li>
+<li><strong>Contract Enforcement:</strong> The message bus enforces versioned schemas, so if a publisher or subscriber changes, integration tests will catch contract violations.</li>
+<li><strong>Pluggability:</strong> Any module could, in theory, be extracted into a separate process or container in the future with minimal refactor, since all communication is already message-based.</li>
+</ul>
+<h3 id="client-service-architecture">Client-Service Architecture<a class="headerlink" href="#client-service-architecture" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Separation of Concerns:</strong> Frontend handles presentation and user interaction, backend manages all AI processing and data persistence.</li>
+<li><strong>Persistent Backend Service:</strong> Backend runs continuously as a system service, enabling proactive agency and background processing.</li>
+<li><strong>Thin Client Pattern:</strong> Frontend is a lightweight client that connects to the backend via REST API/WebSocket.</li>
+</ul>
+<h3 id="architecture-overview">Architecture Overview<a class="headerlink" href="#architecture-overview" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>flowchart TD
+    F["🖥️ FRONTEND&lt;br/&gt;Flutter App"] --&gt; G["🌐 API GATEWAY&lt;br/&gt;REST/WebSocket/gRPC"]
+    G --&gt; M["📡 MESSAGE BUS&lt;br/&gt;ZeroMQ Pub/Sub"]
+    M --&gt; B["⚙️ BACKEND SERVICE&lt;br/&gt;Python Modules"]
+
+    subgraph "Frontend Components"
+        F1["UI &amp; Chat"]
+        F2["Avatar System"]
+        F3["Input Handling"]
+        F4["Update Manager"]
+    end
+
+    subgraph "Backend Modules"
+        B1["🏗️ Infrastructure"]
+        B2["🧠 AI Intelligence"]
+        B3["😊 Personality &amp; Emotion"]
+        B4["🎯 Autonomous Agency"]
+        B5["🔒 Privacy &amp; Security"]
+        B6["🔍 Self-Awareness"]
+    end
+
+    F -.-&gt; F1
+    F -.-&gt; F2
+    F -.-&gt; F3
+    F -.-&gt; F4
+
+    B -.-&gt; B1
+    B -.-&gt; B2
+    B -.-&gt; B3
+    B -.-&gt; B4
+    B -.-&gt; B5
+    B -.-&gt; B6</code></pre>
+<p><strong>Alternative: Unicode diagram for better visual detail</strong></p>
+<p><strong>Communication Flow:</strong></p>
+<ol>
+<li><strong>Frontend → API Gateway</strong>: HTTP/WebSocket calls for user interactions</li>
+<li><strong>API Gateway → Message Bus</strong>: Publishes events to appropriate topics</li>
+<li><strong>Message Bus → Modules</strong>: Distributes messages to subscribed backend modules</li>
+<li><strong>Module → Module</strong>: Inter-module communication via message bus only</li>
+<li><strong>Backend → Frontend</strong>: Real-time updates via WebSocket notifications</li>
+</ol>
+<p><strong>Key Architectural Principles:</strong></p>
+<ul>
+<li><strong>🔄 Message-Driven</strong>: All backend communication via ZeroMQ pub/sub</li>
+<li><strong>🏗️ Modular Design</strong>: Independent modules with clear boundaries</li>
+<li><strong>🔌 Loose Coupling</strong>: Modules only depend on message contracts</li>
+<li><strong>⚡ Responsive UI</strong>: Frontend never blocks on backend processing</li>
+<li><strong>🔒 Secure</strong>: API Gateway controls all external access</li>
+<li><strong>📈 Scalable</strong>: Modules can be moved to separate processes/containers</li>
+</ul>
+<h2 id="frontend">Frontend<a class="headerlink" href="#frontend" title="Permanent link">&para;</a></h2>
+<p>The AICO frontend is implemented as a Flutter application that serves as a thin client, focusing on user interface and real-time interaction while delegating all heavy processing to the backend service.</p>
+<h3 id="flutter-application-architecture">Flutter Application Architecture<a class="headerlink" href="#flutter-application-architecture" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Thin Client Design:</strong> The UI (Flutter app) is a lightweight client that connects to the backend via local REST API/WebSocket.</li>
+<li><strong>Real-time Communication:</strong> WebSocket connections enable real-time updates from the backend for notifications and status changes.</li>
+<li><strong>Responsive Interface:</strong> UI remains responsive at all times since no heavy processing occurs in the frontend.</li>
+<li><strong>Cross-platform Support:</strong> Flutter enables consistent experience across desktop, mobile, and web platforms.</li>
+</ul>
+<h3 id="frontend-responsibilities">Frontend Responsibilities<a class="headerlink" href="#frontend-responsibilities" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>User Interface Rendering:</strong> Chat interface, settings, avatar display, and all visual components.</li>
+<li><strong>User Input Handling:</strong> Text input, voice capture, gesture recognition, and user interactions.</li>
+<li><strong>Real-time Updates:</strong> Receiving and displaying notifications, status updates, and background accomplishments from the backend.</li>
+<li><strong>Local State Management:</strong> Managing UI state, user preferences, and temporary display data.</li>
+</ul>
+<h3 id="connection-management">Connection Management<a class="headerlink" href="#connection-management" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Automatic Reconnection:</strong> Frontend automatically reconnects to backend service if connection is lost.</li>
+<li><strong>Offline Graceful Degradation:</strong> UI provides appropriate feedback when backend is unavailable.</li>
+<li><strong>Session Continuity:</strong> When UI reconnects, backend proactively notifies of any background accomplishments or updates.</li>
+</ul>
+<h3 id="update-management">Update Management<a class="headerlink" href="#update-management" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Update Notifications:</strong> Displays update availability notifications from the backend with changelog details.</li>
+<li><strong>User Consent Interface:</strong> Provides UI for users to approve, schedule, or defer updates.</li>
+<li><strong>Update Progress:</strong> Shows download and installation progress for both frontend and backend updates.</li>
+<li><strong>Restart Coordination:</strong> Handles graceful shutdown and restart during update installation.</li>
+<li><strong>Update Preferences:</strong> Allows users to configure update settings (automatic/manual, channels, scheduling).</li>
+<li><strong>Rollback Interface:</strong> Provides one-click rollback option if users experience issues post-update.</li>
+</ul>
+<h2 id="backend">Backend<a class="headerlink" href="#backend" title="Permanent link">&para;</a></h2>
+<p>The AICO backend runs as a persistent system service, handling all AI processing, data management, and autonomous agency tasks. This design enables continuous operation and proactive behavior even when the UI is closed.</p>
+<h3 id="service-architecture">Service Architecture<a class="headerlink" href="#service-architecture" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>System Service:</strong> Backend runs as a system/background service (Windows Service, Linux daemon, macOS LaunchAgent).</li>
+<li><strong>Continuous Operation:</strong> Backend continues agency tasks (learning, research, reminders) even when UI is closed or minimized.</li>
+<li><strong>Resource-Aware Processing:</strong> All heavy AI processing occurs in the backend with intelligent resource management.</li>
+</ul>
+<h3 id="core-backend-components">Core Backend Components<a class="headerlink" href="#core-backend-components" title="Permanent link">&para;</a></h3>
+<h4 id="single-multi-protocol-api-gateway">Single Multi-Protocol API Gateway<a class="headerlink" href="#single-multi-protocol-api-gateway" title="Permanent link">&para;</a></h4>
+<p>The API gateway is the single and multi-protocol entrypoint for the backend services. It acts as the counterpart for the Flutter UI, other UIs, embodiment adapters and other external services.</p>
+<ul>
+<li><strong>REST API:</strong> Standard HTTP API for commands, queries, and configuration.</li>
+<li><strong>WebSocket API:</strong> Real-time, bidirectional communication for events and notifications.</li>
+<li><strong>(optional) gRPC:</strong> High-performance, binary-protocol API for internal services.</li>
+</ul>
+<h4 id="job-scheduler-task-queue">Job Scheduler &amp; Task Queue<a class="headerlink" href="#job-scheduler-task-queue" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Task Management:</strong> Internal job/task queue manages all long-running, background, or proactive jobs (skill brushing, summarization, research).</li>
+<li><strong>Priority Scheduling:</strong> UI/interactive tasks always run first; background jobs are paused/throttled if system is busy.</li>
+<li><strong>Resource-Aware Scheduling:</strong> Job Scheduler can defer or cancel tasks based on system load and user preferences.</li>
+</ul>
+<h4 id="resource-monitor">Resource Monitor<a class="headerlink" href="#resource-monitor" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>System Monitoring:</strong> Tracks CPU, memory, battery, and system load metrics in real-time.</li>
+<li><strong>Policy Enforcement:</strong> User-configurable policies (e.g., "only run background jobs when on AC power" or "limit CPU usage to 20%").</li>
+<li><strong>Adaptive Behavior:</strong> Modules (especially Agency and Learning) query Resource Monitor before starting background work.</li>
+</ul>
+<h4 id="autonomous-agency-engine">Autonomous Agency Engine<a class="headerlink" href="#autonomous-agency-engine" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Idle Detection:</strong> Detects system/user idle periods for opportunistic background tasks.</li>
+<li><strong>Background Learning:</strong> Performs learning, research, skill updates during spare time.</li>
+<li><strong>User-Configurable Limits:</strong> Users control which activities are allowed and resource limits.</li>
+</ul>
+<h4 id="message-bus">Message Bus<a class="headerlink" href="#message-bus" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Topic Management:</strong> Manages publish/subscribe topics for inter-module communication.</li>
+<li><strong>Message Routing:</strong> Routes messages between modules based on topic subscriptions.</li>
+<li><strong>Plugin Integration:</strong> Enables third-party plugins to communicate via the message bus.</li>
+</ul>
+<h4 id="plugin-manager">Plugin Manager<a class="headerlink" href="#plugin-manager" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Plugin Discovery:</strong> Automatically discovers and loads available plugins.</li>
+<li><strong>Sandbox Execution:</strong> Runs plugins in isolated environments for security.</li>
+<li><strong>Permission Management:</strong> Controls plugin access to system resources and data.</li>
+</ul>
+<h4 id="update-system">Update System<a class="headerlink" href="#update-system" title="Permanent link">&para;</a></h4>
+<p>The Update System manages automatic updates for both frontend and backend components while ensuring user control and system reliability.</p>
+<p><strong>Update Architecture:</strong>
+- <strong>Update Orchestrator (Backend):</strong> Centralized update management running in the backend service
+- <strong>Update Checker:</strong> Periodically checks for updates to both frontend and backend components
+- <strong>Update Downloader:</strong> Securely downloads updates with signature verification
+- <strong>Update Installer:</strong> Coordinates installation of frontend and backend updates
+- <strong>Rollback Manager:</strong> Provides rollback capabilities if updates fail</p>
+<p><strong>Update Flow:</strong>
+1. <strong>Automatic Checking:</strong> Backend periodically checks for updates (configurable interval, default: daily)
+2. <strong>User Notification:</strong> Frontend displays update notifications with details and changelog
+3. <strong>User Consent:</strong> User approves/schedules updates through the frontend UI
+4. <strong>Coordinated Installation:</strong> Backend orchestrates installation of both components
+5. <strong>Restart Coordination:</strong> Manages restart sequence (backend first, then frontend reconnection)
+6. <strong>Verification:</strong> Ensures both components are running correctly post-update</p>
+<p><strong>Update Types:</strong>
+- <strong>Backend Updates:</strong> Service restarts automatically, frontend reconnects seamlessly
+- <strong>Frontend Updates:</strong> Downloaded and applied when frontend restarts
+- <strong>Coordinated Updates:</strong> Both components updated in sequence with user consent
+- <strong>Security Updates:</strong> Can be marked as critical with expedited user notification</p>
+<p><strong>User Control:</strong>
+- <strong>Update Preferences:</strong> Users can configure automatic vs manual updates
+- <strong>Scheduling:</strong> Users can schedule updates for convenient times
+- <strong>Rollback Option:</strong> One-click rollback if issues occur post-update
+- <strong>Update Channels:</strong> Stable, beta, or development update channels</p>
+<h4 id="goal-system">Goal System<a class="headerlink" href="#goal-system" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Goal Generation:</strong> Creates self-formulated objectives and sub-goals.</li>
+<li><strong>Goal Prioritization:</strong> Manages goal importance and scheduling.</li>
+<li><strong>Goal Tracking:</strong> Monitors progress toward objectives.</li>
+</ul>
+<h4 id="planning-system">Planning System<a class="headerlink" href="#planning-system" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Plan Formulation:</strong> Creates multi-step strategic plans to achieve goals.</li>
+<li><strong>Plan Execution:</strong> Manages plan implementation and task coordination.</li>
+<li><strong>Plan Adaptation:</strong> Adjusts plans based on changing circumstances.</li>
+</ul>
+<h4 id="curiosity-engine">Curiosity Engine<a class="headerlink" href="#curiosity-engine" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Novelty Detection:</strong> Identifies new or interesting information and experiences.</li>
+<li><strong>Exploration Strategy:</strong> Determines what to explore and learn about.</li>
+<li><strong>Interest Model:</strong> Maintains and evolves areas of curiosity and interest.</li>
+</ul>
+<h4 id="initiative-manager">Initiative Manager<a class="headerlink" href="#initiative-manager" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Proactive Engagement:</strong> Initiates conversations and interactions with users.</li>
+<li><strong>Conversation Starter:</strong> Generates contextually appropriate conversation topics.</li>
+</ul>
+<h4 id="personality-simulation">Personality Simulation<a class="headerlink" href="#personality-simulation" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Trait Vector System:</strong> Manages personality traits (Big Five, HEXACO).</li>
+<li><strong>Value System:</strong> Maintains ethical principles and preferences.</li>
+<li><strong>Expression Mapper:</strong> Translates personality traits to behavioral parameters.</li>
+<li><strong>Consistency Validator:</strong> Ensures behavioral coherence over time.</li>
+</ul>
+<h4 id="emotion-simulation">Emotion Simulation<a class="headerlink" href="#emotion-simulation" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Appraisal Engine:</strong> Processes emotional appraisals using Component Process Model.</li>
+<li><strong>Affect Derivation:</strong> Maps appraisals to emotional states.</li>
+<li><strong>Expression Synthesis:</strong> Coordinates emotional expression across modalities.</li>
+</ul>
+<h4 id="emotion-recognition">Emotion Recognition<a class="headerlink" href="#emotion-recognition" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Facial Analysis:</strong> Computer vision-based emotion detection from facial expressions.</li>
+<li><strong>Voice Analysis:</strong> Audio-based emotion and sentiment recognition.</li>
+<li><strong>Text Analysis:</strong> Natural language emotion understanding.</li>
+</ul>
+<h4 id="chat-engine">Chat Engine<a class="headerlink" href="#chat-engine" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>LLM Interface:</strong> Manages communication with large language models.</li>
+<li><strong>Prompt Conditioning:</strong> Incorporates personality and emotional context into prompts.</li>
+<li><strong>Response Generation:</strong> Produces contextually appropriate responses.</li>
+</ul>
+<h4 id="memory-system">Memory System<a class="headerlink" href="#memory-system" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Episodic Memory:</strong> Stores personal experiences and interaction history.</li>
+<li><strong>Semantic Memory:</strong> Maintains knowledge base and learned concepts.</li>
+<li><strong>Procedural Memory:</strong> Stores learned skills and behavioral patterns.</li>
+<li><strong>Memory Consolidation:</strong> Long-term memory formation and optimization.</li>
+</ul>
+<h4 id="learning-system">Learning System<a class="headerlink" href="#learning-system" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Continual Learning:</strong> Ongoing learning from interactions and experiences.</li>
+<li><strong>Skill Acquisition:</strong> Learning new capabilities and behaviors.</li>
+</ul>
+<h4 id="context-manager">Context Manager<a class="headerlink" href="#context-manager" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Conversation State:</strong> Maintains current conversation context and history.</li>
+<li><strong>User Context:</strong> Tracks user preferences, mood, and situational context.</li>
+</ul>
+<h4 id="state-monitoring">State Monitoring<a class="headerlink" href="#state-monitoring" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>System Health:</strong> Monitors backend system health and performance.</li>
+<li><strong>Performance Metrics:</strong> Tracks system performance and resource usage.</li>
+</ul>
+<h4 id="meta-cognition">Meta-Cognition<a class="headerlink" href="#meta-cognition" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Reflection Engine:</strong> Self-reflection on learning and behavior.</li>
+<li><strong>Self-Assessment:</strong> Evaluation of capabilities and performance.</li>
+</ul>
+<h4 id="consent-manager">Consent Manager<a class="headerlink" href="#consent-manager" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Permission Control:</strong> Manages user permissions and privacy settings.</li>
+<li><strong>Data Governance:</strong> Ensures compliance with privacy policies.</li>
+</ul>
+<h4 id="encryption-system">Encryption System<a class="headerlink" href="#encryption-system" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Data Encryption:</strong> Encrypts stored personal data and memories.</li>
+<li><strong>Secure Communication:</strong> Ensures secure communication channels.</li>
+</ul>
+<h4 id="audit-system">Audit System<a class="headerlink" href="#audit-system" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Activity Logging:</strong> Logs system activities for transparency.</li>
+<li><strong>Compliance Monitoring:</strong> Monitors compliance with privacy and security policies.</li>
+</ul>
+<h3 id="backend-use-cases">Backend Use Cases<a class="headerlink" href="#backend-use-cases" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Proactive Preparation:</strong> AICO prepares summaries or suggestions while UI is closed.</li>
+<li><strong>Background Skill Development:</strong> Agency module practices or updates skills, pausing if user becomes active.</li>
+<li><strong>Dynamic Resource Management:</strong> System throttles non-essential jobs during high CPU/memory usage or on battery power.</li>
+<li><strong>Continuous Availability:</strong> Backend remains ready to respond instantly when user opens UI.</li>
 </ul>
 
 

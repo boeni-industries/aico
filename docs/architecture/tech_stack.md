@@ -54,11 +54,10 @@ This document centralizes all technology decisions for the AICO system. It provi
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **ZeroMQ** | Message bus | Lightweight, embedded pub/sub messaging |
-| **MQTT** | Message bus alternative | Better for distributed deployments |
-| **FastAPI** | API framework | Modern, fast Python web framework |
-| **gRPC** | API protocol | Efficient binary protocol for inter-service communication |
-| **WebSockets** | Real-time communication | Full-duplex communication for UI updates |
+| **ZeroMQ** | Internal message bus | Lightweight, embedded pub/sub messaging for all core modules |
+| **FastAPI** | API framework | Modern, fast Python web framework powering the service gateway |
+| **REST API** | UI/adapter protocol | Standard HTTP API for commands, queries, and configuration |
+| **WebSocket API** | UI/adapter protocol | Real-time, bidirectional communication for events and notifications |
 | **JSON** | Message format | Human-readable, widely supported serialization |
 | **JSON Schema** | Message validation | Schema validation for message formats |
 

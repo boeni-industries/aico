@@ -60,19 +60,14 @@ All message formats are explicitly versioned to enable:
 
 ### Message Bus Technology
 
-The Core Message Bus is implemented using either:
+The Core Message Bus is implemented using **ZeroMQ** as the standard and only supported internal message bus for AICO.
 
-1. **ZeroMQ** - A high-performance asynchronous messaging library
-   - Lightweight and embedded within the application
-   - Supports multiple messaging patterns (pub/sub, request/reply)
-   - Provides reliable message delivery with minimal overhead
+- High-performance, asynchronous messaging library
+- Lightweight and embedded within the application
+- Supports multiple messaging patterns (pub/sub, request/reply)
+- Provides reliable message delivery with minimal overhead
 
-2. **MQTT** - A lightweight publish/subscribe messaging protocol
-   - Optimized for high-latency or unreliable networks
-   - Provides quality of service levels for message delivery
-   - Well-suited for distributed deployments
-
-The specific technology choice depends on deployment requirements, with ZeroMQ preferred for single-device deployments and MQTT for distributed scenarios.
+ZeroMQ is chosen for its performance, flexibility, and suitability for all local and internal communication needs in AICO.
 
 ### Message Format
 
