@@ -169,10 +169,14 @@ AICO System
 │       ├── Component: Reflection Engine
 │       └── Component: Self-Assessment
 ├── Domain: Intelligence & Memory
+│   ├── Module: LLM Module
+│   │   ├── Component: Model Management
+│   │   ├── Component: Inference Engine
+│   │   └── Component: Resource Coordination
 │   ├── Module: Chat Engine
-│   │   ├── Component: LLM Interface
+│   │   ├── Component: Conversation Flow
 │   │   ├── Component: Prompt Conditioning
-│   │   └── Component: Response Generation
+│   │   └── Component: Response Processing
 │   ├── Module: Memory System
 │   │   ├── Component: Episodic Memory
 │   │   ├── Component: Semantic Memory
@@ -320,6 +324,18 @@ The AICO backend runs as a persistent system service, handling all AI processing
 - **Continuous Operation:** Backend continues agency tasks (learning, research, reminders) even when UI is closed or minimized.
 - **Resource-Aware Processing:** All heavy AI processing occurs in the backend with intelligent resource management.
 
+### Local LLM Integration
+
+AICO uses an **integrated service pattern** for local LLM deployment:
+
+- **LLM Module:** Runs within the backend service process, not as a separate container/daemon
+- **Ollama Integration:** Uses Ollama Python client library for model management and inference
+- **Message Bus Communication:** LLM Module communicates via ZeroMQ like all other modules
+- **Resource Coordination:** Integrates with existing Resource Monitor for CPU/memory/battery policies
+- **Context Integration:** Receives real-time personality and emotion context for prompt conditioning
+
+This approach maintains architectural consistency, simplifies deployment, and enables tight integration with AICO's personality and emotion systems while preserving privacy through local-only processing.
+
 ### Core Backend Components
 
 #### Single Multi-Protocol API Gateway
@@ -419,10 +435,15 @@ The Update System manages automatic updates for both frontend and backend compon
 - **Voice Analysis:** Audio-based emotion and sentiment recognition.
 - **Text Analysis:** Natural language emotion understanding.
 
+#### LLM Module
+- **Model Management:** Manages local LLM models (Ollama) including loading, unloading, and updates.
+- **Inference Engine:** Handles quantized model inference with resource-aware processing.
+- **Resource Coordination:** Integrates with Resource Monitor for CPU/memory/battery policy enforcement.
+
 #### Chat Engine
-- **LLM Interface:** Manages communication with large language models.
-- **Prompt Conditioning:** Incorporates personality and emotional context into prompts.
-- **Response Generation:** Produces contextually appropriate responses.
+- **Conversation Flow:** Manages dialogue state, context, and multi-turn conversations.
+- **Prompt Conditioning:** Incorporates personality and emotional context into prompts via message bus.
+- **Response Processing:** Processes LLM responses and coordinates with other modules.
 
 #### Memory System
 - **Episodic Memory:** Stores personal experiences and interaction history.
