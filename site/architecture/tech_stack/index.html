@@ -572,6 +572,8 @@
       
         
       
+        
+      
     
     
     
@@ -690,6 +692,29 @@
   
   <span class="md-ellipsis">
     Update System
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../core_data_layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Layer
     
   </span>
   
@@ -2468,6 +2493,7 @@
 </tbody>
 </table>
 <h2 id="data-storage-layer">Data &amp; Storage Layer<a class="headerlink" href="#data-storage-layer" title="Permanent link">&para;</a></h2>
+<p>AICO employs a specialized multi-database architecture optimized for local-first operation. See <a href="../core_data_layer/">Core Data Layer</a> for comprehensive details.</p>
 <table>
 <thead>
 <tr>
@@ -2478,39 +2504,34 @@
 </thead>
 <tbody>
 <tr>
-<td><strong>SQLite</strong></td>
-<td>Local database</td>
-<td>Embedded, reliable, cross-platform</td>
+<td><strong>libSQL</strong></td>
+<td>Primary storage</td>
+<td>Modern SQLite fork with encryption, improved concurrency, and vector extensions</td>
 </tr>
 <tr>
 <td><strong>DuckDB</strong></td>
-<td>Analytical queries</td>
-<td>Fast in-process analytical database</td>
+<td>Analytical engine</td>
+<td>Columnar storage for efficient OLAP workloads and complex analytics</td>
 </tr>
 <tr>
 <td><strong>ChromaDB</strong></td>
 <td>Vector database</td>
-<td>Efficient embedding storage and similarity search</td>
+<td>Embedded vector storage with document metadata and similarity search</td>
 </tr>
 <tr>
-<td><strong>Qdrant</strong></td>
-<td>Vector database</td>
-<td>Alternative for larger-scale vector operations</td>
-</tr>
-<tr>
-<td><strong>FAISS</strong></td>
-<td>Vector similarity</td>
-<td>Fast similarity search for embeddings</td>
-</tr>
-<tr>
-<td><strong>LiteFS</strong></td>
-<td>Replication</td>
-<td>Optional multi-device synchronization</td>
+<td><strong>RocksDB</strong></td>
+<td>Key-value store (optional)</td>
+<td>Ultra-fast access for performance-critical paths and caching</td>
 </tr>
 <tr>
 <td><strong>Sentence Transformers</strong></td>
 <td>Embedding generation</td>
-<td>Efficient text embedding models</td>
+<td>Efficient text embedding models for semantic understanding</td>
+</tr>
+<tr>
+<td><strong>P2P Sync Protocol</strong></td>
+<td>Federated device sync</td>
+<td>Custom protocol for secure device-to-device synchronization</td>
 </tr>
 </tbody>
 </table>
@@ -2567,9 +2588,9 @@
 </thead>
 <tbody>
 <tr>
-<td><strong>SQLCipher</strong></td>
+<td><strong>libSQL Encryption</strong></td>
 <td>Database encryption</td>
-<td>Transparent encryption for SQLite</td>
+<td>Built-in encryption for primary storage</td>
 </tr>
 <tr>
 <td><strong>AES-256</strong></td>

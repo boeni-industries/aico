@@ -40,7 +40,7 @@ AICO's features are organized into logical modules for development and deploymen
   - **Personality Evolution**: Gradual adaptation based on interactions
 - **Episodic Memory**: Personal experience and interaction history
 - **Semantic Memory**: Knowledge base and learned concepts
-- **Vector Storage**: Embedding-based similarity search and retrieval
+- **Vector Storage**: ChromaDB-powered embedding storage and similarity search
 - **Memory Consolidation**: Long-term memory formation and optimization
 - **Context Retrieval**: Relevant memory recall based on current situation
 
@@ -58,7 +58,8 @@ AICO's features are organized into logical modules for development and deploymen
 - **Spatial Awareness**: Environmental context understanding
 - **Physical Presence**: Desktop, mobile, or projected embodiment
 - **AR/VR Integration**: Immersive interaction capabilities
-- **Multi-device Sync**: Consistent presence across devices
+- **Federated Device Roaming**: P2P encrypted synchronization between trusted devices
+- **Multi-device Sync**: Zero-knowledge presence coordination across devices
 
 ### 🔒 Privacy & Security
 - **Local Processing**: Edge-first computation and storage
@@ -450,6 +451,14 @@ The Update System manages automatic updates for both frontend and backend compon
 - **Semantic Memory:** Maintains knowledge base and learned concepts.
 - **Procedural Memory:** Stores learned skills and behavioral patterns.
 - **Memory Consolidation:** Long-term memory formation and optimization.
+
+#### Data & Storage Layer
+- **Multi-Database Architecture:** Specialized databases for different workloads.
+- **Primary Storage (libSQL):** Core structured data with built-in encryption.
+- **Vector Database (ChromaDB):** Embedding storage and similarity search.
+- **Analytical Engine (DuckDB):** Fast analytical processing for complex queries.
+- **Key-Value Store (RocksDB):** Optional high-performance caching layer.
+- **Federated Sync:** P2P encrypted device synchronization.
 
 #### Learning System
 - **Continual Learning:** Ongoing learning from interactions and experiences.

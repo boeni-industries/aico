@@ -56,8 +56,9 @@ Each stage builds deeper companionship rather than just adding features.
 ### **Audio-Visual Embodiment**
 - **Ready Player Me Avatar Integration** with realistic facial expressions and lip-sync
 - **TalkingHead.js** for advanced speech animation and emotional expression
+- **Federated Device Roaming** - seamless P2P encrypted synchronization between your trusted devices
 - **Cross-Platform Presence** (desktop, mobile, AR/VR, IoT devices)
-- **Spatial Awareness** and multi-device synchronization
+- **Spatial Awareness** and zero-knowledge multi-device coordination
 
 ### **Privacy & Security**
 - **AES-256 Encryption** for all local data storage using SQLCipher
@@ -101,7 +102,7 @@ Each stage builds deeper companionship rather than just adding features.
     - [View Co-Adventurer Roadmap](../roadmap/co-adventurer.md)
 
 6. **🌐 Embodied Presence** - Multi-modal integration
-    - AR/VR, IoT, robotics, spatial computing
+    - Federated device roaming, AR/VR, IoT, robotics, spatial computing
     - [View Embodied Presence Roadmap](../roadmap/embodied-presence.md)
 
 7. **🤝 Community** - Collective intelligence

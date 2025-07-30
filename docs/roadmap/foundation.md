@@ -1,21 +1,78 @@
 
 !!! info "Strategic Development Approach"
-    Foundation → MVP → PoCs → Feature Groups. For detailed feature descriptions, see [Architecture](../architecture/architecture_overview.md#system-features).
+    Foundation → MVP → PoCs → Feature Groups. Tasks ordered for fastest path to running system.
 
 # Foundation Roadmap
 
-Build the foundational system infrastructure that enables all AICO functionality. This creates the scaffolding and boilerplate for the entire system.
+Build the foundational system infrastructure that enables all AICO functionality. **Tasks are ordered by dependency and criticality to get a running system as quickly as possible.**
 
-## Core Infrastructure
+## Phase 1: Minimal Running System
 
-### Message Bus
+### Basic Service Layer
+- [ ] **Python Service**: FastAPI-based backend service with basic project structure
+- [ ] **Configuration System**: Simple YAML/JSON config with environment variables
+- [ ] **Logging Framework**: Basic structured logging (console + file)
+- [ ] **Health Monitoring**: Simple health check endpoint
+- [ ] **API Gateway**: Basic REST endpoints for frontend communication
+
+### Basic Flutter Foundation
+- [ ] **Project Structure**: Standard Flutter project with basic folder organization
+- [ ] **State Management**: Simple Provider setup for app-wide state
+- [ ] **Navigation**: Basic navigation (can upgrade to Go Router later)
+- [ ] **Theme System**: Basic Material 3 theme with dark/light mode
+- [ ] **API Client**: Simple HTTP client with error handling
+
+### Minimal Message Bus
 - [ ] **ZeroMQ Setup**: Core pub/sub message bus implementation
-- [ ] **Topic Hierarchy**: Standardized topic structure (emotion.*, personality.*, agency.*, etc.)
-- [ ] **Message Envelope**: JSON message format with metadata and validation
-- [ ] **Schema Validation**: JSON Schema validation for all message types
-- [ ] **Message Routing**: Topic-based message routing and subscription management
+- [ ] **Basic Topics**: Essential topics (system.*, chat.*, ui.*)
+- [ ] **Message Envelope**: Simple JSON message format
+- [ ] **Message Routing**: Basic topic-based routing
+
+### Basic Data Layer
+- [ ] **libSQL Setup**: Modern SQLite fork for local database (encryption can come later)
+- [ ] **Basic Schema**: Minimal tables for system state and config
+- [ ] **Migration System**: Simple schema versioning
+
+## Phase 2: Core Infrastructure
+
+### Enhanced Message Bus
+- [ ] **Topic Hierarchy**: Full topic structure (emotion.*, personality.*, agency.*)
+- [ ] **Schema Validation**: JSON Schema validation for message types
 - [ ] **Error Handling**: Message delivery guarantees and error recovery
-- [ ] **Performance**: Handle 1000+ messages/second with <100ms latency
+- [ ] **Performance**: Optimize for 1000+ messages/second with <100ms latency
+
+### Service Layer Enhancement
+- [ ] **Service Management**: Windows Service / Linux daemon / macOS LaunchAgent
+- [ ] **Graceful Shutdown**: Clean service restart without data loss
+- [ ] **WebSocket Support**: Real-time bidirectional communication
+
+### Data Layer Enhancement
+- [ ] **libSQL Encryption**: Enable built-in database encryption
+- [ ] **Vector Store**: ChromaDB integration for embeddings and similarity search
+- [ ] **Analytical Engine**: DuckDB integration for complex analytical queries
+- [ ] **Full Schema**: Complete database schema for memory, personality, system data
+- [ ] **Backup/Restore**: Data backup and recovery mechanisms
+- [ ] **Privacy Controls**: Data encryption and access controls
+
+### Flutter Enhancement
+- [ ] **Go Router**: Upgrade to declarative routing and deep linking
+- [ ] **Responsive Design**: Adaptive layouts for desktop, tablet, mobile
+- [ ] **Platform Integration**: Windows/macOS/Linux specific integrations
+- [ ] **WebSocket Client**: Real-time communication with backend
+- [ ] **Request/Response Models**: Typed data models for API communication
+- [ ] **Error Handling**: Standardized error handling and user feedback
+- [ ] **Caching**: Local caching for offline functionality
+
+## Phase 3: Advanced Infrastructure
+
+### Resource Management
+- [ ] **Resource Monitor**: CPU, memory, battery, and system load tracking
+- [ ] **Job Scheduler**: Task queue with priority scheduling
+- [ ] **Resource Policies**: Configurable limits and throttling rules
+- [ ] **Background Processing**: Pause/resume capabilities for non-critical tasks
+- [ ] **Battery Awareness**: Reduced processing on battery power
+- [ ] **User Activity Detection**: Idle detection for opportunistic processing
+- [ ] **RocksDB Integration**: Optional high-performance key-value store for caching
 
 ### Plugin System
 - [ ] **Plugin Manager**: Hot-loading/unloading with sandboxed execution
@@ -26,81 +83,50 @@ Build the foundational system infrastructure that enables all AICO functionality
 - [ ] **Isolation**: Process/thread isolation for plugin execution
 - [ ] **Lifecycle Management**: Support 10+ concurrent plugins
 
-### Service Layer
-- [ ] **Python Service**: FastAPI-based backend service with proper project structure
-- [ ] **Service Management**: Windows Service / Linux daemon / macOS LaunchAgent setup
-- [ ] **Configuration System**: YAML/JSON config with environment variable support
-- [ ] **Logging Framework**: Structured logging with rotation and levels
-- [ ] **Health Monitoring**: Service health checks and status reporting
-- [ ] **Graceful Shutdown**: Clean service restart without data loss
-- [ ] **API Gateway**: REST/WebSocket endpoints for frontend communication
-
-### Data Layer
-- [ ] **SQLite Setup**: Local database with SQLCipher encryption
-- [ ] **Vector Store**: ChromaDB integration for embeddings
-- [ ] **Schema Design**: Database schema for memory, personality, and system data
-- [ ] **Migration System**: Database schema versioning and migrations
-- [ ] **Backup/Restore**: Data backup and recovery mechanisms
-- [ ] **Privacy Controls**: Data encryption and access controls
-
-### Resource Management
-- [ ] **Resource Monitor**: CPU, memory, battery, and system load tracking
-- [ ] **Job Scheduler**: Task queue with priority scheduling and idle detection
-- [ ] **Resource Policies**: Configurable limits and throttling rules
-- [ ] **Background Processing**: Pause/resume capabilities for non-critical tasks
-- [ ] **Battery Awareness**: Reduced processing on battery power
-- [ ] **User Activity Detection**: Idle detection for opportunistic processing
-
-## Frontend Infrastructure
-
-### Flutter Foundation
-- [ ] **Project Structure**: Standard Flutter project with proper folder organization
-- [ ] **State Management**: Provider/Riverpod setup for app-wide state
-- [ ] **Navigation**: Go Router for declarative routing and deep linking
-- [ ] **Theme System**: Material 3 design system with dark/light mode support
-- [ ] **Responsive Design**: Adaptive layouts for desktop, tablet, and mobile
-- [ ] **Platform Integration**: Windows/macOS/Linux specific integrations
-
 ### WebView Avatar Integration
 - [ ] **WebView Widget**: Flutter WebView setup for avatar rendering
 - [ ] **JavaScript Bridge**: Bidirectional communication channels
 - [ ] **Three.js Foundation**: Basic 3D scene setup with camera and lighting
 - [ ] **Ready Player Me**: Avatar loading and customization pipeline
 - [ ] **TalkingHead.js**: Lip-sync and facial expression integration
-- [ ] **Performance Optimization**: WebView memory management and optimization
+- [ ] **Performance Optimization**: WebView memory management
 
-### API Client Foundation
-- [ ] **HTTP Client**: Dio/http setup with authentication and error handling
-- [ ] **WebSocket Client**: Real-time bidirectional communication
-- [ ] **Connection Management**: Auto-reconnection and offline handling
-- [ ] **Request/Response Models**: Typed data models for API communication
-- [ ] **Error Handling**: Standardized error handling and user feedback
-- [ ] **Caching**: Local caching for offline functionality
+## Phase 4: Production Readiness
 
-## Development Pipeline
+### Security & Privacy
+- [ ] **Authentication**: Basic user authentication system
+- [ ] **Authorization**: Role-based access control
+- [ ] **Data Encryption**: End-to-end encryption for sensitive data
+- [ ] **Secure Communication**: TLS for all network communication
+- [ ] **Privacy Controls**: Granular consent management
+
+### Update System
+- [ ] **Update Orchestrator**: Centralized update management
+- [ ] **Delta Updates**: Efficient incremental updates
+- [ ] **Signature Verification**: Cryptographic update verification
+- [ ] **Rollback Capability**: Automatic rollback on update failure
+- [ ] **Background Updates**: Non-disruptive update installation
+- [ ] **Version Management**: Multiple version support
+- [ ] **Update Scheduling**: User-controlled update timing
+- [ ] **Coordinated Updates**: Sequential frontend/backend updates
+
+### Module Foundations
+- [ ] **Module Base Classes**: Standard module interface and lifecycle
+- [ ] **Message Subscription**: Standardized topic subscription
+- [ ] **Module Configuration**: YAML/JSON configuration with validation
+- [ ] **Module Health Checks**: Health monitoring per module
+- [ ] **Module Isolation**: Error isolation to prevent cascade failures
+- [ ] **Module Registry**: Dynamic module discovery and dependencies
+
+## Phase 5: Development & Deployment
 
 ### Build System
-- [ ] **Flutter Build**: Cross-platform build configuration (Windows/macOS/Linux)
+- [ ] **Flutter Build**: Cross-platform build configuration
 - [ ] **Python Packaging**: Backend service packaging with dependencies
 - [ ] **Asset Management**: Avatar models, voices, and other assets
-- [ ] **Environment Management**: Dev/staging/production environment configs
+- [ ] **Environment Management**: Development, staging, production configs
 - [ ] **Dependency Management**: Lock files and reproducible builds
-
-### Testing Framework
-- [ ] **Unit Tests**: Pytest for Python backend, Flutter test for frontend
-- [ ] **Integration Tests**: End-to-end testing of message bus and API
-- [ ] **Performance Tests**: Load testing for message throughput and latency
-- [ ] **UI Tests**: Flutter integration tests for user workflows
-- [ ] **Mock Services**: Test doubles for LLM and external services
-- [ ] **Test Data**: Fixtures and factories for consistent test data
-
-### Development Tools
-- [ ] **Message Inspector**: Real-time message bus monitoring and debugging
-- [ ] **Performance Profiler**: CPU/memory profiling for optimization
-- [ ] **Log Aggregation**: Centralized logging with search and filtering
-- [ ] **Hot Reload**: Development-time hot reload for rapid iteration
-- [ ] **API Documentation**: Auto-generated API docs with examples
-- [ ] **Plugin SDK**: Development kit for third-party plugins
+- [ ] **Cross-Platform**: Windows, macOS, Linux build targets
 
 ### CI/CD Pipeline
 - [ ] **GitHub Actions**: Automated testing and building
@@ -110,15 +136,13 @@ Build the foundational system infrastructure that enables all AICO functionality
 - [ ] **Build Artifacts**: Automated packaging and artifact generation
 - [ ] **Release Management**: Semantic versioning and release automation
 
-## Infrastructure Components
-
-### Security Foundation
-- [ ] **Encryption**: AES-256 encryption for sensitive data
-- [ ] **Authentication**: Service-to-service authentication
-- [ ] **Authorization**: Role-based access control for components
-- [ ] **Audit Logging**: Security event logging and monitoring
-- [ ] **Privacy Controls**: GDPR-compliant data handling
-- [ ] **Secure Communication**: TLS for all network communication
+### Testing & Quality
+- [ ] **Unit Tests**: Core functionality unit tests
+- [ ] **Integration Tests**: Cross-component communication tests
+- [ ] **End-to-End Tests**: Full system workflow tests
+- [ ] **Performance Tests**: Load and stress testing
+- [ ] **Security Tests**: Vulnerability and penetration testing
+- [ ] **Code Coverage**: >80% test coverage requirement
 
 ### Monitoring & Observability
 - [ ] **Metrics Collection**: System performance and health metrics
@@ -127,24 +151,6 @@ Build the foundational system infrastructure that enables all AICO functionality
 - [ ] **Resource Usage**: CPU, memory, and disk monitoring
 - [ ] **Alert System**: Automated alerts for system issues
 - [ ] **Dashboard**: Real-time system status dashboard
-
-### Update System
-- [ ] **Update Orchestrator**: Centralized update management in backend service
-- [ ] **Delta Updates**: Efficient incremental updates with bandwidth optimization
-- [ ] **Signature Verification**: Cryptographic update verification and authenticity
-- [ ] **Rollback Capability**: Automatic rollback on update failure with one-click recovery
-- [ ] **Background Updates**: Non-disruptive update installation and coordination
-- [ ] **Version Management**: Multiple version support and compatibility checking
-- [ ] **Update Scheduling**: User-controlled update timing and preferences
-- [ ] **Coordinated Updates**: Sequential frontend/backend update management
-
-### Core Module Foundations
-- [ ] **Module Base Classes**: Standard module interface and lifecycle hooks
-- [ ] **Message Subscription**: Standardized topic subscription and handler registration
-- [ ] **Module Configuration**: YAML/JSON configuration with validation schemas
-- [ ] **Module Health Checks**: Health monitoring and status reporting per module
-- [ ] **Module Isolation**: Error isolation to prevent cascade failures
-- [ ] **Module Registry**: Dynamic module discovery and dependency management
 
 ## Architecture Validation
 

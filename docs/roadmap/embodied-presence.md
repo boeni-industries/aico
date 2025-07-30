@@ -29,7 +29,8 @@ Evolve AICO from a digital co-adventurer into a fully embodied presence that exi
 - **Eye Tracking**: Gaze-based interaction and attention understanding
 - **Touch Interface**: Haptic feedback and touch-based communication
 - **Proximity Awareness**: Responding to user's physical proximity and movement
-- **Multi-Device Coordination**: Seamless presence across multiple devices and screens
+- **Federated Device Roaming**: P2P encrypted mesh synchronization between trusted devices
+- **Multi-Device Coordination**: Zero-knowledge seamless presence across multiple devices and screens
 
 ### Augmented Reality Integration
 - **AR Overlay**: Overlaying AICO onto real-world environments
@@ -68,6 +69,16 @@ Evolve AICO from a digital co-adventurer into a fully embodied presence that exi
 - **Occlusion Handling**: Realistic interaction between virtual and real objects
 - **Performance Optimization**: Maintaining high frame rates for comfortable experiences
 
+### Federated Device Roaming
+- **Device Registry**: Trusted device identification and authentication system
+- **P2P Discovery**: Local network discovery using mDNS/Bonjour for device detection
+- **Encrypted Mesh Sync**: Direct encrypted communication between trusted devices
+- **Conflict Resolution**: Smart merging of data changes from multiple devices
+- **Trust Management**: User-controlled device authorization and revocation
+- **Selective Sync**: Granular control over what data syncs between devices
+- **Fallback Cloud Sync**: Optional encrypted cloud sync for remote device scenarios
+- **Session Continuity**: Seamless conversation handoff between devices
+
 ### IoT Integration
 - **Device Discovery**: Automatic detection and integration of smart devices
 - **Protocol Support**: Multiple IoT protocols (Zigbee, Z-Wave, WiFi, Bluetooth)
@@ -90,6 +101,13 @@ Evolve AICO from a digital co-adventurer into a fully embodied presence that exi
 - [ ] AR/VR integration feels seamless and comfortable
 - [ ] Physical world integration provides genuine utility
 - [ ] Embodied interactions feel more engaging than screen-based alternatives
+
+### Device Roaming Quality
+- [ ] AICO seamlessly continues conversations when switching between devices
+- [ ] Device discovery and pairing process is intuitive and secure
+- [ ] Sync conflicts are resolved intelligently without user intervention
+- [ ] Privacy is maintained - no data exposed to untrusted devices or networks
+- [ ] Performance remains smooth during multi-device synchronization
 
 ### Technical Performance
 - [ ] Rendering quality meets user expectations across devices
@@ -115,6 +133,7 @@ User experiences AICO as truly embodied presence that:
 5. **Environmental Control**: Meaningfully interacts with smart home and IoT devices
 6. **Multi-Modal Fluency**: Combines voice, gesture, touch, and spatial input naturally
 7. **Context Awareness**: Uses physical context to enhance interactions and assistance
-8. **Comfortable Embodiment**: Presence feels natural and enhances daily life
+8. **Device Roaming**: Seamlessly follows you between trusted devices with zero-knowledge privacy
+9. **Comfortable Embodiment**: Presence feels natural and enhances daily life
 
 See [Community Roadmap](community.md) for the next stage of AICO's evolution.

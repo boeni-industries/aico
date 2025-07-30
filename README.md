@@ -59,7 +59,8 @@ AICO is being built with a comprehensive set of capabilities that work together 
 **🎭 Embodied Presence**
 - Photorealistic 3D avatars with Ready Player Me integration
 - Real-time lip-sync and facial expressions using TalkingHead.js
-- Multi-device presence (desktop, mobile, AR/VR) with seamless synchronization
+- **Federated device roaming** - AICO seamlessly moves between your trusted devices via encrypted P2P mesh
+- Multi-device presence (desktop, mobile, AR/VR) with zero-knowledge synchronization
 - Gesture recognition and spatial awareness for natural interaction
 - Smart home integration and IoT device coordination
 - Augmented reality overlay for mixed reality experiences

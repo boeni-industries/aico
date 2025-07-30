@@ -136,6 +136,7 @@ nav:
     - Plugin Manager: '#'
     - API Gateway: '#'
     - Update System: '#'
+    - Data Layer: architecture/core_data_layer.md
   - Autonomous Agency:
     - Goal System: '#'
     - Planning System: '#'
