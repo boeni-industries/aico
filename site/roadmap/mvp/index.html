@@ -18,6 +18,8 @@
         <link rel="prev" href="../foundation/">
       
       
+        <link rel="next" href="../confidante/">
+      
       
       <link rel="icon" href="../../assets/images/logo.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.16">
@@ -1969,6 +1971,16 @@
       
         
       
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
     
     
     
@@ -2085,9 +2097,27 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#essential-components" class="md-nav__link">
+  <a href="#frontend-mvp" class="md-nav__link">
     <span class="md-ellipsis">
-      Essential Components
+      Frontend MVP
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backend-mvp" class="md-nav__link">
+    <span class="md-ellipsis">
+      Backend MVP
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      Integration Points
     </span>
   </a>
   
@@ -2103,9 +2133,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#technical-stack" class="md-nav__link">
+  <a href="#technical-requirements" class="md-nav__link">
     <span class="md-ellipsis">
-      Technical Stack
+      Technical Requirements
     </span>
   </a>
   
@@ -2124,6 +2154,121 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../confidante/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Confidante
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sidekick/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Sidekick
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../co_adventurer.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Co-Adventurer
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../embodied_presence.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Embodied Presence
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../community/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Community
+    
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -2170,36 +2315,174 @@
 
 <h1 id="mvp-roadmap">MVP Roadmap<a class="headerlink" href="#mvp-roadmap" title="Permanent link">&para;</a></h1>
 <p><strong>Goal</strong>: Basic companion that talks, remembers, and initiates.</p>
-<h2 id="essential-components">Essential Components<a class="headerlink" href="#essential-components" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>Text chat interface</strong> - Flutter + simple web UI</li>
-<li><strong>Local LLM integration</strong> - Ollama or similar local model</li>
-<li><strong>Basic memory</strong> - Conversations + user facts in local storage</li>
-<li><strong>Simple goal system</strong> - Check-ins, suggestions, basic prompts</li>
-<li><strong>Personality traits</strong> - 3-5 core dimensions (openness, warmth, curiosity)</li>
+<p><em>Builds on <a href="../foundation/">Foundation</a> infrastructure.</em></p>
+<h2 id="frontend-mvp">Frontend MVP<a class="headerlink" href="#frontend-mvp" title="Permanent link">&para;</a></h2>
+<h3 id="chat-interface">Chat Interface<a class="headerlink" href="#chat-interface" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Text Chat UI</strong>: Flutter chat interface with message bubbles</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Real-time Updates</strong>: WebSocket connection for live conversation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Typing Indicators</strong>: Show when AICO is thinking/responding</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Message History</strong>: Scrollable conversation history</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>User Input</strong>: Text input with send button and enter key support</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Status Display</strong>: Connection status and AICO availability</li>
+</ul>
+<h3 id="voice-interaction">Voice Interaction<a class="headerlink" href="#voice-interaction" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Speech-to-Text</strong>: Local Whisper.cpp integration for voice input</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Text-to-Speech</strong>: Local Coqui/Piper for voice output</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Controls</strong>: Push-to-talk and voice activation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Audio Processing</strong>: Noise reduction and audio quality optimization</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Settings</strong>: Voice selection, speed, and volume controls</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Multimodal Input</strong>: Seamless switching between text and voice</li>
+</ul>
+<h3 id="basic-avatar">Basic Avatar<a class="headerlink" href="#basic-avatar" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Simple Avatar</strong>: Basic 3D avatar in WebView (Ready Player Me)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Idle Animation</strong>: Basic breathing/blinking idle state</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Speaking Animation</strong>: Lip-sync during AICO responses</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Basic Emotions</strong>: Happy, neutral, thinking expressions</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Avatar Controls</strong>: Mute/unmute, avatar on/off toggle</li>
+</ul>
+<h3 id="user-experience">User Experience<a class="headerlink" href="#user-experience" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Onboarding</strong>: Simple welcome flow and personality setup</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Settings</strong>: Basic preferences (name, avatar, personality sliders)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Offline Mode</strong>: Graceful degradation when backend unavailable</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Responsive Design</strong>: Works on desktop and mobile</li>
+</ul>
+<h2 id="backend-mvp">Backend MVP<a class="headerlink" href="#backend-mvp" title="Permanent link">&para;</a></h2>
+<h3 id="llm-integration">LLM Integration<a class="headerlink" href="#llm-integration" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Ollama Setup</strong>: Local LLM model management and inference</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Model Loading</strong>: Automatic model download and initialization</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Prompt Engineering</strong>: System prompts for personality and context</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Response Generation</strong>: Generate contextually appropriate responses</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Resource Management</strong>: CPU/memory monitoring for LLM operations</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Fallback Handling</strong>: Graceful degradation when LLM unavailable</li>
+</ul>
+<h3 id="memory-system">Memory System<a class="headerlink" href="#memory-system" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Conversation Memory</strong>: Store and retrieve conversation history</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>User Facts</strong>: Remember user preferences, interests, and details</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Context Retrieval</strong>: Find relevant past conversations</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory Consolidation</strong>: Summarize and organize long-term memories</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Semantic Search</strong>: Vector-based similarity search for memories</li>
+</ul>
+<h3 id="personality-engine">Personality Engine<a class="headerlink" href="#personality-engine" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Trait System</strong>: 5 core personality dimensions (Big Five subset)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Expression Mapping</strong>: Translate traits to communication style</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Consistency Validation</strong>: Ensure responses align with personality</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality Configuration</strong>: User-adjustable personality sliders</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Behavioral Parameters</strong>: Warmth, formality, curiosity, proactivity</li>
+</ul>
+<h3 id="emotion-recognition">Emotion Recognition<a class="headerlink" href="#emotion-recognition" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Text Sentiment</strong>: Natural language emotion understanding from user messages</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Analysis</strong>: Basic emotion detection from voice tone and patterns</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Behavioral Patterns</strong>: User mood and preference learning over time</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Context Awareness</strong>: Situational emotion understanding</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion History</strong>: Track user emotional patterns and trends</li>
+</ul>
+<h3 id="emotion-simulation">Emotion Simulation<a class="headerlink" href="#emotion-simulation" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Basic Appraisal</strong>: Simplified Component Process Model for emotion generation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotional States</strong>: Core emotions (happy, sad, excited, calm, curious)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Expression Coordination</strong>: Sync emotions across avatar, voice, and text</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotional Memory</strong>: Remember emotional context of conversations</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Empathetic Responses</strong>: Generate emotionally appropriate reactions</li>
+</ul>
+<h3 id="basic-agency">Basic Agency<a class="headerlink" href="#basic-agency" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Initiative System</strong>: Proactive conversation starters and engagement</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Goal Generation</strong>: Simple self-formulated objectives (check-ins, learning)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Check-in Goals</strong>: Periodic user wellness and interest check-ins</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Suggestion Engine</strong>: Context-based activity and conversation suggestions</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Follow-up Questions</strong>: Ask relevant follow-up questions unprompted</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Conversation Continuity</strong>: Reference and build on previous conversations</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Curiosity Expression</strong>: Show interest in user activities and responses</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Proactive Timing</strong>: Intelligent timing for initiatives (not intrusive)</li>
+</ul>
+<h3 id="core-services">Core Services<a class="headerlink" href="#core-services" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Chat API</strong>: REST endpoints for sending/receiving messages</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>WebSocket API</strong>: Real-time bidirectional communication</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory API</strong>: Store and retrieve user memories</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality API</strong>: Get/set personality configuration</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Status API</strong>: System health and availability status</li>
+</ul>
+<h2 id="integration-points">Integration Points<a class="headerlink" href="#integration-points" title="Permanent link">&para;</a></h2>
+<h3 id="message-bus-integration">Message Bus Integration<a class="headerlink" href="#message-bus-integration" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>LLM Module</strong>: Subscribe to conversation events, publish responses</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory Module</strong>: Subscribe to conversation events, publish memories</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality Module</strong>: Publish personality parameters and traits</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion Recognition Module</strong>: Subscribe to user input, publish detected emotions</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion Simulation Module</strong>: Subscribe to events, publish AICO emotional states</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Agency Module</strong>: Subscribe to context and emotions, publish initiatives</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Module</strong>: Subscribe to TTS requests, publish audio responses</li>
+</ul>
+<h3 id="data-flow">Data Flow<a class="headerlink" href="#data-flow" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>User Input</strong>: Frontend → API → Message Bus → LLM/Emotion Recognition Modules</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory Storage</strong>: Conversation events → Memory Module → Database</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality Context</strong>: Personality Module → LLM Module prompts</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion Context</strong>: Emotion Recognition → Emotion Simulation → Expression</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Processing</strong>: Voice input → STT → LLM → TTS → Voice output</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Proactive Behavior</strong>: Agency Module → Frontend notifications</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Avatar Sync</strong>: Emotion states → Avatar expressions and animations</li>
 </ul>
 <h2 id="validation-criteria">Validation Criteria<a class="headerlink" href="#validation-criteria" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Remembers user preferences across sessions</li>
-<li>Initiates conversations without prompting</li>
-<li>Shows consistent personality responses</li>
-<li>Works completely offline</li>
-<li>Responds within 3-5 seconds</li>
+<h3 id="core-functionality">Core Functionality<a class="headerlink" href="#core-functionality" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Remembers user preferences across sessions</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Initiates conversations without prompting (agency)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Shows consistent personality responses</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Recognizes and responds to user emotions</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Expresses appropriate emotions through avatar and voice</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Works completely offline</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Responds within 3-5 seconds</li>
 </ul>
-<h2 id="technical-stack">Technical Stack<a class="headerlink" href="#technical-stack" title="Permanent link">&para;</a></h2>
+<h3 id="user-experience_1">User Experience<a class="headerlink" href="#user-experience_1" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Smooth chat interface with real-time updates</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Voice interaction works seamlessly with text</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Avatar animations sync with conversation and emotions</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Personality feels consistent and authentic</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Emotional responses feel natural and empathetic</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Proactive behavior feels natural, not intrusive</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Easy setup and configuration</li>
+</ul>
+<h3 id="emotional-intelligence">Emotional Intelligence<a class="headerlink" href="#emotional-intelligence" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Detects user mood from text and voice</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Responds empathetically to user emotions</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Shows appropriate emotional expressions</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Remembers emotional context of conversations</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Adapts communication style based on user mood</li>
+</ul>
+<h2 id="technical-requirements">Technical Requirements<a class="headerlink" href="#technical-requirements" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Frontend</strong>: Flutter for cross-platform UI</li>
 <li><strong>Backend</strong>: Python with FastAPI for core services</li>
 <li><strong>LLM</strong>: Local Ollama instance (Llama 2 or similar)</li>
-<li><strong>Storage</strong>: SQLite for memory, JSON for personality config</li>
-<li><strong>Message Bus</strong>: Redis pub/sub or simple Python messaging</li>
+<li><strong>Voice</strong>: Whisper.cpp (STT) + Coqui/Piper (TTS)</li>
+<li><strong>Storage</strong>: SQLite for memory, ChromaDB for embeddings</li>
+<li><strong>Message Bus</strong>: ZeroMQ pub/sub (from Foundation)</li>
+<li><strong>Avatar</strong>: Three.js + Ready Player Me + TalkingHead.js</li>
+<li><strong>Emotion</strong>: Basic Component Process Model implementation</li>
+<li><strong>Personality</strong>: Big Five trait system with expression mapping</li>
 </ul>
 <h2 id="success-definition">Success Definition<a class="headerlink" href="#success-definition" title="Permanent link">&para;</a></h2>
 <p>User can have a 10-minute conversation where AICO:
-1. Remembers something from earlier in the conversation
-2. Asks a follow-up question unprompted
-3. Shows personality consistency
-4. Makes a relevant suggestion based on context</p>
+1. <strong>Memory</strong>: Remembers something from earlier in the conversation
+2. <strong>Agency</strong>: Asks a follow-up question unprompted and initiates new topics
+3. <strong>Personality</strong>: Shows consistent personality traits and communication style
+4. <strong>Emotion Recognition</strong>: Detects and responds appropriately to user's mood
+5. <strong>Emotion Expression</strong>: Displays appropriate avatar expressions and voice tone
+6. <strong>Voice Interaction</strong>: Seamlessly handles both text and voice input/output
+7. <strong>Contextual Intelligence</strong>: Makes relevant suggestions based on conversation context
+8. <strong>Proactive Engagement</strong>: Demonstrates curiosity and genuine interest in user responses</p>
 
 
 

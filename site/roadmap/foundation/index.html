@@ -1971,6 +1971,16 @@
       
         
       
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
     
     
     
@@ -2073,6 +2083,33 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#frontend-infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Frontend Infrastructure
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#development-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      Development Pipeline
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#infrastructure-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      Infrastructure Components
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#architecture-validation" class="md-nav__link">
     <span class="md-ellipsis">
       Architecture Validation
@@ -2112,6 +2149,121 @@
   
   <span class="md-ellipsis">
     MVP
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../confidante/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Confidante
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sidekick/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Sidekick
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../co_adventurer.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Co-Adventurer
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../embodied_presence.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Embodied Presence
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../community/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Community
     
   </span>
   
@@ -2166,60 +2318,216 @@
 <p>Foundation → MVP → PoCs → Feature Groups. For detailed feature descriptions, see <a href="../../architecture/architecture_overview/#system-features">Architecture</a>.</p>
 </div>
 <h1 id="foundation-roadmap">Foundation Roadmap<a class="headerlink" href="#foundation-roadmap" title="Permanent link">&para;</a></h1>
-<p>Build the infrastructure that makes AICO possible.</p>
+<p>Build the foundational system infrastructure that enables all AICO functionality. This creates the scaffolding and boilerplate for the entire system.</p>
 <h2 id="core-infrastructure">Core Infrastructure<a class="headerlink" href="#core-infrastructure" title="Permanent link">&para;</a></h2>
 <h3 id="message-bus">Message Bus<a class="headerlink" href="#message-bus" title="Permanent link">&para;</a></h3>
-<ul>
-<li>ZeroMQ-based topic-based pub/sub with JSON schemas</li>
-<li>Plugin lifecycle management</li>
-<li>Error recovery and monitoring</li>
-<li>Versioned message formats</li>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>ZeroMQ Setup</strong>: Core pub/sub message bus implementation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Topic Hierarchy</strong>: Standardized topic structure (emotion.<em>, personality.</em>, agency.*, etc.)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Message Envelope</strong>: JSON message format with metadata and validation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Schema Validation</strong>: JSON Schema validation for all message types</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Message Routing</strong>: Topic-based message routing and subscription management</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Error Handling</strong>: Message delivery guarantees and error recovery</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Performance</strong>: Handle 1000+ messages/second with &lt;100ms latency</li>
 </ul>
 <h3 id="plugin-system">Plugin System<a class="headerlink" href="#plugin-system" title="Permanent link">&para;</a></h3>
-<ul>
-<li>Hot-loading/unloading with isolation</li>
-<li>Permission-based access control</li>
-<li>Resource limits and monitoring</li>
-<li>Configuration validation</li>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Plugin Manager</strong>: Hot-loading/unloading with sandboxed execution</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Permission System</strong>: Topic-based access control for plugins</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Resource Monitoring</strong>: CPU/memory limits and monitoring for plugins</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Plugin API</strong>: Standardized plugin interface and lifecycle hooks</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Configuration Validation</strong>: Plugin config schema validation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Isolation</strong>: Process/thread isolation for plugin execution</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Lifecycle Management</strong>: Support 10+ concurrent plugins</li>
 </ul>
 <h3 id="service-layer">Service Layer<a class="headerlink" href="#service-layer" title="Permanent link">&para;</a></h3>
-<ul>
-<li>LLM abstraction (local/cloud)</li>
-<li>Memory service (episodic/semantic)</li>
-<li>Emotion state management</li>
-<li>Personality configuration</li>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Python Service</strong>: FastAPI-based backend service with proper project structure</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Service Management</strong>: Windows Service / Linux daemon / macOS LaunchAgent setup</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Configuration System</strong>: YAML/JSON config with environment variable support</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Logging Framework</strong>: Structured logging with rotation and levels</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Health Monitoring</strong>: Service health checks and status reporting</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Graceful Shutdown</strong>: Clean service restart without data loss</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>API Gateway</strong>: REST/WebSocket endpoints for frontend communication</li>
+</ul>
+<h3 id="data-layer">Data Layer<a class="headerlink" href="#data-layer" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>SQLite Setup</strong>: Local database with SQLCipher encryption</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Vector Store</strong>: ChromaDB integration for embeddings</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Schema Design</strong>: Database schema for memory, personality, and system data</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Migration System</strong>: Database schema versioning and migrations</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Backup/Restore</strong>: Data backup and recovery mechanisms</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Privacy Controls</strong>: Data encryption and access controls</li>
+</ul>
+<h3 id="resource-management">Resource Management<a class="headerlink" href="#resource-management" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Resource Monitor</strong>: CPU, memory, battery, and system load tracking</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Job Scheduler</strong>: Task queue with priority scheduling and idle detection</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Resource Policies</strong>: Configurable limits and throttling rules</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Background Processing</strong>: Pause/resume capabilities for non-critical tasks</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Battery Awareness</strong>: Reduced processing on battery power</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>User Activity Detection</strong>: Idle detection for opportunistic processing</li>
+</ul>
+<h2 id="frontend-infrastructure">Frontend Infrastructure<a class="headerlink" href="#frontend-infrastructure" title="Permanent link">&para;</a></h2>
+<h3 id="flutter-foundation">Flutter Foundation<a class="headerlink" href="#flutter-foundation" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Project Structure</strong>: Standard Flutter project with proper folder organization</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>State Management</strong>: Provider/Riverpod setup for app-wide state</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Navigation</strong>: Go Router for declarative routing and deep linking</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Theme System</strong>: Material 3 design system with dark/light mode support</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Responsive Design</strong>: Adaptive layouts for desktop, tablet, and mobile</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Platform Integration</strong>: Windows/macOS/Linux specific integrations</li>
+</ul>
+<h3 id="webview-avatar-integration">WebView Avatar Integration<a class="headerlink" href="#webview-avatar-integration" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>WebView Widget</strong>: Flutter WebView setup for avatar rendering</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>JavaScript Bridge</strong>: Bidirectional communication channels</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Three.js Foundation</strong>: Basic 3D scene setup with camera and lighting</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Ready Player Me</strong>: Avatar loading and customization pipeline</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>TalkingHead.js</strong>: Lip-sync and facial expression integration</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Performance Optimization</strong>: WebView memory management and optimization</li>
+</ul>
+<h3 id="api-client-foundation">API Client Foundation<a class="headerlink" href="#api-client-foundation" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>HTTP Client</strong>: Dio/http setup with authentication and error handling</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>WebSocket Client</strong>: Real-time bidirectional communication</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Connection Management</strong>: Auto-reconnection and offline handling</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Request/Response Models</strong>: Typed data models for API communication</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Error Handling</strong>: Standardized error handling and user feedback</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Caching</strong>: Local caching for offline functionality</li>
+</ul>
+<h2 id="development-pipeline">Development Pipeline<a class="headerlink" href="#development-pipeline" title="Permanent link">&para;</a></h2>
+<h3 id="build-system">Build System<a class="headerlink" href="#build-system" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Flutter Build</strong>: Cross-platform build configuration (Windows/macOS/Linux)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Python Packaging</strong>: Backend service packaging with dependencies</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Asset Management</strong>: Avatar models, voices, and other assets</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Environment Management</strong>: Dev/staging/production environment configs</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Dependency Management</strong>: Lock files and reproducible builds</li>
+</ul>
+<h3 id="testing-framework">Testing Framework<a class="headerlink" href="#testing-framework" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Unit Tests</strong>: Pytest for Python backend, Flutter test for frontend</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Integration Tests</strong>: End-to-end testing of message bus and API</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Performance Tests</strong>: Load testing for message throughput and latency</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>UI Tests</strong>: Flutter integration tests for user workflows</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Mock Services</strong>: Test doubles for LLM and external services</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Test Data</strong>: Fixtures and factories for consistent test data</li>
 </ul>
 <h3 id="development-tools">Development Tools<a class="headerlink" href="#development-tools" title="Permanent link">&para;</a></h3>
-<ul>
-<li>Plugin development kit</li>
-<li>Message debugging tools</li>
-<li>Performance monitoring</li>
-<li>Testing framework</li>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Message Inspector</strong>: Real-time message bus monitoring and debugging</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Performance Profiler</strong>: CPU/memory profiling for optimization</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Log Aggregation</strong>: Centralized logging with search and filtering</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Hot Reload</strong>: Development-time hot reload for rapid iteration</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>API Documentation</strong>: Auto-generated API docs with examples</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Plugin SDK</strong>: Development kit for third-party plugins</li>
+</ul>
+<h3 id="cicd-pipeline">CI/CD Pipeline<a class="headerlink" href="#cicd-pipeline" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>GitHub Actions</strong>: Automated testing and building</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Code Quality</strong>: Linting, formatting, and static analysis</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Security Scanning</strong>: Dependency vulnerability scanning</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Automated Testing</strong>: Full test suite execution on every commit</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Build Artifacts</strong>: Automated packaging and artifact generation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Release Management</strong>: Semantic versioning and release automation</li>
+</ul>
+<h2 id="infrastructure-components">Infrastructure Components<a class="headerlink" href="#infrastructure-components" title="Permanent link">&para;</a></h2>
+<h3 id="security-foundation">Security Foundation<a class="headerlink" href="#security-foundation" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Encryption</strong>: AES-256 encryption for sensitive data</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Authentication</strong>: Service-to-service authentication</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Authorization</strong>: Role-based access control for components</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Audit Logging</strong>: Security event logging and monitoring</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Privacy Controls</strong>: GDPR-compliant data handling</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Secure Communication</strong>: TLS for all network communication</li>
+</ul>
+<h3 id="monitoring-observability">Monitoring &amp; Observability<a class="headerlink" href="#monitoring-observability" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Metrics Collection</strong>: System performance and health metrics</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Error Tracking</strong>: Exception capture and reporting</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Performance Monitoring</strong>: Latency and throughput tracking</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Resource Usage</strong>: CPU, memory, and disk monitoring</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Alert System</strong>: Automated alerts for system issues</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Dashboard</strong>: Real-time system status dashboard</li>
+</ul>
+<h3 id="update-system">Update System<a class="headerlink" href="#update-system" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Update Orchestrator</strong>: Centralized update management in backend service</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Delta Updates</strong>: Efficient incremental updates with bandwidth optimization</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Signature Verification</strong>: Cryptographic update verification and authenticity</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Rollback Capability</strong>: Automatic rollback on update failure with one-click recovery</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Background Updates</strong>: Non-disruptive update installation and coordination</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Version Management</strong>: Multiple version support and compatibility checking</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Update Scheduling</strong>: User-controlled update timing and preferences</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Coordinated Updates</strong>: Sequential frontend/backend update management</li>
+</ul>
+<h3 id="core-module-foundations">Core Module Foundations<a class="headerlink" href="#core-module-foundations" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Module Base Classes</strong>: Standard module interface and lifecycle hooks</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Message Subscription</strong>: Standardized topic subscription and handler registration</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Module Configuration</strong>: YAML/JSON configuration with validation schemas</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Module Health Checks</strong>: Health monitoring and status reporting per module</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Module Isolation</strong>: Error isolation to prevent cascade failures</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Module Registry</strong>: Dynamic module discovery and dependency management</li>
 </ul>
 <h2 id="architecture-validation">Architecture Validation<a class="headerlink" href="#architecture-validation" title="Permanent link">&para;</a></h2>
 <h3 id="integration-tests">Integration Tests<a class="headerlink" href="#integration-tests" title="Permanent link">&para;</a></h3>
-<ul>
-<li>Plugin loading/unloading cycles</li>
-<li>Message throughput under load</li>
-<li>Memory consistency across restarts</li>
-<li>Cross-service communication</li>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Message Bus Load</strong>: 1000+ messages/second throughput</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Plugin Lifecycle</strong>: Loading/unloading 10+ concurrent plugins</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Service Restart</strong>: Graceful restart without data loss</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Cross-Component</strong>: End-to-end communication validation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Error Recovery</strong>: Fault tolerance and recovery testing</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Performance</strong>: Sub-100ms message latency validation</li>
 </ul>
 <h3 id="performance-benchmarks">Performance Benchmarks<a class="headerlink" href="#performance-benchmarks" title="Permanent link">&para;</a></h3>
-<ul>
-<li>Message latency &lt; 100ms</li>
-<li>Plugin startup &lt; 2s</li>
-<li>Memory usage growth &lt; 10MB/day</li>
-<li>CPU usage &lt; 5% idle</li>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Message Latency</strong>: &lt; 100ms end-to-end message processing</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Plugin Startup</strong>: &lt; 2s plugin initialization time</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory Growth</strong>: &lt; 10MB/day memory leak detection</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>CPU Usage</strong>: &lt; 5% idle system resource usage</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Startup Time</strong>: &lt; 10s full system initialization</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Response Time</strong>: &lt; 3s LLM response generation</li>
 </ul>
 <h2 id="foundation-complete-when">Foundation Complete When<a class="headerlink" href="#foundation-complete-when" title="Permanent link">&para;</a></h2>
+<h3 id="core-functionality">Core Functionality<a class="headerlink" href="#core-functionality" title="Permanent link">&para;</a></h3>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Message bus handles 1000+ messages/second</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Plugin system supports 10+ concurrent plugins</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Message bus handles 1000+ messages/second with &lt; 100ms latency</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Plugin system supports 10+ concurrent plugins with isolation</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Core services restart gracefully without data loss</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Development environment setup &lt; 5 minutes</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> All components work offline by default</li>
 </ul>
-<p>See <a href="../mvp/">MVP Roadmap</a> for the first user-facing companion.</p>
+<h3 id="developer-experience">Developer Experience<a class="headerlink" href="#developer-experience" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Complete test suite with &gt;80% code coverage</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Automated CI/CD pipeline with quality gates</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Comprehensive documentation with examples</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Plugin SDK with sample plugins</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Performance monitoring and debugging tools</li>
+</ul>
+<h3 id="system-integration">System Integration<a class="headerlink" href="#system-integration" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Flutter app communicates with backend via REST/WebSocket</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Avatar system renders in WebView with real-time updates</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Message bus routes messages between all core modules</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Resource monitor enforces CPU/memory/battery policies</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Plugin system supports hot-loading with proper isolation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Update system coordinates frontend/backend updates</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Encrypted local storage with backup/restore</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Cross-platform deployment (Windows/macOS/Linux)</li>
+</ul>
+<h3 id="architecture-compliance">Architecture Compliance<a class="headerlink" href="#architecture-compliance" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Message-Driven</strong>: All module communication via ZeroMQ pub/sub</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Modular Design</strong>: Independent modules with clear boundaries</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Loose Coupling</strong>: Modules only depend on message contracts</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Local-First</strong>: All core functionality works offline</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Privacy-First</strong>: Encryption and consent management operational</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Agency-Ready</strong>: Infrastructure supports autonomous behavior</li>
+</ul>
+<p>See <a href="../mvp/">MVP Roadmap</a> for the first user-facing companion features.</p>
 
 
 

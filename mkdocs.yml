@@ -176,6 +176,11 @@ nav:
   - Roadmap:
     - Foundation: roadmap/foundation.md
     - MVP: roadmap/mvp.md
+    - Confidante: roadmap/confidante.md
+    - Sidekick: roadmap/sidekick.md
+    - Co-Adventurer: roadmap/co_adventurer.md
+    - Embodied Presence: roadmap/embodied_presence.md
+    - Community: roadmap/community.md
   # Additional sections will be added as features are implemented:
   # - Features:
   # - API Reference:
