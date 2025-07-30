@@ -123,6 +123,7 @@ Check out [Contributing](docs/development/contributing.md) for more information.
 
 The [docs](https://boeni-industries.github.io/aico) are a work in progress, but they should give you a good overview of the project.
 
+---
 **Lead Maintainer:** Michael Böni ([boeni.industries](https://boeni.industries))  
 **Contact:** [michael@boeni.industries]
 
