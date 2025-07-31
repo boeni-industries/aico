@@ -57,9 +57,10 @@ AICO is being built with a comprehensive set of capabilities that work together 
 - Background learning and skill development during idle periods
 
 **🎭 Embodied Presence**
+- **Embodiment** is AICO's ability to manifest as a physical presence through avatars, voice, gestures, and spatial awareness across different devices and environments.
 - Photorealistic 3D avatars with Ready Player Me integration
 - Real-time lip-sync and facial expressions using TalkingHead.js
-- **Federated device roaming** - AICO seamlessly moves between your trusted devices via encrypted P2P mesh
+- **Federated device roaming** - AICO seamlessly transitions between devices while maintaining continuity of state, context, and capabilities
 - Multi-device presence (desktop, mobile, AR/VR) with zero-knowledge synchronization
 - Gesture recognition and spatial awareness for natural interaction
 - Smart home integration and IoT device coordination

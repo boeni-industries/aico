@@ -12,13 +12,13 @@
         <meta name="author" content="Michael Böni">
       
       
-        <link rel="canonical" href="https://boeni-industries.github.io/aico/roadmap/mvp/">
+        <link rel="canonical" href="https://boeni-industries.github.io/aico/architecture/data_federation/">
       
       
-        <link rel="prev" href="../foundation/">
+        <link rel="prev" href="../data_security/">
       
       
-        <link rel="next" href="../confidante/">
+        <link rel="next" href="../personality_sim/">
       
       
       <link rel="icon" href="../../assets/images/logo.png">
@@ -26,7 +26,7 @@
     
     
       
-        <title>MVP - AICO - AI Companion Project</title>
+        <title>Data Federation - AICO - AI Companion Project</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#mvp-roadmap" class="md-skip">
+        <a href="#data-federation" class="md-skip">
           Skip to content
         </a>
       
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              MVP
+              Data Federation
             
           </span>
         </div>
@@ -532,7 +532,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/architecture_overview/" class="md-nav__link">
+      <a href="../architecture_overview/" class="md-nav__link">
         
   
   
@@ -559,8 +559,10 @@
       
   
   
+    
   
   
+  
     
     
       
@@ -587,11 +589,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
@@ -607,7 +609,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             Core Infrastructure
@@ -621,7 +623,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/message_bus/" class="md-nav__link">
+      <a href="../message_bus/" class="md-nav__link">
         
   
   
@@ -713,7 +715,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/data_layer/" class="md-nav__link">
+      <a href="../data_layer/" class="md-nav__link">
         
   
   
@@ -736,7 +738,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/data_security/" class="md-nav__link">
+      <a href="../data_security/" class="md-nav__link">
         
   
   
@@ -756,10 +758,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../architecture/data_federation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Data Federation
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -770,6 +794,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#federated-device-network" class="md-nav__link">
+    <span class="md-ellipsis">
+      Federated Device Network
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      Core Principles
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      Key Components
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-timeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      Implementation Timeline
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security Considerations
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conclusion" class="md-nav__link">
+    <span class="md-ellipsis">
+      Conclusion
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -992,7 +1090,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/personality_sim/" class="md-nav__link">
+      <a href="../personality_sim/" class="md-nav__link">
         
   
   
@@ -1015,7 +1113,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/emotion_sim/" class="md-nav__link">
+      <a href="../emotion_sim/" class="md-nav__link">
         
   
   
@@ -1577,7 +1675,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/integration_msg/" class="md-nav__link">
+      <a href="../integration_msg/" class="md-nav__link">
         
   
   
@@ -1600,7 +1698,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/emotion_sim_msg/" class="md-nav__link">
+      <a href="../emotion_sim_msg/" class="md-nav__link">
         
   
   
@@ -1623,7 +1721,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/personality_sim_msg/" class="md-nav__link">
+      <a href="../personality_sim_msg/" class="md-nav__link">
         
   
   
@@ -1700,7 +1798,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/tech_stack/" class="md-nav__link">
+      <a href="../tech_stack/" class="md-nav__link">
         
   
   
@@ -2035,10 +2133,8 @@
       
   
   
-    
   
   
-  
     
     
       
@@ -2065,11 +2161,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" >
         
           
           <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="">
@@ -2085,7 +2181,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_15">
             <span class="md-nav__icon md-icon"></span>
             Roadmap
@@ -2099,7 +2195,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../foundation/" class="md-nav__link">
+      <a href="../../roadmap/foundation/" class="md-nav__link">
         
   
   
@@ -2119,32 +2215,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    MVP
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../roadmap/mvp/" class="md-nav__link">
         
   
   
@@ -2155,80 +2229,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#frontend-mvp" class="md-nav__link">
-    <span class="md-ellipsis">
-      Frontend MVP
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#backend-mvp" class="md-nav__link">
-    <span class="md-ellipsis">
-      Backend MVP
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#integration-points" class="md-nav__link">
-    <span class="md-ellipsis">
-      Integration Points
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#validation-criteria" class="md-nav__link">
-    <span class="md-ellipsis">
-      Validation Criteria
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#technical-requirements" class="md-nav__link">
-    <span class="md-ellipsis">
-      Technical Requirements
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#success-definition" class="md-nav__link">
-    <span class="md-ellipsis">
-      Success Definition
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2241,7 +2241,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../confidante/" class="md-nav__link">
+      <a href="../../roadmap/confidante/" class="md-nav__link">
         
   
   
@@ -2264,7 +2264,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../sidekick/" class="md-nav__link">
+      <a href="../../roadmap/sidekick/" class="md-nav__link">
         
   
   
@@ -2287,7 +2287,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../co_adventurer.md" class="md-nav__link">
+      <a href="../../roadmap/co_adventurer.md" class="md-nav__link">
         
   
   
@@ -2310,7 +2310,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../embodied_presence.md" class="md-nav__link">
+      <a href="../../roadmap/embodied_presence.md" class="md-nav__link">
         
   
   
@@ -2333,7 +2333,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../community/" class="md-nav__link">
+      <a href="../../roadmap/community/" class="md-nav__link">
         
   
   
@@ -2372,7 +2372,7 @@
 
 
   
-    <a href="https://github.com/boeni-industries/aico/edit/main/docs/roadmap/mvp.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/boeni-industries/aico/edit/main/docs/architecture/data_federation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2381,189 +2381,208 @@
     
       
     
-    <a href="https://github.com/boeni-industries/aico/raw/main/docs/roadmap/mvp.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/boeni-industries/aico/raw/main/docs/architecture/data_federation.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"/></svg>
     </a>
   
 
 
-<h1 id="mvp-roadmap">MVP Roadmap<a class="headerlink" href="#mvp-roadmap" title="Permanent link">&para;</a></h1>
-<p><strong>Goal</strong>: Basic companion that talks, remembers, and initiates.</p>
-<p><em>Builds on <a href="../foundation/">Foundation</a> infrastructure.</em></p>
-<h2 id="frontend-mvp">Frontend MVP<a class="headerlink" href="#frontend-mvp" title="Permanent link">&para;</a></h2>
-<h3 id="chat-interface">Chat Interface<a class="headerlink" href="#chat-interface" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Text Chat UI</strong>: Flutter chat interface with message bubbles</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Real-time Updates</strong>: WebSocket connection for live conversation</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Typing Indicators</strong>: Show when AICO is thinking/responding</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Message History</strong>: Scrollable conversation history</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>User Input</strong>: Text input with send button and enter key support</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Status Display</strong>: Connection status and AICO availability</li>
-</ul>
-<h3 id="voice-interaction">Voice Interaction<a class="headerlink" href="#voice-interaction" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Speech-to-Text</strong>: Local Whisper.cpp integration for voice input</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Text-to-Speech</strong>: Local Coqui/Piper for voice output</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Controls</strong>: Push-to-talk and voice activation</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Audio Processing</strong>: Noise reduction and audio quality optimization</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Settings</strong>: Voice selection, speed, and volume controls</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Multimodal Input</strong>: Seamless switching between text and voice</li>
-</ul>
-<h3 id="basic-avatar">Basic Avatar<a class="headerlink" href="#basic-avatar" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Simple Avatar</strong>: Basic 3D avatar in WebView (Ready Player Me)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Idle Animation</strong>: Basic breathing/blinking idle state</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Speaking Animation</strong>: Lip-sync during AICO responses</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Basic Emotions</strong>: Happy, neutral, thinking expressions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Avatar Controls</strong>: Mute/unmute, avatar on/off toggle</li>
-</ul>
-<h3 id="user-experience">User Experience<a class="headerlink" href="#user-experience" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Onboarding</strong>: Simple welcome flow and personality setup</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Settings</strong>: Basic preferences (name, avatar, personality sliders)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Offline Mode</strong>: Graceful degradation when backend unavailable</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Responsive Design</strong>: Works on desktop and mobile</li>
-</ul>
-<h2 id="backend-mvp">Backend MVP<a class="headerlink" href="#backend-mvp" title="Permanent link">&para;</a></h2>
-<h3 id="llm-integration">LLM Integration<a class="headerlink" href="#llm-integration" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Ollama Setup</strong>: Local LLM model management and inference</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Model Loading</strong>: Automatic model download and initialization</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Prompt Engineering</strong>: System prompts for personality and context</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Response Generation</strong>: Generate contextually appropriate responses</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Resource Management</strong>: CPU/memory monitoring for LLM operations</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Fallback Handling</strong>: Graceful degradation when LLM unavailable</li>
-</ul>
-<h3 id="memory-system">Memory System<a class="headerlink" href="#memory-system" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Conversation Memory</strong>: Store and retrieve conversation history</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>User Facts</strong>: Remember user preferences, interests, and details</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Context Retrieval</strong>: Find relevant past conversations</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory Consolidation</strong>: Summarize and organize long-term memories</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Semantic Search</strong>: Vector-based similarity search for memories</li>
-</ul>
-<h3 id="personality-engine">Personality Engine<a class="headerlink" href="#personality-engine" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Trait System</strong>: 5 core personality dimensions (Big Five subset)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Expression Mapping</strong>: Translate traits to communication style</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Consistency Validation</strong>: Ensure responses align with personality</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality Configuration</strong>: User-adjustable personality sliders</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Behavioral Parameters</strong>: Warmth, formality, curiosity, proactivity</li>
-</ul>
-<h3 id="emotion-recognition">Emotion Recognition<a class="headerlink" href="#emotion-recognition" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Text Sentiment</strong>: Natural language emotion understanding from user messages</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Analysis</strong>: Basic emotion detection from voice tone and patterns</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Behavioral Patterns</strong>: User mood and preference learning over time</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Context Awareness</strong>: Situational emotion understanding</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion History</strong>: Track user emotional patterns and trends</li>
-</ul>
-<h3 id="emotion-simulation">Emotion Simulation<a class="headerlink" href="#emotion-simulation" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Basic Appraisal</strong>: Simplified Component Process Model for emotion generation</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotional States</strong>: Core emotions (happy, sad, excited, calm, curious)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Expression Coordination</strong>: Sync emotions across avatar, voice, and text</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotional Memory</strong>: Remember emotional context of conversations</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Empathetic Responses</strong>: Generate emotionally appropriate reactions</li>
-</ul>
-<h3 id="basic-agency">Basic Agency<a class="headerlink" href="#basic-agency" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Initiative System</strong>: Proactive conversation starters and engagement</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Goal Generation</strong>: Simple self-formulated objectives (check-ins, learning)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Check-in Goals</strong>: Periodic user wellness and interest check-ins</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Suggestion Engine</strong>: Context-based activity and conversation suggestions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Follow-up Questions</strong>: Ask relevant follow-up questions unprompted</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Conversation Continuity</strong>: Reference and build on previous conversations</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Curiosity Expression</strong>: Show interest in user activities and responses</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Proactive Timing</strong>: Intelligent timing for initiatives (not intrusive)</li>
-</ul>
-<h3 id="core-services">Core Services<a class="headerlink" href="#core-services" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Chat API</strong>: REST endpoints for sending/receiving messages</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>WebSocket API</strong>: Real-time bidirectional communication</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory API</strong>: Store and retrieve user memories</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality API</strong>: Get/set personality configuration</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Status API</strong>: System health and availability status</li>
-</ul>
-<h2 id="integration-points">Integration Points<a class="headerlink" href="#integration-points" title="Permanent link">&para;</a></h2>
-<h3 id="message-bus-integration">Message Bus Integration<a class="headerlink" href="#message-bus-integration" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>LLM Module</strong>: Subscribe to conversation events, publish responses</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory Module</strong>: Subscribe to conversation events, publish memories</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality Module</strong>: Publish personality parameters and traits</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion Recognition Module</strong>: Subscribe to user input, publish detected emotions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion Simulation Module</strong>: Subscribe to events, publish AICO emotional states</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Agency Module</strong>: Subscribe to context and emotions, publish initiatives</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Module</strong>: Subscribe to TTS requests, publish audio responses</li>
-</ul>
-<h3 id="data-flow">Data Flow<a class="headerlink" href="#data-flow" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>User Input</strong>: Frontend → API → Message Bus → LLM/Emotion Recognition Modules</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory Storage</strong>: Conversation events → Memory Module → Database</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality Context</strong>: Personality Module → LLM Module prompts</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion Context</strong>: Emotion Recognition → Emotion Simulation → Expression</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Processing</strong>: Voice input → STT → LLM → TTS → Voice output</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Proactive Behavior</strong>: Agency Module → Frontend notifications</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Avatar Sync</strong>: Emotion states → Avatar expressions and animations</li>
-</ul>
-<h2 id="validation-criteria">Validation Criteria<a class="headerlink" href="#validation-criteria" title="Permanent link">&para;</a></h2>
-<h3 id="core-functionality">Core Functionality<a class="headerlink" href="#core-functionality" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Remembers user preferences across sessions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Initiates conversations without prompting (agency)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Shows consistent personality responses</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Recognizes and responds to user emotions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Expresses appropriate emotions through avatar and voice</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Works completely offline</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Responds within 3-5 seconds</li>
-</ul>
-<h3 id="user-experience_1">User Experience<a class="headerlink" href="#user-experience_1" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Smooth chat interface with real-time updates</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Voice interaction works seamlessly with text</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Avatar animations sync with conversation and emotions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Personality feels consistent and authentic</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Emotional responses feel natural and empathetic</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Proactive behavior feels natural, not intrusive</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Easy setup and configuration</li>
-</ul>
-<h3 id="emotional-intelligence">Emotional Intelligence<a class="headerlink" href="#emotional-intelligence" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Detects user mood from text and voice</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Responds empathetically to user emotions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Shows appropriate emotional expressions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Remembers emotional context of conversations</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Adapts communication style based on user mood</li>
-</ul>
-<h2 id="technical-requirements">Technical Requirements<a class="headerlink" href="#technical-requirements" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>Frontend</strong>: Flutter for cross-platform UI</li>
-<li><strong>Backend</strong>: Python with FastAPI for core services</li>
-<li><strong>LLM</strong>: Local Ollama instance (Llama 2 or similar)</li>
-<li><strong>Voice</strong>: Whisper.cpp (STT) + Coqui/Piper (TTS)</li>
-<li><strong>Storage</strong>: SQLite for memory, ChromaDB for embeddings</li>
-<li><strong>Message Bus</strong>: ZeroMQ pub/sub (from Foundation)</li>
-<li><strong>Avatar</strong>: Three.js + Ready Player Me + TalkingHead.js</li>
-<li><strong>Emotion</strong>: Basic Component Process Model implementation</li>
-<li><strong>Personality</strong>: Big Five trait system with expression mapping</li>
-</ul>
-<h2 id="success-definition">Success Definition<a class="headerlink" href="#success-definition" title="Permanent link">&para;</a></h2>
-<p>User can have a 10-minute conversation where AICO:
-1. <strong>Memory</strong>: Remembers something from earlier in the conversation
-2. <strong>Agency</strong>: Asks a follow-up question unprompted and initiates new topics
-3. <strong>Personality</strong>: Shows consistent personality traits and communication style
-4. <strong>Emotion Recognition</strong>: Detects and responds appropriately to user's mood
-5. <strong>Emotion Expression</strong>: Displays appropriate avatar expressions and voice tone
-6. <strong>Voice Interaction</strong>: Seamlessly handles both text and voice input/output
-7. <strong>Contextual Intelligence</strong>: Makes relevant suggestions based on conversation context
-8. <strong>Proactive Engagement</strong>: Demonstrates curiosity and genuine interest in user responses</p>
+<h1 id="data-federation">Data Federation<a class="headerlink" href="#data-federation" title="Permanent link">&para;</a></h1>
+<p>This document outlines AICO's federated device network architecture, which enables secure synchronization of user data across multiple trusted devices while maintaining privacy and local-first principles.</p>
+<h2 id="federated-device-network">Federated Device Network<a class="headerlink" href="#federated-device-network" title="Permanent link">&para;</a></h2>
+<p>AICO implements a privacy-preserving federated device network that allows the AI companion to seamlessly roam between a user's trusted devices:</p>
+<pre class="mermaid"><code>graph TD
+    A[User's Phone] &lt;--&gt;|P2P Encrypted Sync| B[User's Laptop]
+    A &lt;--&gt;|P2P Encrypted Sync| C[User's Tablet]
+    B &lt;--&gt;|P2P Encrypted Sync| C
+
+    A -.-&gt;|Fallback Only| D[Encrypted Cloud Relay]
+    B -.-&gt;|Fallback Only| D
+    C -.-&gt;|Fallback Only| D
+
+    classDef device fill:#663399,stroke:#9370DB,color:#fff
+    class A,B,C device
+    classDef cloud fill:#9370DB,stroke:#663399,color:#fff
+    class D cloud</code></pre>
+<h2 id="core-principles">Core Principles<a class="headerlink" href="#core-principles" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>P2P Encrypted Mesh</strong>: Direct device-to-device synchronization without intermediaries</li>
+<li><strong>Local Network Priority</strong>: Devices on the same network communicate directly</li>
+<li><strong>Zero-Knowledge Design</strong>: No external parties can access user data</li>
+<li><strong>Fallback Cloud Relay</strong>: Optional encrypted relay only when direct connection impossible</li>
+<li><strong>User Control</strong>: Complete user control over trusted devices and sync policies</li>
+</ol>
+<h2 id="key-components">Key Components<a class="headerlink" href="#key-components" title="Permanent link">&para;</a></h2>
+<h3 id="device-registry">Device Registry<a class="headerlink" href="#device-registry" title="Permanent link">&para;</a></h3>
+<p>The device registry manages trusted device information and is stored in the primary libSQL database:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Example device registry schema</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">CREATE</span> <span class="n">TABLE</span> <span class="n">device_registry</span> <span class="p">(</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">device_id</span> <span class="n">TEXT</span> <span class="n">PRIMARY</span> <span class="n">KEY</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">device_name</span> <span class="n">TEXT</span> <span class="n">NOT</span> <span class="n">NULL</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">device_type</span> <span class="n">TEXT</span> <span class="n">NOT</span> <span class="n">NULL</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">public_key</span> <span class="n">BLOB</span> <span class="n">NOT</span> <span class="n">NULL</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">last_seen</span> <span class="n">TIMESTAMP</span><span class="p">,</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">trust_level</span> <span class="n">INTEGER</span> <span class="n">NOT</span> <span class="n">NULL</span><span class="p">,</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">sync_policy</span> <span class="n">TEXT</span> <span class="n">NOT</span> <span class="n">NULL</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">);</span>
+</span></code></pre></div>
+<p><strong>Key Features</strong>:
+- Stored in libSQL for consistency with primary data layer
+- Manages trusted device information and relationships
+- Handles encryption keys and trust relationships
+- Supports device-specific sync policies</p>
+<h3 id="selective-sync">Selective Sync<a class="headerlink" href="#selective-sync" title="Permanent link">&para;</a></h3>
+<p>Different data types have different synchronization policies based on their importance and data characteristics:</p>
+<table>
+<thead>
+<tr>
+<th>Data Type</th>
+<th>Sync Priority</th>
+<th>Policy</th>
+<th>Database</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>User Profile</td>
+<td>High</td>
+<td>Immediate sync</td>
+<td>libSQL</td>
+</tr>
+<tr>
+<td>Conversation History</td>
+<td>Medium</td>
+<td>Configurable (Full/Summary)</td>
+<td>libSQL</td>
+</tr>
+<tr>
+<td>Personality Model</td>
+<td>High</td>
+<td>Full sync</td>
+<td>libSQL</td>
+</tr>
+<tr>
+<td>Vector Embeddings</td>
+<td>Low</td>
+<td>On-demand sync</td>
+<td>ChromaDB</td>
+</tr>
+<tr>
+<td>Analytics Data</td>
+<td>Low</td>
+<td>Periodic batch sync</td>
+<td>DuckDB</td>
+</tr>
+<tr>
+<td>Media Files</td>
+<td>Low</td>
+<td>Thumbnail only by default</td>
+<td>File system</td>
+</tr>
+<tr>
+<td>Cache Data</td>
+<td>None</td>
+<td>Local only</td>
+<td>RocksDB</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Sync Characteristics</strong>:
+- <strong>Different sync policies per database and data type</strong>
+- <strong>Prioritization of critical vs. non-critical data</strong>
+- <strong>Bandwidth-efficient delta synchronization</strong>
+- <strong>Configurable sync intervals and triggers</strong></p>
+<h3 id="p2p-encrypted-sync">P2P Encrypted Sync<a class="headerlink" href="#p2p-encrypted-sync" title="Permanent link">&para;</a></h3>
+<p>The federated sync mechanism implements secure peer-to-peer communication:</p>
+<ol>
+<li><strong>Device Discovery</strong>:</li>
+<li>Local network: mDNS/Bonjour for same-network devices</li>
+<li>Remote: DHT (Distributed Hash Table) for internet-based discovery</li>
+<li>
+<p>Fallback to encrypted relay when direct connection impossible</p>
+</li>
+<li>
+<p><strong>Authentication</strong>:</p>
+</li>
+<li>Mutual device authentication using public key cryptography</li>
+<li>Trust establishment through user verification</li>
+<li>
+<p>Device-specific encryption keys for secure channels</p>
+</li>
+<li>
+<p><strong>Data Transfer</strong>:</p>
+</li>
+<li><strong>End-to-end encryption for all synced data</strong></li>
+<li><strong>Direct device-to-device communication when possible</strong></li>
+<li><strong>Delta synchronization for bandwidth efficiency</strong></li>
+<li><strong>Resumable transfers for reliability</strong></li>
+<li>
+<p><strong>Fallback to encrypted relay when necessary</strong></p>
+</li>
+<li>
+<p><strong>Sync Protocol</strong>:</p>
+</li>
+<li>Merkle tree-based change detection</li>
+<li>Conflict-free replicated data types (CRDTs) where applicable</li>
+<li>Atomic transaction boundaries for consistency</li>
+</ol>
+<h3 id="conflict-resolution">Conflict Resolution<a class="headerlink" href="#conflict-resolution" title="Permanent link">&para;</a></h3>
+<p>AICO implements sophisticated conflict resolution strategies tailored to different data types:</p>
+<ol>
+<li><strong>Last-Writer-Wins</strong>: For simple preference and configuration data</li>
+<li>Timestamp-based resolution for simple conflicts</li>
+<li>
+<p>Used for user settings and device preferences</p>
+</li>
+<li>
+<p><strong>Semantic Merging</strong>: For complex structured data</p>
+</li>
+<li>Conversation history merging with chronological ordering</li>
+<li>Personality model updates with weighted averaging</li>
+<li>
+<p>Context-aware merging for relationship data</p>
+</li>
+<li>
+<p><strong>Vector Merging</strong>: For embedding and analytical data</p>
+</li>
+<li>Vector data merging with deduplication</li>
+<li>Similarity-based conflict detection</li>
+<li>
+<p>Automatic re-embedding for conflicted content</p>
+</li>
+<li>
+<p><strong>Manual Resolution</strong>: For critical conflicts</p>
+</li>
+<li>User notification for unresolvable conflicts</li>
+<li>Conflict queue with resolution interface</li>
+<li>Audit trail for all conflict resolutions</li>
+</ol>
+<h2 id="implementation-timeline">Implementation Timeline<a class="headerlink" href="#implementation-timeline" title="Permanent link">&para;</a></h2>
+<p>The federated device network will be implemented in phases:</p>
+<ol>
+<li><strong>MVP</strong>: Single device with local data only</li>
+<li><strong>Post-MVP</strong>: Add federated device network as an enhancement</li>
+<li><strong>Future</strong>: Advanced conflict resolution and offline operation</li>
+</ol>
+<h2 id="security-considerations">Security Considerations<a class="headerlink" href="#security-considerations" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Device Authorization</strong>: New devices require explicit user approval</li>
+<li><strong>Revocation</strong>: Compromised devices can be removed from trust network</li>
+<li><strong>Encryption</strong>: All synchronized data is encrypted with device-specific keys</li>
+<li><strong>Audit Trail</strong>: All sync operations are logged for transparency</li>
+</ol>
+<h2 id="conclusion">Conclusion<a class="headerlink" href="#conclusion" title="Permanent link">&para;</a></h2>
+<p>AICO's federated device network enables a seamless multi-device experience while maintaining the project's core privacy principles. By prioritizing direct P2P communication and implementing zero-knowledge encryption, users maintain complete control over their data while enjoying the convenience of a companion AI that follows them across devices.</p>
 
 
 
 
 
 
+
+  
+  
 
 
 

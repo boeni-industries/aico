@@ -12,13 +12,13 @@
         <meta name="author" content="Michael Böni">
       
       
-        <link rel="canonical" href="https://boeni-industries.github.io/aico/roadmap/mvp/">
+        <link rel="canonical" href="https://boeni-industries.github.io/aico/architecture/message_bus/">
       
       
-        <link rel="prev" href="../foundation/">
+        <link rel="prev" href="../architecture_overview/">
       
       
-        <link rel="next" href="../confidante/">
+        <link rel="next" href="../data_layer/">
       
       
       <link rel="icon" href="../../assets/images/logo.png">
@@ -26,7 +26,7 @@
     
     
       
-        <title>MVP - AICO - AI Companion Project</title>
+        <title>Message Bus - AICO - AI Companion Project</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#mvp-roadmap" class="md-skip">
+        <a href="#core-message-bus-architecture" class="md-skip">
           Skip to content
         </a>
       
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              MVP
+              Message Bus
             
           </span>
         </div>
@@ -532,7 +532,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/architecture_overview/" class="md-nav__link">
+      <a href="../architecture_overview/" class="md-nav__link">
         
   
   
@@ -559,8 +559,10 @@
       
   
   
+    
   
   
+  
     
     
       
@@ -587,11 +589,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
@@ -607,7 +609,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             Core Infrastructure
@@ -618,10 +620,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../architecture/message_bus/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Message Bus
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -632,6 +656,116 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      Design Principles
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#technical-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Technical Implementation
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#topic-hierarchy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Topic Hierarchy
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#module-integration-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      Module Integration Patterns
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plugin-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Plugin Integration
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-and-privacy-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security and Privacy Considerations
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Performance Considerations
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-and-debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      Monitoring and Debugging
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conclusion" class="md-nav__link">
+    <span class="md-ellipsis">
+      Conclusion
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -713,7 +847,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/data_layer/" class="md-nav__link">
+      <a href="../data_layer/" class="md-nav__link">
         
   
   
@@ -736,7 +870,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/data_security/" class="md-nav__link">
+      <a href="../data_security/" class="md-nav__link">
         
   
   
@@ -759,7 +893,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/data_federation/" class="md-nav__link">
+      <a href="../data_federation/" class="md-nav__link">
         
   
   
@@ -992,7 +1126,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/personality_sim/" class="md-nav__link">
+      <a href="../personality_sim/" class="md-nav__link">
         
   
   
@@ -1015,7 +1149,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/emotion_sim/" class="md-nav__link">
+      <a href="../emotion_sim/" class="md-nav__link">
         
   
   
@@ -1577,7 +1711,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/integration_msg/" class="md-nav__link">
+      <a href="../integration_msg/" class="md-nav__link">
         
   
   
@@ -1600,7 +1734,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/emotion_sim_msg/" class="md-nav__link">
+      <a href="../emotion_sim_msg/" class="md-nav__link">
         
   
   
@@ -1623,7 +1757,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/personality_sim_msg/" class="md-nav__link">
+      <a href="../personality_sim_msg/" class="md-nav__link">
         
   
   
@@ -1700,7 +1834,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/tech_stack/" class="md-nav__link">
+      <a href="../tech_stack/" class="md-nav__link">
         
   
   
@@ -2035,10 +2169,8 @@
       
   
   
-    
   
   
-  
     
     
       
@@ -2065,11 +2197,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" >
         
           
           <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="">
@@ -2085,7 +2217,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_15">
             <span class="md-nav__icon md-icon"></span>
             Roadmap
@@ -2099,7 +2231,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../foundation/" class="md-nav__link">
+      <a href="../../roadmap/foundation/" class="md-nav__link">
         
   
   
@@ -2119,32 +2251,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    MVP
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../roadmap/mvp/" class="md-nav__link">
         
   
   
@@ -2155,80 +2265,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#frontend-mvp" class="md-nav__link">
-    <span class="md-ellipsis">
-      Frontend MVP
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#backend-mvp" class="md-nav__link">
-    <span class="md-ellipsis">
-      Backend MVP
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#integration-points" class="md-nav__link">
-    <span class="md-ellipsis">
-      Integration Points
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#validation-criteria" class="md-nav__link">
-    <span class="md-ellipsis">
-      Validation Criteria
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#technical-requirements" class="md-nav__link">
-    <span class="md-ellipsis">
-      Technical Requirements
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#success-definition" class="md-nav__link">
-    <span class="md-ellipsis">
-      Success Definition
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2241,7 +2277,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../confidante/" class="md-nav__link">
+      <a href="../../roadmap/confidante/" class="md-nav__link">
         
   
   
@@ -2264,7 +2300,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../sidekick/" class="md-nav__link">
+      <a href="../../roadmap/sidekick/" class="md-nav__link">
         
   
   
@@ -2287,7 +2323,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../co_adventurer.md" class="md-nav__link">
+      <a href="../../roadmap/co_adventurer.md" class="md-nav__link">
         
   
   
@@ -2310,7 +2346,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../embodied_presence.md" class="md-nav__link">
+      <a href="../../roadmap/embodied_presence.md" class="md-nav__link">
         
   
   
@@ -2333,7 +2369,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../community/" class="md-nav__link">
+      <a href="../../roadmap/community/" class="md-nav__link">
         
   
   
@@ -2372,7 +2408,7 @@
 
 
   
-    <a href="https://github.com/boeni-industries/aico/edit/main/docs/roadmap/mvp.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/boeni-industries/aico/edit/main/docs/architecture/message_bus.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2381,183 +2417,311 @@
     
       
     
-    <a href="https://github.com/boeni-industries/aico/raw/main/docs/roadmap/mvp.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/boeni-industries/aico/raw/main/docs/architecture/message_bus.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"/></svg>
     </a>
   
 
 
-<h1 id="mvp-roadmap">MVP Roadmap<a class="headerlink" href="#mvp-roadmap" title="Permanent link">&para;</a></h1>
-<p><strong>Goal</strong>: Basic companion that talks, remembers, and initiates.</p>
-<p><em>Builds on <a href="../foundation/">Foundation</a> infrastructure.</em></p>
-<h2 id="frontend-mvp">Frontend MVP<a class="headerlink" href="#frontend-mvp" title="Permanent link">&para;</a></h2>
-<h3 id="chat-interface">Chat Interface<a class="headerlink" href="#chat-interface" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Text Chat UI</strong>: Flutter chat interface with message bubbles</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Real-time Updates</strong>: WebSocket connection for live conversation</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Typing Indicators</strong>: Show when AICO is thinking/responding</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Message History</strong>: Scrollable conversation history</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>User Input</strong>: Text input with send button and enter key support</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Status Display</strong>: Connection status and AICO availability</li>
-</ul>
-<h3 id="voice-interaction">Voice Interaction<a class="headerlink" href="#voice-interaction" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Speech-to-Text</strong>: Local Whisper.cpp integration for voice input</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Text-to-Speech</strong>: Local Coqui/Piper for voice output</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Controls</strong>: Push-to-talk and voice activation</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Audio Processing</strong>: Noise reduction and audio quality optimization</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Settings</strong>: Voice selection, speed, and volume controls</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Multimodal Input</strong>: Seamless switching between text and voice</li>
-</ul>
-<h3 id="basic-avatar">Basic Avatar<a class="headerlink" href="#basic-avatar" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Simple Avatar</strong>: Basic 3D avatar in WebView (Ready Player Me)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Idle Animation</strong>: Basic breathing/blinking idle state</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Speaking Animation</strong>: Lip-sync during AICO responses</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Basic Emotions</strong>: Happy, neutral, thinking expressions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Avatar Controls</strong>: Mute/unmute, avatar on/off toggle</li>
-</ul>
-<h3 id="user-experience">User Experience<a class="headerlink" href="#user-experience" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Onboarding</strong>: Simple welcome flow and personality setup</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Settings</strong>: Basic preferences (name, avatar, personality sliders)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Offline Mode</strong>: Graceful degradation when backend unavailable</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Responsive Design</strong>: Works on desktop and mobile</li>
-</ul>
-<h2 id="backend-mvp">Backend MVP<a class="headerlink" href="#backend-mvp" title="Permanent link">&para;</a></h2>
-<h3 id="llm-integration">LLM Integration<a class="headerlink" href="#llm-integration" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Ollama Setup</strong>: Local LLM model management and inference</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Model Loading</strong>: Automatic model download and initialization</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Prompt Engineering</strong>: System prompts for personality and context</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Response Generation</strong>: Generate contextually appropriate responses</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Resource Management</strong>: CPU/memory monitoring for LLM operations</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Fallback Handling</strong>: Graceful degradation when LLM unavailable</li>
-</ul>
-<h3 id="memory-system">Memory System<a class="headerlink" href="#memory-system" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Conversation Memory</strong>: Store and retrieve conversation history</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>User Facts</strong>: Remember user preferences, interests, and details</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Context Retrieval</strong>: Find relevant past conversations</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory Consolidation</strong>: Summarize and organize long-term memories</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Semantic Search</strong>: Vector-based similarity search for memories</li>
-</ul>
-<h3 id="personality-engine">Personality Engine<a class="headerlink" href="#personality-engine" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Trait System</strong>: 5 core personality dimensions (Big Five subset)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Expression Mapping</strong>: Translate traits to communication style</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Consistency Validation</strong>: Ensure responses align with personality</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality Configuration</strong>: User-adjustable personality sliders</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Behavioral Parameters</strong>: Warmth, formality, curiosity, proactivity</li>
-</ul>
-<h3 id="emotion-recognition">Emotion Recognition<a class="headerlink" href="#emotion-recognition" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Text Sentiment</strong>: Natural language emotion understanding from user messages</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Analysis</strong>: Basic emotion detection from voice tone and patterns</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Behavioral Patterns</strong>: User mood and preference learning over time</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Context Awareness</strong>: Situational emotion understanding</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion History</strong>: Track user emotional patterns and trends</li>
-</ul>
-<h3 id="emotion-simulation">Emotion Simulation<a class="headerlink" href="#emotion-simulation" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Basic Appraisal</strong>: Simplified Component Process Model for emotion generation</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotional States</strong>: Core emotions (happy, sad, excited, calm, curious)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Expression Coordination</strong>: Sync emotions across avatar, voice, and text</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotional Memory</strong>: Remember emotional context of conversations</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Empathetic Responses</strong>: Generate emotionally appropriate reactions</li>
-</ul>
-<h3 id="basic-agency">Basic Agency<a class="headerlink" href="#basic-agency" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Initiative System</strong>: Proactive conversation starters and engagement</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Goal Generation</strong>: Simple self-formulated objectives (check-ins, learning)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Check-in Goals</strong>: Periodic user wellness and interest check-ins</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Suggestion Engine</strong>: Context-based activity and conversation suggestions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Follow-up Questions</strong>: Ask relevant follow-up questions unprompted</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Conversation Continuity</strong>: Reference and build on previous conversations</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Curiosity Expression</strong>: Show interest in user activities and responses</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Proactive Timing</strong>: Intelligent timing for initiatives (not intrusive)</li>
-</ul>
-<h3 id="core-services">Core Services<a class="headerlink" href="#core-services" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Chat API</strong>: REST endpoints for sending/receiving messages</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>WebSocket API</strong>: Real-time bidirectional communication</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory API</strong>: Store and retrieve user memories</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality API</strong>: Get/set personality configuration</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Status API</strong>: System health and availability status</li>
-</ul>
-<h2 id="integration-points">Integration Points<a class="headerlink" href="#integration-points" title="Permanent link">&para;</a></h2>
-<h3 id="message-bus-integration">Message Bus Integration<a class="headerlink" href="#message-bus-integration" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>LLM Module</strong>: Subscribe to conversation events, publish responses</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory Module</strong>: Subscribe to conversation events, publish memories</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality Module</strong>: Publish personality parameters and traits</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion Recognition Module</strong>: Subscribe to user input, publish detected emotions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion Simulation Module</strong>: Subscribe to events, publish AICO emotional states</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Agency Module</strong>: Subscribe to context and emotions, publish initiatives</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Module</strong>: Subscribe to TTS requests, publish audio responses</li>
-</ul>
-<h3 id="data-flow">Data Flow<a class="headerlink" href="#data-flow" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>User Input</strong>: Frontend → API → Message Bus → LLM/Emotion Recognition Modules</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory Storage</strong>: Conversation events → Memory Module → Database</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality Context</strong>: Personality Module → LLM Module prompts</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion Context</strong>: Emotion Recognition → Emotion Simulation → Expression</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Processing</strong>: Voice input → STT → LLM → TTS → Voice output</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Proactive Behavior</strong>: Agency Module → Frontend notifications</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Avatar Sync</strong>: Emotion states → Avatar expressions and animations</li>
-</ul>
-<h2 id="validation-criteria">Validation Criteria<a class="headerlink" href="#validation-criteria" title="Permanent link">&para;</a></h2>
-<h3 id="core-functionality">Core Functionality<a class="headerlink" href="#core-functionality" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Remembers user preferences across sessions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Initiates conversations without prompting (agency)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Shows consistent personality responses</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Recognizes and responds to user emotions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Expresses appropriate emotions through avatar and voice</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Works completely offline</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Responds within 3-5 seconds</li>
-</ul>
-<h3 id="user-experience_1">User Experience<a class="headerlink" href="#user-experience_1" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Smooth chat interface with real-time updates</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Voice interaction works seamlessly with text</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Avatar animations sync with conversation and emotions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Personality feels consistent and authentic</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Emotional responses feel natural and empathetic</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Proactive behavior feels natural, not intrusive</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Easy setup and configuration</li>
-</ul>
-<h3 id="emotional-intelligence">Emotional Intelligence<a class="headerlink" href="#emotional-intelligence" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Detects user mood from text and voice</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Responds empathetically to user emotions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Shows appropriate emotional expressions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Remembers emotional context of conversations</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Adapts communication style based on user mood</li>
-</ul>
-<h2 id="technical-requirements">Technical Requirements<a class="headerlink" href="#technical-requirements" title="Permanent link">&para;</a></h2>
+<h1 id="core-message-bus-architecture">Core Message Bus Architecture<a class="headerlink" href="#core-message-bus-architecture" title="Permanent link">&para;</a></h1>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>The Core Message Bus is the central nervous system of AICO, enabling modular, event-driven communication between all system components. It implements a publish-subscribe (pub/sub) pattern that allows modules to communicate without direct dependencies, supporting AICO's core principles of modularity, autonomy, and extensibility.</p>
+<p>This architecture document describes the design, implementation, and integration patterns of AICO's central message bus system, which serves as the foundation for inter-module communication and coordination.</p>
+<h2 id="design-principles">Design Principles<a class="headerlink" href="#design-principles" title="Permanent link">&para;</a></h2>
+<p>The Core Message Bus architecture is built on the following key principles:</p>
+<h3 id="1-loose-coupling">1. Loose Coupling<a class="headerlink" href="#1-loose-coupling" title="Permanent link">&para;</a></h3>
+<p>Modules communicate exclusively through the message bus rather than direct method calls, enabling:
+- Independent development and testing of modules
+- Ability to replace or upgrade modules without affecting others
+- Simplified integration of new capabilities</p>
+<h3 id="2-event-driven-architecture">2. Event-Driven Architecture<a class="headerlink" href="#2-event-driven-architecture" title="Permanent link">&para;</a></h3>
+<p>The system operates on an event-driven paradigm where:
+- Modules publish events (messages) when state changes occur
+- Interested modules subscribe to relevant topics
+- Processing occurs asynchronously and reactively</p>
+<h3 id="3-standardized-communication">3. Standardized Communication<a class="headerlink" href="#3-standardized-communication" title="Permanent link">&para;</a></h3>
+<p>All messages follow a consistent envelope structure:
+<div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">&quot;message_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uuid-string&quot;</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2025-07-29T14:48:25.123Z&quot;</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;module-name&quot;</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nt">&quot;message_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;topic.subtopic&quot;</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1.0&quot;</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="nt">&quot;payload&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="c1">// Message-specific content</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">}</span>
+</span></code></pre></div></p>
+<h3 id="4-topic-based-routing">4. Topic-Based Routing<a class="headerlink" href="#4-topic-based-routing" title="Permanent link">&para;</a></h3>
+<p>Messages are organized in a hierarchical topic structure:
+- Primary category (e.g., <code>emotion</code>, <code>personality</code>, <code>agency</code>)
+- Subcategory (e.g., <code>state</code>, <code>expression</code>, <code>goals</code>)
+- Action/type (e.g., <code>current</code>, <code>update</code>, <code>request</code>)</p>
+<h3 id="5-versioned-message-formats">5. Versioned Message Formats<a class="headerlink" href="#5-versioned-message-formats" title="Permanent link">&para;</a></h3>
+<p>All message formats are explicitly versioned to enable:
+- Backward compatibility
+- Graceful evolution of the system
+- Support for multiple message format versions simultaneously</p>
+<h2 id="technical-implementation">Technical Implementation<a class="headerlink" href="#technical-implementation" title="Permanent link">&para;</a></h2>
+<h3 id="message-bus-technology">Message Bus Technology<a class="headerlink" href="#message-bus-technology" title="Permanent link">&para;</a></h3>
+<p>The Core Message Bus is implemented using <strong>ZeroMQ</strong> as the standard and only supported internal message bus for AICO.</p>
 <ul>
-<li><strong>Frontend</strong>: Flutter for cross-platform UI</li>
-<li><strong>Backend</strong>: Python with FastAPI for core services</li>
-<li><strong>LLM</strong>: Local Ollama instance (Llama 2 or similar)</li>
-<li><strong>Voice</strong>: Whisper.cpp (STT) + Coqui/Piper (TTS)</li>
-<li><strong>Storage</strong>: SQLite for memory, ChromaDB for embeddings</li>
-<li><strong>Message Bus</strong>: ZeroMQ pub/sub (from Foundation)</li>
-<li><strong>Avatar</strong>: Three.js + Ready Player Me + TalkingHead.js</li>
-<li><strong>Emotion</strong>: Basic Component Process Model implementation</li>
-<li><strong>Personality</strong>: Big Five trait system with expression mapping</li>
+<li>High-performance, asynchronous messaging library</li>
+<li>Lightweight and embedded within the application</li>
+<li>Supports multiple messaging patterns (pub/sub, request/reply)</li>
+<li>Provides reliable message delivery with minimal overhead</li>
 </ul>
-<h2 id="success-definition">Success Definition<a class="headerlink" href="#success-definition" title="Permanent link">&para;</a></h2>
-<p>User can have a 10-minute conversation where AICO:
-1. <strong>Memory</strong>: Remembers something from earlier in the conversation
-2. <strong>Agency</strong>: Asks a follow-up question unprompted and initiates new topics
-3. <strong>Personality</strong>: Shows consistent personality traits and communication style
-4. <strong>Emotion Recognition</strong>: Detects and responds appropriately to user's mood
-5. <strong>Emotion Expression</strong>: Displays appropriate avatar expressions and voice tone
-6. <strong>Voice Interaction</strong>: Seamlessly handles both text and voice input/output
-7. <strong>Contextual Intelligence</strong>: Makes relevant suggestions based on conversation context
-8. <strong>Proactive Engagement</strong>: Demonstrates curiosity and genuine interest in user responses</p>
+<p>ZeroMQ is chosen for its performance, flexibility, and suitability for all local and internal communication needs in AICO.</p>
+<h3 id="message-format">Message Format<a class="headerlink" href="#message-format" title="Permanent link">&para;</a></h3>
+<p>All messages use JSON for serialization, providing:
+- Human-readable format for debugging
+- Wide language and platform support
+- Flexible schema evolution
+- Native compatibility with web technologies</p>
+<h3 id="message-validation">Message Validation<a class="headerlink" href="#message-validation" title="Permanent link">&para;</a></h3>
+<p>Messages are validated against JSON Schema definitions to ensure:
+- Structural correctness
+- Type safety
+- Required fields presence
+- Version compatibility</p>
+<h2 id="topic-hierarchy">Topic Hierarchy<a class="headerlink" href="#topic-hierarchy" title="Permanent link">&para;</a></h2>
+<p>The message bus uses a hierarchical topic structure that organizes messages by functional domain and purpose:</p>
+<h3 id="core-domains">Core Domains<a class="headerlink" href="#core-domains" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>emotion.*</strong> - Emotion simulation related messages</li>
+<li><code>emotion.state.current</code> - Current emotional state</li>
+<li><code>emotion.state.update</code> - Emotional state changes</li>
+<li>
+<p><code>emotion.appraisal.event</code> - Emotional appraisal of events</p>
+</li>
+<li>
+<p><strong>personality.*</strong> - Personality simulation related messages</p>
+</li>
+<li><code>personality.state.current</code> - Current personality state</li>
+<li><code>personality.expression.communication</code> - Communication style parameters</li>
+<li><code>personality.expression.decision</code> - Decision-making parameters</li>
+<li>
+<p><code>personality.expression.emotional</code> - Emotional tendency parameters</p>
+</li>
+<li>
+<p><strong>agency.*</strong> - Autonomous agency related messages</p>
+</li>
+<li><code>agency.goals.current</code> - Current agent goals</li>
+<li><code>agency.initiative</code> - Proactive engagement initiatives</li>
+<li><code>agency.decision.request</code> - Decision-making requests</li>
+<li>
+<p><code>agency.decision.response</code> - Decision outcomes</p>
+</li>
+<li>
+<p><strong>conversation.*</strong> - Conversation and dialogue related messages</p>
+</li>
+<li><code>conversation.context</code> - Current conversation context</li>
+<li><code>conversation.history</code> - Historical conversation data</li>
+<li>
+<p><code>conversation.intent</code> - Detected user intents</p>
+</li>
+<li>
+<p><strong>memory.*</strong> - Memory and learning related messages</p>
+</li>
+<li><code>memory.store</code> - Memory storage requests</li>
+<li><code>memory.retrieve</code> - Memory retrieval requests/responses</li>
+<li>
+<p><code>memory.consolidation</code> - Consolidated memory data</p>
+</li>
+<li>
+<p><strong>user.*</strong> - User-related messages</p>
+</li>
+<li><code>user.interaction.history</code> - User interaction patterns</li>
+<li><code>user.feedback</code> - Explicit and implicit user feedback</li>
+<li>
+<p><code>user.state</code> - Inferred user state</p>
+</li>
+<li>
+<p><strong>llm.*</strong> - Large Language Model related messages</p>
+</li>
+<li><code>llm.conversation.events</code> - Conversation events from LLM</li>
+<li><code>llm.prompt.conditioning.request</code> - Requests for prompt conditioning</li>
+<li><code>llm.prompt.conditioning.response</code> - Prompt conditioning parameters</li>
+</ul>
+<h3 id="cross-cutting-concerns">Cross-Cutting Concerns<a class="headerlink" href="#cross-cutting-concerns" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>crisis.*</strong> - Crisis detection and handling</li>
+<li><code>crisis.detection</code> - Crisis signals and alerts</li>
+<li>
+<p><code>crisis.response</code> - Crisis response coordination</p>
+</li>
+<li>
+<p><strong>expression.*</strong> - Cross-modal expression coordination</p>
+</li>
+<li><code>expression.coordination</code> - Coordinated expression directives</li>
+<li>
+<p><code>expression.feedback</code> - Expression effectiveness feedback</p>
+</li>
+<li>
+<p><strong>learning.*</strong> - Shared learning coordination</p>
+</li>
+<li><code>learning.coordination</code> - Learning signals and coordination</li>
+<li><code>learning.feedback</code> - Learning effectiveness feedback</li>
+</ul>
+<h2 id="module-integration-patterns">Module Integration Patterns<a class="headerlink" href="#module-integration-patterns" title="Permanent link">&para;</a></h2>
+<h3 id="publisher-subscriber-pattern">Publisher-Subscriber Pattern<a class="headerlink" href="#publisher-subscriber-pattern" title="Permanent link">&para;</a></h3>
+<p>Modules interact with the message bus through a consistent pattern:</p>
+<ol>
+<li><strong>Initialization</strong>:</li>
+<li>Modules connect to the message bus on startup</li>
+<li>They declare topic subscriptions based on their functionality</li>
+<li>
+<p>They register message handlers for each subscribed topic</p>
+</li>
+<li>
+<p><strong>Message Publication</strong>:</p>
+</li>
+<li>Modules publish messages when their internal state changes</li>
+<li>Messages include standardized metadata and domain-specific payloads</li>
+<li>
+<p>Publication is non-blocking and asynchronous</p>
+</li>
+<li>
+<p><strong>Message Consumption</strong>:</p>
+</li>
+<li>Modules receive messages for their subscribed topics</li>
+<li>Message handlers process incoming messages</li>
+<li>Processing may trigger internal state changes or new message publications</li>
+</ol>
+<h3 id="example-emotion-personality-integration">Example: Emotion-Personality Integration<a class="headerlink" href="#example-emotion-personality-integration" title="Permanent link">&para;</a></h3>
+<p>The Emotion Simulation and Personality Simulation modules integrate through the message bus:</p>
+<ol>
+<li>Personality Simulation publishes <code>personality.expression.emotional</code> messages</li>
+<li>Emotion Simulation subscribes to these messages to adjust emotional tendencies</li>
+<li>Emotion Simulation publishes <code>emotion.state.current</code> messages</li>
+<li>Personality Simulation subscribes to these messages to inform personality expression</li>
+</ol>
+<p>This bidirectional communication happens without direct dependencies between the modules.</p>
+<h2 id="plugin-integration">Plugin Integration<a class="headerlink" href="#plugin-integration" title="Permanent link">&para;</a></h2>
+<p>The Plugin Manager mediates plugin access to the message bus:</p>
+<ol>
+<li><strong>Topic Access Control</strong>:</li>
+<li>Plugins request access to specific topics</li>
+<li>Plugin Manager enforces access policies based on plugin permissions</li>
+<li>
+<p>Unauthorized topic access attempts are blocked and logged</p>
+</li>
+<li>
+<p><strong>Message Validation</strong>:</p>
+</li>
+<li>All plugin-originated messages are validated before publication</li>
+<li>Malformed messages are rejected to prevent system instability</li>
+<li>
+<p>Message rate limiting prevents denial-of-service attacks</p>
+</li>
+<li>
+<p><strong>Sandboxed Publication</strong>:</p>
+</li>
+<li>Plugins publish through the Plugin Manager proxy</li>
+<li>Messages are tagged with plugin identity for traceability</li>
+<li>Plugin-specific topic prefixes isolate plugin messages</li>
+</ol>
+<h2 id="security-and-privacy-considerations">Security and Privacy Considerations<a class="headerlink" href="#security-and-privacy-considerations" title="Permanent link">&para;</a></h2>
+<h3 id="message-security">Message Security<a class="headerlink" href="#message-security" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Authentication</strong>:</li>
+<li>All modules authenticate to the message bus</li>
+<li>Unauthorized connections are rejected</li>
+<li>
+<p>Plugin authentication uses separate credentials</p>
+</li>
+<li>
+<p><strong>Authorization</strong>:</p>
+</li>
+<li>Topic-level access control limits which modules can publish/subscribe</li>
+<li>Sensitive topics have restricted access</li>
+<li>Plugin access is limited to approved topics</li>
+</ol>
+<h3 id="privacy-protection">Privacy Protection<a class="headerlink" href="#privacy-protection" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Data Minimization</strong>:</li>
+<li>Messages contain only necessary information</li>
+<li>Sensitive data is filtered before publication</li>
+<li>
+<p>User identifiers are anonymized where possible</p>
+</li>
+<li>
+<p><strong>Encryption</strong>:</p>
+</li>
+<li>Message payloads containing sensitive data are encrypted</li>
+<li>Transport-level encryption protects all message bus traffic</li>
+<li>Key rotation policies ensure long-term security</li>
+</ol>
+<h2 id="performance-considerations">Performance Considerations<a class="headerlink" href="#performance-considerations" title="Permanent link">&para;</a></h2>
+<h3 id="message-throughput">Message Throughput<a class="headerlink" href="#message-throughput" title="Permanent link">&para;</a></h3>
+<p>The message bus is designed to handle:
+- High-frequency emotional state updates
+- Real-time conversation events
+- Periodic memory consolidation
+- Burst traffic during multi-modal coordination</p>
+<h3 id="optimization-strategies">Optimization Strategies<a class="headerlink" href="#optimization-strategies" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Message Prioritization</strong>:</li>
+<li>Critical messages (e.g., crisis detection) receive higher priority</li>
+<li>
+<p>Non-time-sensitive messages may be queued during high load</p>
+</li>
+<li>
+<p><strong>Payload Optimization</strong>:</p>
+</li>
+<li>Large payloads may use compression</li>
+<li>References instead of full content where appropriate</li>
+<li>
+<p>Selective field inclusion for performance-critical paths</p>
+</li>
+<li>
+<p><strong>Subscription Optimization</strong>:</p>
+</li>
+<li>Fine-grained topic subscriptions to reduce unnecessary message processing</li>
+<li>Message filtering at the source when possible</li>
+<li>Local caching of frequently accessed message data</li>
+</ol>
+<h2 id="monitoring-and-debugging">Monitoring and Debugging<a class="headerlink" href="#monitoring-and-debugging" title="Permanent link">&para;</a></h2>
+<p>The message bus includes facilities for:</p>
+<ol>
+<li><strong>Message Tracing</strong>:</li>
+<li>Correlation IDs link related messages</li>
+<li>End-to-end tracing of message flows</li>
+<li>
+<p>Timing metrics for message processing</p>
+</li>
+<li>
+<p><strong>Traffic Monitoring</strong>:</p>
+</li>
+<li>Topic-level message volume metrics</li>
+<li>Latency measurements for critical paths</li>
+<li>
+<p>Queue depth monitoring for backpressure detection</p>
+</li>
+<li>
+<p><strong>Debugging Tools</strong>:</p>
+</li>
+<li>Message bus inspector for real-time monitoring</li>
+<li>Message replay capabilities for testing</li>
+<li>Topic subscription viewer to understand module connectivity</li>
+</ol>
+<h2 id="conclusion">Conclusion<a class="headerlink" href="#conclusion" title="Permanent link">&para;</a></h2>
+<p>The Core Message Bus architecture is fundamental to AICO's modular, event-driven design. It enables:</p>
+<ul>
+<li><strong>Modularity</strong>: Components can be developed, tested, and deployed independently</li>
+<li><strong>Extensibility</strong>: New modules and plugins can be integrated without modifying existing code</li>
+<li><strong>Resilience</strong>: Failures in one module don't cascade to others</li>
+<li><strong>Adaptability</strong>: The system can evolve through versioned message formats</li>
+<li><strong>Autonomy</strong>: Modules can operate independently based on events</li>
+</ul>
+<p>By providing a standardized communication backbone, the message bus facilitates the complex interactions required for AICO's proactive agency, emotional presence, personality consistency, and multi-modal embodiment.</p>
+<p>For specific message formats used by individual modules, refer to the respective message format documentation:
+- Emotion Simulation: <a href="../emotion_sim_msg/">emotion_sim_msg.md</a>
+- Personality Simulation: <a href="../personality_sim_msg/">personality_sim_msg.md</a>
+- Integration Messages: <a href="../integration_msg/">integration_msg.md</a></p>
 
 
 

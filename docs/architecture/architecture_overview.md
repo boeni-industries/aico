@@ -53,12 +53,15 @@ AICO's features are organized into logical modules for development and deploymen
 - **Empathetic Responses**: Emotion-appropriate reaction generation
 
 ### 🎭 Embodiment & Presence
+
+**Embodiment** is AICO's ability to manifest as a physical presence through avatars, voice, gestures, and spatial awareness across different devices and environments.
+
 - **Avatar System**: Visual representation and animation
 - **Gesture Recognition**: Body language understanding
 - **Spatial Awareness**: Environmental context understanding
 - **Physical Presence**: Desktop, mobile, or projected embodiment
 - **AR/VR Integration**: Immersive interaction capabilities
-- **Federated Device Roaming**: P2P encrypted synchronization between trusted devices
+- **Federated Device Roaming**: AICO's ability to seamlessly transition between devices while maintaining continuity of state, context, and capabilities
 - **Multi-device Sync**: Zero-knowledge presence coordination across devices
 
 ### 🔒 Privacy & Security

@@ -4,19 +4,19 @@ title: Data Security
 
 # Data Security
 
-This document details AICO's data security architecture, which implements a comprehensive approach to protecting user data both at rest and in transit.
+This document details AICO's data security architecture, focusing specifically on protecting user data both at rest and in transit.
 
-## Security Overview
+## Data Security Overview
 
-AICO implements a privacy-first security model with multiple layers of protection:
+AICO implements a privacy-first data security model with multiple layers of protection:
 
 ```mermaid
 flowchart TD
-    A[User Data] --> B[Encryption at Rest]
-    A --> C[Encryption in Transit]
-    B --> D[Access Control]
+    A[User Data] --> B[Database Encryption]
+    A --> C[Application-level Encryption]
+    B --> D[Key Management]
     C --> D
-    D --> E[Audit Logging]
+    D --> E[Data Access Control]
     
     classDef security fill:#663399,stroke:#9370DB,color:#fff
     class A,B,C,D,E security
@@ -26,150 +26,233 @@ flowchart TD
 
 ### Encryption Strategy
 
-AICO employs database-specific encryption strategies to protect all stored data:
+AICO employs filesystem-level transparent encryption using gocryptfs to protect all stored data without imposing functionality restrictions on databases:
 
-1. **libSQL (Primary Storage)**
-   - **Encryption**: AES-256 encryption via SQLCipher integration
-   - **Key Management**: User-controlled encryption keys derived from master password
-   - **Implementation**:
-     ```python
-     # Example libSQL encryption setup
-     import libsql_client
-     
-     # User-derived encryption key (PBKDF2 with high iteration count)
-     encryption_key = derive_key_from_password(user_password)
-     
-     # Connect with encryption
-     db = libsql_client.connect(
-         url="file:aico.db",
-         encryption_key=encryption_key
-     )
-     ```
+#### Filesystem-Level Encryption with gocryptfs
 
-2. **ChromaDB (Vector Database)**
-   - **Encryption**: Application-level encryption of embeddings and documents
-   - **Implementation**:
-     ```python
-     # Example ChromaDB with encrypted storage
-     import chromadb
-     from cryptography.fernet import Fernet
-     
-     # Initialize encryption
-     encryption_key = Fernet.generate_key() if new_user else get_user_key()
-     cipher = Fernet(encryption_key)
-     
-     # Store with encryption
-     encrypted_embedding = cipher.encrypt(embedding_bytes)
-     encrypted_document = cipher.encrypt(document_bytes.encode())
-     
-     # Store encrypted data
-     collection.add(
-         ids=[doc_id],
-         embeddings=[encrypted_embedding],
-         documents=[encrypted_document]
-     )
-     ```
+- **Approach**: Transparent filesystem encryption that secures all database files at rest
+- **Encryption**: AES-256-GCM authenticated encryption with per-file random IVs
+- **Security Features**:
+  - Forward secrecy with scrypt key derivation
+  - File name encryption to prevent metadata leakage
+  - Authenticated encryption to detect tampering
 
-3. **DuckDB (Analytics)**
-   - **Encryption**: File-level encryption of database files
-   - **Implementation**: Transparent file encryption using platform-specific secure storage APIs
+- **Implementation**:
+  ```python
+  # Python wrapper for gocryptfs mounting
+  import subprocess
+  import os
+  import getpass
+  
+  class SecureStorage:
+      def __init__(self, encrypted_dir, mount_point):
+          self.encrypted_dir = encrypted_dir
+          self.mount_point = mount_point
+          self.mounted = False
+          
+      def initialize(self, password=None):
+          """Initialize a new encrypted filesystem if not exists"""
+          if not os.path.exists(self.encrypted_dir):
+              os.makedirs(self.encrypted_dir)
+              
+          if not os.listdir(self.encrypted_dir):  # Empty dir = not initialized
+              if password is None:
+                  password = getpass.getpass("Enter encryption password: ")
+                  
+              # Initialize gocryptfs with secure defaults
+              proc = subprocess.Popen(
+                  ["gocryptfs", "-init", self.encrypted_dir],
+                  stdin=subprocess.PIPE, stdout=subprocess.PIPE
+              )
+              proc.communicate(input=password.encode())
+              return True
+          return False
+              
+      def mount(self, password=None):
+          """Mount the encrypted filesystem"""
+          if not os.path.exists(self.mount_point):
+              os.makedirs(self.mount_point)
+              
+          if password is None:
+              password = getpass.getpass("Enter encryption password: ")
+              
+          # Mount with idle timeout for security (auto unmount after inactivity)
+          proc = subprocess.Popen(
+              ["gocryptfs", "-idle", "30m", self.encrypted_dir, self.mount_point],
+              stdin=subprocess.PIPE, stdout=subprocess.PIPE
+          )
+          proc.communicate(input=password.encode())
+          self.mounted = True
+          
+      def unmount(self):
+          """Unmount the encrypted filesystem"""
+          if self.mounted:
+              subprocess.run(["fusermount", "-u", self.mount_point])
+              self.mounted = False
+  ```
 
-4. **RocksDB (Key-Value Cache)**
-   - **Encryption**: Value encryption for sensitive cached data
-   - **Implementation**: Selective encryption of sensitive values before storage
+#### Database Directory Structure
+
+```
+/path/to/aico/
+├── encrypted/           # Encrypted container (gocryptfs)
+└── databases/           # Mount point where databases are accessed
+    ├── libsql/          # Primary database
+    ├── chroma/          # Vector database
+    ├── duckdb/          # Analytics database
+    └── rocksdb/         # Key-value cache
+```
+
+#### Advantages of Filesystem-Level Encryption
+
+1. **Zero Functionality Restrictions**:
+   - Databases operate with full feature sets and native performance
+   - No need to modify database code or implement application-level encryption
+   - All database features work without modification
+
+2. **Unified Security Model**:
+   - Single encryption layer protects all databases consistently
+   - Simplifies security auditing and compliance
+   - Reduces risk of implementation errors in database-specific encryption
+
+3. **Cross-Platform Support**:
+   - Works on all platforms with "Full" backend support
+   - Compatible with all backend deployment targets (Linux, macOS, Windows via FUSE)
+
+4. **Performance Efficiency**:
+   - Minimal overhead compared to application-level encryption
+   - Efficient for both high-performance desktops and resource-constrained devices
+   - Avoids double encryption overhead
 
 ### Key Management
 
-AICO implements a hierarchical key management system:
+AICO implements a unified key management approach with gocryptfs, using Argon2id as the key derivation function:
 
-1. **Master Key**: Derived from user password using Argon2id with high memory and iteration parameters
-2. **Database Keys**: Unique keys for each database derived from the master key
-3. **Key Rotation**: Support for periodic key rotation without data re-encryption
-4. **Key Storage**: Master key never stored, only derived when needed
+#### Key Derivation with Argon2id
 
-## Data in Transit Security
+Argon2id is used as the primary key derivation function for all security contexts:
 
-### Local Communication
+```python
+from cryptography.hazmat.primitives.kdf.argon2 import Argon2
+import os
+import keyring
 
-For communication between AICO components on the same device:
+class AICOKeyManager:
+    def __init__(self):
+        self.service_name = "AICO"
+        
+    def derive_master_key(self, password, salt=None):
+        """Derive master key using Argon2id with high security parameters"""
+        salt = salt or os.urandom(16)
+        # High security parameters for master key
+        argon2 = Argon2(
+            salt=salt,
+            time_cost=3,           # Iterations
+            memory_cost=1048576,   # 1GB in KB
+            parallelism=4,         # 4 threads
+            hash_len=32,           # 256-bit key
+            type=2                 # Argon2id
+        )
+        key = argon2.derive(password.encode())
+        return key, salt
+        
+    def derive_gocryptfs_key(self, master_key, salt=None):
+        """Derive gocryptfs-specific key from master key"""
+        salt = salt or os.urandom(16)
+        # Balanced parameters for file encryption
+        argon2 = Argon2(
+            salt=salt,
+            time_cost=2,           # Iterations
+            memory_cost=262144,    # 256MB in KB
+            parallelism=2,         # 2 threads
+            hash_len=32,           # 256-bit key
+            type=2                 # Argon2id
+        )
+        # Derive using master key + purpose identifier
+        context = master_key + b"gocryptfs-filesystem"
+        key = argon2.derive(context)
+        return key, salt
+```
 
-1. **Message Bus Security**:
-   - **ZeroMQ with CurveZMQ**: Elliptic curve cryptography for all internal communication
-   - **Authentication**: Certificate-based peer authentication
-   - **Implementation**:
-     ```python
-     # Example secure ZeroMQ setup
-     import zmq
-     from zmq.auth.thread import ThreadAuthenticator
-     
-     # Set up authentication
-     context = zmq.Context()
-     auth = ThreadAuthenticator(context)
-     auth.start()
-     auth.configure_curve(domain='*', location=zmq.auth.CURVE_ALLOW_ANY)
-     
-     # Server socket with curve security
-     server = context.socket(zmq.PUB)
-     server_public, server_secret = zmq.curve_keypair()
-     server.curve_publickey = server_public
-     server.curve_secretkey = server_secret
-     server.curve_server = True
-     ```
+#### Key Management Process
 
-### Remote Communication
+1. **Master Password**: User-provided master password is the root of trust
+   - Never stored, only used transiently during key derivation
 
-For federated device synchronization:
+2. **Key Derivation**: Argon2id key derivation with context-specific parameters
+   - Master key: 1GB memory, 3 iterations, 4 threads
+   - File encryption: 256MB memory, 2 iterations, 2 threads
+   - Authentication: 64MB memory, 1 iteration, 1 thread
 
-1. **End-to-End Encryption**:
-   - **Protocol**: TLS 1.3 with strong cipher suites
-   - **Certificate Pinning**: Prevents man-in-the-middle attacks
-   - **Perfect Forward Secrecy**: Ensures past communications remain secure
+3. **Secure Storage**: Derived keys securely stored using platform-specific mechanisms:
+   - macOS: Keychain
+   - Windows: Windows Credential Manager
+   - Linux: Secret Service API / GNOME Keyring
+   - Mobile: Secure Enclave (iOS) / Keystore (Android)
 
-2. **API Gateway Security**:
-   - **Authentication**: Zero-knowledge proof authentication
-   - **Rate Limiting**: Prevents brute force attacks
-   - **Request Validation**: Strict schema validation for all requests
+4. **Biometric Unlock**: Optional biometric authentication for accessing the encryption key
+   - Integrates with platform biometric APIs
+   - Falls back to master password when biometrics unavailable
 
-## Access Control
+5. **Automatic Mounting**: Zero-effort security with automatic mounting during application startup
+   - Retrieves keys from secure storage
+   - Mounts encrypted filesystem transparently
 
-AICO implements a fine-grained permission system:
+For complete details on the overall key management system, see [Security Architecture](security_layer.md).
 
-1. **Permission Levels**:
-   - **System**: Core system operations
-   - **User Data**: Personal user information
-   - **Plugin**: Third-party plugin access
+## Data Synchronization Security
 
-2. **Consent Management**:
-   - Explicit user consent required for all data access
-   - Granular permission control for each data category
-   - Time-limited access grants with automatic expiration
+When data is synchronized between devices during roaming:
 
-## Audit and Monitoring
+1. **Selective Sync Encryption**:
+   - End-to-end encrypted data transfer between trusted devices
+   - Encrypted database snapshots for initial synchronization
+   - Incremental encrypted updates for ongoing synchronization
 
-Security events are logged and monitored:
+2. **Sync Protocol Security**:
+   - Authenticated and encrypted channels for all data transfers
+   - Cryptographic verification of data integrity during sync
+   - Version vectors for conflict detection and resolution
 
-1. **Audit Logging**:
-   - All data access events recorded
-   - Encryption/decryption operations logged
-   - Authentication attempts tracked
+## Data Access Control
 
-2. **Anomaly Detection**:
-   - Unusual access patterns flagged
-   - Multiple authentication failures trigger alerts
+AICO implements fine-grained data access controls:
 
-## Security Testing
+1. **Data Classification**:
+   - **Personal Data**: User conversations, preferences, and personal information
+   - **System Data**: Configuration, logs, and operational data
+   - **Derived Data**: AI-generated insights and analytics
 
-AICO's security is regularly validated through:
+2. **Data Access Policies**:
+   - Module-specific data access permissions
+   - Explicit data access logging for all sensitive operations
+   - Data minimization principles applied to all access requests
 
-1. **Automated Testing**:
-   - Regular penetration testing
-   - Fuzzing of input validation
-   - Encryption verification tests
+## Data Privacy Features
 
-2. **Code Review**:
-   - Security-focused code reviews
-   - Dependency vulnerability scanning
+1. **Data Minimization**:
+   - Only essential data is collected and stored
+   - Automatic data pruning based on relevance and age
+   - Privacy-preserving analytics with differential privacy techniques
 
-## Conclusion
+2. **User Data Control**:
+   - Data export functionality for all user data
+   - Selective data deletion capabilities
+   - Transparency tools showing what data is stored and how it's used
 
-AICO's multi-layered security approach ensures user data remains protected throughout its lifecycle. The combination of strong encryption, secure communication channels, and rigorous access controls implements the project's privacy-first philosophy at the technical level.
+## Data Security for Roaming Scenarios
+
+AICO's data security adapts to different roaming patterns, maintaining security while supporting both coupled and detached deployment models:
+
+1. **Coupled Roaming Security**:
+   - Complete encrypted filesystem moves with the application
+   - gocryptfs container transferred securely between devices
+   - Master key securely synchronized via platform-specific secure storage
+   - Zero-effort security maintained across device transitions
+
+2. **Detached Roaming Security**:
+   - Backend maintains the gocryptfs encrypted container
+   - Frontend accesses data via secure API with end-to-end encryption
+   - Mutual TLS authentication between frontend and backend
+   - Secure WebSocket or gRPC channels with forward secrecy
+   - Lightweight frontend devices operate without needing local encryption capabilities

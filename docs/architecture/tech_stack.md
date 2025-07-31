@@ -66,8 +66,11 @@ AICO employs a specialized multi-database architecture optimized for local-first
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **libSQL Encryption** | Database encryption | Built-in encryption for primary storage |
-| **AES-256** | Data encryption | Industry standard encryption |
+| **gocryptfs** | Filesystem-level encryption | Transparent encryption for all database files with zero functionality loss |
+| **AES-256-GCM** | Authenticated encryption | Industry standard encryption with integrity verification |
+| **Argon2id** | Key derivation | Industry-leading memory-hard KDF, winner of Password Hashing Competition |
+| **Python-Cryptography** | Cryptographic library | Comprehensive, well-maintained cryptographic primitives with Argon2id support |
+| **Platform Key Storage** | Secure key management | OS-native secure storage (Keychain, Credential Manager, Secret Service) |
 | **Homomorphic Encryption** | Privacy-preserving computation | Compute on encrypted data |
 | **Differential Privacy** | Statistical privacy | Privacy-preserving analytics |
 | **Zero-Knowledge Proofs** | Authentication | Verify without revealing data |
