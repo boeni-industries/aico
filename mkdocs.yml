@@ -132,10 +132,13 @@ nav:
   - Architecture:
       - Overview: architecture/architecture_overview.md
   - Core Infrastructure:
-    - Message Bus: architecture/core_message_bus.md
+    - Message Bus: architecture/message_bus.md
     - Plugin Manager: '#'
     - API Gateway: '#'
     - Update System: '#'
+    - Data Layer: architecture/data_layer.md
+    - Data Security: architecture/data_security.md
+    - Data Federation: architecture/data_federation.md
   - Autonomous Agency:
     - Goal System: '#'
     - Planning System: '#'
@@ -173,7 +176,14 @@ nav:
       - Personality Definition: concepts/personality/personality_definition.md
   - Development:
     - Contributing: development/contributing.md
-    - Roadmap: roadmap/development_roadmap.md
+  - Roadmap:
+    - Foundation: roadmap/foundation.md
+    - MVP: roadmap/mvp.md
+    - Confidante: roadmap/confidante.md
+    - Sidekick: roadmap/sidekick.md
+    - Co-Adventurer: roadmap/co_adventurer.md
+    - Embodied Presence: roadmap/embodied_presence.md
+    - Community: roadmap/community.md
   # Additional sections will be added as features are implemented:
   # - Features:
   # - API Reference:

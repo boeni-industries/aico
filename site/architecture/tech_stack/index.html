@@ -572,6 +572,8 @@
       
         
       
+        
+      
     
     
     
@@ -690,6 +692,29 @@
   
   <span class="md-ellipsis">
     Update System
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../core_data_layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Layer
     
   </span>
   
@@ -2006,8 +2031,6 @@
       
         
       
-        
-      
     
     
     
@@ -2067,6 +2090,72 @@
 
               
             
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" >
+        
+          
+          <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Roadmap
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_15">
+            <span class="md-nav__icon md-icon"></span>
+            Roadmap
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
               
                 
   
@@ -2074,12 +2163,150 @@
   
   
     <li class="md-nav__item">
-      <a href="../../roadmap/development_roadmap/" class="md-nav__link">
+      <a href="../../roadmap/foundation/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    Roadmap
+    Foundation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/mvp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    MVP
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/confidante/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Confidante
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/sidekick/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Sidekick
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/co_adventurer.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Co-Adventurer
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/embodied_presence.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Embodied Presence
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/community/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Community
     
   </span>
   
@@ -2266,6 +2493,7 @@
 </tbody>
 </table>
 <h2 id="data-storage-layer">Data &amp; Storage Layer<a class="headerlink" href="#data-storage-layer" title="Permanent link">&para;</a></h2>
+<p>AICO employs a specialized multi-database architecture optimized for local-first operation. See <a href="../core_data_layer/">Core Data Layer</a> for comprehensive details.</p>
 <table>
 <thead>
 <tr>
@@ -2276,39 +2504,34 @@
 </thead>
 <tbody>
 <tr>
-<td><strong>SQLite</strong></td>
-<td>Local database</td>
-<td>Embedded, reliable, cross-platform</td>
+<td><strong>libSQL</strong></td>
+<td>Primary storage</td>
+<td>Modern SQLite fork with encryption, improved concurrency, and vector extensions</td>
 </tr>
 <tr>
 <td><strong>DuckDB</strong></td>
-<td>Analytical queries</td>
-<td>Fast in-process analytical database</td>
+<td>Analytical engine</td>
+<td>Columnar storage for efficient OLAP workloads and complex analytics</td>
 </tr>
 <tr>
 <td><strong>ChromaDB</strong></td>
 <td>Vector database</td>
-<td>Efficient embedding storage and similarity search</td>
+<td>Embedded vector storage with document metadata and similarity search</td>
 </tr>
 <tr>
-<td><strong>Qdrant</strong></td>
-<td>Vector database</td>
-<td>Alternative for larger-scale vector operations</td>
-</tr>
-<tr>
-<td><strong>FAISS</strong></td>
-<td>Vector similarity</td>
-<td>Fast similarity search for embeddings</td>
-</tr>
-<tr>
-<td><strong>LiteFS</strong></td>
-<td>Replication</td>
-<td>Optional multi-device synchronization</td>
+<td><strong>RocksDB</strong></td>
+<td>Key-value store (optional)</td>
+<td>Ultra-fast access for performance-critical paths and caching</td>
 </tr>
 <tr>
 <td><strong>Sentence Transformers</strong></td>
 <td>Embedding generation</td>
-<td>Efficient text embedding models</td>
+<td>Efficient text embedding models for semantic understanding</td>
+</tr>
+<tr>
+<td><strong>P2P Sync Protocol</strong></td>
+<td>Federated device sync</td>
+<td>Custom protocol for secure device-to-device synchronization</td>
 </tr>
 </tbody>
 </table>
@@ -2324,28 +2547,23 @@
 <tbody>
 <tr>
 <td><strong>ZeroMQ</strong></td>
-<td>Message bus</td>
-<td>Lightweight, embedded pub/sub messaging</td>
-</tr>
-<tr>
-<td><strong>MQTT</strong></td>
-<td>Message bus alternative</td>
-<td>Better for distributed deployments</td>
+<td>Internal message bus</td>
+<td>Lightweight, embedded pub/sub messaging for all core modules</td>
 </tr>
 <tr>
 <td><strong>FastAPI</strong></td>
 <td>API framework</td>
-<td>Modern, fast Python web framework</td>
+<td>Modern, fast Python web framework powering the service gateway</td>
 </tr>
 <tr>
-<td><strong>gRPC</strong></td>
-<td>API protocol</td>
-<td>Efficient binary protocol for inter-service communication</td>
+<td><strong>REST API</strong></td>
+<td>UI/adapter protocol</td>
+<td>Standard HTTP API for commands, queries, and configuration</td>
 </tr>
 <tr>
-<td><strong>WebSockets</strong></td>
-<td>Real-time communication</td>
-<td>Full-duplex communication for UI updates</td>
+<td><strong>WebSocket API</strong></td>
+<td>UI/adapter protocol</td>
+<td>Real-time, bidirectional communication for events and notifications</td>
 </tr>
 <tr>
 <td><strong>JSON</strong></td>
@@ -2370,9 +2588,9 @@
 </thead>
 <tbody>
 <tr>
-<td><strong>SQLCipher</strong></td>
+<td><strong>libSQL Encryption</strong></td>
 <td>Database encryption</td>
-<td>Transparent encryption for SQLite</td>
+<td>Built-in encryption for primary storage</td>
 </tr>
 <tr>
 <td><strong>AES-256</strong></td>

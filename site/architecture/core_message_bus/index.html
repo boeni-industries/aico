@@ -18,7 +18,7 @@
         <link rel="prev" href="../architecture_overview/">
       
       
-        <link rel="next" href="../personality_sim/">
+        <link rel="next" href="../core_data_layer/">
       
       
       <link rel="icon" href="../../assets/images/logo.png">
@@ -574,6 +574,8 @@
       
         
       
+        
+      
     
     
     
@@ -824,6 +826,29 @@
   
   <span class="md-ellipsis">
     Update System
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../core_data_layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Data Layer
     
   </span>
   
@@ -2024,8 +2049,6 @@
       
         
       
-        
-      
     
     
     
@@ -2085,6 +2108,72 @@
 
               
             
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" >
+        
+          
+          <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Roadmap
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_15">
+            <span class="md-nav__icon md-icon"></span>
+            Roadmap
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
               
                 
   
@@ -2092,12 +2181,150 @@
   
   
     <li class="md-nav__item">
-      <a href="../../roadmap/development_roadmap/" class="md-nav__link">
+      <a href="../../roadmap/foundation/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    Roadmap
+    Foundation
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/mvp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    MVP
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/confidante/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Confidante
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/sidekick/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Sidekick
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/co_adventurer.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Co-Adventurer
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/embodied_presence.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Embodied Presence
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/community/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Community
     
   </span>
   
@@ -2190,22 +2417,14 @@
 - Support for multiple message format versions simultaneously</p>
 <h2 id="technical-implementation">Technical Implementation<a class="headerlink" href="#technical-implementation" title="Permanent link">&para;</a></h2>
 <h3 id="message-bus-technology">Message Bus Technology<a class="headerlink" href="#message-bus-technology" title="Permanent link">&para;</a></h3>
-<p>The Core Message Bus is implemented using either:</p>
-<ol>
-<li><strong>ZeroMQ</strong> - A high-performance asynchronous messaging library</li>
+<p>The Core Message Bus is implemented using <strong>ZeroMQ</strong> as the standard and only supported internal message bus for AICO.</p>
+<ul>
+<li>High-performance, asynchronous messaging library</li>
 <li>Lightweight and embedded within the application</li>
 <li>Supports multiple messaging patterns (pub/sub, request/reply)</li>
-<li>
-<p>Provides reliable message delivery with minimal overhead</p>
-</li>
-<li>
-<p><strong>MQTT</strong> - A lightweight publish/subscribe messaging protocol</p>
-</li>
-<li>Optimized for high-latency or unreliable networks</li>
-<li>Provides quality of service levels for message delivery</li>
-<li>Well-suited for distributed deployments</li>
-</ol>
-<p>The specific technology choice depends on deployment requirements, with ZeroMQ preferred for single-device deployments and MQTT for distributed scenarios.</p>
+<li>Provides reliable message delivery with minimal overhead</li>
+</ul>
+<p>ZeroMQ is chosen for its performance, flexibility, and suitability for all local and internal communication needs in AICO.</p>
 <h3 id="message-format">Message Format<a class="headerlink" href="#message-format" title="Permanent link">&para;</a></h3>
 <p>All messages use JSON for serialization, providing:
 - Human-readable format for debugging

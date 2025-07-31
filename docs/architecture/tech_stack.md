@@ -40,25 +40,25 @@ This document centralizes all technology decisions for the AICO system. It provi
 
 ## Data & Storage Layer
 
+AICO employs a specialized multi-database architecture optimized for local-first operation. See [Data Layer](data_layer.md) for comprehensive details.
+
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **SQLite** | Local database | Embedded, reliable, cross-platform |
-| **DuckDB** | Analytical queries | Fast in-process analytical database |
-| **ChromaDB** | Vector database | Efficient embedding storage and similarity search |
-| **Qdrant** | Vector database | Alternative for larger-scale vector operations |
-| **FAISS** | Vector similarity | Fast similarity search for embeddings |
-| **LiteFS** | Replication | Optional multi-device synchronization |
-| **Sentence Transformers** | Embedding generation | Efficient text embedding models |
+| **libSQL** | Primary storage | Modern SQLite fork with encryption, improved concurrency, and vector extensions |
+| **DuckDB** | Analytical engine | Columnar storage for efficient OLAP workloads and complex analytics |
+| **ChromaDB** | Vector database | Embedded vector storage with document metadata and similarity search |
+| **RocksDB** | Key-value store (optional) | Ultra-fast access for performance-critical paths and caching |
+| **Sentence Transformers** | Embedding generation | Efficient text embedding models for semantic understanding |
+| **P2P Sync Protocol** | Federated device sync | Custom protocol for secure device-to-device synchronization |
 
 ## Communication Layer
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **ZeroMQ** | Message bus | Lightweight, embedded pub/sub messaging |
-| **MQTT** | Message bus alternative | Better for distributed deployments |
-| **FastAPI** | API framework | Modern, fast Python web framework |
-| **gRPC** | API protocol | Efficient binary protocol for inter-service communication |
-| **WebSockets** | Real-time communication | Full-duplex communication for UI updates |
+| **ZeroMQ** | Internal message bus | Lightweight, embedded pub/sub messaging for all core modules |
+| **FastAPI** | API framework | Modern, fast Python web framework powering the service gateway |
+| **REST API** | UI/adapter protocol | Standard HTTP API for commands, queries, and configuration |
+| **WebSocket API** | UI/adapter protocol | Real-time, bidirectional communication for events and notifications |
 | **JSON** | Message format | Human-readable, widely supported serialization |
 | **JSON Schema** | Message validation | Schema validation for message formats |
 
@@ -66,7 +66,7 @@ This document centralizes all technology decisions for the AICO system. It provi
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **SQLCipher** | Database encryption | Transparent encryption for SQLite |
+| **libSQL Encryption** | Database encryption | Built-in encryption for primary storage |
 | **AES-256** | Data encryption | Industry standard encryption |
 | **Homomorphic Encryption** | Privacy-preserving computation | Compute on encrypted data |
 | **Differential Privacy** | Statistical privacy | Privacy-preserving analytics |
