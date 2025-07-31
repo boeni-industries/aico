@@ -2290,10 +2290,10 @@
 <p>This document outlines AICO's comprehensive security architecture, which implements a privacy-first approach to protecting user data, communications, and system integrity across all components.</p>
 <h2 id="security-principles">Security Principles<a class="headerlink" href="#security-principles" title="Permanent link">&para;</a></h2>
 <p>AICO's security architecture is built on the following core principles:</p>
-<h3 id="1-privacy-first-design">1. Privacy-First Design<a class="headerlink" href="#1-privacy-first-design" title="Permanent link">&para;</a></h3>
-<p>All security decisions prioritize user privacy and data sovereignty. Personal data remains under user control at all times, with local processing preferred over cloud services and explicit consent required for any data sharing. This principle guides all architectural decisions from storage to communication protocols.</p>
-<h3 id="2-zero-effort-security">2. Zero-Effort Security<a class="headerlink" href="#2-zero-effort-security" title="Permanent link">&para;</a></h3>
-<p>Security measures work invisibly without user intervention or friction. Security that gets in the user's way is bad security and will be circumvented. AICO implements automatic key derivation, seamless encryption, and background security processes to provide maximum protection with minimum user awareness or interaction.</p>
+<p><strong>1. Privacy-First Design</strong>
+All security decisions prioritize user privacy and data sovereignty. Personal data remains under user control at all times, with local processing preferred over cloud services and explicit consent required for any data sharing. This principle guides all architectural decisions from storage to communication protocols.</p>
+<p><strong>2. Zero-Effort Security</strong>
+Security measures work invisibly without user intervention or friction. Security that gets in the user's way is bad security and will be circumvented. AICO implements automatic key derivation, seamless encryption, and background security processes to provide maximum protection with minimum user awareness or interaction.</p>
 <p>This principle is implemented through several key mechanisms:</p>
 <ul>
 <li>
@@ -2312,18 +2312,92 @@
 <p><strong>Roaming-Aware Security</strong>: Security automatically configures when frontend and backend are co-located (coupled mode) or implements seamless security handshakes between components (detached mode). Security context is maintained during transitions between roaming states.</p>
 </li>
 </ul>
-<h3 id="3-defense-in-depth">3. Defense in Depth<a class="headerlink" href="#3-defense-in-depth" title="Permanent link">&para;</a></h3>
-<p>Multiple security layers provide redundant protection against threats. No single security measure is relied upon exclusively, with overlapping controls ensuring that a breach of one layer doesn't compromise the entire system. This approach combines encryption, access controls, authentication, and monitoring to create a comprehensive security posture.</p>
-<h3 id="4-zero-trust-architecture">4. Zero Trust Architecture<a class="headerlink" href="#4-zero-trust-architecture" title="Permanent link">&para;</a></h3>
-<p>No component is inherently trusted; all access is verified regardless of source. Every request is authenticated and authorized, whether from internal modules or external systems. This principle is especially important for AICO's modular design and plugin ecosystem, ensuring that even first-party components follow strict security protocols.</p>
-<h3 id="5-least-privilege">5. Least Privilege<a class="headerlink" href="#5-least-privilege" title="Permanent link">&para;</a></h3>
-<p>Components only have access to the resources they need to perform their functions. Permissions are granular and specific, limiting the potential impact of any compromise. This principle applies to both system modules and user-installed plugins, with explicit capability grants that can be audited and revoked.</p>
-<h3 id="6-local-first-processing">6. Local-First Processing<a class="headerlink" href="#6-local-first-processing" title="Permanent link">&para;</a></h3>
-<p>Data processing happens on-device whenever possible, minimizing exposure and maximizing user control. This principle supports both privacy and security by keeping sensitive operations within the user's security boundary. When remote processing is required, only the minimum necessary data is transmitted with appropriate protections.</p>
-<h3 id="7-transparent-security">7. Transparent Security<a class="headerlink" href="#7-transparent-security" title="Permanent link">&para;</a></h3>
-<p>Users have visibility into security measures and data usage without being overwhelmed by technical details. Security status is communicated clearly, and users can audit what data is stored and how it's protected. This builds trust while ensuring users can make informed decisions about their privacy and security.</p>
+<p><strong>3. Defense in Depth</strong>
+Multiple security layers provide redundant protection against threats. No single security measure is relied upon exclusively, with overlapping controls ensuring that a breach of one layer doesn't compromise the entire system. This approach combines encryption, access controls, authentication, and monitoring to create a comprehensive security posture.</p>
+<p><strong>4. Zero Trust Architecture</strong>
+No component is inherently trusted; all access is verified regardless of source. Every request is authenticated and authorized, whether from internal modules or external systems. This principle is especially important for AICO's modular design and plugin ecosystem, ensuring that even first-party components follow strict security protocols.</p>
+<p><strong>5. Least Privilege</strong>
+Components only have access to the resources they need to perform their functions. Permissions are granular and specific, limiting the potential impact of any compromise. This principle applies to both system modules and user-installed plugins, with explicit capability grants that can be audited and revoked.</p>
+<p><strong>6. Local-First Processing</strong>
+Data processing happens on-device whenever possible, minimizing exposure and maximizing user control. This principle supports both privacy and security by keeping sensitive operations within the user's security boundary. When remote processing is required, only the minimum necessary data is transmitted with appropriate protections.</p>
+<p><strong>7. Transparent Security</strong>
+Users have visibility into security measures and data usage without being overwhelmed by technical details. Security status is communicated clearly, and users can audit what data is stored and how it's protected. This builds trust while ensuring users can make informed decisions about their privacy and security.</p>
 <h2 id="security-architecture-overview">Security Architecture Overview<a class="headerlink" href="#security-architecture-overview" title="Permanent link">&para;</a></h2>
-<p>AICO implements a multi-layered security model that protects all aspects of the system:</p>
+<h3 id="frontend-vs-backend-security-responsibilities">Frontend vs Backend Security Responsibilities<a class="headerlink" href="#frontend-vs-backend-security-responsibilities" title="Permanent link">&para;</a></h3>
+<p>AICO's architecture supports both coupled (same device) and detached (separate devices) deployment models, requiring specific security implementations for each component:</p>
+<h4 id="backend-security-responsibilities">Backend Security Responsibilities<a class="headerlink" href="#backend-security-responsibilities" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Data Encryption</strong>: </li>
+<li>Filesystem-level encryption (gocryptfs)</li>
+<li>Key derivation (Argon2id)</li>
+<li>
+<p>Master key management</p>
+</li>
+<li>
+<p><strong>Authentication Services</strong>:</p>
+</li>
+<li>Credential verification</li>
+<li>Session management</li>
+<li>
+<p>Device pairing and trust establishment</p>
+</li>
+<li>
+<p><strong>Authorization Enforcement</strong>:</p>
+</li>
+<li>Access control to databases</li>
+<li>Permission validation</li>
+<li>
+<p>API request authorization</p>
+</li>
+<li>
+<p><strong>Secure Storage</strong>:</p>
+</li>
+<li>Platform keyring integration</li>
+<li>Encrypted database management</li>
+<li>Secure configuration storage</li>
+</ul>
+<h4 id="frontend-security-responsibilities">Frontend Security Responsibilities<a class="headerlink" href="#frontend-security-responsibilities" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>User Authentication</strong>:</li>
+<li>Biometric integration</li>
+<li>Password collection and validation</li>
+<li>
+<p>Multi-factor authentication UI</p>
+</li>
+<li>
+<p><strong>Secure Communication</strong>:</p>
+</li>
+<li>TLS certificate validation</li>
+<li>API request signing</li>
+<li>
+<p>WebSocket security</p>
+</li>
+<li>
+<p><strong>UI Security Controls</strong>:</p>
+</li>
+<li>Permission request interfaces</li>
+<li>Security status indicators</li>
+<li>Privacy controls and consent management</li>
+</ul>
+<h4 id="coupled-mode-considerations">Coupled Mode Considerations<a class="headerlink" href="#coupled-mode-considerations" title="Permanent link">&para;</a></h4>
+<p>When frontend and backend are on the same device:</p>
+<ul>
+<li>Direct memory access between components (no network exposure)</li>
+<li>Shared security context and platform capabilities</li>
+<li>Single platform keyring for credential storage</li>
+<li>Unified permission model within device boundaries</li>
+</ul>
+<h4 id="detached-mode-considerations">Detached Mode Considerations<a class="headerlink" href="#detached-mode-considerations" title="Permanent link">&para;</a></h4>
+<p>When frontend and backend are on separate devices:</p>
+<ul>
+<li>Mutual TLS authentication between components</li>
+<li>Remote attestation to verify device integrity</li>
+<li>Delegated authentication with short-lived tokens</li>
+<li>End-to-end encryption for all communications</li>
+<li>Independent key storage on each device</li>
+</ul>
+<p>This separation of security responsibilities ensures that AICO maintains strong security guarantees regardless of deployment pattern, while optimizing for the capabilities of each device type.</p>
+<p>AICO's overall security architecture consists of multiple layers that work together to provide comprehensive protection:</p>
 <pre class="mermaid"><code>flowchart TD
     A[User Data &amp; System] --&gt; B[Encryption]
     A --&gt; C[Authentication &amp; Authorization]
@@ -2353,8 +2427,8 @@
 <li>
 <p><strong>Implementation</strong>:
     <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Example secure ZeroMQ setup</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">import</span> <span class="nn">zmq</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span> <span class="nn">zmq.auth.thread</span> <span class="kn">import</span> <span class="n">ThreadAuthenticator</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">zmq</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">zmq.auth.thread</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThreadAuthenticator</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># Set up authentication</span>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">context</span> <span class="o">=</span> <span class="n">zmq</span><span class="o">.</span><span class="n">Context</span><span class="p">()</span>
@@ -2431,8 +2505,8 @@
 <ul>
 <li><strong>Implementation in AICO Backend</strong>:
   <div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># AICO backend implementation using Python-Cryptography</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span> <span class="nn">cryptography.hazmat.primitives.kdf.argon2</span> <span class="kn">import</span> <span class="n">Argon2</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kn">import</span> <span class="nn">os</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cryptography.hazmat.primitives.kdf.argon2</span><span class="w"> </span><span class="kn">import</span> <span class="n">Argon2</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># Generate a random salt for AICO master key</span>
 </span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">salt</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">urandom</span><span class="p">(</span><span class="mi">16</span><span class="p">)</span>
@@ -2466,12 +2540,30 @@
 <li>macOS: Keychain integration</li>
 <li>Windows: Windows Credential Manager</li>
 <li>Linux: Secret Service API / GNOME Keyring</li>
-<li>
-<p>Mobile: Secure Enclave (iOS) / Keystore (Android)</p>
-</li>
-<li>
-<p><strong>Roaming Support</strong>: </p>
-</li>
+<li>Mobile: Secure Enclave (iOS) / Keystore (Android)</li>
+</ul>
+<p>AICO uses the Python <code>keyring</code> library as a cross-platform abstraction layer for secure key storage:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">keyring</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">AICOKeyStorage</span><span class="p">:</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">service_name</span><span class="o">=</span><span class="s2">&quot;AICO&quot;</span><span class="p">):</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">service_name</span> <span class="o">=</span> <span class="n">service_name</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">store_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key_name</span><span class="p">,</span> <span class="n">key_value</span><span class="p">):</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>        <span class="c1"># Convert bytes to hex string for storage</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key_value</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>            <span class="n">key_value</span> <span class="o">=</span> <span class="n">key_value</span><span class="o">.</span><span class="n">hex</span><span class="p">()</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>        <span class="n">keyring</span><span class="o">.</span><span class="n">set_password</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">service_name</span><span class="p">,</span> <span class="n">key_name</span><span class="p">,</span> <span class="n">key_value</span><span class="p">)</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">retrieve_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key_name</span><span class="p">,</span> <span class="n">as_bytes</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>        <span class="n">value</span> <span class="o">=</span> <span class="n">keyring</span><span class="o">.</span><span class="n">get_password</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">service_name</span><span class="p">,</span> <span class="n">key_name</span><span class="p">)</span>
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>        <span class="k">if</span> <span class="n">value</span> <span class="ow">and</span> <span class="n">as_bytes</span><span class="p">:</span>
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>            <span class="k">return</span> <span class="nb">bytes</span><span class="o">.</span><span class="n">fromhex</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>        <span class="k">return</span> <span class="n">value</span>
+</span></code></pre></div>
+<p>This abstraction provides consistent secure storage across all platforms without platform-specific code.</p>
+<ul>
+<li><strong>Roaming Support</strong>: </li>
 <li><strong>Coupled Roaming</strong>: Secure key transfer between trusted devices</li>
 <li>
 <p><strong>Detached Roaming</strong>: Backend maintains keys, frontend authenticates via secure protocol</p>
@@ -2500,6 +2592,134 @@
 <li>Granular permission control for each data category</li>
 <li>Time-limited access grants with automatic expiration</li>
 </ul>
+<h2 id="required-security-features-by-component">Required Security Features by Component<a class="headerlink" href="#required-security-features-by-component" title="Permanent link">&para;</a></h2>
+<p>AICO's architecture requires specific security implementations for both frontend and backend components to support local-first operation and flexible roaming patterns.</p>
+<h3 id="frontend-security-requirements">Frontend Security Requirements<a class="headerlink" href="#frontend-security-requirements" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Implementation</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Secure Authentication UI</strong></td>
+<td>Biometric integration, secure password fields, MFA support</td>
+<td>Frontend is the user's entry point; must securely collect credentials while preventing interception</td>
+</tr>
+<tr>
+<td><strong>Certificate Validation</strong></td>
+<td>Certificate pinning, CRL checking, OCSP</td>
+<td>Must verify backend identity in detached mode to prevent MITM attacks</td>
+</tr>
+<tr>
+<td><strong>Local Storage Encryption</strong></td>
+<td>AES-256 for Flutter secure storage</td>
+<td>Temporary data and settings on frontend need protection, especially on mobile/AR devices</td>
+</tr>
+<tr>
+<td><strong>Secure WebView Sandboxing</strong></td>
+<td>Content Security Policy, iframe isolation</td>
+<td>For rendering content safely without exposing the application to web-based attacks</td>
+</tr>
+<tr>
+<td><strong>Permission Request Interfaces</strong></td>
+<td>Consent dialogs, permission visualization</td>
+<td>Frontend must clearly communicate and obtain consent for security-sensitive operations</td>
+</tr>
+<tr>
+<td><strong>Secure Input Handling</strong></td>
+<td>Input validation, sanitization libraries</td>
+<td>Prevent injection attacks by sanitizing all inputs before sending to backend</td>
+</tr>
+<tr>
+<td><strong>Biometric Integration</strong></td>
+<td>Platform-specific biometric APIs</td>
+<td>Leverage platform biometric capabilities for seamless, secure authentication</td>
+</tr>
+<tr>
+<td><strong>Security Status Visualization</strong></td>
+<td>Status indicators, security dashboards</td>
+<td>Users need visibility into security state without technical complexity</td>
+</tr>
+</tbody>
+</table>
+<h3 id="backend-security-requirements">Backend Security Requirements<a class="headerlink" href="#backend-security-requirements" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Implementation</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Filesystem Encryption</strong></td>
+<td>gocryptfs with AES-256-GCM</td>
+<td>Core protection for all database files in the local-first architecture</td>
+</tr>
+<tr>
+<td><strong>Key Derivation</strong></td>
+<td>Argon2id with context-specific parameters</td>
+<td>Secure generation of encryption keys from master password</td>
+</tr>
+<tr>
+<td><strong>Secure Key Storage</strong></td>
+<td>Python keyring library with platform backends</td>
+<td>Platform-native secure storage of cryptographic keys</td>
+</tr>
+<tr>
+<td><strong>Authentication Service</strong></td>
+<td>Token-based authentication with JWTs</td>
+<td>Verify user identity and manage sessions across both coupled and detached modes</td>
+</tr>
+<tr>
+<td><strong>Access Control Enforcement</strong></td>
+<td>Role-based access control, attribute-based policies</td>
+<td>Backend must enforce all permissions and access controls at the data layer</td>
+</tr>
+<tr>
+<td><strong>Secure API Gateway</strong></td>
+<td>Request validation, rate limiting, authentication</td>
+<td>All frontend requests must be authenticated, authorized, and validated</td>
+</tr>
+<tr>
+<td><strong>Device Pairing Protocol</strong></td>
+<td>Challenge-response authentication, QR pairing</td>
+<td>Establish trust between devices for roaming capabilities</td>
+</tr>
+<tr>
+<td><strong>Encrypted Backup System</strong></td>
+<td>Envelope encryption, key rotation support</td>
+<td>Protect data during backup/restore operations while maintaining key security</td>
+</tr>
+<tr>
+<td><strong>Secure P2P Synchronization</strong></td>
+<td>End-to-end encrypted channels, conflict resolution</td>
+<td>Enable encrypted device-to-device data transfer for roaming support</td>
+</tr>
+<tr>
+<td><strong>Audit Logging</strong></td>
+<td>Tamper-evident logs, selective privacy-preserving logging</td>
+<td>Record security-relevant events for troubleshooting and potential forensic analysis</td>
+</tr>
+</tbody>
+</table>
+<h3 id="coupled-vs-detached-mode-security">Coupled vs. Detached Mode Security<a class="headerlink" href="#coupled-vs-detached-mode-security" title="Permanent link">&para;</a></h3>
+<p>The security implementations adapt based on deployment mode:</p>
+<p><strong>Coupled Mode (Frontend + Backend on same device)</strong>
+- Direct authentication via shared memory
+- Local keyring access for both components
+- No network exposure between components
+- Unified permission context</p>
+<p><strong>Detached Mode (Frontend on separate device)</strong>
+- Mutual TLS authentication between devices
+- Delegated authentication with short-lived tokens
+- Network security with perfect forward secrecy
+- Independent key storage with secure synchronization</p>
 <h3 id="3-access-control-layer">3. Access Control Layer<a class="headerlink" href="#3-access-control-layer" title="Permanent link">&para;</a></h3>
 <h4 id="component-isolation">Component Isolation<a class="headerlink" href="#component-isolation" title="Permanent link">&para;</a></h4>
 <ul>
