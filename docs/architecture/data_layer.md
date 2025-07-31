@@ -1,8 +1,8 @@
 ---
-title: Core Data Layer
+title: Data Layer
 ---
 
-# Core Data Layer
+# Data Layer
 
 This document details AICO's core data layer architecture, which employs a specialized multi-database approach optimized for a local-first, privacy-preserving AI companion system.
 
@@ -309,3 +309,181 @@ AICO uses specialized databases for several key reasons:
 2. **Clear Separation of Concerns**: Each data domain has appropriate storage
 3. **Scalability**: Different scaling characteristics for different data types
 4. **Future-Proofing**: Specialized capabilities for AI companion evolution
+
+## Database Integration Module
+
+The Database Integration Module provides a unified interface for accessing AICO's multi-database architecture, following clean architecture principles to ensure maintainability and testability.
+
+### Architecture Pattern
+
+AICO's database integration follows the Repository Pattern with a Data Access Layer (DAL) approach:
+
+```mermaid
+classDiagram
+    class Module {
+        <<Domain Logic>>
+    }
+    
+    class Repository {
+        <<Interface>>
+        +get(id)
+        +save(entity)
+        +query(criteria)
+    }
+    
+    class DataAccessLayer {
+        <<Implementation>>
+        -connection
+        +execute(query)
+        +transaction()
+    }
+    
+    class DatabaseAdapter {
+        <<Database Specific>>
+        -connect()
+        -disconnect()
+        -executeNative()
+    }
+    
+    Module --> Repository : uses
+    Repository --> DataAccessLayer : uses
+    DataAccessLayer --> DatabaseAdapter : uses
+    
+    classDef purple fill:#663399,stroke:#9370DB,color:#fff
+    class Repository,DataAccessLayer,DatabaseAdapter purple
+```
+
+### Key Components
+
+1. **Repository Layer**:
+   - Domain-specific interfaces (ConversationRepository, MemoryRepository)
+   - Abstracts underlying storage mechanisms
+   - Enforces domain constraints and business rules
+   - Example:
+     ```python
+     class MemoryRepository:
+         def get_memories_by_context(self, context, limit=10):
+             """Retrieve memories relevant to the given context"""
+             pass
+             
+         def save_memory(self, memory):
+             """Save a new memory or update existing one"""
+             pass
+     ```
+
+2. **Data Access Layer**:
+   - Database-specific implementations of repositories
+   - Handles connection management and transactions
+   - Translates between domain objects and database schemas
+   - Example:
+     ```python
+     class ChromaDBMemoryRepository(MemoryRepository):
+         def __init__(self, chroma_client):
+             self.client = chroma_client
+             self.collection = self.client.get_or_create_collection("memories")
+             
+         def get_memories_by_context(self, context, limit=10):
+             embedding = self.embedding_service.embed_text(context)
+             results = self.collection.query(
+                 query_embeddings=[embedding],
+                 n_results=limit
+             )
+             return [self._map_to_domain(item) for item in results]
+     ```
+
+3. **Database Adapters**:
+   - Low-level database connection management
+   - Connection pooling and lifecycle management
+   - Error handling and retry logic
+   - Example:
+     ```python
+     class LibSQLAdapter:
+         def __init__(self, connection_string, encryption_key=None):
+             self.connection_string = connection_string
+             self.encryption_key = encryption_key
+             self.pool = ConnectionPool(max_connections=10)
+             
+         async def execute(self, query, params=None):
+             conn = await self.pool.acquire()
+             try:
+                 return await conn.execute(query, params)
+             finally:
+                 await self.pool.release(conn)
+     ```
+
+### Session Management
+
+Database sessions are managed using a combination of connection pooling and context managers:
+
+1. **Connection Pooling**:
+   - Efficient reuse of database connections
+   - Automatic connection health checks
+   - Configurable pool sizes based on workload
+
+2. **Unit of Work Pattern**:
+   - Atomic transactions across multiple operations
+   - Automatic rollback on errors
+   - Example:
+     ```python
+     async with UnitOfWork() as uow:
+         user = await uow.users.get_by_id(user_id)
+         memory = await uow.memories.create(content, user_id)
+         await uow.commit()
+     ```
+
+3. **Session Lifecycle**:
+   - Sessions tied to message processing lifecycle
+   - Automatic cleanup of abandoned sessions
+   - Timeout handling for long-running operations
+
+### Message Bus Integration
+
+The database module integrates with AICO's message bus architecture:
+
+1. **Event Subscribers**:
+   - Database operations triggered by system messages
+   - Example:
+     ```python
+     @subscribe("memory.store.request")
+     async def handle_memory_storage(message):
+         memory = Memory.from_dict(message.payload)
+         await memory_repository.save(memory)
+         await message_bus.publish("memory.store.complete", {
+             "memory_id": memory.id,
+             "status": "success"
+         })
+     ```
+
+2. **Event Publishers**:
+   - Database changes published as events
+   - Example:
+     ```python
+     async def save_user_preference(user_id, preference_key, value):
+         await preferences_repository.set(user_id, preference_key, value)
+         await message_bus.publish("user.preferences.changed", {
+             "user_id": user_id,
+             "preference_key": preference_key,
+             "new_value": value
+         })
+     ```
+
+### Implementation Phases
+
+Following AICO's foundation roadmap, the database integration module will be implemented in phases:
+
+1. **Phase 1 (Weeks 1-2)**:
+   - Basic SQLite integration without encryption
+   - Simple repository implementations for core entities
+   - Basic session management
+
+2. **Phase 2 (Weeks 3-4)**:
+   - Upgrade to libSQL with encryption (SQLCipher)
+   - ChromaDB integration for vector storage
+   - Enhanced repository pattern implementation
+   - Connection pooling and advanced session management
+
+3. **Phase 3+ (Week 5+)**:
+   - DuckDB integration for analytics
+   - Optional RocksDB for high-performance caching
+   - Full message bus integration
+   - Preparation for federated sync
