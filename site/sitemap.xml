@@ -21,10 +21,6 @@
          <lastmod>2025-08-02</lastmod>
     </url>
     <url>
-         <loc>https://boeni-industries.github.io/aico/architecture/data_security/</loc>
-         <lastmod>2025-08-02</lastmod>
-    </url>
-    <url>
          <loc>https://boeni-industries.github.io/aico/architecture/embodiment/</loc>
          <lastmod>2025-08-02</lastmod>
     </url>
@@ -34,6 +30,14 @@
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/emotion_sim_msg/</loc>
+         <lastmod>2025-08-02</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/architecture/instrumentation/</loc>
+         <lastmod>2025-08-02</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/architecture/instrumentation_logging/</loc>
          <lastmod>2025-08-02</lastmod>
     </url>
     <url>
@@ -61,10 +65,6 @@
          <lastmod>2025-08-02</lastmod>
     </url>
     <url>
-         <loc>https://boeni-industries.github.io/aico/architecture/security_layer/</loc>
-         <lastmod>2025-08-02</lastmod>
-    </url>
-    <url>
          <loc>https://boeni-industries.github.io/aico/architecture/tech_stack/</loc>
          <lastmod>2025-08-02</lastmod>
     </url>
@@ -86,6 +86,10 @@
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/development/contributing/</loc>
+         <lastmod>2025-08-02</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/development/guidelines/</loc>
          <lastmod>2025-08-02</lastmod>
     </url>
     <url>
@@ -130,6 +134,18 @@
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/roadmap/sidekick/</loc>
+         <lastmod>2025-08-02</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/security/access_control/</loc>
+         <lastmod>2025-08-02</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/security/data_security/</loc>
+         <lastmod>2025-08-02</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/security/security_overview/</loc>
          <lastmod>2025-08-02</lastmod>
     </url>
 </urlset>

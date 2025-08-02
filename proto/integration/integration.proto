@@ -9,6 +9,20 @@ option java_multiple_files = true;
 import "google/protobuf/timestamp.proto";
 
 // Crisis detection message
+// Matches the `crisis.detection` message format documented in docs/architecture/integration_msg.md.
+// Alert message indicating detection of a potential crisis situation requiring coordinated response across modules.
+// Fields:
+// - timestamp: When the crisis was detected
+// - source: Source module (e.g., emotion_recognition)
+// - crisis_id: Unique crisis identifier
+// - severity: Crisis severity (0.0-1.0)
+// - confidence: Detection confidence (0.0-1.0)
+// - crisis_type: Type of crisis detected (emotional_distress, safety_concern, etc.)
+// - detected_by: Detection information (module, method, signals)
+// - context: Crisis context (conversation_id, user_id, recent_message, etc.)
+// - response_guidance: Guidance for module responses
+// - escalation_path: Internal/external escalation info
+// See integration_msg.md for illustrative JSON and field semantics.
 message CrisisDetection {
   google.protobuf.Timestamp timestamp = 1;
   string source = 2;
@@ -32,6 +46,12 @@ message CrisisDetection {
 }
 
 // Detection information
+// Detection information
+// Fields:
+// - module: Module that detected the crisis
+// - detection_method: Method used for detection
+// - detection_signals: Signals that triggered detection
+// See integration_msg.md for examples.
 message DetectionInfo {
   string module = 1;                   // Module that detected the crisis
   string detection_method = 2;         // Method used for detection
@@ -39,6 +59,11 @@ message DetectionInfo {
 }
 
 // Detection signal
+// Fields:
+// - signal: Signal type (e.g., facial_expression, voice_tone, text_content)
+// - value: Signal value (e.g., "extreme_distress")
+// - confidence: Signal confidence (0.0-1.0)
+// See integration_msg.md for examples.
 message DetectionSignal {
   string signal = 1;                   // Signal type
   string value = 2;                    // Signal value
@@ -46,6 +71,14 @@ message DetectionSignal {
 }
 
 // Crisis context
+// Crisis context
+// Fields:
+// - conversation_id: Conversation identifier
+// - user_id: User identifier
+// - recent_message: Recent message that triggered detection
+// - conversation_topic: Current conversation topic
+// - relationship_phase: Current relationship phase
+// See integration_msg.md for details.
 message CrisisContext {
   string conversation_id = 1;          // Conversation identifier
   string user_id = 2;                  // User identifier
@@ -55,6 +88,13 @@ message CrisisContext {
 }
 
 // Response guidance
+// Response guidance
+// Fields:
+// - priority: Response priority (immediate, high, moderate, etc.)
+// - protocol: Reference to predefined protocol
+// - required_actions: Required actions to take
+// - module_specific_instructions: Per-module instructions for handling crisis
+// See integration_msg.md for examples.
 message ResponseGuidance {
   Priority priority = 1;               // Response priority
   string protocol = 2;                 // Reference to predefined protocol
@@ -73,6 +113,13 @@ message ResponseGuidance {
 }
 
 // Module-specific instructions
+// Module-specific instructions
+// Fields:
+// - personality_simulation: Trait/value emphasis
+// - emotion_simulation: Target emotional state, expression intensity
+// - chat_engine: Response type, avoid patterns
+// - autonomous_agency: Goal priority override, proactive actions
+// See integration_msg.md for examples.
 message ModuleInstructions {
   // Personality simulation instructions
   PersonalityInstructions personality_simulation = 1;

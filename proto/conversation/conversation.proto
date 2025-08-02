@@ -9,6 +9,8 @@ option java_multiple_files = true;
 import "google/protobuf/timestamp.proto";
 
 // Conversation message
+// Represents a single message in the conversation, including content and analysis.
+// See emotion_sim_msg.md for field semantics and examples.
 message ConversationMessage {
   google.protobuf.Timestamp timestamp = 1;
   string source = 2;
@@ -18,8 +20,16 @@ message ConversationMessage {
 }
 
 // Message content and metadata
+// Contains the actual text, type, thread information, and turn number for the conversation message.
+// Fields:
+// - text: Actual message content (string)
+// - type: Message type (user_input, system_response, etc.)
+// - thread_id: Conversation thread identifier
+// - turn_number: Sequential turn number in conversation
+// See emotion_sim_msg.md for examples.
 message Message {
   string text = 1;                   // Actual message content
+  // Message type: user_input, system_response, system_notification, thinking_aloud, internal_reflection
   MessageType type = 2;              // Message type
   string thread_id = 3;              // Conversation thread identifier
   int32 turn_number = 4;             // Sequential turn number in conversation
@@ -35,6 +45,12 @@ message Message {
 }
 
 // Analysis of the message
+// Contains detected user intent, urgency, and whether a response is expected.
+// Fields:
+// - intent: Detected user intent (string)
+// - urgency: Message urgency level (low, medium, high, critical)
+// - requires_response: Whether response is expected (boolean)
+// See emotion_sim_msg.md for examples.
 message MessageAnalysis {
   string intent = 1;                 // Detected intent
   Urgency urgency = 2;               // Message urgency level
@@ -50,6 +66,13 @@ message MessageAnalysis {
 }
 
 // Broader conversation context
+// Represents the overall context for the conversation, including current state and recent history.
+// Fields:
+// - timestamp: Timestamp of context snapshot
+// - source: Source module/component
+// - context: Current conversation context
+// - recent_history: Historical context for pattern recognition
+// See emotion_sim_msg.md for examples.
 message ConversationContext {
   google.protobuf.Timestamp timestamp = 1;
   string source = 2;
@@ -59,6 +82,15 @@ message ConversationContext {
 }
 
 // Current conversation context
+// Contains details about the current topic, phase, session duration, relationship phase, time context, and crisis indicators.
+// Fields:
+// - current_topic: Current conversation topic (string)
+// - conversation_phase: Phase of current conversation
+// - session_duration_minutes: Length of current session
+// - relationship_phase: Current relationship development stage
+// - time_context: Temporal/situational context
+// - crisis_indicators: Whether crisis situation detected (boolean)
+// See emotion_sim_msg.md for details.
 message Context {
   string current_topic = 1;          // Current conversation topic
   string conversation_phase = 2;     // Phase of current conversation
@@ -69,6 +101,11 @@ message Context {
 }
 
 // Recent conversation history
+// Contains historical context for pattern recognition, including last topics and emotional trajectory.
+// Fields:
+// - last_topics: Recent conversation topics (string[])
+// - emotional_trajectory: Emotional progression (string[])
+// See emotion_sim_msg.md for details.
 message RecentHistory {
   repeated string last_topics = 1;   // Recent conversation topics
   repeated string emotional_trajectory = 2; // Emotional progression

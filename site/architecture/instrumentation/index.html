@@ -12,26 +12,28 @@
         <meta name="author" content="Michael Böni">
       
       
-        <link rel="canonical" href="https://boeni-industries.github.io/aico/welcome/">
+        <link rel="canonical" href="https://boeni-industries.github.io/aico/architecture/instrumentation/">
       
       
+        <link rel="prev" href="../data_federation/">
       
-        <link rel="next" href="../getting-started/getting_started_overview/">
+      
+        <link rel="next" href="../../security/security_overview/">
       
       
-      <link rel="icon" href="../assets/images/logo.png">
+      <link rel="icon" href="../../assets/images/logo.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.16">
     
     
       
-        <title>Welcome - AICO - AI Companion Project</title>
+        <title>Instrumentation Architecture - AICO - AI Companion Project</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.7e37652d.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.7e37652d.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
       
       
 
@@ -50,11 +52,11 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/extra.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/extra.css">
     
-      <link rel="stylesheet" href="../assets/stylesheets/disable-logo.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/disable-logo.css">
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -80,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#aico-the-aicompanion-project" class="md-skip">
+        <a href="#instrumentation-architecture" class="md-skip">
           Skip to content
         </a>
       
@@ -96,9 +98,9 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="AICO - AI Companion Project" class="md-header__button md-logo" aria-label="AICO - AI Companion Project" data-md-component="logo">
+    <a href="../.." title="AICO - AI Companion Project" class="md-header__button md-logo" aria-label="AICO - AI Companion Project" data-md-component="logo">
       
-  <img src="../assets/images/logo.png" alt="logo">
+  <img src="../../assets/images/logo.png" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -115,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Welcome
+              Instrumentation Architecture
             
           </span>
         </div>
@@ -250,9 +252,9 @@
 
 <nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="AICO - AI Companion Project" class="md-nav__button md-logo" aria-label="AICO - AI Companion Project" data-md-component="logo">
+    <a href="../.." title="AICO - AI Companion Project" class="md-nav__button md-logo" aria-label="AICO - AI Companion Project" data-md-component="logo">
       
-  <img src="../assets/images/logo.png" alt="logo">
+  <img src="../../assets/images/logo.png" alt="logo">
 
     </a>
     AICO - AI Companion Project
@@ -276,10 +278,8 @@
       
   
   
-    
   
   
-  
     
     
       
@@ -294,11 +294,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
         
           
           <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="">
@@ -314,7 +314,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_1">
             <span class="md-nav__icon md-icon"></span>
             Home
@@ -325,32 +325,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Welcome
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../welcome/" class="md-nav__link">
         
   
   
@@ -361,98 +339,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#project-vision" class="md-nav__link">
-    <span class="md-ellipsis">
-      Project Vision
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#the-evolutionary-journey" class="md-nav__link">
-    <span class="md-ellipsis">
-      The Evolutionary Journey
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#core-principles" class="md-nav__link">
-    <span class="md-ellipsis">
-      Core Principles
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#key-capabilities" class="md-nav__link">
-    <span class="md-ellipsis">
-      🚀 Key Capabilities
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#development-roadmap" class="md-nav__link">
-    <span class="md-ellipsis">
-      🛤️ Development Roadmap
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#whos-this-for" class="md-nav__link">
-    <span class="md-ellipsis">
-      🤝 Who's This For?
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#contributing" class="md-nav__link">
-    <span class="md-ellipsis">
-      🚀 Contributing
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#get-in-touch" class="md-nav__link">
-    <span class="md-ellipsis">
-      Get in Touch
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -523,7 +409,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../getting-started/getting_started_overview/" class="md-nav__link">
+      <a href="../../getting-started/getting_started_overview/" class="md-nav__link">
         
   
   
@@ -546,7 +432,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../getting-started/installation/" class="md-nav__link">
+      <a href="../../getting-started/installation/" class="md-nav__link">
         
   
   
@@ -569,7 +455,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../getting-started/quick-start/" class="md-nav__link">
+      <a href="../../getting-started/quick-start/" class="md-nav__link">
         
   
   
@@ -646,7 +532,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/architecture_overview/" class="md-nav__link">
+      <a href="../architecture_overview/" class="md-nav__link">
         
   
   
@@ -673,8 +559,10 @@
       
   
   
+    
   
   
+  
     
     
       
@@ -701,11 +589,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
@@ -721,7 +609,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             Core Infrastructure
@@ -735,7 +623,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/message_bus/" class="md-nav__link">
+      <a href="../message_bus/" class="md-nav__link">
         
   
   
@@ -758,7 +646,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/plugin_system/" class="md-nav__link">
+      <a href="../plugin_system/" class="md-nav__link">
         
   
   
@@ -781,7 +669,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/api_gateway/" class="md-nav__link">
+      <a href="../api_gateway/" class="md-nav__link">
         
   
   
@@ -804,7 +692,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/update_system/" class="md-nav__link">
+      <a href="../update_system/" class="md-nav__link">
         
   
   
@@ -827,7 +715,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/data_layer/" class="md-nav__link">
+      <a href="../data_layer/" class="md-nav__link">
         
   
   
@@ -850,7 +738,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/data_federation/" class="md-nav__link">
+      <a href="../data_federation/" class="md-nav__link">
         
   
   
@@ -870,10 +758,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../architecture/instrumentation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Instrumentation
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -884,6 +794,107 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      Design Goals
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#instrumentation-modes-stages" class="md-nav__link">
+    <span class="md-ellipsis">
+      Instrumentation Modes &amp; Stages
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-components-across-all-stages" class="md-nav__link">
+    <span class="md-ellipsis">
+      Core Components (Across All Stages)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architectural-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Architectural Integration
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-4-auditing-debug-capsules" class="md-nav__link">
+    <span class="md-ellipsis">
+      Phase 4: Auditing &amp; Debug Capsules
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-5-analytics-extensibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      Phase 5: Analytics &amp; Extensibility
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#unified-instrumentation-architecture-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      Unified Instrumentation Architecture Diagram
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      References
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -960,7 +971,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../security/security_overview/" class="md-nav__link">
+      <a href="../../security/security_overview/" class="md-nav__link">
         
   
   
@@ -983,7 +994,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../security/data_security/" class="md-nav__link">
+      <a href="../../security/data_security/" class="md-nav__link">
         
   
   
@@ -1006,7 +1017,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../security/access_control/" class="md-nav__link">
+      <a href="../../security/access_control/" class="md-nav__link">
         
   
   
@@ -1308,7 +1319,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/personality_sim/" class="md-nav__link">
+      <a href="../personality_sim/" class="md-nav__link">
         
   
   
@@ -1331,7 +1342,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/emotion_sim/" class="md-nav__link">
+      <a href="../emotion_sim/" class="md-nav__link">
         
   
   
@@ -1766,7 +1777,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/integration_msg/" class="md-nav__link">
+      <a href="../integration_msg/" class="md-nav__link">
         
   
   
@@ -1789,7 +1800,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/emotion_sim_msg/" class="md-nav__link">
+      <a href="../emotion_sim_msg/" class="md-nav__link">
         
   
   
@@ -1812,7 +1823,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/personality_sim_msg/" class="md-nav__link">
+      <a href="../personality_sim_msg/" class="md-nav__link">
         
   
   
@@ -1889,7 +1900,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/tech_stack/" class="md-nav__link">
+      <a href="../tech_stack/" class="md-nav__link">
         
   
   
@@ -2012,7 +2023,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../concepts/emotion/emotion_sim/" class="md-nav__link">
+      <a href="../../concepts/emotion/emotion_sim/" class="md-nav__link">
         
   
   
@@ -2089,7 +2100,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../concepts/personality/personality_sim/" class="md-nav__link">
+      <a href="../../concepts/personality/personality_sim/" class="md-nav__link">
         
   
   
@@ -2112,7 +2123,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../concepts/personality/personality_definition/" class="md-nav__link">
+      <a href="../../concepts/personality/personality_definition/" class="md-nav__link">
         
   
   
@@ -2199,7 +2210,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../development/contributing/" class="md-nav__link">
+      <a href="../../development/contributing/" class="md-nav__link">
         
   
   
@@ -2222,7 +2233,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../development/protobuf/" class="md-nav__link">
+      <a href="../../development/protobuf/" class="md-nav__link">
         
   
   
@@ -2311,7 +2322,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/foundation/" class="md-nav__link">
+      <a href="../../roadmap/foundation/" class="md-nav__link">
         
   
   
@@ -2334,7 +2345,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/mvp/" class="md-nav__link">
+      <a href="../../roadmap/mvp/" class="md-nav__link">
         
   
   
@@ -2357,7 +2368,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/confidante/" class="md-nav__link">
+      <a href="../../roadmap/confidante/" class="md-nav__link">
         
   
   
@@ -2380,7 +2391,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/sidekick/" class="md-nav__link">
+      <a href="../../roadmap/sidekick/" class="md-nav__link">
         
   
   
@@ -2403,7 +2414,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/co_adventurer.md" class="md-nav__link">
+      <a href="../../roadmap/co_adventurer.md" class="md-nav__link">
         
   
   
@@ -2426,7 +2437,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/embodied_presence.md" class="md-nav__link">
+      <a href="../../roadmap/embodied_presence.md" class="md-nav__link">
         
   
   
@@ -2449,7 +2460,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/community/" class="md-nav__link">
+      <a href="../../roadmap/community/" class="md-nav__link">
         
   
   
@@ -2488,7 +2499,7 @@
 
 
   
-    <a href="https://github.com/boeni-industries/aico/edit/main/docs/welcome.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/boeni-industries/aico/edit/main/docs/architecture/instrumentation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2497,182 +2508,141 @@
     
       
     
-    <a href="https://github.com/boeni-industries/aico/raw/main/docs/welcome.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/boeni-industries/aico/raw/main/docs/architecture/instrumentation.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"/></svg>
     </a>
   
 
 
-<h1 id="aico-the-aicompanion-project">AICO – The AI+Companion Project<a class="headerlink" href="#aico-the-aicompanion-project" title="Permanent link">&para;</a></h1>
-<div class="admonition info">
-<p class="admonition-title">Welcome to AICO</p>
-<p>Building an <strong>emotionally present, embodied, and proactive AI companion</strong> that evolves from basic conversation partner to trusted co-adventurer.</p>
-</div>
-<h2 id="project-vision">Project Vision<a class="headerlink" href="#project-vision" title="Permanent link">&para;</a></h2>
-<p>AICO is an open-source experiment to build an AI companion that's more than just a virtual assistant—it's a sidekick, confidante, and co-adventurer. We're creating an AI that is present, curious, and grows with you, featuring genuine emotional intelligence, autonomous agency, and deep respect for privacy.</p>
-<p><strong>This isn't about "superintelligence"</strong>—it's about real resonance, authentic relationship, and an AI that sometimes nudges you first without being told.</p>
-<h2 id="the-evolutionary-journey">The Evolutionary Journey<a class="headerlink" href="#the-evolutionary-journey" title="Permanent link">&para;</a></h2>
-<p>AICO's development follows a unique relationship-deepening progression:</p>
-<pre class="mermaid"><code>graph LR
-    A[🤝 Companion&lt;br/&gt;MVP] --&gt; B[💭 Confidante&lt;br/&gt;Emotional Intelligence]
-    B --&gt; C[🦾 Sidekick&lt;br/&gt;Advanced Agency]
-    C --&gt; D[🌟 Co-Adventurer&lt;br/&gt;Collaborative Growth]
-    D --&gt; E[🌐 Embodied Presence&lt;br/&gt;Multi-Modal Integration]
-    E --&gt; F[🤝 Community&lt;br/&gt;Collective Learning]</code></pre>
-<p>Each stage builds deeper companionship rather than just adding features.</p>
-<h2 id="core-principles">Core Principles<a class="headerlink" href="#core-principles" title="Permanent link">&para;</a></h2>
+<h1 id="instrumentation-architecture">Instrumentation Architecture<a class="headerlink" href="#instrumentation-architecture" title="Permanent link">&para;</a></h1>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>AICO’s instrumentation system provides unified, privacy-respecting observability across all modules, modes, and devices. It is designed to support both <strong>coupled</strong> (single-device) and <strong>detached</strong> (multi-device/federated) deployments, in line with AICO’s core architectural principles as outlined in the <a href="../architecture_overview/">Architecture Overview</a>.</p>
+<h2 id="design-goals">Design Goals<a class="headerlink" href="#design-goals" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Autonomous Agency</strong> - AICO has its own goals, interests, and curiosities that drive self-directed behavior</li>
-<li><strong>Strong User-Centric Privacy</strong> - Local-first processing with full user control and end-to-end encryption</li>
-<li><strong>Modular, Extensible Architecture</strong> - Message-driven design prioritizing companionship and long-term learning</li>
-<li><strong>Real-Time Emotional Awareness</strong> - Multi-modal emotion recognition and sophisticated empathetic responses</li>
-<li><strong>Embodied Presence</strong> - Visual avatar system with spatial awareness and multi-device synchronization</li>
-<li><strong>Community Intelligence</strong> - Privacy-preserving collective learning and federated knowledge sharing</li>
+<li><strong>Consistent Observability:</strong> Unified approach for logging, metrics, tracing, and auditing across all modules and plugins.</li>
+<li><strong>Privacy-First:</strong> All instrumentation is local-first, user-controlled, and zero-knowledge by default. No sensitive data is exported without explicit user consent.</li>
+<li><strong>Modular &amp; Extensible:</strong> Instrumentation is a cross-cutting concern, integrated via standard interfaces and message bus topics.</li>
+<li><strong>Multi-Modal &amp; Embodied:</strong> Observes not just backend logic, but also embodiment, emotion, and user interaction layers.</li>
+<li><strong>Works in All Modes:</strong> Fully functional in both coupled (all-in-one) and detached (distributed/federated) deployments.</li>
 </ul>
-<h2 id="key-capabilities">🚀 Key Capabilities<a class="headerlink" href="#key-capabilities" title="Permanent link">&para;</a></h2>
-<h3 id="conversation-memory"><strong>Conversation &amp; Memory</strong><a class="headerlink" href="#conversation-memory" title="Permanent link">&para;</a></h3>
+<h2 id="instrumentation-modes-stages">Instrumentation Modes &amp; Stages<a class="headerlink" href="#instrumentation-modes-stages" title="Permanent link">&para;</a></h2>
+<p>AICO’s instrumentation system is designed to be <strong>privacy-first, local-first, and user-friendly by default</strong>, with opt-in escalation for advanced users and developers. There are three distinct stages:</p>
+<h3 id="1-casual-user-default">1. Casual User (Default)<a class="headerlink" href="#1-casual-user-default" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Local LLM Integration</strong> (Ollama) for private, offline conversations</li>
-<li><strong>Vector-Based Semantic Search</strong> with ChromaDB for contextual memory retrieval</li>
-<li><strong>Episodic &amp; Semantic Memory</strong> systems for long-term relationship building</li>
-<li><strong>Context-Aware Responses</strong> that reference past conversations and shared experiences</li>
+<li><strong>Minimal, non-technical logging:</strong> Only essential events and errors are logged, using clear, human-friendly messages.</li>
+<li><strong>User notifications:</strong> Important system events are surfaced as simple notifications (e.g., "AICO restarted"), not technical logs.</li>
+<li><strong>No metrics, tracing, or analytics</strong> are collected or exposed.</li>
+<li><strong>No external dashboards or endpoints.</strong></li>
+<li><strong>Privacy:</strong> All data remains local, never leaves the device.</li>
 </ul>
-<h3 id="emotional-intelligence"><strong>Emotional Intelligence</strong><a class="headerlink" href="#emotional-intelligence" title="Permanent link">&para;</a></h3>
+<h3 id="2-pro-user-opt-in">2. Pro User (Opt-In)<a class="headerlink" href="#2-pro-user-opt-in" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>AppraisalCloudPCT Emotion Simulation</strong> - 4-stage appraisal process for sophisticated emotional responses</li>
-<li><strong>Multi-Modal Emotion Recognition</strong> through voice tone, facial expressions, and text analysis</li>
-<li><strong>Crisis Detection &amp; Support</strong> with appropriate emotional regulation and response</li>
-<li><strong>Emotional Memory Integration</strong> for consistent personality expression over time</li>
+<li><strong>Resource &amp; health insights:</strong> In-app dashboard or status page shows resource usage, performance, and health (CPU, memory, uptime, etc.).</li>
+<li><strong>In-depth logs:</strong> More detailed logs are available for inspection/export.</li>
+<li><strong>Debug Capsules:</strong> On-demand, session-based instrumentation "capsules" can be generated (encrypted, portable files containing logs/metrics for a session). Users can review/redact before sharing for support.</li>
+<li><strong>Still local-first:</strong> All insights and data remain on-device unless explicitly exported by the user.</li>
 </ul>
-<h3 id="autonomous-agency"><strong>Autonomous Agency</strong><a class="headerlink" href="#autonomous-agency" title="Permanent link">&para;</a></h3>
+<h3 id="3-developer-mode-opt-in-plugin">3. Developer Mode (Opt-In Plugin)<a class="headerlink" href="#3-developer-mode-opt-in-plugin" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>MCTS Planning System</strong> for strategic decision-making and goal pursuit</li>
-<li><strong>RND Curiosity Engine</strong> for intrinsic motivation and autonomous learning</li>
-<li><strong>Background Learning</strong> that continues even when not actively conversing</li>
-<li><strong>Proactive Initiatives</strong> - check-ins, suggestions, and conversation starters</li>
+<li><strong>Full observability plugin:</strong> When enabled, exposes advanced instrumentation endpoints (Prometheus, OpenTelemetry, etc.).</li>
+<li><strong>Local Prometheus/Grafana instances:</strong> Pre-configured, run locally (never required for normal use).</li>
+<li><strong>Predefined dashboards:</strong> For metrics, traces, and logs across all modules.</li>
+<li><strong>Advanced tracing and analytics:</strong> Full distributed tracing, activity streams, and audit logs available.</li>
+<li><strong>Plugin isolation:</strong> Dev tools are sandboxed and can be disabled/removed at any time.</li>
 </ul>
-<h3 id="audio-visual-embodiment"><strong>Audio-Visual Embodiment</strong><a class="headerlink" href="#audio-visual-embodiment" title="Permanent link">&para;</a></h3>
+<hr />
+<h2 id="core-components-across-all-stages">Core Components (Across All Stages)<a class="headerlink" href="#core-components-across-all-stages" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Ready Player Me Avatar Integration</strong> with realistic facial expressions and lip-sync</li>
-<li><strong>TalkingHead.js</strong> for advanced speech animation and emotional expression</li>
-<li><strong>Federated Device Roaming</strong> - seamless P2P encrypted synchronization between your trusted devices</li>
-<li><strong>Cross-Platform Presence</strong> (desktop, mobile, AR/VR, IoT devices)</li>
-<li><strong>Spatial Awareness</strong> and zero-knowledge multi-device coordination</li>
+<li><strong>Logging:</strong> Structured, leveled logs with module/topic tagging. Always local by default.</li>
+<li><strong>Metrics:</strong> Quantitative health and performance data (pro/dev only). Exposed via in-app dashboard or local endpoints.</li>
+<li><strong>Tracing:</strong> End-to-end trace IDs and span contexts (dev only).</li>
+<li><strong>Event Auditing:</strong> Key events recorded in append-only, local-first logs.</li>
+<li><strong>Health Probes:</strong> Liveness/readiness endpoints for orchestration and monitoring (pro/dev only).</li>
+<li><strong>Error Reporting:</strong> Centralized error/event collection with context.</li>
+<li><strong>Usage Analytics:</strong> Aggregated, anonymized, strictly opt-in (pro/dev only).</li>
+<li><strong>Privacy &amp; Security:</strong> Dedicated audit logs, real-time alerts, and strict privacy enforcement at every stage.</li>
+<li><strong>Debug Capsules:</strong> Portable, encrypted session logs for support (pro/dev).</li>
+<li><strong>Plugin Instrumentation:</strong> API hooks for plugin logging/metrics, with enforced boundaries (dev only).</li>
 </ul>
-<h3 id="privacy-security"><strong>Privacy &amp; Security</strong><a class="headerlink" href="#privacy-security" title="Permanent link">&para;</a></h3>
+<hr />
+<h2 id="architectural-integration">Architectural Integration<a class="headerlink" href="#architectural-integration" title="Permanent link">&para;</a></h2>
+<h3 id="distributed-tracing-in-a-message-bus-architecture">Distributed Tracing in a Message Bus Architecture<a class="headerlink" href="#distributed-tracing-in-a-message-bus-architecture" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>AES-256 Encryption</strong> for all local data storage using SQLCipher</li>
-<li><strong>Local-First Processing</strong> with optional federated learning</li>
-<li><strong>Zero-Knowledge Architecture</strong> - your data never leaves your device without explicit consent</li>
-<li><strong>Homomorphic Encryption</strong> for privacy-preserving collective learning</li>
+<li><strong>Trace Context Propagation:</strong></li>
+<li>Every ZeroMQ message envelope includes trace metadata (<code>trace_id</code>, <code>span_id</code>, <code>parent_span_id</code>, timestamps, etc.).</li>
+<li>When a module receives a message, it extracts the trace context, creates a new span for its processing, and attaches updated context to any new messages it publishes.</li>
+<li>This enables end-to-end tracing across all modules, even in a purely event-driven, local-first system.</li>
+<li><strong>OpenTelemetry Compatibility:</strong></li>
 </ul>
-<h3 id="platform-extensibility"><strong>Platform &amp; Extensibility</strong><a class="headerlink" href="#platform-extensibility" title="Permanent link">&para;</a></h3>
+<p><strong>Example Envelope Addition:</strong>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;trace&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">&quot;trace_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;abc123&quot;</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">&quot;span_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ghi789&quot;</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">&quot;parent_span_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;def456&quot;</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">}</span>
+</span></code></pre></div></p>
+<hr />
+<h2 id="phase-4-auditing-debug-capsules">Phase 4: Auditing &amp; Debug Capsules<a class="headerlink" href="#phase-4-auditing-debug-capsules" title="Permanent link">&para;</a></h2>
+<p><strong>Goal:</strong> Provide robust event auditing and portable debug data for support/compliance.</p>
 <ul>
-<li><strong>ZeroMQ Message Bus</strong> for modular, scalable architecture</li>
-<li><strong>Hot-Loading Plugin System</strong> for community-developed extensions</li>
-<li><strong>Community Marketplace</strong> for sharing skills, personalities, and capabilities</li>
-<li><strong>Cross-Platform Deployment</strong> (Windows, macOS, Linux, mobile)</li>
-</ul>
-<h2 id="development-roadmap">🛤️ Development Roadmap<a class="headerlink" href="#development-roadmap" title="Permanent link">&para;</a></h2>
-<div class="admonition info">
-<p class="admonition-title">Current Phase: Foundation</p>
-<p>We're currently building the core infrastructure scaffolding. See our <a href="../roadmap/">detailed roadmaps</a> for the complete development journey.</p>
-</div>
-<h3 id="development-stages"><strong>Development Stages</strong><a class="headerlink" href="#development-stages" title="Permanent link">&para;</a></h3>
-<ol>
-<li>
-<p><strong>🛠️ Foundation</strong> <em>(Current)</em> - Core infrastructure scaffolding</p>
-<ul>
-<li>ZeroMQ message bus, plugin system, FastAPI backend</li>
-<li>Resource management, security framework, development pipeline</li>
-<li><a href="../roadmap/foundation.md">View Foundation Roadmap</a></li>
+<li><strong>Append-only audit logs:</strong> Key events are recorded for later review.</li>
+<li><strong>Debug Capsules:</strong> Users/devs can generate encrypted session logs for troubleshooting.</li>
+<li><strong>Privacy:</strong> All audit data is local and encrypted; export is user-controlled.</li>
+<li><strong>Developer Guidance:</strong><ul>
+<li>Use audit API for critical actions.</li>
+<li>Ensure debug capsules redact or encrypt sensitive data.</li>
 </ul>
 </li>
-<li>
-<p><strong>🤝 Companion</strong> <em>(Next)</em> - MVP with basic companionship</p>
+</ul>
+<hr />
+<h2 id="phase-5-analytics-extensibility">Phase 5: Analytics &amp; Extensibility<a class="headerlink" href="#phase-5-analytics-extensibility" title="Permanent link">&para;</a></h2>
+<p><strong>Goal:</strong> Enable advanced analytics, usage insights, and plugin observability.</p>
 <ul>
-<li>Text chat, voice interaction, basic avatar, memory system</li>
-<li>Local LLM integration, personality engine, emotion recognition</li>
-<li><a href="../roadmap/mvp.md">View MVP Roadmap</a></li>
+<li><strong>Aggregated analytics:</strong> Strictly opt-in, anonymized, local-first.</li>
+<li><strong>Plugin Instrumentation:</strong> Plugins use the same APIs (logging, metrics, tracing) with enforced boundaries.</li>
+<li><strong>Advanced Dashboards:</strong> For dev mode, provide Prometheus/Grafana endpoints and pre-built dashboards.</li>
+<li><strong>Developer Guidance:</strong><ul>
+<li>Follow API contracts for plugin instrumentation.</li>
+<li>Never bypass privacy controls.</li>
 </ul>
 </li>
-<li>
-<p><strong>💭 Confidante</strong> - Deep emotional intelligence</p>
-<ul>
-<li>Advanced emotion simulation, crisis support, empathy modeling</li>
-<li><a href="../roadmap/confidante.md">View Confidante Roadmap</a></li>
 </ul>
-</li>
-<li>
-<p><strong>🦾 Sidekick</strong> - Advanced autonomous agency</p>
+<hr />
+<h2 id="unified-instrumentation-architecture-diagram">Unified Instrumentation Architecture Diagram<a class="headerlink" href="#unified-instrumentation-architecture-diagram" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>graph TD;
+  subgraph Modules
+    Core[Core]
+    Embodiment[Embodiment]
+    Emotion[Emotion]
+    Plugins[Plugins]
+    Data[Data]
+  end
+  Core -- Logs/Metrics/Traces --&gt; Bus[ZeroMQ Bus]
+  Embodiment -- Logs/Metrics/Traces --&gt; Bus
+  Emotion -- Logs/Metrics/Traces --&gt; Bus
+  Plugins -- Logs/Metrics/Traces --&gt; Bus
+  Data -- Logs/Metrics/Traces --&gt; Bus
+  Bus -- Events --&gt; LocalStore[Local Log/Metric/Trace Store]
+  LocalStore -- Dashboards/Export --&gt; UI[UI/Dev Tools]</code></pre>
+<h2 id="references">References<a class="headerlink" href="#references" title="Permanent link">&para;</a></h2>
 <ul>
-<li>MCTS planning, curiosity-driven learning, proactive assistance</li>
-<li><a href="../roadmap/sidekick.md">View Sidekick Roadmap</a></li>
+<li><a href="https://opentelemetry.io/">OpenTelemetry</a></li>
+<li><a href="https://prometheus.io/">Prometheus</a></li>
+<li><a href="https://grafana.com/">Grafana</a></li>
+<li><a href="https://zeromq.org/">ZeroMQ</a></li>
 </ul>
-</li>
-<li>
-<p><strong>🌟 Co-Adventurer</strong> - Collaborative learning and growth</p>
-<ul>
-<li>Shared goal pursuit, collaborative problem-solving, meta-learning</li>
-<li><a href="../roadmap/co-adventurer.md">View Co-Adventurer Roadmap</a></li>
-</ul>
-</li>
-<li>
-<p><strong>🌐 Embodied Presence</strong> - Multi-modal integration</p>
-<ul>
-<li>Federated device roaming, AR/VR, IoT, robotics, spatial computing</li>
-<li><a href="../roadmap/embodied-presence.md">View Embodied Presence Roadmap</a></li>
-</ul>
-</li>
-<li>
-<p><strong>🤝 Community</strong> - Collective intelligence</p>
-<ul>
-<li>Privacy-preserving social features, federated learning</li>
-<li><a href="../roadmap/community.md">View Community Roadmap</a></li>
-</ul>
-</li>
-</ol>
-<h2 id="whos-this-for">🤝 Who's This For?<a class="headerlink" href="#whos-this-for" title="Permanent link">&para;</a></h2>
-<h3 id="for-users"><strong>For Users</strong><a class="headerlink" href="#for-users" title="Permanent link">&para;</a></h3>
-<ul>
-<li>Privacy-conscious individuals seeking local AI companionship</li>
-<li>People interested in emotional AI and authentic digital relationships</li>
-<li>Early adopters wanting to shape the future of AI companions</li>
-<li>Researchers studying human-AI interaction and emotional computing</li>
-</ul>
-<h3 id="for-contributors-developers"><strong>For Contributors &amp; Developers</strong><a class="headerlink" href="#for-contributors-developers" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>AI/ML Engineers</strong> working on LLMs, emotion recognition, or autonomous agents</li>
-<li><strong>Flutter Developers</strong> interested in cross-platform AI applications</li>
-<li><strong>Python Backend Developers</strong> experienced with FastAPI, async programming, or message systems</li>
-<li><strong>3D/Avatar Developers</strong> skilled in Three.js, Ready Player Me, or real-time animation</li>
-<li><strong>Privacy Engineers</strong> focused on encryption, federated learning, or zero-knowledge systems</li>
-<li><strong>UX/UI Designers</strong> passionate about human-AI interaction and emotional design</li>
-<li><strong>Researchers</strong> in affective computing, personality modeling, or human-AI interaction</li>
-<li><strong>Plugin Developers</strong> wanting to extend AICO's capabilities</li>
-<li><strong>Community Builders</strong> interested in fostering open-source collaboration</li>
-<li><strong>Hardware Buffs</strong> who want to build the next generation of AI companions</li>
-</ul>
-<h2 id="contributing">🚀 Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h2>
-<p>AICO is an open experiment—all code and progress are public. Whether you want to add features, challenge assumptions, help build the ethics framework, or just watch the journey unfold, you're welcome.</p>
-<p><strong>Ready to contribute?</strong> Start with our <a href="../development/contributing/">Contributing Guide</a>.</p>
-<h3 id="community-collaboration"><strong>Community &amp; Collaboration</strong><a class="headerlink" href="#community-collaboration" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Privacy-Preserving Collective Learning</strong> - Improve AICO's emotional intelligence through federated learning</li>
-<li><strong>Federated Architecture Benefits</strong> - Distributed resilience and community-driven innovation</li>
-<li><strong>Open-Source Governance</strong> - Transparent development with community input on major decisions</li>
-<li><strong>Global Community Connections</strong> - Connect with other AICO users while maintaining privacy</li>
-<li><strong>Distributed Problem-Solving</strong> - Collaborative research on AI companionship challenges</li>
-</ul>
-<h2 id="get-in-touch">Get in Touch<a class="headerlink" href="#get-in-touch" title="Permanent link">&para;</a></h2>
-<p>If you have any questions, suggestions, or want to contribute, please reach out to <strong>Lead Maintainer</strong> <a href="mailto:michael@boeni.industries">Michael Böni</a>.</p>
 
 
 
 
 
 
+
+  
+  
 
 
 
@@ -2751,12 +2721,12 @@
     
     
       
-      <script id="__config" type="application/json">{"base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.indexes", "navigation.top", "navigation.collapse", "toc.follow", "toc.integrate", "search.highlight", "search.share", "search.suggest", "toc.integrate", "content.action.edit", "content.action.view", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.indexes", "navigation.top", "navigation.collapse", "toc.follow", "toc.integrate", "search.highlight", "search.share", "search.suggest", "toc.integrate", "content.action.edit", "content.action.view", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.50899def.min.js"></script>
+      <script src="../../assets/javascripts/bundle.50899def.min.js"></script>
       
-        <script src="../assets/javascripts/extra.js"></script>
+        <script src="../../assets/javascripts/extra.js"></script>
       
     
   </body>

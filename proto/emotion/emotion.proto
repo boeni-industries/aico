@@ -9,6 +9,14 @@ option java_multiple_files = true;
 import "google/protobuf/timestamp.proto";
 
 // Detected user emotion from various modalities
+// Matches the `user.emotion.detected` message format documented in docs/architecture/emotion_sim_msg.md.
+// Emotional state information detected from user inputs across multiple modalities.
+// Fields:
+// - timestamp: When the emotion was detected
+// - source: Source module (e.g., emotion_recognition)
+// - emotion: Primary, secondary, confidence, valence, arousal, dominance
+// - modalities: Indicators from different detection channels (facial, voice, text)
+// See docs/architecture/emotion_sim_msg.md for illustrative JSON and field semantics.
 message UserEmotionDetected {
   google.protobuf.Timestamp timestamp = 1;
   string source = 2;
@@ -18,6 +26,14 @@ message UserEmotionDetected {
 }
 
 // Emotional state representation
+// Fields:
+// - primary: Primary detected emotion (string)
+// - confidence: Detection confidence level (0.0-1.0)
+// - secondary: Additional detected emotions (array of strings)
+// - valence: Pleasure/displeasure dimension (-1.0 to 1.0)
+// - arousal: Activation/energy level (0.0-1.0)
+// - dominance: Control/power dimension (0.0-1.0)
+// See emotion_sim_msg.md for further details.
 message EmotionState {
   string primary = 1;                // Primary detected emotion
   float confidence = 2;              // Detection confidence level (0.0-1.0)
@@ -28,6 +44,11 @@ message EmotionState {
 }
 
 // Indicators from different detection modalities
+// Fields:
+// - facial: e.g., "furrowed_brow", "tight_lips"
+// - voice: e.g., "elevated_pitch", "faster_speech"
+// - text: e.g., "negative_sentiment", "complaint_indicators"
+// See emotion_sim_msg.md for further details.
 message ModalityIndicators {
   repeated string facial = 1;        // Facial expression indicators
   repeated string voice = 2;         // Voice analysis indicators

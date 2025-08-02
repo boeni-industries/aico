@@ -47,6 +47,13 @@ message MoodState {
 }
 
 // User interaction history
+// Matches the `user.interaction.history` message format documented in docs/architecture/personality_sim_msg.md.
+// Historical interaction patterns and relationship development data from the Memory System.
+// Fields:
+// - user_id: User identifier
+// - patterns: Topic preferences, interaction styles, time patterns
+// - relationship: Development stage, trust, familiarity, significant events, interaction quality
+// See personality_sim_msg.md for illustrative JSON and field semantics.
 message UserInteractionHistory {
   string user_id = 1;
   
@@ -58,6 +65,11 @@ message UserInteractionHistory {
 }
 
 // Patterns of user interaction
+// Fields:
+// - topic_preferences: Array of topic preference objects
+// - interaction_styles: Conversation length, response preferences, initiative taking
+// - time_patterns: Preferred times, session duration
+// See personality_sim_msg.md for examples.
 message InteractionPatterns {
   // Topic preferences
   repeated TopicPreference topic_preferences = 1;
@@ -70,6 +82,12 @@ message InteractionPatterns {
 }
 
 // Topic preference
+// Topic preference
+// Fields:
+// - topic: Topic name
+// - interest_level: Interest level (0.0-1.0)
+// - engagement_count: Number of engagements with topic
+// See personality_sim_msg.md for examples.
 message TopicPreference {
   string topic = 1;                 // Topic name
   float interest_level = 2;         // Interest level (0.0-1.0)
@@ -77,6 +95,12 @@ message TopicPreference {
 }
 
 // Interaction style preferences
+// Interaction style preferences
+// Fields:
+// - conversation_length: Preferences for conversation length
+// - response_preferences: Preferences for detail, humor, formality
+// - initiative_taking: User-initiated ratio, response to AI initiatives
+// See personality_sim_msg.md for examples.
 message InteractionStyles {
   // Conversation length preferences
   ConversationLength conversation_length = 1;
