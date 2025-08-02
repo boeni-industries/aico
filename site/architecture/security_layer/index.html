@@ -15,6 +15,10 @@
         <link rel="canonical" href="https://boeni-industries.github.io/aico/architecture/security_layer/">
       
       
+        <link rel="prev" href="../data_federation/">
+      
+      
+        <link rel="next" href="../personality_sim/">
       
       
       <link rel="icon" href="../../assets/images/logo.png">
@@ -555,8 +559,10 @@
       
   
   
+    
   
   
+  
     
     
       
@@ -574,6 +580,8 @@
       
         
       
+        
+      
     
     
     
@@ -583,11 +591,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
@@ -603,7 +611,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             Core Infrastructure
@@ -640,7 +648,7 @@
   
   
     <li class="md-nav__item">
-      <a href="#" class="md-nav__link">
+      <a href="../plugin_system/" class="md-nav__link">
         
   
   
@@ -686,7 +694,7 @@
   
   
     <li class="md-nav__item">
-      <a href="#" class="md-nav__link">
+      <a href="../update_system/" class="md-nav__link">
         
   
   
@@ -766,6 +774,116 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Security Layer
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Security Layer
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      Principles
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Architecture Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security Layers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security Features
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deployment-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      Deployment Patterns
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -2313,7 +2431,7 @@
 
 <h1 id="security-architecture">Security Architecture<a class="headerlink" href="#security-architecture" title="Permanent link">&para;</a></h1>
 <p>This document outlines AICO's comprehensive security architecture, which implements a privacy-first approach to protecting user data, communications, and system integrity across all components.</p>
-<h2 id="security-principles">Security Principles<a class="headerlink" href="#security-principles" title="Permanent link">&para;</a></h2>
+<h2 id="principles">Principles<a class="headerlink" href="#principles" title="Permanent link">&para;</a></h2>
 <p>AICO's security architecture is built on the following core principles:</p>
 <p><strong>1. Privacy-First Design</strong>
 All security decisions prioritize user privacy and data sovereignty. Personal data remains under user control at all times, with local processing preferred over cloud services and explicit consent required for any data sharing. This principle guides all architectural decisions from storage to communication protocols.</p>
@@ -2347,7 +2465,7 @@ Components only have access to the resources they need to perform their function
 Data processing happens on-device whenever possible, minimizing exposure and maximizing user control. This principle supports both privacy and security by keeping sensitive operations within the user's security boundary. When remote processing is required, only the minimum necessary data is transmitted with appropriate protections.</p>
 <p><strong>7. Transparent Security</strong>
 Users have visibility into security measures and data usage without being overwhelmed by technical details. Security status is communicated clearly, and users can audit what data is stored and how it's protected. This builds trust while ensuring users can make informed decisions about their privacy and security.</p>
-<h2 id="security-architecture-overview">Security Architecture Overview<a class="headerlink" href="#security-architecture-overview" title="Permanent link">&para;</a></h2>
+<h2 id="architecture-overview">Architecture Overview<a class="headerlink" href="#architecture-overview" title="Permanent link">&para;</a></h2>
 <h3 id="frontend-vs-backend-security-responsibilities">Frontend vs Backend Security Responsibilities<a class="headerlink" href="#frontend-vs-backend-security-responsibilities" title="Permanent link">&para;</a></h3>
 <p>AICO's architecture supports both coupled (same device) and detached (separate devices) deployment models, requiring specific security implementations for each component:</p>
 <h4 id="backend-security-responsibilities">Backend Security Responsibilities<a class="headerlink" href="#backend-security-responsibilities" title="Permanent link">&para;</a></h4>
@@ -2452,8 +2570,8 @@ Users have visibility into security measures and data usage without being overwh
 <li>
 <p><strong>Implementation</strong>:
     <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Example secure ZeroMQ setup</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">import</span> <span class="nn">zmq</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span> <span class="nn">zmq.auth.thread</span> <span class="kn">import</span> <span class="n">ThreadAuthenticator</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">zmq</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">zmq.auth.thread</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThreadAuthenticator</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># Set up authentication</span>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">context</span> <span class="o">=</span> <span class="n">zmq</span><span class="o">.</span><span class="n">Context</span><span class="p">()</span>
@@ -2530,8 +2648,8 @@ Users have visibility into security measures and data usage without being overwh
 <ul>
 <li><strong>Implementation in AICO Backend</strong>:
   <div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># AICO backend implementation using Python-Cryptography</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span> <span class="nn">cryptography.hazmat.primitives.kdf.argon2</span> <span class="kn">import</span> <span class="n">Argon2</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kn">import</span> <span class="nn">os</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">cryptography.hazmat.primitives.kdf.argon2</span><span class="w"> </span><span class="kn">import</span> <span class="n">Argon2</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># Generate a random salt for AICO master key</span>
 </span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">salt</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">urandom</span><span class="p">(</span><span class="mi">16</span><span class="p">)</span>
@@ -2568,19 +2686,19 @@ Users have visibility into security measures and data usage without being overwh
 <li>Mobile: Secure Enclave (iOS) / Keystore (Android)</li>
 </ul>
 <p>AICO uses the Python <code>keyring</code> library as a cross-platform abstraction layer for secure key storage:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span> <span class="nn">keyring</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">keyring</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">class</span> <span class="nc">AICOKeyStorage</span><span class="p">:</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">service_name</span><span class="o">=</span><span class="s2">&quot;AICO&quot;</span><span class="p">):</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">class</span><span class="w"> </span><span class="nc">AICOKeyStorage</span><span class="p">:</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">service_name</span><span class="o">=</span><span class="s2">&quot;AICO&quot;</span><span class="p">):</span>
 </span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">service_name</span> <span class="o">=</span> <span class="n">service_name</span>
 </span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="k">def</span> <span class="nf">store_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key_name</span><span class="p">,</span> <span class="n">key_value</span><span class="p">):</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">store_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key_name</span><span class="p">,</span> <span class="n">key_value</span><span class="p">):</span>
 </span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>        <span class="c1"># Convert bytes to hex string for storage</span>
 </span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key_value</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
 </span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>            <span class="n">key_value</span> <span class="o">=</span> <span class="n">key_value</span><span class="o">.</span><span class="n">hex</span><span class="p">()</span>
 </span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>        <span class="n">keyring</span><span class="o">.</span><span class="n">set_password</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">service_name</span><span class="p">,</span> <span class="n">key_name</span><span class="p">,</span> <span class="n">key_value</span><span class="p">)</span>
 </span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="k">def</span> <span class="nf">retrieve_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key_name</span><span class="p">,</span> <span class="n">as_bytes</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">retrieve_key</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key_name</span><span class="p">,</span> <span class="n">as_bytes</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 </span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>        <span class="n">value</span> <span class="o">=</span> <span class="n">keyring</span><span class="o">.</span><span class="n">get_password</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">service_name</span><span class="p">,</span> <span class="n">key_name</span><span class="p">)</span>
 </span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>        <span class="k">if</span> <span class="n">value</span> <span class="ow">and</span> <span class="n">as_bytes</span><span class="p">:</span>
 </span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>            <span class="k">return</span> <span class="nb">bytes</span><span class="o">.</span><span class="n">fromhex</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
@@ -2617,7 +2735,7 @@ Users have visibility into security measures and data usage without being overwh
 <li>Granular permission control for each data category</li>
 <li>Time-limited access grants with automatic expiration</li>
 </ul>
-<h2 id="required-security-features-by-component">Required Security Features by Component<a class="headerlink" href="#required-security-features-by-component" title="Permanent link">&para;</a></h2>
+<h2 id="security-features">Security Features<a class="headerlink" href="#security-features" title="Permanent link">&para;</a></h2>
 <p>AICO's architecture requires specific security implementations for both frontend and backend components to support local-first operation and flexible roaming patterns.</p>
 <h3 id="frontend-security-requirements">Frontend Security Requirements<a class="headerlink" href="#frontend-security-requirements" title="Permanent link">&para;</a></h3>
 <table>
@@ -2783,7 +2901,7 @@ Users have visibility into security measures and data usage without being overwh
 <li><strong>Recovery Procedures</strong>: Documented steps for security incident recovery</li>
 <li><strong>Secure Defaults</strong>: System returns to secure state after failures</li>
 </ul>
-<h2 id="security-in-deployment-patterns">Security in Deployment Patterns<a class="headerlink" href="#security-in-deployment-patterns" title="Permanent link">&para;</a></h2>
+<h2 id="deployment-patterns">Deployment Patterns<a class="headerlink" href="#deployment-patterns" title="Permanent link">&para;</a></h2>
 <h3 id="coupled-deployment-security">Coupled Deployment Security<a class="headerlink" href="#coupled-deployment-security" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Single device security boundary</li>

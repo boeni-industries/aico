@@ -6,7 +6,7 @@ title: Security Architecture
 
 This document outlines AICO's comprehensive security architecture, which implements a privacy-first approach to protecting user data, communications, and system integrity across all components.
 
-## Security Principles
+## Principles
 
 AICO's security architecture is built on the following core principles:
 
@@ -43,7 +43,7 @@ Data processing happens on-device whenever possible, minimizing exposure and max
 **7. Transparent Security**
 Users have visibility into security measures and data usage without being overwhelmed by technical details. Security status is communicated clearly, and users can audit what data is stored and how it's protected. This builds trust while ensuring users can make informed decisions about their privacy and security.
 
-## Security Architecture Overview
+## Architecture Overview
 
 ### Frontend vs Backend Security Responsibilities
 
@@ -276,7 +276,7 @@ AICO's key management system handles the lifecycle of cryptographic keys from cr
   - Granular permission control for each data category
   - Time-limited access grants with automatic expiration
 
-## Required Security Features by Component
+## Security Features
 
 AICO's architecture requires specific security implementations for both frontend and backend components to support local-first operation and flexible roaming patterns.
 
@@ -359,7 +359,7 @@ The security implementations adapt based on deployment mode:
 - **Recovery Procedures**: Documented steps for security incident recovery
 - **Secure Defaults**: System returns to secure state after failures
 
-## Security in Deployment Patterns
+## Deployment Patterns
 
 ### Coupled Deployment Security
 - Single device security boundary

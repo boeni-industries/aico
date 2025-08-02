@@ -133,12 +133,13 @@ nav:
       - Overview: architecture/architecture_overview.md
   - Core Infrastructure:
     - Message Bus: architecture/message_bus.md
-    - Plugin Manager: '#'
+    - Plugin Manager: architecture/plugin_system.md
     - API Gateway: architecture/api_gateway.md
-    - Update System: '#'
+    - Update System: architecture/update_system.md
     - Data Layer: architecture/data_layer.md
     - Data Security: architecture/data_security.md
     - Data Federation: architecture/data_federation.md
+    - Security Layer: architecture/security_layer.md
   - Autonomous Agency:
     - Goal System: '#'
     - Planning System: '#'
