@@ -139,6 +139,7 @@ nav:
     - Data Layer: architecture/data_layer.md
     - Data Federation: architecture/data_federation.md
     - Instrumentation: architecture/instrumentation.md
+    - Logging: architecture/instrumentation_logging.md
   - Privacy & Security:
     - Overview: security/security_overview.md
     - Data Security: security/data_security.md
