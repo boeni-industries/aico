@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package aico.core;
+
+option go_package = "github.com/boeni-industries/aico/proto/core";
+option java_package = "industries.boeni.aico.proto.core";
+option java_multiple_files = true;
+
+import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
+
+// Core message envelope used for all AICO messages
+message AicoMessage {
+  // Metadata common to all messages
+  MessageMetadata metadata = 1;
+  
+  // Message payload - can be any message type
+  oneof payload {
+    google.protobuf.Any any_payload = 2; // For extensibility
+  }
+}
+
+// Common metadata for all messages
+message MessageMetadata {
+  string message_id = 1;                      // UUID string
+  google.protobuf.Timestamp timestamp = 2;    // Message creation timestamp
+  string source = 3;                          // Source module name
+  string message_type = 4;                    // Topic.subtopic format
+  string version = 5;                         // Schema version
+  map<string, string> attributes = 6;         // Additional metadata attributes
+}

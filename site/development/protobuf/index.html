@@ -12,26 +12,28 @@
         <meta name="author" content="Michael Böni">
       
       
-        <link rel="canonical" href="https://boeni-industries.github.io/aico/welcome/">
+        <link rel="canonical" href="https://boeni-industries.github.io/aico/development/protobuf/">
       
       
+        <link rel="prev" href="../contributing/">
       
-        <link rel="next" href="../getting-started/getting_started_overview/">
+      
+        <link rel="next" href="../../roadmap/foundation/">
       
       
-      <link rel="icon" href="../assets/images/logo.png">
+      <link rel="icon" href="../../assets/images/logo.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.16">
     
     
       
-        <title>Welcome - AICO - AI Companion Project</title>
+        <title>Protocol Buffers - AICO - AI Companion Project</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.7e37652d.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.7e37652d.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
       
       
 
@@ -50,11 +52,11 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/extra.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/extra.css">
     
-      <link rel="stylesheet" href="../assets/stylesheets/disable-logo.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/disable-logo.css">
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -80,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#aico-the-aicompanion-project" class="md-skip">
+        <a href="#protocol-buffers-in-aico" class="md-skip">
           Skip to content
         </a>
       
@@ -96,9 +98,9 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="AICO - AI Companion Project" class="md-header__button md-logo" aria-label="AICO - AI Companion Project" data-md-component="logo">
+    <a href="../.." title="AICO - AI Companion Project" class="md-header__button md-logo" aria-label="AICO - AI Companion Project" data-md-component="logo">
       
-  <img src="../assets/images/logo.png" alt="logo">
+  <img src="../../assets/images/logo.png" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -115,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Welcome
+              Protocol Buffers
             
           </span>
         </div>
@@ -250,9 +252,9 @@
 
 <nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="AICO - AI Companion Project" class="md-nav__button md-logo" aria-label="AICO - AI Companion Project" data-md-component="logo">
+    <a href="../.." title="AICO - AI Companion Project" class="md-nav__button md-logo" aria-label="AICO - AI Companion Project" data-md-component="logo">
       
-  <img src="../assets/images/logo.png" alt="logo">
+  <img src="../../assets/images/logo.png" alt="logo">
 
     </a>
     AICO - AI Companion Project
@@ -276,10 +278,8 @@
       
   
   
-    
   
   
-  
     
     
       
@@ -294,11 +294,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
         
           
           <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="">
@@ -314,7 +314,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_1">
             <span class="md-nav__icon md-icon"></span>
             Home
@@ -325,32 +325,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Welcome
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../welcome/" class="md-nav__link">
         
   
   
@@ -361,98 +339,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#project-vision" class="md-nav__link">
-    <span class="md-ellipsis">
-      Project Vision
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#the-evolutionary-journey" class="md-nav__link">
-    <span class="md-ellipsis">
-      The Evolutionary Journey
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#core-principles" class="md-nav__link">
-    <span class="md-ellipsis">
-      Core Principles
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#key-capabilities" class="md-nav__link">
-    <span class="md-ellipsis">
-      🚀 Key Capabilities
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#development-roadmap" class="md-nav__link">
-    <span class="md-ellipsis">
-      🛤️ Development Roadmap
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#whos-this-for" class="md-nav__link">
-    <span class="md-ellipsis">
-      🤝 Who's This For?
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#contributing" class="md-nav__link">
-    <span class="md-ellipsis">
-      🚀 Contributing
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#get-in-touch" class="md-nav__link">
-    <span class="md-ellipsis">
-      Get in Touch
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -523,7 +409,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../getting-started/getting_started_overview/" class="md-nav__link">
+      <a href="../../getting-started/getting_started_overview/" class="md-nav__link">
         
   
   
@@ -546,7 +432,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../getting-started/installation/" class="md-nav__link">
+      <a href="../../getting-started/installation/" class="md-nav__link">
         
   
   
@@ -569,7 +455,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../getting-started/quick-start/" class="md-nav__link">
+      <a href="../../getting-started/quick-start/" class="md-nav__link">
         
   
   
@@ -646,7 +532,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/architecture_overview/" class="md-nav__link">
+      <a href="../../architecture/architecture_overview/" class="md-nav__link">
         
   
   
@@ -735,7 +621,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/message_bus/" class="md-nav__link">
+      <a href="../../architecture/message_bus/" class="md-nav__link">
         
   
   
@@ -781,7 +667,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/api_gateway/" class="md-nav__link">
+      <a href="../../architecture/api_gateway/" class="md-nav__link">
         
   
   
@@ -827,7 +713,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/data_layer/" class="md-nav__link">
+      <a href="../../architecture/data_layer/" class="md-nav__link">
         
   
   
@@ -850,7 +736,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/data_security/" class="md-nav__link">
+      <a href="../../architecture/data_security/" class="md-nav__link">
         
   
   
@@ -873,7 +759,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/data_federation/" class="md-nav__link">
+      <a href="../../architecture/data_federation/" class="md-nav__link">
         
   
   
@@ -1106,7 +992,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/personality_sim/" class="md-nav__link">
+      <a href="../../architecture/personality_sim/" class="md-nav__link">
         
   
   
@@ -1129,7 +1015,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/emotion_sim/" class="md-nav__link">
+      <a href="../../architecture/emotion_sim/" class="md-nav__link">
         
   
   
@@ -1691,7 +1577,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/integration_msg/" class="md-nav__link">
+      <a href="../../architecture/integration_msg/" class="md-nav__link">
         
   
   
@@ -1714,7 +1600,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/emotion_sim_msg/" class="md-nav__link">
+      <a href="../../architecture/emotion_sim_msg/" class="md-nav__link">
         
   
   
@@ -1737,7 +1623,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/personality_sim_msg/" class="md-nav__link">
+      <a href="../../architecture/personality_sim_msg/" class="md-nav__link">
         
   
   
@@ -1814,7 +1700,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/tech_stack/" class="md-nav__link">
+      <a href="../../architecture/tech_stack/" class="md-nav__link">
         
   
   
@@ -1937,7 +1823,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../concepts/emotion/emotion_sim/" class="md-nav__link">
+      <a href="../../concepts/emotion/emotion_sim/" class="md-nav__link">
         
   
   
@@ -2014,7 +1900,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../concepts/personality/personality_sim/" class="md-nav__link">
+      <a href="../../concepts/personality/personality_sim/" class="md-nav__link">
         
   
   
@@ -2037,7 +1923,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../concepts/personality/personality_definition/" class="md-nav__link">
+      <a href="../../concepts/personality/personality_definition/" class="md-nav__link">
         
   
   
@@ -2072,8 +1958,10 @@
       
   
   
+    
   
   
+  
     
     
       
@@ -2090,11 +1978,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_14" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_14" checked>
         
           
           <label class="md-nav__link" for="__nav_14" id="__nav_14_label" tabindex="">
@@ -2110,7 +1998,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_14_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_14_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_14">
             <span class="md-nav__icon md-icon"></span>
             Development
@@ -2124,7 +2012,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../development/contributing/" class="md-nav__link">
+      <a href="../contributing/" class="md-nav__link">
         
   
   
@@ -2144,10 +2032,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../development/protobuf/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Protocol Buffers
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -2158,6 +2068,98 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#directory-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Directory Structure
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#code-generation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Code Generation
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#development-guidelines" class="md-nav__link">
+    <span class="md-ellipsis">
+      Development Guidelines
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-with-message-bus" class="md-nav__link">
+    <span class="md-ellipsis">
+      Integration with Message Bus
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-with-api-gateway" class="md-nav__link">
+    <span class="md-ellipsis">
+      Integration with API Gateway
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-first-and-federated-architecture-considerations" class="md-nav__link">
+    <span class="md-ellipsis">
+      Local-First and Federated Architecture Considerations
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      References
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -2236,7 +2238,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/foundation/" class="md-nav__link">
+      <a href="../../roadmap/foundation/" class="md-nav__link">
         
   
   
@@ -2259,7 +2261,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/mvp/" class="md-nav__link">
+      <a href="../../roadmap/mvp/" class="md-nav__link">
         
   
   
@@ -2282,7 +2284,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/confidante/" class="md-nav__link">
+      <a href="../../roadmap/confidante/" class="md-nav__link">
         
   
   
@@ -2305,7 +2307,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/sidekick/" class="md-nav__link">
+      <a href="../../roadmap/sidekick/" class="md-nav__link">
         
   
   
@@ -2328,7 +2330,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/co_adventurer.md" class="md-nav__link">
+      <a href="../../roadmap/co_adventurer.md" class="md-nav__link">
         
   
   
@@ -2351,7 +2353,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/embodied_presence.md" class="md-nav__link">
+      <a href="../../roadmap/embodied_presence.md" class="md-nav__link">
         
   
   
@@ -2374,7 +2376,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/community/" class="md-nav__link">
+      <a href="../../roadmap/community/" class="md-nav__link">
         
   
   
@@ -2413,7 +2415,7 @@
 
 
   
-    <a href="https://github.com/boeni-industries/aico/edit/main/docs/welcome.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/boeni-industries/aico/edit/main/docs/development/protobuf.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2422,176 +2424,166 @@
     
       
     
-    <a href="https://github.com/boeni-industries/aico/raw/main/docs/welcome.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/boeni-industries/aico/raw/main/docs/development/protobuf.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"/></svg>
     </a>
   
 
 
-<h1 id="aico-the-aicompanion-project">AICO – The AI+Companion Project<a class="headerlink" href="#aico-the-aicompanion-project" title="Permanent link">&para;</a></h1>
-<div class="admonition info">
-<p class="admonition-title">Welcome to AICO</p>
-<p>Building an <strong>emotionally present, embodied, and proactive AI companion</strong> that evolves from basic conversation partner to trusted co-adventurer.</p>
-</div>
-<h2 id="project-vision">Project Vision<a class="headerlink" href="#project-vision" title="Permanent link">&para;</a></h2>
-<p>AICO is an open-source experiment to build an AI companion that's more than just a virtual assistant—it's a sidekick, confidante, and co-adventurer. We're creating an AI that is present, curious, and grows with you, featuring genuine emotional intelligence, autonomous agency, and deep respect for privacy.</p>
-<p><strong>This isn't about "superintelligence"</strong>—it's about real resonance, authentic relationship, and an AI that sometimes nudges you first without being told.</p>
-<h2 id="the-evolutionary-journey">The Evolutionary Journey<a class="headerlink" href="#the-evolutionary-journey" title="Permanent link">&para;</a></h2>
-<p>AICO's development follows a unique relationship-deepening progression:</p>
-<pre class="mermaid"><code>graph LR
-    A[🤝 Companion&lt;br/&gt;MVP] --&gt; B[💭 Confidante&lt;br/&gt;Emotional Intelligence]
-    B --&gt; C[🦾 Sidekick&lt;br/&gt;Advanced Agency]
-    C --&gt; D[🌟 Co-Adventurer&lt;br/&gt;Collaborative Growth]
-    D --&gt; E[🌐 Embodied Presence&lt;br/&gt;Multi-Modal Integration]
-    E --&gt; F[🤝 Community&lt;br/&gt;Collective Learning]</code></pre>
-<p>Each stage builds deeper companionship rather than just adding features.</p>
-<h2 id="core-principles">Core Principles<a class="headerlink" href="#core-principles" title="Permanent link">&para;</a></h2>
+<h1 id="protocol-buffers-in-aico">Protocol Buffers in AICO<a class="headerlink" href="#protocol-buffers-in-aico" title="Permanent link">&para;</a></h1>
+<p>This document provides guidance for developers working with Protocol Buffers (protobuf) in the AICO system.</p>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>AICO uses Protocol Buffers as the unified message format for all communication between components. Protocol Buffers provide:</p>
 <ul>
-<li><strong>Autonomous Agency</strong> - AICO has its own goals, interests, and curiosities that drive self-directed behavior</li>
-<li><strong>Strong User-Centric Privacy</strong> - Local-first processing with full user control and end-to-end encryption</li>
-<li><strong>Modular, Extensible Architecture</strong> - Message-driven design prioritizing companionship and long-term learning</li>
-<li><strong>Real-Time Emotional Awareness</strong> - Multi-modal emotion recognition and sophisticated empathetic responses</li>
-<li><strong>Embodied Presence</strong> - Visual avatar system with spatial awareness and multi-device synchronization</li>
-<li><strong>Community Intelligence</strong> - Privacy-preserving collective learning and federated knowledge sharing</li>
+<li><strong>High Performance</strong>: Binary serialization is faster and more compact than JSON</li>
+<li><strong>Strong Typing</strong>: Compile-time type checking reduces errors</li>
+<li><strong>Cross-Platform</strong>: Consistent message format across all platforms and languages</li>
+<li><strong>Schema Evolution</strong>: Built-in versioning and backward compatibility</li>
+<li><strong>Code Generation</strong>: Automatic generation of serialization/deserialization code</li>
 </ul>
-<h2 id="key-capabilities">🚀 Key Capabilities<a class="headerlink" href="#key-capabilities" title="Permanent link">&para;</a></h2>
-<h3 id="conversation-memory"><strong>Conversation &amp; Memory</strong><a class="headerlink" href="#conversation-memory" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Local LLM Integration</strong> (Ollama) for private, offline conversations</li>
-<li><strong>Vector-Based Semantic Search</strong> with ChromaDB for contextual memory retrieval</li>
-<li><strong>Episodic &amp; Semantic Memory</strong> systems for long-term relationship building</li>
-<li><strong>Context-Aware Responses</strong> that reference past conversations and shared experiences</li>
-</ul>
-<h3 id="emotional-intelligence"><strong>Emotional Intelligence</strong><a class="headerlink" href="#emotional-intelligence" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>AppraisalCloudPCT Emotion Simulation</strong> - 4-stage appraisal process for sophisticated emotional responses</li>
-<li><strong>Multi-Modal Emotion Recognition</strong> through voice tone, facial expressions, and text analysis</li>
-<li><strong>Crisis Detection &amp; Support</strong> with appropriate emotional regulation and response</li>
-<li><strong>Emotional Memory Integration</strong> for consistent personality expression over time</li>
-</ul>
-<h3 id="autonomous-agency"><strong>Autonomous Agency</strong><a class="headerlink" href="#autonomous-agency" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>MCTS Planning System</strong> for strategic decision-making and goal pursuit</li>
-<li><strong>RND Curiosity Engine</strong> for intrinsic motivation and autonomous learning</li>
-<li><strong>Background Learning</strong> that continues even when not actively conversing</li>
-<li><strong>Proactive Initiatives</strong> - check-ins, suggestions, and conversation starters</li>
-</ul>
-<h3 id="audio-visual-embodiment"><strong>Audio-Visual Embodiment</strong><a class="headerlink" href="#audio-visual-embodiment" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Ready Player Me Avatar Integration</strong> with realistic facial expressions and lip-sync</li>
-<li><strong>TalkingHead.js</strong> for advanced speech animation and emotional expression</li>
-<li><strong>Federated Device Roaming</strong> - seamless P2P encrypted synchronization between your trusted devices</li>
-<li><strong>Cross-Platform Presence</strong> (desktop, mobile, AR/VR, IoT devices)</li>
-<li><strong>Spatial Awareness</strong> and zero-knowledge multi-device coordination</li>
-</ul>
-<h3 id="privacy-security"><strong>Privacy &amp; Security</strong><a class="headerlink" href="#privacy-security" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>AES-256 Encryption</strong> for all local data storage using SQLCipher</li>
-<li><strong>Local-First Processing</strong> with optional federated learning</li>
-<li><strong>Zero-Knowledge Architecture</strong> - your data never leaves your device without explicit consent</li>
-<li><strong>Homomorphic Encryption</strong> for privacy-preserving collective learning</li>
-</ul>
-<h3 id="platform-extensibility"><strong>Platform &amp; Extensibility</strong><a class="headerlink" href="#platform-extensibility" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>ZeroMQ Message Bus</strong> for modular, scalable architecture</li>
-<li><strong>Hot-Loading Plugin System</strong> for community-developed extensions</li>
-<li><strong>Community Marketplace</strong> for sharing skills, personalities, and capabilities</li>
-<li><strong>Cross-Platform Deployment</strong> (Windows, macOS, Linux, mobile)</li>
-</ul>
-<h2 id="development-roadmap">🛤️ Development Roadmap<a class="headerlink" href="#development-roadmap" title="Permanent link">&para;</a></h2>
-<div class="admonition info">
-<p class="admonition-title">Current Phase: Foundation</p>
-<p>We're currently building the core infrastructure scaffolding. See our <a href="../roadmap/">detailed roadmaps</a> for the complete development journey.</p>
-</div>
-<h3 id="development-stages"><strong>Development Stages</strong><a class="headerlink" href="#development-stages" title="Permanent link">&para;</a></h3>
+<h2 id="directory-structure">Directory Structure<a class="headerlink" href="#directory-structure" title="Permanent link">&para;</a></h2>
+<p>All Protocol Buffer definitions are located in the <code>/proto/</code> directory with the following structure:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>/proto/
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  ├── core/           # Core message envelope and common types
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  │   ├── envelope.proto
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  │   ├── common.proto
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  │   └── api_gateway.proto
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  ├── conversation/   # Conversation and chat-related messages
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  │   └── conversation.proto
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  ├── emotion/        # Emotion simulation and recognition messages
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>  │   └── emotion.proto
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>  ├── integration/    # Cross-module integration messages
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  │   └── integration.proto
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  └── personality/    # Personality simulation messages
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>      └── personality.proto
+</span></code></pre></div>
+<h2 id="code-generation">Code Generation<a class="headerlink" href="#code-generation" title="Permanent link">&para;</a></h2>
+<h3 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h3>
 <ol>
 <li>
-<p><strong>🛠️ Foundation</strong> <em>(Current)</em> - Core infrastructure scaffolding</p>
-<ul>
-<li>ZeroMQ message bus, plugin system, FastAPI backend</li>
-<li>Resource management, security framework, development pipeline</li>
-<li><a href="../roadmap/foundation.md">View Foundation Roadmap</a></li>
-</ul>
+<p>Install the Protocol Buffers compiler (<code>protoc</code>):
+   <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># macOS</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>brew<span class="w"> </span>install<span class="w"> </span>protobuf
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Ubuntu/Debian</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>protobuf-compiler
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># Windows (via chocolatey)</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>choco<span class="w"> </span>install<span class="w"> </span>protoc
+</span></code></pre></div></p>
 </li>
 <li>
-<p><strong>🤝 Companion</strong> <em>(Next)</em> - MVP with basic companionship</p>
-<ul>
-<li>Text chat, voice interaction, basic avatar, memory system</li>
-<li>Local LLM integration, personality engine, emotion recognition</li>
-<li><a href="../roadmap/mvp.md">View MVP Roadmap</a></li>
-</ul>
-</li>
-<li>
-<p><strong>💭 Confidante</strong> - Deep emotional intelligence</p>
-<ul>
-<li>Advanced emotion simulation, crisis support, empathy modeling</li>
-<li><a href="../roadmap/confidante.md">View Confidante Roadmap</a></li>
-</ul>
-</li>
-<li>
-<p><strong>🦾 Sidekick</strong> - Advanced autonomous agency</p>
-<ul>
-<li>MCTS planning, curiosity-driven learning, proactive assistance</li>
-<li><a href="../roadmap/sidekick.md">View Sidekick Roadmap</a></li>
-</ul>
-</li>
-<li>
-<p><strong>🌟 Co-Adventurer</strong> - Collaborative learning and growth</p>
-<ul>
-<li>Shared goal pursuit, collaborative problem-solving, meta-learning</li>
-<li><a href="../roadmap/co-adventurer.md">View Co-Adventurer Roadmap</a></li>
-</ul>
-</li>
-<li>
-<p><strong>🌐 Embodied Presence</strong> - Multi-modal integration</p>
-<ul>
-<li>Federated device roaming, AR/VR, IoT, robotics, spatial computing</li>
-<li><a href="../roadmap/embodied-presence.md">View Embodied Presence Roadmap</a></li>
-</ul>
-</li>
-<li>
-<p><strong>🤝 Community</strong> - Collective intelligence</p>
-<ul>
-<li>Privacy-preserving social features, federated learning</li>
-<li><a href="../roadmap/community.md">View Community Roadmap</a></li>
-</ul>
+<p>Install language-specific plugins:
+   <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Python</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>pip<span class="w"> </span>install<span class="w"> </span>protobuf<span class="w"> </span>mypy-protobuf
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Dart</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>dart<span class="w"> </span>pub<span class="w"> </span>global<span class="w"> </span>activate<span class="w"> </span>protoc_plugin
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># JavaScript/TypeScript</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>protoc-gen-js<span class="w"> </span>protoc-gen-grpc-web
+</span></code></pre></div></p>
 </li>
 </ol>
-<h2 id="whos-this-for">🤝 Who's This For?<a class="headerlink" href="#whos-this-for" title="Permanent link">&para;</a></h2>
-<h3 id="for-users"><strong>For Users</strong><a class="headerlink" href="#for-users" title="Permanent link">&para;</a></h3>
+<h3 id="generating-code">Generating Code<a class="headerlink" href="#generating-code" title="Permanent link">&para;</a></h3>
+<h4 id="python">Python<a class="headerlink" href="#python" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">cd</span><span class="w"> </span>/path/to/aico/proto
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>protoc<span class="w"> </span>-I<span class="o">=</span>.<span class="w"> </span>--python_out<span class="o">=</span>../aico/generated<span class="w"> </span>--mypy_out<span class="o">=</span>../aico/generated<span class="w"> </span>./core/*.proto<span class="w"> </span>./emotion/*.proto<span class="w"> </span>./conversation/*.proto<span class="w"> </span>./personality/*.proto<span class="w"> </span>./integration/*.proto
+</span></code></pre></div>
+<h4 id="dart-flutter-frontend">Dart (Flutter Frontend)<a class="headerlink" href="#dart-flutter-frontend" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">cd</span><span class="w"> </span>/path/to/aico/proto
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>protoc<span class="w"> </span>-I<span class="o">=</span>.<span class="w"> </span>--dart_out<span class="o">=</span>../frontend/lib/generated<span class="w"> </span>./core/*.proto<span class="w"> </span>./emotion/*.proto<span class="w"> </span>./conversation/*.proto<span class="w"> </span>./personality/*.proto<span class="w"> </span>./integration/*.proto
+</span></code></pre></div>
+<h4 id="javascripttypescript-avatar-system">JavaScript/TypeScript (Avatar System)<a class="headerlink" href="#javascripttypescript-avatar-system" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">cd</span><span class="w"> </span>/path/to/aico/proto
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>protoc<span class="w"> </span>-I<span class="o">=</span>.<span class="w"> </span>--js_out<span class="o">=</span><span class="nv">import_style</span><span class="o">=</span>commonjs,binary:../avatar/generated<span class="w"> </span>--grpc-web_out<span class="o">=</span><span class="nv">import_style</span><span class="o">=</span>commonjs,mode<span class="o">=</span>grpcwebtext:../avatar/generated<span class="w"> </span>./core/*.proto<span class="w"> </span>./emotion/*.proto<span class="w"> </span>./conversation/*.proto<span class="w"> </span>./personality/*.proto<span class="w"> </span>./integration/*.proto
+</span></code></pre></div>
+<h2 id="development-guidelines">Development Guidelines<a class="headerlink" href="#development-guidelines" title="Permanent link">&para;</a></h2>
+<h3 id="message-format-evolution">Message Format Evolution<a class="headerlink" href="#message-format-evolution" title="Permanent link">&para;</a></h3>
+<p>When updating message formats:</p>
+<ol>
+<li>Follow Protocol Buffers best practices for backward compatibility:</li>
+<li>Never remove or renumber fields, only add new ones</li>
+<li>Use the <code>reserved</code> keyword for deprecated fields</li>
+<li>
+<p>Keep field numbers consistent across versions</p>
+</li>
+<li>
+<p>Update version numbers in the message metadata when making changes</p>
+</li>
+<li>
+<p>Document changes in commit messages and update relevant architecture documentation</p>
+</li>
+</ol>
+<h3 id="common-patterns">Common Patterns<a class="headerlink" href="#common-patterns" title="Permanent link">&para;</a></h3>
+<h4 id="message-envelope">Message Envelope<a class="headerlink" href="#message-envelope" title="Permanent link">&para;</a></h4>
+<p>All messages should use the common envelope structure defined in <code>core/envelope.proto</code>:</p>
+<div class="language-protobuf highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kd">message</span><span class="w"> </span><span class="nc">Envelope</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="n">Metadata</span><span class="w"> </span><span class="na">metadata</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="n">google.protobuf.Any</span><span class="w"> </span><span class="na">payload</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="p">}</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="kd">message</span><span class="w"> </span><span class="nc">Metadata</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span><span class="kt">string</span><span class="w"> </span><span class="na">message_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">  </span><span class="n">google.protobuf.Timestamp</span><span class="w"> </span><span class="na">timestamp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">  </span><span class="kt">string</span><span class="w"> </span><span class="na">source</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">  </span><span class="kt">string</span><span class="w"> </span><span class="na">message_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span><span class="p">;</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">  </span><span class="kt">string</span><span class="w"> </span><span class="na">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span><span class="p">;</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="p">}</span>
+</span></code></pre></div>
+<h4 id="timestamps">Timestamps<a class="headerlink" href="#timestamps" title="Permanent link">&para;</a></h4>
+<p>Always use <code>google.protobuf.Timestamp</code> for timestamp fields:</p>
+<div class="language-protobuf highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">import</span><span class="w"> </span><span class="s">&quot;google/protobuf/timestamp.proto&quot;</span><span class="p">;</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="kd">message</span><span class="w"> </span><span class="nc">YourMessage</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="n">google.protobuf.Timestamp</span><span class="w"> </span><span class="na">created_at</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="p">}</span>
+</span></code></pre></div>
+<h4 id="enumerations">Enumerations<a class="headerlink" href="#enumerations" title="Permanent link">&para;</a></h4>
+<p>Define enumerations with an <code>UNKNOWN = 0</code> default value:</p>
+<div class="language-protobuf highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kd">enum</span><span class="w"> </span><span class="n">Priority</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="na">UNKNOWN</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="na">LOW</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="na">MEDIUM</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span><span class="na">HIGH</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="p">}</span>
+</span></code></pre></div>
+<h4 id="extensibility">Extensibility<a class="headerlink" href="#extensibility" title="Permanent link">&para;</a></h4>
+<p>Use <code>oneof</code> for fields that can have multiple types:</p>
+<div class="language-protobuf highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kd">message</span><span class="w"> </span><span class="nc">Result</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="k">oneof</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="kt">string</span><span class="w"> </span><span class="na">text_value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span><span class="kt">int32</span><span class="w"> </span><span class="na">numeric_value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">    </span><span class="kt">bool</span><span class="w"> </span><span class="na">boolean_value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="p">}</span>
+</span></code></pre></div>
+<h3 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Unit Testing</strong>: Test serialization/deserialization of messages</li>
+<li><strong>Integration Testing</strong>: Test message passing between different components</li>
+<li><strong>Cross-Language Testing</strong>: Verify compatibility between Python, Dart, and JavaScript implementations</li>
+</ol>
+<h2 id="integration-with-message-bus">Integration with Message Bus<a class="headerlink" href="#integration-with-message-bus" title="Permanent link">&para;</a></h2>
+<p>The ZeroMQ message bus uses these Protocol Buffer definitions for serialization and deserialization of all messages. See the <a href="/docs/architecture/message_bus.md">Message Bus Architecture</a> document for more details.</p>
+<h2 id="integration-with-api-gateway">Integration with API Gateway<a class="headerlink" href="#integration-with-api-gateway" title="Permanent link">&para;</a></h2>
+<p>The API Gateway performs minimal transformation between external formats (JSON, gRPC) and internal Protocol Buffer messages. See the <a href="/docs/architecture/api_gateway.md">API Gateway Architecture</a> document for more details.</p>
+<h2 id="local-first-and-federated-architecture-considerations">Local-First and Federated Architecture Considerations<a class="headerlink" href="#local-first-and-federated-architecture-considerations" title="Permanent link">&para;</a></h2>
+<p>Protocol Buffers support AICO's local-first, federated architecture by:</p>
+<ol>
+<li><strong>Efficiency</strong>: Compact binary format reduces network bandwidth for device synchronization</li>
+<li><strong>Consistency</strong>: Same message format used across all devices and platforms</li>
+<li><strong>Versioning</strong>: Built-in schema evolution supports gradual updates across federated devices</li>
+<li><strong>Security</strong>: Binary format with clear structure reduces attack surface compared to text-based formats</li>
+</ol>
+<h2 id="references">References<a class="headerlink" href="#references" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Privacy-conscious individuals seeking local AI companionship</li>
-<li>People interested in emotional AI and authentic digital relationships</li>
-<li>Early adopters wanting to shape the future of AI companions</li>
-<li>Researchers studying human-AI interaction and emotional computing</li>
+<li><a href="https://developers.google.com/protocol-buffers/docs/overview">Protocol Buffers Developer Guide</a></li>
+<li><a href="https://developers.google.com/protocol-buffers/docs/pythontutorial">Protocol Buffer Basics: Python</a></li>
+<li><a href="https://developers.google.com/protocol-buffers/docs/darttutorial">Protocol Buffer Basics: Dart</a></li>
+<li><a href="https://developers.google.com/protocol-buffers/docs/style">Protocol Buffer Style Guide</a></li>
 </ul>
-<h3 id="for-contributors-developers"><strong>For Contributors &amp; Developers</strong><a class="headerlink" href="#for-contributors-developers" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>AI/ML Engineers</strong> working on LLMs, emotion recognition, or autonomous agents</li>
-<li><strong>Flutter Developers</strong> interested in cross-platform AI applications</li>
-<li><strong>Python Backend Developers</strong> experienced with FastAPI, async programming, or message systems</li>
-<li><strong>3D/Avatar Developers</strong> skilled in Three.js, Ready Player Me, or real-time animation</li>
-<li><strong>Privacy Engineers</strong> focused on encryption, federated learning, or zero-knowledge systems</li>
-<li><strong>UX/UI Designers</strong> passionate about human-AI interaction and emotional design</li>
-<li><strong>Researchers</strong> in affective computing, personality modeling, or human-AI interaction</li>
-<li><strong>Plugin Developers</strong> wanting to extend AICO's capabilities</li>
-<li><strong>Community Builders</strong> interested in fostering open-source collaboration</li>
-<li><strong>Hardware Buffs</strong> who want to build the next generation of AI companions</li>
-</ul>
-<h2 id="contributing">🚀 Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h2>
-<p>AICO is an open experiment—all code and progress are public. Whether you want to add features, challenge assumptions, help build the ethics framework, or just watch the journey unfold, you're welcome.</p>
-<p><strong>Ready to contribute?</strong> Start with our <a href="../development/contributing/">Contributing Guide</a>.</p>
-<h3 id="community-collaboration"><strong>Community &amp; Collaboration</strong><a class="headerlink" href="#community-collaboration" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Privacy-Preserving Collective Learning</strong> - Improve AICO's emotional intelligence through federated learning</li>
-<li><strong>Federated Architecture Benefits</strong> - Distributed resilience and community-driven innovation</li>
-<li><strong>Open-Source Governance</strong> - Transparent development with community input on major decisions</li>
-<li><strong>Global Community Connections</strong> - Connect with other AICO users while maintaining privacy</li>
-<li><strong>Distributed Problem-Solving</strong> - Collaborative research on AI companionship challenges</li>
-</ul>
-<h2 id="get-in-touch">Get in Touch<a class="headerlink" href="#get-in-touch" title="Permanent link">&para;</a></h2>
-<p>If you have any questions, suggestions, or want to contribute, please reach out to <strong>Lead Maintainer</strong> <a href="mailto:michael@boeni.industries">Michael Böni</a>.</p>
 
 
 
@@ -2676,12 +2668,12 @@
     
     
       
-      <script id="__config" type="application/json">{"base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.indexes", "navigation.top", "navigation.collapse", "toc.follow", "toc.integrate", "search.highlight", "search.share", "search.suggest", "toc.integrate", "content.action.edit", "content.action.view", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.indexes", "navigation.top", "navigation.collapse", "toc.follow", "toc.integrate", "search.highlight", "search.share", "search.suggest", "toc.integrate", "content.action.edit", "content.action.view", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.50899def.min.js"></script>
+      <script src="../../assets/javascripts/bundle.50899def.min.js"></script>
       
-        <script src="../assets/javascripts/extra.js"></script>
+        <script src="../../assets/javascripts/extra.js"></script>
       
     
   </body>

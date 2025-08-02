@@ -76,8 +76,8 @@ AICO is being built with a comprehensive set of capabilities that work together 
 
 **🔌 Extensible Platform**
 - Hot-loading plugin system with sandboxed execution
-- ZeroMQ message bus for modular, event-driven architecture
-- Unified API gateway supporting REST, WebSocket, and gRPC
+- ZeroMQ message bus with Protocol Buffers for high-performance, strongly-typed messaging
+- Unified API gateway supporting REST, WebSocket, and gRPC with adaptive transport
 - Automated delta updates with cryptographic verification and rollback
 - Comprehensive developer tools and SDKs for custom skill creation
 - Community marketplace for sharing extensions and capabilities

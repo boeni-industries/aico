@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package aico.core;
+
+option go_package = "github.com/boeni-industries/aico/proto/core";
+option java_package = "industries.boeni.aico.proto.core";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+
+// API Gateway specific messages for handling transport negotiation and routing
+
+// Transport negotiation request
+message TransportNegotiationRequest {
+  string client_id = 1;                // Client identifier
+  DeviceInfo device_info = 2;          // Client device information
+  repeated TransportCapability supported_transports = 3; // Supported transport types
+  RoamingMode roaming_mode = 4;        // Current roaming mode
+  bool is_reconnect = 5;               // Whether this is a reconnection attempt
+}
+
+// Transport capability
+message TransportCapability {
+  TransportType type = 1;              // Transport type
+  float priority = 2;                  // Client priority (0.0-1.0)
+  map<string, string> parameters = 3;  // Transport-specific parameters
+  
+  enum TransportType {
+    UNKNOWN = 0;
+    ZEROMQ_IPC = 1;                    // ZeroMQ IPC (Unix sockets/named pipes)
+    ZEROMQ_TCP = 2;                    // ZeroMQ TCP
+    REST = 3;                          // REST API
+    WEBSOCKET = 4;                     // WebSocket
+    GRPC = 5;                          // gRPC
+  }
+}
+
+// Transport negotiation response
+message TransportNegotiationResponse {
+  TransportCapability.TransportType selected_transport = 1; // Selected transport
+  string session_id = 2;               // Session identifier
+  map<string, string> connection_params = 3; // Connection parameters
+  SecurityContext security_context = 4; // Security context
+  google.protobuf.Timestamp expiry = 5; // Connection expiry time
+}
+
+// API request message
+message ApiRequest {
+  string request_id = 1;               // Request identifier
+  google.protobuf.Timestamp timestamp = 2; // Request timestamp
+  string client_id = 3;                // Client identifier
+  string session_id = 4;               // Session identifier
+  string operation = 5;                // Operation to perform
+  google.protobuf.Any payload = 6;     // Request payload
+  map<string, string> metadata = 7;    // Request metadata
+}
+
+// API response message
+message ApiResponse {
+  string request_id = 1;               // Original request identifier
+  google.protobuf.Timestamp timestamp = 2; // Response timestamp
+  ResponseStatus status = 3;           // Response status
+  google.protobuf.Any payload = 4;     // Response payload
+  ErrorInfo error = 5;                 // Error information (if status is not OK)
+  map<string, string> metadata = 6;    // Response metadata
+  
+  enum ResponseStatus {
+    UNKNOWN = 0;
+    OK = 1;                            // Success
+    ERROR = 2;                         // Error
+    PARTIAL = 3;                       // Partial success
+    PENDING = 4;                       // Request is being processed
+  }
+}
+
+// API event message (for streaming/push notifications)
+message ApiEvent {
+  string event_id = 1;                 // Event identifier
+  google.protobuf.Timestamp timestamp = 2; // Event timestamp
+  string event_type = 3;               // Event type
+  string client_id = 4;                // Target client identifier
+  string session_id = 5;               // Session identifier
+  google.protobuf.Any payload = 6;     // Event payload
+  map<string, string> metadata = 7;    // Event metadata
+}

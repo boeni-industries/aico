@@ -134,7 +134,7 @@ nav:
   - Core Infrastructure:
     - Message Bus: architecture/message_bus.md
     - Plugin Manager: '#'
-    - API Gateway: '#'
+    - API Gateway: architecture/api_gateway.md
     - Update System: '#'
     - Data Layer: architecture/data_layer.md
     - Data Security: architecture/data_security.md
@@ -176,6 +176,7 @@ nav:
       - Personality Definition: concepts/personality/personality_definition.md
   - Development:
     - Contributing: development/contributing.md
+    - Protocol Buffers: development/protobuf.md
   - Roadmap:
     - Foundation: roadmap/foundation.md
     - MVP: roadmap/mvp.md

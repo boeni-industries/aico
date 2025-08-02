@@ -18,7 +18,7 @@
         <link rel="prev" href="../architecture_overview/">
       
       
-        <link rel="next" href="../data_layer/">
+        <link rel="next" href="../api_gateway/">
       
       
       <link rel="icon" href="../../assets/images/logo.png">
@@ -754,6 +754,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#message-definition-and-code-generation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Message Definition and Code Generation
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#conclusion" class="md-nav__link">
     <span class="md-ellipsis">
       Conclusion
@@ -801,7 +810,7 @@
   
   
     <li class="md-nav__item">
-      <a href="#" class="md-nav__link">
+      <a href="../api_gateway/" class="md-nav__link">
         
   
   
@@ -2099,6 +2108,8 @@
       
         
       
+        
+      
     
     
     
@@ -2148,6 +2159,29 @@
   
   <span class="md-ellipsis">
     Contributing
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/protobuf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Protocol Buffers
     
   </span>
   
@@ -2441,20 +2475,24 @@
 - Interested modules subscribe to relevant topics
 - Processing occurs asynchronously and reactively</p>
 <h3 id="3-standardized-communication">3. Standardized Communication<a class="headerlink" href="#3-standardized-communication" title="Permanent link">&para;</a></h3>
-<p>All messages follow a consistent envelope structure:
-<div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">&quot;message_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;uuid-string&quot;</span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2025-07-29T14:48:25.123Z&quot;</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;module-name&quot;</span><span class="p">,</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nt">&quot;message_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;topic.subtopic&quot;</span><span class="p">,</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1.0&quot;</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="p">},</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="nt">&quot;payload&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="c1">// Message-specific content</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="p">}</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">}</span>
-</span></code></pre></div></p>
+<p>All messages follow a consistent envelope structure defined in Protocol Buffers:</p>
+<div class="language-protobuf highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kd">message</span><span class="w"> </span><span class="nc">AicoMessage</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="n">MessageMetadata</span><span class="w"> </span><span class="na">metadata</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="k">oneof</span><span class="w"> </span><span class="n">payload</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="n">EmotionState</span><span class="w"> </span><span class="na">emotion_state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="n">ConversationMessage</span><span class="w"> </span><span class="na">conversation_message</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="c1">// Other message types...</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">}</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="kd">message</span><span class="w"> </span><span class="nc">MessageMetadata</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="kt">string</span><span class="w"> </span><span class="na">message_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w">       </span><span class="c1">// UUID string</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">  </span><span class="kt">string</span><span class="w"> </span><span class="na">timestamp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span><span class="w">        </span><span class="c1">// ISO 8601 format</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="kt">string</span><span class="w"> </span><span class="na">source</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span><span class="w">           </span><span class="c1">// Source module name</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span><span class="kt">string</span><span class="w"> </span><span class="na">message_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span><span class="p">;</span><span class="w">     </span><span class="c1">// topic.subtopic format</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span><span class="kt">string</span><span class="w"> </span><span class="na">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span><span class="p">;</span><span class="w">          </span><span class="c1">// Schema version</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="p">}</span>
+</span></code></pre></div>
 <h3 id="4-topic-based-routing">4. Topic-Based Routing<a class="headerlink" href="#4-topic-based-routing" title="Permanent link">&para;</a></h3>
 <p>Messages are organized in a hierarchical topic structure:
 - Primary category (e.g., <code>emotion</code>, <code>personality</code>, <code>agency</code>)
@@ -2476,17 +2514,18 @@
 </ul>
 <p>ZeroMQ is chosen for its performance, flexibility, and suitability for all local and internal communication needs in AICO.</p>
 <h3 id="message-format">Message Format<a class="headerlink" href="#message-format" title="Permanent link">&para;</a></h3>
-<p>All messages use JSON for serialization, providing:
-- Human-readable format for debugging
-- Wide language and platform support
-- Flexible schema evolution
-- Native compatibility with web technologies</p>
+<p>All messages use Protocol Buffers for serialization, providing:
+- High-performance binary serialization
+- Strong typing and schema validation
+- Cross-language code generation
+- Efficient size (smaller than JSON)
+- Backward compatibility through versioning</p>
 <h3 id="message-validation">Message Validation<a class="headerlink" href="#message-validation" title="Permanent link">&para;</a></h3>
-<p>Messages are validated against JSON Schema definitions to ensure:
-- Structural correctness
-- Type safety
-- Required fields presence
-- Version compatibility</p>
+<p>Messages are validated through Protocol Buffers' built-in validation:
+- Compile-time type checking
+- Runtime schema validation
+- Required fields enforcement
+- Automatic versioning support</p>
 <h2 id="topic-hierarchy">Topic Hierarchy<a class="headerlink" href="#topic-hierarchy" title="Permanent link">&para;</a></h2>
 <p>The message bus uses a hierarchical topic structure that organizes messages by functional domain and purpose:</p>
 <h3 id="core-domains">Core Domains<a class="headerlink" href="#core-domains" title="Permanent link">&para;</a></h3>
@@ -2708,6 +2747,23 @@
 <li>Message replay capabilities for testing</li>
 <li>Topic subscription viewer to understand module connectivity</li>
 </ol>
+<h2 id="message-definition-and-code-generation">Message Definition and Code Generation<a class="headerlink" href="#message-definition-and-code-generation" title="Permanent link">&para;</a></h2>
+<h3 id="protocol-buffer-definitions">Protocol Buffer Definitions<a class="headerlink" href="#protocol-buffer-definitions" title="Permanent link">&para;</a></h3>
+<p>All message definitions are maintained as Protocol Buffer (<code>.proto</code>) files in the <code>/proto/</code> directory:</p>
+<ul>
+<li>Core message envelope: <code>/proto/core/envelope.proto</code></li>
+<li>Emotion messages: <code>/proto/emotion/emotion.proto</code></li>
+<li>Conversation messages: <code>/proto/conversation/conversation.proto</code></li>
+<li>Personality messages: <code>/proto/personality/personality.proto</code></li>
+<li>Integration messages: <code>/proto/integration/integration.proto</code></li>
+</ul>
+<h3 id="code-generation-pipeline">Code Generation Pipeline<a class="headerlink" href="#code-generation-pipeline" title="Permanent link">&para;</a></h3>
+<p>The build process automatically generates language-specific code from these definitions:</p>
+<ol>
+<li>Python classes for backend services</li>
+<li>Dart classes for Flutter frontend</li>
+<li>Additional language bindings as needed</li>
+</ol>
 <h2 id="conclusion">Conclusion<a class="headerlink" href="#conclusion" title="Permanent link">&para;</a></h2>
 <p>The Core Message Bus architecture is fundamental to AICO's modular, event-driven design. It enables:</p>
 <ul>
@@ -2716,12 +2772,10 @@
 <li><strong>Resilience</strong>: Failures in one module don't cascade to others</li>
 <li><strong>Adaptability</strong>: The system can evolve through versioned message formats</li>
 <li><strong>Autonomy</strong>: Modules can operate independently based on events</li>
+<li><strong>Performance</strong>: Binary serialization optimizes for speed and size</li>
+<li><strong>Cross-Platform</strong>: Consistent message format across all platforms and devices</li>
 </ul>
-<p>By providing a standardized communication backbone, the message bus facilitates the complex interactions required for AICO's proactive agency, emotional presence, personality consistency, and multi-modal embodiment.</p>
-<p>For specific message formats used by individual modules, refer to the respective message format documentation:
-- Emotion Simulation: <a href="../emotion_sim_msg/">emotion_sim_msg.md</a>
-- Personality Simulation: <a href="../personality_sim_msg/">personality_sim_msg.md</a>
-- Integration Messages: <a href="../integration_msg/">integration_msg.md</a></p>
+<p>By providing a standardized communication backbone, the message bus facilitates the complex interactions required for AICO's proactive agency, emotional presence, personality consistency, and multi-modal embodiment across its federated device network.</p>
 
 
 

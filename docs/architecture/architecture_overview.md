@@ -98,7 +98,7 @@ AICO's features are organized into logical modules for development and deploymen
 - **TraitEmergence for Personality** - Multi-dimensional trait-based modeling
 - **Multi-Faceted Agency** - Goal generation, curiosity, planning, meta-cognition
 - **Topic-Based Pub/Sub** - Standardized message formats with versioned schemas
-- **JSON Message Format** - Human-readable, widely supported serialization
+- **Protocol Buffers Message Format** - High-performance binary serialization with strong typing
 - **Plugin Manager as Gateway** - Mediated access for third-party extensions
 - **Homomorphic Encryption** - Privacy-preserving cloud computations when needed
 - **Sandboxed Plugin Execution** - Isolated environments with permission controls

@@ -59,8 +59,8 @@ AICO employs a specialized multi-database architecture optimized for local-first
 | **FastAPI** | API framework | Modern, fast Python web framework powering the service gateway |
 | **REST API** | UI/adapter protocol | Standard HTTP API for commands, queries, and configuration |
 | **WebSocket API** | UI/adapter protocol | Real-time, bidirectional communication for events and notifications |
-| **JSON** | Message format | Human-readable, widely supported serialization |
-| **JSON Schema** | Message validation | Schema validation for message formats |
+| **Protocol Buffers** | Message format | High-performance binary serialization with strong typing and cross-platform support |
+| **protoc** | Code generation | Automatic code generation for multiple languages (Python, Dart) |
 
 ## Security & Privacy Layer
 

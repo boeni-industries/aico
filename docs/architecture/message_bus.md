@@ -26,19 +26,24 @@ The system operates on an event-driven paradigm where:
 
 ### 3. Standardized Communication
 
-All messages follow a consistent envelope structure:
-```json
-{
-  "metadata": {
-    "message_id": "uuid-string",
-    "timestamp": "2025-07-29T14:48:25.123Z",
-    "source": "module-name",
-    "message_type": "topic.subtopic",
-    "version": "1.0"
-  },
-  "payload": {
-    // Message-specific content
+All messages follow a consistent envelope structure defined in Protocol Buffers:
+
+```protobuf
+message AicoMessage {
+  MessageMetadata metadata = 1;
+  oneof payload {
+    EmotionState emotion_state = 2;
+    ConversationMessage conversation_message = 3;
+    // Other message types...
   }
+}
+
+message MessageMetadata {
+  string message_id = 1;       // UUID string
+  string timestamp = 2;        // ISO 8601 format
+  string source = 3;           // Source module name
+  string message_type = 4;     // topic.subtopic format
+  string version = 5;          // Schema version
 }
 ```
 
@@ -71,19 +76,20 @@ ZeroMQ is chosen for its performance, flexibility, and suitability for all local
 
 ### Message Format
 
-All messages use JSON for serialization, providing:
-- Human-readable format for debugging
-- Wide language and platform support
-- Flexible schema evolution
-- Native compatibility with web technologies
+All messages use Protocol Buffers for serialization, providing:
+- High-performance binary serialization
+- Strong typing and schema validation
+- Cross-language code generation
+- Efficient size (smaller than JSON)
+- Backward compatibility through versioning
 
 ### Message Validation
 
-Messages are validated against JSON Schema definitions to ensure:
-- Structural correctness
-- Type safety
-- Required fields presence
-- Version compatibility
+Messages are validated through Protocol Buffers' built-in validation:
+- Compile-time type checking
+- Runtime schema validation
+- Required fields enforcement
+- Automatic versioning support
 
 ## Topic Hierarchy
 
@@ -264,6 +270,26 @@ The message bus includes facilities for:
    - Message replay capabilities for testing
    - Topic subscription viewer to understand module connectivity
 
+## Message Definition and Code Generation
+
+### Protocol Buffer Definitions
+
+All message definitions are maintained as Protocol Buffer (`.proto`) files in the `/proto/` directory:
+
+- Core message envelope: `/proto/core/envelope.proto`
+- Emotion messages: `/proto/emotion/emotion.proto`
+- Conversation messages: `/proto/conversation/conversation.proto`
+- Personality messages: `/proto/personality/personality.proto`
+- Integration messages: `/proto/integration/integration.proto`
+
+### Code Generation Pipeline
+
+The build process automatically generates language-specific code from these definitions:
+
+1. Python classes for backend services
+2. Dart classes for Flutter frontend
+3. Additional language bindings as needed
+
 ## Conclusion
 
 The Core Message Bus architecture is fundamental to AICO's modular, event-driven design. It enables:
@@ -273,10 +299,7 @@ The Core Message Bus architecture is fundamental to AICO's modular, event-driven
 - **Resilience**: Failures in one module don't cascade to others
 - **Adaptability**: The system can evolve through versioned message formats
 - **Autonomy**: Modules can operate independently based on events
+- **Performance**: Binary serialization optimizes for speed and size
+- **Cross-Platform**: Consistent message format across all platforms and devices
 
-By providing a standardized communication backbone, the message bus facilitates the complex interactions required for AICO's proactive agency, emotional presence, personality consistency, and multi-modal embodiment.
-
-For specific message formats used by individual modules, refer to the respective message format documentation:
-- Emotion Simulation: [emotion_sim_msg.md](./emotion_sim_msg.md)
-- Personality Simulation: [personality_sim_msg.md](./personality_sim_msg.md)
-- Integration Messages: [integration_msg.md](./integration_msg.md)
+By providing a standardized communication backbone, the message bus facilitates the complex interactions required for AICO's proactive agency, emotional presence, personality consistency, and multi-modal embodiment across its federated device network.
