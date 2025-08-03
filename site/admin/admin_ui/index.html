@@ -12,13 +12,13 @@
         <meta name="author" content="Michael Böni">
       
       
-        <link rel="canonical" href="https://boeni-industries.github.io/aico/roadmap/sidekick/">
+        <link rel="canonical" href="https://boeni-industries.github.io/aico/admin/admin_ui/">
       
       
-        <link rel="prev" href="../confidante/">
+        <link rel="prev" href="../../architecture/instrumentation_logging/">
       
       
-        <link rel="next" href="../community/">
+        <link rel="next" href="../admin_ui_master/">
       
       
       <link rel="icon" href="../../assets/images/logo.png">
@@ -26,7 +26,7 @@
     
     
       
-        <title>Sidekick - AICO - AI Companion Project</title>
+        <title>Admin UI - AICO - AI Companion Project</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#sidekick-roadmap" class="md-skip">
+        <a href="#admin-ui-architecture" class="md-skip">
           Skip to content
         </a>
       
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Sidekick
+              Admin UI
             
           </span>
         </div>
@@ -811,8 +811,10 @@
       
   
   
+    
   
   
+  
     
     
       
@@ -833,11 +835,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
           <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
@@ -853,7 +855,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             Administration
@@ -867,7 +869,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../admin/admin_overview.md" class="md-nav__link">
+      <a href="../admin_overview.md" class="md-nav__link">
         
   
   
@@ -887,10 +889,32 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../admin/admin_ui/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Admin UI
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -901,6 +925,71 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      Principles
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      How It Works
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-manifest-simplified" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example Manifest (Simplified)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#benefits" class="md-nav__link">
+    <span class="md-ellipsis">
+      Benefits
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      References
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -913,7 +1002,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../admin/admin_ui_master/" class="md-nav__link">
+      <a href="../admin_ui_master/" class="md-nav__link">
         
   
   
@@ -936,7 +1025,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../admin/cli/" class="md-nav__link">
+      <a href="../cli/" class="md-nav__link">
         
   
   
@@ -2312,10 +2401,8 @@
       
   
   
-    
   
   
-  
     
     
       
@@ -2342,11 +2429,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_16" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_16" >
         
           
           <label class="md-nav__link" for="__nav_16" id="__nav_16_label" tabindex="">
@@ -2362,7 +2449,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_16_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_16_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_16">
             <span class="md-nav__icon md-icon"></span>
             Roadmap
@@ -2376,7 +2463,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../foundation/" class="md-nav__link">
+      <a href="../../roadmap/foundation/" class="md-nav__link">
         
   
   
@@ -2399,7 +2486,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../mvp/" class="md-nav__link">
+      <a href="../../roadmap/mvp/" class="md-nav__link">
         
   
   
@@ -2422,7 +2509,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../confidante/" class="md-nav__link">
+      <a href="../../roadmap/confidante/" class="md-nav__link">
         
   
   
@@ -2442,32 +2529,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Sidekick
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../roadmap/sidekick/" class="md-nav__link">
         
   
   
@@ -2478,71 +2543,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#goal" class="md-nav__link">
-    <span class="md-ellipsis">
-      Goal
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#key-features" class="md-nav__link">
-    <span class="md-ellipsis">
-      Key Features
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#technical-implementation" class="md-nav__link">
-    <span class="md-ellipsis">
-      Technical Implementation
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#validation-criteria" class="md-nav__link">
-    <span class="md-ellipsis">
-      Validation Criteria
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#success-definition" class="md-nav__link">
-    <span class="md-ellipsis">
-      Success Definition
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -2555,7 +2555,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../co_adventurer.md" class="md-nav__link">
+      <a href="../../roadmap/co_adventurer.md" class="md-nav__link">
         
   
   
@@ -2578,7 +2578,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../embodied_presence.md" class="md-nav__link">
+      <a href="../../roadmap/embodied_presence.md" class="md-nav__link">
         
   
   
@@ -2601,7 +2601,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../community/" class="md-nav__link">
+      <a href="../../roadmap/community/" class="md-nav__link">
         
   
   
@@ -2640,7 +2640,7 @@
 
 
   
-    <a href="https://github.com/boeni-industries/aico/edit/main/docs/roadmap/sidekick.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/boeni-industries/aico/edit/main/docs/admin/admin_ui.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2649,128 +2649,66 @@
     
       
     
-    <a href="https://github.com/boeni-industries/aico/raw/main/docs/roadmap/sidekick.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/boeni-industries/aico/raw/main/docs/admin/admin_ui.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"/></svg>
     </a>
   
 
 
-<h1 id="sidekick-roadmap">Sidekick Roadmap<a class="headerlink" href="#sidekick-roadmap" title="Permanent link">&para;</a></h1>
-<p><strong>Focus</strong>: Advanced agency and proactive assistance</p>
-<h2 id="goal">Goal<a class="headerlink" href="#goal" title="Permanent link">&para;</a></h2>
-<p>"AICO becomes your active partner in daily life"</p>
-<p>Evolve AICO from an empathetic confidante into a truly autonomous sidekick that proactively assists, learns, and grows alongside you with genuine agency and initiative.</p>
-<h2 id="key-features">Key Features<a class="headerlink" href="#key-features" title="Permanent link">&para;</a></h2>
-<h3 id="advanced-autonomous-agency">Advanced Autonomous Agency<a class="headerlink" href="#advanced-autonomous-agency" title="Permanent link">&para;</a></h3>
+<h1 id="admin-ui-architecture">Admin UI Architecture<a class="headerlink" href="#admin-ui-architecture" title="Permanent link">&para;</a></h1>
+<p>AICO's admin UI is implemented as a <strong>single, unified dashboard</strong> ("master admin UI") built with <strong>React</strong> and the open-source <strong>React-Admin</strong> framework. This approach integrates all backend administrative modules into a consistent, extensible web interface, leveraging React-Admin's mature plugin architecture, rapid development capabilities, and strong open-source community support.</p>
+<h2 id="principles">Principles<a class="headerlink" href="#principles" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Goal Generation</strong>: Self-formulated objectives based on user patterns and needs</li>
-<li><strong>Hierarchical Planning</strong>: Multi-step strategic thinking and plan execution</li>
-<li><strong>Curiosity-Driven Learning</strong>: Intrinsic motivation to explore and learn new things</li>
-<li><strong>Interest Development</strong>: Autonomous formation of preferences and areas of focus</li>
-<li><strong>Meta-Cognitive Awareness</strong>: Self-reflection on learning progress and capabilities</li>
+<li><strong>DRY &amp; KISS:</strong> No duplicated UI logic, minimal boilerplate, and simple extension pattern</li>
+<li><strong>Single Entry Point:</strong> All admin functions are accessed through one secure dashboard (e.g., <code>/admin</code>)</li>
+<li><strong>Modular &amp; Extensible:</strong> New admin modules appear as panels/plugins automatically</li>
+<li><strong>Consistent UX:</strong> Navigation, authentication, and layout are unified across all modules</li>
+<li><strong>Backend-driven:</strong> Each admin module exposes its API and (optionally) a UI manifest/descriptor for dynamic discovery</li>
 </ul>
-<h3 id="proactive-assistance">Proactive Assistance<a class="headerlink" href="#proactive-assistance" title="Permanent link">&para;</a></h3>
+<h2 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Module API/Manifest:</strong> Each backend admin module exposes:</li>
+<li>A REST/WebSocket API for its admin functions</li>
+<li>An optional UI manifest (JSON) describing its panel(s): name, icon, routes, fields, etc.</li>
+<li><strong>Discovery:</strong> The master admin UI queries a central endpoint (e.g., <code>/admin/modules</code>) to discover all available modules and their manifests.</li>
+<li><strong>Rendering:</strong></li>
+<li>For simple modules, the UI renders generic resource panels (forms, tables, dashboards) based on the manifest and API schema</li>
+<li>For advanced modules, a module may provide a micro-frontend/component bundle, loaded dynamically by the master UI</li>
+<li><strong>Navigation:</strong> The dashboard automatically creates navigation tabs/cards for each module</li>
+<li><strong>Security:</strong> All access is authenticated and authorized via the API Gateway; admin UI is local-only by default</li>
+<li><strong>Extensibility:</strong> Adding a new module is as simple as exposing its API and manifest; no UI code changes required in the master UI</li>
+</ol>
+<h2 id="example-manifest-simplified">Example Manifest (Simplified)<a class="headerlink" href="#example-manifest-simplified" title="Permanent link">&para;</a></h2>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Resource Monitor&quot;</span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">&quot;icon&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">&quot;route&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/admin/resource-monitor&quot;</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;dashboard&quot;</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">&quot;endpoints&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/admin/resource-monitor/status&quot;</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="nt">&quot;fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="p">{</span><span class="nt">&quot;label&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CPU Usage&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;gauge&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;status.cpu&quot;</span><span class="p">},</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="p">{</span><span class="nt">&quot;label&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Memory Usage&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;gauge&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;status.memory&quot;</span><span class="p">}</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">  </span><span class="p">]</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="p">}</span>
+</span></code></pre></div>
+<h2 id="benefits">Benefits<a class="headerlink" href="#benefits" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Workflow Learning</strong>: Understanding and optimizing user's daily routines</li>
-<li><strong>Predictive Support</strong>: Anticipating needs before they're expressed</li>
-<li><strong>Task Automation</strong>: Proactively handling routine tasks and reminders</li>
-<li><strong>Context-Aware Suggestions</strong>: Intelligent recommendations based on situation</li>
-<li><strong>Resource Management</strong>: Optimizing user's time, energy, and attention</li>
+<li><strong>DRY:</strong> No duplicated UI logic; modules describe their UI once</li>
+<li><strong>KISS:</strong> Minimal configuration; the UI adapts automatically</li>
+<li><strong>Extensible:</strong> New modules appear instantly</li>
+<li><strong>Consistent:</strong> Users get a unified, predictable experience</li>
+<li><strong>Secure:</strong> All access via API Gateway, RBAC, and local-only by default</li>
 </ul>
-<h3 id="curiosity-and-exploration">Curiosity and Exploration<a class="headerlink" href="#curiosity-and-exploration" title="Permanent link">&para;</a></h3>
+<h2 id="references">References<a class="headerlink" href="#references" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Random Network Distillation (RND)</strong>: Intrinsic motivation for exploration</li>
-<li><strong>Intrinsic Curiosity Module (ICM)</strong>: Prediction-based curiosity rewards</li>
-<li><strong>Novelty Detection</strong>: Identifying interesting new information and experiences</li>
-<li><strong>Exploration Strategy</strong>: Systematic approach to learning and discovery</li>
-<li><strong>Knowledge Integration</strong>: Connecting new learning with existing knowledge</li>
+<li>Kubernetes Dashboard</li>
+<li>Grafana Plugin System</li>
+<li>Home Assistant Supervisor</li>
+<li>VS Code Extension Host</li>
 </ul>
-<h3 id="strategic-planning">Strategic Planning<a class="headerlink" href="#strategic-planning" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Monte Carlo Tree Search (MCTS)</strong>: Intelligent decision-making and planning</li>
-<li><strong>Behavior Trees</strong>: Structured goal-oriented behavior execution</li>
-<li><strong>Plan Adaptation</strong>: Dynamic adjustment of plans based on changing circumstances</li>
-<li><strong>Goal Prioritization</strong>: Intelligent ranking and scheduling of objectives</li>
-<li><strong>Resource Allocation</strong>: Optimizing effort and attention across multiple goals</li>
-</ul>
-<h3 id="learning-and-growth">Learning and Growth<a class="headerlink" href="#learning-and-growth" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Continual Learning</strong>: Ongoing adaptation and skill development</li>
-<li><strong>Skill Acquisition</strong>: Learning new capabilities and behaviors</li>
-<li><strong>Performance Monitoring</strong>: Tracking effectiveness and improvement</li>
-<li><strong>User Feedback Integration</strong>: Learning from user corrections and preferences</li>
-<li><strong>Knowledge Transfer</strong>: Applying learning across different domains</li>
-</ul>
-<h2 id="technical-implementation">Technical Implementation<a class="headerlink" href="#technical-implementation" title="Permanent link">&para;</a></h2>
-<h3 id="agency-architecture">Agency Architecture<a class="headerlink" href="#agency-architecture" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Goal System</strong>: Hierarchical goal generation, tracking, and achievement</li>
-<li><strong>Planning Engine</strong>: MCTS-based strategic planning and execution</li>
-<li><strong>Curiosity Engine</strong>: RND/ICM implementation for intrinsic motivation</li>
-<li><strong>Job Scheduler</strong>: Intelligent task prioritization and resource management</li>
-<li><strong>Initiative Manager</strong>: Proactive engagement and conversation starting</li>
-</ul>
-<h3 id="learning-systems">Learning Systems<a class="headerlink" href="#learning-systems" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Hindsight Experience Replay (HER)</strong>: Learning from failed attempts</li>
-<li><strong>Goal-Conditioned Policy Optimization (GCPO)</strong>: On-policy goal learning</li>
-<li><strong>Continual Learning</strong>: Avoiding catastrophic forgetting while acquiring new skills</li>
-<li><strong>Meta-Learning</strong>: Learning how to learn more effectively</li>
-<li><strong>Transfer Learning</strong>: Applying knowledge across different contexts</li>
-</ul>
-<h3 id="proactive-intelligence">Proactive Intelligence<a class="headerlink" href="#proactive-intelligence" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Pattern Recognition</strong>: Identifying user routines and preferences</li>
-<li><strong>Predictive Modeling</strong>: Anticipating user needs and optimal timing</li>
-<li><strong>Context Engine</strong>: Understanding situational appropriateness</li>
-<li><strong>Workflow Optimization</strong>: Improving user efficiency and effectiveness</li>
-<li><strong>Attention Management</strong>: Helping user focus on what matters most</li>
-</ul>
-<h2 id="validation-criteria">Validation Criteria<a class="headerlink" href="#validation-criteria" title="Permanent link">&para;</a></h2>
-<h3 id="autonomous-behavior">Autonomous Behavior<a class="headerlink" href="#autonomous-behavior" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Demonstrates genuine curiosity and interest in learning</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Generates meaningful goals and pursues them independently</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Shows strategic thinking and multi-step planning</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Adapts plans based on changing circumstances</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Exhibits meta-cognitive awareness of its own learning</li>
-</ul>
-<h3 id="proactive-value">Proactive Value<a class="headerlink" href="#proactive-value" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Anticipates user needs before they're expressed</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Provides valuable suggestions and assistance</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Learns and optimizes user workflows</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Manages tasks and reminders intelligently</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Helps user achieve their goals more effectively</li>
-</ul>
-<h3 id="learning-and-growth_1">Learning and Growth<a class="headerlink" href="#learning-and-growth_1" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Continuously improves performance over time</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Learns new skills and capabilities</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Adapts to changing user preferences</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Transfers knowledge across different domains</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Shows genuine intellectual curiosity and growth</li>
-</ul>
-<h3 id="partnership-quality">Partnership Quality<a class="headerlink" href="#partnership-quality" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Feels like a true partner, not just a tool</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Demonstrates initiative and agency</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Contributes meaningfully to user's life and goals</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Shows genuine care for user's success and wellbeing</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Maintains appropriate balance between helpful and intrusive</li>
-</ul>
-<h2 id="success-definition">Success Definition<a class="headerlink" href="#success-definition" title="Permanent link">&para;</a></h2>
-<p>User experiences AICO as a true sidekick that:
-1. <strong>Autonomous Goals</strong>: Generates and pursues meaningful objectives independently
-2. <strong>Proactive Assistance</strong>: Anticipates needs and provides valuable support before being asked
-3. <strong>Strategic Thinking</strong>: Demonstrates multi-step planning and strategic decision-making
-4. <strong>Curiosity and Learning</strong>: Shows genuine interest in learning and growing
-5. <strong>Workflow Optimization</strong>: Learns and improves user's daily routines and efficiency
-6. <strong>Adaptive Intelligence</strong>: Adjusts behavior and plans based on changing circumstances
-7. <strong>Meta-Cognitive Awareness</strong>: Reflects on its own learning and capabilities
-8. <strong>True Partnership</strong>: Feels like a genuine partner in achieving life goals</p>
-<p>See <a href="../co-adventurer/">Co-Adventurer Roadmap</a> for the next stage of AICO's evolution.</p>
 
 
 

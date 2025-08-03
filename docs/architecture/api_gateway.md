@@ -1,5 +1,20 @@
 # API Gateway Architecture
 
+---
+
+## Admin Endpoints and Privileged Access
+
+The API Gateway is also responsible for securely exposing all **administrative endpoints** (web UI and API) required for backend operation and maintenance:
+- **Admin endpoints** (e.g., `/admin`, `/admin/config`, `/admin/logs`, etc.) are served as privileged, local-only interfaces by default.
+- **Authentication & Authorization:** Strong authentication and role-based access control are enforced for all admin actions.
+- **Routing:** Admin requests are routed to the corresponding backend admin modules in the Administration domain.
+- **Separation:** Admin endpoints are strictly separated from user-facing APIs and are never exposed to regular users.
+- **Extensibility:** As new admin modules are added to the backend, their endpoints become available via the gateway automatically.
+
+This ensures that all administrative functionality—configuration, logs, plugin management, updates, audit, etc.—is securely accessible to developers and operators, while protecting regular users and maintaining system integrity.
+
+---
+
 ## Overview
 
 The API Gateway serves as the unified entry point for all external communication with the AICO backend services. It provides a consistent, secure, and protocol-agnostic interface that supports both coupled and detached roaming patterns while enforcing the system's security policies. Additionally, it plays a crucial role in AICO's federated device network, facilitating secure device-to-device communication and data synchronization.

@@ -140,6 +140,11 @@ nav:
     - Data Federation: architecture/data_federation.md
     - Instrumentation: architecture/instrumentation.md
     - Logging: architecture/instrumentation_logging.md
+  - Administration:
+    - Overview: admin/admin_overview.md
+    - Admin UI: admin/admin_ui.md
+    - Master Admin UI: admin/admin_ui_master.md
+    - CLI: admin/cli.md
   - Privacy & Security:
     - Overview: security/security_overview.md
     - Data Security: security/data_security.md

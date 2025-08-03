@@ -6,13 +6,15 @@ title: Architecture Overview
 
 ## Project Summary
 
-AICO is an open-source experiment to build an **emotionally present, embodied, and proactive AI companion**—meant to act as more of a confidante and sidekick than a traditional assistant. Unlike typical productivity-oriented virtual assistants, AICO is designed to sense and adapt to the user's moods, initiate engagement, and form an evolving, personality-rich relationship.
+AICO is an open-source experiment to build an **emotionally present, visually embodied, and proactive AI companion**—intended to act as a confidante and sidekick, not just an assistant. Unlike productivity-oriented chatbots, AICO is designed to sense and adapt to the user's moods, initiate engagement, and form an evolving, personality-rich relationship with a visual, emotional, and proactive presence.
 
 **Core Principles:**
-- **Autonomous agency** - AICO has its own goals, interests, and curiosities that drive self-directed behavior and learning
-- **Strong user-centric privacy** - Local-first with full user control
-- **Modular, extensible architecture** - Prioritizes companionship and long-term learning
-- **Real-time emotional awareness** - Multi-modal emotion recognition and adaptation
+- **Embodiment:** Visual/audio presence and non-verbal communication are core MVP requirements.
+- **Autonomous Agency:** AICO initiates, acts, and pursues its own goals and curiosities.
+- **Personality & Emotion:** Consistent, evolving personality and sophisticated emotion simulation.
+- **Local-First Privacy:** All data and processing are local by default, with user-controlled federated sync.
+- **Modular, Extensible System:** System → Module → Component hierarchy, message-driven, plugin-ready.
+- **Real-Time Emotional Awareness:** Multi-modal emotion recognition, simulation, and expression.
 
 ## System Features
 
@@ -54,16 +56,17 @@ AICO's features are organized into logical modules for development and deploymen
 
 ### 🎭 Embodiment & Presence
 
-**Embodiment** is AICO's ability to manifest as a physical presence through avatars, voice, gestures, and spatial awareness across different devices and environments.
+AICO's embodiment system enables multi-modal presence—visual, vocal, and spatial—across physical and digital environments.
 
-- **Avatar System**: Visual representation and animation
-- **Gesture Recognition**: Body language understanding
-- **Spatial Awareness**: Environmental context understanding
-- **Physical Presence**: Desktop, mobile, or projected embodiment
-- **AR/VR Integration**: Immersive interaction capabilities
-- **Federated Device Roaming**: AICO's ability to seamlessly transition between devices while maintaining continuity of state, context, and capabilities
-- **Multi-device Sync**: Zero-knowledge presence coordination across devices
+- **Avatar System:** 3D avatars (Ready Player Me) with real-time animation (Three.js, TalkingHead.js)
+- **Rendering Pipeline:** Cross-platform 3D graphics (WebGL), integrated in Flutter via WebView
+- **Voice & Audio:** Local speech-to-text (Whisper.cpp), text-to-speech (Coqui/Piper)
+- **Gesture & Eye Tracking:** Computer vision-based interaction
+- **Spatial Intelligence:** Environmental mapping, object recognition, spatial memory
+- **Device Integration:** IoT control, multi-device presence, context handoff
+- **Deployment Patterns:** Coupled (frontend/backend on same device) and Detached (frontend on lightweight device, backend remote)
 
+**See also:** [embodiment.md], [roaming.md]
 ### 🔒 Privacy & Security
 - **Local Processing**: Edge-first computation and storage
 - **Data Encryption**: End-to-end encryption for all personal data
@@ -197,19 +200,76 @@ AICO System
 │       ├── Component: Flutter UI
 │       ├── Component: Avatar System
 │       └── Component: Voice & Audio
-└── Domain: Privacy & Security
-    ├── Module: Consent Manager
-    │   ├── Component: Permission Control
-    │   └── Component: Data Governance
-    ├── Module: Encryption System
-    │   ├── Component: Data Encryption
-    │   └── Component: Secure Communication
-    └── Module: Audit System
-        ├── Component: Activity Logging
-        └── Component: Compliance Monitoring
-```
+├── Domain: Privacy & Security
+│   ├── Module: Consent Manager
+│   │   ├── Component: Permission Control
+│   │   └── Component: Data Governance
+│   ├── Module: Encryption System
+│   │   ├── Component: Data Encryption
+│   │   └── Component: Secure Communication
+│   └── Module: Audit System
+│       ├── Component: Activity Logging
+│       └── Component: Compliance Monitoring
+├── Domain: Administration
+│   ├── Module: System Config Manager
+│   │   ├── Component: Config Loader
+│   │   └── Component: Config Validator
+│   ├── Module: Instrumentation & Logging
+│   │   ├── Component: Log Aggregator
+│   │   ├── Component: Log Rotation
+│   │   └── Component: Diagnostics Export
+│   ├── Module: Resource Monitor (Admin)
+│   │   ├── Component: System Status Dashboard
+│   │   ├── Component: Resource Alerts
+│   │   └── Component: Health Checks
+│   ├── Module: Plugin Admin
+│   │   ├── Component: Install/Disable/Update
+│   │   └── Component: Sandbox Policy Control
+│   ├── Module: Update Admin
+│   │   ├── Component: System Updates
+│   │   └── Component: Module Updates
+│   ├── Module: Audit & Compliance (Admin)
+│   │   ├── Component: Admin Log Access
+│   │   └── Component: Compliance Dashboard
+│   ├── Module: Backup & Restore
+│   │   ├── Component: Snapshot Manager
+│   │   └── Component: Restore Engine
+│   ├── Module: Developer Tools
+│   │   ├── Component: Hot Reload
+│   │   └── Component: Profiling & Debug
+│   ├── Module: Admin Access Control
+│   │   ├── Component: Admin Authentication
+│   │   └── Component: Privilege Management
+│   ├── Module: Notification Center
+│   │   ├── Component: Critical Event Alerts
+│   │   └── Component: Admin Messaging
+│   └── Module: Policy Manager
+│       ├── Component: Resource Limits
+│       └── Component: Plugin Permissions
+└── Domain: Extensibility & Integration
+    ├── Module: Plugin System
+    │   ├── Component: Community-Developed Extensions
+    │   └── Component: Skill Acquisition
+    ├── Module: API Gateway
+    │   ├── Component: External Interfaces
+    │   └── Component: Protocol Adapters
+    ├── Module: External Integrations
+    │   ├── Component: Calendar, Email, Smart Home
+    │   └── Component: Custom Integrations
+    ├── Module: Custom Skills
+    │   ├── Component: User-Defined Behaviors
+    │   └── Component: Response Generation
+    ├── Module: Developer Tools
+    │   ├── Component: SDKs and Documentation
+    │   └── Component: Testing Framework
+    ├── Module: Marketplace
+    │   ├── Component: Plugin Discovery
+    │   └── Component: Distribution Platform
+    └── Module: Automated Updates
+        ├── Component: Self-Updating System
+        └── Component: User Control
 
----
+```
 
 ## Architecture Patterns
 
@@ -235,41 +295,54 @@ AICO's core architecture is designed to maximize modularity and maintain low cou
 ### Architecture Overview
 
 ```mermaid
-flowchart TD
-    F["🖥️ FRONTEND<br/>Flutter App"] --> G["🌐 API GATEWAY<br/>REST/WebSocket/gRPC"]
-    G --> M["📡 MESSAGE BUS<br/>ZeroMQ Pub/Sub"]
-    M --> B["⚙️ BACKEND SERVICE<br/>Python Modules"]
-    
-    subgraph "Frontend Components"
-        F1["UI & Chat"]
-        F2["Avatar System"]
-        F3["Input Handling"]
-        F4["Update Manager"]
+flowchart LR
+    subgraph Frontend [Frontend Layer]
+        UI["Flutter App<br/>User Interface"]
+        ADMIN_UI["Admin UI<br/>(React)"]
+        CLI["CLI"]
     end
-    
-    subgraph "Backend Modules"
-        B1["🏗️ Infrastructure"]
-        B2["🧠 AI Intelligence"]
-        B3["😊 Personality & Emotion"]
-        B4["🎯 Autonomous Agency"]
-        B5["🔒 Privacy & Security"]
-        B6["🔍 Self-Awareness"]
+
+    subgraph Gateway [API Gateway Layer]
+        APIGW["API Gateway<br/>(REST/WebSocket/ZeroMQ)"]
     end
-    
-    F -.-> F1
-    F -.-> F2
-    F -.-> F3
-    F -.-> F4
-    
-    B -.-> B1
-    B -.-> B2
-    B -.-> B3
-    B -.-> B4
-    B -.-> B5
-    B -.-> B6
+
+    subgraph Backend [Backend Domains & Modules]
+        CORE_AI["Core AI<br/>Chat, Personality, Emotion"]
+        AUTONOMY["Autonomous Agency<br/>Goal System"]
+        EMBODIMENT["Embodiment<br/>Avatar System"]
+        DATA["Data & Memory<br/>Layer, Federation"]
+        PLUGIN["Plugin System"]
+        ADMIN_DOMAIN["Administration<br/>Admin Modules"]
+        INFRA["Infrastructure<br/>Update, Instrumentation"]
+    end
+
+    subgraph Infra [Cross-Cutting]
+        BUS["Message Bus<br/>(ZeroMQ, Protocol Buffers)"]
+    end
+
+    %% Connections
+    UI --> APIGW
+    ADMIN_UI --> APIGW
+    CLI --> APIGW
+
+    APIGW --> CORE_AI
+    APIGW --> AUTONOMY
+    APIGW --> EMBODIMENT
+    APIGW --> DATA
+    APIGW --> PLUGIN
+    APIGW --> ADMIN_DOMAIN
+    APIGW --> INFRA
+
+    BUS --- CORE_AI
+    BUS --- AUTONOMY
+    BUS --- EMBODIMENT
+    BUS --- DATA
+    BUS --- PLUGIN
+    BUS --- ADMIN_DOMAIN
+    BUS --- INFRA
 ```
 
-**Alternative: Unicode diagram for better visual detail**
+
 
 
 **Communication Flow:**

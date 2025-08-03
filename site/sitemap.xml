@@ -2,150 +2,166 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://boeni-industries.github.io/aico/welcome/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/admin/admin/</loc>
+         <lastmod>2025-08-03</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/admin/admin_ui/</loc>
+         <lastmod>2025-08-03</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/admin/admin_ui_master/</loc>
+         <lastmod>2025-08-03</lastmod>
+    </url>
+    <url>
+         <loc>https://boeni-industries.github.io/aico/admin/cli/</loc>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/api_gateway/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/architecture_overview/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/data_federation/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/data_layer/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/embodiment/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/emotion_sim/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/emotion_sim_msg/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/instrumentation/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/instrumentation_logging/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/integration_msg/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/message_bus/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/personality_sim/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/personality_sim_msg/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/plugin_system/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/roaming/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/tech_stack/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/architecture/update_system/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/concepts/emotion/emotion_sim/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/concepts/personality/personality_definition/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/concepts/personality/personality_sim/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/development/contributing/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/development/guidelines/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/development/protobuf/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/getting-started/getting_started_overview/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/getting-started/installation/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/getting-started/quick-start/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/roadmap/co-adventurer/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/roadmap/community/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/roadmap/confidante/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/roadmap/embodied-presence/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/roadmap/foundation/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/roadmap/mvp/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/roadmap/sidekick/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/security/access_control/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/security/data_security/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
     <url>
          <loc>https://boeni-industries.github.io/aico/security/security_overview/</loc>
-         <lastmod>2025-08-02</lastmod>
+         <lastmod>2025-08-03</lastmod>
     </url>
 </urlset>

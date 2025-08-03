@@ -88,15 +88,30 @@ AICO employs a specialized multi-database architecture optimized for local-first
 
 ## Development & Testing Layer
 
-| Technology | Purpose | Justification |
-|------------|---------|---------------|
-| **Python** | Core development | Primary language for AI components |
-| **Dart/Flutter** | UI development | Cross-platform UI framework |
+| Technology      | Purpose           | Justification |
+|-----------------|-------------------|---------------|
+| **Python**      | Core development  | Primary language for AI components |
+| **Dart/Flutter**| UI development    | Cross-platform UI framework |
 | **JavaScript/TypeScript** | Avatar development | Web technologies for avatar system |
-| **Pytest** | Testing framework | Comprehensive Python testing |
-| **GitHub Actions** | CI/CD | Automated testing and deployment |
-| **MkDocs** | Documentation | Markdown-based documentation system |
+| **Pytest**      | Testing framework | Comprehensive Python testing |
+| **GitHub Actions** | CI/CD           | Automated testing and deployment |
+| **MkDocs**      | Documentation     | Markdown-based documentation system |
 | **Material for MkDocs** | Documentation theme | Clean, responsive documentation UI |
+
+### Command-Line Interface (CLI)
+
+| Technology      | Purpose           | Justification |
+|-----------------|-------------------|---------------|
+| **Typer**       | CLI framework     | Modern, maintainable, autocompleting command trees |
+| **Rich**        | Output formatting  | Beautiful, readable, Unicode-rich CLI output |
+| **PyInstaller** | Packaging         | Creates single-file, dependency-free, cross-platform executables |
+| **Platformdirs**| Config management  | Cross-platform config/cache path handling |
+| **ZeroMQ (pyzmq)** | Message bus integration | Direct backend communication for admin/automation |
+| **Requests/httpx** | API communication | Fast, reliable backend service integration |
+
+- CLI is cross-platform (Windows, macOS, Linux) and offers a top-tier, professional UX.
+- Executable is universal, not dependent on Python/.venv on the target system.
+- CLI reuses backend modules for DRY and maintainable architecture.
 
 ## Module-Specific Technologies
 
