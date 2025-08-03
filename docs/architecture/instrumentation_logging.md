@@ -8,7 +8,7 @@ This document provides a step-by-step, directly usable guide for implementing un
 
 ---
 
-## 1. Shared Log Envelope Schema
+## Log Envelope Schema
 
 Define a JSON structure for all log messages. Both frontend and backend MUST use this schema:
 
@@ -36,7 +36,7 @@ Define a JSON structure for all log messages. Both frontend and backend MUST use
 
 ---
 
-## 2. Frontend (Flutter) Logging Implementation
+## Frontend (Flutter)
 
 - Create a Dart logging utility that formats logs per the shared schema.
 - **Always include:**
@@ -93,7 +93,7 @@ logEvent(
 
 ---
 
-## 3. Backend (Python) Logging Implementation
+## Backend (Python)
 
 - Use Python logging or a custom logger to emit logs in the same envelope format.
 - **Always include:**
@@ -140,13 +140,17 @@ log_event(
 
 ---
 
-## 4. Backend Bridge for Frontend Logs
+## Backend Bridge for Frontend Logs
 
-If Flutter cannot publish directly to ZeroMQ:
-- Implement a lightweight bridge in the backend (Python):
-  - Receives logs from frontend via WebSocket/HTTP.
-  - Republishes them to ZeroMQ under `logs.frontend.*`.
-  - Optionally, the bridge can add/correct function/file/line info if not provided.
+### Cross-Platform Requirement
+A backend bridge is the **required and default solution** for forwarding frontend (Flutter) logs to the ZeroMQ message bus. This is necessary because:
+- Direct ZeroMQ publishing from Flutter is **not reliably supported across all target platforms** (Linux, macOS, iOS, Android, Windows).
+- The `dartzmq` package only supports a subset of platforms (Windows, Android) and requires complex native setup.
+- For a robust, portable, and maintainable architecture, **all frontend logs should be sent to a backend bridge via HTTP or WebSocket**.
+
+### Bridge Architecture
+- The backend bridge is a lightweight service (e.g., Python Flask app) that receives logs from the Flutter frontend via HTTP or WebSocket and republishes them to ZeroMQ under `logs.frontend.*`.
+- The bridge can enrich logs with function/file/line info if needed.
 
 **Example Flask Bridge:**
 ```python
@@ -165,7 +169,12 @@ def receive_log():
     return '', 204
 ```
 
-- Point Flutter HTTP log sender to `/log` endpoint.
+- Point the Flutter HTTP log sender to the `/log` endpoint of this bridge.
+
+**Summary:**
+- The backend bridge is **mandatory** for reliable, cross-platform logging from Flutter to ZeroMQ.
+- Do **not** attempt direct ZeroMQ publishing from Flutter in production, regardless of platform.
+
 
 ---
 
