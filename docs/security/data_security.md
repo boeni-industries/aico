@@ -198,7 +198,7 @@ class AICOKeyManager:
    - Retrieves keys from secure storage
    - Mounts encrypted filesystem transparently
 
-For complete details on the overall key management system, see [Security Architecture](security_layer.md).
+For complete details on the overall key management system, see [Security Architecture](security_overview.md).
 
 ## Data Synchronization Security
 

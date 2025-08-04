@@ -99,7 +99,7 @@ Each stage builds deeper companionship rather than just adding features.
 
 5. **🌟 Co-Adventurer** - Collaborative learning and growth
     - Shared goal pursuit, collaborative problem-solving, meta-learning
-    - [View Co-Adventurer Roadmap](../roadmap/co-adventurer.md)
+    - [View Co-Adventurer Roadmap](../roadmap/co_adventurer.md)
 
 6. **🌐 Embodied Presence** - Multi-modal integration
     - Federated device roaming, AR/VR, IoT, robotics, spatial computing
