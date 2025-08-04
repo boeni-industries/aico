@@ -53,42 +53,80 @@ CREATE TABLE device_registry (
 );
 ```
 
+**Key Features**:
+- Stored in libSQL for consistency with primary data layer
+- Manages trusted device information and relationships
+- Handles encryption keys and trust relationships
+- Supports device-specific sync policies
+
 ### Selective Sync
 
-Different data types have different synchronization policies:
+Different data types have different synchronization policies based on their importance and data characteristics:
 
-| Data Type | Sync Priority | Policy |
-|-----------|---------------|--------|
-| User Profile | High | Immediate sync |
-| Conversation History | Medium | Configurable (Full/Summary) |
-| Personality Model | High | Full sync |
-| Vector Embeddings | Low | On-demand sync |
-| Media Files | Low | Thumbnail only by default |
+| Data Type | Sync Priority | Policy | Database |
+|-----------|---------------|--------|----------|
+| User Profile | High | Immediate sync | libSQL |
+| Conversation History | Medium | Configurable (Full/Summary) | libSQL |
+| Personality Model | High | Full sync | libSQL |
+| Vector Embeddings | Low | On-demand sync | ChromaDB |
+| Analytics Data | Low | Periodic batch sync | DuckDB |
+| Media Files | Low | Thumbnail only by default | File system |
+| Cache Data | None | Local only | RocksDB |
+
+**Sync Characteristics**:
+- **Different sync policies per database and data type**
+- **Prioritization of critical vs. non-critical data**
+- **Bandwidth-efficient delta synchronization**
+- **Configurable sync intervals and triggers**
 
 ### P2P Encrypted Sync
 
-The federated sync mechanism uses:
+The federated sync mechanism implements secure peer-to-peer communication:
 
 1. **Device Discovery**:
-   - Local network: mDNS/Bonjour
-   - Remote: DHT (Distributed Hash Table)
+   - Local network: mDNS/Bonjour for same-network devices
+   - Remote: DHT (Distributed Hash Table) for internet-based discovery
+   - Fallback to encrypted relay when direct connection impossible
 
 2. **Authentication**:
    - Mutual device authentication using public key cryptography
    - Trust establishment through user verification
+   - Device-specific encryption keys for secure channels
 
 3. **Data Transfer**:
-   - End-to-end encrypted channels
-   - Delta synchronization for bandwidth efficiency
-   - Resumable transfers for reliability
+   - **End-to-end encryption for all synced data**
+   - **Direct device-to-device communication when possible**
+   - **Delta synchronization for bandwidth efficiency**
+   - **Resumable transfers for reliability**
+   - **Fallback to encrypted relay when necessary**
+
+4. **Sync Protocol**:
+   - Merkle tree-based change detection
+   - Conflict-free replicated data types (CRDTs) where applicable
+   - Atomic transaction boundaries for consistency
 
 ### Conflict Resolution
 
-Type-specific conflict resolution strategies:
+AICO implements sophisticated conflict resolution strategies tailored to different data types:
 
-1. **Last-Writer-Wins**: For simple data types
-2. **Semantic Merging**: For complex data like conversation history
-3. **Vector Merging**: For embedding databases with deduplication
+1. **Last-Writer-Wins**: For simple preference and configuration data
+   - Timestamp-based resolution for simple conflicts
+   - Used for user settings and device preferences
+
+2. **Semantic Merging**: For complex structured data
+   - Conversation history merging with chronological ordering
+   - Personality model updates with weighted averaging
+   - Context-aware merging for relationship data
+
+3. **Vector Merging**: For embedding and analytical data
+   - Vector data merging with deduplication
+   - Similarity-based conflict detection
+   - Automatic re-embedding for conflicted content
+
+4. **Manual Resolution**: For critical conflicts
+   - User notification for unresolvable conflicts
+   - Conflict queue with resolution interface
+   - Audit trail for all conflict resolutions
 
 ## Implementation Timeline
 

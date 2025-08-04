@@ -133,12 +133,25 @@ nav:
       - Overview: architecture/architecture_overview.md
   - Core Infrastructure:
     - Message Bus: architecture/message_bus.md
-    - Plugin Manager: '#'
-    - API Gateway: '#'
-    - Update System: '#'
+    - Plugin Manager: architecture/plugin_system.md
+    - API Gateway: architecture/api_gateway.md
+    - Update System: architecture/update_system.md
     - Data Layer: architecture/data_layer.md
-    - Data Security: architecture/data_security.md
     - Data Federation: architecture/data_federation.md
+    - Instrumentation: instrumentation/instrumentation.md
+    - Logging: instrumentation/instrumentation_logging.md
+    - Telemetry: instrumentation/telemetry.md
+  - Administration:
+    - Overview: admin/admin_overview.md
+    - Admin UI: admin/admin_ui.md
+    - Master Admin UI: admin/admin_ui_master.md
+    - CLI: admin/cli.md
+  - Privacy & Security:
+    - Overview: security/security_overview.md
+    - Data Security: security/data_security.md
+    - Access Control: security/access_control.md
+    - Consent Manager: '#'
+    - Audit System: security/audit.md  
   - Autonomous Agency:
     - Goal System: '#'
     - Planning System: '#'
@@ -158,10 +171,6 @@ nav:
   - User Interface:
     - Context Manager: '#'
     - Presentation Layer: '#'
-  - Privacy & Security:
-    - Consent Manager: '#'
-    - Encryption System: '#'
-    - Audit System: '#'
   - Message Formats:
     - Core Integration: architecture/integration_msg.md
     - Emotion Simulation: architecture/emotion_sim_msg.md
@@ -176,6 +185,7 @@ nav:
       - Personality Definition: concepts/personality/personality_definition.md
   - Development:
     - Contributing: development/contributing.md
+    - Protocol Buffers: development/protobuf.md
   - Roadmap:
     - Foundation: roadmap/foundation.md
     - MVP: roadmap/mvp.md

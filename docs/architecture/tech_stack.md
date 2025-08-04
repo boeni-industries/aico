@@ -59,15 +59,18 @@ AICO employs a specialized multi-database architecture optimized for local-first
 | **FastAPI** | API framework | Modern, fast Python web framework powering the service gateway |
 | **REST API** | UI/adapter protocol | Standard HTTP API for commands, queries, and configuration |
 | **WebSocket API** | UI/adapter protocol | Real-time, bidirectional communication for events and notifications |
-| **JSON** | Message format | Human-readable, widely supported serialization |
-| **JSON Schema** | Message validation | Schema validation for message formats |
+| **Protocol Buffers** | Message format | High-performance binary serialization with strong typing and cross-platform support |
+| **protoc** | Code generation | Automatic code generation for multiple languages (Python, Dart) |
 
 ## Security & Privacy Layer
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **libSQL Encryption** | Database encryption | Built-in encryption for primary storage |
-| **AES-256** | Data encryption | Industry standard encryption |
+| **gocryptfs** | Filesystem-level encryption | Transparent encryption for all database files with zero functionality loss |
+| **AES-256-GCM** | Authenticated encryption | Industry standard encryption with integrity verification |
+| **Argon2id** | Key derivation | Industry-leading memory-hard KDF, winner of Password Hashing Competition |
+| **Python-Cryptography** | Cryptographic library | Comprehensive, well-maintained cryptographic primitives with Argon2id support |
+| **Platform Key Storage** | Secure key management | OS-native secure storage (Keychain, Credential Manager, Secret Service) |
 | **Homomorphic Encryption** | Privacy-preserving computation | Compute on encrypted data |
 | **Differential Privacy** | Statistical privacy | Privacy-preserving analytics |
 | **Zero-Knowledge Proofs** | Authentication | Verify without revealing data |
@@ -85,15 +88,41 @@ AICO employs a specialized multi-database architecture optimized for local-first
 
 ## Development & Testing Layer
 
+| Technology      | Purpose           | Justification |
+|-----------------|-------------------|---------------|
+| **Python**      | Core development  | Primary language for AI components |
+| **Dart/Flutter**| UI development    | Cross-platform UI framework |
+| **JavaScript/TypeScript** | Avatar development | Web technologies for avatar system |
+| **Pytest**      | Testing framework | Comprehensive Python testing |
+| **GitHub Actions** | CI/CD           | Automated testing and deployment |
+| **MkDocs**      | Documentation     | Markdown-based documentation system |
+| **Material for MkDocs** | Documentation theme | Clean, responsive documentation UI |
+
+### Command-Line Interface (CLI)
+
+| Technology      | Purpose           | Justification |
+|-----------------|-------------------|---------------|
+| **Typer**       | CLI framework     | Modern, maintainable, autocompleting command trees |
+| **Rich**        | Output formatting  | Beautiful, readable, Unicode-rich CLI output |
+| **PyInstaller** | Packaging         | Creates single-file, dependency-free, cross-platform executables |
+| **Platformdirs**| Config management  | Cross-platform config/cache path handling |
+| **ZeroMQ (pyzmq)** | Message bus integration | Direct backend communication for admin/automation |
+| **Requests/httpx** | API communication | Fast, reliable backend service integration |
+
+- CLI is cross-platform (Windows, macOS, Linux) and offers a top-tier, professional UX.
+- Executable is universal, not dependent on Python/.venv on the target system.
+- CLI reuses backend modules for DRY and maintainable architecture.
+
+## Monitoring & Instrumentation Layer
+
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **Python** | Core development | Primary language for AI components |
-| **Dart/Flutter** | UI development | Cross-platform UI framework |
-| **JavaScript/TypeScript** | Avatar development | Web technologies for avatar system |
-| **Pytest** | Testing framework | Comprehensive Python testing |
-| **GitHub Actions** | CI/CD | Automated testing and deployment |
-| **MkDocs** | Documentation | Markdown-based documentation system |
-| **Material for MkDocs** | Documentation theme | Clean, responsive documentation UI |
+| **OpenTelemetry** | Telemetry standard | Unified API for metrics, logs, and traces with minimal overhead |
+| **Structlog** | Structured logging | Python library for consistent, structured log output |
+| **libSQL** | Log & telemetry storage | Reuses existing database with time-series optimized tables |
+| **Pydantic** | Schema validation | Efficient validation of telemetry and audit records |
+| **Grafana** | Visualization (dev only) | Optional local dashboard for development and debugging |
+| **Loki** | Log aggregation (dev only) | Lightweight log aggregation for development environments |
 
 ## Module-Specific Technologies
 

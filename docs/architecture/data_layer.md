@@ -248,28 +248,13 @@ graph TB
 
 ## Federated Device Sync
 
-The data layer is designed to support AICO's federated device roaming capability:
+The data layer is designed to support AICO's federated device roaming capability. For detailed information about the federated device network architecture, synchronization protocols, and conflict resolution strategies, see [Data Federation](data_federation.md).
 
-1. **Device Registry**:
-    - Stored in libSQL
-    - Manages trusted device information
-    - Handles encryption keys and trust relationships
-
-2. **Selective Sync**:
-    - Different sync policies per database and data type
-    - Prioritization of critical vs. non-critical data
-    - Bandwidth-efficient delta synchronization
-
-3. **P2P Encrypted Sync**:
-    - End-to-end encryption for all synced data
-    - Direct device-to-device communication when possible
-    - Fallback to encrypted relay when necessary
-
-4. **Conflict Resolution**:
-    - Type-specific merge strategies
-    - Vector data merging with deduplication
-    - Timestamp-based resolution for simple conflicts
-    - Semantic merging for complex conflicts
+**Key Integration Points**:
+- Device registry stored in libSQL primary database
+- Database-specific sync policies for optimal performance
+- Integration with message bus for sync event handling
+- Support for selective sync based on data criticality
 
 ## Security and Privacy
 
@@ -316,42 +301,329 @@ The Database Integration Module provides a unified interface for accessing AICO'
 
 ### Architecture Pattern
 
-AICO's database integration follows the Repository Pattern with a Data Access Layer (DAL) approach:
+AICO's database integration follows the **Repository Pattern** combined with a **Data Access Layer (DAL)** approach. This architectural pattern provides clean separation of concerns, testability, and maintainability by abstracting database operations through well-defined layers.
+
+#### Pattern Overview
+
+The architecture consists of four distinct layers, each with specific responsibilities:
+
+1. **Domain Logic Layer**: Contains business logic and domain entities
+2. **Repository Layer**: Provides domain-specific data access interfaces
+3. **Data Access Layer**: Handles database operations and transactions
+4. **Database Adapter Layer**: Manages database-specific implementations
 
 ```mermaid
-classDiagram
-    class Module {
-        <<Domain Logic>>
-    }
+flowchart TD
+    A["🏗️ Domain Module<br/>Business Logic"] --> B["📋 Repository Interface<br/>Domain-Specific API<br/>"]
+    B --> C["🔧 Data Access Layer<br/>Database Operations<br/>(Connection Pooling, Transactions, Query Execution)"]
+    C --> D["🗄️ Database Adapter<br/>DB-Specific Implementation<br/>(libSQL, ChromaDB, DuckDB Adapters)"]
     
-    class Repository {
-        <<Interface>>
-        +get(id)
-        +save(entity)
-        +query(criteria)
-    }
-    
-    class DataAccessLayer {
-        <<Implementation>>
-        -connection
-        +execute(query)
-        +transaction()
-    }
-    
-    class DatabaseAdapter {
-        <<Database Specific>>
-        -connect()
-        -disconnect()
-        -executeNative()
-    }
-    
-    Module --> Repository : uses
-    Repository --> DataAccessLayer : uses
-    DataAccessLayer --> DatabaseAdapter : uses
-    
-    classDef purple fill:#663399,stroke:#9370DB,color:#fff
-    class Repository,DataAccessLayer,DatabaseAdapter purple
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#fff3e0
+    style D fill:#e8f5e8
 ```
+
+#### Architectural Benefits
+
+**Separation of Concerns**: Each layer has a single, well-defined responsibility:
+- Domain modules focus purely on business logic without database concerns
+- Repositories provide clean, domain-specific data access APIs
+- Data access layer handles cross-cutting concerns like transactions and connections
+- Database adapters encapsulate database-specific implementation details
+
+**Testability**: The layered approach enables comprehensive testing:
+- Domain logic can be unit tested with mocked repositories
+- Repository interfaces can be tested with in-memory implementations
+- Data access layer can be integration tested against real databases
+- Database adapters can be tested in isolation
+
+**Maintainability**: Changes are localized to specific layers:
+- Database schema changes only affect the adapter layer
+- Business logic changes only affect the domain and repository layers
+- Performance optimizations can be implemented in the data access layer
+- New database types can be added by implementing new adapters
+
+**Flexibility**: The pattern supports multiple database backends:
+- Each database type (libSQL, ChromaDB, DuckDB) has its own adapter
+- Repositories can switch between different implementations
+- Cross-database operations are handled at the data access layer
+- Future database migrations are simplified
+
+#### Layer Implementation Examples
+
+The following examples illustrate how each architectural layer is implemented and how they interact:
+
+##### 1. Domain Logic Layer
+
+The domain layer contains business logic and orchestrates data operations through repository interfaces:
+
+```python
+# Domain service handling conversation logic
+class ConversationService:
+    def __init__(self, conversation_repo: ConversationRepository, 
+                 memory_repo: MemoryRepository):
+        self.conversation_repo = conversation_repo
+        self.memory_repo = memory_repo
+    
+    async def process_user_message(self, user_id: str, message: str) -> str:
+        """Business logic: process message and generate response"""
+        # Store the conversation
+        conversation = Conversation(
+            user_id=user_id,
+            message=message,
+            timestamp=datetime.now()
+        )
+        await self.conversation_repo.save(conversation)
+        
+        # Retrieve relevant memories for context
+        memories = await self.memory_repo.get_by_context(message, limit=5)
+        
+        # Generate AI response (business logic)
+        response = self._generate_response(message, memories)
+        
+        # Store the response
+        response_conv = Conversation(
+            user_id=user_id,
+            message=response,
+            is_ai_response=True,
+            timestamp=datetime.now()
+        )
+        await self.conversation_repo.save(response_conv)
+        
+        return response
+```
+
+**Key Points**: 
+- Domain service focuses purely on business logic
+- Uses repository interfaces, never directly touches databases
+- Orchestrates multiple repositories to complete business operations
+- Domain entities (Conversation, Memory) represent business concepts
+
+##### 2. Repository Layer (Domain-Specific API)
+
+Repositories provide clean, domain-specific interfaces that abstract database operations:
+
+```python
+# Abstract repository interface
+class ConversationRepository(ABC):
+    @abstractmethod
+    async def save(self, conversation: Conversation) -> None:
+        """Save a conversation to storage"""
+        pass
+    
+    @abstractmethod
+    async def get_by_user(self, user_id: str, limit: int = 50) -> List[Conversation]:
+        """Get recent conversations for a user"""
+        pass
+    
+    @abstractmethod
+    async def search_by_content(self, query: str) -> List[Conversation]:
+        """Search conversations by content"""
+        pass
+
+# Concrete repository implementation
+class LibSQLConversationRepository(ConversationRepository):
+    def __init__(self, data_access: DataAccessLayer):
+        self.dal = data_access
+    
+    async def save(self, conversation: Conversation) -> None:
+        """Domain-specific save operation"""
+        query = """
+            INSERT INTO conversations (user_id, message, timestamp, is_ai_response)
+            VALUES (?, ?, ?, ?)
+        """
+        params = [
+            conversation.user_id,
+            conversation.message,
+            conversation.timestamp,
+            conversation.is_ai_response
+        ]
+        await self.dal.execute(query, params)
+    
+    async def get_by_user(self, user_id: str, limit: int = 50) -> List[Conversation]:
+        """Retrieve user conversations with domain logic"""
+        query = """
+            SELECT * FROM conversations 
+            WHERE user_id = ? 
+            ORDER BY timestamp DESC 
+            LIMIT ?
+        """
+        rows = await self.dal.fetch_all(query, [user_id, limit])
+        return [Conversation.from_dict(row) for row in rows]
+```
+
+**Key Points**:
+- Repository interface defines domain operations, not database operations
+- Methods use domain language ("get_by_user", "search_by_content")
+- Concrete implementation translates domain operations to database queries
+- Repository handles domain object mapping (Conversation.from_dict())
+
+##### 3. Data Access Layer
+
+The DAL handles database operations, transactions, and connection management:
+
+```python
+class DataAccessLayer:
+    def __init__(self, adapter: DatabaseAdapter):
+        self.adapter = adapter
+        self.connection_pool = ConnectionPool(adapter, max_connections=10)
+    
+    async def execute(self, query: str, params: List = None) -> None:
+        """Execute a query without returning results"""
+        async with self.connection_pool.acquire() as conn:
+            await conn.execute(query, params or [])
+    
+    async def fetch_all(self, query: str, params: List = None) -> List[Dict]:
+        """Execute query and return all results"""
+        async with self.connection_pool.acquire() as conn:
+            return await conn.fetch_all(query, params or [])
+    
+    async def transaction(self) -> AsyncContextManager:
+        """Provide transaction context"""
+        return TransactionContext(self.connection_pool)
+
+# Transaction management
+class TransactionContext:
+    def __init__(self, pool: ConnectionPool):
+        self.pool = pool
+        self.connection = None
+    
+    async def __aenter__(self):
+        self.connection = await self.pool.acquire()
+        await self.connection.begin()
+        return self.connection
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            await self.connection.rollback()
+        else:
+            await self.connection.commit()
+        await self.pool.release(self.connection)
+```
+
+**Key Points**:
+- DAL provides generic database operations (execute, fetch_all, transaction)
+- Handles connection pooling and resource management
+- Manages transactions across multiple operations
+- Database-agnostic interface that works with any adapter
+
+##### 4. Database Adapter Layer
+
+Adapters handle database-specific implementations and connection details:
+
+```python
+# Abstract adapter interface
+class DatabaseAdapter(ABC):
+    @abstractmethod
+    async def connect(self) -> Connection:
+        pass
+    
+    @abstractmethod
+    async def disconnect(self, connection: Connection) -> None:
+        pass
+
+# libSQL-specific adapter
+class LibSQLAdapter(DatabaseAdapter):
+    def __init__(self, database_path: str, encryption_key: str = None):
+        self.database_path = database_path
+        self.encryption_key = encryption_key
+    
+    async def connect(self) -> Connection:
+        """Create libSQL connection with encryption"""
+        import libsql_client
+        
+        connection = await libsql_client.connect(
+            url=f"file:{self.database_path}",
+            encryption_key=self.encryption_key
+        )
+        return LibSQLConnection(connection)
+    
+    async def disconnect(self, connection: Connection) -> None:
+        await connection.close()
+
+# ChromaDB adapter for vector operations
+class ChromaDBAdapter(DatabaseAdapter):
+    def __init__(self, persist_directory: str):
+        self.persist_directory = persist_directory
+    
+    async def connect(self) -> Connection:
+        """Create ChromaDB client connection"""
+        import chromadb
+        
+        client = chromadb.PersistentClient(path=self.persist_directory)
+        return ChromaDBConnection(client)
+```
+
+**Key Points**:
+- Each adapter implements database-specific connection logic
+- Handles database-specific configuration (encryption keys, paths)
+- Provides uniform interface despite different underlying databases
+- Encapsulates all database-specific dependencies
+
+#### Business Logic ↔ Repository Interaction
+
+The interaction between business logic and repositories is crucial for clean architecture:
+
+```python
+# Example: Complex business operation using multiple repositories
+class UserOnboardingService:
+    def __init__(self, user_repo: UserRepository, 
+                 memory_repo: MemoryRepository,
+                 conversation_repo: ConversationRepository):
+        self.user_repo = user_repo
+        self.memory_repo = memory_repo
+        self.conversation_repo = conversation_repo
+    
+    async def onboard_new_user(self, user_data: Dict) -> User:
+        """Business logic: complete user onboarding process"""
+        
+        # 1. Create user entity (domain logic)
+        user = User(
+            name=user_data['name'],
+            preferences=self._initialize_preferences(user_data),
+            created_at=datetime.now()
+        )
+        
+        # 2. Save user through repository (clean interface)
+        await self.user_repo.save(user)
+        
+        # 3. Create initial memory context (business rule)
+        initial_memory = Memory(
+            user_id=user.id,
+            content=f"User {user.name} joined AICO",
+            memory_type=MemoryType.SYSTEM,
+            importance=0.8
+        )
+        await self.memory_repo.save(initial_memory)
+        
+        # 4. Log welcome conversation (business logic)
+        welcome_message = self._generate_welcome_message(user)
+        conversation = Conversation(
+            user_id=user.id,
+            message=welcome_message,
+            is_ai_response=True,
+            timestamp=datetime.now()
+        )
+        await self.conversation_repo.save(conversation)
+        
+        return user
+    
+    def _initialize_preferences(self, user_data: Dict) -> UserPreferences:
+        """Pure business logic - no database concerns"""
+        return UserPreferences(
+            language=user_data.get('language', 'en'),
+            personality_style=user_data.get('style', 'friendly'),
+            privacy_level=user_data.get('privacy', 'standard')
+        )
+```
+
+**Key Interaction Principles**:
+1. **Business logic never imports database libraries** - only repository interfaces
+2. **Repositories translate business operations** to database operations
+3. **Domain entities flow between layers** without database-specific details
+4. **Business rules are enforced in the domain layer**, not in repositories
+5. **Repositories provide domain-meaningful methods**, not generic CRUD operations
 
 ### Key Components
 
@@ -467,23 +739,4 @@ The database module integrates with AICO's message bus architecture:
          })
      ```
 
-### Implementation Phases
 
-Following AICO's foundation roadmap, the database integration module will be implemented in phases:
-
-1. **Phase 1 (Weeks 1-2)**:
-   - Basic SQLite integration without encryption
-   - Simple repository implementations for core entities
-   - Basic session management
-
-2. **Phase 2 (Weeks 3-4)**:
-   - Upgrade to libSQL with encryption (SQLCipher)
-   - ChromaDB integration for vector storage
-   - Enhanced repository pattern implementation
-   - Connection pooling and advanced session management
-
-3. **Phase 3+ (Week 5+)**:
-   - DuckDB integration for analytics
-   - Optional RocksDB for high-performance caching
-   - Full message bus integration
-   - Preparation for federated sync

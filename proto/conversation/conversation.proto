@@ -1,0 +1,132 @@
+syntax = "proto3";
+
+package aico.conversation;
+
+option go_package = "github.com/boeni-industries/aico/proto/conversation";
+option java_package = "industries.boeni.aico.proto.conversation";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+
+// Conversation message
+// Represents a single message in the conversation, including content and analysis.
+// See emotion_sim_msg.md for field semantics and examples.
+message ConversationMessage {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;
+  
+  Message message = 3;
+  MessageAnalysis analysis = 4;
+}
+
+// Message content and metadata
+// Contains the actual text, type, thread information, and turn number for the conversation message.
+// Fields:
+// - text: Actual message content (string)
+// - type: Message type (user_input, system_response, etc.)
+// - thread_id: Conversation thread identifier
+// - turn_number: Sequential turn number in conversation
+// See emotion_sim_msg.md for examples.
+message Message {
+  string text = 1;                   // Actual message content
+  // Message type: user_input, system_response, system_notification, thinking_aloud, internal_reflection
+  MessageType type = 2;              // Message type
+  string thread_id = 3;              // Conversation thread identifier
+  int32 turn_number = 4;             // Sequential turn number in conversation
+  
+  enum MessageType {
+    UNKNOWN = 0;
+    USER_INPUT = 1;
+    SYSTEM_RESPONSE = 2;
+    SYSTEM_NOTIFICATION = 3;
+    THINKING_ALOUD = 4;
+    INTERNAL_REFLECTION = 5;
+  }
+}
+
+// Analysis of the message
+// Contains detected user intent, urgency, and whether a response is expected.
+// Fields:
+// - intent: Detected user intent (string)
+// - urgency: Message urgency level (low, medium, high, critical)
+// - requires_response: Whether response is expected (boolean)
+// See emotion_sim_msg.md for examples.
+message MessageAnalysis {
+  string intent = 1;                 // Detected intent
+  Urgency urgency = 2;               // Message urgency level
+  bool requires_response = 3;        // Whether response is expected
+  
+  enum Urgency {
+    UNKNOWN = 0;
+    LOW = 1;
+    MEDIUM = 2;
+    HIGH = 3;
+    CRITICAL = 4;
+  }
+}
+
+// Broader conversation context
+// Represents the overall context for the conversation, including current state and recent history.
+// Fields:
+// - timestamp: Timestamp of context snapshot
+// - source: Source module/component
+// - context: Current conversation context
+// - recent_history: Historical context for pattern recognition
+// See emotion_sim_msg.md for examples.
+message ConversationContext {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;
+  
+  Context context = 3;
+  RecentHistory recent_history = 4;
+}
+
+// Current conversation context
+// Contains details about the current topic, phase, session duration, relationship phase, time context, and crisis indicators.
+// Fields:
+// - current_topic: Current conversation topic (string)
+// - conversation_phase: Phase of current conversation
+// - session_duration_minutes: Length of current session
+// - relationship_phase: Current relationship development stage
+// - time_context: Temporal/situational context
+// - crisis_indicators: Whether crisis situation detected (boolean)
+// See emotion_sim_msg.md for details.
+message Context {
+  string current_topic = 1;          // Current conversation topic
+  string conversation_phase = 2;     // Phase of current conversation
+  int32 session_duration_minutes = 3; // Length of current session
+  string relationship_phase = 4;     // Current relationship development stage
+  string time_context = 5;           // Temporal/situational context
+  bool crisis_indicators = 6;        // Whether crisis situation detected
+}
+
+// Recent conversation history
+// Contains historical context for pattern recognition, including last topics and emotional trajectory.
+// Fields:
+// - last_topics: Recent conversation topics (string[])
+// - emotional_trajectory: Emotional progression (string[])
+// See emotion_sim_msg.md for details.
+message RecentHistory {
+  repeated string last_topics = 1;   // Recent conversation topics
+  repeated string emotional_trajectory = 2; // Emotional progression
+}
+
+// Response generation request
+message ResponseRequest {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;
+  
+  string thread_id = 3;              // Conversation thread identifier
+  string input_message_id = 4;       // ID of message being responded to
+  ResponseParameters parameters = 5;  // Response generation parameters
+}
+
+// Parameters for response generation
+message ResponseParameters {
+  float emotional_alignment = 1;     // How closely to match user emotion (0.0-1.0)
+  string response_style = 2;         // Style of response
+  repeated string include_topics = 3; // Topics to include
+  repeated string avoid_topics = 4;  // Topics to avoid
+  int32 max_length = 5;              // Maximum response length
+  float creativity = 6;              // Creativity level (0.0-1.0)
+}

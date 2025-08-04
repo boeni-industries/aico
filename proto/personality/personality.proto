@@ -1,0 +1,182 @@
+syntax = "proto3";
+
+package aico.personality;
+
+option go_package = "github.com/boeni-industries/aico/proto/personality";
+option java_package = "industries.boeni.aico.proto.personality";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+
+// Current personality state
+message PersonalityState {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;
+  
+  // Big Five personality traits
+  PersonalityTraits traits = 3;
+  
+  // Interaction style preferences
+  InteractionStyle interaction_style = 4;
+  
+  // Current mood state
+  MoodState current_mood = 5;
+}
+
+// Big Five personality traits
+message PersonalityTraits {
+  float extraversion = 1;           // Extraversion level (0.0-1.0)
+  float agreeableness = 2;          // Agreeableness level (0.0-1.0)
+  float conscientiousness = 3;      // Conscientiousness level (0.0-1.0)
+  float neuroticism = 4;            // Neuroticism level (0.0-1.0)
+  float openness = 5;               // Openness level (0.0-1.0)
+}
+
+// Interaction style configuration
+message InteractionStyle {
+  string primary = 1;               // Primary interaction approach
+  string communication_preference = 2; // Preferred communication style
+  float emotional_expression_level = 3; // Expression intensity (0.0-1.0)
+}
+
+// Current mood state
+message MoodState {
+  float baseline_valence = 1;       // Baseline pleasure/displeasure (-1.0 to 1.0)
+  float energy_level = 2;           // Energy/activation level (0.0-1.0)
+  float social_engagement = 3;      // Social engagement level (0.0-1.0)
+}
+
+// User interaction history
+// Matches the `user.interaction.history` message format documented in docs/architecture/personality_sim_msg.md.
+// Historical interaction patterns and relationship development data from the Memory System.
+// Fields:
+// - user_id: User identifier
+// - patterns: Topic preferences, interaction styles, time patterns
+// - relationship: Development stage, trust, familiarity, significant events, interaction quality
+// See personality_sim_msg.md for illustrative JSON and field semantics.
+message UserInteractionHistory {
+  string user_id = 1;
+  
+  // Interaction patterns
+  InteractionPatterns patterns = 2;
+  
+  // Relationship information
+  RelationshipInfo relationship = 3;
+}
+
+// Patterns of user interaction
+// Fields:
+// - topic_preferences: Array of topic preference objects
+// - interaction_styles: Conversation length, response preferences, initiative taking
+// - time_patterns: Preferred times, session duration
+// See personality_sim_msg.md for examples.
+message InteractionPatterns {
+  // Topic preferences
+  repeated TopicPreference topic_preferences = 1;
+  
+  // Interaction style preferences
+  InteractionStyles interaction_styles = 2;
+  
+  // Time-based patterns
+  TimePatterns time_patterns = 3;
+}
+
+// Topic preference
+// Topic preference
+// Fields:
+// - topic: Topic name
+// - interest_level: Interest level (0.0-1.0)
+// - engagement_count: Number of engagements with topic
+// See personality_sim_msg.md for examples.
+message TopicPreference {
+  string topic = 1;                 // Topic name
+  float interest_level = 2;         // Interest level (0.0-1.0)
+  int32 engagement_count = 3;       // Number of engagements with topic
+}
+
+// Interaction style preferences
+// Interaction style preferences
+// Fields:
+// - conversation_length: Preferences for conversation length
+// - response_preferences: Preferences for detail, humor, formality
+// - initiative_taking: User-initiated ratio, response to AI initiatives
+// See personality_sim_msg.md for examples.
+message InteractionStyles {
+  // Conversation length preferences
+  ConversationLength conversation_length = 1;
+  
+  // Response preferences
+  ResponsePreferences response_preferences = 2;
+  
+  // Initiative taking patterns
+  InitiativeTaking initiative_taking = 3;
+}
+
+// Conversation length preferences
+message ConversationLength {
+  float average_turns = 1;          // Average turns per conversation
+  float preferred_duration_minutes = 2; // Preferred conversation duration
+}
+
+// Response preferences
+message ResponsePreferences {
+  float detail_level = 1;           // Preferred level of detail (0.0-1.0)
+  float humor_appreciation = 2;     // Appreciation for humor (0.0-1.0)
+  float formality_level = 3;        // Preferred formality level (0.0-1.0)
+}
+
+// Initiative taking patterns
+message InitiativeTaking {
+  float user_initiated_ratio = 1;   // Ratio of user-initiated conversations
+  float response_to_ai_initiatives = 2; // Response rate to AI initiatives
+}
+
+// Time-based patterns
+message TimePatterns {
+  // Preferred interaction times
+  repeated TimePreference preferred_times = 1;
+  
+  // Session duration patterns
+  SessionDuration session_duration = 2;
+}
+
+// Time preference
+message TimePreference {
+  int32 day_of_week = 1;            // Day of week (0-6, 0=Sunday)
+  int32 hour_of_day = 2;            // Hour of day (0-23)
+  float frequency = 3;              // Frequency of interaction (0.0-1.0)
+}
+
+// Session duration patterns
+message SessionDuration {
+  float average_minutes = 1;        // Average session duration in minutes
+  float variance = 2;               // Variance in session duration
+}
+
+// Relationship information
+message RelationshipInfo {
+  string development_stage = 1;     // Current relationship development stage
+  float trust_level = 2;            // Trust level (0.0-1.0)
+  float familiarity_level = 3;      // Familiarity level (0.0-1.0)
+  
+  // Significant relationship events
+  repeated SignificantEvent significant_events = 4;
+  
+  // Interaction quality metrics
+  InteractionQuality interaction_quality = 5;
+}
+
+// Significant relationship event
+message SignificantEvent {
+  string event_type = 1;            // Type of significant event
+  google.protobuf.Timestamp timestamp = 2; // When the event occurred
+  float impact_score = 3;           // Impact score (0.0-1.0)
+  string description = 4;           // Description of the event
+}
+
+// Interaction quality metrics
+message InteractionQuality {
+  float recent_satisfaction = 1;    // Recent satisfaction level (0.0-1.0)
+  string trend = 2;                 // Trend in satisfaction (improving, stable, declining)
+  float consistency_score = 3;      // Consistency in interactions (0.0-1.0)
+}

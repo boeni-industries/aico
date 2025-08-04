@@ -2,23 +2,18 @@
 
 **Purpose**
 
-This project is about building not just another virtual assistant, but a real companion: an AI that is present, curious, and grows with you. The goal is an AI sidekick that is emotionally aware, even a little quirky, with a genuine sense of agency and presence—something closer to a friend or co-adventurer than a glorified notepad.
-
-I'm not after “superintelligence”. I want an AI sidekick that’s embodied (hologram, robotic, animated avatar—doesn’t matter at the start), that sees you, hears you, learns your moods, and sometimes nudges you first without being told.
-
-I’m building this because I’ve always wanted it for myself. Not just productivity, but real resonance—a sidekick as confidante, as mirror, as challenger and supporter—all while respecting trust, boundaries, and privacy.
+AICO is an open-source, local-first AI companion designed to be emotionally present, embodied, and proactive. It is built for privacy, extensibility, and genuine relationship—not just productivity. AICO combines advanced conversation, emotion simulation, personality, and agency with a modular, message-driven architecture that prioritizes user autonomy and security.
 
 ## Vision
 
-AICO is an open-source experiment to build an **emotionally present, embodied, and proactive AI companion**—meant to act as more of a confidante and sidekick than a traditional assistant.
+AICO aims to be a true sidekick: emotionally aware, visually present, and capable of self-driven initiative. Its architecture enables seamless evolution from basic companion to proactive confidante, sidekick, and beyond—while keeping user data private and local.
 
 **Core Principles:**
-- **Autonomous agency** - AICO has its own goals, interests, and curiosities that drive self-directed behavior and learning
-- **Strong user-centric privacy** - Local-first with full user control
-- **Modular, extensible architecture** - Prioritizes companionship and long-term learning
-- **Real-time emotional awareness** - Multi-modal emotion recognition and adaptation
-
-Unlike typical productivity-oriented virtual assistants, AICO is designed to sense and adapt to your moods, initiate engagement, and form an evolving, personality-rich relationship.
+- **Autonomous agency** – Proactive, self-driven behavior and curiosity
+- **Local-first, privacy-first** – All data and processing remain user-controlled
+- **Modular, message-driven design** – System > Domain > Module > Component hierarchy, strict boundaries, and ZeroMQ/Protocol Buffers messaging
+- **Real-time emotional intelligence** – Multi-modal recognition and simulation
+- **Extensibility** – Plugin system, APIs, and admin tools for customization
 
 ### The Journey: From Companion to Co-Adventurer
 
@@ -28,69 +23,91 @@ AICO's development follows a unique evolutionary path, with each stage deepening
 
 This isn't just feature development—it's relationship evolution. We're building an AI that grows from basic conversation partner to trusted confidante, proactive sidekick, collaborative co-adventurer, and ultimately a fully embodied presence that connects you with a broader community while preserving your privacy.
 
-### Key Capabilities
+## Architecture Overview
 
-AICO is being built with a comprehensive set of capabilities that work together to create a truly companionable AI:
+- **System Hierarchy:**
+  - **System**: The complete AICO platform
+  - **Domain**: Major functional areas (e.g., Core AI, Data, Admin, Extensibility)
+  - **Module**: Logical subsystems within domains (e.g., Personality, Agency, Plugin Manager)
+  - **Component**: Individual functional units (e.g., Trait Vector, Appraisal Engine)
 
-**🧠 Intelligent Conversation & Memory**
+- **Key Technologies:**
+  - **Backend:** Python, FastAPI, ZeroMQ, Protocol Buffers, libSQL, DuckDB, ChromaDB, RocksDB
+  - **Frontend:** Flutter (UI), WebView (Three.js/Ready Player Me/TalkingHead.js for avatar)
+  - **Admin Tools:** React-based Admin UI, Python CLI (Typer, Rich)
+  - **Security:** End-to-end encryption, consent management, audit logging
+
+## Key Capabilities
+
+AICO is engineered to deliver a truly companionable, proactive, and privacy-first AI experience. Its capabilities span conversation, memory, emotion, agency, embodiment, privacy, extensibility, and system administration.
+
+### 🗣️ Conversation & Memory
 - Real-time text and voice conversations with context awareness
-- Multi-turn dialogue management with natural interruption handling
-- Episodic and semantic memory systems that remember your interactions
-- Vector-based semantic search for intelligent memory retrieval
+- Multi-turn dialogue management with natural interruption handling and resumption
+- Episodic, semantic, and procedural memory systems that remember your interactions
+- Vector-based semantic search for intelligent memory retrieval (ChromaDB)
 - Continual learning that adapts to your communication style and preferences
 - Local LLM integration (Ollama) with privacy-first inference
+- Personality and emotion context injected into LLM prompts
 
-**😊 Sophisticated Emotional Intelligence**
-- Multi-modal emotion recognition through facial, voice, and text analysis
+### 😊 Emotional Intelligence
+- Multi-modal emotion recognition (facial, voice, text analysis)
 - Advanced emotion simulation using AppraisalCloudPCT (Component Process Model)
 - 4-stage appraisal process: Relevance → Implication → Coping → Normative
 - Mood tracking and empathetic response generation with emotional memory
 - Personality simulation with evolving traits, values, and behavioral consistency
 - Crisis detection and appropriate support mechanisms
+- Emotional memory integration for consistent personality expression
+- Gradual emotional transitions and contextual appropriateness
 
-**🎮 Proactive Agency & Initiative**
-- Autonomous goal generation and hierarchical planning using MCTS
-- Curiosity-driven exploration with Random Network Distillation (RND)
-- Interest development and preference formation through intrinsic motivation
-- Meta-cognitive self-awareness of learning progress and capabilities
-- Proactive engagement with conversation starters and contextual suggestions
-- Background learning and skill development during idle periods
+### 🤖 Autonomous Agency
+- Multi-faceted self-directed behavior and initiative
+- Goal generation: self-formulated objectives and hierarchical planning (MCTS)
+- Curiosity-driven learning (RND, ICM) and intrinsic motivation
+- Interest development and autonomous preference formation
+- Planning & reasoning: multi-step strategic thinking and adaptation
+- Meta-cognition: self-awareness of learning progress and capabilities
+- Proactive engagement: reminders, suggestions, conversation starters, and contextual follow-ups
+- Background learning and skill development, even when not actively conversing
 
-**🎭 Embodied Presence**
-- Photorealistic 3D avatars with Ready Player Me integration
-- Real-time lip-sync and facial expressions using TalkingHead.js
-- **Federated device roaming** - AICO seamlessly moves between your trusted devices via encrypted P2P mesh
-- Multi-device presence (desktop, mobile, AR/VR) with zero-knowledge synchronization
-- Gesture recognition and spatial awareness for natural interaction
-- Smart home integration and IoT device coordination
-- Augmented reality overlay for mixed reality experiences
+### 🎭 Embodiment & Presence
+- Visual avatar (Three.js + Ready Player Me + TalkingHead.js), real-time lip-sync, facial expressions
+- Voice synthesis and emotion-driven audio
+- Gestures, spatial awareness, and AR/VR integration
+- Multi-device roaming: federated, encrypted P2P sync for seamless continuity
+- Cross-platform presence (desktop, mobile, AR/VR, IoT)
+- Smart device and IoT integration
+- Synchronized presence and attention management across devices
 
-**🔒 Privacy-First Design**
-- Local-first processing with end-to-end encryption using AES-256
-- Granular consent management and permission controls
-- Homomorphic encryption for privacy-preserving cloud computations
+### 🔒 Privacy & Security
+- Local-first, encrypted data storage (libSQL, SQLCipher, gocryptfs)
+- End-to-end encryption, granular consent management, and permission controls
+- Homomorphic encryption for privacy-preserving cloud computations (optional, post-MVP)
 - Transparent audit logging and zero-knowledge authentication
-- SQLCipher encrypted local storage with user-controlled data
-- Federated learning for community intelligence without data sharing
+- Secure key management, device pairing, and roaming support
+- No admin/user data leaves the device unless explicitly exported by a privileged operator
 
-**🔌 Extensible Platform**
-- Hot-loading plugin system with sandboxed execution
-- ZeroMQ message bus for modular, event-driven architecture
-- Unified API gateway supporting REST, WebSocket, and gRPC
-- Automated delta updates with cryptographic verification and rollback
-- Comprehensive developer tools and SDKs for custom skill creation
-- Community marketplace for sharing extensions and capabilities
+### 🔌 Extensibility & Admin
+- Hot-loading, sandboxed plugin system for skills, integrations, and extensions
+- Plugin marketplace and developer SDK
+- Unified API gateway (REST, WebSocket, gRPC)
+- **Admin UI:** React-based, manifest-driven dashboard for all backend/admin modules
+- **CLI:** Python Typer-based, cross-platform, universal executable for advanced admin, scripting, and diagnostics
+- Instrumentation: system health, logging, compliance, monitoring, and audit modules
+- Backup/restore, update management, and developer tools for safe extensibility
 
-**🌐 Community & Collaboration**
-- Privacy-preserving collective learning and shared intelligence
-- Federated architecture enabling community benefits without data exposure
-- Open-source development with transparent, collaborative governance
-- Plugin ecosystem fostering innovation and customization
-- Cross-cultural learning and global community connections
-- Distributed problem-solving and collective knowledge building
+### 🤝 Community & Collaboration
+- **Privacy-Preserving Collective Learning**: Improve AICO's emotional intelligence through federated learning and anonymized data sharing (opt-in only)
+- **Federated Architecture Benefits**: Distributed resilience, peer-to-peer mesh, and community-driven innovation
+- **Open-Source Governance**: Transparent development with community input on major decisions
+- **Global Community Connections**: Connect with other AICO users while maintaining privacy and autonomy
+- **Distributed Problem-Solving**: Collaborative research on AI companionship, emotion, and agency
+- **Plugin Ecosystem Participation**: Enable users to contribute to and benefit from a vibrant plugin ecosystem
+- **Balanced Connection**: Maintains individual relationship while enabling community benefits
 
-AICO represents a new paradigm in AI companionship—one that prioritizes emotional connection, personal growth, and genuine relationship over mere task completion.
+This represents the culmination of AICO's evolution from individual companion to community-connected intelligence—always preserving the core values of privacy, agency, and authentic relationship.
 
+AICO represents a new paradigm in AI companionship—prioritizing emotional connection, personal growth, privacy, and genuine relationship over mere task completion. All features are designed to be modular, extensible, and evolve with the needs of users and developers.
 ## Who's This For?
 
 **Users:**
@@ -113,18 +130,12 @@ AICO represents a new paradigm in AI companionship—one that prioritizes emotio
 - **Hardware Buffs** who want to build the next generation of AI companions
 
 ## Contributing
+- See [docs/development/guidelines.md](docs/development/guidelines.md) for contribution standards
+- All code and docs are open—join, fork, or watch as you like
 
-- All code and progress are public and messy—join me if you want, fork it for yourself, or just watch.
-- If you want to add features, challenge assumptions, or help build the ethics framework, you’re welcome.
-
-Check out [Contributing](docs/development/contributing.md) for more information.
-
-
-## Want to know more? Read the docs!
-
-The [docs](https://boeni-industries.github.io/aico) are a work in progress, but they should give you a good overview of the project. Or reach out to Michael:
-
-**Lead Maintainer:** Michael Böni ([boeni.industries](https://boeni.industries))  
-**Contact:** [michael@boeni.industries]
+## Learn More
+- Docs: [docs/](https://boeni-industries.github.io/aico) (WIP)
+- Lead Maintainer: Michael Böni ([boeni.industries](https://boeni.industries))
+- Contact: [michael@boeni.industries](mailto:michael@boeni.industries)
 
 > “The best sidekicks don’t shout—they show up, understand, and help you move forward. That’s what I want from AICO.”
