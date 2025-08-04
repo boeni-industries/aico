@@ -12,6 +12,17 @@ AICO is an open-source, local-first AI companion designed to be emotionally pres
 
 ---
 
+## Contributing
+
+See [`contributing.md`](./contributing.md) for ways to get involved, contribution etiquette, and project values.
+
+**Highlights:**
+- All skillsets welcome (development, design, research, writing, testing, etc.)
+- Small, atomic commits and clear PRs
+- Respectful, constructive code reviews
+
+---
+
 ## Repository Structure
 
 The AICO repository is organized as a polyglot monorepo, with each major component in its own directory:
@@ -118,53 +129,73 @@ AICO uses isolated Python environments for each component to avoid dependency co
 
 Each part manages its own dependencies and tooling. Always activate the relevant environment before installing requirements or running code.
 
-> ⚠️ **Warning**
-> Only one Python virtual environment can be active per terminal session. If you need to work with both the CLI and backend at the same time, open separate terminal windows and activate the appropriate environment in each. Changing directories does not automatically switch the active environment—you must activate it explicitly.
+!!! warning
+    Only one Python virtual environment can be active per terminal session. If you need to work with both the CLI and backend at the same time, open separate terminal windows and activate the appropriate environment in each. Changing directories does not automatically switch the active environment—you must activate it explicitly.
 
 ---
 
-### 4. Create the Flutter Frontend Project
+### 4. Setting Up the Flutter Frontend
 
-The Flutter app lives in its own directory to keep dependencies and tooling isolated from other parts of the monorepo.
+The flutter project scaffolding is present in `/frontend`.
 
-- **Directory:** All Flutter code and dependencies go in `/frontend`.
-- **Project Name:** Use a lowercase, underscore-separated name (e.g., `aico_frontend`).
-- **Platform Support:** Enable all major platforms at creation (web, desktop, mobile). You can add/remove platforms later.
-- **.gitignore:** Ensure `/frontend` has a `.gitignore` that excludes Dart/Flutter build artifacts (e.g., `/build`, `.dart_tool`, etc.).
+**Install Flutter:**
 
-**To create the project:**
-
+- Download and install Flutter from the [official site](https://docs.flutter.dev/get-started/install) for your platform (Windows, macOS, Linux).
+- After installation, check your version (we recommend Flutter 3.19+):
 ```sh
-flutter create frontend --project-name aico_ui --platforms=windows,macos,linux,android,ios,web
+flutter --version
 ```
 
-This will scaffold the Flutter app in `/frontend` with all major platforms enabled.
+**Set up platform dependencies:**
 
-> **Tip:**
-> Use VS Code or Android Studio or Windsurf with the Flutter/Dart plugins for the best development experience.
+  - For Android: Install Android Studio and set up the Android SDK.
+  - For iOS (macOS only): Install Xcode and set up the iOS toolchain.
+  - For web/desktop: Follow [Flutter platform setup instructions](https://docs.flutter.dev/get-started/web) as needed.
+
+**Install dependencies:**
+
+  ```sh
+  cd frontend
+  flutter pub get
+  ```
+
+**Run the app:**
+  ```sh
+  flutter run
+  ```
+**.gitignore:** is already configured to exclude build artifacts.
+
+!!! note "Tip"
+    Use VS Code, Android Studio, or Windsurf with the Flutter/Dart plugins for the best development experience.
 
 ---
 
-### 5. Create the React Admin Studio
+### 5. Setting Up the React Admin Studio
 
-The admin dashboard ("studio") is a modular, manifest-driven web app built with React and React-Admin. All code and dependencies live in `/studio`.
+All React/React-Admin code and dependencies found in `/studio`.
 
-- **Node.js & npm:** Install the latest LTS version of Node.js from [nodejs.org](https://nodejs.org/). npm (the Node package manager) is included with Node.js.
-- **Version check:** After installation, verify your versions (we recommend Node.js 18.x+ and npm 9.x+):
-  ```sh
-  node --version
-  npm --version
-  ```
-- **Scaffold the project:**
-  ```sh
-  npx create-react-app studio --template typescript
-  ```
-- **Install required dependencies:**
+**Install Node.js & npm:**
+
+  - Download and install the latest LTS version of Node.js from [nodejs.org](https://nodejs.org/). npm is included.
+  - After installation, check your versions (we recommend Node.js 22.x+ and npm 11.x+):
+
+```sh
+node --version
+npm --version
+```
+
+**Install dependencies:**
   ```sh
   cd studio
-  npm install react-admin ra-data-simple-rest @mui/material @mui/icons-material @emotion/react @emotion/styled react-router-dom
+  npm install
   ```
-- **.gitignore:** The `/studio` directory will have its own `.gitignore` (auto-generated) to exclude build artifacts and `node_modules`.
+
+**Run the app:**
+  ```sh
+  npm start
+  ```
+
+**.gitignore:** Already configured to exclude build artifacts and `node_modules`.
 
 > **Tip:**
 > Use VS Code, Windsurf, or any modern IDE with JS/TS support for development.
@@ -173,51 +204,93 @@ The admin dashboard ("studio") is a modular, manifest-driven web app built with 
 
 ## Building and Running Components
 
-**TBD**
-- How to build and run the backend
-- How to build and run the frontend (Flutter)
-- How to launch the studio (React)
-- How to use the CLI
+Below are the build and run commands for each major part of the system. Substitute your platform (Windows, macOS, Linux) as appropriate.
+
+### Backend (Python FastAPI)
+
+!!! warning
+    The backend is not yet implemented. This section will be updated as the backend is developed.
+
+- **Windows:**
+  ```sh
+  cd backend
+  .venv\Scripts\activate
+  uvicorn main:app --reload
+  ```
+- **Linux/macOS:**
+  ```sh
+  cd backend
+  source .venv/bin/activate
+  uvicorn main:app --reload
+  ```
+
+### CLI (Python Typer/Rich CLI)
+
+- **Windows:**
+  ```sh
+  cd cli
+  .venv\Scripts\activate
+  python -m aico_cli  # or your CLI entrypoint
+  ```
+- **Linux/macOS:**
+  ```sh
+  cd cli
+  source .venv/bin/activate
+  python -m aico_cli  # or your CLI entrypoint
+  ```
+
+### Frontend (Flutter)
+
+- **All platforms:**
+  ```sh
+  cd frontend
+  flutter run
+  ```
+  - For desktop: `flutter run -d windows` (Windows), `-d macos` (macOS), `-d linux` (Linux)
+  - For web: `flutter run -d chrome`
+  - For mobile: Use `flutter devices` to list and select your target
+
+### Studio (React Admin UI)
+
+- **All platforms:**
+  ```sh
+  cd studio
+  npm start
+  ```
+  - Open [http://localhost:3000](http://localhost:3000) in your browser if it does not open automatically.
 
 ---
 
-## Contributing
+## Maintainer Note: Initial Project Scaffolding
 
-See [`contributing.md`](./contributing.md) for ways to get involved, contribution etiquette, and project values.
+!!! warning 
+    This section is for maintainers only. Regular contributors do NOT need to run these commands. The following steps were performed once to create the initial project structure and are preserved here for reference.
 
-**Highlights:**
-- All skillsets welcome (development, design, research, writing, testing, etc.)
-- Small, atomic commits and clear PRs
-- Respectful, constructive code reviews
+#### Flutter Frontend Project Creation
+```sh
+flutter create frontend --project-name aico_ui --platforms=windows,macos,linux,android,ios,web
+```
 
----
-
-## Protocol Buffers & API Contracts
-
-See [`protobuf.md`](./protobuf.md) for details on message formats, code generation, and best practices for evolving schemas.
+#### React Admin Studio Project Creation
+```sh
+npx create-react-app studio --template typescript
+cd studio
+npm install react-admin ra-data-simple-rest @mui/material @mui/icons-material @emotion/react @emotion/styled react-router-dom
+```
 
 ---
 
 ## Further Reading
 
-- [Code Guidelines & Conventions](./guidelines.md)
+- [Contributing](./contributing.md)
 - [Architecture Overview](../architecture/architecture_overview.md)
-- [Data Layer](../architecture/data_layer.md)
-- [Data Federation](../architecture/data_federation.md)
-
----
-
-## FAQ
-
-**TBD**
-- Common questions about setup, architecture, and contribution
-
----
-
-## Contact & Community
-
-**TBD**
-- How to join discussions, chat, or community calls
+- [Modules & Components](../architecture/modules.md)
+- [Developer Guidelines & Conventions](./guidelines.md)
+- [Plugin System Overview](../architecture/plugins.md)
+- [Data Layer & Storage](../architecture/data_layer.md)
+- [Admin UI Architecture](../admin/admin_ui_master.md)
+- [Protocol Buffers & API Contracts](./protobuf.md)
+- [Privacy & Security](../security/security_overview.md)
 
 ---
 
