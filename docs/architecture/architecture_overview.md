@@ -66,7 +66,6 @@ AICO's embodiment system enables multi-modal presence—visual, vocal, and spati
 - **Device Integration:** IoT control, multi-device presence, context handoff
 - **Deployment Patterns:** Coupled (frontend/backend on same device) and Detached (frontend on lightweight device, backend remote)
 
-**See also:** [embodiment.md], [roaming.md]
 ### 🔒 Privacy & Security
 - **Local Processing**: Edge-first computation and storage
 - **Data Encryption**: End-to-end encryption for all personal data
@@ -271,6 +270,27 @@ AICO System
 
 ```
 
+## Main parts
+
+The AICO system consists of the following main parts:
+- Backend service
+- Frontend app
+- Admin UI
+- CLI
+
+**Backend Service**
+The backend service is a Python application that provides the core functionality of AICO. It is built using FastAPI and ZeroMQ, and it is responsible for managing the state of the system, handling user input, and coordinating the work of the various domains.
+
+**Frontend App**
+
+The frontend app is a Flutter application that provides a user interface for interacting with AICO. It is built using the Flutter framework and the Dart programming language and provides a responsive and intuitive interface for users to interact with AICO.
+
+**Admin UI**
+The admin UI is a web application that provides a user interface for managing the system. It is built using the React framework and provides a responsive and intuitive interface for developers and advanced users to manage the system.
+
+**CLI**
+The CLI is a Python application that provides a command-line interface for interacting with AICO. It provides a simple and intuitive interface for developers and advanced users to interact with AICO.
+
 ## Architecture Patterns
 
 AICO's core architecture is designed to maximize modularity and maintain low coupling, with clear boundaries between domains (e.g. Personality, Emotion, Agency, Memory, etc.). The system uses a message-driven architecture with distinct frontend and backend components.
@@ -341,8 +361,6 @@ flowchart LR
     BUS --- ADMIN_DOMAIN
     BUS --- INFRA
 ```
-
-
 
 
 **Communication Flow:**
