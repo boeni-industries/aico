@@ -105,29 +105,87 @@ py --version
 ```
 You should see `Python 3.13.5`.
 
-### 3. Create Python Virtual Environments (CLI & Backend)
-AICO uses isolated Python environments for each component to avoid dependency conflicts.
+### 3. Python Dependency Management with UV (CLI & Backend)
+AICO uses [UV](https://github.com/astral-sh/uv) and `requirements.txt` for dependency management in all Python components. Each component is isolated with its own `.venv` and `requirements.txt` file.
 
-- **CLI:**
+**Install UV globally (once per system):**
+
   ```sh
+  pip install uv
+  # or follow: https://github.com/astral-sh/uv#installation
+  ```
+
+**CLI:**
+
+  **Windows PowerShell**
+  ```powershell
   cd cli
   py -3.13 -m venv .venv
-  # Activate (Windows)
-  .venv\Scripts\activate
-  # Activate (macOS/Linux)
-  source .venv/bin/activate
-  ```
-- **Backend:**
-  ```sh
-  cd backend
-  py -3.13 -m venv .venv
-  # Activate (Windows)
-  .venv\Scripts\activate
-  # Activate (macOS/Linux)
-  source .venv/bin/activate
+  .venv\Scripts\Activate.ps1
+  uv pip install -r requirements.txt
+  python aico.py
+  pyinstaller --onefile aico.py --name aico
+  # Executable will be in dist/aico.exe
   ```
 
-Each part manages its own dependencies and tooling. Always activate the relevant environment before installing requirements or running code.
+  **Windows Cmd**
+  ```cmd
+  cd cli
+  py -3.13 -m venv .venv
+  .venv\Scripts\activate.bat
+  uv pip install -r requirements.txt
+  python aico.py
+  pyinstaller --onefile aico.py --name aico
+  REM Executable will be in dist\aico.exe
+  ```
+
+  **macOS/Linux**
+  ```sh
+  cd cli
+  python3.13 -m venv .venv
+  source .venv/bin/activate
+  uv pip install -r requirements.txt
+  python aico.py
+  pyinstaller --onefile aico.py --name aico
+  # Executable will be in dist/aico
+  ```
+
+**Backend:**
+
+  **Windows PowerShell**
+  ```powershell
+  cd backend
+  py -3.13 -m venv .venv
+  .venv\Scripts\Activate.ps1
+  uv pip install -r requirements.txt
+  uvicorn main:app --reload --port 8770
+  # Visit http://127.0.0.1:8770
+  ```
+
+  **Windows Cmd**
+  ```cmd
+  cd backend
+  py -3.13 -m venv .venv
+  .venv\Scripts\activate.bat
+  uv pip install -r requirements.txt
+  uvicorn main:app --reload --port 8770
+  REM Visit http://127.0.0.1:8770
+  ```
+
+  **macOS/Linux**
+  ```sh
+  cd backend
+  python3.13 -m venv .venv
+  source .venv/bin/activate
+  uv pip install -r requirements.txt
+  uvicorn main:app --reload --port 8770
+  # Visit http://127.0.0.1:8770
+  ```
+
+
+> **Tip:** Each Python component uses its own `.venv` and `requirements.txt`. Always activate the correct environment before installing or running anything. In VS Code or Windsurf, select the correct Python interpreter from `.venv` for best experience.
+> 
+> Use `uv pip install <package>` and `uv pip freeze > requirements.txt` to add or update dependencies.
 
 !!! warning
     Only one Python virtual environment can be active per terminal session. If you need to work with both the CLI and backend at the same time, open separate terminal windows and activate the appropriate environment in each. Changing directories does not automatically switch the active environment—you must activate it explicitly.
@@ -208,35 +266,59 @@ Below are the build and run commands for each major part of the system. Substitu
 
 ### Backend (Python FastAPI)
 
-!!! warning
-    The backend is not yet implemented. This section will be updated as the backend is developed.
-
-- **Windows:**
+- **Windows (PowerShell):**
   ```sh
   cd backend
-  .venv\Scripts\activate
-  uvicorn main:app --reload
+  .venv\Scripts\Activate.ps1
+  uv pip install -r requirements.txt
+  uvicorn main:app --reload --port 8700
+  # Visit http://127.0.0.1:8700
+  ```
+- **Windows (Cmd):**
+  ```sh
+  cd backend
+  .venv\Scripts\activate.bat
+  uv pip install -r requirements.txt
+  uvicorn main:app --reload --port 8700
+  ```
+- **Git Bash/WSL/Linux/macOS:**
+  ```sh
+  cd backend
+  source .venv/Scripts/activate
+  # or source .venv/bin/activate if on Linux/macOS
+  uv pip install -r requirements.txt
+  uvicorn main:app --reload --port 8700
+  ```
+
+### CLI (Python CLI)
+
+#### Run the CLI in development
+- **All platforms:**
+  ```sh
+  cd cli
+  # Activate venv (see above)
+  uv pip install -r requirements.txt
+  python aico.py
+  ```
+
+#### Build the CLI executable (PyInstaller)
+- **All platforms:**
+  ```sh
+  cd cli
+  # Activate venv (see above)
+  uv pip install -r requirements.txt
+  pyinstaller --onefile aico.py --name aico
+  # Executable will be in dist/aico(.exe)
+  ```
+
+#### Run the built executable
+- **Windows:**
+  ```sh
+  dist\aico.exe
   ```
 - **Linux/macOS:**
   ```sh
-  cd backend
-  source .venv/bin/activate
-  uvicorn main:app --reload
-  ```
-
-### CLI (Python Typer/Rich CLI)
-
-- **Windows:**
-  ```sh
-  cd cli
-  .venv\Scripts\activate
-  python -m aico_cli  # or your CLI entrypoint
-  ```
-- **Linux/macOS:**
-  ```sh
-  cd cli
-  source .venv/bin/activate
-  python -m aico_cli  # or your CLI entrypoint
+  ./dist/aico
   ```
 
 ### Frontend (Flutter)
@@ -261,10 +343,18 @@ Below are the build and run commands for each major part of the system. Substitu
 
 ---
 
-## Maintainer Note: Initial Project Scaffolding
+## Maintainer Note: Dependency Management and Project Scaffolding
 
 !!! warning 
-    This section is for maintainers only. Regular contributors do NOT need to run these commands. The following steps were performed once to create the initial project structure and are preserved here for reference.
+    This section is for maintainers only. Regular contributors do NOT need to run these commands. The following steps were performed during initial project setup and are preserved for reference.
+
+#### Python Dependency Management
+- **Previous approach:** Each Python component (`cli/`, `backend/`) used its own `pyproject.toml` (PEP 621/Poetry) for dependencies and metadata. Poetry was used for dependency management and packaging. This was replaced due to friction, IDE integration issues, and version pinning complexity.
+- **Current approach:** Each Python component (`cli/`, `backend/`) now uses its own `.venv` and `requirements.txt`. [UV](https://github.com/astral-sh/uv) is used for ultra-fast dependency installs and lockfile management. This approach is simpler, more compatible with IDEs, and easier for contributors.
+- The supported Python version is pinned to `>=3.13,<3.15` due to PyInstaller compatibility. Update this restriction only after verifying all key dependencies support newer Python versions.
+- Use `uv pip install <package>` to add dependencies and `uv pip freeze > requirements.txt` to refresh lockfiles.
+- PyInstaller is included as a CLI dependency for building distributable executables.
+- If switching to a different dependency manager in the future, update this section and docs accordingly.
 
 #### Flutter Frontend Project Creation
 ```sh

@@ -188,6 +188,7 @@ nav:
     - Guidelines: developer-guide/guidelines.md
     - Contributing: developer-guide/contributing.md
     - Protocol Buffers: developer-guide/protobuf.md
+    - Versioning: developer-guide/versioning.md
   - Roadmap:
     - Foundation: roadmap/foundation.md
     - MVP: roadmap/mvp.md

@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pyzmq
+libsql-client
+duckdb
+chromadb
+httpx
+pydantic
+pytest

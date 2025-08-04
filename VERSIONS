@@ -1,0 +1,12 @@
+# AICO Component Versions
+# This file is the single source of truth for all major component versions.
+# Update this file and run the version propagation script to sync all components.
+
+backend:
+  version: 0.0.1
+frontend:
+  version: 0.0.1
+cli:
+  version: 0.0.1
+studio:
+  version: 0.0.1
