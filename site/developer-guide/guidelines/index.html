@@ -12,13 +12,13 @@
         <meta name="author" content="Michael Böni">
       
       
-        <link rel="canonical" href="https://boeni-industries.github.io/aico/architecture/instrumentation/">
+        <link rel="canonical" href="https://boeni-industries.github.io/aico/developer-guide/guidelines/">
       
       
-        <link rel="prev" href="../data_federation/">
+        <link rel="prev" href="../getting_started/">
       
       
-        <link rel="next" href="../instrumentation_logging/">
+        <link rel="next" href="../contributing/">
       
       
       <link rel="icon" href="../../assets/images/logo.png">
@@ -26,7 +26,7 @@
     
     
       
-        <title>Instrumentation Architecture - AICO - AI Companion Project</title>
+        <title>Guidelines - AICO - AI Companion Project</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#instrumentation-architecture" class="md-skip">
+        <a href="#aico-code-guidelines-conventions" class="md-skip">
           Skip to content
         </a>
       
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Instrumentation Architecture
+              Guidelines
             
           </span>
         </div>
@@ -387,7 +387,7 @@
   
   
   <span class="md-ellipsis">
-    Getting Started
+    User Guide
     
   </span>
   
@@ -398,7 +398,7 @@
         <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
-            Getting Started
+            User Guide
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -409,7 +409,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../getting-started/getting_started_overview/" class="md-nav__link">
+      <a href="../../user-guide/getting_started/" class="md-nav__link">
         
   
   
@@ -432,7 +432,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../getting-started/installation/" class="md-nav__link">
+      <a href="../../user-guide/installation/" class="md-nav__link">
         
   
   
@@ -455,7 +455,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../getting-started/quick-start/" class="md-nav__link">
+      <a href="../../user-guide/quick_start/" class="md-nav__link">
         
   
   
@@ -532,7 +532,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture_overview/" class="md-nav__link">
+      <a href="../../architecture/architecture_overview/" class="md-nav__link">
         
   
   
@@ -559,10 +559,8 @@
       
   
   
-    
   
   
-  
     
     
       
@@ -582,6 +580,8 @@
       
         
       
+        
+      
     
     
     
@@ -591,11 +591,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
@@ -611,7 +611,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             Core Infrastructure
@@ -625,7 +625,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../message_bus/" class="md-nav__link">
+      <a href="../../architecture/message_bus/" class="md-nav__link">
         
   
   
@@ -648,7 +648,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../plugin_system/" class="md-nav__link">
+      <a href="../../architecture/plugin_system/" class="md-nav__link">
         
   
   
@@ -671,7 +671,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api_gateway/" class="md-nav__link">
+      <a href="../../architecture/api_gateway/" class="md-nav__link">
         
   
   
@@ -694,7 +694,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../update_system/" class="md-nav__link">
+      <a href="../../architecture/update_system/" class="md-nav__link">
         
   
   
@@ -717,7 +717,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../data_layer/" class="md-nav__link">
+      <a href="../../architecture/data_layer/" class="md-nav__link">
         
   
   
@@ -740,7 +740,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../data_federation/" class="md-nav__link">
+      <a href="../../architecture/data_federation/" class="md-nav__link">
         
   
   
@@ -760,32 +760,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    Instrumentation
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../instrumentation/instrumentation/" class="md-nav__link">
         
   
   
@@ -796,107 +774,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
-    <span class="md-ellipsis">
-      Overview
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#design-goals" class="md-nav__link">
-    <span class="md-ellipsis">
-      Design Goals
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#instrumentation-modes-stages" class="md-nav__link">
-    <span class="md-ellipsis">
-      Instrumentation Modes &amp; Stages
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#core-components-across-all-stages" class="md-nav__link">
-    <span class="md-ellipsis">
-      Core Components (Across All Stages)
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#architectural-integration" class="md-nav__link">
-    <span class="md-ellipsis">
-      Architectural Integration
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#phase-4-auditing-debug-capsules" class="md-nav__link">
-    <span class="md-ellipsis">
-      Phase 4: Auditing &amp; Debug Capsules
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#phase-5-analytics-extensibility" class="md-nav__link">
-    <span class="md-ellipsis">
-      Phase 5: Analytics &amp; Extensibility
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#unified-instrumentation-architecture-diagram" class="md-nav__link">
-    <span class="md-ellipsis">
-      Unified Instrumentation Architecture Diagram
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#references" class="md-nav__link">
-    <span class="md-ellipsis">
-      References
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -909,12 +786,35 @@
   
   
     <li class="md-nav__item">
-      <a href="../instrumentation_logging/" class="md-nav__link">
+      <a href="../../instrumentation/instrumentation_logging/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     Logging
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../instrumentation/telemetry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Telemetry
     
   </span>
   
@@ -992,7 +892,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../admin/admin_overview.md" class="md-nav__link">
+      <a href="../../admin/admin_overview/" class="md-nav__link">
         
   
   
@@ -1092,8 +992,6 @@
   
     
     
-      
-        
       
         
       
@@ -1240,30 +1138,7 @@
   
   
     <li class="md-nav__item">
-      <a href="#" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Encryption System
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="#" class="md-nav__link">
+      <a href="../../security/audit/" class="md-nav__link">
         
   
   
@@ -1496,7 +1371,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../personality_sim/" class="md-nav__link">
+      <a href="../../architecture/personality_sim/" class="md-nav__link">
         
   
   
@@ -1519,7 +1394,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../emotion_sim/" class="md-nav__link">
+      <a href="../../architecture/emotion_sim/" class="md-nav__link">
         
   
   
@@ -1954,7 +1829,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../integration_msg/" class="md-nav__link">
+      <a href="../../architecture/integration_msg/" class="md-nav__link">
         
   
   
@@ -1977,7 +1852,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../emotion_sim_msg/" class="md-nav__link">
+      <a href="../../architecture/emotion_sim_msg/" class="md-nav__link">
         
   
   
@@ -2000,7 +1875,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../personality_sim_msg/" class="md-nav__link">
+      <a href="../../architecture/personality_sim_msg/" class="md-nav__link">
         
   
   
@@ -2077,7 +1952,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../tech_stack/" class="md-nav__link">
+      <a href="../../architecture/tech_stack/" class="md-nav__link">
         
   
   
@@ -2335,10 +2210,16 @@
       
   
   
+    
   
   
+  
     
     
+      
+        
+      
+        
       
         
       
@@ -2353,11 +2234,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" checked>
         
           
           <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="">
@@ -2365,7 +2246,7 @@
   
   
   <span class="md-ellipsis">
-    Development
+    Developer Guide
     
   </span>
   
@@ -2373,10 +2254,10 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_15">
             <span class="md-nav__icon md-icon"></span>
-            Development
+            Developer Guide
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -2387,7 +2268,140 @@
   
   
     <li class="md-nav__item">
-      <a href="../../development/contributing/" class="md-nav__link">
+      <a href="../getting_started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Guidelines
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Guidelines
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      Core Principles
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#project-wide-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Project-wide Conventions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architectural-patterns-approaches" class="md-nav__link">
+    <span class="md-ellipsis">
+      Architectural Patterns &amp; Approaches
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contribution-etiquette" class="md-nav__link">
+    <span class="md-ellipsis">
+      Contribution Etiquette
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-in-doubt" class="md-nav__link">
+    <span class="md-ellipsis">
+      When in Doubt
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
         
   
   
@@ -2410,7 +2424,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../development/protobuf/" class="md-nav__link">
+      <a href="../protobuf/" class="md-nav__link">
         
   
   
@@ -2591,7 +2605,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../roadmap/co_adventurer.md" class="md-nav__link">
+      <a href="../../roadmap/co_adventurer/" class="md-nav__link">
         
   
   
@@ -2614,7 +2628,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../roadmap/embodied_presence.md" class="md-nav__link">
+      <a href="../../roadmap/embodied_presence/" class="md-nav__link">
         
   
   
@@ -2676,7 +2690,7 @@
 
 
   
-    <a href="https://github.com/boeni-industries/aico/edit/main/docs/architecture/instrumentation.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/boeni-industries/aico/edit/main/docs/developer-guide/guidelines.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -2685,141 +2699,123 @@
     
       
     
-    <a href="https://github.com/boeni-industries/aico/raw/main/docs/architecture/instrumentation.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/boeni-industries/aico/raw/main/docs/developer-guide/guidelines.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.2 8.2 0 0 1-1.23-2"/></svg>
     </a>
   
 
 
-<h1 id="instrumentation-architecture">Instrumentation Architecture<a class="headerlink" href="#instrumentation-architecture" title="Permanent link">&para;</a></h1>
-<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
-<p>AICO’s instrumentation system provides unified, privacy-respecting observability across all modules, modes, and devices. It is designed to support both <strong>coupled</strong> (single-device) and <strong>detached</strong> (multi-device/federated) deployments, in line with AICO’s core architectural principles as outlined in the <a href="../architecture_overview/">Architecture Overview</a>.</p>
-<h2 id="design-goals">Design Goals<a class="headerlink" href="#design-goals" title="Permanent link">&para;</a></h2>
+<h1 id="aico-code-guidelines-conventions">AICO Code Guidelines &amp; Conventions<a class="headerlink" href="#aico-code-guidelines-conventions" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>Purpose:</strong> These guidelines ensure all contributions to AICO are consistent, maintainable, and developer-friendly. They reflect AICO’s unique values, architectural principles, and proven best practices from the open-source community.</p>
+</blockquote>
+<h2 id="core-principles">Core Principles<a class="headerlink" href="#core-principles" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Consistent Observability:</strong> Unified approach for logging, metrics, tracing, and auditing across all modules and plugins.</li>
-<li><strong>Privacy-First:</strong> All instrumentation is local-first, user-controlled, and zero-knowledge by default. No sensitive data is exported without explicit user consent.</li>
-<li><strong>Modular &amp; Extensible:</strong> Instrumentation is a cross-cutting concern, integrated via standard interfaces and message bus topics.</li>
-<li><strong>Multi-Modal &amp; Embodied:</strong> Observes not just backend logic, but also embodiment, emotion, and user interaction layers.</li>
-<li><strong>Works in All Modes:</strong> Fully functional in both coupled (all-in-one) and detached (distributed/federated) deployments.</li>
+<li><strong>Simplicity First:</strong> Prefer simple, clear solutions over clever or complex constructs. If in doubt, make it easy to read and understand.</li>
+<li><strong>Readability Trumps Fancy:</strong> Write code for humans, not just machines. Prioritize clear naming, structure, and comments over brevity or advanced tricks.</li>
+<li><strong>DRY (Don’t Repeat Yourself):</strong> Abstract repeated logic and avoid duplication. Use functions, classes, and modules to encapsulate reusable code.</li>
+<li><strong>KISS (Keep It Simple, Stupid):</strong> Avoid overengineering. Solve the problem at hand with the simplest viable approach.</li>
+<li><strong>Explicit is Better Than Implicit:</strong> Be clear about what your code does. Avoid hidden side effects and implicit magic.</li>
+<li><strong>Fail Loudly, Not Silently:</strong> Raise meaningful errors and use assertions where appropriate. Don’t silently swallow exceptions.</li>
+<li><strong>Privacy &amp; Security by Design:</strong> Always respect user autonomy, local-first data, and zero-knowledge principles. Never expose or log sensitive data.</li>
+<li><strong>Modularity &amp; Extensibility:</strong> Design with clear module boundaries, favoring composition, well-defined interfaces, and message-driven communication.</li>
+<li><strong>Resource Awareness:</strong> Be mindful of computational and memory usage, especially for local-first and embedded deployments.</li>
+<li><strong>User and Developer Experience:</strong> Prioritize clear APIs, documentation, and transparency in both code and plugin development.</li>
 </ul>
-<h2 id="instrumentation-modes-stages">Instrumentation Modes &amp; Stages<a class="headerlink" href="#instrumentation-modes-stages" title="Permanent link">&para;</a></h2>
-<p>AICO’s instrumentation system is designed to be <strong>privacy-first, local-first, and user-friendly by default</strong>, with opt-in escalation for advanced users and developers. There are three distinct stages:</p>
-<h3 id="1-casual-user-default">1. Casual User (Default)<a class="headerlink" href="#1-casual-user-default" title="Permanent link">&para;</a></h3>
+<h2 id="project-wide-conventions">Project-wide Conventions<a class="headerlink" href="#project-wide-conventions" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Minimal, non-technical logging:</strong> Only essential events and errors are logged, using clear, human-friendly messages.</li>
-<li><strong>User notifications:</strong> Important system events are surfaced as simple notifications (e.g., "AICO restarted"), not technical logs.</li>
-<li><strong>No metrics, tracing, or analytics</strong> are collected or exposed.</li>
-<li><strong>No external dashboards or endpoints.</strong></li>
-<li><strong>Privacy:</strong> All data remains local, never leaves the device.</li>
-</ul>
-<h3 id="2-pro-user-opt-in">2. Pro User (Opt-In)<a class="headerlink" href="#2-pro-user-opt-in" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Resource &amp; health insights:</strong> In-app dashboard or status page shows resource usage, performance, and health (CPU, memory, uptime, etc.).</li>
-<li><strong>In-depth logs:</strong> More detailed logs are available for inspection/export.</li>
-<li><strong>Debug Capsules:</strong> On-demand, session-based instrumentation "capsules" can be generated (encrypted, portable files containing logs/metrics for a session). Users can review/redact before sharing for support.</li>
-<li><strong>Still local-first:</strong> All insights and data remain on-device unless explicitly exported by the user.</li>
-</ul>
-<h3 id="3-developer-mode-opt-in-plugin">3. Developer Mode (Opt-In Plugin)<a class="headerlink" href="#3-developer-mode-opt-in-plugin" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Full observability plugin:</strong> When enabled, exposes advanced instrumentation endpoints (Prometheus, OpenTelemetry, etc.).</li>
-<li><strong>Local Prometheus/Grafana instances:</strong> Pre-configured, run locally (never required for normal use).</li>
-<li><strong>Predefined dashboards:</strong> For metrics, traces, and logs across all modules.</li>
-<li><strong>Advanced tracing and analytics:</strong> Full distributed tracing, activity streams, and audit logs available.</li>
-<li><strong>Plugin isolation:</strong> Dev tools are sandboxed and can be disabled/removed at any time.</li>
-</ul>
-<hr />
-<h2 id="core-components-across-all-stages">Core Components (Across All Stages)<a class="headerlink" href="#core-components-across-all-stages" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>Logging:</strong> Structured, leveled logs with module/topic tagging. Always local by default.</li>
-<li><strong>Metrics:</strong> Quantitative health and performance data (pro/dev only). Exposed via in-app dashboard or local endpoints.</li>
-<li><strong>Tracing:</strong> End-to-end trace IDs and span contexts (dev only).</li>
-<li><strong>Event Auditing:</strong> Key events recorded in append-only, local-first logs.</li>
-<li><strong>Health Probes:</strong> Liveness/readiness endpoints for orchestration and monitoring (pro/dev only).</li>
-<li><strong>Error Reporting:</strong> Centralized error/event collection with context.</li>
-<li><strong>Usage Analytics:</strong> Aggregated, anonymized, strictly opt-in (pro/dev only).</li>
-<li><strong>Privacy &amp; Security:</strong> Dedicated audit logs, real-time alerts, and strict privacy enforcement at every stage.</li>
-<li><strong>Debug Capsules:</strong> Portable, encrypted session logs for support (pro/dev).</li>
-<li><strong>Plugin Instrumentation:</strong> API hooks for plugin logging/metrics, with enforced boundaries (dev only).</li>
-</ul>
-<hr />
-<h2 id="architectural-integration">Architectural Integration<a class="headerlink" href="#architectural-integration" title="Permanent link">&para;</a></h2>
-<h3 id="distributed-tracing-in-a-message-bus-architecture">Distributed Tracing in a Message Bus Architecture<a class="headerlink" href="#distributed-tracing-in-a-message-bus-architecture" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Trace Context Propagation:</strong></li>
-<li>Every ZeroMQ message envelope includes trace metadata (<code>trace_id</code>, <code>span_id</code>, <code>parent_span_id</code>, timestamps, etc.).</li>
-<li>When a module receives a message, it extracts the trace context, creates a new span for its processing, and attaches updated context to any new messages it publishes.</li>
-<li>This enables end-to-end tracing across all modules, even in a purely event-driven, local-first system.</li>
-<li><strong>OpenTelemetry Compatibility:</strong></li>
-</ul>
-<p><strong>Example Envelope Addition:</strong>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;trace&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">&quot;trace_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;abc123&quot;</span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">&quot;span_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ghi789&quot;</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">&quot;parent_span_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;def456&quot;</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="p">}</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">}</span>
-</span></code></pre></div></p>
-<hr />
-<h2 id="phase-4-auditing-debug-capsules">Phase 4: Auditing &amp; Debug Capsules<a class="headerlink" href="#phase-4-auditing-debug-capsules" title="Permanent link">&para;</a></h2>
-<p><strong>Goal:</strong> Provide robust event auditing and portable debug data for support/compliance.</p>
-<ul>
-<li><strong>Append-only audit logs:</strong> Key events are recorded for later review.</li>
-<li><strong>Debug Capsules:</strong> Users/devs can generate encrypted session logs for troubleshooting.</li>
-<li><strong>Privacy:</strong> All audit data is local and encrypted; export is user-controlled.</li>
-<li><strong>Developer Guidance:</strong><ul>
-<li>Use audit API for critical actions.</li>
-<li>Ensure debug capsules redact or encrypt sensitive data.</li>
-</ul>
+<li><strong>Consistent Style:</strong></li>
+<li><strong>Python:</strong> Follow <a href="https://peps.python.org/pep-0008/">PEP 8</a> and <a href="https://peps.python.org/pep-0257/">PEP 257</a> for docstrings.</li>
+<li><strong>Dart/Flutter:</strong> Follow <a href="https://dart.dev/guides/language/effective-dart">Effective Dart</a> guidelines.</li>
+<li><strong>Protobuf:</strong> Use clear, versioned schemas. See <code>/docs/development/protobuf.md</code>.</li>
+<li>
+<p><strong>File/Folder Naming:</strong> Use <code>snake_case</code> for Python, <code>lowerCamelCase</code> for Dart, and consistent naming for all files and directories.</p>
 </li>
-</ul>
-<hr />
-<h2 id="phase-5-analytics-extensibility">Phase 5: Analytics &amp; Extensibility<a class="headerlink" href="#phase-5-analytics-extensibility" title="Permanent link">&para;</a></h2>
-<p><strong>Goal:</strong> Enable advanced analytics, usage insights, and plugin observability.</p>
-<ul>
-<li><strong>Aggregated analytics:</strong> Strictly opt-in, anonymized, local-first.</li>
-<li><strong>Plugin Instrumentation:</strong> Plugins use the same APIs (logging, metrics, tracing) with enforced boundaries.</li>
-<li><strong>Advanced Dashboards:</strong> For dev mode, provide Prometheus/Grafana endpoints and pre-built dashboards.</li>
-<li><strong>Developer Guidance:</strong><ul>
-<li>Follow API contracts for plugin instrumentation.</li>
-<li>Never bypass privacy controls.</li>
-</ul>
+<li>
+<p><strong>Documentation:</strong></p>
 </li>
+<li>Every module, class, and public function should have a clear docstring or comment.</li>
+<li>Document non-obvious design decisions and architectural patterns.</li>
+<li>
+<p>Update documentation alongside code changes.</p>
+</li>
+<li>
+<p><strong>Testing:</strong></p>
+</li>
+<li>Write tests for new features and bug fixes.</li>
+<li>Prefer small, focused tests over large, monolithic ones.</li>
+<li>
+<p>Use descriptive test names and clear assertions.</p>
+</li>
+<li>
+<p><strong>Security &amp; Privacy:</strong></p>
+</li>
+<li>Never log or expose sensitive user data.</li>
+<li>Follow project privacy principles: local-first, user-controlled data, zero-knowledge where possible.</li>
+<li>Validate and sanitize all external inputs.</li>
+<li>Respect permission-based access and explicit capability grants (especially for plugins and extensions).</li>
+<li>Isolate plugins/extensions in secure sandboxes and mediate all resource access.</li>
+</ul>
+<h2 id="architectural-patterns-approaches">Architectural Patterns &amp; Approaches<a class="headerlink" href="#architectural-patterns-approaches" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Modular, Message-Driven Design:</strong></li>
+<li>Structure code into logical modules/components. Use the message bus and standardized envelope/message patterns for inter-module communication.</li>
+<li>Avoid tight coupling—modules should interact via well-defined interfaces and topics.</li>
+<li>
+<p>Design for extensibility: new features, plugins, or modalities should integrate without core changes.</p>
+</li>
+<li>
+<p><strong>Embodiment &amp; Multi-Modal Awareness:</strong></p>
+</li>
+<li>When working on presentation or interaction code, support multi-modal presence (voice, avatar, gesture, spatial context) as described in the embodiment architecture.</li>
+<li>
+<p>Ensure cross-device and cross-environment compatibility where possible.</p>
+</li>
+<li>
+<p><strong>Data Layer Best Practices:</strong></p>
+</li>
+<li>Use the appropriate storage for each data type (libSQL for structured, DuckDB for analytics, ChromaDB for embeddings, RocksDB for cache).</li>
+<li>
+<p>Optimize for local-first, file-based operation. Plan for future federated sync but do not assume cloud dependencies.</p>
+</li>
+<li>
+<p><strong>Plugin System:</strong></p>
+</li>
+<li>Plugins must operate in secure, isolated sandboxes.</li>
+<li>All access to core system resources and data must be mediated and permission-based.</li>
+<li>Follow versioned APIs and maintain backward compatibility for plugin interfaces.</li>
+<li>Provide clear documentation and transparent capability declarations for all plugins.</li>
+</ul>
+<h2 id="contribution-etiquette">Contribution Etiquette<a class="headerlink" href="#contribution-etiquette" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Small, Atomic Commits:</strong> Make each commit focused and self-contained. Write clear, descriptive commit messages.</li>
+<li><strong>Pull Requests:</strong></li>
+<li>Reference related issues and provide context.</li>
+<li>Describe what, why, and how in the PR description.</li>
+<li>Be open to feedback and iterate as needed.</li>
+<li><strong>Code Reviews:</strong></li>
+<li>Review others’ code with respect and constructiveness.</li>
+<li>Ask for clarification rather than assuming intent.</li>
+<li>Suggest improvements, but recognize different styles can be valid if they follow guidelines.</li>
+</ul>
+<h2 id="when-in-doubt">When in Doubt<a class="headerlink" href="#when-in-doubt" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Ask questions! Use GitHub Discussions, issues, or project chat.</li>
+<li>If unsure about a pattern or approach, prefer what’s already established in the codebase.</li>
+<li>Propose improvements, but keep changes incremental and well-documented.</li>
+<li>When integrating with architecture, consult the appropriate documentation in <code>/docs/architecture/</code> for module-specific conventions.</li>
 </ul>
 <hr />
-<h2 id="unified-instrumentation-architecture-diagram">Unified Instrumentation Architecture Diagram<a class="headerlink" href="#unified-instrumentation-architecture-diagram" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>graph TD;
-  subgraph Modules
-    Core[Core]
-    Embodiment[Embodiment]
-    Emotion[Emotion]
-    Plugins[Plugins]
-    Data[Data]
-  end
-  Core -- Logs/Metrics/Traces --&gt; Bus[ZeroMQ Bus]
-  Embodiment -- Logs/Metrics/Traces --&gt; Bus
-  Emotion -- Logs/Metrics/Traces --&gt; Bus
-  Plugins -- Logs/Metrics/Traces --&gt; Bus
-  Data -- Logs/Metrics/Traces --&gt; Bus
-  Bus -- Events --&gt; LocalStore[Local Log/Metric/Trace Store]
-  LocalStore -- Dashboards/Export --&gt; UI[UI/Dev Tools]</code></pre>
-<h2 id="references">References<a class="headerlink" href="#references" title="Permanent link">&para;</a></h2>
-<ul>
-<li><a href="https://opentelemetry.io/">OpenTelemetry</a></li>
-<li><a href="https://prometheus.io/">Prometheus</a></li>
-<li><a href="https://grafana.com/">Grafana</a></li>
-<li><a href="https://zeromq.org/">ZeroMQ</a></li>
-</ul>
+<blockquote>
+<p><strong>Remember:</strong> Our goal is to build a trustworthy, maintainable, and welcoming project. These guidelines are here to help us work together smoothly—please suggest improvements as the project evolves!</p>
+</blockquote>
 
 
 
 
 
 
-
-  
-  
 
 
 

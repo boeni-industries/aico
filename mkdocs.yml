@@ -125,10 +125,10 @@ markdown_extensions:
 nav:
   - Home:
       - Welcome: welcome.md
-  - Getting Started:
-    - Overview: getting-started/getting_started_overview.md
-    - Installation: getting-started/installation.md
-    - Quick Start: getting-started/quick-start.md
+  - User Guide:
+    - Overview: user-guide/getting_started.md
+    - Installation: user-guide/installation.md
+    - Quick Start: user-guide/quick_start.md
   - Architecture:
       - Overview: architecture/architecture_overview.md
   - Core Infrastructure:
@@ -183,16 +183,18 @@ nav:
     - Personality:
       - Personality Simulation: concepts/personality/personality_sim.md
       - Personality Definition: concepts/personality/personality_definition.md
-  - Development:
-    - Contributing: development/contributing.md
-    - Protocol Buffers: development/protobuf.md
+  - Developer Guide:
+    - Getting Started: developer-guide/getting_started.md
+    - Guidelines: developer-guide/guidelines.md
+    - Contributing: developer-guide/contributing.md
+    - Protocol Buffers: developer-guide/protobuf.md
   - Roadmap:
     - Foundation: roadmap/foundation.md
     - MVP: roadmap/mvp.md
     - Confidante: roadmap/confidante.md
     - Sidekick: roadmap/sidekick.md
-    - Co-Adventurer: roadmap/co-adventurer.md
-    - Embodied Presence: roadmap/embodied-presence.md
+    - Co-Adventurer: roadmap/co_adventurer.md
+    - Embodied Presence: roadmap/embodied_presence.md
     - Community: roadmap/community.md
   # Additional sections will be added as features are implemented:
   # - Features:

@@ -1,7 +1,9 @@
 # Getting Started
 
 !!! warning "Coming Soon"
-    This section will be populated as AICO development progresses.
+    Welcome! This guide is for users and newcomers. If you're interested in contributing or developing for AICO, see the [Developer Guide](../developer-guide/getting-started.md).
+
+This section will be populated as AICO development progresses.
 
 ## What is AICO?
 
