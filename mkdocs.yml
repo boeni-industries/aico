@@ -138,8 +138,9 @@ nav:
     - Update System: architecture/update_system.md
     - Data Layer: architecture/data_layer.md
     - Data Federation: architecture/data_federation.md
-    - Instrumentation: architecture/instrumentation.md
-    - Logging: architecture/instrumentation_logging.md
+    - Instrumentation: instrumentation/instrumentation.md
+    - Logging: instrumentation/instrumentation_logging.md
+    - Telemetry: instrumentation/telemetry.md
   - Administration:
     - Overview: admin/admin_overview.md
     - Admin UI: admin/admin_ui.md
@@ -150,8 +151,7 @@ nav:
     - Data Security: security/data_security.md
     - Access Control: security/access_control.md
     - Consent Manager: '#'
-    - Encryption System: '#'
-    - Audit System: '#'  
+    - Audit System: security/audit.md  
   - Autonomous Agency:
     - Goal System: '#'
     - Planning System: '#'

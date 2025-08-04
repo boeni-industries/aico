@@ -113,6 +113,17 @@ AICO employs a specialized multi-database architecture optimized for local-first
 - Executable is universal, not dependent on Python/.venv on the target system.
 - CLI reuses backend modules for DRY and maintainable architecture.
 
+## Monitoring & Instrumentation Layer
+
+| Technology | Purpose | Justification |
+|------------|---------|---------------|
+| **OpenTelemetry** | Telemetry standard | Unified API for metrics, logs, and traces with minimal overhead |
+| **Structlog** | Structured logging | Python library for consistent, structured log output |
+| **libSQL** | Log & telemetry storage | Reuses existing database with time-series optimized tables |
+| **Pydantic** | Schema validation | Efficient validation of telemetry and audit records |
+| **Grafana** | Visualization (dev only) | Optional local dashboard for development and debugging |
+| **Loki** | Log aggregation (dev only) | Lightweight log aggregation for development environments |
+
 ## Module-Specific Technologies
 
 ### Personality Simulation
