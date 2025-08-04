@@ -150,7 +150,7 @@ nav:
     - Overview: security/security_overview.md
     - Data Security: security/data_security.md
     - Access Control: security/access_control.md
-    - Consent Manager: '#'
+    - Consent Manager: security/consent.md
     - Audit System: security/audit.md  
   - Autonomous Agency:
     - Goal System: '#'
