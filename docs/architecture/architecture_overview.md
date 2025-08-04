@@ -47,7 +47,8 @@ AICO's features are organized into logical modules for development and deploymen
 - **Context Retrieval**: Relevant memory recall based on current situation
 
 ### 😊 Emotion & Awareness
-- **Facial Recognition**: Computer vision-based emotion detection
+- **Facial Recognition**: Computer vision-based face recognition
+- **Visual Emotion Detection**: Computer vision-based emotion recognition
 - **Voice Analysis**: Audio-based emotion and sentiment recognition
 - **Text Sentiment**: Natural language emotion understanding
 - **Behavioral Patterns**: User habit and preference learning
