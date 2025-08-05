@@ -307,7 +307,7 @@ Below are the build and run commands for each major part of the system. Substitu
   cd cli
   # Activate venv (see above)
   uv pip install -r requirements.txt
-  pyinstaller --onefile aico.py --name aico
+  pyinstaller aico.spec
   # Executable will be in dist/aico(.exe)
   ```
 

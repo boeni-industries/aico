@@ -67,6 +67,56 @@ Commands:
 - Each command is implemented as a Typer sub-app, allowing modular growth.
 - All output uses Rich for tables, markdown, progress bars, and error highlighting.
 
+## CLI Architecture
+
+### Core Principles
+- **Modular & Extensible**: Each command is a self-contained module/sub-app, enabling massive future growth.
+- **DRY & Maintainable**: Shares logic with backend modules; CLI is a thin, UX-focused layer.
+- **Fast & User-Friendly**: Instant startup, rich output, robust error handling, and autocompletion.
+- **Self-Documenting**: Any incomplete or ambiguous command invocation yields a helpful, predictive help text to guide the user to the next step.
+
+### CLI Directory Structure (Suggested)
+
+```text
+/cli  
+    /commands  
+        status.py  
+        user.py  
+        db.py  
+        plugin.py  
+        logs.py  
+        config.py  
+        admin.py  
+        version.py   # (First: versioning automation)  
+    main.py  
+    utils.py  
+    ...
+```
+- Each command is implemented as a sub-app (using Typer) and registered in `main.py`.
+- Shared utilities, config, and backend integration in `utils.py` or `/lib`.
+
+### Command Registration Pattern
+
+```python
+# main.py
+import typer
+from commands import status, user, db, plugin, logs, config, admin, version
+
+app = typer.Typer()
+app.add_typer(version.app, name="version")
+# ...add other sub-apps
+
+if __name__ == "__main__":
+    app()
+```
+
+### Growth & Extensibility
+- Each new domain (e.g., plugin, agent, emotion, vector) gets its own command module.
+- The sub-app pattern keeps the CLI scalable and organized as it grows.
+- Future plugin discovery (dynamic loading) can be added as CLI matures.
+
+---
+
 ## UX & Output Standards
 
 - **Instant startup** (<100ms typical)
