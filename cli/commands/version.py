@@ -4,32 +4,30 @@ from rich.table import Table
 from pathlib import Path
 import sys
 
-def version_entrypoint(ctx: typer.Context):
-    """Show help and actionable feedback if no subcommand is given."""
-    console.print("[bold cyan]AICO Version Management CLI[/bold cyan]")
-    console.print("\nManage and synchronize versions across all AICO system parts.")
-    console.print("\nAvailable subcommands:")
-    console.print("  [green]show[/green]      Print the current version(s)\n  [green]sync[/green]      Sync canonical versions from VERSIONS\n  [green]bump[/green]      Bump version and propagate/tag\n  [green]check[/green]     Validate canonical versions\n  [green]history[/green]   Show git tag history\n  [green]next[/green]      Preview next version number\n")
-    console.print("[yellow]Examples:[/yellow] aico version show cli   |   aico version bump backend minor\n")
-    # Optionally, show the current versions table
-    try:
-        versions = read_versions()
-        from rich.table import Table
-        table = Table(title="Current Versions (from VERSIONS)")
-        table.add_column("Part")
-        table.add_column("Version")
-        for p in PARTS:
-            v = versions.get(p, "[red]not found")
-            table.add_row(p, v)
-        console.print(table)
-    except Exception:
-        pass
-    raise typer.Exit()
+def version_callback(ctx: typer.Context):
+    """Show help when no subcommand is given instead of showing an error."""
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
+        raise typer.Exit()
 
-app = typer.Typer(help="Manage and synchronize versions across all AICO system parts.", callback=version_entrypoint)
+app = typer.Typer(
+    help="Manage and synchronize versions across all AICO system parts.",
+    callback=version_callback,
+    invoke_without_command=True
+)
+
 console = Console()
 
-VERSIONS_PATH = Path(__file__).parent.parent.parent / "VERSIONS"
+def get_versions_path():
+    if getattr(sys, 'frozen', False):
+        # Running as a PyInstaller bundle: use sys.executable as base
+        exe_path = Path(sys.executable).resolve()
+        return (exe_path.parent.parent.parent / "VERSIONS").resolve()
+    else:
+        # Running from source: use this file's location
+        return (Path(__file__).parent.parent.parent / "VERSIONS").resolve()
+
+VERSIONS_PATH = get_versions_path()
 PARTS = ["cli", "backend", "frontend", "studio"]
 
 
@@ -49,13 +47,34 @@ def read_versions():
                 versions[part.strip()] = version.strip()
     return versions
 
-@app.command()
-def show(part: str = typer.Argument(None, help="Which part to show (cli/backend/frontend/studio/all)", show_default=False)):
-    """Print the current version of a part or all parts."""
+@app.command(
+    help="""
+Show the version for a system part, or all parts if no part is specified.
+
+Examples:
+  aico version show
+  aico version show cli
+  aico version show all
+  aico version show backend
+"""
+)
+def show(
+    part: str = typer.Argument(
+        None,
+        help="Which part to show (cli/backend/frontend/studio/all). If omitted, shows all parts.",
+        show_default=False
+    )
+):
+    """
+Show the version for a system part, or all parts if no part is specified.
+
+- If [PART] is omitted or 'all', shows all parts' versions.
+- Otherwise, shows the version for the specified part.
+"""
     versions = read_versions()
     if part is None or part == "all":
         table = Table(title="AICO System Versions")
-        table.add_column("Part")
+        table.add_column("Subsystem")
         table.add_column("Version")
         for p in PARTS:
             v = versions.get(p, "[red]not found")

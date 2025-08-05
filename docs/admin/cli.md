@@ -69,6 +69,16 @@ Commands:
 
 ## CLI Architecture
 
+> **Permanent CLI UX Policy:**
+> 
+> All CLI commands and command groups must provide actionable, friendly, and instructive feedback when invoked incorrectly or incompletely. The CLI must never:
+> - Show only an aggressive error message
+> - Require the user to consult help and then retry
+> - Leave the user without a clear next step
+>
+> Instead, every CLI entrypoint must print helpful guidance, usage examples, and (where possible) a preview of the result. This is a strict and permanent requirement for all CLI development in AICO.
+
+
 ### Core Principles
 - **Modular & Extensible**: Each command is a self-contained module/sub-app, enabling massive future growth.
 - **DRY & Maintainable**: Shares logic with backend modules; CLI is a thin, UX-focused layer.
