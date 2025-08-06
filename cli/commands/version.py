@@ -118,7 +118,143 @@ Show the version for a subsystem, or all subsystems if no subsystem is specified
             console.print(f"\n❌ [red]No version found for subsystem '[bold]{subsystem}[/bold]'[/red]\n")
             raise typer.Exit(1)
 
-# TODO: Implement check, next, bump, history commands
+@app.command(
+    help="""
+Show the version history for a subsystem (or all subsystems) using the git history of the VERSIONS file.
+
+Examples:
+  aico version history cli
+  aico version history backend
+  aico version history all
+"""
+)
+def history(
+    subsystem: str = typer.Argument(
+        None,
+        help="Which subsystem to show history for (cli/backend/frontend/studio/all). If omitted, shows all.",
+        show_default=False
+    )
+):
+    """
+    Show the version history for a subsystem (or all subsystems).
+    """
+    import subprocess
+    import re
+    import datetime
+
+    versions_path = get_project_root() / "VERSIONS"
+    if not versions_path.exists():
+        console.print(f"[red]VERSIONS file not found at {versions_path}")
+        raise typer.Exit(1)
+
+    # Get git log with patch for VERSIONS file
+    try:
+        result = subprocess.run([
+            "git", "log", "-p", "--", str(versions_path)
+        ], capture_output=True, text=True, check=True)
+        log = result.stdout
+    except Exception as e:
+        console.print(f"[red]Error running git log: {e}")
+        raise typer.Exit(1)
+
+    # Parse log for version changes
+    entries = []
+    current_commit = None
+    for line in log.splitlines():
+        if line.startswith("commit "):
+            current_commit = {
+                "hash": line.split()[1],
+                "author": "",
+                "date": "",
+                "msg": "",
+                "changes": []
+            }
+        elif line.startswith("Author:") and current_commit:
+            current_commit["author"] = line[len("Author:"):].strip()
+        elif line.startswith("Date:") and current_commit:
+            # Format date as YYYY-MM-DD HH:MM
+            dt = line[len("Date:"):].strip()
+            try:
+                dt_obj = datetime.datetime.strptime(dt, "%a %b %d %H:%M:%S %Y %z")
+                dt_fmt = dt_obj.strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                dt_fmt = dt
+            current_commit["date"] = dt_fmt
+        elif line.startswith("    ") and current_commit and not current_commit["msg"]:
+            current_commit["msg"] = line.strip()
+        elif line.startswith("@@") and current_commit:
+            pass  # ignore hunk headers
+        elif (line.startswith("+") or line.startswith("-")) and not line.startswith("+++" ) and not line.startswith("---") and current_commit:
+            # Only consider version lines
+            match = re.match(r"[+-](\w+):\s*([\d\.]+)", line)
+            if match:
+                current_commit["changes"].append((line[0], match.group(1), match.group(2)))
+        elif line.strip() == "" and current_commit and current_commit["changes"]:
+            entries.append(current_commit)
+            current_commit = None
+    if current_commit and current_commit["changes"]:
+        entries.append(current_commit)
+
+    # Build history for each subsystem
+    history_map = {s: [] for s in SUBSYSTEMS}
+    for entry in entries:
+        # Group changes by subsystem
+        for sign, part, ver in entry["changes"]:
+            if part in SUBSYSTEMS:
+                history_map[part].append({
+                    "commit": entry["hash"],
+                    "author": entry["author"],
+                    "date": entry["date"],
+                    "msg": entry["msg"],
+                    "sign": sign,
+                    "version": ver
+                })
+
+    # Prepare table output
+    subsystems_to_show = SUBSYSTEMS if subsystem is None or subsystem == "all" else [subsystem]
+    for s in subsystems_to_show:
+        changes = history_map[s]
+        if not changes:
+            console.print(f"[yellow]No history found for {s}[/yellow]")
+            continue
+        table = Table(
+            title=f"✨ [bold cyan]Version History: {s}[/bold cyan]",
+            title_style="bold cyan",
+            title_justify="left",
+            border_style="bright_blue",
+            header_style="bold yellow",
+            show_lines=False,
+            box=box.SIMPLE_HEAD,
+            padding=(0, 1)
+        )
+        table.add_column("Old", style="white", justify="left")
+        table.add_column("New", style="bold green", justify="left")
+        table.add_column("Commit", style="dim", justify="left")
+        table.add_column("Author", style="white", justify="left")
+        table.add_column("Date", style="white", justify="left")
+        table.add_column("Message", style="dim", justify="left")
+
+        # Build version change pairs (old, new)
+        version_pairs = []
+        prev = None
+        for change in changes:
+            if change["sign"] == "-":
+                prev = change["version"]
+            elif change["sign"] == "+" and prev is not None:
+                version_pairs.append((prev, change["version"], change))
+                prev = None
+        for old, new, meta in version_pairs:
+            table.add_row(
+                old,
+                f"[bold green]{new}[/bold green]",
+                meta["commit"][:8],
+                meta["author"],
+                meta["date"],
+                meta["msg"]
+            )
+        console.print()
+        console.print(table)
+        console.print()
 
 # Supporting functions for version management
 def get_project_root():
