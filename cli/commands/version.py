@@ -281,3 +281,113 @@ def sync():
     
     console.print(table)
     console.print()
+
+# === Helper functions to read actual versions from project files ===
+
+@app.command(
+    help="""
+Check that all project files match the canonical versions in the VERSIONS file.
+
+Reports mismatches and exits with error if any are found.
+
+Examples:
+  aico version check
+  aico version check cli
+  aico version check all
+  aico version check backend
+"""
+)
+def check(
+    part: str = typer.Argument(
+        None,
+        help="Which part to check (cli/backend/frontend/studio/all). If omitted, checks all parts.",
+        show_default=False
+    )
+):
+    """
+    Check that all project files match the canonical versions in the VERSIONS file.
+    """
+    versions = read_versions()
+    readers = {
+        "cli": read_cli_version,
+        "backend": read_backend_version,
+        "frontend": read_frontend_version,
+        "studio": read_studio_version
+    }
+    parts_to_check = PARTS if part is None or part == "all" else [part]
+    mismatches = []
+    table = Table(
+        title="✨ [bold cyan]Version Check Status[/bold cyan]",
+        title_style="bold cyan",
+        title_justify="left",
+        border_style="bright_blue",
+        header_style="bold yellow",
+        show_lines=False,
+        box=box.SIMPLE_HEAD,
+        padding=(0, 1)
+    )
+    table.add_column("Subsystem", style="bold white", no_wrap=True)
+    table.add_column("Expected", style="white", justify="left")
+    table.add_column("Actual", style="white", justify="left")
+    table.add_column("Status", style="white", justify="left")
+    for p in parts_to_check:
+        expected = versions.get(p)
+        actual = readers[p]()
+        if expected is None:
+            table.add_row(p, "[red]not found[/red]", "-", "[red]✗ missing in VERSIONS[/red]")
+            mismatches.append(p)
+        elif actual is None:
+            table.add_row(p, f"[yellow]{expected}[/yellow]", "[red]not found[/red]", "[red]✗ missing in project[/red]")
+            mismatches.append(p)
+        elif expected != actual:
+            table.add_row(p, f"[yellow]{expected}[/yellow]", f"[red]{actual}[/red]", "[red]✗ mismatch[/red]")
+            mismatches.append(p)
+        else:
+            table.add_row(p, f"[green]{expected}[/green]", f"[green]{actual}[/green]", "[bold green]✓ match[/bold green]")
+    console.print()
+    console.print(table)
+    console.print()
+    if mismatches:
+        console.print("❌ [red]Version check failed: mismatches found.[/red]\n")
+        raise typer.Exit(1)
+    else:
+        console.print("[bold green]All versions match![/bold green]\n")
+
+def read_cli_version():
+    cli_file = get_project_root() / "cli" / "aico.py"
+    if not cli_file.exists():
+        return None
+    import re
+    content = cli_file.read_text(encoding='utf-8')
+    match = re.search(r'__version__\s*=\s*["\']([^"\']*)["\']', content)
+    return match.group(1) if match else None
+
+def read_backend_version():
+    backend_file = get_project_root() / "backend" / "main.py"
+    if not backend_file.exists():
+        return None
+    import re
+    content = backend_file.read_text(encoding='utf-8')
+    match = re.search(r'__version__\s*=\s*["\']([^"\']*)["\']', content)
+    return match.group(1) if match else None
+
+def read_frontend_version():
+    frontend_file = get_project_root() / "frontend" / "pubspec.yaml"
+    if not frontend_file.exists():
+        return None
+    import re
+    content = frontend_file.read_text(encoding='utf-8')
+    match = re.search(r'version:\s*([\d\.]+)', content)
+    return match.group(1) if match else None
+
+def read_studio_version():
+    studio_file = get_project_root() / "studio" / "package.json"
+    if not studio_file.exists():
+        return None
+    import json
+    try:
+        data = json.loads(studio_file.read_text(encoding='utf-8'))
+        return data.get("version")
+    except Exception:
+        return None
+
