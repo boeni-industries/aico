@@ -1,6 +1,8 @@
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich.panel import Panel
+from rich import box
 from pathlib import Path
 import sys
 
@@ -72,20 +74,48 @@ Show the version for a system part, or all parts if no part is specified.
 - Otherwise, shows the version for the specified part.
 """
     versions = read_versions()
+    
     if part is None or part == "all":
-        table = Table(title="AICO System Versions")
-        table.add_column("Subsystem")
-        table.add_column("Version")
+        # Create modern, styled table
+        table = Table(
+            title="✨ [bold cyan]AICO System Versions[/bold cyan]",
+            title_style="bold cyan",
+            border_style="bright_blue",
+            header_style="bold yellow",
+            show_lines=False,
+            box=box.SIMPLE_HEAD,
+            padding=(0, 1)
+        )
+        table.add_column("Subsystem", style="bold white", no_wrap=True)
+        table.add_column("Version", style="green", justify="left")
+        
+        # Add rows with clean text (no emojis for proper alignment)
         for p in PARTS:
-            v = versions.get(p, "[red]not found")
+            v = versions.get(p, "[red]not found[/red]")
+            if v != "[red]not found[/red]":
+                v = f"[bold green]{v}[/bold green]"
             table.add_row(p, v)
+        
+        console.print()
         console.print(table)
+        console.print()
     else:
+        # Single part display with enhanced styling
         v = versions.get(part)
         if v:
-            console.print(f"[bold]{part}[/bold]: [green]{v}")
+            icon = {"cli": "⚡", "backend": "🤖", "frontend": "🖥️", "studio": "⚙️"}.get(part, "📦")
+            panel = Panel(
+                f"{icon} [bold white]{part}[/bold white]\n[bold green]{v}[/bold green]",
+                title="[bold cyan]Version Info[/bold cyan]",
+                border_style="bright_blue",
+                box=box.ROUNDED,
+                padding=(1, 2)
+            )
+            console.print()
+            console.print(panel)
+            console.print()
         else:
-            console.print(f"[red]No version found for part '{part}'")
+            console.print(f"\n❌ [red]No version found for subsystem '[bold]{part}[/bold]'[/red]\n")
             raise typer.Exit(1)
 
 # TODO: Implement sync, bump, check, history, next commands

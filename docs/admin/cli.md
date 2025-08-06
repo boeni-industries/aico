@@ -78,6 +78,145 @@ Commands:
 >
 > Instead, every CLI entrypoint must print helpful guidance, usage examples, and (where possible) a preview of the result. This is a strict and permanent requirement for all CLI development in AICO.
 
+## Visual Style Guide
+
+### Design Philosophy
+
+The AICO CLI follows a **modern, minimal, clean** aesthetic that prioritizes:
+- **Readability** over decoration
+- **Consistency** across all commands
+- **Professional appearance** suitable for enterprise environments
+- **Accessibility** across different terminals and color schemes
+
+### Color Palette
+
+**Primary Colors:**
+- **Cyan (`[bold cyan]`)**: Brand color for titles, headers, and AICO branding
+- **Yellow (`[bold yellow]`)**: Table headers and section labels
+- **Green (`[green]`, `[bold green]`)**: Success states, version numbers, positive values
+- **Red (`[red]`)**: Errors, warnings, missing values
+- **White (`[bold white]`)**: Primary content, subsystem names
+- **Dim (`[dim]`)**: Secondary information, examples, help text
+
+**Usage Guidelines:**
+```python
+# Titles and branding
+console.print("✨ [bold cyan]AICO System Versions[/bold cyan]")
+
+# Table headers
+header_style="bold yellow"
+
+# Success/positive values
+v = f"[bold green]{version}[/bold green]"
+
+# Errors
+console.print(f"❌ [red]Error message[/red]")
+
+# Secondary info
+console.print("[dim]Use 'aico COMMAND --help' for more information.[/dim]")
+```
+
+### Typography & Formatting
+
+**Text Hierarchy:**
+1. **Titles**: `[bold cyan]` with optional sparkle emoji (✨)
+2. **Headers**: `[bold yellow]` for section headers and table columns
+3. **Content**: `[bold white]` for primary data, `[green]` for values
+4. **Help Text**: `[dim]` for examples and guidance
+
+**Spacing Rules:**
+- Always add blank lines before and after tables/panels
+- Use `console.rule()` for section dividers in complex output
+- Consistent padding in tables: `padding=(0, 1)`
+
+### Table Styling
+
+**Standard Table Configuration:**
+```python
+table = Table(
+    title="✨ [bold cyan]Title Here[/bold cyan]",
+    title_style="bold cyan",
+    border_style="bright_blue",
+    header_style="bold yellow",
+    show_lines=False,
+    box=box.SIMPLE_HEAD,
+    padding=(0, 1)
+)
+```
+
+**Critical Rules:**
+- **NO EMOJIS IN TABLE DATA**: Emojis break column alignment across terminals
+- **Use `box.SIMPLE_HEAD`**: Clean, minimal borders that align properly
+- **Left-align all columns**: `justify="left"` for consistency
+- **Consistent column styling**: `style="bold white"` for labels, `style="green"` for values
+
+### Icons & Symbols
+
+**Approved Icons:**
+- ✨ Sparkle: Titles and branding
+- ❌ Cross: Errors and failures
+- 📦 Package: Generic items (fallback only)
+- ⚡ Lightning: CLI/command line tools (in panels only)
+- 🤖 Robot: AI/backend services (in panels only)
+- 🖥️ Monitor: UI/frontend (in panels only)
+- ⚙️ Gear: Configuration/admin (in panels only)
+
+**Icon Usage Rules:**
+- **Tables**: NO icons in table data (alignment issues)
+- **Panels**: Icons OK for single-item displays
+- **Titles**: Sparkle (✨) only
+- **Errors**: Cross (❌) with red text
+
+### Panel Styling
+
+**For single-item displays:**
+```python
+panel = Panel(
+    f"{icon} [bold white]{item}[/bold white]\n[bold green]{value}[/bold green]",
+    title="[bold cyan]Title[/bold cyan]",
+    border_style="bright_blue",
+    box=box.ROUNDED,
+    padding=(1, 2)
+)
+```
+
+### Layout Patterns
+
+**Root CLI Help:**
+```python
+console.print("\n✨ [bold cyan]AICO CLI[/bold cyan]")
+console.print("[dim]Description here[/dim]\n")
+console.rule("[bold blue]Section Name", style="blue")
+console.print("\n📦 [green]command[/green]   Description")
+```
+
+**Command Group Help:**
+- Use Typer's built-in help system with comprehensive help strings
+- Include examples and usage guidance in help text
+- Show help automatically when no subcommand given (not errors)
+
+### Implementation Guidelines for Developers
+
+1. **Always use the approved color palette** - no custom colors
+2. **Never put emojis in table data** - breaks alignment
+3. **Use `box.SIMPLE_HEAD` for all tables** - consistent, clean appearance
+4. **Include sparkle (✨) in main titles** - brand consistency
+5. **Left-align all table columns** - professional appearance
+6. **Add spacing around tables/panels** - breathing room
+7. **Use `[dim]` for help text** - visual hierarchy
+
+### Anti-Patterns (DO NOT USE)
+
+❌ **Emojis in table rows** (breaks alignment)  
+❌ **Center-aligned table columns** (inconsistent)  
+❌ **Rounded table borders** (alignment issues)  
+❌ **Custom colors outside palette** (inconsistent branding)  
+❌ **Missing spacing around tables** (cramped appearance)  
+❌ **Aggressive error messages** (violates UX policy)  
+❌ **Complex box styles** (maintenance burden)  
+
+This style guide ensures all CLI commands maintain the same professional, clean, minimal aesthetic that users expect from the AICO system.
+
 
 ### Core Principles
 - **Modular & Extensible**: Each command is a self-contained module/sub-app, enabling massive future growth.
