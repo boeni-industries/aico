@@ -541,7 +541,7 @@ def bump(
     for s in SUBSYSTEMS:
         v = versions.get(s)
         if v:
-            lines.append(f"{s}={v}\n")
+            lines.append(f"{s}: {v}\n")
     versions_path.write_text("".join(lines), encoding="utf-8")
 
     # Always update the subsystem project file after bump
