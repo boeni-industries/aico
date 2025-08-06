@@ -391,3 +391,85 @@ def read_studio_version():
     except Exception:
         return None
 
+@app.command(
+    help="""
+Preview the next version number for a part or all parts, using semantic versioning rules.
+No changes are made.
+
+Examples:
+  aico version next
+  aico version next cli
+  aico version next backend minor
+  aico version next all major
+"""
+)
+def next(
+    part: str = typer.Argument(
+        None,
+        help="Which part to preview (cli/backend/frontend/studio/all). If omitted, previews all parts.",
+        show_default=False
+    ),
+    level: str = typer.Argument(
+        "patch",
+        help="Which level to bump (major/minor/patch). Default: patch.",
+        show_default=True
+    )
+):
+    """
+    Preview the next version number for a part or all parts, using semantic versioning rules.
+    """
+    import re
+    def bump_version(ver, level):
+        # Accepts '0.1.2' or '0.1.2+meta', ignores meta
+        main = ver.split('+')[0]
+        m = re.match(r'^(\d+)\.(\d+)\.(\d+)', main)
+        if not m:
+            return None
+        major, minor, patch = map(int, m.groups())
+        if level == "major":
+            return f"{major+1}.0.0"
+        elif level == "minor":
+            return f"{major}.{minor+1}.0"
+        else:
+            return f"{major}.{minor}.{patch+1}"
+
+    versions = read_versions()
+    parts_to_check = PARTS if part is None or part == "all" else [part]
+    table = Table(
+        title="✨ [bold cyan]Next Version Preview[/bold cyan]",
+        title_style="bold cyan",
+        title_justify="left",
+        border_style="bright_blue",
+        header_style="bold yellow",
+        show_lines=False,
+        box=box.SIMPLE_HEAD,
+        padding=(0, 1)
+    )
+    table.add_column("Subsystem", style="bold white", no_wrap=True)
+    table.add_column("Current", style="white", justify="left")
+    table.add_column("Next", style="green", justify="left")
+    table.add_column("Level", style="white", justify="left")
+    for p in parts_to_check:
+        current = versions.get(p)
+        if not current:
+            table.add_row(p, "[red]not found[/red]", "-", "-")
+            continue
+        next_v = bump_version(current, level)
+        if next_v:
+            table.add_row(p, f"[green]{current}[/green]", f"[bold yellow]{next_v}[/bold yellow]", f"[dim]{level}[/dim]")
+        else:
+            table.add_row(p, f"[red]{current}[/red]", "[red]invalid[/red]", f"[dim]{level}[/dim]")
+    console.print()
+    console.print(table)
+    console.print()
+
+    studio_file = get_project_root() / "studio" / "package.json"
+    if not studio_file.exists():
+        return None
+    import json
+    try:
+        data = json.loads(studio_file.read_text(encoding='utf-8'))
+        return data.get("version")
+    except Exception:
+        return None
+
