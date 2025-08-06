@@ -544,15 +544,17 @@ def bump(
             lines.append(f"{s}={v}\n")
     versions_path.write_text("".join(lines), encoding="utf-8")
 
-    # Update project file
-    update_funcs = {
+    # Always update the subsystem project file after bump
+    update_functions = {
         "cli": update_cli_version,
         "backend": update_backend_version,
         "frontend": update_frontend_version,
         "studio": update_studio_version
     }
-    update_func = update_funcs[subsystem]
-    update_func(new_version)
+    update_func = update_functions[subsystem]
+    updated = update_func(new_version)
+    if not updated:
+        console.print(f"[yellow]Warning: No changes made to the {subsystem} project file (already up-to-date or file missing).[/yellow]")
 
     # Commit changes
     commit_msg = f"Bump {subsystem} version to {new_version}"
