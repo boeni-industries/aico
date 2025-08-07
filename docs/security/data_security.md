@@ -41,32 +41,39 @@ AICO employs a hybrid application-level encryption strategy that provides robust
 
 Each database uses its optimal encryption method for maximum performance and reliability:
 
-- **libSQL/SQLite**: SQLCipher integration for industry-standard database encryption
+- **libSQL**: SQLCipher-style encryption via PRAGMA statements with PBKDF2 key derivation
 - **DuckDB**: Built-in AES-256 encryption via PRAGMA statements
 - **RocksDB**: Native EncryptedEnv for transparent key-value encryption
 - **ChromaDB**: Custom file-level encryption wrapper
 
 **Implementation Example**:
 ```python
-# SQLCipher integration
-import sqlcipher3 as sqlite3
-from aico.security import AICOKeyManager
+# LibSQL with encryption
+from aico.data.libsql import EncryptedLibSQLConnection
 
-class EncryptedDatabase:
-    def __init__(self, db_path, key_manager):
-        self.db_path = db_path
-        self.key_manager = key_manager
-        
-    def connect(self):
-        """Connect to encrypted SQLite database"""
-        # Derive database-specific key
-        db_key = self.key_manager.derive_database_key("libsql")
-        
-        # Connect with encryption
-        conn = sqlite3.connect(self.db_path)
-        conn.execute(f"PRAGMA key = '{db_key.hex()}'")
-        
-        return conn
+# Create encrypted database connection
+conn = EncryptedLibSQLConnection(
+    db_path="secure_data.db",
+    master_password="user_master_password",
+    store_in_keyring=True  # Secure password storage
+)
+
+# Use with context manager for automatic cleanup
+with conn:
+    # All operations are automatically encrypted
+    conn.execute("CREATE TABLE users (id INTEGER, name TEXT)")
+    conn.execute("INSERT INTO users VALUES (?, ?)", (1, "Alice"))
+    
+    # Query encrypted data
+    users = conn.fetch_all("SELECT * FROM users")
+    print(users)  # [{'id': 1, 'name': 'Alice'}]
+
+# Key derivation and encryption details:
+# - PBKDF2-SHA256 with 100,000 iterations
+# - 256-bit encryption key (32 bytes)
+# - 128-bit salt (16 bytes)
+# - SQLCipher-style PRAGMA key encryption
+# - System keyring integration for password storage
 
 # DuckDB encryption
 import duckdb
@@ -94,6 +101,95 @@ with EncryptedFile("sensitive_data.enc", "wb", key_manager=km) as f:
 
 with EncryptedFile("sensitive_data.enc", "rb", key_manager=km) as f:
     data = f.read()  # Automatically decrypted
+```
+
+### LibSQL Encryption Implementation
+
+AICO's LibSQL encryption implementation provides transparent, secure database encryption using industry-standard cryptographic practices:
+
+#### Architecture Overview
+
+```mermaid
+flowchart TD
+    A[Master Password] --> B[PBKDF2-SHA256]
+    C[Random Salt] --> B
+    B --> D[256-bit Encryption Key]
+    D --> E[PRAGMA key]
+    E --> F[Encrypted LibSQL Database]
+    
+    G[System Keyring] --> A
+    H[Salt File] --> C
+    
+    classDef security fill:#663399,stroke:#9370DB,color:#fff
+    class A,B,C,D,E,F,G,H security
+```
+
+#### Security Specifications
+
+| Component | Specification | Details |
+|-----------|---------------|----------|
+| **Key Derivation** | PBKDF2-SHA256 | 100,000 iterations, cryptographically secure |
+| **Encryption Key** | 256-bit AES | 32-byte key for maximum security |
+| **Salt** | 128-bit random | 16-byte salt, unique per database |
+| **Database Encryption** | SQLCipher-style | PRAGMA key with hex-encoded key |
+| **Password Storage** | System Keyring | Platform-native secure storage |
+| **Salt Storage** | Restricted file | 0o600 permissions, separate from database |
+
+#### Implementation Details
+
+**Key Derivation Process:**
+```python
+# PBKDF2 key derivation with secure parameters
+kdf = PBKDF2HMAC(
+    algorithm=hashes.SHA256(),
+    length=32,  # 256-bit key
+    salt=salt,  # 128-bit random salt
+    iterations=100000,  # Resistant to brute force
+    backend=default_backend()
+)
+key = kdf.derive(password.encode('utf-8'))
+```
+
+**Database Encryption:**
+```python
+# SQLCipher-style encryption via PRAGMA
+connection.execute(f"PRAGMA key = 'x\"{key.hex()}\"'")
+```
+
+**Security Features:**
+- ✅ **Transparent encryption**: All database operations automatically encrypted
+- ✅ **Key verification**: Automatic validation that encryption key is correct
+- ✅ **Secure storage**: Master passwords stored in system keyring
+- ✅ **Salt management**: Unique salt per database, securely stored
+- ✅ **File permissions**: Restrictive permissions on salt files (0o600)
+- ✅ **Error handling**: Comprehensive error handling for encryption failures
+
+**Usage Patterns:**
+```python
+# Simple encrypted database
+conn = EncryptedLibSQLConnection("data.db", master_password="secret")
+
+# With keyring storage
+conn = EncryptedLibSQLConnection("data.db", store_in_keyring=True)
+
+# Custom encryption parameters
+conn = EncryptedLibSQLConnection(
+    "data.db",
+    kdf_iterations=200000,  # Higher security
+    keyring_service="my_app"
+)
+
+# Verify encryption is working
+if conn.verify_encryption():
+    print("Database is properly encrypted")
+```
+
+**File Structure:**
+```
+data/
+├── secure_data.db        # Encrypted LibSQL database
+├── secure_data.db.salt   # Salt file (0o600 permissions)
+└── ...
 ```
 
 #### Directory Structure
@@ -137,11 +233,23 @@ AICO maintains organized encrypted storage with clear separation:
 
 ### Key Management
 
-AICO implements a unified key management approach for application-level encryption, using Argon2id as the key derivation function:
+AICO implements a unified key management approach for application-level encryption, using appropriate key derivation functions for different use cases:
 
-#### Key Derivation with Argon2id
+#### Key Derivation Functions
 
-Argon2id is used as the primary key derivation function for all security contexts:
+AICO uses different key derivation functions optimized for specific use cases:
+
+**PBKDF2-SHA256 for Database Encryption:**
+- Used in LibSQL encrypted connections
+- 100,000 iterations for balance of security and performance
+- Widely supported and battle-tested
+- Suitable for database encryption scenarios
+
+**Argon2id for General Authentication:**
+- Used for master key derivation and user authentication
+- Memory-hard function resistant to GPU attacks
+- Configurable memory, time, and parallelism parameters
+- Recommended by security experts for password hashing
 
 ```python
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2
@@ -255,6 +363,268 @@ master_key = key_manager.setup_or_retrieve_key(interactive=False)
 1. **Master Password**: User-provided master password is the root of trust
    - Never stored, only used transiently during key derivation
    - Cleared from memory immediately after use
+
+## Schema Management Security
+
+AICO's in-code schema management system is designed with security-first principles to protect both schema integrity and user data during database evolution.
+
+### Security Architecture
+
+```mermaid
+flowchart TD
+    A[Schema Definitions] --> B[Code Signing]
+    B --> C[Runtime Validation]
+    C --> D[Encrypted Database]
+    
+    E[Migration History] --> F[Checksum Validation]
+    F --> G[Tamper Detection]
+    
+    H[Plugin Schemas] --> I[Sandbox Isolation]
+    I --> J[Permission Boundaries]
+    
+    K[Schema Metadata] --> L[Encryption at Rest]
+    L --> M[Access Control]
+    
+    classDef security fill:#dc2626,stroke:#b91c1c,color:#fff
+    classDef data fill:#2563eb,stroke:#1d4ed8,color:#fff
+    classDef plugin fill:#059669,stroke:#047857,color:#fff
+    
+    class B,C,F,G,L,M security
+    class A,D,E,K data
+    class H,I,J plugin
+```
+
+### Threat Model
+
+#### Protected Against
+1. **Schema Tampering**: Unauthorized modification of database structure
+2. **Migration Replay**: Malicious re-execution of previous migrations
+3. **Plugin Schema Conflicts**: Plugins interfering with core or other plugin data
+4. **Data Exposure**: Schema operations revealing sensitive user information
+5. **Rollback Attacks**: Malicious downgrades to vulnerable schema versions
+
+#### Security Controls
+
+##### 1. Schema Definition Protection
+```python
+# Schema definitions are immutable and version-locked
+CORE_SCHEMA_DEFINITIONS = {
+    1: SchemaVersion(
+        version=1,
+        name="Initial Schema",
+        # Cryptographic hash ensures integrity
+        checksum="sha256:a1b2c3d4...",
+        sql_statements=[...],
+        rollback_statements=[...]
+    )
+}
+
+# Runtime validation
+class SchemaManager:
+    def _validate_schema_integrity(self, schema_version: SchemaVersion):
+        """Validate schema definition hasn't been tampered with"""
+        computed_hash = self._compute_schema_hash(schema_version)
+        if computed_hash != schema_version.checksum:
+            raise SecurityError("Schema integrity violation detected")
+```
+
+##### 2. Migration History Protection
+```python
+# Migration history with tamper detection
+CREATE TABLE schema_migration_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    component_name TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    checksum TEXT NOT NULL,  -- Prevents replay attacks
+    migration_hash TEXT NOT NULL,  -- Validates migration content
+    rollback_hash TEXT  -- Validates rollback integrity
+)
+
+# Checksum validation prevents replay attacks
+def apply_migration(self, version: int):
+    migration_hash = self._compute_migration_hash(version)
+    
+    # Check if already applied
+    existing = self.connection.fetch_one(
+        "SELECT checksum FROM schema_migration_history WHERE version = ?",
+        (version,)
+    )
+    
+    if existing and existing['checksum'] == migration_hash:
+        logger.warning(f"Migration {version} already applied, skipping")
+        return
+    
+    # Apply migration with integrity tracking
+    self._execute_migration(version, migration_hash)
+```
+
+##### 3. Plugin Schema Isolation
+```python
+# Plugin schemas are sandboxed and isolated
+class PluginSchemaManager(SchemaManager):
+    def __init__(self, connection, plugin_name, schema_definitions):
+        self.plugin_name = plugin_name
+        self.table_prefix = f"{plugin_name}_"  # Namespace isolation
+        super().__init__(connection, schema_definitions)
+    
+    def _validate_table_access(self, table_name: str):
+        """Ensure plugin only accesses its own tables"""
+        if not table_name.startswith(self.table_prefix):
+            raise SecurityError(
+                f"Plugin {self.plugin_name} cannot access table {table_name}"
+            )
+    
+    def _validate_sql_statement(self, sql: str):
+        """Validate SQL doesn't access unauthorized resources"""
+        # Parse SQL and check table references
+        parsed = sqlparse.parse(sql)[0]
+        for token in parsed.flatten():
+            if token.ttype is sqlparse.tokens.Name:
+                if self._is_table_reference(token.value):
+                    self._validate_table_access(token.value)
+```
+
+### Encryption Integration
+
+#### Schema Metadata Encryption
+```python
+# Schema metadata is encrypted with user data
+class EncryptedSchemaManager(SchemaManager):
+    def __init__(self, encrypted_connection: EncryptedLibSQLConnection, schema_definitions):
+        super().__init__(encrypted_connection, schema_definitions)
+        self.encrypted_connection = encrypted_connection
+    
+    def _store_metadata(self, key: str, value: str):
+        """Store schema metadata in encrypted database"""
+        # Metadata automatically encrypted by EncryptedLibSQLConnection
+        self.connection.execute(
+            "INSERT OR REPLACE INTO schema_metadata (key, value) VALUES (?, ?)",
+            (key, value)
+        )
+    
+    def _verify_encryption_status(self):
+        """Ensure database is properly encrypted"""
+        if not self.encrypted_connection.verify_encryption():
+            raise SecurityError("Database encryption verification failed")
+```
+
+#### Key Derivation for Schema Operations
+```python
+# Schema operations use same encryption as user data
+class SecureSchemaOperations:
+    def __init__(self, master_password: str):
+        self.connection = EncryptedLibSQLConnection(
+            db_path="~/.aico/user.db",
+            master_password=master_password  # Same key as user data
+        )
+    
+    def apply_schema_migration(self, schema_definitions):
+        """Apply schema migration with full encryption"""
+        # All schema operations encrypted with user's master key
+        schema_manager = EncryptedSchemaManager(
+            self.connection, 
+            schema_definitions
+        )
+        schema_manager.migrate_to_latest()
+```
+
+### Access Control
+
+#### Local-Only Operations
+```python
+# Schema management is strictly local
+class LocalSchemaManager:
+    def __init__(self):
+        # No network access allowed
+        self.network_disabled = True
+        self.local_only = True
+    
+    def _validate_local_access(self):
+        """Ensure no remote schema operations"""
+        if self._detect_network_activity():
+            raise SecurityError("Network access detected during schema operation")
+    
+    def migrate_to_latest(self):
+        self._validate_local_access()
+        super().migrate_to_latest()
+```
+
+#### Permission Boundaries
+```python
+# Strict permission model for schema operations
+class PermissionAwareSchemaManager:
+    ALLOWED_OPERATIONS = {
+        'core': ['CREATE TABLE', 'CREATE INDEX', 'ALTER TABLE'],
+        'plugin': ['CREATE TABLE', 'CREATE INDEX'],  # No ALTER on core tables
+        'test': ['CREATE TABLE', 'DROP TABLE', 'CREATE INDEX', 'DROP INDEX']
+    }
+    
+    def __init__(self, connection, schema_definitions, context: str):
+        self.context = context  # 'core', 'plugin', or 'test'
+        super().__init__(connection, schema_definitions)
+    
+    def _validate_sql_permission(self, sql: str):
+        """Validate SQL operation is allowed in current context"""
+        operation = self._extract_sql_operation(sql)
+        if operation not in self.ALLOWED_OPERATIONS[self.context]:
+            raise PermissionError(
+                f"Operation {operation} not allowed in {self.context} context"
+            )
+```
+
+### Security Best Practices
+
+#### Development Guidelines
+1. **Schema Review**: All schema changes must be reviewed for security implications
+2. **Minimal Permissions**: Grant only necessary database permissions to each component
+3. **Rollback Testing**: Verify rollback operations don't expose sensitive data
+4. **Checksum Validation**: Always validate schema integrity before applying changes
+5. **Audit Logging**: Log all schema operations for security monitoring
+
+#### Operational Security
+1. **Backup Before Migration**: Always backup database before schema changes
+2. **Test Migrations**: Test schema changes in isolated environments first
+3. **Monitor Integrity**: Regularly verify schema integrity and detect tampering
+4. **Plugin Vetting**: Review plugin schemas before installation
+5. **Access Logging**: Log all schema access for security auditing
+
+#### Incident Response
+```python
+# Security incident detection and response
+class SchemaSecurityMonitor:
+    def detect_tampering(self):
+        """Detect schema tampering attempts"""
+        current_checksums = self._compute_all_checksums()
+        stored_checksums = self._get_stored_checksums()
+        
+        if current_checksums != stored_checksums:
+            self._trigger_security_alert("Schema tampering detected")
+            self._lock_database_access()
+            return True
+        return False
+    
+    def _trigger_security_alert(self, message: str):
+        """Trigger security incident response"""
+        logger.critical(f"SECURITY ALERT: {message}")
+        # Additional alerting mechanisms
+        self._notify_security_team(message)
+        self._create_incident_report(message)
+```
+
+### Compliance Considerations
+
+#### Data Protection
+- **GDPR Compliance**: Schema operations respect user data protection rights
+- **Data Minimization**: Schema definitions contain no personal data
+- **Right to Erasure**: Schema rollback can remove user data when required
+- **Data Portability**: Schema versioning supports data export/import
+
+#### Security Standards
+- **Defense in Depth**: Multiple security layers protect schema integrity
+- **Principle of Least Privilege**: Minimal permissions for schema operations
+- **Secure by Default**: Schema management defaults to most secure configuration
+- **Audit Trail**: Complete audit trail for all schema modifications
 
 2. **Key Derivation**: Argon2id key derivation with context-specific parameters
    - Master key: 1GB memory, 3 iterations, 4 threads

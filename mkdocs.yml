@@ -191,6 +191,7 @@ nav:
     - Versioning: developer-guide/versioning.md
     - Namespaces: developer-guide/namespaces.md
     - CLI Handbook: developer-guide/cli_handbook.md
+    - Schema Management: developer-guide/schema_management.md
   - Roadmap:
     - Foundation: roadmap/foundation.md
     - MVP: roadmap/mvp.md
