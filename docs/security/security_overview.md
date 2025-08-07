@@ -52,7 +52,7 @@ AICO's architecture supports both coupled (same device) and detached (separate d
 #### Backend Security Responsibilities
 
 - **Data Encryption**: 
-  - Filesystem-level encryption (gocryptfs)
+  - Filesystem-level encryption (securefs)
   - Key derivation (Argon2id)
   - Master key management
 
@@ -130,7 +130,7 @@ flowchart TD
 AICO employs comprehensive encryption strategies to protect data both at rest and in transit:
 
 #### Encryption at Rest
-- **Filesystem-Level Encryption**: Transparent encryption of all database files using gocryptfs
+- **Filesystem-Level Encryption**: Transparent encryption of all database files using securefs
   - **AES-256-GCM**: Authenticated encryption with per-file random initialization vectors
   - **File Name Encryption**: Prevents metadata leakage and directory structure analysis
   - **Forward Secrecy**: Ensures past data remains secure even if keys are compromised
@@ -177,7 +177,7 @@ AICO employs a comprehensive approach to key management that combines secure key
 **Argon2id** serves as AICO's unified key derivation function across all security contexts:
 
 - **Why Argon2id for AICO**: 
-  - Provides optimal security for AICO's filesystem-level encryption (gocryptfs)
+  - Provides optimal security for AICO's filesystem-level encryption (securefs)
   - Supports cross-platform deployment with consistent security guarantees
   - Memory-hard design protects against hardware-accelerated attacks
   - Configurable parameters allow adaptation to different device capabilities
@@ -187,7 +187,7 @@ AICO employs a comprehensive approach to key management that combines secure key
   | Context | Memory | Iterations | Parallelism | AICO Usage |
   |---------|--------|------------|-------------|--------|
   | Master Key | 1GB | 3 | 4 | Initial login, derives all other keys |
-  | File Encryption | 256MB | 2 | 2 | gocryptfs container for databases |
+  | File Encryption | 256MB | 2 | 2 | securefs container for databases |
   | Authentication | 64MB | 1 | 1 | Device pairing, roaming authentication |
 
 - **Implementation in AICO Backend**:
@@ -220,7 +220,7 @@ AICO's key management system handles the lifecycle of cryptographic keys from cr
 - **Key Hierarchy**: 
   - **Master Password**: User-provided secret, never stored
   - **Master Key**: Derived via Argon2id, stored in platform secure storage
-  - **Purpose-Specific Keys**: Derived from master key for gocryptfs, database access, device pairing
+  - **Purpose-Specific Keys**: Derived from master key for securefs, database access, device pairing
 
 - **Secure Storage**: Platform-native mechanisms for zero-effort security:
   - macOS: Keychain integration
@@ -372,7 +372,7 @@ AICO's architecture requires specific security implementations for both frontend
 
 | Feature | Implementation | Rationale |
 |---------|----------------|------------|
-| **Filesystem Encryption** | gocryptfs with AES-256-GCM | Core protection for all database files in the local-first architecture |
+| **Filesystem Encryption** | securefs with AES-256-GCM | Core protection for all database files in the local-first architecture |
 | **Key Derivation** | Argon2id with context-specific parameters | Secure generation of encryption keys from master password |
 | **Secure Key Storage** | Python keyring library with platform backends | Platform-native secure storage of cryptographic keys |
 | **Authentication Service** | Token-based authentication with JWTs | Verify user identity and manage sessions across both coupled and detached modes |

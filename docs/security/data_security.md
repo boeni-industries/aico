@@ -26,9 +26,9 @@ flowchart TD
 
 ### Encryption Strategy
 
-AICO employs filesystem-level transparent encryption using gocryptfs to protect all stored data without imposing functionality restrictions on databases:
+AICO employs filesystem-level transparent encryption using securefs to protect all stored data without imposing functionality restrictions on databases:
 
-#### Filesystem-Level Encryption with gocryptfs
+#### Filesystem-Level Encryption with securefs
 
 - **Approach**: Transparent filesystem encryption that secures all database files at rest
 - **Encryption**: AES-256-GCM authenticated encryption with per-file random IVs
@@ -39,7 +39,7 @@ AICO employs filesystem-level transparent encryption using gocryptfs to protect 
 
 - **Implementation**:
   ```python
-  # Python wrapper for gocryptfs mounting
+  # Python wrapper for securefs mounting
   import subprocess
   import os
   import getpass
@@ -59,9 +59,9 @@ AICO employs filesystem-level transparent encryption using gocryptfs to protect 
               if password is None:
                   password = getpass.getpass("Enter encryption password: ")
                   
-              # Initialize gocryptfs with secure defaults
+              # Initialize securefs with secure defaults
               proc = subprocess.Popen(
-                  ["gocryptfs", "-init", self.encrypted_dir],
+                  ["securefs", "-init", self.encrypted_dir],
                   stdin=subprocess.PIPE, stdout=subprocess.PIPE
               )
               proc.communicate(input=password.encode())
@@ -78,7 +78,7 @@ AICO employs filesystem-level transparent encryption using gocryptfs to protect 
               
           # Mount with idle timeout for security (auto unmount after inactivity)
           proc = subprocess.Popen(
-              ["gocryptfs", "-idle", "30m", self.encrypted_dir, self.mount_point],
+              ["securefs", "-idle", "30m", self.encrypted_dir, self.mount_point],
               stdin=subprocess.PIPE, stdout=subprocess.PIPE
           )
           proc.communicate(input=password.encode())
@@ -95,7 +95,7 @@ AICO employs filesystem-level transparent encryption using gocryptfs to protect 
 
 ```
 /path/to/aico/
-├── encrypted/           # Encrypted container (gocryptfs)
+├── encrypted/           # Encrypted container (securefs)
 └── databases/           # Mount point where databases are accessed
     ├── libsql/          # Primary database
     ├── chroma/          # Vector database
@@ -126,7 +126,7 @@ AICO employs filesystem-level transparent encryption using gocryptfs to protect 
 
 ### Key Management
 
-AICO implements a unified key management approach with gocryptfs, using Argon2id as the key derivation function:
+AICO implements a unified key management approach with securefs, using Argon2id as the key derivation function:
 
 #### Key Derivation with Argon2id
 
@@ -183,8 +183,8 @@ class AICOKeyManager:
         
         return master_key
         
-    def derive_gocryptfs_key(self, master_key):
-        """Derive gocryptfs-specific key from master key"""
+    def derive_securefs_key(self, master_key):
+        """Derive securefs-specific key from master key"""
         # Balanced parameters for file encryption
         salt = os.urandom(16)
         argon2 = Argon2(
@@ -196,7 +196,7 @@ class AICOKeyManager:
             type=2                 # Argon2id
         )
         # Derive using master key + purpose identifier
-        context = master_key + b"gocryptfs-filesystem"
+        context = master_key + b"securefs-filesystem"
         key = argon2.derive(context)
         return key
 ```
@@ -304,12 +304,12 @@ AICO's data security adapts to different roaming patterns, maintaining security 
 
 1. **Coupled Roaming Security**:
    - Complete encrypted filesystem moves with the application
-   - gocryptfs container transferred securely between devices
+   - securefs container transferred securely between devices
    - Master key securely synchronized via platform-specific secure storage
    - Zero-effort security maintained across device transitions
 
 2. **Detached Roaming Security**:
-   - Backend maintains the gocryptfs encrypted container
+   - Backend maintains the securefs encrypted container
    - Frontend accesses data via secure API with end-to-end encryption
    - Mutual TLS authentication between frontend and backend
    - Secure WebSocket or gRPC channels with forward secrecy

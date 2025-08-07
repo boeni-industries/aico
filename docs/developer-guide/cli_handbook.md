@@ -80,3 +80,57 @@ aico version [COMMAND] [OPTIONS]
 ---
 
 For more details on versioning policy, see the [developer guide](./versioning.md).
+
+---
+
+## Security Command Group
+
+The `security` command group enables secure management of cryptographic keys, master passwords, and encrypted filesystem operations. It is designed for both administrators and developers to manage foundational security features from the CLI.
+
+### Usage Summary
+
+```sh
+aico security [COMMAND] [OPTIONS]
+```
+
+### Available Commands
+
+| Command                                 | Description                                             |
+|------------------------------------------|---------------------------------------------------------|
+| `aico security key init`                 | Set up master password and initialize key storage        |
+| `aico security key status`               | Show key status and authentication method               |
+| `aico security key change-password`      | Change the master password                              |
+| `aico security key clear`                | Remove all stored keys and authentication state         |
+| `aico security fs init`                  | Initialize encrypted data directory (securefs)         |
+| `aico security fs mount`                 | Mount encrypted directory                               |
+| `aico security fs unmount`               | Unmount encrypted directory                             |
+| `aico security fs status`                | Show status of encrypted mounts                         |
+| `aico security audit log`                | Show recent security events and audit log               |
+| `aico security audit check`              | Run security health checks and report findings          |
+
+### Examples
+
+- Initialize master password and keys:
+  ```sh
+  aico security key init
+  ```
+- Mount encrypted data directory:
+  ```sh
+  aico security fs mount --dir ~/.aico/data.enc
+  ```
+- Check key status:
+  ```sh
+  aico security key status
+  ```
+- Run security audit check:
+  ```sh
+  aico security audit check
+  ```
+
+### Notes
+- `securefs` must be installed (see [installation guide](https://github.com/netheril96/securefs)).
+- `python-securefs` Python bindings may be used if available, otherwise subprocess calls are used.
+- Key management is handled by the shared library (`AICOKeyManager`).
+- Audit logs and health checks are extensible for future compliance needs.
+
+---

@@ -318,3 +318,78 @@ if __name__ == "__main__":
 ---
 
 AICO's CLI combines the power of Python's ecosystem with best-in-class UX, delivering a tool worthy of modern, privacy-first, AI-powered systems.
+
+---
+
+## Security Command Group (`aico security`)
+
+The `security` command group provides secure, unified management of cryptographic keys, master passwords, and encrypted filesystem operations for AICO. It enables administrators and power users to set up, audit, and operate all foundational security features from the CLI.
+
+### Command Structure
+
+```
+aico security [COMMAND] [OPTIONS]
+
+Commands:
+  key         Master password and key management
+  fs          Encrypted filesystem operations (securefs)
+  audit       Security audit and health checks
+```
+
+### Subcommand Details
+
+#### `aico security key`
+| Command                        | Description                                             |
+|------------------------------- |---------------------------------------------------------|
+| `init`                         | Set up master password and initialize key storage        |
+| `status`                       | Show key status and active authentication method         |
+| `change-password`              | Change the master password                              |
+| `clear`                        | Remove all stored keys and authentication state          |
+
+#### `aico security fs`
+| Command                        | Description                                             |
+|------------------------------- |---------------------------------------------------------|
+| `init`                         | Initialize a new encrypted data directory (securefs)    |
+| `mount`                        | Mount an encrypted directory                            |
+| `unmount`                      | Unmount an encrypted directory                          |
+| `status`                       | Show status of encrypted mounts                         |
+
+#### `aico security audit`
+| Command                        | Description                                             |
+|------------------------------- |---------------------------------------------------------|
+| `log`                          | Show recent security events and audit log               |
+| `check`                        | Run security health checks and report findings          |
+
+### Usage Examples
+
+- Initialize master password and keys:
+  ```sh
+  aico security key init
+  ```
+- Mount encrypted data directory:
+  ```sh
+  aico security fs mount --dir ~/.aico/data.enc
+  ```
+- Check key status:
+  ```sh
+  aico security key status
+  ```
+- Run security audit check:
+  ```sh
+  aico security audit check
+  ```
+
+### Design Principles
+- All commands provide clear, actionable, and colorized output.
+- Sensitive operations require confirmation or a `--yes` flag.
+- CLI never stores credentials in plaintext; all keys are protected using platform-native secure storage.
+- Filesystem encryption is implemented using SecureFS (system dependency; see requirements).
+- Incomplete or ambiguous commands trigger predictive help text.
+
+### Notes
+- `SecureFS` must be installed on the system (see [installation guide](https://github.com/netheril96/securefs)).
+- `SecureFS CLI` is used for encrypted filesystem operations.
+- Key management is handled by the shared library (`AICOKeyManager`).
+- Audit logs and health checks are extensible for future compliance needs.
+
+---
