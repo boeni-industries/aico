@@ -78,17 +78,12 @@ with conn:
 # DuckDB encryption
 import duckdb
 
-def create_encrypted_duckdb(db_path, key_manager):
-    """Create encrypted DuckDB instance"""
-    db_key = key_manager.derive_database_key("duckdb")
-    
-    conn = duckdb.connect(db_path)
-    conn.execute(f"PRAGMA enable_encryption='{db_key.hex()}'")
-    
-    return conn
-```
+def create_encrypted_duckdb(db_path, key_manager, master_key):
+    # Derive database-specific key
+    db_key = key_manager.derive_database_key(master_key, "duckdb")
+    return DuckDBConnection(db_path, encryption_key=db_key)
 
-#### Generic File Encryption
+# Generic File Encryption
 
 For files without native encryption support, AICO provides a transparent encryption wrapper:
 
@@ -340,21 +335,21 @@ The unified key management process supports three authentication scenarios:
 **1. Initial Setup (Interactive)**
 ```python
 key_manager = AICOKeyManager()
-master_key = key_manager.setup_or_retrieve_key(password="user_password")
+master_key = key_manager.setup_master_password(password="user_password")
 # Derives and stores master key securely
 ```
 
 **2. User Authentication (Interactive)**
 ```python
 key_manager = AICOKeyManager()
-master_key = key_manager.setup_or_retrieve_key()  # Prompts for password
+master_key = key_manager.authenticate(interactive=True)
 # Uses stored key if available, otherwise prompts for password
 ```
 
 **3. Service Startup (Automatic)**
 ```python
 key_manager = AICOKeyManager()
-master_key = key_manager.setup_or_retrieve_key(interactive=False)
+master_key = key_manager.authenticate(interactive=False)
 # Retrieves stored key without user interaction
 ```
 

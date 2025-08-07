@@ -54,14 +54,10 @@ The `aico` CLI provides a professional, cross-platform, and high-performance com
 aico [command] [options]
 
 Commands:
-  status         Show system and service status
-  user           Manage users (add, remove, list, roles)
-  db             Database operations (backup, migrate, inspect)
-  plugin         Manage plugins (list, install, enable, disable)
-  logs           Tail or query logs
-  config         View or edit configuration
-  admin          Open admin UI
-  ...            (future: agent, emotion, vector, etc.)
+  version        Manage and synchronize versions across all AICO system parts
+  security       Master password setup and security management
+  db             Database initialization, status, and management
+  ...            (future: plugin, logs, config, admin, etc.)
 ```
 
 - Each command is implemented as a Typer sub-app, allowing modular growth.
@@ -321,75 +317,26 @@ AICO's CLI combines the power of Python's ecosystem with best-in-class UX, deliv
 
 ---
 
-## Security Command Group (`aico security`)
+## Command Groups
 
-The `security` command group provides secure, unified management of cryptographic keys, master passwords, and encrypted filesystem operations for AICO. It enables administrators and power users to set up, audit, and operate all foundational security features from the CLI.
+### Version Commands (`aico version`)
+Manages and synchronizes versioning across all major AICO system parts from a single source of truth.
 
-### Command Structure
+**Architecture**: Uses centralized `VERSIONS` file as canonical source, with automatic propagation to individual component version files and git tagging.
 
-```
-aico security [COMMAND] [OPTIONS]
+### Security Commands (`aico security`)
+Manages master password setup and security operations for AICO's encrypted data layer.
 
-Commands:
-  key         Master password and key management
-  db          Database encryption operations
-  audit       Security audit and health checks
-```
+**Architecture**: Uses `AICOKeyManager` for unified key management across all database types with secure keyring integration.
 
-### Subcommand Details
+### Database Commands (`aico db`)
+Manages encrypted database initialization and operations.
 
-#### `aico security key`
-| Command                        | Description                                             |
-|------------------------------- |---------------------------------------------------------|
-| `init`                         | Set up master password and initialize key storage        |
-| `status`                       | Show key status and active authentication method         |
-| `change-password`              | Change the master password                              |
-| `clear`                        | Remove all stored keys and authentication state          |
+**Architecture**: Supports multiple database types with type-specific encryption (PBKDF2 for LibSQL, Argon2id for others). Automatic salt management and transparent encryption.
 
-#### `aico security db`
-| Command                        | Description                                             |
-|------------------------------- |---------------------------------------------------------|
-| `init`                         | Initialize encrypted databases with proper keys        |
-| `status`                       | Show encryption status of all databases                |
-| `rekey`                        | Re-encrypt databases with new keys                     |
-| `verify`                       | Verify database encryption integrity                   |
+### Integration Pattern
+Security and database commands integrate through `AICOKeyManager` providing derived keys to database connections. Master password affects all databases; database operations are type-specific.
 
-#### `aico security audit`
-| Command                        | Description                                             |
-|------------------------------- |---------------------------------------------------------|
-| `log`                          | Show recent security events and audit log               |
-| `check`                        | Run security health checks and report findings          |
-
-### Usage Examples
-
-- Initialize master password and keys:
-  ```sh
-  aico security key init
-  ```
-- Mount encrypted data directory:
-  ```sh
-  aico security fs mount --dir ~/.aico/data.enc
-  ```
-- Check key status:
-  ```sh
-  aico security key status
-  ```
-- Run security audit check:
-  ```sh
-  aico security audit check
-  ```
-
-### Design Principles
-- All commands provide clear, actionable, and colorized output.
-- Sensitive operations require confirmation or a `--yes` flag.
-- CLI never stores credentials in plaintext; all keys are protected using platform-native secure storage.
-- Database encryption is implemented using native database encryption features (SQLCipher, DuckDB, RocksDB).
-- Incomplete or ambiguous commands trigger predictive help text.
-
-### Notes
-- Database encryption uses native encryption features of each database engine for optimal performance.
-- File encryption wrapper uses the `cryptography` library for cross-platform compatibility.
-- Key management is handled by the shared library (`AICOKeyManager`).
-- Audit logs and health checks are extensible for future compliance needs.
+**For detailed usage examples and workflows, see the [CLI Handbook](../developer-guide/cli_handbook.md).**
 
 ---

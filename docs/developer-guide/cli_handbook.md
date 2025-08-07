@@ -83,54 +83,75 @@ For more details on versioning policy, see the [developer guide](./versioning.md
 
 ---
 
-## Security Command Group
+## Security Commands (`aico security`)
 
-The `security` command group enables secure management of cryptographic keys, master passwords, and encrypted filesystem operations. It is designed for both administrators and developers to manage foundational security features from the CLI.
-
-### Usage Summary
-
-```sh
-aico security [COMMAND] [OPTIONS]
-```
+Manages master password setup and security operations for AICO's encrypted data layer.
 
 ### Available Commands
 
-| Command                                 | Description                                             |
-|------------------------------------------|---------------------------------------------------------|
-| `aico security key init`                 | Set up master password and initialize key storage        |
-| `aico security key status`               | Show key status and authentication method               |
-| `aico security key change-password`      | Change the master password                              |
-| `aico security key clear`                | Remove all stored keys and authentication state         |
-| `aico security db init`                  | Initialize encrypted databases with proper keys         |
-| `aico security db status`                | Show encryption status of all databases                 |
-| `aico security db rekey`                 | Re-encrypt databases with new keys                      |
-| `aico security db verify`                | Verify database encryption integrity                    |
-| `aico security audit log`                | Show recent security events and audit log               |
-| `aico security audit check`              | Run security health checks and report findings          |
+| Command | Description |
+|---------|-------------|
+| `setup` | First-time master password setup |
+| `change-password` | Change master password (affects all databases) |
+| `status` | Check security status and keyring information |
+| `clear` | Clear stored master key (security incident recovery) |
+| `test` | Test master password authentication |
 
 ### Examples
 
-- Initialize master password and keys:
-  ```sh
-  aico security key init
-  ```
-- Mount encrypted data directory:
-  ```sh
-  aico security fs mount --dir ~/.aico/data.enc
-  ```
-- Check key status:
-  ```sh
-  aico security key status
-  ```
-- Run security audit check:
-  ```sh
-  aico security audit check
-  ```
+```bash
+# First-time setup
+aico security setup
+
+# Check status
+aico security status
+
+# Change master password
+aico security change-password
+
+# Test authentication
+aico security test
+```
+
+## Database Commands (`aico db`)
+
+Manages encrypted database initialization and operations.
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `init` | Initialize new encrypted database |
+| `status` | Check database encryption status |
+| `test` | Test database connection and operations |
+
+### Examples
+
+```bash
+# Initialize LibSQL database (default)
+aico db init --db-path ./my-app.db
+
+# Initialize specific database type (future)
+aico db init --db-path ./analytics.db --db-type duckdb
+
+# Check database status
+aico db status --db-path ./my-app.db
+
+# Test database connection
+aico db test --db-path ./my-app.db
+```
+
+### Workflow
+
+1. **Setup master password**: `aico security setup`
+2. **Initialize databases**: `aico db init`
+3. **Verify setup**: `aico db status`
 
 ### Notes
-- Database encryption uses native encryption features of each database engine for optimal performance.
-- File encryption wrapper uses the `cryptography` library for cross-platform compatibility.
-- Key management is handled by the shared library (`AICOKeyManager`).
-- Audit logs and health checks are extensible for future compliance needs.
+- Uses `AICOKeyManager` for unified key management
+- Supports multiple database types (currently LibSQL)
+- PBKDF2 key derivation for LibSQL, Argon2id for others
+- Stores passwords securely in system keyring
+- Automatic salt management for database files
 
 ---

@@ -12,12 +12,8 @@ import hashlib
 from pathlib import Path
 from typing import Optional, Any, Dict, List, Tuple, Union
 
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.backends import default_backend
-import keyring
-
 from .connection import LibSQLConnection
+from ...security import AICOKeyManager
 
 logger = logging.getLogger(__name__)
 
@@ -27,24 +23,17 @@ class EncryptedLibSQLConnection(LibSQLConnection):
     Encrypted LibSQL database connection manager.
     
     Extends the basic LibSQL connection with encryption capabilities:
-    - Automatic key derivation from master password
+    - Uses AICOKeyManager for secure key management
     - SQLCipher-style database encryption via PRAGMA statements
-    - Secure key storage using system keyring
     - Transparent encryption/decryption for all operations
     """
-    
-    # Encryption configuration
-    DEFAULT_KDF_ITERATIONS = 100000  # PBKDF2 iterations
-    KEY_LENGTH = 32  # 256-bit key
-    SALT_LENGTH = 16  # 128-bit salt
     
     def __init__(
         self, 
         db_path: str, 
+        encryption_key: Optional[bytes] = None,
+        key_manager: Optional[AICOKeyManager] = None,
         master_password: Optional[str] = None,
-        keyring_service: str = "aico",
-        keyring_username: Optional[str] = None,
-        kdf_iterations: int = DEFAULT_KDF_ITERATIONS,
         **kwargs
     ):
         """
@@ -52,113 +41,55 @@ class EncryptedLibSQLConnection(LibSQLConnection):
         
         Args:
             db_path: Path to the database file
-            master_password: Master password for encryption (if None, uses keyring)
-            keyring_service: Keyring service name for secure storage
-            keyring_username: Keyring username (defaults to db filename)
-            kdf_iterations: PBKDF2 iterations for key derivation
+            encryption_key: Pre-derived encryption key (preferred)
+            key_manager: AICOKeyManager instance for key derivation
+            master_password: Master password (if key_manager provided)
             **kwargs: Additional connection parameters
         """
         super().__init__(db_path, **kwargs)
         
-        self.keyring_service = keyring_service
-        self.keyring_username = keyring_username or self.db_path.stem
-        self.kdf_iterations = kdf_iterations
+        self._encryption_key = encryption_key
+        self._key_manager = key_manager or AICOKeyManager()
         self._master_password = master_password
-        self._encryption_key: Optional[bytes] = None
-        self._salt: Optional[bytes] = None
         
         logger.debug(f"Initialized encrypted LibSQL connection for {self.db_path}")
     
-    def _get_master_password(self) -> str:
+    def _get_encryption_key(self) -> bytes:
         """
-        Get master password from provided value or keyring.
+        Get or derive encryption key for the database.
         
         Returns:
-            Master password string
+            Encryption key bytes
             
         Raises:
-            ValueError: If no password available
+            ValueError: If no key available and cannot derive
         """
-        if self._master_password:
-            return self._master_password
-        
-        # Try to get from keyring
-        password = keyring.get_password(self.keyring_service, self.keyring_username)
-        if password:
-            logger.debug("Retrieved master password from keyring")
-            return password
-        
-        raise ValueError(
-            f"No master password available for {self.keyring_username}. "
-            "Provide master_password parameter or store in keyring."
-        )
-    
-    def _store_master_password(self, password: str) -> None:
-        """
-        Store master password in system keyring.
-        
-        Args:
-            password: Master password to store
-        """
+        if self._encryption_key:
+            return self._encryption_key
+            
+        # Try to derive from key manager
         try:
-            keyring.set_password(self.keyring_service, self.keyring_username, password)
-            logger.info(f"Stored master password in keyring for {self.keyring_username}")
+            master_key = self._key_manager.authenticate(
+                password=self._master_password,
+                interactive=False
+            )
+            
+            # Derive database-specific key
+            db_key = self._key_manager.derive_database_key(
+                master_key=master_key,
+                database_type="libsql",
+                db_path=str(self.db_path)
+            )
+            
+            self._encryption_key = db_key
+            logger.debug("Derived encryption key from key manager")
+            return db_key
+            
         except Exception as e:
-            logger.warning(f"Failed to store password in keyring: {e}")
-    
-    def _get_or_create_salt(self) -> bytes:
-        """
-        Get existing salt from database or create new one.
-        
-        Returns:
-            Salt bytes for key derivation
-        """
-        salt_file = self.db_path.with_suffix(self.db_path.suffix + '.salt')
-        
-        if salt_file.exists():
-            # Load existing salt
-            with open(salt_file, 'rb') as f:
-                salt = f.read()
-            logger.debug("Loaded existing encryption salt")
-        else:
-            # Generate new salt
-            salt = os.urandom(self.SALT_LENGTH)
-            
-            # Store salt securely
-            salt_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(salt_file, 'wb') as f:
-                f.write(salt)
-            
-            # Set restrictive permissions (owner read/write only)
-            if hasattr(os, 'chmod'):
-                os.chmod(salt_file, 0o600)
-            
-            logger.info("Generated new encryption salt")
-        
-        return salt
-    
-    def _derive_key(self, password: str, salt: bytes) -> bytes:
-        """
-        Derive encryption key from password and salt using PBKDF2.
-        
-        Args:
-            password: Master password
-            salt: Salt bytes
-            
-        Returns:
-            Derived encryption key
-        """
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=self.KEY_LENGTH,
-            salt=salt,
-            iterations=self.kdf_iterations,
-            backend=default_backend()
-        )
-        
-        key = kdf.derive(password.encode('utf-8'))
-        logger.debug("Derived encryption key using PBKDF2")
-        return key
+            raise ValueError(
+                f"Cannot derive encryption key: {e}. "
+                "Provide encryption_key parameter or ensure master password is available."
+            ) from e
     
     def _setup_encryption(self) -> bytes:
         """
@@ -167,13 +98,7 @@ class EncryptedLibSQLConnection(LibSQLConnection):
         Returns:
             Encryption key bytes
         """
-        if self._encryption_key is None:
-            password = self._get_master_password()
-            salt = self._get_or_create_salt()
-            self._encryption_key = self._derive_key(password, salt)
-            self._salt = salt
-        
-        return self._encryption_key
+        return self._get_encryption_key()
     
     def connect(self):
         """
@@ -222,22 +147,21 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             store_in_keyring: Whether to store password in system keyring
         """
         self._master_password = password
-        self._encryption_key = None  # Force key re-derivation
+        self._encryption_key = None  # Force re-derivation
         
         if store_in_keyring:
-            self._store_master_password(password)
-        
+            self._key_manager.store_database_password(password, "libsql", self.db_path.stem)
+            
         logger.info("Master password updated")
     
     def change_password(self, old_password: str, new_password: str) -> None:
         """
         Change database encryption password.
         
-        This is a complex operation that requires:
-        1. Verifying old password
-        2. Creating new encrypted database with new password
-        3. Copying all data
-        4. Replacing old database
+        This operation:
+        1. Verifies old password
+        2. Updates master password in key manager
+        3. Forces key re-derivation
         
         Args:
             old_password: Current password
@@ -247,12 +171,22 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             ValueError: If old password is incorrect
             RuntimeError: If password change fails
         """
-        # This is a placeholder for password change functionality
-        # Full implementation would require careful data migration
-        raise NotImplementedError(
-            "Password change functionality requires careful implementation "
-            "to avoid data loss. Use database backup/restore for now."
-        )
+        try:
+            # Verify old password by attempting authentication
+            self._key_manager.authenticate(old_password, interactive=False)
+            
+            # Change password in key manager
+            self._key_manager.change_password(old_password, new_password)
+            
+            # Update local state
+            self._master_password = new_password
+            self._encryption_key = None  # Force re-derivation
+            
+            logger.info("Database password changed successfully")
+            
+        except Exception as e:
+            logger.error(f"Password change failed: {e}")
+            raise RuntimeError(f"Failed to change password: {e}") from e
     
     def verify_encryption(self) -> bool:
         """
@@ -289,16 +223,18 @@ class EncryptedLibSQLConnection(LibSQLConnection):
         Returns:
             Dictionary with encryption information
         """
-        return {
+        base_info = {
             "encrypted": self._encryption_key is not None,
-            "kdf_iterations": self.kdf_iterations,
-            "key_length": self.KEY_LENGTH,
-            "salt_length": self.SALT_LENGTH,
-            "keyring_service": self.keyring_service,
-            "keyring_username": self.keyring_username,
-            "database_path": str(self.db_path),
-            "salt_file": str(self.db_path.with_suffix(self.db_path.suffix + '.salt'))
+            "database_path": str(self.db_path)
         }
+        
+        # Get detailed info from key manager
+        key_manager_info = self._key_manager.get_database_password_info(
+            "libsql", str(self.db_path)
+        )
+        
+        base_info.update(key_manager_info)
+        return base_info
     
     def __repr__(self) -> str:
         """String representation."""
@@ -311,6 +247,7 @@ def create_encrypted_database(
     db_path: str,
     master_password: str,
     store_in_keyring: bool = True,
+    key_manager: Optional[AICOKeyManager] = None,
     **kwargs
 ) -> EncryptedLibSQLConnection:
     """
@@ -320,6 +257,7 @@ def create_encrypted_database(
         db_path: Path for the new database
         master_password: Master password for encryption
         store_in_keyring: Whether to store password in system keyring
+        key_manager: AICOKeyManager instance (optional)
         **kwargs: Additional connection parameters
         
     Returns:
@@ -335,16 +273,33 @@ def create_encrypted_database(
         raise FileExistsError(f"Database already exists: {db_path}")
     
     try:
-        # Create encrypted connection
+        # Initialize key manager and derive key
+        km = key_manager or AICOKeyManager()
+        
+        # Set up master password if this is first time
+        if not km.has_stored_key():
+            master_key = km.setup_master_password(master_password)
+        else:
+            master_key = km.authenticate(master_password, interactive=False)
+            
+        # Derive database-specific encryption key
+        encryption_key = km.derive_database_key(
+            master_key=master_key,
+            database_type="libsql",
+            db_path=db_path
+        )
+        
+        # Create encrypted connection with pre-derived key
         conn = EncryptedLibSQLConnection(
             db_path=db_path,
-            master_password=master_password,
+            encryption_key=encryption_key,
+            key_manager=km,
             **kwargs
         )
         
         # Store password in keyring if requested
         if store_in_keyring:
-            conn._store_master_password(master_password)
+            km.store_database_password(master_password, "libsql", db_file.stem)
         
         # Initialize database by connecting and creating a test table
         with conn:

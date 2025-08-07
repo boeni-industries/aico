@@ -11,23 +11,37 @@ KISS approach: Single file, minimal dependencies, clear functionality.
 import os
 import getpass
 import keyring
-from typing import Optional
+import logging
+from pathlib import Path
+from typing import Optional, Dict, Any
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
+
+
+logger = logging.getLogger(__name__)
 
 
 class AICOKeyManager:
     """
-    Simple, unified key management for AICO.
+    Unified key management for AICO.
     
-    Handles three scenarios:
-    1. Master password setup (first time)
-    2. Interactive authentication (user login)
-    3. Service startup (automatic)
+    Handles:
+    1. Master password setup and authentication
+    2. Database-specific key derivation
+    3. Secure keyring integration
+    4. Salt management for databases
     """
+    
+    # Key derivation constants
+    DEFAULT_KDF_ITERATIONS = 100000  # PBKDF2 iterations for database keys
+    KEY_LENGTH = 32  # 256-bit keys
+    SALT_LENGTH = 16  # 128-bit salt
     
     def __init__(self, service_name: str = "AICO"):
         self.service_name = service_name
+        logger.debug(f"Initialized AICOKeyManager for service: {service_name}")
         
     def setup_master_password(self, password: str) -> bytes:
         """
@@ -104,30 +118,55 @@ class AICOKeyManager:
         except Exception:
             pass  # Key might not exist
             
-    def derive_database_key(self, master_key: bytes, database_type: str) -> bytes:
+    def derive_database_key(
+        self, 
+        master_key: bytes, 
+        database_type: str,
+        db_path: Optional[str] = None,
+        use_pbkdf2: bool = True
+    ) -> bytes:
         """
         Derive database-specific encryption key from master key.
         
         Args:
             master_key: Master key
             database_type: Database type ("libsql", "duckdb", "rocksdb", "chroma")
+            db_path: Database path for salt file management (required for libsql)
+            use_pbkdf2: Use PBKDF2 for compatibility (libsql) vs Argon2id (others)
             
         Returns:
             Database-specific encryption key
         """
-        salt = os.urandom(16)
-        argon2 = Argon2id(
-            salt=salt,
-            length=32,             # 256-bit key
-            iterations=2,          # Balanced for database operations
-            lanes=2,               # 2 threads
-            memory_cost=256*1024,  # 256MB in KiB
-            ad=None,
-            secret=None
-        )
-        
-        context = master_key + f"aico-db-{database_type}".encode()
-        return argon2.derive(context)
+        if database_type == "libsql" and db_path:
+            # Use PBKDF2 with database-specific salt for LibSQL compatibility
+            salt = self._get_or_create_db_salt(db_path)
+            
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=self.KEY_LENGTH,
+                salt=salt,
+                iterations=self.DEFAULT_KDF_ITERATIONS,
+                backend=default_backend()
+            )
+            
+            # Derive from master key + database context
+            context = master_key + f"aico-db-{database_type}".encode()
+            return kdf.derive(context)
+        else:
+            # Use Argon2id for other databases
+            salt = os.urandom(16)
+            argon2 = Argon2id(
+                salt=salt,
+                length=32,             # 256-bit key
+                iterations=2,          # Balanced for database operations
+                lanes=2,               # 2 threads
+                memory_cost=256*1024,  # 256MB in KiB
+                ad=None,
+                secret=None
+            )
+            
+            context = master_key + f"aico-db-{database_type}".encode()
+            return argon2.derive(context)
         
     def derive_file_encryption_key(self, master_key: bytes, file_purpose: str) -> bytes:
         """
@@ -215,3 +254,116 @@ class AICOKeyManager:
     def _store_key(self, master_key: bytes) -> None:
         """Store master key securely."""
         keyring.set_password(self.service_name, "master_key", master_key.hex())
+        
+    def _get_or_create_db_salt(self, db_path: str) -> bytes:
+        """
+        Get existing database salt or create new one.
+        
+        Args:
+            db_path: Path to the database file
+            
+        Returns:
+            Salt bytes for key derivation
+        """
+        db_file = Path(db_path)
+        salt_file = db_file.with_suffix(db_file.suffix + '.salt')
+        
+        if salt_file.exists():
+            with open(salt_file, 'rb') as f:
+                salt = f.read()
+            logger.debug(f"Loaded existing salt for {db_file.name}")
+        else:
+            salt = os.urandom(self.SALT_LENGTH)
+            
+            # Ensure parent directory exists
+            salt_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(salt_file, 'wb') as f:
+                f.write(salt)
+            
+            # Set secure file permissions
+            if hasattr(os, 'chmod'):
+                os.chmod(salt_file, 0o600)
+            
+            logger.info(f"Generated new salt for {db_file.name}")
+        
+        return salt
+        
+    def get_database_password_info(self, database_type: str, db_path: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get information about database password setup.
+        
+        Args:
+            database_type: Database type
+            db_path: Database path (for salt file location)
+            
+        Returns:
+            Dictionary with password/encryption information
+        """
+        info = {
+            "service_name": self.service_name,
+            "database_type": database_type,
+            "has_stored_key": self.has_stored_key(),
+            "key_length": self.KEY_LENGTH,
+            "salt_length": self.SALT_LENGTH
+        }
+        
+        if database_type == "libsql" and db_path:
+            db_file = Path(db_path)
+            salt_file = db_file.with_suffix(db_file.suffix + '.salt')
+            info.update({
+                "database_path": str(db_file),
+                "salt_file": str(salt_file),
+                "salt_exists": salt_file.exists(),
+                "kdf_iterations": self.DEFAULT_KDF_ITERATIONS,
+                "kdf_algorithm": "PBKDF2-SHA256"
+            })
+        else:
+            info.update({
+                "kdf_algorithm": "Argon2id"
+            })
+            
+        return info
+        
+    def store_database_password(self, password: str, database_type: str, username: Optional[str] = None) -> None:
+        """
+        Store database-specific password in keyring.
+        
+        Args:
+            password: Database password to store
+            database_type: Database type identifier
+            username: Username for the database (optional)
+        """
+        key_name = f"{database_type}_password"
+        if username:
+            key_name = f"{database_type}_{username}_password"
+            
+        try:
+            keyring.set_password(self.service_name, key_name, password)
+            logger.info(f"Stored {database_type} password in keyring")
+        except Exception as e:
+            logger.warning(f"Failed to store {database_type} password in keyring: {e}")
+            
+    def get_database_password(self, database_type: str, username: Optional[str] = None) -> Optional[str]:
+        """
+        Retrieve database-specific password from keyring.
+        
+        Args:
+            database_type: Database type identifier
+            username: Username for the database (optional)
+            
+        Returns:
+            Database password or None if not found
+        """
+        key_name = f"{database_type}_password"
+        if username:
+            key_name = f"{database_type}_{username}_password"
+            
+        try:
+            password = keyring.get_password(self.service_name, key_name)
+            if password:
+                logger.debug(f"Retrieved {database_type} password from keyring")
+            return password
+        except Exception as e:
+            logger.warning(f"Failed to retrieve {database_type} password from keyring: {e}")
+            return None
