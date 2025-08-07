@@ -103,7 +103,7 @@ AICO needs diverse skills and perspectives. Here's how you can contribute:
 ### **Getting Started**
 
 1. **Explore the Project**
-   - Read our [README](../README.md) and [Documentation](../welcome.md)
+   - Read our README (file does not exist) and [Documentation](../welcome.md)
    - Check out our [Development Roadmap](../welcome.md#development-roadmap)
    - Browse existing [Issues](https://github.com/boeni-industries/aico/issues) and [Discussions](https://github.com/boeni-industries/aico/discussions)
 

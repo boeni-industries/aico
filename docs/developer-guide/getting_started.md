@@ -1,6 +1,6 @@
 # Developer Onboarding: Getting Started with AICO
 
-This guide is for developers and contributors. For general usage, installation, or user onboarding, see the [User Guide](../user-guide/getting_started_overview.md).
+This guide is for developers and contributors. For general usage, installation, or user onboarding, see the User Guide (file does not exist).
 
 Here you'll find everything you need to set up your development environment, understand the project structure, and start contributing.
 
@@ -374,9 +374,9 @@ npm install react-admin ra-data-simple-rest @mui/material @mui/icons-material @e
 
 - [Contributing](./contributing.md)
 - [Architecture Overview](../architecture/architecture_overview.md)
-- [Modules & Components](../architecture/modules.md)
+- Modules & Components (file does not exist)
 - [Developer Guidelines & Conventions](./guidelines.md)
-- [Plugin System Overview](../architecture/plugins.md)
+- [Plugin System Overview](../architecture/plugin_system.md)
 - [Data Layer & Storage](../architecture/data_layer.md)
 - [Admin UI Architecture](../admin/admin_ui_master.md)
 - [Protocol Buffers & API Contracts](./protobuf.md)

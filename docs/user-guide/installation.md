@@ -9,4 +9,4 @@
 
 ## Development Setup
 
-*For now, check the [contributing guide](../development/contributing.md) if you want to help with development.*
+*For now, check the contributing guide (file does not exist) if you want to help with development.*

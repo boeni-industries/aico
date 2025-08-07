@@ -75,39 +75,39 @@ Each stage builds deeper companionship rather than just adding features.
 ## 🛤️ Development Roadmap
 
 !!! info "Current Phase: Foundation"
-    We're currently building the core infrastructure scaffolding. See our [detailed roadmaps](../roadmap/) for the complete development journey.
+    We're currently building the core infrastructure scaffolding. See our [detailed roadmaps](roadmap/foundation.md) for the complete development journey.
 
 ### **Development Stages**
 
 1. **🛠️ Foundation** *(Current)* - Core infrastructure scaffolding
     - ZeroMQ message bus, plugin system, FastAPI backend
     - Resource management, security framework, development pipeline
-    - [View Foundation Roadmap](../roadmap/foundation.md)
+    - [View Foundation Roadmap](roadmap/foundation.md)
 
 2. **🤝 Companion** *(Next)* - MVP with basic companionship
     - Text chat, voice interaction, basic avatar, memory system
     - Local LLM integration, personality engine, emotion recognition
-    - [View MVP Roadmap](../roadmap/mvp.md)
+    - [View MVP Roadmap](roadmap/mvp.md)
 
 3. **💭 Confidante** - Deep emotional intelligence
     - Advanced emotion simulation, crisis support, empathy modeling
-    - [View Confidante Roadmap](../roadmap/confidante.md)
+    - [View Confidante Roadmap](roadmap/confidante.md)
 
 4. **🦾 Sidekick** - Advanced autonomous agency
     - MCTS planning, curiosity-driven learning, proactive assistance
-    - [View Sidekick Roadmap](../roadmap/sidekick.md)
+    - [View Sidekick Roadmap](roadmap/sidekick.md)
 
 5. **🌟 Co-Adventurer** - Collaborative learning and growth
     - Shared goal pursuit, collaborative problem-solving, meta-learning
-    - [View Co-Adventurer Roadmap](../roadmap/co_adventurer.md)
+    - [View Co-Adventurer Roadmap](roadmap/co_adventurer.md)
 
 6. **🌐 Embodied Presence** - Multi-modal integration
     - Federated device roaming, AR/VR, IoT, robotics, spatial computing
-    - [View Embodied Presence Roadmap](../roadmap/embodied-presence.md)
+    - [View Embodied Presence Roadmap](roadmap/embodied_presence.md)
 
 7. **🤝 Community** - Collective intelligence
     - Privacy-preserving social features, federated learning
-    - [View Community Roadmap](../roadmap/community.md)
+    - [View Community Roadmap](roadmap/community.md)
 
 ## 🤝 Who's This For?
 
@@ -133,7 +133,7 @@ Each stage builds deeper companionship rather than just adding features.
 
 AICO is an open experiment—all code and progress are public. Whether you want to add features, challenge assumptions, help build the ethics framework, or just watch the journey unfold, you're welcome.
 
-**Ready to contribute?** Start with our [Contributing Guide](development/contributing.md).
+**Ready to contribute?** Start with our Contributing Guide (link removed: file does not exist).
 
 ### **Community & Collaboration**
 - **Privacy-Preserving Collective Learning** - Improve AICO's emotional intelligence through federated learning

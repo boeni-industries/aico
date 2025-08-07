@@ -141,7 +141,7 @@ const authProvider = {
 - **Error handling:** Ensure backend APIs return clear errors; surface them in the UI
 - **Security:** Never expose admin UI outside localhost without explicit configuration and HTTPS
 - **Testing:** Use React-Admin’s built-in testing utilities for panels/components
-- **Documentation:** Reference the [Admin Module Developer Guideline](../development/admin_module_guidelines.md) for hands-on steps
+- **Documentation:** Reference the Admin Module Developer Guideline (file does not exist) for hands-on steps
 
 ---
 

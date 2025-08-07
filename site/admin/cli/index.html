@@ -1058,6 +1058,24 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#cli-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      CLI Architecture
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#visual-style-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      Visual Style Guide
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ux-output-standards" class="md-nav__link">
     <span class="md-ellipsis">
       UX &amp; Output Standards
@@ -2357,6 +2375,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -2475,6 +2497,52 @@
   
   <span class="md-ellipsis">
     Protocol Buffers
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/versioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Versioning
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/cli_handbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    CLI Handbook
     
   </span>
   
@@ -2821,6 +2889,170 @@
 <li>Each command is implemented as a Typer sub-app, allowing modular growth.</li>
 <li>All output uses Rich for tables, markdown, progress bars, and error highlighting.</li>
 </ul>
+<h2 id="cli-architecture">CLI Architecture<a class="headerlink" href="#cli-architecture" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p><strong>Permanent CLI UX Policy:</strong></p>
+<p>All CLI commands and command groups must provide actionable, friendly, and instructive feedback when invoked incorrectly or incompletely. The CLI must never:
+- Show only an aggressive error message
+- Require the user to consult help and then retry
+- Leave the user without a clear next step</p>
+<p>Instead, every CLI entrypoint must print helpful guidance, usage examples, and (where possible) a preview of the result. This is a strict and permanent requirement for all CLI development in AICO.</p>
+</blockquote>
+<h2 id="visual-style-guide">Visual Style Guide<a class="headerlink" href="#visual-style-guide" title="Permanent link">&para;</a></h2>
+<h3 id="design-philosophy">Design Philosophy<a class="headerlink" href="#design-philosophy" title="Permanent link">&para;</a></h3>
+<p>The AICO CLI follows a <strong>modern, minimal, clean</strong> aesthetic that prioritizes:
+- <strong>Readability</strong> over decoration
+- <strong>Consistency</strong> across all commands
+- <strong>Professional appearance</strong> suitable for enterprise environments
+- <strong>Accessibility</strong> across different terminals and color schemes</p>
+<h3 id="color-palette">Color Palette<a class="headerlink" href="#color-palette" title="Permanent link">&para;</a></h3>
+<p><strong>Primary Colors:</strong>
+- <strong>Cyan (<code>[bold cyan]</code>)</strong>: Brand color for titles, headers, and AICO branding
+- <strong>Yellow (<code>[bold yellow]</code>)</strong>: Table headers and section labels
+- <strong>Green (<code>[green]</code>, <code>[bold green]</code>)</strong>: Success states, version numbers, positive values
+- <strong>Red (<code>[red]</code>)</strong>: Errors, warnings, missing values
+- <strong>White (<code>[bold white]</code>)</strong>: Primary content, subsystem names
+- <strong>Dim (<code>[dim]</code>)</strong>: Secondary information, examples, help text</p>
+<p><strong>Usage Guidelines:</strong>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Titles and branding</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">console</span><span class="o">.</span><span class="n">print</span><span class="p">(</span><span class="s2">&quot;✨ [bold cyan]AICO System Versions[/bold cyan]&quot;</span><span class="p">)</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Table headers</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">header_style</span><span class="o">=</span><span class="s2">&quot;bold yellow&quot;</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># Success/positive values</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">v</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;[bold green]</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">[/bold green]&quot;</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># Errors</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="n">console</span><span class="o">.</span><span class="n">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;❌ [red]Error message[/red]&quot;</span><span class="p">)</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="c1"># Secondary info</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="n">console</span><span class="o">.</span><span class="n">print</span><span class="p">(</span><span class="s2">&quot;[dim]Use &#39;aico COMMAND --help&#39; for more information.[/dim]&quot;</span><span class="p">)</span>
+</span></code></pre></div></p>
+<h3 id="typography-formatting">Typography &amp; Formatting<a class="headerlink" href="#typography-formatting" title="Permanent link">&para;</a></h3>
+<p><strong>Text Hierarchy:</strong>
+1. <strong>Titles</strong>: <code>[bold cyan]</code> with optional sparkle emoji (✨)
+2. <strong>Headers</strong>: <code>[bold yellow]</code> for section headers and table columns
+3. <strong>Content</strong>: <code>[bold white]</code> for primary data, <code>[green]</code> for values
+4. <strong>Help Text</strong>: <code>[dim]</code> for examples and guidance</p>
+<p><strong>Spacing Rules:</strong>
+- Always add blank lines before and after tables/panels
+- Use <code>console.rule()</code> for section dividers in complex output
+- Consistent padding in tables: <code>padding=(0, 1)</code></p>
+<h3 id="table-styling">Table Styling<a class="headerlink" href="#table-styling" title="Permanent link">&para;</a></h3>
+<p><strong>Standard Table Configuration:</strong>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">table</span> <span class="o">=</span> <span class="n">Table</span><span class="p">(</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">title</span><span class="o">=</span><span class="s2">&quot;✨ [bold cyan]Title Here[/bold cyan]&quot;</span><span class="p">,</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">title_style</span><span class="o">=</span><span class="s2">&quot;bold cyan&quot;</span><span class="p">,</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">border_style</span><span class="o">=</span><span class="s2">&quot;bright_blue&quot;</span><span class="p">,</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">header_style</span><span class="o">=</span><span class="s2">&quot;bold yellow&quot;</span><span class="p">,</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">show_lines</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">box</span><span class="o">=</span><span class="n">box</span><span class="o">.</span><span class="n">SIMPLE_HEAD</span><span class="p">,</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">padding</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="p">)</span>
+</span></code></pre></div></p>
+<p><strong>Critical Rules:</strong>
+- <strong>NO EMOJIS IN TABLE DATA</strong>: Emojis break column alignment across terminals
+- <strong>Use <code>box.SIMPLE_HEAD</code></strong>: Clean, minimal borders that align properly
+- <strong>Left-align all columns</strong>: <code>justify="left"</code> for consistency
+- <strong>Consistent column styling</strong>: <code>style="bold white"</code> for labels, <code>style="green"</code> for values</p>
+<h3 id="icons-symbols">Icons &amp; Symbols<a class="headerlink" href="#icons-symbols" title="Permanent link">&para;</a></h3>
+<p><strong>Approved Icons:</strong>
+- ✨ Sparkle: Titles and branding
+- ❌ Cross: Errors and failures
+- 📦 Package: Generic items (fallback only)
+- ⚡ Lightning: CLI/command line tools (in panels only)
+- 🤖 Robot: AI/backend services (in panels only)
+- 🖥️ Monitor: UI/frontend (in panels only)
+- ⚙️ Gear: Configuration/admin (in panels only)</p>
+<p><strong>Icon Usage Rules:</strong>
+- <strong>Tables</strong>: NO icons in table data (alignment issues)
+- <strong>Panels</strong>: Icons OK for single-item displays
+- <strong>Titles</strong>: Sparkle (✨) only
+- <strong>Errors</strong>: Cross (❌) with red text</p>
+<h3 id="panel-styling">Panel Styling<a class="headerlink" href="#panel-styling" title="Permanent link">&para;</a></h3>
+<p><strong>For single-item displays:</strong>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">panel</span> <span class="o">=</span> <span class="n">Panel</span><span class="p">(</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">icon</span><span class="si">}</span><span class="s2"> [bold white]</span><span class="si">{</span><span class="n">item</span><span class="si">}</span><span class="s2">[/bold white]</span><span class="se">\n</span><span class="s2">[bold green]</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">[/bold green]&quot;</span><span class="p">,</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">title</span><span class="o">=</span><span class="s2">&quot;[bold cyan]Title[/bold cyan]&quot;</span><span class="p">,</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">border_style</span><span class="o">=</span><span class="s2">&quot;bright_blue&quot;</span><span class="p">,</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">box</span><span class="o">=</span><span class="n">box</span><span class="o">.</span><span class="n">ROUNDED</span><span class="p">,</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">padding</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="p">)</span>
+</span></code></pre></div></p>
+<h3 id="layout-patterns">Layout Patterns<a class="headerlink" href="#layout-patterns" title="Permanent link">&para;</a></h3>
+<p><strong>Root CLI Help:</strong>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">console</span><span class="o">.</span><span class="n">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">✨ [bold cyan]AICO CLI[/bold cyan]&quot;</span><span class="p">)</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">console</span><span class="o">.</span><span class="n">print</span><span class="p">(</span><span class="s2">&quot;[dim]Description here[/dim]</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">console</span><span class="o">.</span><span class="n">rule</span><span class="p">(</span><span class="s2">&quot;[bold blue]Section Name&quot;</span><span class="p">,</span> <span class="n">style</span><span class="o">=</span><span class="s2">&quot;blue&quot;</span><span class="p">)</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">console</span><span class="o">.</span><span class="n">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">📦 [green]command[/green]   Description&quot;</span><span class="p">)</span>
+</span></code></pre></div></p>
+<p><strong>Command Group Help:</strong>
+- Use Typer's built-in help system with comprehensive help strings
+- Include examples and usage guidance in help text
+- Show help automatically when no subcommand given (not errors)</p>
+<h3 id="implementation-guidelines-for-developers">Implementation Guidelines for Developers<a class="headerlink" href="#implementation-guidelines-for-developers" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Always use the approved color palette</strong> - no custom colors</li>
+<li><strong>Never put emojis in table data</strong> - breaks alignment</li>
+<li><strong>Use <code>box.SIMPLE_HEAD</code> for all tables</strong> - consistent, clean appearance</li>
+<li><strong>Include sparkle (✨) in main titles</strong> - brand consistency</li>
+<li><strong>Left-align all table columns</strong> - professional appearance</li>
+<li><strong>Add spacing around tables/panels</strong> - breathing room</li>
+<li><strong>Use <code>[dim]</code> for help text</strong> - visual hierarchy</li>
+</ol>
+<h3 id="anti-patterns-do-not-use">Anti-Patterns (DO NOT USE)<a class="headerlink" href="#anti-patterns-do-not-use" title="Permanent link">&para;</a></h3>
+<p>❌ <strong>Emojis in table rows</strong> (breaks alignment)<br />
+❌ <strong>Center-aligned table columns</strong> (inconsistent)<br />
+❌ <strong>Rounded table borders</strong> (alignment issues)<br />
+❌ <strong>Custom colors outside palette</strong> (inconsistent branding)<br />
+❌ <strong>Missing spacing around tables</strong> (cramped appearance)<br />
+❌ <strong>Aggressive error messages</strong> (violates UX policy)<br />
+❌ <strong>Complex box styles</strong> (maintenance burden)  </p>
+<p>This style guide ensures all CLI commands maintain the same professional, clean, minimal aesthetic that users expect from the AICO system.</p>
+<h3 id="core-principles">Core Principles<a class="headerlink" href="#core-principles" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Modular &amp; Extensible</strong>: Each command is a self-contained module/sub-app, enabling massive future growth.</li>
+<li><strong>DRY &amp; Maintainable</strong>: Shares logic with backend modules; CLI is a thin, UX-focused layer.</li>
+<li><strong>Fast &amp; User-Friendly</strong>: Instant startup, rich output, robust error handling, and autocompletion.</li>
+<li><strong>Self-Documenting</strong>: Any incomplete or ambiguous command invocation yields a helpful, predictive help text to guide the user to the next step.</li>
+</ul>
+<h3 id="cli-directory-structure-suggested">CLI Directory Structure (Suggested)<a class="headerlink" href="#cli-directory-structure-suggested" title="Permanent link">&para;</a></h3>
+<p><div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>/cli  
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    /commands  
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>        status.py  
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>        user.py  
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>        db.py  
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>        plugin.py  
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>        logs.py  
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>        config.py  
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>        admin.py  
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>        version.py   # (First: versioning automation)  
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>    main.py  
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    utils.py  
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>    ...
+</span></code></pre></div>
+- Each command is implemented as a sub-app (using Typer) and registered in <code>main.py</code>.
+- Shared utilities, config, and backend integration in <code>utils.py</code> or <code>/lib</code>.</p>
+<h3 id="command-registration-pattern">Command Registration Pattern<a class="headerlink" href="#command-registration-pattern" title="Permanent link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># main.py</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kn">import</span> <span class="nn">typer</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="kn">from</span> <span class="nn">commands</span> <span class="kn">import</span> <span class="n">status</span><span class="p">,</span> <span class="n">user</span><span class="p">,</span> <span class="n">db</span><span class="p">,</span> <span class="n">plugin</span><span class="p">,</span> <span class="n">logs</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">admin</span><span class="p">,</span> <span class="n">version</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">app</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Typer</span><span class="p">()</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="n">app</span><span class="o">.</span><span class="n">add_typer</span><span class="p">(</span><span class="n">version</span><span class="o">.</span><span class="n">app</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;version&quot;</span><span class="p">)</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># ...add other sub-apps</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="n">app</span><span class="p">()</span>
+</span></code></pre></div>
+<h3 id="growth-extensibility">Growth &amp; Extensibility<a class="headerlink" href="#growth-extensibility" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Each new domain (e.g., plugin, agent, emotion, vector) gets its own command module.</li>
+<li>The sub-app pattern keeps the CLI scalable and organized as it grows.</li>
+<li>Future plugin discovery (dynamic loading) can be added as CLI matures.</li>
+</ul>
+<hr />
 <h2 id="ux-output-standards">UX &amp; Output Standards<a class="headerlink" href="#ux-output-standards" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Instant startup</strong> (&lt;100ms typical)</li>

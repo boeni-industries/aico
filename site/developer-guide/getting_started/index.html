@@ -2225,6 +2225,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -2327,6 +2331,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#contributing" class="md-nav__link">
+    <span class="md-ellipsis">
+      Contributing
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#repository-structure" class="md-nav__link">
     <span class="md-ellipsis">
       Repository Structure
@@ -2363,18 +2376,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#contributing" class="md-nav__link">
+  <a href="#maintainer-note-dependency-management-and-project-scaffolding" class="md-nav__link">
     <span class="md-ellipsis">
-      Contributing
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#protocol-buffers-api-contracts" class="md-nav__link">
-    <span class="md-ellipsis">
-      Protocol Buffers &amp; API Contracts
+      Maintainer Note: Dependency Management and Project Scaffolding
     </span>
   </a>
   
@@ -2384,24 +2388,6 @@
   <a href="#further-reading" class="md-nav__link">
     <span class="md-ellipsis">
       Further Reading
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#faq" class="md-nav__link">
-    <span class="md-ellipsis">
-      FAQ
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#contact-community" class="md-nav__link">
-    <span class="md-ellipsis">
-      Contact &amp; Community
     </span>
   </a>
   
@@ -2475,6 +2461,52 @@
   
   <span class="md-ellipsis">
     Protocol Buffers
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../versioning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Versioning
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_handbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    CLI Handbook
     
   </span>
   
@@ -2752,11 +2784,18 @@
 
 
 <h1 id="developer-onboarding-getting-started-with-aico">Developer Onboarding: Getting Started with AICO<a class="headerlink" href="#developer-onboarding-getting-started-with-aico" title="Permanent link">&para;</a></h1>
-<p>This guide is for developers and contributors. For general usage, installation, or user onboarding, see the <a href="../user-guide/getting_started_overview.md">User Guide</a>.</p>
+<p>This guide is for developers and contributors. For general usage, installation, or user onboarding, see the User Guide (file does not exist).</p>
 <p>Here you'll find everything you need to set up your development environment, understand the project structure, and start contributing.</p>
 <hr />
 <h2 id="project-overview">Project Overview<a class="headerlink" href="#project-overview" title="Permanent link">&para;</a></h2>
 <p>AICO is an open-source, local-first AI companion designed to be emotionally present, embodied, and proactive. The project is modular, privacy-first, and extensible, with contributions welcome from developers, designers, researchers, and more.</p>
+<hr />
+<h2 id="contributing">Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h2>
+<p>See <a href="../contributing/"><code>contributing.md</code></a> for ways to get involved, contribution etiquette, and project values.</p>
+<p><strong>Highlights:</strong>
+- All skillsets welcome (development, design, research, writing, testing, etc.)
+- Small, atomic commits and clear PRs
+- Respectful, constructive code reviews</p>
 <hr />
 <h2 id="repository-structure">Repository Structure<a class="headerlink" href="#repository-structure" title="Permanent link">&para;</a></h2>
 <p>The AICO repository is organized as a polyglot monorepo, with each major component in its own directory:</p>
@@ -2800,43 +2839,256 @@
 - Extensible via plugins and clear interfaces</p>
 <hr />
 <h2 id="setting-up-your-environment">Setting Up Your Environment<a class="headerlink" href="#setting-up-your-environment" title="Permanent link">&para;</a></h2>
-<p><strong>TBD</strong>
-- How to install dependencies for each component
-- How to generate code from Protocol Buffers
-- Recommended tools and editors</p>
+<p>Follow these steps to get started with AICO development:</p>
+<h3 id="1-clone-or-fork-the-repository">1. Clone or Fork the Repository<a class="headerlink" href="#1-clone-or-fork-the-repository" title="Permanent link">&para;</a></h3>
+<p><strong>Core team:</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>git<span class="w"> </span>clone<span class="w"> </span>git@github.com:boeni-industries/aico.git
+</span></code></pre></div>
+<strong>Contributors:</strong></p>
+<ul>
+<li>Fork the repository on GitHub.</li>
+<li>Clone your fork</li>
+</ul>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>git<span class="w"> </span>clone<span class="w"> </span>git@github.com:&lt;your-username&gt;/aico.git
+</span></code></pre></div>
+<h3 id="2-install-python-3135">2. Install Python 3.13.5<a class="headerlink" href="#2-install-python-3135" title="Permanent link">&para;</a></h3>
+<p>AICO requires Python 3.13.5 for all Python-based components. Download and install it from the official Python website:</p>
+<ul>
+<li><a href="https://www.python.org/downloads/release/python-3135/">Python 3.13.5 downloads</a></li>
+</ul>
+<p>After installation, verify with:
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>--version
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># or</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>py<span class="w"> </span>--version
+</span></code></pre></div>
+You should see <code>Python 3.13.5</code>.</p>
+<h3 id="3-python-dependency-management-with-uv-cli-backend">3. Python Dependency Management with UV (CLI &amp; Backend)<a class="headerlink" href="#3-python-dependency-management-with-uv-cli-backend" title="Permanent link">&para;</a></h3>
+<p>AICO uses <a href="https://github.com/astral-sh/uv">UV</a> and <code>requirements.txt</code> for dependency management in all Python components. Each component is isolated with its own <code>.venv</code> and <code>requirements.txt</code> file.</p>
+<p><strong>Install UV globally (once per system):</strong></p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>pip<span class="w"> </span>install<span class="w"> </span>uv
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># or follow: https://github.com/astral-sh/uv#installation</span>
+</span></code></pre></div>
+<p><strong>CLI:</strong></p>
+<p><strong>Windows PowerShell</strong>
+  <div class="language-powershell highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">cd cli</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">py</span> <span class="p">-</span><span class="n">3</span><span class="p">.</span><span class="n">13</span> <span class="n">-m</span> <span class="n">venv</span> <span class="p">.</span><span class="n">venv</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="p">.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">Activate</span><span class="p">.</span><span class="n">ps1</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">uv</span> <span class="n">pip</span> <span class="n">install</span> <span class="n">-r</span> <span class="n">requirements</span><span class="p">.</span><span class="n">txt</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">python</span> <span class="n">aico</span><span class="p">.</span><span class="n">py</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">pyinstaller</span> <span class="p">-</span><span class="n">-onefile</span> <span class="n">aico</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-name</span> <span class="n">aico</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c"># Executable will be in dist/aico.exe</span>
+</span></code></pre></div></p>
+<p><strong>Windows Cmd</strong>
+  <div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>cd cli
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>py -3.13 -m venv .venv
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>.venv\Scripts\activate.bat
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>uv pip install -r requirements.txt
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>python aico.py
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>pyinstaller --onefile aico.py --name aico
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>REM Executable will be in dist\aico.exe
+</span></code></pre></div></p>
+<p><strong>macOS/Linux</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">cd</span><span class="w"> </span>cli
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>python3.13<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>python<span class="w"> </span>aico.py
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>pyinstaller<span class="w"> </span>--onefile<span class="w"> </span>aico.py<span class="w"> </span>--name<span class="w"> </span>aico
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># Executable will be in dist/aico</span>
+</span></code></pre></div></p>
+<p><strong>Backend:</strong></p>
+<p><strong>Windows PowerShell</strong>
+  <div class="language-powershell highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nb">cd </span><span class="n">backend</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">py</span> <span class="p">-</span><span class="n">3</span><span class="p">.</span><span class="n">13</span> <span class="n">-m</span> <span class="n">venv</span> <span class="p">.</span><span class="n">venv</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="p">.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">Activate</span><span class="p">.</span><span class="n">ps1</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">uv</span> <span class="n">pip</span> <span class="n">install</span> <span class="n">-r</span> <span class="n">requirements</span><span class="p">.</span><span class="n">txt</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">uvicorn</span> <span class="n">main</span><span class="p">:</span><span class="n">app</span> <span class="p">-</span><span class="n">-reload</span> <span class="p">-</span><span class="n">-port</span> <span class="n">8770</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="c"># Visit http://127.0.0.1:8770</span>
+</span></code></pre></div></p>
+<p><strong>Windows Cmd</strong>
+  <div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>cd backend
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>py -3.13 -m venv .venv
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>.venv\Scripts\activate.bat
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>uv pip install -r requirements.txt
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>uvicorn main:app --reload --port 8770
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>REM Visit http://127.0.0.1:8770
+</span></code></pre></div></p>
+<p><strong>macOS/Linux</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">cd</span><span class="w"> </span>backend
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>python3.13<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8770</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="c1"># Visit http://127.0.0.1:8770</span>
+</span></code></pre></div></p>
+<blockquote>
+<p><strong>Tip:</strong> Each Python component uses its own <code>.venv</code> and <code>requirements.txt</code>. Always activate the correct environment before installing or running anything. In VS Code or Windsurf, select the correct Python interpreter from <code>.venv</code> for best experience.</p>
+<p>Use <code>uv pip install &lt;package&gt;</code> and <code>uv pip freeze &gt; requirements.txt</code> to add or update dependencies.</p>
+</blockquote>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Only one Python virtual environment can be active per terminal session. If you need to work with both the CLI and backend at the same time, open separate terminal windows and activate the appropriate environment in each. Changing directories does not automatically switch the active environment—you must activate it explicitly.</p>
+</div>
+<hr />
+<h3 id="4-setting-up-the-flutter-frontend">4. Setting Up the Flutter Frontend<a class="headerlink" href="#4-setting-up-the-flutter-frontend" title="Permanent link">&para;</a></h3>
+<p>The flutter project scaffolding is present in <code>/frontend</code>.</p>
+<p><strong>Install Flutter:</strong></p>
+<ul>
+<li>Download and install Flutter from the <a href="https://docs.flutter.dev/get-started/install">official site</a> for your platform (Windows, macOS, Linux).</li>
+<li>After installation, check your version (we recommend Flutter 3.19+):
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>flutter<span class="w"> </span>--version
+</span></code></pre></div></li>
+</ul>
+<p><strong>Set up platform dependencies:</strong></p>
+<ul>
+<li>For Android: Install Android Studio and set up the Android SDK.</li>
+<li>For iOS (macOS only): Install Xcode and set up the iOS toolchain.</li>
+<li>For web/desktop: Follow <a href="https://docs.flutter.dev/get-started/web">Flutter platform setup instructions</a> as needed.</li>
+</ul>
+<p><strong>Install dependencies:</strong></p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nb">cd</span><span class="w"> </span>frontend
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>flutter<span class="w"> </span>pub<span class="w"> </span>get
+</span></code></pre></div>
+<p><strong>Run the app:</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>flutter<span class="w"> </span>run
+</span></code></pre></div>
+<strong>.gitignore:</strong> is already configured to exclude build artifacts.</p>
+<div class="admonition note">
+<p class="admonition-title">Tip</p>
+<p>Use VS Code, Android Studio, or Windsurf with the Flutter/Dart plugins for the best development experience.</p>
+</div>
+<hr />
+<h3 id="5-setting-up-the-react-admin-studio">5. Setting Up the React Admin Studio<a class="headerlink" href="#5-setting-up-the-react-admin-studio" title="Permanent link">&para;</a></h3>
+<p>All React/React-Admin code and dependencies found in <code>/studio</code>.</p>
+<p><strong>Install Node.js &amp; npm:</strong></p>
+<ul>
+<li>Download and install the latest LTS version of Node.js from <a href="https://nodejs.org/">nodejs.org</a>. npm is included.</li>
+<li>After installation, check your versions (we recommend Node.js 22.x+ and npm 11.x+):</li>
+</ul>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>node<span class="w"> </span>--version
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>npm<span class="w"> </span>--version
+</span></code></pre></div>
+<p><strong>Install dependencies:</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nb">cd</span><span class="w"> </span>studio
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>npm<span class="w"> </span>install
+</span></code></pre></div></p>
+<p><strong>Run the app:</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>npm<span class="w"> </span>start
+</span></code></pre></div></p>
+<p><strong>.gitignore:</strong> Already configured to exclude build artifacts and <code>node_modules</code>.</p>
+<blockquote>
+<p><strong>Tip:</strong>
+Use VS Code, Windsurf, or any modern IDE with JS/TS support for development.</p>
+</blockquote>
 <hr />
 <h2 id="building-and-running-components">Building and Running Components<a class="headerlink" href="#building-and-running-components" title="Permanent link">&para;</a></h2>
-<p><strong>TBD</strong>
-- How to build and run the backend
-- How to build and run the frontend (Flutter)
-- How to launch the studio (React)
-- How to use the CLI</p>
+<p>Below are the build and run commands for each major part of the system. Substitute your platform (Windows, macOS, Linux) as appropriate.</p>
+<h3 id="backend-python-fastapi">Backend (Python FastAPI)<a class="headerlink" href="#backend-python-fastapi" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Windows (PowerShell):</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nb">cd</span><span class="w"> </span>backend
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>.venv<span class="se">\S</span>cripts<span class="se">\A</span>ctivate.ps1
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8700</span>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="c1"># Visit http://127.0.0.1:8700</span>
+</span></code></pre></div></li>
+<li><strong>Windows (Cmd):</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nb">cd</span><span class="w"> </span>backend
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>.venv<span class="se">\S</span>cripts<span class="se">\a</span>ctivate.bat
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8700</span>
+</span></code></pre></div></li>
+<li><strong>Git Bash/WSL/Linux/macOS:</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="nb">cd</span><span class="w"> </span>backend
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="nb">source</span><span class="w"> </span>.venv/Scripts/activate
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="c1"># or source .venv/bin/activate if on Linux/macOS</span>
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8700</span>
+</span></code></pre></div></li>
+</ul>
+<h3 id="cli-python-cli">CLI (Python CLI)<a class="headerlink" href="#cli-python-cli" title="Permanent link">&para;</a></h3>
+<h4 id="run-the-cli-in-development">Run the CLI in development<a class="headerlink" href="#run-the-cli-in-development" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>All platforms:</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nb">cd</span><span class="w"> </span>cli
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="c1"># Activate venv (see above)</span>
+</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+</span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>python<span class="w"> </span>aico.py
+</span></code></pre></div></li>
+</ul>
+<h4 id="build-the-cli-executable-pyinstaller">Build the CLI executable (PyInstaller)<a class="headerlink" href="#build-the-cli-executable-pyinstaller" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>All platforms:</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="nb">cd</span><span class="w"> </span>cli
+</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="c1"># Activate venv (see above)</span>
+</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>pyinstaller<span class="w"> </span>aico.spec
+</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="c1"># Executable will be in dist/aico(.exe)</span>
+</span></code></pre></div></li>
+</ul>
+<h4 id="run-the-built-executable">Run the built executable<a class="headerlink" href="#run-the-built-executable" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Windows:</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>dist<span class="se">\a</span>ico.exe
+</span></code></pre></div></li>
+<li><strong>Linux/macOS:</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>./dist/aico
+</span></code></pre></div></li>
+</ul>
+<h3 id="frontend-flutter">Frontend (Flutter)<a class="headerlink" href="#frontend-flutter" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>All platforms:</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="nb">cd</span><span class="w"> </span>frontend
+</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>flutter<span class="w"> </span>run
+</span></code></pre></div></li>
+<li>For desktop: <code>flutter run -d windows</code> (Windows), <code>-d macos</code> (macOS), <code>-d linux</code> (Linux)</li>
+<li>For web: <code>flutter run -d chrome</code></li>
+<li>For mobile: Use <code>flutter devices</code> to list and select your target</li>
+</ul>
+<h3 id="studio-react-admin-ui">Studio (React Admin UI)<a class="headerlink" href="#studio-react-admin-ui" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>All platforms:</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="nb">cd</span><span class="w"> </span>studio
+</span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>npm<span class="w"> </span>start
+</span></code></pre></div></li>
+<li>Open <a href="http://localhost:3000">http://localhost:3000</a> in your browser if it does not open automatically.</li>
+</ul>
 <hr />
-<h2 id="contributing">Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h2>
-<p>See <a href="../contributing/"><code>contributing.md</code></a> for ways to get involved, contribution etiquette, and project values.</p>
-<p><strong>Highlights:</strong>
-- All skillsets welcome (development, design, research, writing, testing, etc.)
-- Small, atomic commits and clear PRs
-- Respectful, constructive code reviews</p>
-<hr />
-<h2 id="protocol-buffers-api-contracts">Protocol Buffers &amp; API Contracts<a class="headerlink" href="#protocol-buffers-api-contracts" title="Permanent link">&para;</a></h2>
-<p>See <a href="../protobuf/"><code>protobuf.md</code></a> for details on message formats, code generation, and best practices for evolving schemas.</p>
+<h2 id="maintainer-note-dependency-management-and-project-scaffolding">Maintainer Note: Dependency Management and Project Scaffolding<a class="headerlink" href="#maintainer-note-dependency-management-and-project-scaffolding" title="Permanent link">&para;</a></h2>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This section is for maintainers only. Regular contributors do NOT need to run these commands. The following steps were performed during initial project setup and are preserved for reference.</p>
+</div>
+<h4 id="python-dependency-management">Python Dependency Management<a class="headerlink" href="#python-dependency-management" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Previous approach:</strong> Each Python component (<code>cli/</code>, <code>backend/</code>) used its own <code>pyproject.toml</code> (PEP 621/Poetry) for dependencies and metadata. Poetry was used for dependency management and packaging. This was replaced due to friction, IDE integration issues, and version pinning complexity.</li>
+<li><strong>Current approach:</strong> Each Python component (<code>cli/</code>, <code>backend/</code>) now uses its own <code>.venv</code> and <code>requirements.txt</code>. <a href="https://github.com/astral-sh/uv">UV</a> is used for ultra-fast dependency installs and lockfile management. This approach is simpler, more compatible with IDEs, and easier for contributors.</li>
+<li>The supported Python version is pinned to <code>&gt;=3.13,&lt;3.15</code> due to PyInstaller compatibility. Update this restriction only after verifying all key dependencies support newer Python versions.</li>
+<li>Use <code>uv pip install &lt;package&gt;</code> to add dependencies and <code>uv pip freeze &gt; requirements.txt</code> to refresh lockfiles.</li>
+<li>PyInstaller is included as a CLI dependency for building distributable executables.</li>
+<li>If switching to a different dependency manager in the future, update this section and docs accordingly.</li>
+</ul>
+<h4 id="flutter-frontend-project-creation">Flutter Frontend Project Creation<a class="headerlink" href="#flutter-frontend-project-creation" title="Permanent link">&para;</a></h4>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>flutter<span class="w"> </span>create<span class="w"> </span>frontend<span class="w"> </span>--project-name<span class="w"> </span>aico_ui<span class="w"> </span>--platforms<span class="o">=</span>windows,macos,linux,android,ios,web
+</span></code></pre></div>
+<h4 id="react-admin-studio-project-creation">React Admin Studio Project Creation<a class="headerlink" href="#react-admin-studio-project-creation" title="Permanent link">&para;</a></h4>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>npx<span class="w"> </span>create-react-app<span class="w"> </span>studio<span class="w"> </span>--template<span class="w"> </span>typescript
+</span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="nb">cd</span><span class="w"> </span>studio
+</span><span id="__span-27-3"><a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>npm<span class="w"> </span>install<span class="w"> </span>react-admin<span class="w"> </span>ra-data-simple-rest<span class="w"> </span>@mui/material<span class="w"> </span>@mui/icons-material<span class="w"> </span>@emotion/react<span class="w"> </span>@emotion/styled<span class="w"> </span>react-router-dom
+</span></code></pre></div>
 <hr />
 <h2 id="further-reading">Further Reading<a class="headerlink" href="#further-reading" title="Permanent link">&para;</a></h2>
 <ul>
-<li><a href="../guidelines/">Code Guidelines &amp; Conventions</a></li>
+<li><a href="../contributing/">Contributing</a></li>
 <li><a href="../../architecture/architecture_overview/">Architecture Overview</a></li>
-<li><a href="../../architecture/data_layer/">Data Layer</a></li>
-<li><a href="../../architecture/data_federation/">Data Federation</a></li>
+<li>Modules &amp; Components (file does not exist)</li>
+<li><a href="../guidelines/">Developer Guidelines &amp; Conventions</a></li>
+<li><a href="../../architecture/plugin_system/">Plugin System Overview</a></li>
+<li><a href="../../architecture/data_layer/">Data Layer &amp; Storage</a></li>
+<li><a href="../../admin/admin_ui_master/">Admin UI Architecture</a></li>
+<li><a href="../protobuf/">Protocol Buffers &amp; API Contracts</a></li>
+<li><a href="../../security/security_overview/">Privacy &amp; Security</a></li>
 </ul>
-<hr />
-<h2 id="faq">FAQ<a class="headerlink" href="#faq" title="Permanent link">&para;</a></h2>
-<p><strong>TBD</strong>
-- Common questions about setup, architecture, and contribution</p>
-<hr />
-<h2 id="contact-community">Contact &amp; Community<a class="headerlink" href="#contact-community" title="Permanent link">&para;</a></h2>
-<p><strong>TBD</strong>
-- How to join discussions, chat, or community calls</p>
 <hr />
 <blockquote>
 <p>This document is a living guide and will be updated as the project grows. If you have suggestions, please open an issue or PR!</p>
