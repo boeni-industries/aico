@@ -589,3 +589,124 @@ The Update System manages automatic updates for both frontend and backend compon
 - **Dynamic Resource Management:** System throttles non-essential jobs during high CPU/memory usage or on battery power.
 - **Continuous Availability:** Backend remains ready to respond instantly when user opens UI.
 
+## Shared Library Architecture
+
+AICO employs a **shared library approach** for cross-subsystem logic to maintain DRY principles while enabling early development access to core functionality.
+
+### Design Philosophy
+
+**Problem**: Core functionality (security, data models, utilities) needed across multiple subsystems (CLI, backend, frontend) with different development timelines.
+
+**Solution**: Standalone shared libraries that can be imported by any subsystem, following the `aico.*` namespace hierarchy.
+
+### Library Structure
+
+```
+aico/
+├── shared/                     # Shared libraries directory
+│   ├── aico-security/          # Security & encryption
+│   │   ├── setup.py
+│   │   └── aico/
+│   │       └── security/
+│   │           ├── __init__.py
+│   │           ├── key_manager.py
+│   │           ├── filesystem.py
+│   │           └── crypto.py
+│   ├── aico-data/              # Data models & schemas
+│   │   ├── setup.py
+│   │   └── aico/
+│   │       └── data/
+│   │           ├── models.py
+│   │           ├── schemas.py
+│   │           └── repositories.py
+│   ├── aico-core/              # Core utilities
+│   │   ├── setup.py
+│   │   └── aico/
+│   │       └── core/
+│   │           ├── config.py
+│   │           ├── logging.py
+│   │           └── bus.py
+│   └── aico-common/            # Common utilities
+│       ├── setup.py
+│       └── aico/
+│           └── common/
+│               ├── utils.py
+│               └── constants.py
+├── backend/                    # Python backend service
+│   ├── requirements.txt        # includes -e ../shared/aico-*
+│   └── main.py
+├── cli/                        # Development CLI
+│   ├── requirements.txt        # includes -e ../shared/aico-*
+│   └── main.py
+└── frontend/                   # Flutter frontend
+    └── pubspec.yaml            # May reference shared schemas
+```
+
+### Implementation Patterns
+
+#### Namespace Packages
+All shared libraries use Python namespace packages:
+
+```python
+# setup.py for each shared library
+setup(
+    name="aico-security",
+    packages=["aico.security"],
+    namespace_packages=["aico"]
+)
+```
+
+#### Development Installation
+Subsystems install shared libraries in development mode:
+
+```bash
+# In backend/requirements.txt or cli/requirements.txt
+-e ../shared/aico-security
+-e ../shared/aico-data
+-e ../shared/aico-core
+-e ../shared/aico-common
+```
+
+#### Usage Examples
+
+**CLI Usage** (Early Development):
+```python
+# CLI can use security features before backend exists
+from aico.security import AICOKeyManager
+from aico.security.filesystem import SecureFilesystem
+
+key_manager = AICOKeyManager()
+fs = SecureFilesystem(key_manager)
+fs.setup_encrypted_directory("/path/to/data")
+```
+
+**Backend Usage** (Production):
+```python
+# Backend imports same libraries
+from aico.security import AICOKeyManager
+from aico.data.models import Conversation
+from aico.core.config import Config
+
+# Identical API, different context
+key_manager = AICOKeyManager()
+config = Config.load()
+```
+
+### Development Workflow
+
+1. **Library-First Development**: Core functionality implemented as shared libraries
+2. **CLI Integration**: Development tools import and use shared libraries
+3. **Backend Integration**: Production backend imports same libraries
+4. **Cross-Language Sharing**: Data models/schemas can be shared with frontend via JSON/Protocol Buffers
+
+### Library Categories
+
+- **aico.security**: Key management, encryption, authentication
+- **aico.data**: Data models, schemas, repositories
+- **aico.core**: Configuration, logging, message bus
+- **aico.common**: Utilities, constants, helpers
+- **aico.ai**: AI/ML utilities (when needed)
+- **aico.tools**: Development and debugging utilities
+
+This approach ensures **KISS** (simple imports), **DRY** (single implementation), and enables rapid development while maintaining professional code organization.
+
