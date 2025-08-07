@@ -11,7 +11,14 @@ from pathlib import Path
 import sys
 
 # Add shared module to path for CLI usage
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared"))
+if getattr(sys, 'frozen', False):
+    # Running in PyInstaller bundle
+    shared_path = Path(sys._MEIPASS) / 'shared'
+else:
+    # Running in development
+    shared_path = Path(__file__).parent.parent.parent / "shared"
+
+sys.path.insert(0, str(shared_path))
 
 from aico.security import AICOKeyManager
 

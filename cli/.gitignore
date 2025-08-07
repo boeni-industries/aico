@@ -1,5 +1,4 @@
 # CLI-specific ignores
-*.spec
 cli.log
 
 # Installer logs
@@ -43,4 +42,3 @@ Desktop.ini
 # PyInstaller artefacts
 build/
 dist/
-*.spec

@@ -28,7 +28,7 @@ def main(ctx: typer.Context):
         console.print("[dim]Modular system management and versioning[/dim]\n")
         console.rule("[bold blue]Available Commands", style="blue")
         console.print("\n📦 [green]version[/green]   Manage and synchronize versions across all AICO system parts")
-        console.print("🔐 [green]db[/green]        Database initialization, status, and management")
+        console.print("🛢️ [green]db[/green]        Database initialization, status, and management")
         console.print("🔒 [green]security[/green]  Master password setup and security management\n")
         console.rule("[bold blue]Quick Start", style="blue")
         console.print("\n[yellow]Examples:[/yellow]")
