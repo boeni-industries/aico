@@ -232,25 +232,73 @@ AICO's key management system handles the lifecycle of cryptographic keys from cr
   
   ```python
   import keyring
+  import getpass
+  from cryptography.hazmat.primitives.kdf.argon2 import Argon2
+  import os
   
-  class AICOKeyStorage:
+  class AICOKeyManager:
+      """Unified key management for all authentication scenarios"""
+      
       def __init__(self, service_name="AICO"):
           self.service_name = service_name
           
-      def store_key(self, key_name, key_value):
-          # Convert bytes to hex string for storage
-          if isinstance(key_value, bytes):
-              key_value = key_value.hex()
-          keyring.set_password(self.service_name, key_name, key_value)
+      def setup_or_retrieve_key(self, password=None, interactive=True):
+          """DRY method: handles setup, interactive, and service authentication"""
+          # Try to retrieve existing key first (service mode)
+          stored_key = keyring.get_password(self.service_name, "master_key")
           
-      def retrieve_key(self, key_name, as_bytes=True):
-          value = keyring.get_password(self.service_name, key_name)
-          if value and as_bytes:
-              return bytes.fromhex(value)
-          return value
+          if stored_key:
+              return bytes.fromhex(stored_key)  # Service startup - no user interaction
+          elif password:
+              return self._derive_and_store(password)  # Setup mode
+          elif interactive:
+              password = getpass.getpass("Enter master password: ")
+              return self._derive_and_store(password)  # Interactive mode
+          else:
+              raise AuthenticationError("No stored key and no password provided")
+              
+      def _derive_and_store(self, password):
+          """Derive master key and store securely"""
+          # Use consistent Argon2id parameters for master key
+          salt = os.urandom(16)
+          argon2 = Argon2(
+              salt=salt,
+              time_cost=3,           # 3 iterations
+              memory_cost=1048576,   # 1GB memory
+              parallelism=4,         # 4 threads
+              hash_len=32,           # 256-bit key
+              type=2                 # Argon2id
+          )
+          
+          master_key = argon2.derive(password.encode())
+          
+          # Store derived key securely
+          keyring.set_password(self.service_name, "master_key", master_key.hex())
+          keyring.set_password(self.service_name, "salt", salt.hex())
+          
+          # Clear password from memory
+          password = None
+          
+          return master_key
+          
+      def change_password(self, old_password, new_password):
+          """Update master password and re-derive keys"""
+          # Verify old password
+          stored_key = self.setup_or_retrieve_key(old_password, interactive=False)
+          
+          # Derive and store new key
+          return self._derive_and_store(new_password)
+          
+      def clear_stored_keys(self):
+          """Remove all stored keys (for security incidents)"""
+          keyring.delete_password(self.service_name, "master_key")
+          keyring.delete_password(self.service_name, "salt")
   ```
   
-  This abstraction provides consistent secure storage across all platforms without platform-specific code.
+  This unified approach provides:
+  - **KISS**: Single class handles all authentication scenarios
+  - **DRY**: Common key derivation and storage logic
+  - **Maintainable**: Clear separation of concerns with simple state handling
 
 - **Roaming Support**: 
   - **Coupled Roaming**: Secure key transfer between trusted devices
@@ -260,6 +308,33 @@ AICO's key management system handles the lifecycle of cryptographic keys from cr
   - Automatic key retrieval during AICO startup
   - Transparent filesystem mounting
   - Optional biometric unlock on supported platforms
+
+- **Persistent Service Authentication**: 
+  AICO backend services can restart automatically without user password re-entry while maintaining security:
+  
+  - **One-Time Setup**: User enters master password during initial setup or password change
+  - **Secure Storage**: Derived master key stored in platform-native secure storage
+  - **Service Startup**: Backend retrieves stored key automatically on restart
+  - **No User Interaction**: Services start without requiring command-line or password entry
+  - **Security Maintained**: Keys protected by OS-level security, accessible only to AICO service
+  
+  **Implementation Flow**:
+  ```python
+  # During setup (interactive)
+  key_manager = AICOKeyManager()
+  master_key = key_manager.setup_or_retrieve_key(password="user_password")
+  
+  # During service startup (automatic)
+  key_manager = AICOKeyManager()
+  master_key = key_manager.setup_or_retrieve_key(interactive=False)
+  # Service can now mount encrypted filesystem and operate normally
+  ```
+  
+  This approach supports:
+  - **Non-technical users**: No command-line interaction required
+  - **System integration**: Backend starts automatically with OS
+  - **Security compliance**: Master password never stored, only derived keys
+  - **Platform compatibility**: Works across macOS, Windows, and Linux
 
 #### Authentication Mechanisms
 - **Local Authentication**: Biometric or password-based with secure credential storage

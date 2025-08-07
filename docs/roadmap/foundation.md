@@ -35,8 +35,9 @@ Build the foundational system infrastructure that enables all AICO functionality
 
 ### Basic Security Layer
 - [ ] **Filesystem Encryption (gocryptfs)**: Transparent filesystem-level encryption for all database and sensitive data directories using gocryptfs (AES-256-GCM). All data at rest is encrypted by default, with zero impact on database functionality.
-- [ ] **Key Derivation & Secure Storage**: Argon2id-based key derivation from a user master password. Store derived keys in platform-native secure storage (macOS Keychain, Windows Credential Manager, Linux Secret Service). No keys are stored in plaintext; keys are protected by OS-level security.
-- [ ] **Master Password Setup**: Require user to set a master password on first run. Never store the password—use it transiently for key derivation only.
+- [ ] **Unified Key Management**: Implement `AICOKeyManager` class supporting three scenarios: initial setup (interactive), user authentication (interactive), and service startup (automatic). Uses Argon2id-based key derivation from user master password with platform-native secure storage.
+- [ ] **Persistent Service Authentication**: Backend services can restart automatically without user password re-entry. Master key retrieved from secure storage (macOS Keychain, Windows Credential Manager, Linux Secret Service) on service startup, enabling zero-effort security for non-technical users.
+- [ ] **Master Password Setup**: Require user to set a master password on first run. Never store the password—use it transiently for key derivation only. Derived keys stored securely for automatic service authentication.
 - [ ] **Access Control Skeleton**: Add a basic access control mechanism (deny by default, allow for core system processes only). All access is explicit, with a foundation for future ABAC/RBAC policies.
 
 ## Phase 2: Core Infrastructure

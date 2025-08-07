@@ -136,30 +136,57 @@ Argon2id is used as the primary key derivation function for all security context
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2
 import os
 import keyring
+import getpass
 
 class AICOKeyManager:
-    def __init__(self):
-        self.service_name = "AICO"
+    """Unified key management for all authentication scenarios"""
+    
+    def __init__(self, service_name="AICO"):
+        self.service_name = service_name
         
-    def derive_master_key(self, password, salt=None):
-        """Derive master key using Argon2id with high security parameters"""
-        salt = salt or os.urandom(16)
-        # High security parameters for master key
+    def setup_or_retrieve_key(self, password=None, interactive=True):
+        """DRY method: handles setup, interactive, and service authentication"""
+        # Try to retrieve existing key first (service mode)
+        stored_key = keyring.get_password(self.service_name, "master_key")
+        
+        if stored_key:
+            return bytes.fromhex(stored_key)  # Service startup - no user interaction
+        elif password:
+            return self._derive_and_store(password)  # Setup mode
+        elif interactive:
+            password = getpass.getpass("Enter master password: ")
+            return self._derive_and_store(password)  # Interactive mode
+        else:
+            raise AuthenticationError("No stored key and no password provided")
+            
+    def _derive_and_store(self, password):
+        """Derive master key and store securely"""
+        # Use consistent Argon2id parameters for master key
+        salt = os.urandom(16)
         argon2 = Argon2(
             salt=salt,
-            time_cost=3,           # Iterations
-            memory_cost=1048576,   # 1GB in KB
+            time_cost=3,           # 3 iterations
+            memory_cost=1048576,   # 1GB memory
             parallelism=4,         # 4 threads
             hash_len=32,           # 256-bit key
             type=2                 # Argon2id
         )
-        key = argon2.derive(password.encode())
-        return key, salt
         
-    def derive_gocryptfs_key(self, master_key, salt=None):
+        master_key = argon2.derive(password.encode())
+        
+        # Store derived key securely
+        keyring.set_password(self.service_name, "master_key", master_key.hex())
+        keyring.set_password(self.service_name, "salt", salt.hex())
+        
+        # Clear password from memory
+        password = None
+        
+        return master_key
+        
+    def derive_gocryptfs_key(self, master_key):
         """Derive gocryptfs-specific key from master key"""
-        salt = salt or os.urandom(16)
         # Balanced parameters for file encryption
+        salt = os.urandom(16)
         argon2 = Argon2(
             salt=salt,
             time_cost=2,           # Iterations
@@ -171,13 +198,39 @@ class AICOKeyManager:
         # Derive using master key + purpose identifier
         context = master_key + b"gocryptfs-filesystem"
         key = argon2.derive(context)
-        return key, salt
+        return key
 ```
 
 #### Key Management Process
 
+The unified key management process supports three authentication scenarios:
+
+**1. Initial Setup (Interactive)**
+```python
+key_manager = AICOKeyManager()
+master_key = key_manager.setup_or_retrieve_key(password="user_password")
+# Derives and stores master key securely
+```
+
+**2. User Authentication (Interactive)**
+```python
+key_manager = AICOKeyManager()
+master_key = key_manager.setup_or_retrieve_key()  # Prompts for password
+# Uses stored key if available, otherwise prompts for password
+```
+
+**3. Service Startup (Automatic)**
+```python
+key_manager = AICOKeyManager()
+master_key = key_manager.setup_or_retrieve_key(interactive=False)
+# Retrieves stored key without user interaction
+```
+
+#### Security Properties
+
 1. **Master Password**: User-provided master password is the root of trust
    - Never stored, only used transiently during key derivation
+   - Cleared from memory immediately after use
 
 2. **Key Derivation**: Argon2id key derivation with context-specific parameters
    - Master key: 1GB memory, 3 iterations, 4 threads
@@ -190,11 +243,16 @@ class AICOKeyManager:
    - Linux: Secret Service API / GNOME Keyring
    - Mobile: Secure Enclave (iOS) / Keystore (Android)
 
-4. **Biometric Unlock**: Optional biometric authentication for accessing the encryption key
+4. **Persistent Service Authentication**: Backend services restart without user interaction
+   - Master key retrieved from secure storage on service startup
+   - No password re-entry required for non-technical users
+   - Maintains security through OS-level protection
+
+5. **Biometric Unlock**: Optional biometric authentication for accessing the encryption key
    - Integrates with platform biometric APIs
    - Falls back to master password when biometrics unavailable
 
-5. **Automatic Mounting**: Zero-effort security with automatic mounting during application startup
+6. **Automatic Mounting**: Zero-effort security with automatic mounting during application startup
    - Retrieves keys from secure storage
    - Mounts encrypted filesystem transparently
 
