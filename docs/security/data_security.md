@@ -26,84 +26,95 @@ flowchart TD
 
 ### Encryption Strategy
 
-AICO employs filesystem-level transparent encryption using securefs to protect all stored data without imposing functionality restrictions on databases:
+> **ℹ️ Note on Filesystem-Level Encryption**
+> 
+> Traditional filesystem-level encryption solutions (gocryptfs, securefs, EncFS) face significant challenges in multi-platform environments:
+> - **Platform Limitations**: Most solutions lack reliable macOS/Windows support or require complex manual builds
+> - **Database Compatibility**: FUSE-based encryption can cause file locking issues and performance degradation with databases
+> - **Dependency Management**: Requires platform-specific FUSE implementations (macFUSE, WinFsp) with varying stability
+> 
+> AICO addresses these challenges with a modern application-level encryption approach.
 
-#### Filesystem-Level Encryption with securefs
+AICO employs a hybrid application-level encryption strategy that provides robust, cross-platform data protection without filesystem dependencies:
 
-- **Approach**: Transparent filesystem encryption that secures all database files at rest
-- **Encryption**: AES-256-GCM authenticated encryption with per-file random IVs
-- **Security Features**:
-  - Forward secrecy with scrypt key derivation
-  - File name encryption to prevent metadata leakage
-  - Authenticated encryption to detect tampering
+#### Database-Native Encryption
 
-- **Implementation**:
-  ```python
-  # Python wrapper for securefs mounting
-  import subprocess
-  import os
-  import getpass
-  
-  class SecureStorage:
-      def __init__(self, encrypted_dir, mount_point):
-          self.encrypted_dir = encrypted_dir
-          self.mount_point = mount_point
-          self.mounted = False
-          
-      def initialize(self, password=None):
-          """Initialize a new encrypted filesystem if not exists"""
-          if not os.path.exists(self.encrypted_dir):
-              os.makedirs(self.encrypted_dir)
-              
-          if not os.listdir(self.encrypted_dir):  # Empty dir = not initialized
-              if password is None:
-                  password = getpass.getpass("Enter encryption password: ")
-                  
-              # Initialize securefs with secure defaults
-              proc = subprocess.Popen(
-                  ["securefs", "-init", self.encrypted_dir],
-                  stdin=subprocess.PIPE, stdout=subprocess.PIPE
-              )
-              proc.communicate(input=password.encode())
-              return True
-          return False
-              
-      def mount(self, password=None):
-          """Mount the encrypted filesystem"""
-          if not os.path.exists(self.mount_point):
-              os.makedirs(self.mount_point)
-              
-          if password is None:
-              password = getpass.getpass("Enter encryption password: ")
-              
-          # Mount with idle timeout for security (auto unmount after inactivity)
-          proc = subprocess.Popen(
-              ["securefs", "-idle", "30m", self.encrypted_dir, self.mount_point],
-              stdin=subprocess.PIPE, stdout=subprocess.PIPE
-          )
-          proc.communicate(input=password.encode())
-          self.mounted = True
-          
-      def unmount(self):
-          """Unmount the encrypted filesystem"""
-          if self.mounted:
-              subprocess.run(["fusermount", "-u", self.mount_point])
-              self.mounted = False
-  ```
+Each database uses its optimal encryption method for maximum performance and reliability:
 
-#### Database Directory Structure
+- **libSQL/SQLite**: SQLCipher integration for industry-standard database encryption
+- **DuckDB**: Built-in AES-256 encryption via PRAGMA statements
+- **RocksDB**: Native EncryptedEnv for transparent key-value encryption
+- **ChromaDB**: Custom file-level encryption wrapper
+
+**Implementation Example**:
+```python
+# SQLCipher integration
+import sqlcipher3 as sqlite3
+from aico.security import AICOKeyManager
+
+class EncryptedDatabase:
+    def __init__(self, db_path, key_manager):
+        self.db_path = db_path
+        self.key_manager = key_manager
+        
+    def connect(self):
+        """Connect to encrypted SQLite database"""
+        # Derive database-specific key
+        db_key = self.key_manager.derive_database_key("libsql")
+        
+        # Connect with encryption
+        conn = sqlite3.connect(self.db_path)
+        conn.execute(f"PRAGMA key = '{db_key.hex()}'")
+        
+        return conn
+
+# DuckDB encryption
+import duckdb
+
+def create_encrypted_duckdb(db_path, key_manager):
+    """Create encrypted DuckDB instance"""
+    db_key = key_manager.derive_database_key("duckdb")
+    
+    conn = duckdb.connect(db_path)
+    conn.execute(f"PRAGMA enable_encryption='{db_key.hex()}'")
+    
+    return conn
+```
+
+#### Generic File Encryption
+
+For files without native encryption support, AICO provides a transparent encryption wrapper:
+
+```python
+from aico.security import EncryptedFile
+
+# Drop-in replacement for open()
+with EncryptedFile("sensitive_data.enc", "wb", key_manager=km) as f:
+    f.write(data)  # Automatically encrypted
+
+with EncryptedFile("sensitive_data.enc", "rb", key_manager=km) as f:
+    data = f.read()  # Automatically decrypted
+```
+
+#### Directory Structure
+
+AICO maintains organized encrypted storage with clear separation:
 
 ```
 /path/to/aico/
-├── encrypted/           # Encrypted container (securefs)
-└── databases/           # Mount point where databases are accessed
-    ├── libsql/          # Primary database
-    ├── chroma/          # Vector database
-    ├── duckdb/          # Analytics database
-    └── rocksdb/         # Key-value cache
+└── data/
+    ├── libsql/
+    │   └── main.db          # SQLCipher encrypted
+    ├── duckdb/
+    │   └── analytics.db     # DuckDB native encryption
+    ├── chroma/
+    │   ├── index.enc        # Custom encrypted files
+    │   └── metadata.enc
+    └── rocksdb/
+        └── kvstore/         # RocksDB EncryptedEnv
 ```
 
-#### Advantages of Filesystem-Level Encryption
+#### Advantages of Application-Level Encryption
 
 1. **Zero Functionality Restrictions**:
    - Databases operate with full feature sets and native performance
@@ -126,7 +137,7 @@ AICO employs filesystem-level transparent encryption using securefs to protect a
 
 ### Key Management
 
-AICO implements a unified key management approach with securefs, using Argon2id as the key derivation function:
+AICO implements a unified key management approach for application-level encryption, using Argon2id as the key derivation function:
 
 #### Key Derivation with Argon2id
 
@@ -183,20 +194,33 @@ class AICOKeyManager:
         
         return master_key
         
-    def derive_securefs_key(self, master_key):
-        """Derive securefs-specific key from master key"""
-        # Balanced parameters for file encryption
+    def derive_database_key(self, master_key, database_type):
+        """Derive database-specific key from master key"""
+        # Balanced parameters for database encryption
         salt = os.urandom(16)
         argon2 = Argon2(
             salt=salt,
-            time_cost=2,           # Iterations
-            memory_cost=262144,    # 256MB in KB
-            parallelism=2,         # 2 threads
-            hash_len=32,           # 256-bit key
+            memory_cost=262144,     # 256 MB
+            iterations=2,
+            lanes=2,
             type=2                 # Argon2id
         )
-        # Derive using master key + purpose identifier
-        context = master_key + b"securefs-filesystem"
+        # Derive using master key + database type identifier
+        context = master_key + f"aico-{database_type}".encode()
+        key = argon2.derive(context)
+        return key
+        
+    def derive_file_encryption_key(self, master_key, file_purpose):
+        """Derive file-specific encryption key from master key"""
+        salt = os.urandom(16)
+        argon2 = Argon2(
+            salt=salt,
+            memory_cost=131072,     # 128 MB for file operations
+            iterations=1,
+            lanes=2,
+            type=2                 # Argon2id
+        )
+        context = master_key + f"aico-file-{file_purpose}".encode()
         key = argon2.derive(context)
         return key
 ```
@@ -303,13 +327,13 @@ AICO implements fine-grained data access controls:
 AICO's data security adapts to different roaming patterns, maintaining security while supporting both coupled and detached deployment models:
 
 1. **Coupled Roaming Security**:
-   - Complete encrypted filesystem moves with the application
-   - securefs container transferred securely between devices
+   - Complete encrypted data directory moves with the application
+   - Database files remain encrypted using native encryption methods
    - Master key securely synchronized via platform-specific secure storage
    - Zero-effort security maintained across device transitions
 
 2. **Detached Roaming Security**:
-   - Backend maintains the securefs encrypted container
+   - Backend maintains encrypted databases using application-level encryption
    - Frontend accesses data via secure API with end-to-end encryption
    - Mutual TLS authentication between frontend and backend
    - Secure WebSocket or gRPC channels with forward secrecy

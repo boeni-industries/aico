@@ -1,2 +1,8 @@
+# Core encryption and security
 cryptography>=41.0.0
 keyring>=24.0.0
+
+# Database encryption
+sqlcipher3>=0.5.2
+duckdb>=0.9.0
+rocksdb>=0.8.0

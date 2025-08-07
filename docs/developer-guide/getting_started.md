@@ -105,26 +105,11 @@ py --version
 ```
 You should see `Python 3.13.5`.
 
-### 3. Install SecureFS
-AICO requires SecureFS for encrypted file storage. Follow the installation instructions for your platform:
+> **ℹ️ Data Encryption Approach**
+> 
+> AICO uses application-level encryption with database-native features (SQLCipher, DuckDB encryption, RocksDB EncryptedEnv) rather than filesystem-level encryption. This provides better cross-platform compatibility and performance without requiring additional system dependencies.
 
-- **Windows:** Download and install SecureFS from the official website: [SecureFS Windows Installation](https://securefs.org/installation/windows)
-- **macOS:** Install SecureFS using Homebrew: `brew install securefs`
-- **Linux:** Install SecureFS using your distribution's package manager or by compiling from source: [SecureFS Linux Installation](https://securefs.org/installation/linux)
-
-After installation, verify that SecureFS is working correctly by running:
-```sh
-securefs --version
-```
-
-### 4. Initialize Encrypted Data Directory (SecureFS)
-Create a new encrypted data directory using SecureFS:
-```sh
-securefs init --password <your_password> /path/to/encrypted/data
-```
-Replace `<your_password>` with a strong password and `/path/to/encrypted/data` with the desired location for your encrypted data directory.
-
-### 5. Python Dependency Management with UV (CLI & Backend)
+### 3. Python Dependency Management with UV (CLI & Backend)
 AICO uses [UV](https://github.com/astral-sh/uv) and `requirements.txt` for dependency management in all Python components. Each component is isolated with its own `.venv` and `requirements.txt` file.
 
 **Install UV globally (once per system):**

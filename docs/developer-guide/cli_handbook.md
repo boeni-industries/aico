@@ -101,10 +101,10 @@ aico security [COMMAND] [OPTIONS]
 | `aico security key status`               | Show key status and authentication method               |
 | `aico security key change-password`      | Change the master password                              |
 | `aico security key clear`                | Remove all stored keys and authentication state         |
-| `aico security fs init`                  | Initialize encrypted data directory (securefs)         |
-| `aico security fs mount`                 | Mount encrypted directory                               |
-| `aico security fs unmount`               | Unmount encrypted directory                             |
-| `aico security fs status`                | Show status of encrypted mounts                         |
+| `aico security db init`                  | Initialize encrypted databases with proper keys         |
+| `aico security db status`                | Show encryption status of all databases                 |
+| `aico security db rekey`                 | Re-encrypt databases with new keys                      |
+| `aico security db verify`                | Verify database encryption integrity                    |
 | `aico security audit log`                | Show recent security events and audit log               |
 | `aico security audit check`              | Run security health checks and report findings          |
 
@@ -128,8 +128,8 @@ aico security [COMMAND] [OPTIONS]
   ```
 
 ### Notes
-- `securefs` must be installed (see [installation guide](https://github.com/netheril96/securefs)).
-- `python-securefs` Python bindings may be used if available, otherwise subprocess calls are used.
+- Database encryption uses native encryption features of each database engine for optimal performance.
+- File encryption wrapper uses the `cryptography` library for cross-platform compatibility.
 - Key management is handled by the shared library (`AICOKeyManager`).
 - Audit logs and health checks are extensible for future compliance needs.
 

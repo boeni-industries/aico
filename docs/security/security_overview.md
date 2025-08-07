@@ -52,7 +52,8 @@ AICO's architecture supports both coupled (same device) and detached (separate d
 #### Backend Security Responsibilities
 
 - **Data Encryption**: 
-  - Filesystem-level encryption (securefs)
+  - Database-native encryption (SQLCipher, DuckDB, RocksDB)
+  - File-level encryption wrapper for generic files
   - Key derivation (Argon2id)
   - Master key management
 
@@ -130,9 +131,9 @@ flowchart TD
 AICO employs comprehensive encryption strategies to protect data both at rest and in transit:
 
 #### Encryption at Rest
-- **Filesystem-Level Encryption**: Transparent encryption of all database files using securefs
-  - **AES-256-GCM**: Authenticated encryption with per-file random initialization vectors
-  - **File Name Encryption**: Prevents metadata leakage and directory structure analysis
+- **Application-Level Encryption**: Database-native and file-level encryption for optimal performance
+  - **Database-Native**: SQLCipher (SQLite), DuckDB encryption, RocksDB EncryptedEnv
+  - **File-Level Wrapper**: AES-256-GCM for files without native encryption support
   - **Forward Secrecy**: Ensures past data remains secure even if keys are compromised
 - **Memory Protection**: Sensitive data in memory is protected against unauthorized access
 - **Secure Storage**: Encryption keys stored using platform-specific secure storage mechanisms
@@ -177,17 +178,17 @@ AICO employs a comprehensive approach to key management that combines secure key
 **Argon2id** serves as AICO's unified key derivation function across all security contexts:
 
 - **Why Argon2id for AICO**: 
-  - Provides optimal security for AICO's filesystem-level encryption (securefs)
+  - Provides optimal security for AICO's application-level encryption strategy
   - Supports cross-platform deployment with consistent security guarantees
   - Memory-hard design protects against hardware-accelerated attacks
   - Configurable parameters allow adaptation to different device capabilities
 
-- **AICO-Specific Parameters**:
-
+- **Context-Specific Parameters**:
   | Context | Memory | Iterations | Parallelism | AICO Usage |
   |---------|--------|------------|-------------|--------|
   | Master Key | 1GB | 3 | 4 | Initial login, derives all other keys |
-  | File Encryption | 256MB | 2 | 2 | securefs container for databases |
+  | Database Encryption | 256MB | 2 | 2 | SQLCipher, DuckDB, RocksDB keys |
+  | File Encryption | 128MB | 1 | 2 | Generic file encryption wrapper |
   | Authentication | 64MB | 1 | 1 | Device pairing, roaming authentication |
 
 - **Implementation in AICO Backend**:
@@ -220,7 +221,7 @@ AICO's key management system handles the lifecycle of cryptographic keys from cr
 - **Key Hierarchy**: 
   - **Master Password**: User-provided secret, never stored
   - **Master Key**: Derived via Argon2id, stored in platform secure storage
-  - **Purpose-Specific Keys**: Derived from master key for securefs, database access, device pairing
+  - **Purpose-Specific Keys**: Derived from master key for database encryption, file encryption, device pairing
 
 - **Secure Storage**: Platform-native mechanisms for zero-effort security:
   - macOS: Keychain integration
@@ -372,7 +373,7 @@ AICO's architecture requires specific security implementations for both frontend
 
 | Feature | Implementation | Rationale |
 |---------|----------------|------------|
-| **Filesystem Encryption** | securefs with AES-256-GCM | Core protection for all database files in the local-first architecture |
+| **Database Encryption** | SQLCipher, DuckDB, RocksDB native encryption | Core protection for all database files using optimal encryption methods |
 | **Key Derivation** | Argon2id with context-specific parameters | Secure generation of encryption keys from master password |
 | **Secure Key Storage** | Python keyring library with platform backends | Platform-native secure storage of cryptographic keys |
 | **Authentication Service** | Token-based authentication with JWTs | Verify user identity and manage sessions across both coupled and detached modes |

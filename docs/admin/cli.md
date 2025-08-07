@@ -332,7 +332,7 @@ aico security [COMMAND] [OPTIONS]
 
 Commands:
   key         Master password and key management
-  fs          Encrypted filesystem operations (securefs)
+  db          Database encryption operations
   audit       Security audit and health checks
 ```
 
@@ -346,13 +346,13 @@ Commands:
 | `change-password`              | Change the master password                              |
 | `clear`                        | Remove all stored keys and authentication state          |
 
-#### `aico security fs`
+#### `aico security db`
 | Command                        | Description                                             |
 |------------------------------- |---------------------------------------------------------|
-| `init`                         | Initialize a new encrypted data directory (securefs)    |
-| `mount`                        | Mount an encrypted directory                            |
-| `unmount`                      | Unmount an encrypted directory                          |
-| `status`                       | Show status of encrypted mounts                         |
+| `init`                         | Initialize encrypted databases with proper keys        |
+| `status`                       | Show encryption status of all databases                |
+| `rekey`                        | Re-encrypt databases with new keys                     |
+| `verify`                       | Verify database encryption integrity                   |
 
 #### `aico security audit`
 | Command                        | Description                                             |
@@ -383,12 +383,12 @@ Commands:
 - All commands provide clear, actionable, and colorized output.
 - Sensitive operations require confirmation or a `--yes` flag.
 - CLI never stores credentials in plaintext; all keys are protected using platform-native secure storage.
-- Filesystem encryption is implemented using SecureFS (system dependency; see requirements).
+- Database encryption is implemented using native database encryption features (SQLCipher, DuckDB, RocksDB).
 - Incomplete or ambiguous commands trigger predictive help text.
 
 ### Notes
-- `SecureFS` must be installed on the system (see [installation guide](https://github.com/netheril96/securefs)).
-- `SecureFS CLI` is used for encrypted filesystem operations.
+- Database encryption uses native encryption features of each database engine for optimal performance.
+- File encryption wrapper uses the `cryptography` library for cross-platform compatibility.
 - Key management is handled by the shared library (`AICOKeyManager`).
 - Audit logs and health checks are extensible for future compliance needs.
 

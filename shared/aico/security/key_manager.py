@@ -104,13 +104,63 @@ class AICOKeyManager:
         except Exception:
             pass  # Key might not exist
             
-    def derive_purpose_key(self, master_key: bytes, purpose: str) -> bytes:
+    def derive_database_key(self, master_key: bytes, database_type: str) -> bytes:
         """
-        Derive purpose-specific key from master key.
+        Derive database-specific encryption key from master key.
         
         Args:
             master_key: Master key
-            purpose: Purpose identifier (e.g., "gocryptfs")
+            database_type: Database type ("libsql", "duckdb", "rocksdb", "chroma")
+            
+        Returns:
+            Database-specific encryption key
+        """
+        salt = os.urandom(16)
+        argon2 = Argon2id(
+            salt=salt,
+            length=32,             # 256-bit key
+            iterations=2,          # Balanced for database operations
+            lanes=2,               # 2 threads
+            memory_cost=256*1024,  # 256MB in KiB
+            ad=None,
+            secret=None
+        )
+        
+        context = master_key + f"aico-db-{database_type}".encode()
+        return argon2.derive(context)
+        
+    def derive_file_encryption_key(self, master_key: bytes, file_purpose: str) -> bytes:
+        """
+        Derive file-specific encryption key from master key.
+        
+        Args:
+            master_key: Master key
+            file_purpose: File purpose identifier (e.g., "config", "logs")
+            
+        Returns:
+            File-specific encryption key
+        """
+        salt = os.urandom(16)
+        argon2 = Argon2id(
+            salt=salt,
+            length=32,             # 256-bit key
+            iterations=1,          # Lighter for file operations
+            lanes=2,               # 2 threads
+            memory_cost=128*1024,  # 128MB in KiB
+            ad=None,
+            secret=None
+        )
+        
+        context = master_key + f"aico-file-{file_purpose}".encode()
+        return argon2.derive(context)
+        
+    def derive_purpose_key(self, master_key: bytes, purpose: str) -> bytes:
+        """
+        Generic purpose-specific key derivation.
+        
+        Args:
+            master_key: Master key
+            purpose: Purpose identifier
             
         Returns:
             Purpose-specific key
