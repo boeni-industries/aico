@@ -33,6 +33,12 @@ Build the foundational system infrastructure that enables all AICO functionality
 - [ ] **Basic Schema**: Minimal tables for system state and config
 - [ ] **Migration System**: Simple schema versioning
 
+### Basic Security Layer
+- [ ] **Filesystem Encryption (gocryptfs)**: Transparent filesystem-level encryption for all database and sensitive data directories using gocryptfs (AES-256-GCM). All data at rest is encrypted by default, with zero impact on database functionality.
+- [ ] **Key Derivation & Secure Storage**: Argon2id-based key derivation from a user master password. Store derived keys in platform-native secure storage (macOS Keychain, Windows Credential Manager, Linux Secret Service). No keys are stored in plaintext; keys are protected by OS-level security.
+- [ ] **Master Password Setup**: Require user to set a master password on first run. Never store the password—use it transiently for key derivation only.
+- [ ] **Access Control Skeleton**: Add a basic access control mechanism (deny by default, allow for core system processes only). All access is explicit, with a foundation for future ABAC/RBAC policies.
+
 ## Phase 2: Core Infrastructure
 
 ### Enhanced Message Bus
