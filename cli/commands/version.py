@@ -690,10 +690,10 @@ def bump(
     import re, subprocess
     from pathlib import Path
 
-    valid_subsystems = {"cli", "backend", "frontend", "studio"}
+    valid_subsystems = set(SUBSYSTEMS)
     valid_levels = {"major", "minor", "patch"}
     if subsystem not in valid_subsystems:
-        console.print(f"[red]Invalid subsystem: {subsystem}. Must be one of: cli, backend, frontend, studio[/red]")
+        console.print(f"[red]Invalid subsystem: {subsystem}. Must be one of: {', '.join(sorted(SUBSYSTEMS))}[/red]")
         raise typer.Exit(1)
     if level not in valid_levels:
         console.print(f"[red]Invalid level: {level}. Must be one of: major, minor, patch[/red]")
@@ -747,6 +747,7 @@ def bump(
 
     # Always update the subsystem project file after bump
     update_functions = {
+        "shared": update_shared_version,
         "cli": update_cli_version,
         "backend": update_backend_version,
         "frontend": update_frontend_version,

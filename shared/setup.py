@@ -21,7 +21,7 @@ def read_requirements():
 
 setup(
     name="aico-shared",
-    version="0.1.0",
+    version="0.0.0",
     packages=find_packages(),
     # Using implicit namespace packages (PEP 420) - no namespace_packages needed
     install_requires=read_requirements(),
