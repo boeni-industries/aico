@@ -134,7 +134,7 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 - All code and docs are open—join, fork, or watch as you like
 
 ## Learn More
-- Docs: [docs/](https://boeni-industries.github.io/aico) (WIP)
+- Docs: [docs/](https://boeni-industries.github.io/aico/welcome/) (WIP)
 - Lead Maintainer: Michael Böni ([boeni.industries](https://boeni.industries))
 - Contact: [michael@boeni.industries](mailto:michael@boeni.industries)
 
