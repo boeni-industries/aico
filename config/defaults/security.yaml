@@ -1,0 +1,15 @@
+encryption:
+  algorithm: "AES-256-GCM"
+  key_derivation: "Argon2id"
+  salt_length: 32
+  iteration_count: 100000
+
+authentication:
+  session_timeout: 3600
+  max_failed_attempts: 5
+  lockout_duration: 300
+
+audit:
+  enabled: true
+  retention_days: 90
+  log_level: "standard"

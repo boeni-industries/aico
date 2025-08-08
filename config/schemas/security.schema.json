@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AICO Security Configuration",
+  "type": "object",
+  "properties": {
+    "encryption": {
+      "type": "object",
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": ["AES-256-GCM", "ChaCha20-Poly1305"],
+          "default": "AES-256-GCM"
+        },
+        "key_derivation": {
+          "type": "string",
+          "enum": ["Argon2id", "PBKDF2-SHA256"],
+          "default": "Argon2id"
+        },
+        "salt_length": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 64,
+          "default": 32
+        },
+        "iteration_count": {
+          "type": "integer",
+          "minimum": 10000,
+          "default": 100000
+        }
+      },
+      "required": ["algorithm", "key_derivation", "salt_length", "iteration_count"]
+    },
+    "authentication": {
+      "type": "object",
+      "properties": {
+        "session_timeout": {
+          "type": "integer",
+          "minimum": 300,
+          "default": 3600
+        },
+        "max_failed_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 5
+        },
+        "lockout_duration": {
+          "type": "integer",
+          "minimum": 60,
+          "default": 300
+        }
+      },
+      "required": ["session_timeout", "max_failed_attempts", "lockout_duration"]
+    },
+    "audit": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "retention_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 365,
+          "default": 90
+        },
+        "log_level": {
+          "type": "string",
+          "enum": ["minimal", "standard", "detailed"],
+          "default": "standard"
+        }
+      },
+      "required": ["enabled", "retention_days", "log_level"]
+    }
+  },
+  "required": ["encryption", "authentication", "audit"]
+}

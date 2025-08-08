@@ -1,0 +1,16 @@
+libsql:
+  path: "./data/aico.db"
+  encryption: true
+  journal_mode: "WAL"
+  synchronous: "NORMAL"
+  cache_size: 2000
+
+chromadb:
+  path: "./data/chroma"
+  collection_name: "aico_vectors"
+  distance_function: "cosine"
+
+duckdb:
+  path: "./data/analytics.duckdb"
+  memory_limit: "1GB"
+  threads: 4

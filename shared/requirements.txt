@@ -2,8 +2,12 @@
 cryptography
 keyring
 
-# Database encryption
-sqlcipher3
-duckdb
-rocksdb
+# Database libraries
 libsql
+# Note: duckdb and rocksdb can be added when actually needed
+# sqlcipher3 removed - not used, libsql handles encryption via PRAGMA
+
+# Configuration management
+pyyaml
+jsonschema
+watchdog

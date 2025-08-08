@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AICO Database Configuration",
+  "type": "object",
+  "properties": {
+    "libsql": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "default": "./data/aico.db"
+        },
+        "encryption": {
+          "type": "boolean",
+          "default": true
+        },
+        "journal_mode": {
+          "type": "string",
+          "enum": ["WAL", "DELETE", "TRUNCATE"],
+          "default": "WAL"
+        },
+        "synchronous": {
+          "type": "string",
+          "enum": ["OFF", "NORMAL", "FULL"],
+          "default": "NORMAL"
+        },
+        "cache_size": {
+          "type": "integer",
+          "minimum": 100,
+          "default": 2000
+        }
+      },
+      "required": ["path", "encryption", "journal_mode", "synchronous", "cache_size"]
+    },
+    "chromadb": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "default": "./data/chroma"
+        },
+        "collection_name": {
+          "type": "string",
+          "default": "aico_vectors"
+        },
+        "distance_function": {
+          "type": "string",
+          "enum": ["cosine", "euclidean", "manhattan"],
+          "default": "cosine"
+        }
+      },
+      "required": ["path", "collection_name", "distance_function"]
+    },
+    "duckdb": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "default": "./data/analytics.duckdb"
+        },
+        "memory_limit": {
+          "type": "string",
+          "default": "1GB"
+        },
+        "threads": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32,
+          "default": 4
+        }
+      },
+      "required": ["path", "memory_limit", "threads"]
+    }
+  },
+  "required": ["libsql", "chromadb", "duckdb"]
+}

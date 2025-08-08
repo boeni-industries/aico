@@ -1,2 +1,2 @@
 # AICO namespace package
-__import__('pkg_resources').declare_namespace(__name__)
+# Using implicit namespace packages (PEP 420) - no code needed

@@ -1,0 +1,13 @@
+system:
+  log_level: "WARN"
+  
+api:
+  cors_origins: []  # No CORS origins in production by default
+
+security:
+  audit:
+    log_level: "standard"
+    retention_days: 365
+
+message_bus:
+  heartbeat_interval: 60

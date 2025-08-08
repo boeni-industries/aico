@@ -5,7 +5,10 @@ a = Analysis(
     ['aico.py'],
     pathex=[],
     binaries=[],
-    datas=[('../shared', 'shared')],
+    datas=[
+        ('../shared', 'shared'),
+        ('../config', 'config'),
+    ],
     hiddenimports=[
         'typer', 
         'rich', 
@@ -22,7 +25,15 @@ a = Analysis(
         'libsql',
         'aico.security',
         'aico.data.libsql',
-        'aico.data.libsql.encrypted'
+        'aico.data.libsql.encrypted',
+        # Configuration management dependencies
+        'yaml',
+        'jsonschema',
+        'watchdog',
+        'watchdog.observers',
+        'watchdog.events',
+        'aico.core',
+        'aico.core.config',
     ],
     hookspath=[],
     hooksconfig={},

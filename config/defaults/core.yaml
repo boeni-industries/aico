@@ -1,0 +1,19 @@
+system:
+  name: "AICO"
+  environment: "development"
+  data_directory: "./data"
+  log_level: "INFO"
+
+message_bus:
+  backend_port: 5555
+  frontend_port: 5556
+  max_message_size: 1048576
+  heartbeat_interval: 30
+
+api:
+  host: "127.0.0.1"
+  port: 8770
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+  rate_limit: 100
