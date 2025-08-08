@@ -14,6 +14,7 @@ from typing import Optional, Any, Dict, List, Tuple, Union
 
 from .connection import LibSQLConnection
 from ...security import AICOKeyManager
+from ...core.config import ConfigurationManager
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,9 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             # Note: This follows SQLCipher conventions
             connection.execute(f"PRAGMA key = 'x\"{key_hex}\"'")
             
+            # Apply database configuration settings
+            self._apply_database_settings(connection)
+            
             # Test that encryption is working by creating/accessing a test table
             try:
                 connection.execute("SELECT count(*) FROM sqlite_master")
@@ -137,6 +141,40 @@ class EncryptedLibSQLConnection(LibSQLConnection):
         except Exception as e:
             logger.error(f"Failed to establish encrypted connection: {e}")
             raise ConnectionError(f"Encrypted database connection failed: {e}") from e
+    
+    def _apply_database_settings(self, connection) -> None:
+        """
+        Apply LibSQL configuration settings from database.yaml.
+        
+        Args:
+            connection: Active database connection
+        """
+        try:
+            # Load configuration
+            config = ConfigurationManager()
+            config.initialize()
+            libsql_config = config.get("database.libsql", {})
+            
+            # Apply journal mode (default: WAL)
+            journal_mode = libsql_config.get("journal_mode", "WAL")
+            connection.execute(f"PRAGMA journal_mode = {journal_mode}")
+            logger.debug(f"Set journal_mode to {journal_mode}")
+            
+            # Apply synchronous mode (default: NORMAL)
+            synchronous = libsql_config.get("synchronous", "NORMAL")
+            connection.execute(f"PRAGMA synchronous = {synchronous}")
+            logger.debug(f"Set synchronous to {synchronous}")
+            
+            # Apply cache size (default: 2000)
+            cache_size = libsql_config.get("cache_size", 2000)
+            connection.execute(f"PRAGMA cache_size = {cache_size}")
+            logger.debug(f"Set cache_size to {cache_size}")
+            
+            logger.debug("Applied LibSQL configuration settings")
+            
+        except Exception as e:
+            logger.warning(f"Failed to apply database settings: {e}")
+            # Don't fail connection for configuration issues
     
     def set_master_password(self, password: str, store_in_keyring: bool = True) -> None:
         """

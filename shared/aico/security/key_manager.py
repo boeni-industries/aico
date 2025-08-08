@@ -34,14 +34,28 @@ class AICOKeyManager:
     4. Salt management for databases
     """
     
-    # Key derivation constants
-    DEFAULT_KDF_ITERATIONS = 100000  # PBKDF2 iterations for database keys
-    KEY_LENGTH = 32  # 256-bit keys
-    SALT_LENGTH = 16  # 128-bit salt
-    
     def __init__(self, service_name: str = "AICO"):
         self.service_name = service_name
         logger.debug(f"Initialized AICOKeyManager for service: {service_name}")
+    
+    def _get_security_config(self, key: str):
+        """Get security configuration value using hierarchical YAML system."""
+        from aico.core.config import ConfigurationManager
+        config_manager = ConfigurationManager()
+        config_manager.initialize()
+        return config_manager.get(f"encryption.{key}")
+    
+    @property
+    def KEY_LENGTH(self) -> int:
+        """Get key length from configuration."""
+        return self._get_security_config("key_length")
+    
+    @property
+    def SALT_LENGTH(self) -> int:
+        """Get salt length from configuration."""
+        return self._get_security_config("salt_length")
+    
+
         
     def setup_master_password(self, password: str) -> bytes:
         """
@@ -145,7 +159,7 @@ class AICOKeyManager:
                 algorithm=hashes.SHA256(),
                 length=self.KEY_LENGTH,
                 salt=salt,
-                iterations=self.DEFAULT_KDF_ITERATIONS,
+                iterations=self._get_security_config("key_derivation.pbkdf2.iterations"),
                 backend=default_backend()
             )
             
@@ -157,10 +171,10 @@ class AICOKeyManager:
             salt = os.urandom(16)
             argon2 = Argon2id(
                 salt=salt,
-                length=32,             # 256-bit key
-                iterations=2,          # Balanced for database operations
-                lanes=2,               # 2 threads
-                memory_cost=256*1024,  # 256MB in KiB
+                length=self._get_security_config("key_derivation.argon2id.length"),
+                iterations=self._get_security_config("key_derivation.argon2id.database_operations"),
+                lanes=self._get_security_config("key_derivation.argon2id.lanes.database_operations"),
+                memory_cost=self._get_security_config("key_derivation.argon2id.memory_cost.database_operations"),
                 ad=None,
                 secret=None
             )
@@ -182,10 +196,10 @@ class AICOKeyManager:
         salt = os.urandom(16)
         argon2 = Argon2id(
             salt=salt,
-            length=32,             # 256-bit key
-            iterations=1,          # Lighter for file operations
-            lanes=2,               # 2 threads
-            memory_cost=128*1024,  # 128MB in KiB
+            length=self._get_security_config("key_derivation.argon2id.length"),
+            iterations=self._get_security_config("key_derivation.argon2id.file_operations"),
+            lanes=self._get_security_config("key_derivation.argon2id.lanes.file_operations"),
+            memory_cost=self._get_security_config("key_derivation.argon2id.memory_cost.file_operations"),
             ad=None,
             secret=None
         )
@@ -207,10 +221,10 @@ class AICOKeyManager:
         salt = os.urandom(16)
         argon2 = Argon2id(
             salt=salt,
-            length=32,             # 256-bit key
-            iterations=2,          # Lighter for derived keys
-            lanes=2,               # 2 threads
-            memory_cost=256*1024,  # 256MB in KiB
+            length=self._get_security_config("key_derivation.argon2id.length"),
+            iterations=self._get_security_config("key_derivation.argon2id.derived_keys"),
+            lanes=self._get_security_config("key_derivation.argon2id.lanes.derived_keys"),
+            memory_cost=self._get_security_config("key_derivation.argon2id.memory_cost.derived_keys"),
             ad=None,
             secret=None
         )
@@ -235,10 +249,10 @@ class AICOKeyManager:
             
         argon2 = Argon2id(
             salt=salt,
-            length=32,             # 256-bit key
-            iterations=3,          # 3 iterations for master key
-            lanes=4,               # 4 threads (parallelism)
-            memory_cost=1024*1024, # 1GB memory in KiB
+            length=self._get_security_config("key_derivation.argon2id.length"),
+            iterations=self._get_security_config("key_derivation.argon2id.master_key"),
+            lanes=self._get_security_config("key_derivation.argon2id.lanes.master_key"),
+            memory_cost=self._get_security_config("key_derivation.argon2id.memory_cost.master_key"),
             ad=None,
             secret=None
         )
@@ -315,7 +329,7 @@ class AICOKeyManager:
                 "database_path": str(db_file),
                 "salt_file": str(salt_file),
                 "salt_exists": salt_file.exists(),
-                "kdf_iterations": self.DEFAULT_KDF_ITERATIONS,
+                "kdf_iterations": self._get_security_config("key_derivation.pbkdf2.iterations"),
                 "kdf_algorithm": "PBKDF2-SHA256"
             })
         else:

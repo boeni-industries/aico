@@ -1,6 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "AICO Core Configuration",
+  "description": "JSON Schema for AICO core system configuration. Validates system settings, message bus configuration, API settings, and cross-platform path resolution. Used by ConfigurationManager for runtime validation and CLI config commands.",
   "type": "object",
   "properties": {
     "system": {
@@ -18,9 +19,37 @@
           "enum": ["development", "staging", "production"],
           "default": "development"
         },
-        "data_directory": {
-          "type": "string",
-          "default": "./data"
+        "paths": {
+          "type": "object",
+          "properties": {
+            "directory_mode": {
+              "type": "string",
+              "enum": ["auto", "current"],
+              "default": "auto",
+              "description": "Path resolution mode: 'auto' for OS-appropriate directories, 'current' for ./data"
+            },
+            "data_subdirectory": {
+              "type": "string",
+              "default": "data",
+              "description": "Subdirectory within user data dir for databases"
+            },
+            "config_subdirectory": {
+              "type": "string", 
+              "default": "config",
+              "description": "Subdirectory within user config dir"
+            },
+            "cache_subdirectory": {
+              "type": "string",
+              "default": "cache", 
+              "description": "Subdirectory within user cache dir"
+            },
+            "logs_subdirectory": {
+              "type": "string",
+              "default": "logs",
+              "description": "Subdirectory within user logs dir"
+            }
+          },
+          "required": ["directory_mode", "data_subdirectory", "config_subdirectory", "cache_subdirectory", "logs_subdirectory"]
         },
         "log_level": {
           "type": "string",
@@ -28,7 +57,7 @@
           "default": "INFO"
         }
       },
-      "required": ["name", "environment", "data_directory", "log_level"]
+      "required": ["name", "environment", "paths", "log_level"]
     },
     "message_bus": {
       "type": "object",

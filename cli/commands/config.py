@@ -303,9 +303,9 @@ def schema(domain: str):
         raise typer.Exit(1)
 
 
-@app.command("paths")
-def show_paths():
-    """Show platform-specific configuration and data directories."""
+@app.command("show")
+def show():
+    """Show configuration paths, platform info, and system settings."""
     
     # Get platform info
     platform_info = AICOPaths.get_platform_info()
@@ -339,3 +339,33 @@ def show_paths():
     
     # Show platform info using shared utility
     display_platform_info(console, platform_info)
+
+
+@app.command("init")
+def init():
+    """Initialize AICO configuration directories and setup."""
+    
+    console.print("🚀 [bold cyan]Initializing AICO Configuration[/bold cyan]\n")
+    
+    try:
+        # Initialize all platform directories
+        directories = [
+            ("Data Directory", AICOPaths.get_data_directory() / "data"),
+            ("Config Directory", AICOPaths.get_config_directory()),
+            ("Cache Directory", AICOPaths.get_cache_directory()),
+            ("Logs Directory", AICOPaths.get_logs_directory())
+        ]
+        
+        # Create all directories
+        for dir_name, dir_path in directories:
+            AICOPaths.ensure_directory(dir_path)
+            console.print(f"✅ [green]Created {dir_name}[/green]: {format_smart_path(dir_path)}")
+        
+        console.print(f"\n🎉 [bold green]AICO configuration directories initialized successfully![/bold green]")
+        console.print("💡 [cyan]Next steps:[/cyan]")
+        console.print("   • Run [bold]aico db init[/bold] to create encrypted database")
+        console.print("   • Run [bold]aico config show[/bold] to verify setup")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to initialize directories: {e}[/red]")
+        raise typer.Exit(1)

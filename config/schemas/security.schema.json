@@ -1,6 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "AICO Security Configuration",
+  "description": "JSON Schema for AICO security configuration. Validates encryption algorithms, key derivation parameters (Argon2id/PBKDF2), authentication settings, and audit policies. All security parameters are externalized with no in-code fallbacks.",
   "type": "object",
   "properties": {
     "encryption": {
@@ -11,24 +12,130 @@
           "enum": ["AES-256-GCM", "ChaCha20-Poly1305"],
           "default": "AES-256-GCM"
         },
-        "key_derivation": {
-          "type": "string",
-          "enum": ["Argon2id", "PBKDF2-SHA256"],
-          "default": "Argon2id"
+        "key_length": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 64,
+          "default": 32,
+          "description": "Key length in bytes (32 = 256-bit keys)"
         },
         "salt_length": {
           "type": "integer",
           "minimum": 16,
           "maximum": 64,
-          "default": 32
+          "default": 16,
+          "description": "Salt length in bytes (16 = 128-bit salt)"
         },
-        "iteration_count": {
-          "type": "integer",
-          "minimum": 10000,
-          "default": 100000
+        "key_derivation": {
+          "type": "object",
+          "properties": {
+            "pbkdf2": {
+              "type": "object",
+              "properties": {
+                "iterations": {
+                  "type": "integer",
+                  "minimum": 10000,
+                  "default": 100000,
+                  "description": "PBKDF2 iterations for LibSQL compatibility"
+                }
+              },
+              "required": ["iterations"]
+            },
+            "argon2id": {
+              "type": "object",
+              "properties": {
+                "database_operations": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 2,
+                  "description": "Iterations for database operations"
+                },
+                "file_operations": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 1,
+                  "description": "Iterations for file operations (lighter)"
+                },
+                "derived_keys": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 2,
+                  "description": "Iterations for derived keys"
+                },
+                "master_key": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 3,
+                  "description": "Iterations for master key (stronger)"
+                },
+                "memory_cost": {
+                  "type": "object",
+                  "properties": {
+                    "database_operations": {
+                      "type": "integer",
+                      "minimum": 1024,
+                      "default": 262144,
+                      "description": "Memory cost in KiB (256MB)"
+                    },
+                    "file_operations": {
+                      "type": "integer",
+                      "minimum": 1024,
+                      "default": 131072,
+                      "description": "Memory cost in KiB (128MB)"
+                    },
+                    "derived_keys": {
+                      "type": "integer",
+                      "minimum": 1024,
+                      "default": 262144,
+                      "description": "Memory cost in KiB (256MB)"
+                    },
+                    "master_key": {
+                      "type": "integer",
+                      "minimum": 1024,
+                      "default": 1048576,
+                      "description": "Memory cost in KiB (1GB)"
+                    }
+                  },
+                  "required": ["database_operations", "file_operations", "derived_keys", "master_key"]
+                },
+                "lanes": {
+                  "type": "object",
+                  "properties": {
+                    "database_operations": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "default": 2,
+                      "description": "Parallel lanes for database operations"
+                    },
+                    "file_operations": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "default": 2,
+                      "description": "Parallel lanes for file operations"
+                    },
+                    "derived_keys": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "default": 2,
+                      "description": "Parallel lanes for derived keys"
+                    },
+                    "master_key": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "default": 4,
+                      "description": "Parallel lanes for master key (stronger)"
+                    }
+                  },
+                  "required": ["database_operations", "file_operations", "derived_keys", "master_key"]
+                }
+              },
+              "required": ["database_operations", "file_operations", "derived_keys", "master_key", "memory_cost", "lanes"]
+            }
+          },
+          "required": ["pbkdf2", "argon2id"]
         }
       },
-      "required": ["algorithm", "key_derivation", "salt_length", "iteration_count"]
+      "required": ["algorithm", "key_length", "salt_length", "key_derivation"]
     },
     "authentication": {
       "type": "object",
@@ -67,8 +174,9 @@
         },
         "log_level": {
           "type": "string",
-          "enum": ["minimal", "standard", "detailed"],
-          "default": "standard"
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR"],
+          "default": "WARNING",
+          "description": "Standard Python logging levels for audit logs"
         }
       },
       "required": ["enabled", "retention_days", "log_level"]

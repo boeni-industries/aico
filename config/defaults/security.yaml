@@ -1,8 +1,36 @@
 encryption:
   algorithm: "AES-256-GCM"
-  key_derivation: "Argon2id"
-  salt_length: 32
-  iteration_count: 100000
+  key_length: 32  # 256-bit keys
+  salt_length: 16  # 128-bit salt (was 32, corrected to match code)
+  
+  # Key derivation settings
+  key_derivation:
+    # PBKDF2 settings (for LibSQL compatibility)
+    pbkdf2:
+      iterations: 100000
+    
+    # Argon2id settings (for other databases)
+    argon2id:
+      # Different iteration counts for different use cases
+      database_operations: 2    # Balanced for database operations
+      file_operations: 1        # Lighter for file operations  
+      derived_keys: 2           # For derived keys
+      master_key: 3             # For master key derivation
+      
+      # Memory and parallelism settings (different for each use case)
+      memory_cost:
+        database_operations: 262144   # 256MB in KiB (256*1024)
+        file_operations: 131072       # 128MB in KiB (128*1024)
+        derived_keys: 262144          # 256MB in KiB (256*1024)
+        master_key: 1048576           # 1GB in KiB (1024*1024)
+      
+      lanes:
+        database_operations: 2        # 2 threads
+        file_operations: 2            # 2 threads
+        derived_keys: 2               # 2 threads
+        master_key: 4                 # 4 threads (parallelism)
+      
+      length: 32                      # 256-bit output
 
 authentication:
   session_timeout: 3600

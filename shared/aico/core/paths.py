@@ -113,6 +113,40 @@ class AICOPaths:
                 return cls.get_data_directory() / "logs"
     
     @classmethod
+    def get_directory_mode_from_config(cls) -> str:
+        """
+        Get directory_mode from configuration, with fallback to 'auto'.
+        
+        Returns:
+            str: Directory mode ('auto', 'current', or explicit path)
+        """
+        try:
+            # Try to import and read from configuration
+            from aico.core.config import ConfigurationManager
+            config_manager = ConfigurationManager()
+            config_manager.initialize()
+            return config_manager.get("system.paths.directory_mode", "auto")
+        except Exception:
+            # Fallback to 'auto' if configuration is not available
+            return "auto"
+    
+    @classmethod
+    def get_data_subdirectory_from_config(cls) -> str:
+        """
+        Get data subdirectory name from configuration, with fallback to 'data'.
+        
+        Returns:
+            str: Data subdirectory name
+        """
+        try:
+            from aico.core.config import ConfigurationManager
+            config_manager = ConfigurationManager()
+            config_manager.initialize()
+            return config_manager.get("system.paths.data_subdirectory", "data")
+        except Exception:
+            return "data"
+    
+    @classmethod
     def resolve_database_path(cls, config_path: str, directory_mode: str = "auto") -> Path:
         """
         Resolve database path based on simple config.
@@ -131,8 +165,9 @@ class AICOPaths:
             return data_dir / config_path
         
         elif directory_mode == "auto":
-            # Production mode - use OS-appropriate data directory with "data" subdirectory
-            data_dir = cls.get_data_directory() / "data"
+            # Production mode - use OS-appropriate data directory with configurable subdirectory
+            data_subdir = cls.get_data_subdirectory_from_config()
+            data_dir = cls.get_data_directory() / data_subdir
             data_dir.mkdir(parents=True, exist_ok=True)  # Auto-create
             return data_dir / config_path
         

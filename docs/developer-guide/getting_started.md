@@ -374,66 +374,99 @@ npm install react-admin ra-data-simple-rest @mui/material @mui/icons-material @e
 
 ## Database Setup
 
-AICO uses encrypted databases for all data storage. This section covers setting up the main libSQL database. Other databases (DuckDB, ChromaDB, RocksDB) are handled separately in their respective modules.
+AICO uses encrypted databases for all data storage with security by design. The setup process automatically handles directory creation, security initialization, and database configuration.
 
-### Quick Setup
+### Quick Setup (Recommended)
 
 ```bash
-# 1. Setup master password and security
-aico security setup
+# 1. Initialize AICO configuration directories
+aico config init
 
-# 2. Initialize main libSQL database
-aico db init --db-path ./data/aico.db
+# 2. Initialize encrypted database (auto-setup security if needed)
+aico db init
 
-# 3. Verify setup
-aico security status
-aico db status --db-path ./data/aico.db
+# 3. Verify complete setup
+aico config show
+aico db show
 ```
 
 ### Step-by-Step Process
 
-#### 1. Security Setup
+#### 1. Configuration Directory Setup
 ```bash
-# Initialize master password (interactive prompt)
-aico security setup
+# Initialize all AICO directories (data, config, cache, logs)
+aico config init
 
-# Verify security configuration
-aico security status
+# Verify directory structure
+aico config show
 ```
 
-#### 2. Main Database Initialization
+#### 2. Database Initialization
 ```bash
-# Create encrypted libSQL database
-aico db init --db-path ./data/aico.db --db-type libsql
+# Create encrypted libSQL database with automatic security setup
+aico db init
 
-# Test database connection
-aico db test --db-path ./data/aico.db
+# Test database connection and encryption
+aico db test
+
+# View database configuration and paths
+aico db show
 ```
+
+**Note**: The `aico db init` command automatically sets up master password security if not already configured, eliminating the need for separate `aico security setup` step.
 
 ### Directory Structure
-After setup, you'll have:
+After setup, you'll have cross-platform directories:
 ```
+# Windows Example: %APPDATA%/aico/
+# macOS Example: ~/Library/Application Support/aico/
+# Linux Example: ~/.local/share/aico/
 aico/
 ├── data/
 │   ├── aico.db              # Main libSQL database (encrypted)
-│   └── aico.db.salt         # Encryption salt
-└── config/
-    ├── database.yaml        # Database configuration
-    └── security.yaml        # Security settings
+│   ├── aico.db.salt         # Encryption salt
+│   ├── analytics.duckdb     # Analytics database (encrypted)
+│   └── chroma/              # Vector database directory (encrypted)
+├── config/
+│   ├── defaults/            # Default configuration files
+│   └── environments/        # Environment-specific overrides
+├── cache/                   # Application cache
+└── logs/                    # Application logs
+```
+
+### Configuration Management
+AICO uses a hierarchical configuration system with externalized settings:
+
+```bash
+# View all configuration paths and settings
+aico config show
+
+# View database-specific configuration
+aico db show
+
+# Get specific configuration values
+aico config get database.libsql.journal_mode
+aico config get system.paths.directory_mode
 ```
 
 ### Troubleshooting
 
-**Database creation fails:**
+**Setup issues:**
 ```bash
-aico security status    # Check security setup
-aico security test      # Verify keyring access
+aico config show       # Check directory structure
+aico db show          # Check database configuration
 ```
 
-**Encryption issues:**
+**Database connection fails:**
 ```bash
-aico security clear     # Reset security (development only)
-aico security setup     # Reinitialize
+aico db status        # Check database status
+aico db test          # Test database connection
+```
+
+**Security/encryption issues:**
+```bash
+aico security status  # Check security setup
+aico security test    # Verify keyring access
 ```
 
 For detailed architecture and configuration options, see [Data Layer Documentation](../architecture/data_layer.md).

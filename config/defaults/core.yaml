@@ -1,7 +1,13 @@
 system:
   name: "AICO"
   environment: "development"
-  data_directory: "./data"
+  # Path configuration - uses cross-platform path resolution
+  paths:
+    directory_mode: "auto"  # auto = OS-appropriate dirs, current = ./data, or explicit path
+    data_subdirectory: "data"  # Subdirectory within user data dir for databases
+    config_subdirectory: "config"  # Subdirectory within user config dir
+    cache_subdirectory: "cache"  # Subdirectory within user cache dir
+    logs_subdirectory: "logs"  # Subdirectory within user logs dir
   log_level: "INFO"
 
 message_bus:

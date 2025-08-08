@@ -68,8 +68,19 @@ def init(
     key_manager = AICOKeyManager()
     if not key_manager.has_stored_key() and not password:
         console.print("⚠️ [yellow]No master password set up.[/yellow]")
-        console.print("Run 'aico security setup' first, or provide --password option.")
-        raise typer.Exit(1)
+        console.print("Setting up security automatically...")
+        
+        # Auto-setup security
+        password = typer.prompt("Create master password", hide_input=True)
+        confirm_password = typer.prompt("Confirm master password", hide_input=True)
+        
+        if password != confirm_password:
+            console.print("❌ [red]Passwords do not match[/red]")
+            raise typer.Exit(1)
+            
+        # Setup master password
+        key_manager.setup_master_password(password)
+        console.print("✅ [green]Security setup complete[/green]")
     
     # Get password if not provided
     if not password:
@@ -245,11 +256,11 @@ def test(
         raise typer.Exit(1)
 
 
-@app.command("paths")
-def show_paths():
-    """Show database path resolution for different types and modes."""
+@app.command("show")
+def show():
+    """Show database configuration, paths, and settings."""
     
-    console.print("🗄️ [bold cyan]Database Path Resolution[/bold cyan]\n")
+    console.print("🗄️ [bold cyan]Database Configuration & Paths[/bold cyan]\n")
     
     try:
         config = ConfigurationManager()
@@ -264,6 +275,14 @@ def show_paths():
             ("Mode", "yellow", True),
             ("Smart Path", "green", False),
             ("Status", "white", True)
+        ])
+        
+        # Show configuration settings table
+        config_table = create_path_table("Database Configuration Settings", [
+            ("Database Type", "cyan", True),
+            ("Setting", "yellow", True),
+            ("Value", "white", True),
+            ("Source", "green", True)
         ])
         
         for db_type in db_types:
@@ -295,6 +314,18 @@ def show_paths():
                     status
                 )
                 
+                # Add configuration settings to config table
+                if db_type == "libsql":
+                    config_table.add_row("LIBSQL", "journal_mode", db_config.get("journal_mode", "WAL"), "database.yaml")
+                    config_table.add_row("LIBSQL", "synchronous", db_config.get("synchronous", "NORMAL"), "database.yaml")
+                    config_table.add_row("LIBSQL", "cache_size", str(db_config.get("cache_size", 2000)), "database.yaml")
+                elif db_type == "chromadb":
+                    config_table.add_row("CHROMADB", "collection_name", db_config.get("collection_name", "aico_vectors"), "database.yaml")
+                    config_table.add_row("CHROMADB", "distance_function", db_config.get("distance_function", "cosine"), "database.yaml")
+                elif db_type == "duckdb":
+                    config_table.add_row("DUCKDB", "memory_limit", db_config.get("memory_limit", "1GB"), "database.yaml")
+                    config_table.add_row("DUCKDB", "threads", str(db_config.get("threads", 4)), "database.yaml")
+                
             except Exception as e:
                 table.add_row(
                     db_type.upper(),
@@ -305,6 +336,8 @@ def show_paths():
                 )
         
         console.print(table)
+        console.print("\n")
+        console.print(config_table)
         
         # Show full paths for transparency using shared utility
         paths_data = []

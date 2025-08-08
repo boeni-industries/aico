@@ -1,18 +1,34 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "AICO Database Configuration",
+  "description": "JSON Schema for AICO database configuration. Validates LibSQL, ChromaDB, and DuckDB settings including paths, encryption parameters, and performance tuning. Encryption is enforced by design for all databases.",
   "type": "object",
   "properties": {
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "directory_mode": {
+          "type": "string",
+          "enum": ["auto", "current"],
+          "default": "auto",
+          "description": "Default path resolution mode for all databases"
+        }
+      },
+      "required": ["directory_mode"]
+    },
     "libsql": {
       "type": "object",
       "properties": {
-        "path": {
+        "filename": {
           "type": "string",
-          "default": "./data/aico.db"
+          "default": "aico.db",
+          "description": "Database filename - directory resolved by path system"
         },
-        "encryption": {
-          "type": "boolean",
-          "default": true
+        "directory_mode": {
+          "type": "string",
+          "enum": ["auto", "current"],
+          "default": "auto",
+          "description": "Override default directory mode if needed"
         },
         "journal_mode": {
           "type": "string",
@@ -30,14 +46,21 @@
           "default": 2000
         }
       },
-      "required": ["path", "encryption", "journal_mode", "synchronous", "cache_size"]
+      "required": ["filename", "directory_mode", "journal_mode", "synchronous", "cache_size"]
     },
     "chromadb": {
       "type": "object",
       "properties": {
-        "path": {
+        "dirname": {
           "type": "string",
-          "default": "./data/chroma"
+          "default": "chroma",
+          "description": "Directory name for ChromaDB collection storage"
+        },
+        "directory_mode": {
+          "type": "string",
+          "enum": ["auto", "current"],
+          "default": "auto",
+          "description": "Override default directory mode if needed"
         },
         "collection_name": {
           "type": "string",
@@ -49,14 +72,21 @@
           "default": "cosine"
         }
       },
-      "required": ["path", "collection_name", "distance_function"]
+      "required": ["dirname", "directory_mode", "collection_name", "distance_function"]
     },
     "duckdb": {
       "type": "object",
       "properties": {
-        "path": {
+        "filename": {
           "type": "string",
-          "default": "./data/analytics.duckdb"
+          "default": "analytics.duckdb",
+          "description": "Database filename - directory resolved by path system"
+        },
+        "directory_mode": {
+          "type": "string",
+          "enum": ["auto", "current"],
+          "default": "auto",
+          "description": "Override default directory mode if needed"
         },
         "memory_limit": {
           "type": "string",
@@ -69,8 +99,8 @@
           "default": 4
         }
       },
-      "required": ["path", "memory_limit", "threads"]
+      "required": ["filename", "directory_mode", "memory_limit", "threads"]
     }
   },
-  "required": ["libsql", "chromadb", "duckdb"]
+  "required": ["defaults", "libsql", "chromadb", "duckdb"]
 }

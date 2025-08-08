@@ -9,4 +9,4 @@ api:
     - "http://127.0.0.1:8080"
 
 audit:
-  log_level: "detailed"
+  log_level: "DEBUG"  # Detailed audit logging for development

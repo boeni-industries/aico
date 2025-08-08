@@ -7,7 +7,7 @@ libsql:
   # Filename only - directory resolved by path system
   filename: "aico.db"
   directory_mode: "auto"  # Override default if needed
-  encryption: true
+  # Encryption always enforced - security by design
   journal_mode: "WAL"
   synchronous: "NORMAL"
   cache_size: 2000
@@ -18,6 +18,7 @@ chromadb:
   directory_mode: "auto"
   collection_name: "aico_vectors"
   distance_function: "cosine"
+  # Encryption always enforced - security by design
 
 duckdb:
   # Filename for analytics database
@@ -25,6 +26,7 @@ duckdb:
   directory_mode: "auto"
   memory_limit: "1GB"
   threads: 4
+  # Encryption always enforced - security by design
 
 # Development overrides (can be set via environment or config)
 development:
