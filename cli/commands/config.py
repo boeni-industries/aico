@@ -6,13 +6,16 @@ configuration across all AICO subsystems.
 """
 
 import typer
-from rich.console import Console
 from rich.table import Table
 from rich import box
 from pathlib import Path
 import sys
-import json
+import os
 import yaml
+import json
+
+# Standard Rich console - encoding is fixed at app startup
+from rich.console import Console
 
 # Add shared module to path for CLI usage
 if getattr(sys, 'frozen', False):
@@ -25,9 +28,16 @@ else:
 sys.path.insert(0, str(shared_path))
 
 from aico.core.config import ConfigurationManager, ConfigurationError, ConfigurationValidationError
+from aico.core.paths import AICOPaths
+
+# Import shared utilities using the same pattern as other CLI modules
+from utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
 
 app = typer.Typer()
+# Standard Rich console - encoding is fixed at app startup
 console = Console()
+
+
 
 
 @app.command()
@@ -291,3 +301,41 @@ def schema(domain: str):
     except ConfigurationError as e:
         console.print(f"[red]Configuration error: {e}[/red]")
         raise typer.Exit(1)
+
+
+@app.command("paths")
+def show_paths():
+    """Show platform-specific configuration and data directories."""
+    
+    # Get platform info
+    platform_info = AICOPaths.get_platform_info()
+    
+    # Create table using shared utility
+    table = create_path_table("Platform Configuration Paths", [
+        ("Directory Type", "cyan", True),
+        ("Smart Path", "green", False),
+        ("Status", "white", True)
+    ])
+    
+    # Add directory paths - fix data directory to show actual data subdirectory
+    data_dir = AICOPaths.get_data_directory() / "data"  # Add the data subdirectory
+    directories = [
+        ("Data Directory", str(data_dir)),
+        ("Config Directory", platform_info["config_directory"]), 
+        ("Cache Directory", platform_info["cache_directory"]),
+        ("Logs Directory", platform_info["logs_directory"])
+    ]
+    
+    for dir_type, dir_path in directories:
+        path_obj = Path(dir_path)
+        status = get_status_indicator(path_obj)
+        smart_path = format_smart_path(path_obj)
+        table.add_row(dir_type, smart_path, status)
+    
+    console.print(table)
+    
+    # Show full paths using shared utility
+    display_full_paths_section(console, directories)
+    
+    # Show platform info using shared utility
+    display_platform_info(console, platform_info)

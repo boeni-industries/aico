@@ -7,6 +7,7 @@ Provides database initialization, status checking, and management commands.
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich import box
 from pathlib import Path
 import sys
 import os
@@ -23,20 +24,40 @@ sys.path.insert(0, str(shared_path))
 
 from aico.security import AICOKeyManager
 from aico.data.libsql import create_encrypted_database, EncryptedLibSQLConnection
+from aico.core.paths import AICOPaths
+from aico.core.config import ConfigurationManager
+
+# Import shared utilities using the same pattern as other CLI modules
+from utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
 
 app = typer.Typer()
 console = Console()
 
 
+
+
+
 @app.command()
 def init(
-    db_path: str = typer.Option("./aico.db", help="Database file path"),
+    db_path: str = typer.Option(None, help="Database file path (optional - uses config default)"),
     db_type: str = typer.Option("libsql", help="Database type (libsql, duckdb, chroma, rocksdb)"),
     password: str = typer.Option(None, "--password", "-p", help="Master password (will prompt if not provided)")
 ):
     """Initialize a new encrypted AICO database."""
     
-    db_file = Path(db_path)
+    # Load configuration and resolve database path
+    config = ConfigurationManager()
+    
+    if db_path:
+        # Use provided path directly
+        db_file = Path(db_path)
+    else:
+        # Use configuration-based path resolution
+        db_config = config.get(f"database.{db_type}", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        
+        db_file = AICOPaths.resolve_database_path(filename, directory_mode)
     
     # Check if database already exists
     if db_file.exists():
@@ -69,14 +90,14 @@ def init(
             raise typer.Exit(1)
             
         conn = create_encrypted_database(
-            db_path=db_path,
+            db_path=str(db_file),
             master_password=password,
             store_in_keyring=True
         )
         
         console.print("✅ [green]Database created successfully![/green]")
-        console.print(f"📁 Database: {db_path}")
-        console.print(f"🔑 Salt file: {db_path}.salt")
+        console.print(f"📁 Database: {db_file}")
+        console.print(f"🔑 Salt file: {db_file}.salt")
         console.print("🔐 Master password stored in system keyring")
         
     except Exception as e:
@@ -86,12 +107,24 @@ def init(
 
 @app.command()
 def status(
-    db_path: str = typer.Option("./aico.db", help="Database file path"),
+    db_path: str = typer.Option(None, help="Database file path (optional - uses config default)"),
     db_type: str = typer.Option("libsql", help="Database type (libsql, duckdb, chroma, rocksdb)")
 ):
     """Check database encryption status and information."""
     
-    db_file = Path(db_path)
+    # Load configuration and resolve database path
+    config = ConfigurationManager()
+    
+    if db_path:
+        # Use provided path directly
+        db_file = Path(db_path)
+    else:
+        # Use configuration-based path resolution
+        db_config = config.get(f"database.{db_type}", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        
+        db_file = AICOPaths.resolve_database_path(filename, directory_mode)
     
     if not db_file.exists():
         console.print(f"❌ [red]Database not found: {db_path}[/red]")
@@ -99,13 +132,13 @@ def status(
     
     try:
         # Try to connect and get encryption info
-        conn = EncryptedLibSQLConnection(db_path=db_path)
+        conn = EncryptedLibSQLConnection(db_path=str(db_file))
         
         # Get encryption information
         info = conn.get_encryption_info()
         
         # Create status table
-        table = Table(title=f"Database Status: {db_path}")
+        table = Table(title=f"Database Status: {db_file}")
         table.add_column("Property", style="cyan")
         table.add_column("Value", style="green")
         
@@ -142,16 +175,28 @@ def status(
 
 @app.command()
 def test(
-    db_path: str = typer.Option("./aico.db", help="Database file path"),
+    db_path: str = typer.Option(None, help="Database file path (optional - uses config default)"),
     db_type: str = typer.Option("libsql", help="Database type (libsql, duckdb, chroma, rocksdb)"),
     password: str = typer.Option(None, "--password", "-p", help="Master password (will prompt if not provided)")
 ):
     """Test database connection and basic operations."""
     
-    db_file = Path(db_path)
+    # Load configuration and resolve database path
+    config = ConfigurationManager()
+    
+    if db_path:
+        # Use provided path directly
+        db_file = Path(db_path)
+    else:
+        # Use configuration-based path resolution
+        db_config = config.get(f"database.{db_type}", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        
+        db_file = AICOPaths.resolve_database_path(filename, directory_mode)
     
     if not db_file.exists():
-        console.print(f"❌ [red]Database not found: {db_path}[/red]")
+        console.print(f"❌ [red]Database not found: {db_file}[/red]")
         raise typer.Exit(1)
     
     # Get password if not provided
@@ -159,11 +204,11 @@ def test(
         password = typer.prompt("Enter master password", hide_input=True)
     
     try:
-        console.print(f"🔐 Testing database connection: [cyan]{db_path}[/cyan]")
+        console.print(f"🔐 Testing database connection: [cyan]{db_file}[/cyan]")
         
         # Create connection with password
         conn = EncryptedLibSQLConnection(
-            db_path=db_path,
+            db_path=str(db_file),
             master_password=password
         )
         
@@ -197,6 +242,98 @@ def test(
         
     except Exception as e:
         console.print(f"❌ [red]Database test failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("paths")
+def show_paths():
+    """Show database path resolution for different types and modes."""
+    
+    console.print("🗄️ [bold cyan]Database Path Resolution[/bold cyan]\n")
+    
+    try:
+        config = ConfigurationManager()
+        
+        # Database types to check
+        db_types = ["libsql", "chromadb", "duckdb"]
+        
+        # Create table using shared utility
+        table = create_path_table("Database Path Configuration", [
+            ("Database Type", "cyan", True),
+            ("Filename", "white", True),
+            ("Mode", "yellow", True),
+            ("Smart Path", "green", False),
+            ("Status", "white", True)
+        ])
+        
+        for db_type in db_types:
+            try:
+                # Get configuration
+                db_config = config.get(f"database.{db_type}", {})
+                
+                # Resolve path based on database type
+                if db_type == "chromadb":
+                    dirname = db_config.get("dirname", "chroma")
+                    directory_mode = db_config.get("directory_mode", "auto")
+                    resolved_path = AICOPaths.resolve_database_path(dirname, directory_mode)
+                    filename_display = dirname
+                else:
+                    filename = db_config.get("filename", f"{db_type}.db")
+                    directory_mode = db_config.get("directory_mode", "auto")
+                    resolved_path = AICOPaths.resolve_database_path(filename, directory_mode)
+                    filename_display = filename
+                
+                # Format path and get status
+                smart_path = format_smart_path(resolved_path)
+                status = get_status_indicator(resolved_path)
+                
+                table.add_row(
+                    db_type.upper(),
+                    filename_display,
+                    directory_mode,
+                    smart_path,
+                    status
+                )
+                
+            except Exception as e:
+                table.add_row(
+                    db_type.upper(),
+                    "❌ Error",
+                    "❌ Error", 
+                    f"Error: {e}",
+                    "❌ Error"
+                )
+        
+        console.print(table)
+        
+        # Show full paths for transparency using shared utility
+        paths_data = []
+        for db_type in db_types:
+            try:
+                db_config = config.get(f"database.{db_type}", {})
+                if db_type == "chromadb":
+                    dirname = db_config.get("dirname", "chroma")
+                    directory_mode = db_config.get("directory_mode", "auto")
+                    resolved_path = AICOPaths.resolve_database_path(dirname, directory_mode)
+                else:
+                    filename = db_config.get("filename", f"{db_type}.db")
+                    directory_mode = db_config.get("directory_mode", "auto")
+                    resolved_path = AICOPaths.resolve_database_path(filename, directory_mode)
+                
+                paths_data.append((db_type.upper(), resolved_path))
+            except Exception:
+                pass  # Skip errors in detail view
+        
+        display_full_paths_section(console, paths_data)
+        
+        # Show platform info
+        platform_info = AICOPaths.get_platform_info()
+        data_dir = AICOPaths.get_data_directory() / "data"  # Show actual database storage directory
+        console.print(f"\n🖥️ Platform: [cyan]{platform_info['platform']} {platform_info['platform_release']}[/cyan]")
+        console.print(f"📁 Data Directory: [green]{data_dir}[/green]")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to show database paths: {e}[/red]")
         raise typer.Exit(1)
 
 

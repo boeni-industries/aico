@@ -1,16 +1,31 @@
+# Database configuration with cross-platform path resolution
+defaults:
+  # Path resolution mode: "auto" (OS-specific), "current" (dev), or explicit path
+  directory_mode: "auto"
+
 libsql:
-  path: "./data/aico.db"
+  # Filename only - directory resolved by path system
+  filename: "aico.db"
+  directory_mode: "auto"  # Override default if needed
   encryption: true
   journal_mode: "WAL"
   synchronous: "NORMAL"
   cache_size: 2000
 
 chromadb:
-  path: "./data/chroma"
+  # Directory name for ChromaDB collection storage
+  dirname: "chroma"
+  directory_mode: "auto"
   collection_name: "aico_vectors"
   distance_function: "cosine"
 
 duckdb:
-  path: "./data/analytics.duckdb"
+  # Filename for analytics database
+  filename: "analytics.duckdb"
+  directory_mode: "auto"
   memory_limit: "1GB"
   threads: 4
+
+# Development overrides (can be set via environment or config)
+development:
+  directory_mode: "current"  # Use ./data in development

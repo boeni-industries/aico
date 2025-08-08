@@ -1,10 +1,12 @@
 import typer
-from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
 from pathlib import Path
 import sys
+
+# Standard Rich console - encoding is fixed at app startup
+from rich.console import Console
 
 def version_callback(ctx: typer.Context):
     """Show help when no subcommand is given instead of showing an error."""
@@ -18,6 +20,7 @@ app = typer.Typer(
     invoke_without_command=True
 )
 
+# Standard Rich console - encoding is fixed at app startup
 console = Console()
 
 def get_versions_path():

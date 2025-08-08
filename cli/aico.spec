@@ -23,17 +23,13 @@ a = Analysis(
         'cryptography.hazmat.primitives.hashes',
         'cryptography.hazmat.backends',
         'libsql',
-        'aico.security',
-        'aico.data.libsql',
-        'aico.data.libsql.encrypted',
         # Configuration management dependencies
         'yaml',
         'jsonschema',
         'watchdog',
         'watchdog.observers',
         'watchdog.events',
-        'aico.core',
-        'aico.core.config',
+        # Note: aico.* modules are included via datas and imported dynamically at runtime
     ],
     hookspath=[],
     hooksconfig={},
