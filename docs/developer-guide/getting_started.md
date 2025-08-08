@@ -372,6 +372,74 @@ npm install react-admin ra-data-simple-rest @mui/material @mui/icons-material @e
 
 ---
 
+## Database Setup
+
+AICO uses encrypted databases for all data storage. This section covers setting up the main libSQL database. Other databases (DuckDB, ChromaDB, RocksDB) are handled separately in their respective modules.
+
+### Quick Setup
+
+```bash
+# 1. Setup master password and security
+aico security setup
+
+# 2. Initialize main libSQL database
+aico db init --db-path ./data/aico.db
+
+# 3. Verify setup
+aico security status
+aico db status --db-path ./data/aico.db
+```
+
+### Step-by-Step Process
+
+#### 1. Security Setup
+```bash
+# Initialize master password (interactive prompt)
+aico security setup
+
+# Verify security configuration
+aico security status
+```
+
+#### 2. Main Database Initialization
+```bash
+# Create encrypted libSQL database
+aico db init --db-path ./data/aico.db --db-type libsql
+
+# Test database connection
+aico db test --db-path ./data/aico.db
+```
+
+### Directory Structure
+After setup, you'll have:
+```
+aico/
+├── data/
+│   ├── aico.db              # Main libSQL database (encrypted)
+│   └── aico.db.salt         # Encryption salt
+└── config/
+    ├── database.yaml        # Database configuration
+    └── security.yaml        # Security settings
+```
+
+### Troubleshooting
+
+**Database creation fails:**
+```bash
+aico security status    # Check security setup
+aico security test      # Verify keyring access
+```
+
+**Encryption issues:**
+```bash
+aico security clear     # Reset security (development only)
+aico security setup     # Reinitialize
+```
+
+For detailed architecture and configuration options, see [Data Layer Documentation](../architecture/data_layer.md).
+
+---
+
 ## Further Reading
 
 - [Contributing](./contributing.md)
