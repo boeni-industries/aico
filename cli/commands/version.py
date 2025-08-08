@@ -11,7 +11,32 @@ from rich.console import Console
 def version_callback(ctx: typer.Context):
     """Show help when no subcommand is given instead of showing an error."""
     if ctx.invoked_subcommand is None:
-        print(ctx.get_help())
+        from utils.help_formatter import format_subcommand_help
+        
+        subcommands = [
+            ("show", "Show the version for a subsystem, or all subsystems if no subsystem is specified"),
+            ("history", "Show the version history for a subsystem (or all subsystems) using git history"),
+            ("sync", "Sync canonical versions from VERSIONS file to all project files"),
+            ("check", "Check that all project files match the canonical versions in the VERSIONS file"),
+            ("next", "Preview the next version number for a subsystem or all subsystems"),
+            ("bump", "Bump the version for a subsystem and update all relevant files")
+        ]
+        
+        examples = [
+            "aico version show",
+            "aico version show cli", 
+            "aico version sync",
+            "aico version check",
+            "aico version bump cli patch"
+        ]
+        
+        format_subcommand_help(
+            console=console,
+            command_name="version",
+            description="Manage and synchronize versions across all AICO subsystems",
+            subcommands=subcommands,
+            examples=examples
+        )
         raise typer.Exit()
 
 app = typer.Typer(
@@ -33,7 +58,7 @@ def get_versions_path():
         return (Path(__file__).parent.parent.parent / "VERSIONS").resolve()
 
 VERSIONS_PATH = get_versions_path()
-SUBSYSTEMS = ["cli", "backend", "frontend", "studio"]
+SUBSYSTEMS = ["shared", "cli", "backend", "frontend", "studio"]
 
 
 def read_versions():
@@ -66,7 +91,7 @@ Examples:
 def show(
     subsystem: str = typer.Argument(
         None,
-        help="Which subsystem to show (cli/backend/frontend/studio/all). If omitted, shows all subsystems.",
+        help="Which subsystem to show (shared/cli/backend/frontend/studio/all). If omitted, shows all subsystems.",
         show_default=False
     )
 ):
@@ -106,7 +131,7 @@ Show the version for a subsystem, or all subsystems if no subsystem is specified
         # Single subsystem display with enhanced styling
         v = versions.get(subsystem)
         if v:
-            icon = {"cli": "⚡", "backend": "🤖", "frontend": "🖥️", "studio": "⚙️"}.get(subsystem, "📦")
+            icon = {"shared": "📚", "cli": "⚡", "backend": "🤖", "frontend": "🖥️", "studio": "⚙️"}.get(subsystem, "📦")
             panel = Panel(
                 f"{icon} [bold white]{subsystem}[/bold white]\n[bold green]{v}[/bold green]",
                 title="[bold cyan]Version Info[/bold cyan]",
@@ -134,7 +159,7 @@ Examples:
 def history(
     subsystem: str = typer.Argument(
         None,
-        help="Which subsystem to show history for (cli/backend/frontend/studio/all). If omitted, shows all.",
+        help="Which subsystem to show history for (shared/cli/backend/frontend/studio/all). If omitted, shows all.",
         show_default=False
     )
 ):
@@ -290,6 +315,28 @@ r'__version__\s*=\s*["\'][^"\']*["\']',
         return True
     return False
 
+# Update version in shared/setup.py
+def update_shared_version(version: str):
+    """Update version in shared/setup.py"""
+    setup_file = get_project_root() / "shared" / "setup.py"
+    if not setup_file.exists():
+        return False
+    
+    content = setup_file.read_text(encoding='utf-8')
+    # Replace version="x.x.x" with new version
+    import re
+    new_content = re.sub(
+        r'version\s*=\s*["\'][^"\']*["\']',
+        f'version="{version}"',
+        content
+    )
+    
+    if new_content != content:
+        setup_file.write_text(new_content, encoding='utf-8')
+        return True
+    return False
+
+# Update version in backend project files
 def update_backend_version(version: str):
     """Update version in backend project files"""
     backend_dir = get_project_root() / "backend"
@@ -379,6 +426,7 @@ def sync():
     
     # Update each subsystem
     update_functions = {
+        "shared": update_shared_version,
         "cli": update_cli_version,
         "backend": update_backend_version,
         "frontend": update_frontend_version,
@@ -440,7 +488,7 @@ Examples:
 def check(
     subsystem: str = typer.Argument(
         None,
-        help="Which subsystem to check (cli/backend/frontend/studio/all). If omitted, checks all subsystems.",
+        help="Which subsystem to check (shared/cli/backend/frontend/studio/all). If omitted, checks all subsystems.",
         show_default=False
     )
 ):
@@ -449,6 +497,7 @@ def check(
     """
     versions = read_versions()
     readers = {
+        "shared": read_shared_version,
         "cli": read_cli_version,
         "backend": read_backend_version,
         "frontend": read_frontend_version,
@@ -520,6 +569,19 @@ def read_frontend_version():
     match = re.search(r'version:\s*([\d\.]+)', content)
     return match.group(1) if match else None
 
+def read_shared_version():
+    """Read version from shared/setup.py by parsing the version string."""
+    setup_file = get_project_root() / "shared" / "setup.py"
+    if not setup_file.exists():
+        return None
+    try:
+        content = setup_file.read_text(encoding='utf-8')
+        import re
+        match = re.search(r'version\s*=\s*["\']([^"\']*)["\']', content)
+        return match.group(1) if match else None
+    except Exception:
+        return None
+
 def read_studio_version():
     studio_file = get_project_root() / "studio" / "package.json"
     if not studio_file.exists():
@@ -540,7 +602,7 @@ No changes are made.
 def next(
     subsystem: str = typer.Argument(
         None,
-        help="Which subsystem to preview (cli/backend/frontend/studio/all). If omitted, previews all subsystems.",
+        help="Which subsystem to preview (shared/cli/backend/frontend/studio/all). If omitted, previews all subsystems.",
         show_default=False
     ),
     level: str = typer.Argument(
@@ -605,7 +667,7 @@ Examples:
 def bump(
     subsystem: str = typer.Argument(
         ...,
-        help="Which subsystem to bump (cli/backend/frontend/studio). Must be specified.",
+        help="Which subsystem to bump (shared/cli/backend/frontend/studio). Must be specified.",
     ),
     level: str = typer.Argument(
         ...,
@@ -699,6 +761,7 @@ def bump(
     commit_msg = f"Bump {subsystem} version to {new_version}"
     subprocess.run(["git", "add", str(versions_path)], check=True)
     project_file = {
+        "shared": get_project_root() / "shared" / "setup.py",
         "cli": get_project_root() / "cli" / "aico.py",
         "backend": get_project_root() / "backend" / "main.py",
         "frontend": get_project_root() / "frontend" / "pubspec.yaml",

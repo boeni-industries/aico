@@ -22,7 +22,40 @@ sys.path.insert(0, str(shared_path))
 
 from aico.security import AICOKeyManager
 
-app = typer.Typer()
+def security_callback(ctx: typer.Context):
+    """Show help when no subcommand is given instead of showing an error."""
+    if ctx.invoked_subcommand is None:
+        from utils.help_formatter import format_subcommand_help
+        
+        subcommands = [
+            ("setup", "Set up master password for AICO (first-time setup)"),
+            ("passwd", "Change the master password (affects all databases)"),
+            ("status", "Check security status and keyring information"),
+            ("clear", "Clear stored master key (security incident recovery)"),
+            ("test", "Test master password authentication")
+        ]
+        
+        examples = [
+            "aico security setup",
+            "aico security status",
+            "aico security test",
+            "aico security passwd"
+        ]
+        
+        format_subcommand_help(
+            console=console,
+            command_name="security",
+            description="Master password setup and security management",
+            subcommands=subcommands,
+            examples=examples
+        )
+        raise typer.Exit()
+
+app = typer.Typer(
+    help="Master password setup and security management.",
+    callback=security_callback,
+    invoke_without_command=True
+)
 console = Console()
 
 
@@ -64,8 +97,8 @@ def setup(
         raise typer.Exit(1)
 
 
-@app.command("change-password")
-def change_password():
+@app.command("passwd")
+def passwd():
     """Change the master password (affects all databases)."""
     
     key_manager = AICOKeyManager()

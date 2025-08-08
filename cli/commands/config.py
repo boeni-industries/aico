@@ -33,7 +33,47 @@ from aico.core.paths import AICOPaths
 # Import shared utilities using the same pattern as other CLI modules
 from utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
 
-app = typer.Typer()
+def config_callback(ctx: typer.Context):
+    """Show help when no subcommand is given instead of showing an error."""
+    if ctx.invoked_subcommand is None:
+        from utils.help_formatter import format_subcommand_help
+        
+        subcommands = [
+            ("get", "Get configuration value using dot notation"),
+            ("set", "Set configuration value using dot notation"),
+            ("list", "List configuration values"),
+            ("validate", "Validate configuration against schemas"),
+            ("export", "Export configuration to file"),
+            ("import", "Import configuration from file"),
+            ("reload", "Reload configuration from files"),
+            ("domains", "List available configuration domains"),
+            ("schema", "Show schema for a configuration domain"),
+            ("show", "Show configuration paths, platform info, and system settings"),
+            ("init", "Initialize AICO configuration directories and setup")
+        ]
+        
+        examples = [
+            "aico config list",
+            "aico config get api.port",
+            "aico config set api.port 8080",
+            "aico config show",
+            "aico config domains"
+        ]
+        
+        format_subcommand_help(
+            console=console,
+            command_name="config",
+            description="Configuration management and validation",
+            subcommands=subcommands,
+            examples=examples
+        )
+        raise typer.Exit()
+
+app = typer.Typer(
+    help="Configuration management and validation.",
+    callback=config_callback,
+    invoke_without_command=True
+)
 # Standard Rich console - encoding is fixed at app startup
 console = Console()
 

@@ -63,29 +63,43 @@ app = typer.Typer(
 # Add subcommands
 app.add_typer(config_app, name="config", help="📝 Configuration management")
 app.add_typer(version_app, name="version", help="📦 Version and build information") 
-app.add_typer(database_app, name="db", help="🗄️ Database management")
+app.add_typer(database_app, name="db", help="🛢️ Database management")
 app.add_typer(security_app, name="security", help="🔐 Security and encryption")
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context):
-    """AICO CLI: Modular system management and versioning."""
-    # Only show help if there are no further commands/args
-    if ctx.invoked_subcommand is None and not ctx.args:
-        console.print("\n✨ [bold cyan]AICO CLI[/bold cyan]")
-        console.print("[dim]Modular system management and versioning[/dim]\n")
-        console.rule("[bold blue]Available Commands", style="blue")
-        console.print("\n📦 [green]version[/green]   Manage and synchronize versions across all AICO system parts")
-        console.print("🛢️ [green]db[/green]        Database initialization, status, and management")
-        console.print("🔒 [green]security[/green]  Master password setup and security management")
-        console.print("⚙️ [green]config[/green]    Configuration management and validation\n")
-        console.rule("[bold blue]Quick Start", style="blue")
-        console.print("\n[yellow]Examples:[/yellow]")
-        console.print("  [dim]aico version show[/dim]")
-        console.print("  [dim]aico security setup[/dim]")
-        console.print("  [dim]aico db init[/dim]")
-        console.print("  [dim]aico config list[/dim]")
-        console.print("  [dim]aico config get api.port[/dim]")
-        console.print("\n[dim]Use 'aico COMMAND --help' for more information on a command.[/dim]\n")
+    """
+    AICO CLI - Modular system management and versioning
+    
+    A comprehensive command-line interface for managing AICO's configuration,
+    databases, security, and versioning across all system components.
+    """
+    if ctx.invoked_subcommand is None:
+        # Import here to avoid circular imports
+        from utils.help_formatter import format_command_help
+        
+        commands = [
+            ("📦", "version", "Manage and synchronize versions across all AICO system parts"),
+            ("🛢️", "db", "Database initialization, status, and management"),
+            ("🔐", "security", "Master password setup and security management"),
+            ("📝", "config", "Configuration management and validation")
+        ]
+        
+        examples = [
+            "aico version show",
+            "aico security setup", 
+            "aico db init",
+            "aico config list",
+            "aico config get api.port"
+        ]
+        
+        format_command_help(
+            console=console,
+            title="AICO CLI",
+            subtitle="Modular system management and versioning",
+            commands=commands,
+            examples=examples
+        )
         raise typer.Exit()
 
 if __name__ == "__main__":

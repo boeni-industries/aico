@@ -30,7 +30,39 @@ from aico.core.config import ConfigurationManager
 # Import shared utilities using the same pattern as other CLI modules
 from utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
 
-app = typer.Typer()
+def database_callback(ctx: typer.Context):
+    """Show help when no subcommand is given instead of showing an error."""
+    if ctx.invoked_subcommand is None:
+        from utils.help_formatter import format_subcommand_help
+        
+        subcommands = [
+            ("init", "Initialize a new encrypted AICO database"),
+            ("status", "Check database encryption status and information"),
+            ("test", "Test database connection and basic operations"),
+            ("show", "Show database configuration, paths, and settings")
+        ]
+        
+        examples = [
+            "aico db init",
+            "aico db status",
+            "aico db test",
+            "aico db show"
+        ]
+        
+        format_subcommand_help(
+            console=console,
+            command_name="database",
+            description="Database initialization, status, and management",
+            subcommands=subcommands,
+            examples=examples
+        )
+        raise typer.Exit()
+
+app = typer.Typer(
+    help="Database initialization, status, and management.",
+    callback=database_callback,
+    invoke_without_command=True
+)
 console = Console()
 
 
@@ -260,7 +292,7 @@ def test(
 def show():
     """Show database configuration, paths, and settings."""
     
-    console.print("🗄️ [bold cyan]Database Configuration & Paths[/bold cyan]\n")
+    console.print("🛢️ [bold cyan]Database Configuration & Paths[/bold cyan]\n")
     
     try:
         config = ConfigurationManager()
