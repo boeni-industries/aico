@@ -114,13 +114,14 @@ def init(
         key_manager.setup_master_password(password)
         console.print("✅ [green]Security setup complete[/green]")
     
-    # Get password if not provided
+    # Get password if not provided (authentication, not setup)
     if not password:
-        password = typer.prompt("Enter master password", hide_input=True)
-        confirm_password = typer.prompt("Confirm master password", hide_input=True)
-        
-        if password != confirm_password:
-            console.print("❌ [red]Passwords do not match[/red]")
+        if key_manager.has_stored_key():
+            # Master password exists - just authenticate
+            password = typer.prompt("Enter master password", hide_input=True)
+        else:
+            # This shouldn't happen (should be handled above), but safety fallback
+            console.print("❌ [red]Master password not set up. Run 'aico security setup' first.[/red]")
             raise typer.Exit(1)
     
     try:
