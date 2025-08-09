@@ -43,7 +43,7 @@ class AICOKeyManager:
         from aico.core.config import ConfigurationManager
         config_manager = ConfigurationManager()
         config_manager.initialize()
-        return config_manager.get(f"encryption.{key}")
+        return config_manager.get(f"security.encryption.{key}")
     
     @property
     def KEY_LENGTH(self) -> int:
