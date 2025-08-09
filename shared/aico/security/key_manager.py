@@ -12,13 +12,16 @@ import os
 import getpass
 import keyring
 import logging
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
-
+from aico.core.config import ConfigurationManager
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +72,33 @@ class AICOKeyManager:
         """
         if self.has_stored_key():
             raise ValueError("Master password already set up. Use change_password() to update.")
+        
+        # Validate password strength
+        self._validate_password_strength(password)
             
         return self._derive_and_store(password)
+    
+    def _validate_password_strength(self, password: str) -> None:
+        """Validate password meets minimum security requirements."""
+        min_length = self._get_security_config("password_policy.min_length") or 12
+        
+        if len(password) < min_length:
+            raise ValueError(f"Password must be at least {min_length} characters long")
+        
+        # Check for common weak passwords
+        weak_passwords = {"password", "123456", "12345", "admin", "qwerty", "letmein"}
+        if password.lower() in weak_passwords:
+            raise ValueError("Password is too common and easily guessable")
+        
+        # Basic complexity check
+        has_upper = any(c.isupper() for c in password)
+        has_lower = any(c.islower() for c in password)
+        has_digit = any(c.isdigit() for c in password)
+        has_special = any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in password)
+        
+        complexity_count = sum([has_upper, has_lower, has_digit, has_special])
+        if complexity_count < 3:
+            raise ValueError("Password must contain at least 3 of: uppercase, lowercase, digits, special characters")
         
     def authenticate(self, password: Optional[str] = None, interactive: bool = True) -> bytes:
         """
@@ -119,16 +147,20 @@ class AICOKeyManager:
             self.authenticate(old_password, interactive=False)
         except Exception:
             raise ValueError("Invalid old password")
+        
+        # Validate new password strength
+        self._validate_password_strength(new_password)
             
         # Clear old key and set new one
         self.clear_stored_key()
-        return self.setup_master_password(new_password)
+        return self._derive_and_store(new_password)
         
     def clear_stored_key(self) -> None:
         """Remove stored key (security incident)."""
         try:
             keyring.delete_password(self.service_name, "master_key")
             keyring.delete_password(self.service_name, "salt")
+            keyring.delete_password(self.service_name, "key_created")
         except Exception:
             pass  # Key might not exist
             
@@ -236,6 +268,8 @@ class AICOKeyManager:
         """Derive key from password and store it."""
         master_key = self._derive_key(password)
         self._store_key(master_key)
+        # Store creation timestamp
+        keyring.set_password(self.service_name, "key_created", str(int(time.time())))
         return master_key
         
     def _derive_key(self, password: str) -> bytes:
@@ -381,3 +415,152 @@ class AICOKeyManager:
         except Exception as e:
             logger.warning(f"Failed to retrieve {database_type} password from keyring: {e}")
             return None
+    
+    def get_security_health_info(self) -> Dict[str, Any]:
+        """Get comprehensive security health information."""
+        info = {
+            "has_master_key": self.has_stored_key(),
+            "key_created": None,
+            "key_age_days": None,
+            "security_level": "Not Set Up",
+            "algorithm": "Argon2id",
+            "key_size": self.KEY_LENGTH,
+            "memory_cost_mb": None,
+            "iterations": None,
+            "parallelism": None,
+            "rotation_recommended": False,
+            "backup_available": True  # Keys can be regenerated from password
+        }
+        
+        if not info["has_master_key"]:
+            return info
+            
+        # Get key creation time
+        try:
+            created_timestamp = keyring.get_password(self.service_name, "key_created")
+            if created_timestamp:
+                created_time = datetime.fromtimestamp(int(created_timestamp))
+                info["key_created"] = created_time.strftime("%Y-%m-%d %H:%M:%S")
+                info["key_age_days"] = (datetime.now() - created_time).days
+        except Exception:
+            pass
+            
+        # Get Argon2id parameters for master key
+        try:
+            memory_cost = self._get_security_config("key_derivation.argon2id.memory_cost.master_key")
+            iterations = self._get_security_config("key_derivation.argon2id.master_key")
+            parallelism = self._get_security_config("key_derivation.argon2id.lanes.master_key")
+            
+            if memory_cost:
+                info["memory_cost_mb"] = memory_cost // 1024  # Convert KiB to MB
+            if iterations:
+                info["iterations"] = iterations
+            if parallelism:
+                info["parallelism"] = parallelism
+        except Exception:
+            pass
+            
+        # Assess security level
+        if info["key_age_days"] is not None:
+            if info["key_age_days"] > 365:
+                info["security_level"] = "Needs Rotation"
+                info["rotation_recommended"] = True
+            elif info["key_age_days"] > 180:
+                info["security_level"] = "Good"
+                info["rotation_recommended"] = True
+            else:
+                info["security_level"] = "Strong"
+        else:
+            info["security_level"] = "Good"
+            
+        return info
+    
+    def benchmark_key_derivation(self) -> Dict[str, Any]:
+        """Benchmark key derivation performance for diagnostics."""
+        if not self.has_stored_key():
+            raise ValueError("No master key set up for benchmarking")
+            
+        results = {
+            "master_key_derivation_ms": None,
+            "database_key_derivations": {},
+            "performance_assessment": "Unknown",
+            "recommendations": []
+        }
+        
+        # Test master key derivation (simulate with dummy password)
+        try:
+            start_time = time.time()
+            # Use a dummy password for timing test
+            self._derive_key("benchmark_test_password_12345")
+            end_time = time.time()
+            results["master_key_derivation_ms"] = int((end_time - start_time) * 1000)
+        except Exception as e:
+            results["master_key_derivation_ms"] = f"Error: {e}"
+            
+        # Test database key derivations
+        try:
+            master_key = b"dummy_key_for_benchmark_32_bytes"
+            for db_type in ["libsql", "duckdb", "chroma"]:
+                try:
+                    start_time = time.time()
+                    if db_type == "libsql":
+                        # For benchmarking, use in-memory salt (no disk writes)
+                        self._benchmark_libsql_key_derivation(master_key)
+                    else:
+                        self.derive_database_key(master_key, db_type)
+                    end_time = time.time()
+                    results["database_key_derivations"][db_type] = {
+                        "time_ms": int((end_time - start_time) * 1000),
+                        "status": "Success"
+                    }
+                except Exception as e:
+                    results["database_key_derivations"][db_type] = {
+                        "time_ms": None,
+                        "status": f"Error: {e}"
+                    }
+        except Exception:
+            pass
+            
+        # Performance assessment
+        master_time = results["master_key_derivation_ms"]
+        if isinstance(master_time, int):
+            if master_time < 500:
+                results["performance_assessment"] = "Fast"
+                results["recommendations"].append("Increase memory cost in security.yaml for stronger protection")
+            elif master_time < 2000:
+                results["performance_assessment"] = "Optimal"
+                # No recommendations for optimal performance - don't add anything
+            elif master_time < 5000:
+                results["performance_assessment"] = "Slow"
+                results["recommendations"].append("Reduce memory cost in security.yaml for better user experience")
+            else:
+                results["performance_assessment"] = "Very Slow"
+                results["recommendations"].append("Reduce memory cost in security.yaml to improve usability")
+                
+        return results
+    
+    def _benchmark_libsql_key_derivation(self, master_key: bytes) -> None:
+        """
+        Benchmark LibSQL key derivation using in-memory salt (no disk writes).
+        
+        Args:
+            master_key: Master key for derivation
+        """
+        # Generate random salt in memory only (never written to disk)
+        salt = os.urandom(self.SALT_LENGTH)
+        
+        # Perform PBKDF2 key derivation (same as real LibSQL but no file I/O)
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=self.KEY_LENGTH,
+            salt=salt,
+            iterations=self._get_security_config("key_derivation.pbkdf2.iterations"),
+            backend=default_backend()
+        )
+        
+        # Derive key (same computation as real database)
+        context = master_key + b"aico-db-libsql"
+        kdf.derive(context)
+        
+        # Salt and derived key automatically garbage collected
+        # No disk writes, no cleanup needed, no security risk

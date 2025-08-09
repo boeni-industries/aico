@@ -92,10 +92,10 @@ Manages master password setup and security operations for AICO's encrypted data 
 | Command | Description |
 |---------|-------------|
 | `setup` | First-time master password setup |
-| `change-password` | Change master password (affects all databases) |
-| `status` | Check security status and keyring information |
-| `clear` | Clear stored master key (security incident recovery) |
-| `test` | Test master password authentication |
+| `passwd` | Change master password (affects all databases) |
+| `status` | Check security health and key management status |
+| `clear` | Clear cached master key (forces password re-entry) |
+| `test` | Performance diagnostics and key derivation benchmarking |
 
 ### Examples
 
@@ -107,7 +107,7 @@ aico security setup
 aico security status
 
 # Change master password
-aico security change-password
+aico security passwd
 
 # Test authentication
 aico security test

@@ -32,6 +32,10 @@ encryption:
       
       length: 32                      # 256-bit output
 
+password_policy:
+  min_length: 12
+  require_complexity: true
+
 authentication:
   session_timeout: 3600
   max_failed_attempts: 5

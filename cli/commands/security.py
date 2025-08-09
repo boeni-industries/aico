@@ -7,6 +7,8 @@ Provides master password setup, management, and security operations.
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich import box
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from pathlib import Path
 import sys
 
@@ -30,9 +32,9 @@ def security_callback(ctx: typer.Context):
         subcommands = [
             ("setup", "Set up master password for AICO (first-time setup)"),
             ("passwd", "Change the master password (affects all databases)"),
-            ("status", "Check security status and keyring information"),
-            ("clear", "Clear stored master key (security incident recovery)"),
-            ("test", "Test master password authentication")
+            ("status", "Check security health and key management status"),
+            ("clear", "Clear cached master key (forces password re-entry)"),
+            ("test", "Performance diagnostics and key derivation benchmarking")
         ]
         
         examples = [
@@ -70,7 +72,7 @@ def setup(
     # Check if already set up
     if key_manager.has_stored_key():
         console.print("⚠️ [yellow]Master password already set up.[/yellow]")
-        console.print("Use 'aico security change-password' to update it.")
+        console.print("Use 'aico security passwd' to update it.")
         raise typer.Exit(1)
     
     # Get password if not provided
@@ -134,44 +136,94 @@ def passwd():
 
 @app.command()
 def status():
-    """Check security status and keyring information."""
+    """Check security health and key management status."""
     
     key_manager = AICOKeyManager()
+    health_info = key_manager.get_security_health_info()
     
-    # Create status table
-    table = Table(title="AICO Security Status")
-    table.add_column("Property", style="cyan")
-    table.add_column("Value", style="green")
+    # Create status table with actionable security information
+    table = Table(
+        title="✨ [bold cyan]AICO Security Health[/bold cyan]",
+        title_style="bold cyan",
+        title_justify="left",
+        border_style="bright_blue",
+        header_style="bold yellow",
+        show_lines=False,
+        box=box.SIMPLE_HEAD,
+        padding=(0, 1)
+    )
+    table.add_column("Property", style="bold white", justify="left")
+    table.add_column("Value", style="green", justify="left")
     
-    # Add security info
-    table.add_row("Service Name", key_manager.service_name)
-    table.add_row("Master Key Stored", "✅ Yes" if key_manager.has_stored_key() else "❌ No")
+    # Security health assessment (NO EMOJIS IN TABLE DATA per style guide)
+    security_level = health_info["security_level"]
+    if security_level == "Strong":
+        level_display = "Strong"
+    elif security_level == "Good":
+        level_display = "Good"
+    elif security_level == "Needs Rotation":
+        level_display = "Needs Rotation"
+    else:
+        level_display = "Not Set Up"
     
-    # Get database password info for common types
-    for db_type in ["libsql", "duckdb", "chroma"]:
-        info = key_manager.get_database_password_info(db_type)
-        table.add_row(f"{db_type.title()} KDF", info.get("kdf_algorithm", "Unknown"))
+    table.add_row("Security Health", level_display)
+    
+    if health_info["has_master_key"]:
+        # Key lifecycle information
+        if health_info["key_created"]:
+            table.add_row("Key Created", health_info["key_created"])
+        if health_info["key_age_days"] is not None:
+            age_display = f"{health_info['key_age_days']} days"
+            if health_info["key_age_days"] > 365:
+                age_display += " (Old)"
+            elif health_info["key_age_days"] > 180:
+                age_display += " (Consider rotation)"
+            table.add_row("Key Age", age_display)
+        
+        # Algorithm strength
+        table.add_row("Algorithm", health_info["algorithm"])
+        table.add_row("Key Size", f"{health_info['key_size'] * 8}-bit")
+        
+        # Argon2id parameters
+        if health_info["memory_cost_mb"]:
+            table.add_row("Memory Cost", f"{health_info['memory_cost_mb']} MB")
+        if health_info["iterations"]:
+            table.add_row("Iterations", str(health_info["iterations"]))
+        if health_info["parallelism"]:
+            table.add_row("Parallelism", f"{health_info['parallelism']} threads")
+        
+        table.add_row("Backup Available", "Yes (regenerable from password)")
     
     console.print(table)
     
-    # Show setup status
-    if key_manager.has_stored_key():
-        console.print("\n✅ [green]Master password is set up and ready[/green]")
-        console.print("🔐 You can initialize encrypted databases")
-    else:
+    # Show recommendations
+    if not health_info["has_master_key"]:
         console.print("\n⚠️ [yellow]Master password not set up[/yellow]")
         console.print("Run 'aico security setup' to get started")
+    elif health_info["rotation_recommended"]:
+        console.print("\n🔄 [yellow]Key rotation recommended[/yellow]")
+        console.print("Run 'aico security passwd' to update your master password")
+    else:
+        console.print("\n✅ [green]Security configuration is healthy[/green]")
+        console.print("🔐 All systems ready for encrypted operations")
 
 
 @app.command()
 def clear(
     confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt")
 ):
-    """Clear stored master key (security incident recovery)."""
+    """Clear cached master key (forces password re-entry)."""
     
     if not confirm:
-        console.print("⚠️ [bold red]WARNING: This will clear your stored master key![/bold red]")
-        console.print("You will need to re-enter your master password for all operations.")
+        console.print("⚠️ [bold red]WARNING: This will clear your cached master key![/bold red]")
+        console.print("📝 [cyan]What this does:[/cyan]")
+        console.print("  • Removes cached key from system keyring")
+        console.print("  • Forces password re-entry for next operation")
+        console.print("  • [green]NO DATA LOSS[/green] - encrypted databases remain intact")
+        console.print("  • Same password will regenerate identical key")
+        console.print("")
+        console.print("⚠️ [yellow]Risk: If you forget your master password after clearing,")
+        console.print("   all encrypted data becomes permanently inaccessible![/yellow]")
         
         if not typer.confirm("Are you sure you want to continue?"):
             console.print("Operation cancelled.")
@@ -181,17 +233,18 @@ def clear(
         key_manager = AICOKeyManager()
         key_manager.clear_stored_key()
         
-        console.print("✅ [green]Stored master key cleared successfully[/green]")
-        console.print("🔐 Run 'aico security setup' to set up a new master password")
+        console.print("✅ [green]Cached master key cleared successfully[/green]")
+        console.print("🔐 Next operation will prompt for master password")
+        console.print("💡 [dim]Remember: Same password regenerates same key - no data lost[/dim]")
         
     except Exception as e:
-        console.print(f"❌ [red]Failed to clear stored key: {e}[/red]")
+        console.print(f"❌ [red]Failed to clear cached key: {e}[/red]")
         raise typer.Exit(1)
 
 
 @app.command()
 def test():
-    """Test master password authentication."""
+    """Performance diagnostics and key derivation benchmarking."""
     
     key_manager = AICOKeyManager()
     
@@ -201,32 +254,80 @@ def test():
         raise typer.Exit(1)
     
     try:
-        console.print("🔐 Testing master password authentication...")
+        console.print("\n✨ [bold cyan]AICO Security Diagnostics[/bold cyan]\n")
         
-        # Try authentication (will prompt for password if needed)
-        master_key = key_manager.authenticate(interactive=True)
+        # Authentication test
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True
+        ) as progress:
+            auth_task = progress.add_task("Testing master password authentication...", total=None)
+            master_key = key_manager.authenticate(interactive=True)
+            progress.update(auth_task, completed=True)
         
-        console.print("✅ [green]Master password authentication successful![/green]")
-        console.print(f"🔑 Master key length: {len(master_key)} bytes")
+        console.print("✅ [green]Master password authentication successful[/green]\n")
         
-        # Test key derivation for different database types
-        console.print("\n🔍 Testing key derivation...")
-        for db_type in ["libsql", "duckdb", "chroma"]:
-            try:
-                if db_type == "libsql":
-                    # LibSQL needs a path for salt management
-                    db_key = key_manager.derive_database_key(
-                        master_key, db_type, db_path="./test.db"
-                    )
-                else:
-                    db_key = key_manager.derive_database_key(master_key, db_type)
-                
-                console.print(f"  ✅ {db_type.title()}: {len(db_key)} bytes")
-            except Exception as e:
-                console.print(f"  ❌ {db_type.title()}: {e}")
+        # Performance benchmarks with progress indicator
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=False
+        ) as progress:
+            bench_task = progress.add_task("Running key derivation benchmarks...", total=None)
+            benchmark_results = key_manager.benchmark_key_derivation()
+            progress.update(bench_task, completed=True)
+        
+        console.print()
+        
+        # Create performance table
+        perf_table = Table(
+            title="✨ [bold cyan]Key Derivation Performance[/bold cyan]",
+            title_style="bold cyan",
+            title_justify="left",
+            border_style="bright_blue",
+            header_style="bold yellow",
+            show_lines=False,
+            box=box.SIMPLE_HEAD,
+            padding=(0, 1)
+        )
+        perf_table.add_column("Operation", style="bold white", justify="left")
+        perf_table.add_column("Time", style="green", justify="left")
+        perf_table.add_column("Status", style="green", justify="left")
+        
+        # Master key derivation (NO EMOJIS IN TABLE DATA per style guide)
+        master_time = benchmark_results["master_key_derivation_ms"]
+        if isinstance(master_time, int):
+            perf_table.add_row("Master Key", f"{master_time}ms", "Success")
+        else:
+            perf_table.add_row("Master Key", "N/A", str(master_time))
+        
+        # Database key derivations
+        for db_type, result in benchmark_results["database_key_derivations"].items():
+            time_display = f"{result['time_ms']}ms" if result['time_ms'] else "N/A"
+            perf_table.add_row(f"{db_type.title()} DB", time_display, result['status'])
+        
+        console.print(perf_table)
+        
+        # Performance assessment
+        assessment = benchmark_results["performance_assessment"]
+        if assessment == "Optimal":
+            console.print(f"\n✅ [green]Performance: {assessment}[/green]")
+        elif assessment in ["Fast", "Slow"]:
+            console.print(f"\n🟡 [yellow]Performance: {assessment}[/yellow]")
+        else:
+            console.print(f"\n⚠️ [red]Performance: {assessment}[/red]")
+        
+        # Show recommendations
+        if benchmark_results["recommendations"]:
+            console.print("\n💡 [cyan]Recommendations:[/cyan]")
+            for rec in benchmark_results["recommendations"]:
+                console.print(f"  • {rec}")
         
     except Exception as e:
-        console.print(f"❌ [red]Authentication test failed: {e}[/red]")
+        console.print(f"❌ [red]Diagnostic test failed: {e}[/red]")
         raise typer.Exit(1)
 
 
