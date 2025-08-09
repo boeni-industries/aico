@@ -98,6 +98,8 @@ def init(
     
     # Check if master password is set up
     key_manager = AICOKeyManager()
+    master_password_was_created = False
+    
     if not key_manager.has_stored_key() and not password:
         console.print("⚠️ [yellow]No master password set up.[/yellow]")
         console.print("Setting up security automatically...")
@@ -112,6 +114,7 @@ def init(
             
         # Setup master password
         key_manager.setup_master_password(password)
+        master_password_was_created = True
         console.print("✅ [green]Security setup complete[/green]")
     
     # Get password if not provided (authentication, not setup)
@@ -142,7 +145,10 @@ def init(
         console.print("✅ [green]Database created successfully![/green]")
         console.print(f"📁 Database: {db_file}")
         console.print(f"🔑 Salt file: {db_file}.salt")
-        console.print("🔐 Master password stored in system keyring")
+        
+        # Only show keyring message if master password was actually created
+        if master_password_was_created:
+            console.print("🔐 Master password stored in system keyring")
         
     except Exception as e:
         console.print(f"❌ [red]Failed to create database: {e}[/red]")
