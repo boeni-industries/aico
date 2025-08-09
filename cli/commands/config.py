@@ -382,16 +382,57 @@ def show():
 
 
 @app.command("init")
-def init():
+def init(
+    force: bool = typer.Option(False, "--force", "-f", help="Force initialization, overwriting existing files")
+):
     """Initialize AICO configuration directories and setup."""
     
-    console.print("🚀 [bold cyan]Initializing AICO Configuration[/bold cyan]\n")
+    from utils.platform import get_platform_chars
+    import shutil
+    chars = get_platform_chars()
+    
+    console.print(f"{chars['sparkle']} [bold cyan]Initializing AICO Configuration[/bold cyan]\n")
     
     try:
+        config_dir = AICOPaths.get_config_directory()
+        
+        # Find source config templates in project
+        if getattr(sys, 'frozen', False):
+            # Running in PyInstaller bundle - config should be bundled
+            project_config_dir = Path(sys._MEIPASS) / "config"
+        else:
+            # Running in development
+            project_config_dir = Path(__file__).parent.parent.parent / "config"
+        
+        # Check if configuration already exists
+        existing_configs = []
+        config_files_to_create = [
+            ("environments/development.yaml", project_config_dir / "environments" / "development.yaml"),
+            ("environments/production.yaml", project_config_dir / "environments" / "production.yaml"),
+            ("defaults/core.yaml", project_config_dir / "defaults" / "core.yaml"),
+            ("defaults/security.yaml", project_config_dir / "defaults" / "security.yaml"),
+            ("defaults/database.yaml", project_config_dir / "defaults" / "database.yaml"),
+        ]
+        
+        for rel_path, source_file in config_files_to_create:
+            target_file = config_dir / rel_path
+            if target_file.exists():
+                existing_configs.append(target_file)
+        
+        # Safety check - warn about existing configurations
+        if existing_configs and not force:
+            console.print(f"{chars['cross']} [red]Configuration already exists![/red]")
+            console.print("\n[yellow]Existing configuration files:[/yellow]")
+            for config_file in existing_configs:
+                console.print(f"  {chars['bullet']} {format_smart_path(config_file)}")
+            console.print(f"\n[yellow]Use [bold]--force[/bold] to overwrite existing configuration.[/yellow]")
+            console.print(f"[red]WARNING: This will destroy any custom settings![/red]")
+            raise typer.Exit(1)
+        
         # Initialize all platform directories
         directories = [
             ("Data Directory", AICOPaths.get_data_directory() / "data"),
-            ("Config Directory", AICOPaths.get_config_directory()),
+            ("Config Directory", config_dir),
             ("Cache Directory", AICOPaths.get_cache_directory()),
             ("Logs Directory", AICOPaths.get_logs_directory())
         ]
@@ -399,13 +440,33 @@ def init():
         # Create all directories
         for dir_name, dir_path in directories:
             AICOPaths.ensure_directory(dir_path)
-            console.print(f"✅ [green]Created {dir_name}[/green]: {format_smart_path(dir_path)}")
+            console.print(f"{chars['check']} [green]Created {dir_name}[/green]: {format_smart_path(dir_path)}")
         
-        console.print(f"\n🎉 [bold green]AICO configuration directories initialized successfully![/bold green]")
-        console.print("💡 [cyan]Next steps:[/cyan]")
-        console.print("   • Run [bold]aico db init[/bold] to create encrypted database")
-        console.print("   • Run [bold]aico config show[/bold] to verify setup")
+        # Copy actual configuration files from templates
+        files_created = 0
+        for rel_path, source_file in config_files_to_create:
+            target_file = config_dir / rel_path
+            
+            if source_file.exists():
+                # Ensure target directory exists
+                target_file.parent.mkdir(parents=True, exist_ok=True)
+                # Copy the file
+                shutil.copy2(source_file, target_file)
+                console.print(f"{chars['check']} [green]Created config file[/green]: {format_smart_path(target_file)}")
+                files_created += 1
+            else:
+                console.print(f"{chars['cross']} [yellow]Template not found[/yellow]: {source_file}")
+        
+        if files_created > 0:
+            console.print(f"\n{chars['sparkle']} [bold green]AICO configuration initialized successfully![/bold green]")
+            console.print(f"{chars['check']} [green]Created {files_created} configuration files[/green]")
+        else:
+            console.print(f"\n{chars['cross']} [yellow]No configuration templates found to copy[/yellow]")
+            
+        console.print(f"\n{chars['bullet']} [cyan]Next steps:[/cyan]")
+        console.print(f"   {chars['bullet']} Run [bold]aico db init[/bold] to create encrypted database")
+        console.print(f"   {chars['bullet']} Run [bold]aico config show[/bold] to verify setup")
         
     except Exception as e:
-        console.print(f"❌ [red]Failed to initialize directories: {e}[/red]")
+        console.print(f"{chars['cross']} [red]Failed to initialize configuration: {e}[/red]")
         raise typer.Exit(1)
