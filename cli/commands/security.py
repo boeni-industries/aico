@@ -294,20 +294,34 @@ def test():
             padding=(0, 1)
         )
         perf_table.add_column("Operation", style="bold white", justify="left")
+        perf_table.add_column("Algorithm", style="magenta", justify="left")
+        perf_table.add_column("Iterations", style="blue", justify="left")
+        perf_table.add_column("Memory", style="blue", justify="left")
         perf_table.add_column("Time", style="green", justify="left")
         perf_table.add_column("Status", style="green", justify="left")
         
         # Master key derivation (NO EMOJIS IN TABLE DATA per style guide)
         master_time = benchmark_results["master_key_derivation_ms"]
         if isinstance(master_time, int):
-            perf_table.add_row("Master Key", f"{master_time}ms", "Success")
+            perf_table.add_row("Master Key", "Argon2id", "3", "1024 MB", f"{master_time}ms", "Success")
         else:
-            perf_table.add_row("Master Key", "N/A", str(master_time))
+            perf_table.add_row("Master Key", "Argon2id", "3", "1024 MB", "N/A", str(master_time))
         
         # Database key derivations
         for db_type, result in benchmark_results["database_key_derivations"].items():
             time_display = f"{result['time_ms']}ms" if result['time_ms'] else "N/A"
-            perf_table.add_row(f"{db_type.title()} DB", time_display, result['status'])
+            
+            # Algorithm-specific parameters
+            if db_type == "libsql":
+                algorithm = "PBKDF2"
+                iterations = "10000"
+                memory = "N/A"
+            else:  # duckdb, chroma use Argon2id
+                algorithm = "Argon2id"
+                iterations = "2"
+                memory = "256 MB"
+            
+            perf_table.add_row(f"{db_type.title()} DB", algorithm, iterations, memory, time_display, result['status'])
         
         console.print(perf_table)
         
