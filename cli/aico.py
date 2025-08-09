@@ -52,6 +52,7 @@ from commands.config import app as config_app
 from commands.version import app as version_app
 from commands.database import app as database_app
 from commands.security import app as security_app
+from commands.dev import app as dev_app
 
 app = typer.Typer(
     name="aico",
@@ -65,6 +66,7 @@ app.add_typer(config_app, name="config", help="📝 Configuration management")
 app.add_typer(version_app, name="version", help="📦 Version and build information") 
 app.add_typer(database_app, name="db", help="🛢️ Database management")
 app.add_typer(security_app, name="security", help="🔐 Security and encryption")
+app.add_typer(dev_app, name="dev", help="🧹 Development utilities")
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit.")):
@@ -86,7 +88,8 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             (chars["package"], "version", "Manage and synchronize versions across all AICO system parts"),
             (chars["database"], "db", "Database initialization, status, and management"),
             (chars["security"], "security", "Master password setup and security management"),
-            (chars["config"], "config", "Configuration management and validation")
+            (chars["config"], "config", "Configuration management and validation"),
+            ("🧹", "dev", "Development utilities (data cleanup, security reset)")
         ]
         
         examples = [
