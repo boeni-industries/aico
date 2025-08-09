@@ -57,7 +57,7 @@ app = typer.Typer(
     name="aico",
     help="✨ AICO - Your AI Companion CLI",
     rich_markup_mode="rich",
-    context_settings={"help_option_names": ["-h", "--help"]}
+    context_settings={"help_option_names": []}  # Disable built-in help to use custom formatting
 )
 
 # Add subcommands
@@ -67,22 +67,26 @@ app.add_typer(database_app, name="db", help="🛢️ Database management")
 app.add_typer(security_app, name="security", help="🔐 Security and encryption")
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context):
+def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit.")):
     """
     AICO CLI - Modular system management and versioning
     
     A comprehensive command-line interface for managing AICO's configuration,
     databases, security, and versioning across all system components.
     """
-    if ctx.invoked_subcommand is None:
+    # Handle both no command and --help flag with same custom formatting
+    if ctx.invoked_subcommand is None or help:
         # Import here to avoid circular imports
         from utils.help_formatter import format_command_help
+        from utils.platform import get_platform_chars
+        
+        chars = get_platform_chars()
         
         commands = [
-            ("📦", "version", "Manage and synchronize versions across all AICO system parts"),
-            ("🛢️", "db", "Database initialization, status, and management"),
-            ("🔐", "security", "Master password setup and security management"),
-            ("📝", "config", "Configuration management and validation")
+            (chars["package"], "version", "Manage and synchronize versions across all AICO system parts"),
+            (chars["database"], "db", "Database initialization, status, and management"),
+            (chars["security"], "security", "Master password setup and security management"),
+            (chars["config"], "config", "Configuration management and validation")
         ]
         
         examples = [

@@ -11,6 +11,46 @@ import os
 from rich.console import Console
 
 
+def get_platform_chars():
+    """
+    Get platform-appropriate characters for CLI display.
+    
+    Only Windows CMD gets ASCII alternatives - Git Bash, PowerShell, and other terminals 
+    can handle Unicode just fine. This prevents UnicodeEncodeError crashes specifically 
+    in Windows CMD while preserving beautiful Unicode everywhere else.
+    
+    Returns:
+        dict: Character mappings for current platform/terminal
+    """
+    # Only use ASCII fallbacks for actual Windows CMD
+    # CMD doesn't set TERM environment variable, while Git Bash sets TERM=xterm
+    if platform.system() == "Windows" and "TERM" not in os.environ:
+        return {
+            "sparkle": "*",
+            "package": ">",
+            "database": ">",
+            "security": ">", 
+            "config": ">",
+            "check": "✓",
+            "cross": "✗",
+            "arrow": "->",
+            "bullet": "*"
+        }
+    
+    # Use beautiful Unicode for everything else (Git Bash, PowerShell, Mac, Linux)
+    return {
+        "sparkle": "✨",
+        "package": "📦",
+        "database": "🛢️",
+        "security": "🔐",
+        "config": "📝",
+        "check": "✅",
+        "cross": "❌", 
+        "arrow": "→",
+        "bullet": "•"
+    }
+
+
 def create_console() -> Console:
     """
     Create a Rich Console with automatic Windows CMD compatibility.
