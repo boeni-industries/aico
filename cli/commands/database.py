@@ -7,10 +7,12 @@ Provides database initialization, status checking, and management commands.
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich.panel import Panel
 from rich import box
 from pathlib import Path
 import sys
 import os
+from typing import Optional
 
 # Add shared module to path for CLI usage
 if getattr(sys, 'frozen', False):
@@ -24,6 +26,7 @@ sys.path.insert(0, str(shared_path))
 
 from aico.security import AICOKeyManager
 from aico.data.libsql import create_encrypted_database, EncryptedLibSQLConnection
+from aico.data.schemas.core import SchemaRegistry
 from aico.core.paths import AICOPaths
 from aico.core.config import ConfigurationManager
 
@@ -39,14 +42,24 @@ def database_callback(ctx: typer.Context):
             ("init", "Initialize a new encrypted AICO database"),
             ("status", "Check database encryption status and information"),
             ("test", "Test database connection and basic operations"),
-            ("show", "Show database configuration, paths, and settings")
+            ("show", "Show database configuration, paths, and settings"),
+            ("ls", "List all tables in database"),
+            ("desc", "Describe table structure"),
+            ("count", "Count records in table(s)"),
+            ("head", "Show first N records from table"),
+            ("tail", "Show last N records from table"),
+            ("stat", "Database statistics"),
+            ("vacuum", "Optimize database"),
+            ("check", "Integrity check"),
+            ("exec", "Execute raw SQL query")
         ]
         
         examples = [
             "aico db init",
             "aico db status",
-            "aico db test",
-            "aico db show"
+            "aico db ls",
+            "aico db desc logs",
+            "aico db count --table=logs"
         ]
         
         format_subcommand_help(
@@ -91,10 +104,7 @@ def init(
         
         db_file = AICOPaths.resolve_database_path(filename, directory_mode)
     
-    # Check if database already exists
-    if db_file.exists():
-        console.print(f"❌ [red]Database already exists: {db_path}[/red]")
-        raise typer.Exit(1)
+    # Note: We'll handle existing databases later in the flow
     
     # Check if master password is set up
     key_manager = AICOKeyManager()
@@ -128,21 +138,50 @@ def init(
             raise typer.Exit(1)
     
     try:
-        console.print(f"🔐 Creating encrypted {db_type} database: [cyan]{db_path}[/cyan]")
-        
-        # Create encrypted database (currently only LibSQL supported)
-        if db_type != "libsql":
-            console.print(f"❌ [red]Database type '{db_type}' not yet implemented[/red]")
-            console.print("Currently supported: libsql")
-            raise typer.Exit(1)
+        # Check if database already exists
+        if db_file.exists():
+            console.print(f"📁 Database already exists: [cyan]{db_file}[/cyan]")
+            console.print("🔗 Connecting to existing database...")
             
-        conn = create_encrypted_database(
-            db_path=str(db_file),
-            master_password=password,
-            store_in_keyring=True
-        )
-        
-        console.print("✅ [green]Database created successfully![/green]")
+            # Connect to existing database
+            master_key = key_manager.authenticate(password, interactive=False)
+            db_key = key_manager.derive_database_key(master_key, "libsql", str(db_file))
+            conn = EncryptedLibSQLConnection(str(db_file), encryption_key=db_key)
+            
+            # Initialize CLI logging with direct database access
+            from aico.core.logging import initialize_cli_logging
+            initialize_cli_logging(config, conn)
+            
+            # Apply any missing schemas
+            console.print("📋 Checking for missing database schemas...")
+            applied_schemas = SchemaRegistry.apply_core_schemas(conn)
+            
+            if applied_schemas:
+                console.print("✅ [green]Database updated successfully![/green]")
+                console.print(f"📋 Applied missing schemas: [cyan]{', '.join(applied_schemas)}[/cyan]")
+            else:
+                console.print("ℹ️ [blue]Database is up to date - no missing schemas[/blue]")
+        else:
+            console.print(f"🔐 Creating encrypted {db_type} database: [cyan]{db_path}[/cyan]")
+            
+            # Create encrypted database (currently only LibSQL supported)
+            if db_type != "libsql":
+                console.print(f"❌ [red]Database type '{db_type}' not yet implemented[/red]")
+                console.print("Currently supported: libsql")
+                raise typer.Exit(1)
+                
+            conn = create_encrypted_database(
+                db_path=str(db_file),
+                master_password=password,
+                store_in_keyring=True
+            )
+            
+            # Apply core schemas using schema registry
+            console.print("📋 Applying core database schemas...")
+            applied_schemas = SchemaRegistry.apply_core_schemas(conn)
+            
+            console.print("✅ [green]Database created successfully![/green]")
+            console.print(f"📋 Applied schemas: [cyan]{', '.join(applied_schemas)}[/cyan]")
         console.print(f"📁 Database: {db_file}")
         console.print(f"🔑 Salt file: {db_file}.salt")
         
@@ -181,11 +220,28 @@ def status(
         raise typer.Exit(1)
     
     try:
-        # Try to connect and get encryption info
-        conn = EncryptedLibSQLConnection(db_path=str(db_file))
+        # Check if database is encrypted by trying to connect with key manager
+        key_manager = AICOKeyManager()
         
-        # Get encryption information
-        info = conn.get_encryption_info()
+        if key_manager.has_stored_key():
+            # Database likely encrypted, authenticate and connect properly
+            password = typer.prompt("Enter master password", hide_input=True)
+            master_key = key_manager.authenticate(password, interactive=False)
+            db_key = key_manager.derive_database_key(master_key, "libsql", str(db_file))
+            
+            # Connect with encryption key for accurate status
+            conn = EncryptedLibSQLConnection(db_path=str(db_file), encryption_key=db_key)
+            
+            # Initialize CLI logging with direct database access
+            from aico.core.logging import initialize_cli_logging
+            config = ConfigurationManager()
+            initialize_cli_logging(config, conn)
+            
+            info = conn.get_encryption_info()
+        else:
+            # No stored key, database might be unencrypted
+            conn = EncryptedLibSQLConnection(db_path=str(db_file))
+            info = conn.get_encryption_info()
         
         # Create status table
         table = Table(title=f"Database Status: {db_file}")
@@ -256,11 +312,20 @@ def test(
     try:
         console.print(f"🔐 Testing database connection: [cyan]{db_file}[/cyan]")
         
-        # Create connection with password
+        # Create connection with proper authentication
+        key_manager = AICOKeyManager()
+        master_key = key_manager.authenticate(password, interactive=False)
+        db_key = key_manager.derive_database_key(master_key, "libsql", str(db_file))
+        
         conn = EncryptedLibSQLConnection(
             db_path=str(db_file),
-            master_password=password
+            encryption_key=db_key
         )
+        
+        # Initialize CLI logging with direct database access
+        from aico.core.logging import initialize_cli_logging
+        config = ConfigurationManager()
+        initialize_cli_logging(config, conn)
         
         # Test basic operations
         with conn:
@@ -406,6 +471,474 @@ def show():
         
     except Exception as e:
         console.print(f"❌ [red]Failed to show database paths: {e}[/red]")
+        raise typer.Exit(1)
+
+
+def _get_db_connection():
+    """Get database connection for content commands"""
+    try:
+        config = ConfigurationManager()
+        key_manager = AICOKeyManager()
+        
+        # Get database path
+        paths = AICOPaths()
+        db_path = paths.resolve_database_path("aico.db")
+        
+        # Get encryption key
+        if not key_manager.has_stored_key():
+            console.print("[red]Error: Master key not found. Run 'aico security setup' first.[/red]")
+            raise typer.Exit(1)
+            
+        # Authenticate to get master key
+        password = typer.prompt("Enter master password", hide_input=True)
+        master_key = key_manager.authenticate(password, interactive=False)
+        db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+        
+        # Create connection first
+        conn = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+        
+        # Simple CLI logging: manually write a test log to verify database logging works
+        try:
+            from datetime import datetime
+            test_log_sql = """
+                INSERT INTO logs (
+                    timestamp, level, subsystem, module, function_name,
+                    file_path, line_number, topic, message, user_id,
+                    session_id, trace_id, extra
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            test_values = [
+                datetime.utcnow().isoformat() + "Z",
+                "INFO",
+                "cli",
+                "database",
+                "_get_db_connection",
+                __file__,
+                None,
+                "cli.database.connection",
+                "CLI database connection established",
+                None, None, None, None
+            ]
+            conn.execute(test_log_sql, test_values)
+            conn.commit()
+        except Exception as e:
+            print(f"[CLI LOG TEST ERROR] {e}")
+        
+        return conn
+        
+    except Exception as e:
+        console.print(f"[red]Error connecting to database: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def ls():
+    """List all tables in database"""
+    conn = _get_db_connection()
+    
+    tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
+    
+    if not tables:
+        console.print("[yellow]No tables found in database[/yellow]")
+        return
+    
+    table = Table(
+        title="✨ [bold cyan]Database Tables[/bold cyan]",
+        title_justify="left",
+        border_style="bright_blue",
+        header_style="bold yellow",
+        box=box.SIMPLE_HEAD,
+        padding=(0, 1)
+    )
+    
+    table.add_column("Table", style="cyan")
+    table.add_column("Records", style="white")
+    
+    for (table_name,) in tables:
+        try:
+            count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+            table.add_row(table_name, f"{count:,}")
+        except:
+            table.add_row(table_name, "Error")
+    
+    console.print()
+    console.print(table)
+    console.print()
+
+
+@app.command()
+def desc(table_name: str = typer.Argument(..., help="Table name to describe")):
+    """Describe table structure (schema)"""
+    conn = _get_db_connection()
+    
+    try:
+        schema = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        
+        if not schema:
+            console.print(f"[red]Table '{table_name}' not found[/red]")
+            raise typer.Exit(1)
+        
+        table = Table(
+            title=f"✨ [bold cyan]Table: {table_name}[/bold cyan]",
+            title_justify="left",
+            border_style="bright_blue",
+            header_style="bold yellow",
+            box=box.SIMPLE_HEAD,
+            padding=(0, 1)
+        )
+        
+        table.add_column("Column", style="cyan")
+        table.add_column("Type", style="white")
+        table.add_column("Null", style="dim")
+        table.add_column("Default", style="dim")
+        table.add_column("PK", style="yellow")
+        
+        for col in schema:
+            table.add_row(
+                col[1],  # name
+                col[2],  # type
+                "YES" if col[3] == 0 else "NO",  # notnull
+                str(col[4]) if col[4] else "",  # default
+                "✓" if col[5] == 1 else ""  # pk
+            )
+        
+        console.print()
+        console.print(table)
+        console.print()
+        
+    except Exception as e:
+        console.print(f"[red]Error describing table: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def count(
+    table: Optional[str] = typer.Option(None, "--table", help="Specific table to count"),
+    all: bool = typer.Option(False, "--all", help="Count all tables")
+):
+    """Count records in table(s)"""
+    conn = _get_db_connection()
+    
+    if table:
+        # Count specific table
+        try:
+            count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            console.print(f"[cyan]{table}[/cyan]: [bold white]{count:,}[/bold white] records")
+        except Exception as e:
+            console.print(f"[red]Error counting {table}: {e}[/red]")
+            raise typer.Exit(1)
+    
+    elif all:
+        # Count all tables
+        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
+        
+        count_table = Table(
+            title="✨ [bold cyan]Record Counts[/bold cyan]",
+            title_justify="left",
+            border_style="bright_blue",
+            header_style="bold yellow",
+            box=box.SIMPLE_HEAD,
+            padding=(0, 1)
+        )
+        
+        count_table.add_column("Table", style="cyan")
+        count_table.add_column("Records", style="white")
+        
+        total_records = 0
+        for (table_name,) in tables:
+            try:
+                count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+                count_table.add_row(table_name, f"{count:,}")
+                total_records += count
+            except:
+                count_table.add_row(table_name, "Error")
+        
+        console.print()
+        console.print(count_table)
+        console.print(f"\n[bold yellow]Total Records:[/bold yellow] [bold white]{total_records:,}[/bold white]\n")
+    
+    else:
+        console.print("[red]Error: Must specify --table or --all[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def head(
+    table_name: str = typer.Argument(..., help="Table name"),
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of records to show")
+):
+    """Show first N records from table"""
+    conn = _get_db_connection()
+    
+    try:
+        records = conn.execute(f"SELECT * FROM {table_name} LIMIT {limit}").fetchall()
+        
+        if not records:
+            console.print(f"[yellow]Table '{table_name}' is empty[/yellow]")
+            return
+        
+        # Get column names
+        columns = [desc[0] for desc in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
+        
+        table = Table(
+            title=f"✨ [bold cyan]First {limit} records from {table_name}[/bold cyan]",
+            title_justify="left",
+            border_style="bright_blue",
+            header_style="bold yellow",
+            box=box.SIMPLE_HEAD,
+            padding=(0, 1)
+        )
+        
+        for col in columns:
+            table.add_column(col, style="white")
+        
+        for record in records:
+            # Truncate long values for display
+            row_data = []
+            for value in record:
+                str_value = str(value) if value is not None else ""
+                if len(str_value) > 50:
+                    str_value = str_value[:47] + "..."
+                row_data.append(str_value)
+            table.add_row(*row_data)
+        
+        console.print()
+        console.print(table)
+        console.print()
+        
+    except Exception as e:
+        console.print(f"[red]Error reading table: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def stat():
+    """Database statistics (size, indexes, etc.)"""
+    conn = _get_db_connection()
+    
+    try:
+        # Get database file size
+        db_path = conn.db_path if hasattr(conn, 'db_path') else "unknown"
+        if Path(db_path).exists():
+            size_bytes = Path(db_path).stat().st_size
+            size_mb = size_bytes / (1024 * 1024)
+        else:
+            size_mb = 0
+        
+        # Get table statistics
+        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        indexes = conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'").fetchall()
+        
+        # Get total records across all tables
+        total_records = 0
+        for (table_name,) in tables:
+            try:
+                count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+                total_records += count
+            except:
+                pass
+        
+        content = []
+        content.append(f"[bold yellow]Database Size:[/bold yellow] [bold white]{size_mb:.2f} MB[/bold white]")
+        content.append(f"[bold yellow]Tables:[/bold yellow] [bold white]{len(tables)}[/bold white]")
+        content.append(f"[bold yellow]Indexes:[/bold yellow] [bold white]{len(indexes)}[/bold white]")
+        content.append(f"[bold yellow]Total Records:[/bold yellow] [bold white]{total_records:,}[/bold white]")
+        
+        panel = Panel(
+            "\n".join(content),
+            title="✨ [bold cyan]Database Statistics[/bold cyan]",
+            title_align="left",
+            border_style="bright_blue",
+            box=box.ROUNDED,
+            padding=(1, 2)
+        )
+        
+        console.print()
+        console.print(panel)
+        console.print()
+        
+    except Exception as e:
+        console.print(f"[red]Error getting database statistics: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def vacuum():
+    """Optimize database (VACUUM)"""
+    conn = _get_db_connection()
+    
+    try:
+        console.print("🔧 Optimizing database...")
+        conn.execute("VACUUM")
+        console.print("✅ [green]Database optimization complete[/green]")
+        
+    except Exception as e:
+        console.print(f"[red]Error optimizing database: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def check():
+    """Integrity check"""
+    conn = _get_db_connection()
+    
+    try:
+        console.print("🔍 Running integrity check...")
+        result = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        
+        if result == "ok":
+            console.print("✅ [green]Database integrity check passed[/green]")
+        else:
+            console.print(f"❌ [red]Database integrity issues: {result}[/red]")
+            
+    except Exception as e:
+        console.print(f"[red]Error checking database integrity: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def tail(
+    table_name: str = typer.Argument(..., help="Table name"),
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of records to show")
+):
+    """Show last N records from table"""
+    conn = _get_db_connection()
+    
+    try:
+        # Get total count first to determine if we need ordering
+        total_count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+        
+        if total_count == 0:
+            console.print(f"[yellow]Table '{table_name}' is empty[/yellow]")
+            return
+        
+        # Try to get records ordered by ROWID (SQLite's implicit primary key) in descending order
+        records = conn.execute(f"SELECT * FROM {table_name} ORDER BY ROWID DESC LIMIT {limit}").fetchall()
+        
+        if not records:
+            console.print(f"[yellow]No records found in table '{table_name}'[/yellow]")
+            return
+        
+        # Get column names
+        columns = [desc[0] for desc in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
+        
+        table = Table(
+            title=f"✨ [bold cyan]Last {limit} records from {table_name}[/bold cyan]",
+            title_justify="left",
+            border_style="bright_blue",
+            header_style="bold yellow",
+            box=box.SIMPLE_HEAD,
+            padding=(0, 1)
+        )
+        
+        for col in columns:
+            table.add_column(col, style="white")
+        
+        for record in records:
+            # Truncate long values for display
+            row_data = []
+            for value in record:
+                str_value = str(value) if value is not None else ""
+                if len(str_value) > 50:
+                    str_value = str_value[:47] + "..."
+                row_data.append(str_value)
+            table.add_row(*row_data)
+        
+        console.print()
+        console.print(table)
+        console.print()
+        
+    except Exception as e:
+        console.print(f"[red]Error reading table: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def exec(
+    query: str = typer.Argument(..., help="SQL query to execute"),
+    format: str = typer.Option("table", "--format", help="Output format: table, json")
+):
+    """Execute raw SQL query"""
+    conn = _get_db_connection()
+    
+    try:
+        # Safety check for destructive operations
+        query_upper = query.upper().strip()
+        if any(query_upper.startswith(op) for op in ["DROP", "DELETE", "UPDATE", "INSERT"]):
+            if not typer.confirm(f"Execute potentially destructive query: {query}?"):
+                console.print("[yellow]Cancelled[/yellow]")
+                return
+        
+        result = conn.execute(query).fetchall()
+        
+        if not result:
+            console.print("[yellow]Query returned no results[/yellow]")
+            return
+        
+        if format == "json":
+            import json
+            # Convert to list of dicts for JSON output
+            columns = [desc[0] for desc in conn.execute(f"PRAGMA table_info(({query}))").fetchall()]
+            if not columns:
+                # Fallback for non-table queries
+                columns = [f"col_{i}" for i in range(len(result[0]))]
+            
+            data = [dict(zip(columns, row)) for row in result]
+            console.print(json.dumps(data, indent=2, default=str))
+        else:
+            # Table format
+            if result and len(result[0]) > 0:
+                # Create table with dynamic columns
+                table = Table(
+                    title=f"✨ [bold cyan]Query Results[/bold cyan]",
+                    title_justify="left",
+                    border_style="bright_blue",
+                    header_style="bold yellow",
+                    box=box.SIMPLE_HEAD,
+                    padding=(0, 1)
+                )
+                
+                # Get proper column names from query description
+                try:
+                    # For simple queries, try to get column names from cursor description
+                    cursor = conn.execute(query)
+                    if hasattr(cursor, 'description') and cursor.description:
+                        columns = [desc[0] for desc in cursor.description]
+                    else:
+                        # Fallback: try to parse column names from query
+                        if "COUNT(*)" in query.upper():
+                            columns = ["count"]
+                        elif "SELECT *" in query.upper():
+                            # Get table name and use PRAGMA table_info
+                            import re
+                            table_match = re.search(r'FROM\s+(\w+)', query, re.IGNORECASE)
+                            if table_match:
+                                table_name = table_match.group(1)
+                                table_info = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+                                columns = [col[1] for col in table_info]
+                            else:
+                                columns = [f"col_{i+1}" for i in range(len(result[0]))]
+                        else:
+                            columns = [f"col_{i+1}" for i in range(len(result[0]))]
+                except Exception:
+                    # Final fallback
+                    columns = [f"col_{i+1}" for i in range(len(result[0]))]
+                
+                for col in columns:
+                    table.add_column(col, style="white")
+                
+                # Add rows
+                for row in result:
+                    table.add_row(*[str(val) if val is not None else "" for val in row])
+                
+                console.print()
+                console.print(table)
+                console.print()
+            else:
+                console.print("[yellow]Query executed successfully (no results)[/yellow]")
+        
+    except Exception as e:
+        console.print(f"[red]Error executing query: {e}[/red]")
         raise typer.Exit(1)
 
 

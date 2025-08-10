@@ -11,7 +11,6 @@ The schema manager works with both basic and encrypted LibSQL connections
 and provides a clean separation between test and production schemas.
 """
 
-import logging
 import json
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
@@ -21,7 +20,29 @@ from dataclasses import dataclass
 from .connection import LibSQLConnection
 from .encrypted import EncryptedLibSQLConnection
 
-logger = logging.getLogger(__name__)
+# Lazy logger initialization to avoid circular imports
+_logger = None
+
+def _get_logger():
+    global _logger
+    if _logger is None:
+        try:
+            from aico.core.logging import get_logger, initialize_logging
+            from aico.core.config import ConfigurationManager
+            
+            # Try to initialize logging if not already done
+            try:
+                _logger = get_logger("data", "libsql.schema")
+            except RuntimeError:
+                # Logging not initialized, initialize it
+                config = ConfigurationManager()
+                initialize_logging(config)
+                _logger = get_logger("data", "libsql.schema")
+        except Exception:
+            # Fallback to standard logging if unified system fails
+            import logging
+            _logger = logging.getLogger("data.libsql.schema")
+    return _logger
 
 
 @dataclass
@@ -84,7 +105,7 @@ class SchemaManager:
         # Initialize metadata tables
         self._initialize_metadata_tables()
         
-        logger.debug(f"Initialized schema manager with {len(self.schema_definitions)} schema versions")
+        _get_logger().debug(f"Initialized schema manager with {len(self.schema_definitions)} schema versions")
     
     def _initialize_metadata_tables(self) -> None:
         """Create metadata tables if they don't exist."""
@@ -98,10 +119,10 @@ class SchemaManager:
                 if current_version is None:
                     self._set_metadata("schema_version", "0")
                     self._set_metadata("schema_initialized", str(datetime.now().isoformat()))
-                    logger.info("Initialized schema metadata tables")
+                    _get_logger().info("Initialized schema metadata tables")
                     
         except Exception as e:
-            logger.error(f"Failed to initialize metadata tables: {e}")
+            _get_logger().error(f"Failed to initialize metadata tables: {e}")
             raise RuntimeError(f"Schema initialization failed: {e}") from e
     
     def _set_metadata(self, key: str, value: str) -> None:
@@ -150,7 +171,7 @@ class SchemaManager:
             schema_version: Schema version to add
         """
         self.schema_definitions[schema_version.version] = schema_version
-        logger.debug(f"Added schema version {schema_version.version}: {schema_version.name}")
+        _get_logger().debug(f"Added schema version {schema_version.version}: {schema_version.name}")
     
     def validate_schema(self) -> Dict[str, Any]:
         """
@@ -208,7 +229,7 @@ class SchemaManager:
         except Exception as e:
             validation_result["valid"] = False
             validation_result["issues"].append(f"Validation error: {str(e)}")
-            logger.error(f"Schema validation failed: {e}")
+            _get_logger().error(f"Schema validation failed: {e}")
         
         return validation_result
     
@@ -247,13 +268,13 @@ class SchemaManager:
             True if successful, False otherwise
         """
         if version not in self.schema_definitions:
-            logger.error(f"Schema version {version} not found")
+            _get_logger().error(f"Schema version {version} not found")
             return False
         
         current_version = self.get_current_version() or 0
         
         if version <= current_version and not force:
-            logger.warning(f"Schema version {version} is not newer than current {current_version}")
+            _get_logger().warning(f"Schema version {version} is not newer than current {current_version}")
             return False
         
         schema_version = self.schema_definitions[version]
@@ -263,7 +284,7 @@ class SchemaManager:
                 # Apply SQL statements
                 for sql_statement in schema_version.sql_statements:
                     if sql_statement.strip():
-                        logger.debug(f"Executing: {sql_statement[:100]}...")
+                        _get_logger().debug(f"Executing: {sql_statement[:100]}...")
                         self.connection.execute(sql_statement)
                 
                 # Record migration
@@ -286,11 +307,11 @@ class SchemaManager:
                 self._set_metadata("schema_version", str(version))
                 self._set_metadata("last_migration", str(datetime.now().isoformat()))
                 
-                logger.info(f"Applied schema version {version}: {schema_version.name}")
+                _get_logger().info(f"Applied schema version {version}: {schema_version.name}")
                 return True
                 
         except Exception as e:
-            logger.error(f"Failed to apply schema version {version}: {e}")
+            _get_logger().error(f"Failed to apply schema version {version}: {e}")
             return False
     
     def migrate_to_version(self, target_version: int) -> bool:
@@ -306,20 +327,20 @@ class SchemaManager:
         current_version = self.get_current_version() or 0
         
         if target_version == current_version:
-            logger.info(f"Database already at version {target_version}")
+            _get_logger().info(f"Database already at version {target_version}")
             return True
         
         if target_version < current_version:
-            logger.error("Downgrade migrations not yet supported")
+            _get_logger().error("Downgrade migrations not yet supported")
             return False
         
         # Apply migrations in sequence
         for version in range(current_version + 1, target_version + 1):
             if not self.apply_schema_version(version):
-                logger.error(f"Migration failed at version {version}")
+                _get_logger().error(f"Migration failed at version {version}")
                 return False
         
-        logger.info(f"Successfully migrated from version {current_version} to {target_version}")
+        _get_logger().info(f"Successfully migrated from version {current_version} to {target_version}")
         return True
     
     def migrate_to_latest(self) -> bool:
@@ -330,7 +351,7 @@ class SchemaManager:
             True if successful, False otherwise
         """
         if not self.schema_definitions:
-            logger.warning("No schema definitions available")
+            _get_logger().warning("No schema definitions available")
             return False
         
         latest_version = max(self.schema_definitions.keys())
@@ -349,7 +370,7 @@ class SchemaManager:
         current_version = self.get_current_version() or 0
         
         if target_version >= current_version:
-            logger.error(f"Cannot rollback to version {target_version} from {current_version}")
+            _get_logger().error(f"Cannot rollback to version {target_version} from {current_version}")
             return False
         
         # Get migrations to rollback (in reverse order)
@@ -364,7 +385,7 @@ class SchemaManager:
                 rollback_statements = json.loads(migration['rollback_sql'])
                 migrations_to_rollback.append((version, rollback_statements))
             else:
-                logger.error(f"No rollback SQL available for version {version}")
+                _get_logger().error(f"No rollback SQL available for version {version}")
                 return False
         
         try:
@@ -373,7 +394,7 @@ class SchemaManager:
                 for version, rollback_statements in migrations_to_rollback:
                     for sql_statement in rollback_statements:
                         if sql_statement.strip():
-                            logger.debug(f"Rollback executing: {sql_statement[:100]}...")
+                            _get_logger().debug(f"Rollback executing: {sql_statement[:100]}...")
                             self.connection.execute(sql_statement)
                     
                     # Remove from migration history
@@ -385,11 +406,11 @@ class SchemaManager:
                 self._set_metadata("schema_version", str(target_version))
                 self._set_metadata("last_rollback", str(datetime.now().isoformat()))
                 
-                logger.info(f"Rolled back from version {current_version} to {target_version}")
+                _get_logger().info(f"Rolled back from version {current_version} to {target_version}")
                 return True
                 
         except Exception as e:
-            logger.error(f"Rollback failed: {e}")
+            _get_logger().error(f"Rollback failed: {e}")
             return False
     
     def _calculate_checksum(self, sql_statements: List[str]) -> str:

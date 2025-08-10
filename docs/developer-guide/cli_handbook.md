@@ -115,43 +115,151 @@ aico security test
 
 ## Database Commands (`aico db`)
 
-Manages encrypted database initialization and operations.
+Manages encrypted database initialization, operations, and content inspection.
 
-### Available Commands
+### Database Management Commands
 
 | Command | Description |
 |---------|-------------|
-| `init` | Initialize new encrypted database |
-| `status` | Check database encryption status |
-| `test` | Test database connection and operations |
+| `init` | Initialize new encrypted database or apply missing schemas |
+| `status` | Check database encryption status and information |
+| `test` | Test database connection and basic operations |
+| `show` | Show database configuration, paths, and settings |
+
+### Database Content Commands
+
+| Command | Description |
+|---------|-------------|
+| `ls` | List all tables in database with record counts |
+| `desc <table>` | Describe table structure (schema) |
+| `count --table <name>\|--all` | Count records in specific table or all tables |
+| `head <table> [-n N]` | Show first N records from table |
+| `tail <table> [-n N]` | Show last N records from table |
+| `stat` | Database statistics (size, tables, indexes, total records) |
+| `vacuum` | Optimize database (VACUUM) |
+| `check` | Run integrity check |
+| `exec <query>` | Execute raw SQL query with safety confirmations |
 
 ### Examples
 
 ```bash
-# Initialize LibSQL database (default)
-aico db init --db-path ./my-app.db
+# Database Management
+aico db init                              # Initialize or update existing database
+aico db status                            # Check database status
+aico db show                              # Show database paths and configuration
 
-# Initialize specific database type (future)
-aico db init --db-path ./analytics.db --db-type duckdb
+# Content Inspection
+aico db ls                                # List all tables
+aico db desc logs                         # Show logs table schema
+aico db count --all                       # Count records in all tables
+aico db head logs -n 10                   # Show first 10 log entries
+aico db tail logs -n 5                    # Show last 5 log entries
+aico db stat                              # Database statistics
 
-# Check database status
-aico db status --db-path ./my-app.db
+# Maintenance
+aico db vacuum                            # Optimize database
+aico db check                             # Check database integrity
 
-# Test database connection
-aico db test --db-path ./my-app.db
+# Advanced
+aico db exec "SELECT level, COUNT(*) FROM logs GROUP BY level"
 ```
 
 ### Workflow
 
 1. **Setup master password**: `aico security setup`
-2. **Initialize databases**: `aico db init`
+2. **Initialize database**: `aico db init` (idempotent - works on existing DBs)
 3. **Verify setup**: `aico db status`
+4. **Inspect content**: `aico db ls`, `aico db stat`
 
 ### Notes
+- **Idempotent initialization**: `aico db init` detects existing databases and applies missing schemas
 - Uses `AICOKeyManager` for unified key management
 - Supports multiple database types (currently LibSQL)
 - PBKDF2 key derivation for LibSQL, Argon2id for others
 - Stores passwords securely in system keyring
 - Automatic salt management for database files
+- Content commands provide safe database inspection without exposing sensitive data
+
+---
+
+## Logs Commands (`aico logs`)
+
+Comprehensive log management and analysis for AICO's unified logging system. All logs are stored in the encrypted database and transported via ZeroMQ message bus.
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `ls [filters]` | List logs with filtering options |
+| `cat <id>` | Show full log entry details |
+| `rm [criteria]` | Delete logs by criteria (with confirmation) |
+| `stat` | Show log statistics and summaries |
+| `tail [-f]` | Show recent logs (follow mode for real-time) |
+| `grep <pattern>` | Search logs by pattern |
+| `export [format]` | Export logs to JSON or CSV |
+
+### Filtering Options
+
+The `ls` command supports extensive filtering:
+- `--level <level>` - Filter by log level (DEBUG, INFO, WARN, ERROR)
+- `--subsystem <name>` - Filter by subsystem (cli, backend, frontend, studio)
+- `--module <name>` - Filter by specific module
+- `--since <time>` - Show logs since timestamp
+- `--until <time>` - Show logs until timestamp
+- `--limit <n>` - Limit number of results
+- `--format <fmt>` - Output format (table, json, compact)
+
+### Examples
+
+```bash
+# Basic log viewing
+aico logs ls                              # List recent logs
+aico logs ls --limit 50                   # Show last 50 logs
+aico logs tail                            # Show recent logs (like tail -f)
+
+# Filtering
+aico logs ls --level ERROR                # Show only errors
+aico logs ls --subsystem backend          # Show backend logs only
+aico logs ls --module security.key_manager # Show key manager logs
+aico logs ls --since "2024-01-01"         # Logs since date
+
+# Search and analysis
+aico logs grep "database"                 # Search for "database" in logs
+aico logs stat                            # Log statistics
+aico logs cat 12345                       # Show full details for log ID 12345
+
+# Export and cleanup
+aico logs export --format json --output logs.json
+aico logs rm --level DEBUG --older-than "7 days"  # Clean old debug logs
+```
+
+### Log Entry Format
+
+Each log entry contains:
+- **Timestamp**: ISO 8601 format with timezone
+- **Level**: DEBUG, INFO, WARN, ERROR
+- **Subsystem**: cli, backend, frontend, studio
+- **Module**: Specific module path (e.g., "security.key_manager")
+- **Function**: Function name where log was generated
+- **File/Line**: Source file and line number
+- **Message**: Log message content
+- **Extra Data**: Additional structured data (JSON)
+- **Trace/Session IDs**: For distributed tracing
+
+### Configuration
+
+Logging behavior is controlled via `config/defaults/core.yaml`:
+- **Storage**: Database-only (no file logging)
+- **Levels**: Configurable per subsystem and module
+- **Retention**: 30 days, 500MB max size by default
+- **Transport**: ZeroMQ message bus configuration
+- **Privacy**: Automatic PII redaction and sensitive data encryption
+
+### Notes
+- **Unified System**: All AICO subsystems log to the same encrypted database
+- **Bootstrap Buffering**: Logs generated before DB ready are buffered and flushed
+- **Fallback Logging**: Console output during bootstrap, optional temp file fallback
+- **Privacy-First**: Automatic PII redaction and audit logging of log access
+- **Real-Time**: ZeroMQ transport enables real-time log collection and following
 
 ---

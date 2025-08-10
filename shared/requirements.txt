@@ -11,3 +11,6 @@ libsql
 pyyaml
 jsonschema
 watchdog
+
+# Unified logging system
+pyzmq

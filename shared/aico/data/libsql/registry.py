@@ -6,15 +6,37 @@ that are automatically discovered and applied during application startup and
 plugin lifecycle management.
 """
 
-import logging
-from typing import Dict, Set, List, Optional, Union
+from typing import Dict, List, Optional, Any, Type, Union
 from dataclasses import dataclass
+from pathlib import Path
 
-from .schema import SchemaVersion, SchemaManager
+from .schema import SchemaManager, SchemaVersion
 from .connection import LibSQLConnection
 from .encrypted import EncryptedLibSQLConnection
 
-logger = logging.getLogger(__name__)
+# Lazy logger initialization to avoid circular imports
+_logger = None
+
+def _get_logger():
+    global _logger
+    if _logger is None:
+        try:
+            from aico.core.logging import get_logger, initialize_logging
+            from aico.core.config import ConfigurationManager
+            
+            # Try to initialize logging if not already done
+            try:
+                _logger = get_logger("data", "libsql.registry")
+            except RuntimeError:
+                # Logging not initialized, initialize it
+                config = ConfigurationManager()
+                initialize_logging(config)
+                _logger = get_logger("data", "libsql.registry")
+        except Exception:
+            # Fallback to standard logging if unified system fails
+            import logging
+            _logger = logging.getLogger("data.libsql.registry")
+    return _logger
 
 
 @dataclass
@@ -63,7 +85,7 @@ class SchemaRegistry:
         """
         def decorator(schema_definitions: Dict[int, SchemaVersion]):
             if name in cls._schemas:
-                logger.warning(f"Schema '{name}' already registered, overriding")
+                _get_logger().warning(f"Schema '{name}' already registered, overriding")
             
             cls._schemas[name] = RegisteredSchema(
                 name=name,
@@ -72,7 +94,7 @@ class SchemaRegistry:
                 priority=priority
             )
             
-            logger.debug(f"Registered {schema_type} schema: {name}")
+            _get_logger().debug(f"Registered {schema_type} schema: {name}")
             return schema_definitions
         
         return decorator
@@ -124,7 +146,7 @@ class SchemaRegistry:
         applied_versions = {}
         core_schemas = cls.get_core_schemas()
         
-        logger.info(f"Applying {len(core_schemas)} core schemas")
+        _get_logger().info(f"Applying {len(core_schemas)} core schemas")
         
         for schema in core_schemas:
             try:
@@ -134,10 +156,10 @@ class SchemaRegistry:
                 version = manager.get_current_version()
                 applied_versions[schema.name] = version
                 
-                logger.info(f"Applied core schema '{schema.name}' at version {version}")
+                _get_logger().info(f"Applied core schema '{schema.name}' at version {version}")
                 
             except Exception as e:
-                logger.error(f"Failed to apply core schema '{schema.name}': {e}")
+                _get_logger().error(f"Failed to apply core schema '{schema.name}': {e}")
                 raise
         
         cls._initialized = True
@@ -174,12 +196,12 @@ class SchemaRegistry:
             manager.migrate_to_latest()
             
             version = manager.get_current_version()
-            logger.info(f"Applied plugin schema '{plugin_name}' at version {version}")
+            _get_logger().info(f"Applied plugin schema '{plugin_name}' at version {version}")
             
             return version
             
         except Exception as e:
-            logger.error(f"Failed to apply plugin schema '{plugin_name}': {e}")
+            _get_logger().error(f"Failed to apply plugin schema '{plugin_name}': {e}")
             raise
     
     @classmethod
@@ -200,22 +222,22 @@ class SchemaRegistry:
         """
         schema = cls.get_schema(plugin_name)
         if not schema:
-            logger.warning(f"Plugin schema '{plugin_name}' not registered")
+            _get_logger().warning(f"Plugin schema '{plugin_name}' not registered")
             return False
         
         if schema.schema_type != "plugin":
-            logger.warning(f"Schema '{plugin_name}' is not a plugin schema")
+            _get_logger().warning(f"Schema '{plugin_name}' is not a plugin schema")
             return False
         
         try:
             manager = SchemaManager(connection, schema.definitions)
             manager.rollback_to_version(0)
             
-            logger.info(f"Removed plugin schema '{plugin_name}'")
+            _get_logger().info(f"Removed plugin schema '{plugin_name}'")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to remove plugin schema '{plugin_name}': {e}")
+            _get_logger().error(f"Failed to remove plugin schema '{plugin_name}': {e}")
             raise
     
     @classmethod
@@ -255,7 +277,7 @@ class SchemaRegistry:
                     info["plugin_schemas"][name] = schema_info
                     
             except Exception as e:
-                logger.warning(f"Could not get info for schema '{name}': {e}")
+                _get_logger().warning(f"Could not get info for schema '{name}': {e}")
         
         return info
     
@@ -264,7 +286,7 @@ class SchemaRegistry:
         """Clear all registered schemas (for testing)."""
         cls._schemas.clear()
         cls._initialized = False
-        logger.debug("Schema registry cleared")
+        _get_logger().debug("Schema registry cleared")
 
 
 # Convenience function for registration

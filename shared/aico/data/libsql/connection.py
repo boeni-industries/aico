@@ -7,14 +7,35 @@ and error handling for local SQLite-compatible databases.
 """
 
 import os
-import logging
 from pathlib import Path
 from typing import Optional, Any, Dict, List, Tuple
 from contextlib import contextmanager
 
 import libsql
 
-logger = logging.getLogger(__name__)
+# Lazy logger initialization to avoid circular imports
+_logger = None
+
+def _get_logger():
+    global _logger
+    if _logger is None:
+        try:
+            from aico.core.logging import get_logger, initialize_logging
+            from aico.core.config import ConfigurationManager
+            
+            # Try to initialize logging if not already done
+            try:
+                _logger = get_logger("data", "libsql.connection")
+            except RuntimeError:
+                # Logging not initialized, initialize it
+                config = ConfigurationManager()
+                initialize_logging(config)
+                _logger = get_logger("data", "libsql.connection")
+        except Exception:
+            # Fallback to standard logging if unified system fails
+            import logging
+            _logger = logging.getLogger("data.libsql.connection")
+    return _logger
 
 
 class LibSQLConnection:
@@ -40,7 +61,7 @@ class LibSQLConnection:
         # Ensure parent directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         
-        logger.debug(f"Initialized LibSQL connection for {self.db_path}")
+        _get_logger().debug(f"Initialized LibSQL connection for {self.db_path}")
     
     def connect(self) -> libsql.Connection:
         """
@@ -58,12 +79,12 @@ class LibSQLConnection:
                     str(self.db_path),
                     **self.connection_params
                 )
-                logger.info(f"Connected to LibSQL database: {self.db_path}")
+                _get_logger().info(f"Connected to LibSQL database: {self.db_path}")
             
             return self._connection
             
         except Exception as e:
-            logger.error(f"Failed to connect to LibSQL database {self.db_path}: {e}")
+            _get_logger().error(f"Failed to connect to LibSQL database {self.db_path}: {e}")
             raise ConnectionError(f"Database connection failed: {e}") from e
     
     def disconnect(self) -> None:
@@ -71,9 +92,9 @@ class LibSQLConnection:
         if self._connection:
             try:
                 self._connection.close()
-                logger.info(f"Disconnected from LibSQL database: {self.db_path}")
+                _get_logger().info(f"Disconnected from LibSQL database: {self.db_path}")
             except Exception as e:
-                logger.warning(f"Error closing connection: {e}")
+                _get_logger().warning(f"Error closing connection: {e}")
             finally:
                 self._connection = None
     
@@ -118,11 +139,11 @@ class LibSQLConnection:
                 else:
                     result = conn.execute(query)
                 
-                logger.debug(f"Executed query: {query[:100]}...")
+                _get_logger().debug(f"Executed query: {query[:100]}...")
                 return result
                 
         except Exception as e:
-            logger.error(f"Query execution failed: {e}")
+            _get_logger().error(f"Query execution failed: {e}")
             raise RuntimeError(f"Database query failed: {e}") from e
     
     def execute_many(self, query: str, parameters_list: List[Tuple]) -> None:
@@ -142,10 +163,10 @@ class LibSQLConnection:
                     conn.execute(query, parameters)
                 conn.commit()
                 
-                logger.debug(f"Executed {len(parameters_list)} queries: {query[:100]}...")
+                _get_logger().debug(f"Executed {len(parameters_list)} queries: {query[:100]}...")
                 
         except Exception as e:
-            logger.error(f"Batch query execution failed: {e}")
+            _get_logger().error(f"Batch query execution failed: {e}")
             raise RuntimeError(f"Database batch operation failed: {e}") from e
     
     def fetch_one(self, query: str, parameters: Optional[Tuple] = None) -> Optional[Dict[str, Any]]:
@@ -193,13 +214,13 @@ class LibSQLConnection:
         """Commit current transaction."""
         if self._connection:
             self._connection.commit()
-            logger.debug("Transaction committed")
+            _get_logger().debug("Transaction committed")
     
     def rollback(self) -> None:
         """Rollback current transaction."""
         if self._connection:
             self._connection.rollback()
-            logger.debug("Transaction rolled back")
+            _get_logger().debug("Transaction rolled back")
     
     @contextmanager
     def transaction(self):
@@ -216,10 +237,10 @@ class LibSQLConnection:
         try:
             yield self
             self.commit()
-            logger.debug("Transaction committed successfully")
+            _get_logger().debug("Transaction committed successfully")
         except Exception as e:
             self.rollback()
-            logger.error(f"Transaction rolled back due to error: {e}")
+            _get_logger().error(f"Transaction rolled back due to error: {e}")
             raise
     
     def table_exists(self, table_name: str) -> bool:

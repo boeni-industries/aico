@@ -53,6 +53,7 @@ from commands.version import app as version_app
 from commands.database import app as database_app
 from commands.security import app as security_app
 from commands.dev import app as dev_app
+from commands.logs import app as logs_app
 
 app = typer.Typer(
     name="aico",
@@ -66,6 +67,7 @@ app.add_typer(config_app, name="config", help="📝 Configuration management")
 app.add_typer(version_app, name="version", help="📦 Version and build information") 
 app.add_typer(database_app, name="db", help="🛢️ Database management")
 app.add_typer(security_app, name="security", help="🔐 Security and encryption")
+app.add_typer(logs_app, name="logs", help="📋 Log management and analysis")
 app.add_typer(dev_app, name="dev", help="🧹 Development utilities")
 
 @app.callback(invoke_without_command=True)

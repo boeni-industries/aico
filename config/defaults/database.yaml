@@ -30,4 +30,4 @@ duckdb:
 
 # Development overrides (can be set via environment or config)
 development:
-  directory_mode: "current"  # Use ./data in development
+  directory_mode: "auto"  # Use ./data in development

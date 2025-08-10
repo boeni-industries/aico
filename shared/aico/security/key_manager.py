@@ -11,7 +11,6 @@ KISS approach: Single file, minimal dependencies, clear functionality.
 import os
 import getpass
 import keyring
-import logging
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -21,9 +20,30 @@ from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
 from aico.core.config import ConfigurationManager
-import logging
 
-logger = logging.getLogger(__name__)
+# Lazy logger initialization to avoid circular imports
+_logger = None
+
+def _get_logger():
+    global _logger
+    if _logger is None:
+        try:
+            from aico.core.logging import get_logger, initialize_logging
+            from aico.core.config import ConfigurationManager
+            
+            # Try to initialize logging if not already done
+            try:
+                _logger = get_logger("security", "key_manager")
+            except RuntimeError:
+                # Logging not initialized, initialize it
+                config = ConfigurationManager()
+                initialize_logging(config)
+                _logger = get_logger("security", "key_manager")
+        except Exception:
+            # Fallback to standard logging if unified system fails
+            import logging
+            _logger = logging.getLogger("security.key_manager")
+    return _logger
 
 
 class AICOKeyManager:
@@ -39,7 +59,7 @@ class AICOKeyManager:
     
     def __init__(self, service_name: str = "AICO"):
         self.service_name = service_name
-        logger.debug(f"Initialized AICOKeyManager for service: {service_name}")
+        _get_logger().debug(f"Initialized AICOKeyManager for service: {service_name}")
     
     def _get_security_config(self, key: str):
         """Get security configuration value using hierarchical YAML system."""
@@ -319,7 +339,7 @@ class AICOKeyManager:
         if salt_file.exists():
             with open(salt_file, 'rb') as f:
                 salt = f.read()
-            logger.debug(f"Loaded existing salt for {db_file.name}")
+            _get_logger().debug(f"Loaded existing salt for {db_file.name}")
         else:
             salt = os.urandom(self.SALT_LENGTH)
             
@@ -333,7 +353,7 @@ class AICOKeyManager:
             if hasattr(os, 'chmod'):
                 os.chmod(salt_file, 0o600)
             
-            logger.info(f"Generated new salt for {db_file.name}")
+            _get_logger().info(f"Generated new salt for {db_file.name}")
         
         return salt
         
@@ -388,9 +408,9 @@ class AICOKeyManager:
             
         try:
             keyring.set_password(self.service_name, key_name, password)
-            logger.info(f"Stored {database_type} password in keyring")
+            _get_logger().info(f"Stored {database_type} password in keyring")
         except Exception as e:
-            logger.warning(f"Failed to store {database_type} password in keyring: {e}")
+            _get_logger().warning(f"Failed to store {database_type} password in keyring: {e}")
             
     def get_database_password(self, database_type: str, username: Optional[str] = None) -> Optional[str]:
         """
@@ -410,10 +430,10 @@ class AICOKeyManager:
         try:
             password = keyring.get_password(self.service_name, key_name)
             if password:
-                logger.debug(f"Retrieved {database_type} password from keyring")
+                _get_logger().debug(f"Retrieved {database_type} password from keyring")
             return password
         except Exception as e:
-            logger.warning(f"Failed to retrieve {database_type} password from keyring: {e}")
+            _get_logger().warning(f"Failed to retrieve {database_type} password from keyring: {e}")
             return None
     
     def get_security_health_info(self) -> Dict[str, Any]:

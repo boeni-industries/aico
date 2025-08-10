@@ -10,19 +10,21 @@ a = Analysis(
         ('../config', 'config'),
     ],
     hiddenimports=[
-        'typer', 
-        'rich', 
-        'click', 
-        'shellingham', 
-        'typing_extensions',
+        # Core dependencies
+        'typer', 'rich', 'click', 'shellingham', 'typing_extensions',
+        # Package resources for namespace packages
         'pkg_resources',
-        'keyring',
-        'cryptography',
-        'cryptography.hazmat.primitives.kdf.argon2',
-        'cryptography.hazmat.primitives.kdf.pbkdf2',
-        'cryptography.hazmat.primitives.hashes',
-        'cryptography.hazmat.backends',
-        'libsql',
+        # Security and encryption
+        'keyring', 'cryptography', 'cryptography.fernet', 'cryptography.hazmat',
+        'cryptography.hazmat.primitives', 'cryptography.hazmat.backends',
+        'cryptography.hazmat.primitives.kdf', 'cryptography.hazmat.primitives.kdf.argon2',
+        'cryptography.hazmat.primitives.kdf.pbkdf2', 'cryptography.hazmat.primitives.hashes',
+        # Database
+        'libsql', 'sqlite3',
+        # ZeroMQ for unified logging system
+        'zmq', 'pyzmq',
+        # AICO modules
+        'aico.security', 'aico.data.libsql', 'aico.data.libsql.encrypted',
         # Configuration management dependencies
         'yaml',
         'jsonschema',

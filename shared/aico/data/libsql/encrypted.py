@@ -7,17 +7,35 @@ connection management for AICO's privacy-first data storage.
 """
 
 import os
-import logging
-import hashlib
 from pathlib import Path
-from typing import Optional, Any, Dict, List, Tuple, Union
+from typing import Optional, Dict, Any, List, Union
+import sqlite3
 
 from .connection import LibSQLConnection
-from ...security import AICOKeyManager
-from ...core.config import ConfigurationManager
+from aico.security.key_manager import AICOKeyManager
+from aico.core.config import ConfigurationManager
 
-logger = logging.getLogger(__name__)
+# Lazy logger initialization to avoid circular imports
+_logger = None
 
+def _get_logger():
+    global _logger
+    if _logger is None:
+        try:
+            from aico.core.logging import get_logger
+            
+            # Try to get logger (assume already initialized by CLI)
+            try:
+                _logger = get_logger("data", "libsql.encrypted")
+            except RuntimeError:
+                # Logging not initialized - use fallback for CLI context
+                import logging
+                _logger = logging.getLogger("data.libsql.encrypted")
+        except Exception:
+            # Fallback to standard logging if unified system fails
+            import logging
+            _logger = logging.getLogger("data.libsql.encrypted")
+    return _logger
 
 class EncryptedLibSQLConnection(LibSQLConnection):
     """
@@ -53,7 +71,7 @@ class EncryptedLibSQLConnection(LibSQLConnection):
         self._key_manager = key_manager or AICOKeyManager()
         self._master_password = master_password
         
-        logger.debug(f"Initialized encrypted LibSQL connection for {self.db_path}")
+        _get_logger().debug(f"Initialized encrypted LibSQL connection for {self.db_path}")
     
     def _get_encryption_key(self) -> bytes:
         """
@@ -83,7 +101,7 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             )
             
             self._encryption_key = db_key
-            logger.debug("Derived encryption key from key manager")
+            _get_logger().debug("Derived encryption key from key manager")
             return db_key
             
         except Exception as e:
@@ -131,15 +149,15 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             # Test that encryption is working by creating/accessing a test table
             try:
                 connection.execute("SELECT count(*) FROM sqlite_master")
-                logger.debug("Database encryption verified successfully")
+                _get_logger().debug("Database encryption verified successfully")
             except Exception as e:
-                logger.error(f"Database encryption verification failed: {e}")
+                _get_logger().error(f"Database encryption verification failed: {e}")
                 raise ConnectionError("Invalid encryption key or corrupted database") from e
             
             return connection
             
         except Exception as e:
-            logger.error(f"Failed to establish encrypted connection: {e}")
+            _get_logger().error(f"Failed to establish encrypted connection: {e}")
             raise ConnectionError(f"Encrypted database connection failed: {e}") from e
     
     def _apply_database_settings(self, connection) -> None:
@@ -158,22 +176,22 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             # Apply journal mode (default: WAL)
             journal_mode = libsql_config.get("journal_mode", "WAL")
             connection.execute(f"PRAGMA journal_mode = {journal_mode}")
-            logger.debug(f"Set journal_mode to {journal_mode}")
+            _get_logger().debug(f"Set journal_mode to {journal_mode}")
             
             # Apply synchronous mode (default: NORMAL)
             synchronous = libsql_config.get("synchronous", "NORMAL")
             connection.execute(f"PRAGMA synchronous = {synchronous}")
-            logger.debug(f"Set synchronous to {synchronous}")
+            _get_logger().debug(f"Set synchronous to {synchronous}")
             
             # Apply cache size (default: 2000)
             cache_size = libsql_config.get("cache_size", 2000)
             connection.execute(f"PRAGMA cache_size = {cache_size}")
-            logger.debug(f"Set cache_size to {cache_size}")
+            _get_logger().debug(f"Set cache_size to {cache_size}")
             
-            logger.debug("Applied LibSQL configuration settings")
+            _get_logger().debug("Applied LibSQL configuration settings")
             
         except Exception as e:
-            logger.warning(f"Failed to apply database settings: {e}")
+            _get_logger().warning(f"Failed to apply database settings: {e}")
             # Don't fail connection for configuration issues
     
     def set_master_password(self, password: str, store_in_keyring: bool = True) -> None:
@@ -190,7 +208,7 @@ class EncryptedLibSQLConnection(LibSQLConnection):
         if store_in_keyring:
             self._key_manager.store_database_password(password, "libsql", self.db_path.stem)
             
-        logger.info("Master password updated")
+        _get_logger().info("Master password updated")
     
     def change_password(self, old_password: str, new_password: str) -> None:
         """
@@ -220,10 +238,10 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             self._master_password = new_password
             self._encryption_key = None  # Force re-derivation
             
-            logger.info("Database password changed successfully")
+            _get_logger().info("Database password changed successfully")
             
         except Exception as e:
-            logger.error(f"Password change failed: {e}")
+            _get_logger().error(f"Password change failed: {e}")
             raise RuntimeError(f"Failed to change password: {e}") from e
     
     def verify_encryption(self) -> bool:
@@ -247,11 +265,11 @@ class EncryptedLibSQLConnection(LibSQLConnection):
                 sqlite_header = b"SQLite format 3\x00"
                 is_encrypted = not header.startswith(sqlite_header)
                 
-                logger.debug(f"Database encryption status: {'active' if is_encrypted else 'inactive'}")
+                _get_logger().debug(f"Database encryption status: {'active' if is_encrypted else 'inactive'}")
                 return is_encrypted
                 
         except Exception as e:
-            logger.error(f"Encryption verification failed: {e}")
+            _get_logger().error(f"Encryption verification failed: {e}")
             return False
     
     def get_encryption_info(self) -> Dict[str, Any]:
@@ -356,7 +374,7 @@ def create_encrypted_database(
             
             conn.commit()
         
-        logger.info(f"Created encrypted database: {db_path}")
+        _get_logger().info(f"Created encrypted database: {db_path}")
         return conn
         
     except Exception as e:
@@ -368,5 +386,5 @@ def create_encrypted_database(
         if salt_file.exists():
             salt_file.unlink()
         
-        logger.error(f"Failed to create encrypted database: {e}")
+        _get_logger().error(f"Failed to create encrypted database: {e}")
         raise RuntimeError(f"Database creation failed: {e}") from e
