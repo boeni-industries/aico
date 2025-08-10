@@ -381,14 +381,26 @@ class LogRepository:
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
         
         sql = f"""
-            SELECT * FROM logs 
+            SELECT id, timestamp, level, subsystem, module, function_name,
+                   file_path, line_number, topic, message, user_id,
+                   session_id, trace_id, extra
+            FROM logs 
             WHERE {where_sql}
             ORDER BY timestamp DESC 
             LIMIT ?
         """
         params.append(limit)
         
-        return self.db.execute(sql, params).fetchall()
+        rows = self.db.execute(sql, params).fetchall()
+        
+        # Convert tuples to dictionaries with proper column names
+        column_names = [
+            "id", "timestamp", "level", "subsystem", "module", "function_name",
+            "file_path", "line_number", "topic", "message", "user_id",
+            "session_id", "trace_id", "extra"
+        ]
+        
+        return [dict(zip(column_names, row)) for row in rows]
     
     def delete_logs(self, **criteria) -> int:
         """Delete logs matching criteria, returns count deleted"""

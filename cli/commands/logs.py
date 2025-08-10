@@ -28,7 +28,44 @@ from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
 
 console = Console()
-app = typer.Typer(help="✨ [bold cyan]Manage AICO logs[/bold cyan]")
+
+def logs_callback(ctx: typer.Context):
+    """Show help when no subcommand is given instead of showing an error."""
+    if ctx.invoked_subcommand is None:
+        from utils.help_formatter import format_subcommand_help
+        
+        subcommands = [
+            ("ls", "List recent logs with filtering options"),
+            ("cat", "Display full log entry details"),
+            ("rm", "Remove log entries based on criteria"),
+            ("stat", "Show logging statistics and summary"),
+            ("tail", "Show recent logs (like tail -f)"),
+            ("grep", "Search logs by pattern/content"),
+            ("export", "Export logs to file")
+        ]
+        
+        examples = [
+            "aico logs ls --limit=50",
+            "aico logs cat --id=123",
+            "aico logs grep 'error'",
+            "aico logs tail --follow",
+            "aico logs stat"
+        ]
+        
+        format_subcommand_help(
+            console=console,
+            command_name="logs",
+            description="Manage AICO logs with Unix-style commands",
+            subcommands=subcommands,
+            examples=examples
+        )
+        raise typer.Exit()
+
+app = typer.Typer(
+    help="Manage AICO logs with Unix-style commands.",
+    callback=logs_callback,
+    invoke_without_command=True
+)
 
 
 def _get_log_repository() -> LogRepository:
@@ -42,12 +79,14 @@ def _get_log_repository() -> LogRepository:
         paths = AICOPaths()
         db_path = paths.resolve_database_path("aico.db")
         
-        # Get encryption key
-        master_key = key_manager.get_master_key_from_keyring()
-        if not master_key:
+        # Get encryption key using proper authentication
+        if not key_manager.has_stored_key():
             console.print("[red]Error: Master key not found. Run 'aico security setup' first.[/red]")
             raise typer.Exit(1)
             
+        # Authenticate to get master key
+        password = typer.prompt("Enter master password", hide_input=True)
+        master_key = key_manager.authenticate(password, interactive=False)
         db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
         
         # Connect to database
@@ -116,6 +155,7 @@ def ls(
         # Table format (default)
         table = Table(
             title="✨ [bold cyan]Recent Logs[/bold cyan]",
+            title_justify="left",
             border_style="bright_blue",
             header_style="bold yellow",
             show_lines=False,
@@ -123,7 +163,7 @@ def ls(
             padding=(0, 1)
         )
         
-        table.add_column("Time", style="dim")
+        table.add_column("Time (UTC)", style="dim")
         table.add_column("Level", style="bold")
         table.add_column("Source", style="cyan")
         table.add_column("Message", style="white")
