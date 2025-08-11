@@ -12,5 +12,8 @@ pyyaml
 jsonschema
 watchdog
 
+# Message bus and communication
+pyzmq>=25.0.0
+protobuf>=4.21.0
+
 # Unified logging system
-pyzmq

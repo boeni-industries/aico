@@ -35,6 +35,62 @@ def register_schema(schema_name: str, schema_type: str, priority: int = 10):
     return decorator
 
 
+# Register message bus schema
+MESSAGE_BUS_SCHEMA = register_schema("message_bus", "core", priority=1)({
+    1: SchemaVersion(
+        version=1,
+        name="Message Bus Persistence",
+        description="Message log for debugging, audit, and cross-device sync",
+        sql_statements=[
+            """CREATE TABLE IF NOT EXISTS message_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                topic TEXT NOT NULL,
+                source TEXT NOT NULL,
+                message_type TEXT NOT NULL,
+                message_id TEXT NOT NULL UNIQUE,
+                priority INTEGER DEFAULT 1,
+                correlation_id TEXT,
+                payload BLOB,
+                metadata JSON,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_message_log_topic_timestamp 
+               ON message_log(topic, timestamp)""",
+            """CREATE INDEX IF NOT EXISTS idx_message_log_source 
+               ON message_log(source)""",
+            """CREATE INDEX IF NOT EXISTS idx_message_log_correlation 
+               ON message_log(correlation_id) WHERE correlation_id IS NOT NULL"""
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_message_log_correlation",
+            "DROP INDEX IF EXISTS idx_message_log_source", 
+            "DROP INDEX IF EXISTS idx_message_log_topic_timestamp",
+            "DROP TABLE IF EXISTS message_log"
+        ]
+    ),
+    2: SchemaVersion(
+        version=2,
+        name="Rename to Industry Standard",
+        description="Rename message_log to events following industry conventions",
+        sql_statements=[
+            """ALTER TABLE message_log RENAME TO events""",
+            """CREATE INDEX IF NOT EXISTS idx_events_topic_timestamp 
+               ON events(topic, timestamp)""",
+            """CREATE INDEX IF NOT EXISTS idx_events_source 
+               ON events(source)""",
+            """CREATE INDEX IF NOT EXISTS idx_events_correlation 
+               ON events(correlation_id) WHERE correlation_id IS NOT NULL"""
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_events_correlation",
+            "DROP INDEX IF EXISTS idx_events_source",
+            "DROP INDEX IF EXISTS idx_events_topic_timestamp", 
+            "ALTER TABLE events RENAME TO message_log"
+        ]
+    )
+})
+
 # Register logs schema
 LOGS_SCHEMA = register_schema("logs", "core", priority=0)({
     1: SchemaVersion(

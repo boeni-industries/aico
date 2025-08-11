@@ -54,6 +54,7 @@ from commands.database import app as database_app
 from commands.security import app as security_app
 from commands.dev import app as dev_app
 from commands.logs import app as logs_app
+from commands.bus import app as bus_app
 
 app = typer.Typer(
     name="aico",
@@ -69,6 +70,7 @@ app.add_typer(database_app, name="db", help="🛢️ Database management")
 app.add_typer(security_app, name="security", help="🔐 Security and encryption")
 app.add_typer(logs_app, name="logs", help="📋 Log management and analysis")
 app.add_typer(dev_app, name="dev", help="🧹 Development utilities")
+app.add_typer(bus_app, name="bus", help="🚌 Message bus management")
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit.")):
@@ -91,6 +93,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             (chars["database"], "db", "Database initialization, status, and management"),
             (chars["security"], "security", "Master password setup and security management"),
             (chars["config"], "config", "Configuration management and validation"),
+            ("🚌", "bus", "Message bus testing, monitoring, and management"),
             ("🧹", "dev", "Development utilities (data cleanup, security reset)")
         ]
         
