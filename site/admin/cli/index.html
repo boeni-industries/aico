@@ -1120,6 +1120,24 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#command-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      Command Groups
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-characteristics" class="md-nav__link">
+    <span class="md-ellipsis">
+      Performance Characteristics
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2379,6 +2397,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -2537,12 +2559,58 @@
   
   
     <li class="md-nav__item">
+      <a href="../../developer-guide/namespaces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Namespaces
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../developer-guide/cli_handbook/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     CLI Handbook
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/schema_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Schema Management
     
   </span>
   
@@ -2847,14 +2915,16 @@
 </ul>
 <h3 id="packaging-distribution">Packaging &amp; Distribution<a class="headerlink" href="#packaging-distribution" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>PyInstaller</strong> (primary):<ul>
-<li>Produces a single-file executable (<code>aico</code>) for each OS.</li>
-<li>No .venv or Python installation required on target system.</li>
-<li>Handles all dependencies, including native libraries, in the bundle.</li>
+<li><strong>PyPI Distribution</strong> (primary):<ul>
+<li>Professional Python package distribution via <code>pip</code>, <code>pipx</code>, or <code>uv tool install</code>.</li>
+<li>Fast startup (~0.2s vs 7.3s PyInstaller overhead).</li>
+<li>Requires Python 3.9+ on target system.</li>
+<li>Cross-platform: identical installation and usage on Windows, macOS, Linux.</li>
 </ul>
 </li>
-<li><strong>Briefcase</strong> (alternative):<ul>
-<li>For more native-feeling installers or app bundles if desired.</li>
+<li><strong>PyInstaller</strong> (legacy):<ul>
+<li>Single-file executable approach (deprecated due to slow startup).</li>
+<li>Kept for reference but no longer recommended.</li>
 </ul>
 </li>
 </ul>
@@ -2876,14 +2946,10 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>aico [command] [options]
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>Commands:
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  status         Show system and service status
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  user           Manage users (add, remove, list, roles)
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  db             Database operations (backup, migrate, inspect)
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  plugin         Manage plugins (list, install, enable, disable)
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  logs           Tail or query logs
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>  config         View or edit configuration
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>  admin          Open admin UI
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  ...            (future: agent, emotion, vector, etc.)
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  version        Manage and synchronize versions across all AICO system parts
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  security       Master password setup and security management
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  db             Database initialization, status, and management
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  ...            (future: plugin, logs, config, admin, etc.)
 </span></code></pre></div>
 <ul>
 <li>Each command is implemented as a Typer sub-app, allowing modular growth.</li>
@@ -3112,6 +3178,51 @@
 </ul>
 <hr />
 <p>AICO's CLI combines the power of Python's ecosystem with best-in-class UX, delivering a tool worthy of modern, privacy-first, AI-powered systems.</p>
+<hr />
+<h2 id="command-groups">Command Groups<a class="headerlink" href="#command-groups" title="Permanent link">&para;</a></h2>
+<h3 id="version-commands-aico-version">Version Commands (<code>aico version</code>)<a class="headerlink" href="#version-commands-aico-version" title="Permanent link">&para;</a></h3>
+<p>Manages and synchronizes versioning across all major AICO system parts from a single source of truth.</p>
+<p><strong>Architecture</strong>: Uses centralized <code>VERSIONS</code> file as canonical source, with automatic propagation to individual component version files and git tagging.</p>
+<h3 id="security-commands-aico-security">Security Commands (<code>aico security</code>)<a class="headerlink" href="#security-commands-aico-security" title="Permanent link">&para;</a></h3>
+<p>Manages master password setup and security operations for AICO's encrypted data layer.</p>
+<p><strong>Architecture</strong>: Uses <code>AICOKeyManager</code> for unified key management across all database types with secure keyring integration. Session-based authentication with decorator-enforced security for sensitive operations.</p>
+<h4 id="decorator-based-security-classification">Decorator-Based Security Classification<a class="headerlink" href="#decorator-based-security-classification" title="Permanent link">&para;</a></h4>
+<p>The CLI uses decorators to automatically enforce authentication requirements:</p>
+<p><strong>🔐 Sensitive Commands</strong> (<code>@sensitive</code> decorator - require fresh authentication):
+- <code>security passwd</code> - Change master password
+- <code>security clear</code> - Clear credentials<br />
+- <code>logs export</code> - Export sensitive log data
+- <code>config export</code> - Export sensitive configuration</p>
+<p><strong>⚠️ Dangerous Commands</strong> (<code>@destructive</code> decorator - require fresh authentication):
+- <code>db exec</code> - Execute arbitrary SQL (allows DROP, DELETE, UPDATE)
+- <code>db vacuum</code> - Rebuild database structure (risk of data loss if interrupted)</p>
+<p><strong>✅ Regular Commands</strong> (no decorators - use session cache):
+- <code>db status</code>, <code>db ls</code>, <code>db test</code> - Read-only database operations
+- <code>security session</code> - Show session information
+- <code>config show</code> - Display configuration</p>
+<p><strong>🚀 Setup Commands</strong> (no decorators - no authentication required):
+- <code>security setup</code> - Initial password creation
+- <code>db init</code> - Database initialization</p>
+<p>This decorator approach provides:
+- <strong>Zero developer hell</strong>: Easy to add/remove security requirements
+- <strong>Automatic enforcement</strong>: Authentication handled transparently
+- <strong>Clear semantics</strong>: Command purpose obvious from decorator
+- <strong>Audit logging</strong>: Sensitive operations automatically logged</p>
+<h3 id="database-commands-aico-db">Database Commands (<code>aico db</code>)<a class="headerlink" href="#database-commands-aico-db" title="Permanent link">&para;</a></h3>
+<p>Manages encrypted database initialization and operations.</p>
+<p><strong>Architecture</strong>: Supports multiple database types with type-specific encryption (PBKDF2 for LibSQL, Argon2id for others). Automatic salt management and transparent encryption. Includes comprehensive CRUD testing with proper transaction management to prevent libSQL safety conflicts.</p>
+<h3 id="integration-pattern">Integration Pattern<a class="headerlink" href="#integration-pattern" title="Permanent link">&para;</a></h3>
+<p>Security and database commands integrate through <code>AICOKeyManager</code> providing derived keys to database connections. Master password affects all databases; database operations are type-specific.</p>
+<p><strong>For detailed usage examples and workflows, see the <a href="../../developer-guide/cli_handbook/">CLI Handbook</a>.</strong></p>
+<h2 id="performance-characteristics">Performance Characteristics<a class="headerlink" href="#performance-characteristics" title="Permanent link">&para;</a></h2>
+<p>The AICO CLI is optimized for fast startup and responsive operation:</p>
+<ul>
+<li><strong>Startup time</strong>: ~0.2s (compared to 7.3s with legacy PyInstaller)</li>
+<li><strong>Cross-platform consistency</strong>: Identical performance on Windows, macOS, and Linux</li>
+<li><strong>Memory footprint</strong>: Minimal - only loads required dependencies per command</li>
+<li><strong>Development workflow</strong>: Instant code changes with editable installation</li>
+</ul>
+<hr />
 
 
 

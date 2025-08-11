@@ -15,10 +15,10 @@
         <link rel="canonical" href="https://boeni-industries.github.io/aico/developer-guide/cli_handbook/">
       
       
-        <link rel="prev" href="../versioning/">
+        <link rel="prev" href="../namespaces/">
       
       
-        <link rel="next" href="../../roadmap/foundation/">
+        <link rel="next" href="../schema_management/">
       
       
       <link rel="icon" href="../../assets/images/logo.png">
@@ -2229,6 +2229,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -2384,6 +2388,29 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../namespaces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Namespaces
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -2446,9 +2473,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Installation
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#version-command-group" class="md-nav__link">
     <span class="md-ellipsis">
       Version Command Group
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-commands-aico-security" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security Commands (aico security)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database-commands-aico-db" class="md-nav__link">
+    <span class="md-ellipsis">
+      Database Commands (aico db)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logs-commands-aico-logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Logs Commands (aico logs)
     </span>
   </a>
   
@@ -2458,6 +2521,29 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Schema Management
+    
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -2733,11 +2819,17 @@
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
 <p>The <code>aico</code> command-line interface (CLI) is your central tool for automating, administering, and interacting with the AICO system. This handbook covers practical usage, command syntax, and real-world examples for developers and power users.</p>
 <hr />
+<h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h2>
+<h3 id="end-users">End Users<a class="headerlink" href="#end-users" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>tool<span class="w"> </span>install<span class="w"> </span>aico-cli<span class="w">    </span><span class="c1"># Recommended</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>pipx<span class="w"> </span>install<span class="w"> </span>aico-cli<span class="w">       </span><span class="c1"># Alternative</span>
+</span></code></pre></div>
+<hr />
 <h2 id="version-command-group">Version Command Group<a class="headerlink" href="#version-command-group" title="Permanent link">&para;</a></h2>
 <h3 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">&para;</a></h3>
 <p>Manage and synchronize the versioning of all major AICO system parts (CLI, backend, frontend, studio) from a single source of truth.</p>
 <h3 id="usage-summary">Usage Summary<a class="headerlink" href="#usage-summary" title="Permanent link">&para;</a></h3>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>aico<span class="w"> </span>version<span class="w"> </span><span class="o">[</span>COMMAND<span class="o">]</span><span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aico<span class="w"> </span>version<span class="w"> </span><span class="o">[</span>COMMAND<span class="o">]</span><span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
 </span></code></pre></div>
 <h3 id="available-commands">Available Commands<a class="headerlink" href="#available-commands" title="Permanent link">&para;</a></h3>
 <table>
@@ -2781,25 +2873,25 @@
 <h3 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Print all versions:
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aico<span class="w"> </span>version
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>aico<span class="w"> </span>version
 </span></code></pre></div></li>
 <li>Print backend version:
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>aico<span class="w"> </span>version<span class="w"> </span>backend
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>aico<span class="w"> </span>version<span class="w"> </span>backend
 </span></code></pre></div></li>
 <li>Sync all canonical versions from VERSIONS:
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>aico<span class="w"> </span>version<span class="w"> </span>sync
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>aico<span class="w"> </span>version<span class="w"> </span>sync
 </span></code></pre></div></li>
 <li>Bump CLI version (patch):
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>aico<span class="w"> </span>version<span class="w"> </span>bump<span class="w"> </span>cli<span class="w"> </span>patch
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>aico<span class="w"> </span>version<span class="w"> </span>bump<span class="w"> </span>cli<span class="w"> </span>patch
 </span></code></pre></div></li>
 <li>Preview next frontend minor version:
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>aico<span class="w"> </span>version<span class="w"> </span>next<span class="w"> </span>frontend<span class="w"> </span>minor
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>aico<span class="w"> </span>version<span class="w"> </span>next<span class="w"> </span>frontend<span class="w"> </span>minor
 </span></code></pre></div></li>
 <li>Check for version drift:
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>aico<span class="w"> </span>version<span class="w"> </span>check
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>aico<span class="w"> </span>version<span class="w"> </span>check
 </span></code></pre></div></li>
 <li>Show studio version history:
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>aico<span class="w"> </span>version<span class="w"> </span><span class="nb">history</span><span class="w"> </span>studio
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>aico<span class="w"> </span>version<span class="w"> </span><span class="nb">history</span><span class="w"> </span>studio
 </span></code></pre></div></li>
 </ul>
 <h3 id="ux-principles">UX Principles<a class="headerlink" href="#ux-principles" title="Permanent link">&para;</a></h3>
@@ -2823,6 +2915,298 @@
 </ul>
 <hr />
 <p>For more details on versioning policy, see the <a href="../versioning/">developer guide</a>.</p>
+<hr />
+<h2 id="security-commands-aico-security">Security Commands (<code>aico security</code>)<a class="headerlink" href="#security-commands-aico-security" title="Permanent link">&para;</a></h2>
+<p>Manages master password setup and security operations for AICO's encrypted data layer.</p>
+<h3 id="available-commands_1">Available Commands<a class="headerlink" href="#available-commands_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>setup</code></td>
+<td>First-time master password setup</td>
+</tr>
+<tr>
+<td><code>passwd</code></td>
+<td>Change master password (affects all databases)</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>Check security health and key management status</td>
+</tr>
+<tr>
+<td><code>session</code></td>
+<td>Show CLI session status and timeout information</td>
+</tr>
+<tr>
+<td><code>clear</code></td>
+<td>Clear cached master key and active session (forces password re-entry)</td>
+</tr>
+<tr>
+<td><code>test</code></td>
+<td>Performance diagnostics and key derivation benchmarking</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_1">Examples<a class="headerlink" href="#examples_1" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># First-time setup</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>aico<span class="w"> </span>security<span class="w"> </span>setup
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># Check status</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>aico<span class="w"> </span>security<span class="w"> </span>status
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># Check session status</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>aico<span class="w"> </span>security<span class="w"> </span>session
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="c1"># Change master password</span>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>aico<span class="w"> </span>security<span class="w"> </span>passwd
+</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>
+</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="c1"># Test authentication</span>
+</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>aico<span class="w"> </span>security<span class="w"> </span><span class="nb">test</span>
+</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>
+</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="c1"># Clear session (force re-authentication)</span>
+</span><span id="__span-9-17"><a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>aico<span class="w"> </span>security<span class="w"> </span>clear
+</span></code></pre></div>
+<h3 id="session-management">Session Management<a class="headerlink" href="#session-management" title="Permanent link">&para;</a></h3>
+<p>AICO CLI uses session-based authentication for improved developer experience:</p>
+<ul>
+<li><strong>30-minute timeout</strong>: Sessions automatically expire after 30 minutes of inactivity</li>
+<li><strong>Activity extension</strong>: Sessions extend automatically on CLI usage</li>
+<li><strong>Secure storage</strong>: Master key stored in platform keyring (Keychain/Credential Manager)</li>
+<li><strong>One-time setup</strong>: Password entered once, then cached until session expires</li>
+<li><strong>Fresh authentication</strong>: Certain sensitive or dangerous commands will require fresh password entry for security</li>
+</ul>
+<h3 id="session-workflow">Session Workflow<a class="headerlink" href="#session-workflow" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>First command</strong>: Prompts for master password, creates 30-minute session</li>
+<li><strong>Subsequent commands</strong>: Use cached session, no password prompt</li>
+<li><strong>Session expiry</strong>: Next command prompts for password, creates new session</li>
+<li><strong>Manual clear</strong>: <code>aico security clear</code> forces immediate re-authentication</li>
+</ol>
+<h2 id="database-commands-aico-db">Database Commands (<code>aico db</code>)<a class="headerlink" href="#database-commands-aico-db" title="Permanent link">&para;</a></h2>
+<p>Manages encrypted database initialization, operations, and content inspection.</p>
+<h3 id="database-management-commands">Database Management Commands<a class="headerlink" href="#database-management-commands" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>init</code></td>
+<td>Initialize new encrypted database or apply missing schemas</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>Check database encryption status and information</td>
+</tr>
+<tr>
+<td><code>test</code></td>
+<td>Test database connection and basic operations</td>
+</tr>
+<tr>
+<td><code>show</code></td>
+<td>Show database configuration, paths, and settings</td>
+</tr>
+</tbody>
+</table>
+<h3 id="database-content-commands">Database Content Commands<a class="headerlink" href="#database-content-commands" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ls</code></td>
+<td>List all tables in database with record counts</td>
+</tr>
+<tr>
+<td><code>desc &lt;table&gt;</code></td>
+<td>Describe table structure (schema)</td>
+</tr>
+<tr>
+<td><code>count --table &lt;name&gt;\|--all</code></td>
+<td>Count records in specific table or all tables</td>
+</tr>
+<tr>
+<td><code>head &lt;table&gt; [-n N]</code></td>
+<td>Show first N records from table</td>
+</tr>
+<tr>
+<td><code>tail &lt;table&gt; [-n N]</code></td>
+<td>Show last N records from table</td>
+</tr>
+<tr>
+<td><code>stat</code></td>
+<td>Database statistics (size, tables, indexes, total records)</td>
+</tr>
+<tr>
+<td><code>vacuum</code></td>
+<td>Optimize database (VACUUM) - <strong>Dangerous operation</strong></td>
+</tr>
+<tr>
+<td><code>check</code></td>
+<td>Run integrity check</td>
+</tr>
+<tr>
+<td><code>test</code></td>
+<td>Comprehensive database test (CREATE, INSERT, READ, UPDATE, DELETE, DROP)</td>
+</tr>
+<tr>
+<td><code>exec &lt;query&gt;</code></td>
+<td>Execute raw SQL query - <strong>Dangerous operation</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_2">Examples<a class="headerlink" href="#examples_2" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Database Management</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>aico<span class="w"> </span>db<span class="w"> </span>init<span class="w">                              </span><span class="c1"># Initialize encrypted database</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>aico<span class="w"> </span>db<span class="w"> </span>status<span class="w">                            </span><span class="c1"># Check database health</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>aico<span class="w"> </span>db<span class="w"> </span>ls<span class="w">                                </span><span class="c1"># List all tables</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>aico<span class="w"> </span>db<span class="w"> </span>stat<span class="w">                              </span><span class="c1"># Database statistics</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>aico<span class="w"> </span>db<span class="w"> </span><span class="nb">test</span><span class="w">                              </span><span class="c1"># Comprehensive CRUD test</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="c1"># Content Inspection (no authentication required)</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>aico<span class="w"> </span>db<span class="w"> </span>desc<span class="w"> </span>logs<span class="w">                         </span><span class="c1"># Describe logs table structure</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>aico<span class="w"> </span>db<span class="w"> </span>count<span class="w"> </span>--table<span class="o">=</span>logs<span class="w">                </span><span class="c1"># Count records in logs table</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>aico<span class="w"> </span>db<span class="w"> </span>head<span class="w"> </span>logs<span class="w"> </span>-n<span class="w"> </span><span class="m">10</span><span class="w">                   </span><span class="c1"># Show first 10 log records</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="c1"># Dangerous Operations (require fresh authentication)</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>aico<span class="w"> </span>db<span class="w"> </span>vacuum<span class="w">                            </span><span class="c1"># Optimize database - prompts for password</span>
+</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>aico<span class="w"> </span>db<span class="w"> </span><span class="nb">exec</span><span class="w"> </span><span class="s2">&quot;SELECT level, COUNT(*) FROM logs GROUP BY level&quot;</span><span class="w">  </span><span class="c1"># Raw SQL - prompts for password</span>
+</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>
+</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a><span class="c1"># Maintenance</span>
+</span><span id="__span-10-18"><a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>aico<span class="w"> </span>db<span class="w"> </span>vacuum<span class="w">                            </span><span class="c1"># Optimize database</span>
+</span><span id="__span-10-19"><a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>aico<span class="w"> </span>db<span class="w"> </span>check<span class="w">                             </span><span class="c1"># Check database integrity</span>
+</span><span id="__span-10-20"><a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a><span class="c1"># Advanced</span>
+</span><span id="__span-10-21"><a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a>aico<span class="w"> </span>db<span class="w"> </span><span class="nb">exec</span><span class="w"> </span><span class="s2">&quot;SELECT level, COUNT(*) FROM logs GROUP BY level&quot;</span>
+</span></code></pre></div>
+<h3 id="workflow">Workflow<a class="headerlink" href="#workflow" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Setup master password</strong>: <code>aico security setup</code></li>
+<li><strong>Initialize database</strong>: <code>aico db init</code> (idempotent - works on existing DBs)</li>
+<li><strong>Verify setup</strong>: <code>aico db status</code></li>
+<li><strong>Inspect content</strong>: <code>aico db ls</code>, <code>aico db stat</code></li>
+</ol>
+<h3 id="notes_1">Notes<a class="headerlink" href="#notes_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Idempotent initialization</strong>: <code>aico db init</code> detects existing databases and applies missing schemas</li>
+<li>Uses <code>AICOKeyManager</code> for unified key management</li>
+<li>Supports multiple database types (currently LibSQL)</li>
+<li>PBKDF2 key derivation for LibSQL, Argon2id for others</li>
+<li>Stores passwords securely in system keyring</li>
+<li>Automatic salt management for database files</li>
+<li>Content commands provide safe database inspection without exposing sensitive data</li>
+</ul>
+<hr />
+<h2 id="logs-commands-aico-logs">Logs Commands (<code>aico logs</code>)<a class="headerlink" href="#logs-commands-aico-logs" title="Permanent link">&para;</a></h2>
+<p>Comprehensive log management and analysis for AICO's unified logging system. All logs are stored in the encrypted database and transported via ZeroMQ message bus.</p>
+<h3 id="available-commands_2">Available Commands<a class="headerlink" href="#available-commands_2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ls [filters]</code></td>
+<td>List logs with filtering options</td>
+</tr>
+<tr>
+<td><code>cat &lt;id&gt;</code></td>
+<td>Show full log entry details</td>
+</tr>
+<tr>
+<td><code>rm [criteria]</code></td>
+<td>Delete logs by criteria (with confirmation)</td>
+</tr>
+<tr>
+<td><code>stat</code></td>
+<td>Show log statistics and summaries</td>
+</tr>
+<tr>
+<td><code>tail [-f]</code></td>
+<td>Show recent logs (follow mode for real-time)</td>
+</tr>
+<tr>
+<td><code>grep &lt;pattern&gt;</code></td>
+<td>Search logs by pattern</td>
+</tr>
+<tr>
+<td><code>export [format]</code></td>
+<td>Export logs to JSON or CSV</td>
+</tr>
+</tbody>
+</table>
+<h3 id="filtering-options">Filtering Options<a class="headerlink" href="#filtering-options" title="Permanent link">&para;</a></h3>
+<p>The <code>ls</code> command supports extensive filtering:
+- <code>--level &lt;level&gt;</code> - Filter by log level (DEBUG, INFO, WARN, ERROR)
+- <code>--subsystem &lt;name&gt;</code> - Filter by subsystem (cli, backend, frontend, studio)
+- <code>--module &lt;name&gt;</code> - Filter by specific module
+- <code>--since &lt;time&gt;</code> - Show logs since timestamp
+- <code>--until &lt;time&gt;</code> - Show logs until timestamp
+- <code>--limit &lt;n&gt;</code> - Limit number of results
+- <code>--format &lt;fmt&gt;</code> - Output format (table, json, compact)</p>
+<h3 id="examples_3">Examples<a class="headerlink" href="#examples_3" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Basic log viewing</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>aico<span class="w"> </span>logs<span class="w"> </span>ls<span class="w">                              </span><span class="c1"># List recent logs</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>aico<span class="w"> </span>logs<span class="w"> </span>ls<span class="w"> </span>--limit<span class="w"> </span><span class="m">50</span><span class="w">                   </span><span class="c1"># Show last 50 logs</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>aico<span class="w"> </span>logs<span class="w"> </span>tail<span class="w">                            </span><span class="c1"># Show recent logs (like tail -f)</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="c1"># Filtering</span>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>aico<span class="w"> </span>logs<span class="w"> </span>ls<span class="w"> </span>--level<span class="w"> </span>ERROR<span class="w">                </span><span class="c1"># Show only errors</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>aico<span class="w"> </span>logs<span class="w"> </span>ls<span class="w"> </span>--subsystem<span class="w"> </span>backend<span class="w">          </span><span class="c1"># Show backend logs only</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>aico<span class="w"> </span>logs<span class="w"> </span>ls<span class="w"> </span>--module<span class="w"> </span>security.key_manager<span class="w"> </span><span class="c1"># Show key manager logs</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>aico<span class="w"> </span>logs<span class="w"> </span>ls<span class="w"> </span>--since<span class="w"> </span><span class="s2">&quot;2024-01-01&quot;</span><span class="w">         </span><span class="c1"># Logs since date</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="c1"># Search and analysis</span>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>aico<span class="w"> </span>logs<span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;database&quot;</span><span class="w">                 </span><span class="c1"># Search for &quot;database&quot; in logs</span>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>aico<span class="w"> </span>logs<span class="w"> </span>stat<span class="w">                            </span><span class="c1"># Log statistics</span>
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>aico<span class="w"> </span>logs<span class="w"> </span>cat<span class="w"> </span><span class="m">12345</span><span class="w">                       </span><span class="c1"># Show full details for log ID 12345</span>
+</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>
+</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a><span class="c1"># Export and cleanup</span>
+</span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>aico<span class="w"> </span>logs<span class="w"> </span><span class="nb">export</span><span class="w"> </span>--format<span class="w"> </span>json<span class="w"> </span>--output<span class="w"> </span>logs.json
+</span><span id="__span-11-19"><a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>aico<span class="w"> </span>logs<span class="w"> </span>rm<span class="w"> </span>--level<span class="w"> </span>DEBUG<span class="w"> </span>--older-than<span class="w"> </span><span class="s2">&quot;7 days&quot;</span><span class="w">  </span><span class="c1"># Clean old debug logs</span>
+</span></code></pre></div>
+<h3 id="log-entry-format">Log Entry Format<a class="headerlink" href="#log-entry-format" title="Permanent link">&para;</a></h3>
+<p>Each log entry contains:
+- <strong>Timestamp</strong>: ISO 8601 format with timezone
+- <strong>Level</strong>: DEBUG, INFO, WARN, ERROR
+- <strong>Subsystem</strong>: cli, backend, frontend, studio
+- <strong>Module</strong>: Specific module path (e.g., "security.key_manager")
+- <strong>Function</strong>: Function name where log was generated
+- <strong>File/Line</strong>: Source file and line number
+- <strong>Message</strong>: Log message content
+- <strong>Extra Data</strong>: Additional structured data (JSON)
+- <strong>Trace/Session IDs</strong>: For distributed tracing</p>
+<h3 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h3>
+<p>Logging behavior is controlled via <code>config/defaults/core.yaml</code>:
+- <strong>Storage</strong>: Database-only (no file logging)
+- <strong>Levels</strong>: Configurable per subsystem and module
+- <strong>Retention</strong>: 30 days, 500MB max size by default
+- <strong>Transport</strong>: ZeroMQ message bus configuration
+- <strong>Privacy</strong>: Automatic PII redaction and sensitive data encryption</p>
+<h3 id="notes_2">Notes<a class="headerlink" href="#notes_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Unified System</strong>: All AICO subsystems log to the same encrypted database</li>
+<li><strong>Bootstrap Buffering</strong>: Logs generated before DB ready are buffered and flushed</li>
+<li><strong>Fallback Logging</strong>: Console output during bootstrap, optional temp file fallback</li>
+<li><strong>Privacy-First</strong>: Automatic PII redaction and audit logging of log access</li>
+<li><strong>Real-Time</strong>: ZeroMQ transport enables real-time log collection and following</li>
+</ul>
+<hr />
 
 
 

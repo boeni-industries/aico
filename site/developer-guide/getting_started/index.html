@@ -2229,6 +2229,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -2385,6 +2389,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#database-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      Database Setup
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#further-reading" class="md-nav__link">
     <span class="md-ellipsis">
       Further Reading
@@ -2501,12 +2514,58 @@
   
   
     <li class="md-nav__item">
+      <a href="../namespaces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Namespaces
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../cli_handbook/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     CLI Handbook
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Schema Management
     
   </span>
   
@@ -2862,6 +2921,10 @@
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>py<span class="w"> </span>--version
 </span></code></pre></div>
 You should see <code>Python 3.13.5</code>.</p>
+<blockquote>
+<p><strong>ℹ️ Data Encryption Approach</strong></p>
+<p>AICO uses application-level encryption with database-native features (SQLCipher, DuckDB encryption, RocksDB EncryptedEnv) rather than filesystem-level encryption. This provides better cross-platform compatibility and performance without requiring additional system dependencies.</p>
+</blockquote>
 <h3 id="3-python-dependency-management-with-uv-cli-backend">3. Python Dependency Management with UV (CLI &amp; Backend)<a class="headerlink" href="#3-python-dependency-management-with-uv-cli-backend" title="Permanent link">&para;</a></h3>
 <p>AICO uses <a href="https://github.com/astral-sh/uv">UV</a> and <code>requirements.txt</code> for dependency management in all Python components. Each component is isolated with its own <code>.venv</code> and <code>requirements.txt</code> file.</p>
 <p><strong>Install UV globally (once per system):</strong></p>
@@ -2874,27 +2937,24 @@ You should see <code>Python 3.13.5</code>.</p>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">py</span> <span class="p">-</span><span class="n">3</span><span class="p">.</span><span class="n">13</span> <span class="n">-m</span> <span class="n">venv</span> <span class="p">.</span><span class="n">venv</span>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="p">.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">Activate</span><span class="p">.</span><span class="n">ps1</span>
 </span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">uv</span> <span class="n">pip</span> <span class="n">install</span> <span class="n">-r</span> <span class="n">requirements</span><span class="p">.</span><span class="n">txt</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">python</span> <span class="n">aico</span><span class="p">.</span><span class="n">py</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">pyinstaller</span> <span class="p">-</span><span class="n">-onefile</span> <span class="n">aico</span><span class="p">.</span><span class="n">py</span> <span class="p">-</span><span class="n">-name</span> <span class="n">aico</span>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c"># Executable will be in dist/aico.exe</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">uv</span> <span class="n">pip</span> <span class="n">install</span> <span class="n">-e</span> <span class="p">.</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">aico</span> <span class="p">-</span><span class="n">-help</span>
 </span></code></pre></div></p>
 <p><strong>Windows Cmd</strong>
   <div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>cd cli
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>py -3.13 -m venv .venv
 </span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>.venv\Scripts\activate.bat
 </span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>uv pip install -r requirements.txt
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>python aico.py
-</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>pyinstaller --onefile aico.py --name aico
-</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>REM Executable will be in dist\aico.exe
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>uv pip install -e .
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>aico --help
 </span></code></pre></div></p>
 <p><strong>macOS/Linux</strong>
   <div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">cd</span><span class="w"> </span>cli
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>python3.13<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
 </span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>python<span class="w"> </span>aico.py
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>pyinstaller<span class="w"> </span>--onefile<span class="w"> </span>aico.py<span class="w"> </span>--name<span class="w"> </span>aico
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># Executable will be in dist/aico</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>aico<span class="w"> </span>--help
 </span></code></pre></div></p>
 <p><strong>Backend:</strong></p>
 <p><strong>Windows PowerShell</strong>
@@ -2930,7 +2990,7 @@ You should see <code>Python 3.13.5</code>.</p>
 <p>Only one Python virtual environment can be active per terminal session. If you need to work with both the CLI and backend at the same time, open separate terminal windows and activate the appropriate environment in each. Changing directories does not automatically switch the active environment—you must activate it explicitly.</p>
 </div>
 <hr />
-<h3 id="4-setting-up-the-flutter-frontend">4. Setting Up the Flutter Frontend<a class="headerlink" href="#4-setting-up-the-flutter-frontend" title="Permanent link">&para;</a></h3>
+<h3 id="6-setting-up-the-flutter-frontend">6. Setting Up the Flutter Frontend<a class="headerlink" href="#6-setting-up-the-flutter-frontend" title="Permanent link">&para;</a></h3>
 <p>The flutter project scaffolding is present in <code>/frontend</code>.</p>
 <p><strong>Install Flutter:</strong></p>
 <ul>
@@ -2958,7 +3018,7 @@ You should see <code>Python 3.13.5</code>.</p>
 <p>Use VS Code, Android Studio, or Windsurf with the Flutter/Dart plugins for the best development experience.</p>
 </div>
 <hr />
-<h3 id="5-setting-up-the-react-admin-studio">5. Setting Up the React Admin Studio<a class="headerlink" href="#5-setting-up-the-react-admin-studio" title="Permanent link">&para;</a></h3>
+<h3 id="7-setting-up-the-react-admin-studio">7. Setting Up the React Admin Studio<a class="headerlink" href="#7-setting-up-the-react-admin-studio" title="Permanent link">&para;</a></h3>
 <p>All React/React-Admin code and dependencies found in <code>/studio</code>.</p>
 <p><strong>Install Node.js &amp; npm:</strong></p>
 <ul>
@@ -3000,10 +3060,9 @@ Use VS Code, Windsurf, or any modern IDE with JS/TS support for development.</p>
 </span></code></pre></div></li>
 <li><strong>Git Bash/WSL/Linux/macOS:</strong>
   <div class="language-sh highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="nb">cd</span><span class="w"> </span>backend
-</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="nb">source</span><span class="w"> </span>.venv/Scripts/activate
-</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="c1"># or source .venv/bin/activate if on Linux/macOS</span>
-</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
-</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8700</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8700</span>
 </span></code></pre></div></li>
 </ul>
 <h3 id="cli-python-cli">CLI (Python CLI)<a class="headerlink" href="#cli-python-cli" title="Permanent link">&para;</a></h3>
@@ -3076,6 +3135,82 @@ Use VS Code, Windsurf, or any modern IDE with JS/TS support for development.</p>
 </span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="nb">cd</span><span class="w"> </span>studio
 </span><span id="__span-27-3"><a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>npm<span class="w"> </span>install<span class="w"> </span>react-admin<span class="w"> </span>ra-data-simple-rest<span class="w"> </span>@mui/material<span class="w"> </span>@mui/icons-material<span class="w"> </span>@emotion/react<span class="w"> </span>@emotion/styled<span class="w"> </span>react-router-dom
 </span></code></pre></div>
+<hr />
+<h2 id="database-setup">Database Setup<a class="headerlink" href="#database-setup" title="Permanent link">&para;</a></h2>
+<p>AICO uses encrypted databases for all data storage with security by design. The setup process automatically handles directory creation, security initialization, and database configuration.</p>
+<h3 id="quick-setup-recommended">Quick Setup (Recommended)<a class="headerlink" href="#quick-setup-recommended" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="c1"># 1. Initialize AICO configuration directories</span>
+</span><span id="__span-28-2"><a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>aico<span class="w"> </span>config<span class="w"> </span>init
+</span><span id="__span-28-3"><a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>
+</span><span id="__span-28-4"><a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="c1"># 2. Initialize encrypted database (auto-setup security if needed)</span>
+</span><span id="__span-28-5"><a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>aico<span class="w"> </span>db<span class="w"> </span>init
+</span><span id="__span-28-6"><a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a>
+</span><span id="__span-28-7"><a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a><span class="c1"># 3. Verify complete setup</span>
+</span><span id="__span-28-8"><a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a>aico<span class="w"> </span>config<span class="w"> </span>show
+</span><span id="__span-28-9"><a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a>aico<span class="w"> </span>db<span class="w"> </span>show
+</span></code></pre></div>
+<h3 id="step-by-step-process">Step-by-Step Process<a class="headerlink" href="#step-by-step-process" title="Permanent link">&para;</a></h3>
+<h4 id="1-configuration-directory-setup">1. Configuration Directory Setup<a class="headerlink" href="#1-configuration-directory-setup" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="c1"># Initialize all AICO directories (data, config, cache, logs)</span>
+</span><span id="__span-29-2"><a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>aico<span class="w"> </span>config<span class="w"> </span>init
+</span><span id="__span-29-3"><a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>
+</span><span id="__span-29-4"><a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="c1"># Verify directory structure</span>
+</span><span id="__span-29-5"><a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a>aico<span class="w"> </span>config<span class="w"> </span>show
+</span></code></pre></div>
+<h4 id="2-database-initialization">2. Database Initialization<a class="headerlink" href="#2-database-initialization" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="c1"># Create encrypted libSQL database with automatic security setup</span>
+</span><span id="__span-30-2"><a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>aico<span class="w"> </span>db<span class="w"> </span>init
+</span><span id="__span-30-3"><a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>
+</span><span id="__span-30-4"><a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="c1"># Test database connection and encryption</span>
+</span><span id="__span-30-5"><a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a>aico<span class="w"> </span>db<span class="w"> </span><span class="nb">test</span>
+</span><span id="__span-30-6"><a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a>
+</span><span id="__span-30-7"><a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a><span class="c1"># View database configuration and paths</span>
+</span><span id="__span-30-8"><a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a>aico<span class="w"> </span>db<span class="w"> </span>show
+</span></code></pre></div>
+<p><strong>Note</strong>: The <code>aico db init</code> command automatically sets up master password security if not already configured, eliminating the need for separate <code>aico security setup</code> step.</p>
+<h3 id="directory-structure">Directory Structure<a class="headerlink" href="#directory-structure" title="Permanent link">&para;</a></h3>
+<p>After setup, you'll have cross-platform directories:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a># Windows Example: %APPDATA%/aico/
+</span><span id="__span-31-2"><a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a># macOS Example: ~/Library/Application Support/aico/
+</span><span id="__span-31-3"><a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a># Linux Example: ~/.local/share/aico/
+</span><span id="__span-31-4"><a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>aico/
+</span><span id="__span-31-5"><a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a>├── data/
+</span><span id="__span-31-6"><a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a>│   ├── aico.db              # Main libSQL database (encrypted)
+</span><span id="__span-31-7"><a id="__codelineno-31-7" name="__codelineno-31-7" href="#__codelineno-31-7"></a>│   ├── aico.db.salt         # Encryption salt
+</span><span id="__span-31-8"><a id="__codelineno-31-8" name="__codelineno-31-8" href="#__codelineno-31-8"></a>│   ├── analytics.duckdb     # Analytics database (encrypted)
+</span><span id="__span-31-9"><a id="__codelineno-31-9" name="__codelineno-31-9" href="#__codelineno-31-9"></a>│   └── chroma/              # Vector database directory (encrypted)
+</span><span id="__span-31-10"><a id="__codelineno-31-10" name="__codelineno-31-10" href="#__codelineno-31-10"></a>├── config/
+</span><span id="__span-31-11"><a id="__codelineno-31-11" name="__codelineno-31-11" href="#__codelineno-31-11"></a>│   ├── defaults/            # Default configuration files
+</span><span id="__span-31-12"><a id="__codelineno-31-12" name="__codelineno-31-12" href="#__codelineno-31-12"></a>│   └── environments/        # Environment-specific overrides
+</span><span id="__span-31-13"><a id="__codelineno-31-13" name="__codelineno-31-13" href="#__codelineno-31-13"></a>├── cache/                   # Application cache
+</span><span id="__span-31-14"><a id="__codelineno-31-14" name="__codelineno-31-14" href="#__codelineno-31-14"></a>└── logs/                    # Application logs
+</span></code></pre></div></p>
+<h3 id="configuration-management">Configuration Management<a class="headerlink" href="#configuration-management" title="Permanent link">&para;</a></h3>
+<p>AICO uses a hierarchical configuration system with externalized settings:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-32-1"><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="c1"># View all configuration paths and settings</span>
+</span><span id="__span-32-2"><a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>aico<span class="w"> </span>config<span class="w"> </span>show
+</span><span id="__span-32-3"><a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a>
+</span><span id="__span-32-4"><a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a><span class="c1"># View database-specific configuration</span>
+</span><span id="__span-32-5"><a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a>aico<span class="w"> </span>db<span class="w"> </span>show
+</span><span id="__span-32-6"><a id="__codelineno-32-6" name="__codelineno-32-6" href="#__codelineno-32-6"></a>
+</span><span id="__span-32-7"><a id="__codelineno-32-7" name="__codelineno-32-7" href="#__codelineno-32-7"></a><span class="c1"># Get specific configuration values</span>
+</span><span id="__span-32-8"><a id="__codelineno-32-8" name="__codelineno-32-8" href="#__codelineno-32-8"></a>aico<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>database.libsql.journal_mode
+</span><span id="__span-32-9"><a id="__codelineno-32-9" name="__codelineno-32-9" href="#__codelineno-32-9"></a>aico<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>system.paths.directory_mode
+</span></code></pre></div>
+<h3 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h3>
+<p><strong>Setup issues:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-33-1"><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>aico<span class="w"> </span>config<span class="w"> </span>show<span class="w">       </span><span class="c1"># Check directory structure</span>
+</span><span id="__span-33-2"><a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>aico<span class="w"> </span>db<span class="w"> </span>show<span class="w">          </span><span class="c1"># Check database configuration</span>
+</span></code></pre></div></p>
+<p><strong>Database connection fails:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-34-1"><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>aico<span class="w"> </span>db<span class="w"> </span>status<span class="w">        </span><span class="c1"># Check database status</span>
+</span><span id="__span-34-2"><a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>aico<span class="w"> </span>db<span class="w"> </span><span class="nb">test</span><span class="w">          </span><span class="c1"># Test database connection</span>
+</span></code></pre></div></p>
+<p><strong>Security/encryption issues:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-35-1"><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>aico<span class="w"> </span>security<span class="w"> </span>status<span class="w">  </span><span class="c1"># Check security setup</span>
+</span><span id="__span-35-2"><a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>aico<span class="w"> </span>security<span class="w"> </span><span class="nb">test</span><span class="w">    </span><span class="c1"># Verify keyring access</span>
+</span></code></pre></div></p>
+<p>For detailed architecture and configuration options, see <a href="../../architecture/data_layer/">Data Layer Documentation</a>.</p>
 <hr />
 <h2 id="further-reading">Further Reading<a class="headerlink" href="#further-reading" title="Permanent link">&para;</a></h2>
 <ul>
