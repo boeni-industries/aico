@@ -79,7 +79,7 @@ class LibSQLConnection:
                     str(self.db_path),
                     **self.connection_params
                 )
-                _get_logger().info(f"Connected to LibSQL database: {self.db_path}")
+                _get_logger().debug(f"Connected to LibSQL database: {self.db_path}")
             
             return self._connection
             
