@@ -329,12 +329,41 @@ Manages and synchronizes versioning across all major AICO system parts from a si
 ### Security Commands (`aico security`)
 Manages master password setup and security operations for AICO's encrypted data layer.
 
-**Architecture**: Uses `AICOKeyManager` for unified key management across all database types with secure keyring integration.
+**Architecture**: Uses `AICOKeyManager` for unified key management across all database types with secure keyring integration. Session-based authentication with decorator-enforced security for sensitive operations.
+
+#### Decorator-Based Security Classification
+
+The CLI uses decorators to automatically enforce authentication requirements:
+
+**🔐 Sensitive Commands** (`@sensitive` decorator - require fresh authentication):
+- `security passwd` - Change master password
+- `security clear` - Clear credentials  
+- `logs export` - Export sensitive log data
+- `config export` - Export sensitive configuration
+
+**⚠️ Dangerous Commands** (`@destructive` decorator - require fresh authentication):
+- `db exec` - Execute arbitrary SQL (allows DROP, DELETE, UPDATE)
+- `db vacuum` - Rebuild database structure (risk of data loss if interrupted)
+
+**✅ Regular Commands** (no decorators - use session cache):
+- `db status`, `db ls`, `db test` - Read-only database operations
+- `security session` - Show session information
+- `config show` - Display configuration
+
+**🚀 Setup Commands** (no decorators - no authentication required):
+- `security setup` - Initial password creation
+- `db init` - Database initialization
+
+This decorator approach provides:
+- **Zero developer hell**: Easy to add/remove security requirements
+- **Automatic enforcement**: Authentication handled transparently
+- **Clear semantics**: Command purpose obvious from decorator
+- **Audit logging**: Sensitive operations automatically logged
 
 ### Database Commands (`aico db`)
 Manages encrypted database initialization and operations.
 
-**Architecture**: Supports multiple database types with type-specific encryption (PBKDF2 for LibSQL, Argon2id for others). Automatic salt management and transparent encryption.
+**Architecture**: Supports multiple database types with type-specific encryption (PBKDF2 for LibSQL, Argon2id for others). Automatic salt management and transparent encryption. Includes comprehensive CRUD testing with proper transaction management to prevent libSQL safety conflicts.
 
 ### Integration Pattern
 Security and database commands integrate through `AICOKeyManager` providing derived keys to database connections. Master password affects all databases; database operations are type-specific.

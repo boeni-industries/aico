@@ -138,7 +138,7 @@ AICO CLI uses session-based authentication for improved developer experience:
 - **Activity extension**: Sessions extend automatically on CLI usage
 - **Secure storage**: Master key stored in platform keyring (Keychain/Credential Manager)
 - **One-time setup**: Password entered once, then cached until session expires
-- **Force fresh auth**: Sensitive commands like `security passwd` always require fresh authentication
+- **Fresh authentication**: Certain sensitive or dangerous commands will require fresh password entry for security
 
 ### Session Workflow
 
@@ -170,30 +170,33 @@ Manages encrypted database initialization, operations, and content inspection.
 | `head <table> [-n N]` | Show first N records from table |
 | `tail <table> [-n N]` | Show last N records from table |
 | `stat` | Database statistics (size, tables, indexes, total records) |
-| `vacuum` | Optimize database (VACUUM) |
+| `vacuum` | Optimize database (VACUUM) - **Dangerous operation** |
 | `check` | Run integrity check |
-| `exec <query>` | Execute raw SQL query with safety confirmations |
+| `test` | Comprehensive database test (CREATE, INSERT, READ, UPDATE, DELETE, DROP) |
+| `exec <query>` | Execute raw SQL query - **Dangerous operation** |
 
 ### Examples
 
 ```bash
 # Database Management
-aico db init                              # Initialize or update existing database
-aico db status                            # Check database status
-aico db show                              # Show database paths and configuration
-
-# Content Inspection
+aico db init                              # Initialize encrypted database
+aico db status                            # Check database health
 aico db ls                                # List all tables
-aico db desc logs                         # Show logs table schema
-aico db count --all                       # Count records in all tables
-aico db head logs -n 10                   # Show first 10 log entries
-aico db tail logs -n 5                    # Show last 5 log entries
 aico db stat                              # Database statistics
+aico db test                              # Comprehensive CRUD test
+
+# Content Inspection (no authentication required)
+aico db desc logs                         # Describe logs table structure
+aico db count --table=logs                # Count records in logs table
+aico db head logs -n 10                   # Show first 10 log records
+
+# Dangerous Operations (require fresh authentication)
+aico db vacuum                            # Optimize database - prompts for password
+aico db exec "SELECT level, COUNT(*) FROM logs GROUP BY level"  # Raw SQL - prompts for password
 
 # Maintenance
 aico db vacuum                            # Optimize database
 aico db check                             # Check database integrity
-
 # Advanced
 aico db exec "SELECT level, COUNT(*) FROM logs GROUP BY level"
 ```
