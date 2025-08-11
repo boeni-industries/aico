@@ -45,9 +45,9 @@ class AICOPaths:
         Get AICO configuration directory.
         
         Platform-specific locations:
-        - Windows: %APPDATA%/aico/config (organized subdirectory)
-        - macOS: ~/Library/Preferences/aico
-        - Linux: ~/.config/aico (XDG Base Directory)
+        - Windows: %APPDATA%/aico/config
+        - macOS: ~/Library/Application Support/aico/config
+        - Linux: ~/.local/share/aico/config
         
         Returns:
             Path: Platform-appropriate config directory
@@ -56,14 +56,8 @@ class AICOPaths:
         if override := os.getenv("AICO_CONFIG_DIR"):
             return Path(override)
         
-        # Use platformdirs for OS-appropriate location
-        config_dir = Path(platformdirs.user_config_dir(cls.APP_NAME, cls.APP_AUTHOR))
-        
-        # On Windows, both data and config use %APPDATA%, so create subdirectories for organization
-        if platform.system() == "Windows":
-            config_dir = config_dir / "config"
-        
-        return config_dir
+        # Use unified approach - all subdirectories under main data directory
+        return cls.get_data_directory() / "config"
     
     @classmethod
     def get_cache_directory(cls) -> Path:
@@ -71,9 +65,9 @@ class AICOPaths:
         Get AICO cache directory.
         
         Platform-specific locations:
-        - Windows: %LOCALAPPDATA%/aico/Cache
-        - macOS: ~/Library/Caches/aico
-        - Linux: ~/.cache/aico (XDG Base Directory)
+        - Windows: %APPDATA%/aico/cache
+        - macOS: ~/Library/Application Support/aico/cache
+        - Linux: ~/.local/share/aico/cache
         
         Returns:
             Path: Platform-appropriate cache directory
@@ -82,8 +76,8 @@ class AICOPaths:
         if override := os.getenv("AICO_CACHE_DIR"):
             return Path(override)
         
-        # Use platformdirs for OS-appropriate location
-        return Path(platformdirs.user_cache_dir(cls.APP_NAME, cls.APP_AUTHOR))
+        # Use unified approach - all subdirectories under main data directory
+        return cls.get_data_directory() / "cache"
     
     @classmethod
     def get_logs_directory(cls) -> Path:
@@ -91,9 +85,9 @@ class AICOPaths:
         Get AICO logs directory.
         
         Platform-specific locations:
-        - Windows: %LOCALAPPDATA%/aico/Logs
-        - macOS: ~/Library/Logs/aico
-        - Linux: ~/.local/share/aico/logs (fallback to data dir)
+        - Windows: %APPDATA%/aico/logs
+        - macOS: ~/Library/Application Support/aico/logs
+        - Linux: ~/.local/share/aico/logs
         
         Returns:
             Path: Platform-appropriate logs directory
@@ -102,15 +96,8 @@ class AICOPaths:
         if override := os.getenv("AICO_LOGS_DIR"):
             return Path(override)
         
-        # Use platformdirs for OS-appropriate location
-        try:
-            return Path(platformdirs.user_log_dir(cls.APP_NAME, cls.APP_AUTHOR))
-        except AttributeError:
-            # Fallback for older platformdirs versions
-            if platform.system() == "Darwin":  # macOS
-                return Path.home() / "Library" / "Logs" / cls.APP_NAME
-            else:
-                return cls.get_data_directory() / "logs"
+        # Use unified approach - all subdirectories under main data directory
+        return cls.get_data_directory() / "logs"
     
     @classmethod
     def get_directory_mode_from_config(cls) -> str:

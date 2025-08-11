@@ -54,7 +54,18 @@ class ConfigurationManager:
     - Hot reloading with file watchers
     - Encrypted storage for sensitive configuration
     - Audit trail for configuration changes
+    
+    This class implements a singleton pattern to prevent multiple file watchers
+    on the same directory, which causes issues on macOS FSEvents.
     """
+    
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls, config_dir: Path = None):
+        if cls._instance is None:
+            cls._instance = super(ConfigurationManager, cls).__new__(cls)
+        return cls._instance
     
     def __init__(self, config_dir: Path = None):
         """
@@ -63,6 +74,10 @@ class ConfigurationManager:
         Args:
             config_dir: Configuration directory path. Defaults to project root config
         """
+        # Only initialize once for singleton
+        if ConfigurationManager._initialized:
+            return
+            
         if config_dir is None:
             # Find project root by looking for config directory
             current = Path(__file__).parent
@@ -82,7 +97,7 @@ class ConfigurationManager:
         self.sources: List[ConfigSource] = []
         self.watchers: List[Observer] = []
         self.encryption_key: Optional[bytes] = None
-        self._initialized = False
+        self._instance_initialized = False
         
     def initialize(self, encryption_key: Optional[bytes] = None) -> None:
         """
@@ -91,7 +106,7 @@ class ConfigurationManager:
         Args:
             encryption_key: Optional encryption key for sensitive configuration
         """
-        if self._initialized:
+        if self._instance_initialized:
             return
             
         self.encryption_key = encryption_key
@@ -99,7 +114,8 @@ class ConfigurationManager:
         self._load_schemas()
         self._load_configurations()
         self._setup_file_watchers()
-        self._initialized = True
+        self._instance_initialized = True
+        ConfigurationManager._initialized = True
         
     def get(self, key: str, default: Any = None) -> Any:
         """
@@ -112,7 +128,7 @@ class ConfigurationManager:
         Returns:
             Configuration value or default
         """
-        if not self._initialized:
+        if not self._instance_initialized:
             self.initialize()
             
         keys = key.split('.')
@@ -439,8 +455,25 @@ class ConfigurationManager:
         # This will be implemented when we add the audit system
         pass
         
+    @classmethod
+    def reset_singleton(cls):
+        """Reset singleton instance for testing or cleanup."""
+        if cls._instance is not None:
+            # Clean up watchers before resetting
+            for watcher in cls._instance.watchers:
+                try:
+                    watcher.stop()
+                    watcher.join()
+                except:
+                    pass  # Ignore cleanup errors
+            cls._instance = None
+            cls._initialized = False
+    
     def __del__(self):
         """Cleanup file watchers on destruction."""
         for watcher in self.watchers:
-            watcher.stop()
-            watcher.join()
+            try:
+                watcher.stop()
+                watcher.join()
+            except:
+                pass  # Ignore cleanup errors during destruction
