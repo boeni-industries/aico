@@ -339,4 +339,25 @@ Security and database commands integrate through `AICOKeyManager` providing deri
 
 **For detailed usage examples and workflows, see the [CLI Handbook](../developer-guide/cli_handbook.md).**
 
+## macOS Code Signing (Optional Performance Optimization)
+
+For developers with Apple Developer accounts, code signing the PyInstaller executable can significantly reduce startup time on macOS by eliminating Gatekeeper security scanning delays.
+
+### Setup Process
+1. **Check available identities**: `security find-identity -v -p codesigning`
+2. **Update `aico.spec`**:
+   ```python
+   codesign_identity="Apple Development: your@email.com (TEAMID)",
+   upx=False,  # Disable UPX for faster startup
+   ```
+3. **Create entitlements file** (`aico.entitlements`) with required permissions for keychain access and unsigned executable memory
+4. **Build signed executable**: `uv run pyinstaller aico.spec`
+5. **Verify signature**: `codesign --verify --verbose dist/aico`
+
+### Performance Impact
+- **Unsigned**: 4-6 second startup delay due to Gatekeeper scanning
+- **Signed**: ~1-2 second startup (normal PyInstaller overhead)
+
+**Note**: Code signing is developer-specific and optional. The default configuration works for all contributors without Apple Developer accounts.
+
 ---
