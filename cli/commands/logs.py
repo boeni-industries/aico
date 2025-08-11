@@ -429,10 +429,24 @@ def grep(
     
     # Get logs and filter by pattern
     all_logs = repo.get_logs(limit=limit * 2, **filters)  # Get more to account for filtering
-    matching_logs = [
-        log for log in all_logs 
-        if pattern.lower() in log['message'].lower()
-    ][:limit]
+    matching_logs = []
+    pattern_lower = pattern.lower()
+    
+    for log in all_logs:
+        # Search across multiple fields
+        searchable_text = " ".join([
+            str(log.get('message', '')),
+            str(log.get('level', '')),
+            str(log.get('subsystem', '')),
+            str(log.get('module', '')),
+            str(log.get('function', '')),
+            str(log.get('topic', ''))
+        ]).lower()
+        
+        if pattern_lower in searchable_text:
+            matching_logs.append(log)
+            if len(matching_logs) >= limit:
+                break
     
     if not matching_logs:
         console.print(f"[yellow]No logs found matching pattern: '{pattern}'[/yellow]")
