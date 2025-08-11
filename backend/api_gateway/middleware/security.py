@@ -12,8 +12,7 @@ from dataclasses import dataclass
 
 from aico.core.logging import get_logger
 
-# Initialize logger
-logger = get_logger("api_gateway", "security")
+# Logger will be initialized in classes
 
 
 @dataclass

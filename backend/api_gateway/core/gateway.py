@@ -14,8 +14,7 @@ from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
 from aico.core.bus import MessageBusBroker, MessageBusClient
 
-# Initialize logger
-logger = get_logger("api_gateway", "core")
+# Logger will be initialized in __init__
 
 from .auth import AuthenticationManager, AuthorizationManager
 from .transport import AdaptiveTransport
@@ -132,16 +131,25 @@ class AICOAPIGateway:
             return
         
         try:
-            # Connect to message bus
+            # Connect to message bus with timeout
+            self.logger.info(f"Connecting API Gateway to message bus at {message_bus_address}")
             self.message_bus_client = MessageBusClient(
                 "api_gateway", 
                 message_bus_address
             )
-            await self.message_bus_client.connect()
-            self.logger.info(f"Connected to message bus at {message_bus_address}")
+            
+            # Add timeout to prevent hanging
+            import asyncio
+            try:
+                await asyncio.wait_for(self.message_bus_client.connect(), timeout=5.0)
+                self.logger.info(f"Connected to message bus at {message_bus_address}")
+            except asyncio.TimeoutError:
+                self.logger.error("Timeout connecting to message bus")
+                raise
             
             # Initialize message router with bus client
-            self.message_router.set_message_bus(self.message_bus_client)
+            self.logger.info("Setting up message router...")
+            await self.message_router.set_message_bus(self.message_bus_client)
             
             # Start protocol adapters
             await self._start_adapters()

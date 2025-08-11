@@ -39,6 +39,8 @@ async def lifespan(app: FastAPI):
     
     # Startup
     try:
+        logger.info("Starting AICO backend server in gateway mode")
+        
         logger.info("AICO backend server starting up", extra={
             "version": __version__,
             "component": "fastapi_server"
@@ -49,15 +51,22 @@ async def lifespan(app: FastAPI):
         config_manager.initialize(lightweight=False)
         logger.info("Configuration system initialized")
         
-        # Start message bus host
+        # Start message bus host (now non-blocking with threaded proxy)
+        logger.info("Starting message bus host...")
         message_bus_host = AICOMessageBusHost()
+        logger.info("Message bus host created, calling start()...")
         await message_bus_host.start()
         logger.info("Message bus host started")
         
         # Start API Gateway if enabled
+        logger.info("Checking API Gateway configuration...")
         gateway_config = config_manager.get("api_gateway", {})
+        logger.info(f"Gateway config loaded: enabled={gateway_config.get('enabled', True)}")
+        
         if gateway_config.get("enabled", True):
+            logger.info("Starting API Gateway...")
             api_gateway = AICOAPIGateway(config_manager)
+            logger.info("API Gateway created, calling start()...")
             await api_gateway.start()
             logger.info("API Gateway started")
         else:
@@ -70,31 +79,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to start backend services: {e}")
         raise
-    
     finally:
         # Shutdown
-        try:
-            logger.info("AICO backend server shutting down", extra={
-                "version": __version__,
-                "component": "fastapi_server"
-            })
-            
-            # Stop API Gateway
-            if api_gateway:
-                await api_gateway.stop()
-                logger.info("API Gateway stopped")
-            
-            # Stop message bus host
-            if message_bus_host:
-                await message_bus_host.stop()
-                logger.info("Message bus host stopped")
-            else:
-                logger.info("Message bus host was disabled")
-            
-            logger.info("AICO backend shutdown complete")
-            
-        except Exception as e:
-            logger.error(f"Error during backend shutdown: {e}")
+        logger.info("AICO backend server shutting down")
+        
+        if api_gateway:
+            await api_gateway.stop()
+            logger.info("API Gateway stopped")
+        
+        if message_bus_host:
+            await message_bus_host.stop()
+            logger.info("Message bus host stopped")
+        
+        logger.info("AICO backend shutdown complete")
 
 
 app = FastAPI(

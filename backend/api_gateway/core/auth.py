@@ -25,8 +25,7 @@ from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
 from aico.security.key_manager import AICOKeyManager
 
-# Initialize logger
-logger = get_logger("api_gateway", "auth")
+# Logger will be initialized in classes
 
 
 class AuthMethod(Enum):
@@ -132,7 +131,7 @@ class AuthenticationManager:
         
         token = jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
         
-        logger.info("JWT token generated", extra={
+        self.logger.info("JWT token generated", extra={
             "module": "api_gateway",
             "function": "generate_jwt_token",
             "topic": "auth.jwt.token_generated",
@@ -155,7 +154,7 @@ class AuthenticationManager:
     def revoke_token(self, token: str) -> None:
         """Revoke JWT token"""
         self.revoked_tokens.add(token)
-        logger.info("JWT token revoked", extra={
+        self.logger.info("JWT token revoked", extra={
             "module": "api_gateway",
             "function": "revoke_token", 
             "topic": "auth.jwt.token_revoked"
@@ -174,7 +173,7 @@ class AuthenticationManager:
             # Use AICOKeyManager for JWT secret management
             return self.key_manager.get_jwt_secret("api_gateway")
         except Exception as e:
-            logger.error("Failed to get JWT secret from key manager", extra={
+            self.logger.error("Failed to get JWT secret from key manager", extra={
                 "module": "api_gateway",
                 "function": "_get_jwt_secret",
                 "topic": "auth.jwt.secret_error",

@@ -74,8 +74,8 @@ class RateLimiter:
         self.buckets: Dict[str, TokenBucket] = {}
         
         # Cleanup task
+        # Cleanup task will be started lazily when first needed
         self.cleanup_task = None
-        self._start_cleanup_task()
         
         self.logger.info("Rate limiter initialized", extra={
             "requests_per_second": self.requests_per_second,
@@ -101,6 +101,10 @@ class RateLimiter:
             RateLimitExceeded: If rate limit is exceeded
         """
         try:
+            # Start cleanup task lazily if not already running
+            if self.cleanup_task is None:
+                self._start_cleanup_task()
+            
             # Get or create bucket for client
             bucket = self._get_bucket(client_id)
             

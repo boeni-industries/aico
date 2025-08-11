@@ -38,6 +38,13 @@ logging:
     # Will expand with more topics like "metrics", "events", "alerts" over time
     zmq_topic: "logs"  # Base topic for all log messages
 
+# Message Bus Configuration
+message_bus:
+  host: "localhost"
+  bind_address: "tcp://*:5555"
+  pub_port: 5555
+  sub_port: 5556
+
 # API Gateway configuration
 api_gateway:
   enabled: true

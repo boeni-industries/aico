@@ -62,13 +62,13 @@ class MessageRouter:
             "topic_mappings": len(self.topic_mapping)
         })
     
-    def set_message_bus(self, message_bus: MessageBusClient):
+    async def set_message_bus(self, message_bus: MessageBusClient):
         """Set message bus client and set up response handling"""
         self.message_bus = message_bus
         
         # Subscribe to response topics
-        self.message_bus.subscribe("api.response.*", self._handle_response)
-        self.message_bus.subscribe("system.error.*", self._handle_error)
+        await self.message_bus.subscribe("api.response.*", self._handle_response)
+        await self.message_bus.subscribe("system.error.*", self._handle_error)
         
         self.logger.info("Message bus connected for routing")
     

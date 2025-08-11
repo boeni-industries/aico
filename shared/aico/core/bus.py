@@ -100,7 +100,7 @@ class MessageBusClient:
     
     def __init__(self, client_id: str, broker_address: str = "tcp://localhost:5555"):
         self.client_id = client_id
-        self.broker_address = broker_address
+        self.broker_address = broker_address  # Keep for logging, but use config for actual connection
         self.logger = get_logger("bus", f"client.{client_id}")
         
         # ZeroMQ context and sockets
@@ -117,15 +117,30 @@ class MessageBusClient:
     async def connect(self):
         """Connect to the message bus"""
         try:
+            # Get configuration from config
+            from aico.core.config import ConfigurationManager
+            config = ConfigurationManager()
+            config.initialize(lightweight=True)
+            bus_config = config.get("message_bus", {})
+            host = bus_config.get("host", "localhost")
+            pub_port = bus_config.get("pub_port", 5555)
+            sub_port = bus_config.get("sub_port", 5556)
+            
+            self.logger.info(f"Connecting to message bus at {host}:{pub_port}/{sub_port}")
+            
             # Publisher socket for sending messages
             self.publisher = self.context.socket(zmq.PUB)
-            self.publisher.connect(self.broker_address)
+            self.publisher.setsockopt(zmq.LINGER, 0)  # Don't wait on close
+            self.publisher.connect(f"tcp://{host}:{pub_port}")
             
             # Subscriber socket for receiving messages
             self.subscriber = self.context.socket(zmq.SUB)
-            self.subscriber.connect(self.broker_address)
+            self.subscriber.setsockopt(zmq.LINGER, 0)  # Don't wait on close
+            self.subscriber.connect(f"tcp://{host}:{sub_port}")
             
             self.running = True
+            # Update broker_address to reflect actual connection
+            self.broker_address = f"tcp://{host}:{pub_port}"
             self.logger.info(f"Connected to message bus at {self.broker_address}")
             
             # Start message processing loop
@@ -313,6 +328,14 @@ class MessageBusBroker:
         self.bind_address = bind_address
         self.logger = get_logger("bus", "broker")
         
+        # Parse ports from config
+        from aico.core.config import ConfigurationManager
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        bus_config = config.get("message_bus", {})
+        self.pub_port = bus_config.get("pub_port", 5555)
+        self.sub_port = bus_config.get("sub_port", 5556)
+        
         # ZeroMQ context and sockets
         self.context = zmq.asyncio.Context()
         self.frontend = None  # Receives from publishers
@@ -330,12 +353,12 @@ class MessageBusBroker:
             # Frontend socket for publishers
             self.frontend = self.context.socket(zmq.XSUB)
             self.frontend.setsockopt(zmq.LINGER, 0)  # Don't wait on close
-            self.frontend.bind(f"{self.bind_address}/pub")
+            self.frontend.bind(f"tcp://*:{self.pub_port}")
             
-            # Backend socket for subscribers  
+            # Backend socket for subscribers
             self.backend = self.context.socket(zmq.XPUB)
             self.backend.setsockopt(zmq.LINGER, 0)  # Don't wait on close
-            self.backend.bind(f"{self.bind_address}/sub")
+            self.backend.bind(f"tcp://*:{self.sub_port}")
             
             self.running = True
             self.logger.info(f"Message bus broker started on {self.bind_address}")
@@ -357,6 +380,13 @@ class MessageBusBroker:
         if self.backend:
             self.backend.close(linger=0)
         
+        # Wait for proxy thread to finish if it exists
+        if hasattr(self, 'proxy_thread') and self.proxy_thread.is_alive():
+            # Give the thread a moment to notice the closed sockets and exit
+            await asyncio.sleep(0.2)
+            if self.proxy_thread.is_alive():
+                self.logger.warning("Proxy thread still running after socket close")
+        
         # Small delay to ensure sockets are fully closed
         await asyncio.sleep(0.1)
         
@@ -369,11 +399,27 @@ class MessageBusBroker:
     async def _proxy_loop(self):
         """Main proxy loop for forwarding messages"""
         try:
-            # Use ZeroMQ proxy for efficient message forwarding
-            zmq.proxy(self.frontend, self.backend)
+            # Run ZeroMQ proxy in thread pool to avoid blocking event loop
+            import concurrent.futures
+            import threading
+            
+            def run_proxy():
+                """Run the blocking ZeroMQ proxy in a separate thread"""
+                try:
+                    # Use ZeroMQ proxy for efficient message forwarding
+                    zmq.proxy(self.frontend, self.backend)
+                except Exception as e:
+                    if self.running:
+                        self.logger.error(f"Error in proxy thread: {e}")
+            
+            # Start proxy in background thread
+            self.proxy_thread = threading.Thread(target=run_proxy, daemon=True)
+            self.proxy_thread.start()
+            self.logger.info("ZeroMQ proxy started in background thread")
+            
         except Exception as e:
             if self.running:
-                self.logger.error(f"Error in proxy loop: {e}")
+                self.logger.error(f"Error starting proxy loop: {e}")
     
     def add_topic_permission(self, client_id: str, topic_pattern: str):
         """Grant topic access permission to a client"""
