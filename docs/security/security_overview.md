@@ -52,7 +52,8 @@ AICO's architecture supports both coupled (same device) and detached (separate d
 #### Backend Security Responsibilities
 
 - **Data Encryption**: 
-  - Filesystem-level encryption (gocryptfs)
+  - Database-native encryption (SQLCipher, DuckDB, RocksDB)
+  - File-level encryption wrapper for generic files
   - Key derivation (Argon2id)
   - Master key management
 
@@ -130,9 +131,9 @@ flowchart TD
 AICO employs comprehensive encryption strategies to protect data both at rest and in transit:
 
 #### Encryption at Rest
-- **Filesystem-Level Encryption**: Transparent encryption of all database files using gocryptfs
-  - **AES-256-GCM**: Authenticated encryption with per-file random initialization vectors
-  - **File Name Encryption**: Prevents metadata leakage and directory structure analysis
+- **Application-Level Encryption**: Database-native and file-level encryption for optimal performance
+  - **Database-Native**: SQLCipher (SQLite), DuckDB encryption, RocksDB EncryptedEnv
+  - **File-Level Wrapper**: AES-256-GCM for files without native encryption support
   - **Forward Secrecy**: Ensures past data remains secure even if keys are compromised
 - **Memory Protection**: Sensitive data in memory is protected against unauthorized access
 - **Secure Storage**: Encryption keys stored using platform-specific secure storage mechanisms
@@ -177,17 +178,17 @@ AICO employs a comprehensive approach to key management that combines secure key
 **Argon2id** serves as AICO's unified key derivation function across all security contexts:
 
 - **Why Argon2id for AICO**: 
-  - Provides optimal security for AICO's filesystem-level encryption (gocryptfs)
+  - Provides optimal security for AICO's application-level encryption strategy
   - Supports cross-platform deployment with consistent security guarantees
   - Memory-hard design protects against hardware-accelerated attacks
   - Configurable parameters allow adaptation to different device capabilities
 
-- **AICO-Specific Parameters**:
-
+- **Context-Specific Parameters**:
   | Context | Memory | Iterations | Parallelism | AICO Usage |
   |---------|--------|------------|-------------|--------|
   | Master Key | 1GB | 3 | 4 | Initial login, derives all other keys |
-  | File Encryption | 256MB | 2 | 2 | gocryptfs container for databases |
+  | Database Encryption | 256MB | 2 | 2 | SQLCipher, DuckDB, RocksDB keys |
+  | File Encryption | 128MB | 1 | 2 | Generic file encryption wrapper |
   | Authentication | 64MB | 1 | 1 | Device pairing, roaming authentication |
 
 - **Implementation in AICO Backend**:
@@ -220,7 +221,7 @@ AICO's key management system handles the lifecycle of cryptographic keys from cr
 - **Key Hierarchy**: 
   - **Master Password**: User-provided secret, never stored
   - **Master Key**: Derived via Argon2id, stored in platform secure storage
-  - **Purpose-Specific Keys**: Derived from master key for gocryptfs, database access, device pairing
+  - **Purpose-Specific Keys**: Derived from master key for database encryption, file encryption, device pairing
 
 - **Secure Storage**: Platform-native mechanisms for zero-effort security:
   - macOS: Keychain integration
@@ -232,25 +233,73 @@ AICO's key management system handles the lifecycle of cryptographic keys from cr
   
   ```python
   import keyring
+  import getpass
+  from cryptography.hazmat.primitives.kdf.argon2 import Argon2
+  import os
   
-  class AICOKeyStorage:
+  class AICOKeyManager:
+      """Unified key management for all authentication scenarios"""
+      
       def __init__(self, service_name="AICO"):
           self.service_name = service_name
           
-      def store_key(self, key_name, key_value):
-          # Convert bytes to hex string for storage
-          if isinstance(key_value, bytes):
-              key_value = key_value.hex()
-          keyring.set_password(self.service_name, key_name, key_value)
+      def setup_or_retrieve_key(self, password=None, interactive=True):
+          """DRY method: handles setup, interactive, and service authentication"""
+          # Try to retrieve existing key first (service mode)
+          stored_key = keyring.get_password(self.service_name, "master_key")
           
-      def retrieve_key(self, key_name, as_bytes=True):
-          value = keyring.get_password(self.service_name, key_name)
-          if value and as_bytes:
-              return bytes.fromhex(value)
-          return value
+          if stored_key:
+              return bytes.fromhex(stored_key)  # Service startup - no user interaction
+          elif password:
+              return self._derive_and_store(password)  # Setup mode
+          elif interactive:
+              password = getpass.getpass("Enter master password: ")
+              return self._derive_and_store(password)  # Interactive mode
+          else:
+              raise AuthenticationError("No stored key and no password provided")
+              
+      def _derive_and_store(self, password):
+          """Derive master key and store securely"""
+          # Use consistent Argon2id parameters for master key
+          salt = os.urandom(16)
+          argon2 = Argon2(
+              salt=salt,
+              time_cost=3,           # 3 iterations
+              memory_cost=1048576,   # 1GB memory
+              parallelism=4,         # 4 threads
+              hash_len=32,           # 256-bit key
+              type=2                 # Argon2id
+          )
+          
+          master_key = argon2.derive(password.encode())
+          
+          # Store derived key securely
+          keyring.set_password(self.service_name, "master_key", master_key.hex())
+          keyring.set_password(self.service_name, "salt", salt.hex())
+          
+          # Clear password from memory
+          password = None
+          
+          return master_key
+          
+      def change_password(self, old_password, new_password):
+          """Update master password and re-derive keys"""
+          # Verify old password
+          stored_key = self.setup_or_retrieve_key(old_password, interactive=False)
+          
+          # Derive and store new key
+          return self._derive_and_store(new_password)
+          
+      def clear_stored_keys(self):
+          """Remove all stored keys (for security incidents)"""
+          keyring.delete_password(self.service_name, "master_key")
+          keyring.delete_password(self.service_name, "salt")
   ```
   
-  This abstraction provides consistent secure storage across all platforms without platform-specific code.
+  This unified approach provides:
+  - **KISS**: Single class handles all authentication scenarios
+  - **DRY**: Common key derivation and storage logic
+  - **Maintainable**: Clear separation of concerns with simple state handling
 
 - **Roaming Support**: 
   - **Coupled Roaming**: Secure key transfer between trusted devices
@@ -260,6 +309,33 @@ AICO's key management system handles the lifecycle of cryptographic keys from cr
   - Automatic key retrieval during AICO startup
   - Transparent filesystem mounting
   - Optional biometric unlock on supported platforms
+
+- **Persistent Service Authentication**: 
+  AICO backend services can restart automatically without user password re-entry while maintaining security:
+  
+  - **One-Time Setup**: User enters master password during initial setup or password change
+  - **Secure Storage**: Derived master key stored in platform-native secure storage (Keychain, Credential Manager, Secret Service)
+  - **Service Startup**: Backend retrieves stored key automatically on restart
+  - **No User Interaction**: Services restart seamlessly without password prompts
+  - **Security Maintained**: Platform-level protection and service isolation provide security
+  - **Biometric Enhancement**: Optional biometric unlock for accessing stored keys
+  - **Platform compatibility**: Works across macOS, Windows, and Linux
+
+- **CLI Session Management**:
+  AICO CLI implements session-based authentication for improved developer experience:
+  
+  - **30-Minute Sessions**: Automatic session timeout after 30 minutes of inactivity
+  - **Activity Extension**: Sessions extend automatically on CLI usage
+  - **Secure Caching**: Master key cached in memory during active sessions
+  - **Force Fresh Auth**: Sensitive operations (password changes, exports) always require fresh authentication
+  - **Session Visibility**: `aico security session` command shows session status and remaining time
+  - **Manual Control**: `aico security clear` forces immediate session termination
+  
+  This approach supports:
+  - **Non-technical users**: No command-line interaction required
+  - **System integration**: Backend starts automatically with OS
+  - **Security compliance**: Master password never stored, only derived keys
+  - **Platform compatibility**: Works across macOS, Windows, and Linux
 
 #### Authentication Mechanisms
 - **Local Authentication**: Biometric or password-based with secure credential storage
@@ -297,7 +373,7 @@ AICO's architecture requires specific security implementations for both frontend
 
 | Feature | Implementation | Rationale |
 |---------|----------------|------------|
-| **Filesystem Encryption** | gocryptfs with AES-256-GCM | Core protection for all database files in the local-first architecture |
+| **Database Encryption** | SQLCipher, DuckDB, RocksDB native encryption | Core protection for all database files using optimal encryption methods |
 | **Key Derivation** | Argon2id with context-specific parameters | Secure generation of encryption keys from master password |
 | **Secure Key Storage** | Python keyring library with platform backends | Platform-native secure storage of cryptographic keys |
 | **Authentication Service** | Token-based authentication with JWTs | Verify user identity and manage sessions across both coupled and detached modes |

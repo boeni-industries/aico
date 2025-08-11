@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AICO Database Configuration",
+  "description": "JSON Schema for AICO database configuration. Validates LibSQL, ChromaDB, and DuckDB settings including paths, encryption parameters, and performance tuning. Encryption is enforced by design for all databases.",
+  "type": "object",
+  "properties": {
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "directory_mode": {
+          "type": "string",
+          "enum": ["auto", "current"],
+          "default": "auto",
+          "description": "Default path resolution mode for all databases"
+        }
+      },
+      "required": ["directory_mode"]
+    },
+    "libsql": {
+      "type": "object",
+      "properties": {
+        "filename": {
+          "type": "string",
+          "default": "aico.db",
+          "description": "Database filename - directory resolved by path system"
+        },
+        "directory_mode": {
+          "type": "string",
+          "enum": ["auto", "current"],
+          "default": "auto",
+          "description": "Override default directory mode if needed"
+        },
+        "journal_mode": {
+          "type": "string",
+          "enum": ["WAL", "DELETE", "TRUNCATE"],
+          "default": "WAL"
+        },
+        "synchronous": {
+          "type": "string",
+          "enum": ["OFF", "NORMAL", "FULL"],
+          "default": "NORMAL"
+        },
+        "cache_size": {
+          "type": "integer",
+          "minimum": 100,
+          "default": 2000
+        }
+      },
+      "required": ["filename", "directory_mode", "journal_mode", "synchronous", "cache_size"]
+    },
+    "chromadb": {
+      "type": "object",
+      "properties": {
+        "dirname": {
+          "type": "string",
+          "default": "chroma",
+          "description": "Directory name for ChromaDB collection storage"
+        },
+        "directory_mode": {
+          "type": "string",
+          "enum": ["auto", "current"],
+          "default": "auto",
+          "description": "Override default directory mode if needed"
+        },
+        "collection_name": {
+          "type": "string",
+          "default": "aico_vectors"
+        },
+        "distance_function": {
+          "type": "string",
+          "enum": ["cosine", "euclidean", "manhattan"],
+          "default": "cosine"
+        }
+      },
+      "required": ["dirname", "directory_mode", "collection_name", "distance_function"]
+    },
+    "duckdb": {
+      "type": "object",
+      "properties": {
+        "filename": {
+          "type": "string",
+          "default": "analytics.duckdb",
+          "description": "Database filename - directory resolved by path system"
+        },
+        "directory_mode": {
+          "type": "string",
+          "enum": ["auto", "current"],
+          "default": "auto",
+          "description": "Override default directory mode if needed"
+        },
+        "memory_limit": {
+          "type": "string",
+          "default": "1GB"
+        },
+        "threads": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32,
+          "default": 4
+        }
+      },
+      "required": ["filename", "directory_mode", "memory_limit", "threads"]
+    }
+  },
+  "required": ["defaults", "libsql", "chromadb", "duckdb"]
+}

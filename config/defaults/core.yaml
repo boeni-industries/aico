@@ -1,0 +1,80 @@
+system:
+  name: "AICO"
+  environment: "development"
+  # Path configuration - uses cross-platform path resolution
+  paths:
+    directory_mode: "auto"  # auto = OS-appropriate dirs, current = ./data, or explicit path
+    data_subdirectory: "data"  # Subdirectory within user data dir for databases
+    config_subdirectory: "config"  # Subdirectory within user config dir
+    cache_subdirectory: "cache"  # Subdirectory within user cache dir
+    logs_subdirectory: "logs"  # Subdirectory within user logs dir
+  log_level: "INFO"
+
+# Unified logging configuration - single source of truth for all subsystems
+logging:
+  # Storage configuration
+  storage:
+    type: "database"  # database only - no file logging
+    database: "libsql"  # Use encrypted libSQL for log storage
+    table: "logs"  # Table name for log storage
+    
+  # Log levels and filtering
+  levels:
+    default: "INFO"  # Default log level for all subsystems
+    subsystems:
+      cli: "INFO"
+      backend: "INFO" 
+      frontend: "INFO"
+      studio: "INFO"
+    modules:
+      # Fine-grained control per module if needed
+      security: "WARNING"  # Security logs are important
+      database: "INFO"
+      
+  # Log format and schema
+  format:
+    include_function: true  # Include calling function name
+    include_file_line: true  # Include file and line number
+    include_trace_id: true  # Include distributed tracing
+    include_session_id: true  # Include user session context
+    
+  # Retention and cleanup
+  retention:
+    days: 30  # Keep logs for 30 days
+    max_size_mb: 500  # Maximum total log storage size
+    cleanup_interval_hours: 24  # How often to run cleanup
+    
+  # Transport configuration
+  transport:
+    # All subsystems use ZeroMQ message bus for unified logging
+    zmq_topic: "logs"  # Base topic for all log messages
+    buffer_size: 1000  # Local buffer size for failed sends
+    retry_attempts: 3  # Number of retry attempts
+    retry_backoff_ms: [1000, 2000, 4000]  # Exponential backoff
+    
+  # Privacy and security
+  privacy:
+    redact_pii: true  # Automatically redact personal information
+    encrypt_sensitive: true  # Encrypt sensitive log data
+    audit_log_access: true  # Log all access to logs themselves
+    
+  # Bootstrap and fallback configuration
+  bootstrap:
+    buffer_size: 100  # Max logs to buffer during bootstrap
+    fallback_console: true  # Always fallback to console
+    fallback_temp_file: false  # Optional temp file fallback
+    fallback_system_log: false  # Optional system log fallback
+
+message_bus:
+  backend_port: 5555
+  frontend_port: 5556
+  max_message_size: 1048576
+  heartbeat_interval: 30
+
+api:
+  host: "127.0.0.1"
+  port: 8770
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+  rate_limit: 100

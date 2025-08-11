@@ -125,10 +125,10 @@ markdown_extensions:
 nav:
   - Home:
       - Welcome: welcome.md
-  - Getting Started:
-    - Overview: getting-started/getting_started_overview.md
-    - Installation: getting-started/installation.md
-    - Quick Start: getting-started/quick-start.md
+  - User Guide:
+    - Overview: user-guide/getting_started.md
+    - Installation: user-guide/installation.md
+    - Quick Start: user-guide/quick_start.md
   - Architecture:
       - Overview: architecture/architecture_overview.md
   - Core Infrastructure:
@@ -150,7 +150,7 @@ nav:
     - Overview: security/security_overview.md
     - Data Security: security/data_security.md
     - Access Control: security/access_control.md
-    - Consent Manager: '#'
+    - Consent Manager: security/consent.md
     - Audit System: security/audit.md  
   - Autonomous Agency:
     - Goal System: '#'
@@ -183,9 +183,15 @@ nav:
     - Personality:
       - Personality Simulation: concepts/personality/personality_sim.md
       - Personality Definition: concepts/personality/personality_definition.md
-  - Development:
-    - Contributing: development/contributing.md
-    - Protocol Buffers: development/protobuf.md
+  - Developer Guide:
+    - Getting Started: developer-guide/getting_started.md
+    - Guidelines: developer-guide/guidelines.md
+    - Contributing: developer-guide/contributing.md
+    - Protocol Buffers: developer-guide/protobuf.md
+    - Versioning: developer-guide/versioning.md
+    - Namespaces: developer-guide/namespaces.md
+    - CLI Handbook: developer-guide/cli_handbook.md
+    - Schema Management: developer-guide/schema_management.md
   - Roadmap:
     - Foundation: roadmap/foundation.md
     - MVP: roadmap/mvp.md

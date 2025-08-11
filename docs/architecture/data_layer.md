@@ -625,6 +625,172 @@ class UserOnboardingService:
 4. **Business rules are enforced in the domain layer**, not in repositories
 5. **Repositories provide domain-meaningful methods**, not generic CRUD operations
 
+## Schema Management
+
+AICO uses a **decorator-based schema registry** system that provides fully automated schema discovery and application. This approach ensures clean separation, automatic registration, and seamless integration with the local-first, plugin-extensible architecture.
+
+### Architecture Overview
+
+```mermaid
+flowchart TD
+    A[Core Module] --> B[@register_schema]
+    C[Plugin A] --> D[@register_schema]
+    E[Plugin B] --> F[@register_schema]
+    
+    B --> G[SchemaRegistry]
+    D --> G
+    F --> G
+    
+    G --> H[Automatic Discovery]
+    H --> I[Priority Ordering]
+    I --> J[Schema Application]
+    
+    J --> K[LibSQL Database]
+    K --> L[Schema Metadata]
+    K --> M[Migration History]
+    
+    N[Application Startup] --> O[Apply All Core Schemas]
+    P[Plugin Activation] --> Q[Apply Plugin Schema]
+    R[Plugin Deactivation] --> S[Remove Plugin Schema]
+    
+    classDef decorator fill:#8b5cf6,stroke:#7c3aed,color:#fff
+    classDef registry fill:#dc2626,stroke:#b91c1c,color:#fff
+    classDef core fill:#2563eb,stroke:#1d4ed8,color:#fff
+    classDef plugin fill:#059669,stroke:#047857,color:#fff
+    
+    class B,D,F decorator
+    class G,H,I,J registry
+    class A,N,O core
+    class C,E,P,Q,R,S plugin
+```
+
+### Decorator-Based Registration
+
+Schemas are registered using decorators, providing automatic discovery and type safety:
+
+```python
+# Core module schema registration
+from aico.data import register_schema, SchemaVersion
+
+@register_schema("conversations", "core", priority=1)
+CONVERSATION_SCHEMA = {
+    1: SchemaVersion(
+        version=1,
+        name="Conversation System",
+        description="Core conversation storage and retrieval",
+        sql_statements=[
+            "CREATE TABLE conversations (...)",
+            "CREATE INDEX idx_conversations_user_id ON conversations(user_id)"
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_conversations_user_id",
+            "DROP TABLE IF EXISTS conversations"
+        ]
+    )
+}
+
+# Plugin schema registration
+@register_schema("calendar", "plugin")
+CALENDAR_SCHEMA = {
+    1: SchemaVersion(
+        version=1,
+        name="Calendar Plugin",
+        description="Calendar events and scheduling",
+        sql_statements=[
+            "CREATE TABLE calendar_events (...)",
+            "CREATE INDEX idx_events_user_id ON calendar_events(user_id)"
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_events_user_id",
+            "DROP TABLE IF EXISTS calendar_events"
+        ]
+    )
+}
+```
+
+### Automatic Schema Application
+
+#### Application Startup
+
+```python
+# Fully automated core schema application
+from aico.data import EncryptedLibSQLConnection, SchemaRegistry
+
+def initialize_database():
+    conn = EncryptedLibSQLConnection(
+        db_path="~/.aico/user.db",
+        master_password=get_master_password()
+    )
+    
+    # Automatically applies all registered core schemas in priority order
+    applied_versions = SchemaRegistry.apply_core_schemas(conn)
+    
+    logger.info(f"Applied {len(applied_versions)} core schemas: {applied_versions}")
+    return conn
+```
+
+#### Plugin Lifecycle
+
+```python
+# Automatic plugin schema management
+def activate_plugin(plugin_name: str, connection):
+    # Automatically finds and applies registered plugin schema
+    version = SchemaRegistry.apply_plugin_schema(plugin_name, connection)
+    logger.info(f"Plugin {plugin_name} activated at schema version {version}")
+
+def deactivate_plugin(plugin_name: str, connection):
+    # Automatically removes plugin schema
+    SchemaRegistry.remove_plugin_schema(plugin_name, connection)
+    logger.info(f"Plugin {plugin_name} schema removed")
+```
+
+### Schema Management Features
+
+#### Version Tracking
+- **Metadata Storage**: Current schema version stored in `schema_metadata` table
+- **Migration History**: Complete audit trail in `schema_migration_history` table
+- **Checksum Validation**: Detect schema drift and tampering
+- **Component Isolation**: Each component manages its own schema versions
+
+#### Migration Safety
+- **Transaction Wrapping**: All migrations execute within database transactions
+- **Automatic Rollback**: Failed migrations automatically roll back
+- **Validation Checks**: Schema integrity validation before and after migrations
+- **Dependency Handling**: Proper ordering of schema operations
+
+#### Plugin Integration
+- **Self-Contained Schemas**: Each plugin defines its complete schema
+- **Dynamic Loading**: Schemas loaded when plugins are activated
+- **Clean Removal**: Plugin deactivation can remove all plugin tables
+- **No Conflicts**: Plugin schemas are isolated from core and other plugins
+
+### Security Considerations
+
+#### Encryption Integration
+- **Transparent Encryption**: Schema management works with encrypted LibSQL connections
+- **Metadata Protection**: Schema metadata tables are encrypted with user data
+- **No Plaintext Exposure**: Schema definitions contain structure only, no user data
+
+#### Access Control
+- **Local-Only**: Schema definitions are local to each user's installation
+- **No Remote Access**: No network-based schema synchronization
+- **Plugin Sandboxing**: Plugin schemas cannot access core or other plugin data
+
+### Best Practices
+
+#### Schema Definition Guidelines
+1. **Incremental Changes**: Each version should represent a single logical change
+2. **Rollback Safety**: Always provide complete rollback statements
+3. **Index Management**: Include index creation/deletion in appropriate versions
+4. **Foreign Key Constraints**: Ensure referential integrity across versions
+5. **Data Preservation**: Never include destructive operations without user consent
+
+#### Plugin Schema Standards
+1. **Namespace Isolation**: Use plugin-specific table prefixes
+2. **Clean Removal**: Ensure complete cleanup on plugin deactivation
+3. **Version Documentation**: Document what each schema version accomplishes
+4. **Testing Coverage**: Include schema tests in plugin test suites
+
 ### Key Components
 
 1. **Repository Layer**:

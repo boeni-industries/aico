@@ -47,7 +47,8 @@ AICO's features are organized into logical modules for development and deploymen
 - **Context Retrieval**: Relevant memory recall based on current situation
 
 ### 😊 Emotion & Awareness
-- **Facial Recognition**: Computer vision-based emotion detection
+- **Facial Recognition**: Computer vision-based face recognition
+- **Visual Emotion Detection**: Computer vision-based emotion recognition
 - **Voice Analysis**: Audio-based emotion and sentiment recognition
 - **Text Sentiment**: Natural language emotion understanding
 - **Behavioral Patterns**: User habit and preference learning
@@ -66,7 +67,6 @@ AICO's embodiment system enables multi-modal presence—visual, vocal, and spati
 - **Device Integration:** IoT control, multi-device presence, context handoff
 - **Deployment Patterns:** Coupled (frontend/backend on same device) and Detached (frontend on lightweight device, backend remote)
 
-**See also:** [embodiment.md], [roaming.md]
 ### 🔒 Privacy & Security
 - **Local Processing**: Edge-first computation and storage
 - **Data Encryption**: End-to-end encryption for all personal data
@@ -271,6 +271,27 @@ AICO System
 
 ```
 
+## Main parts
+
+The AICO system consists of the following main parts:
+- Backend service
+- Frontend app
+- Admin UI
+- CLI
+
+**Backend Service**
+The backend service is a Python application that provides the core functionality of AICO. It is built using FastAPI and ZeroMQ, and it is responsible for managing the state of the system, handling user input, and coordinating the work of the various domains.
+
+**Frontend App**
+
+The frontend app is a Flutter application that provides a user interface for interacting with AICO. It is built using the Flutter framework and the Dart programming language and provides a responsive and intuitive interface for users to interact with AICO.
+
+**Admin UI**
+The admin UI is a web application that provides a user interface for managing the system. It is built using the React framework and provides a responsive and intuitive interface for developers and advanced users to manage the system.
+
+**CLI**
+The CLI is a Python application that provides a command-line interface for interacting with AICO. It provides a simple and intuitive interface for developers and advanced users to interact with AICO.
+
 ## Architecture Patterns
 
 AICO's core architecture is designed to maximize modularity and maintain low coupling, with clear boundaries between domains (e.g. Personality, Emotion, Agency, Memory, etc.). The system uses a message-driven architecture with distinct frontend and backend components.
@@ -341,8 +362,6 @@ flowchart LR
     BUS --- ADMIN_DOMAIN
     BUS --- INFRA
 ```
-
-
 
 
 **Communication Flow:**
@@ -569,4 +588,125 @@ The Update System manages automatic updates for both frontend and backend compon
 - **Background Skill Development:** Agency module practices or updates skills, pausing if user becomes active.
 - **Dynamic Resource Management:** System throttles non-essential jobs during high CPU/memory usage or on battery power.
 - **Continuous Availability:** Backend remains ready to respond instantly when user opens UI.
+
+## Shared Library Architecture
+
+AICO employs a **shared library approach** for cross-subsystem logic to maintain DRY principles while enabling early development access to core functionality.
+
+### Design Philosophy
+
+**Problem**: Core functionality (security, data models, utilities) needed across multiple subsystems (CLI, backend, frontend) with different development timelines.
+
+**Solution**: Standalone shared libraries that can be imported by any subsystem, following the `aico.*` namespace hierarchy.
+
+### Library Structure
+
+```
+aico/
+├── shared/                     # Shared libraries directory
+│   ├── aico-security/          # Security & encryption
+│   │   ├── setup.py
+│   │   └── aico/
+│   │       └── security/
+│   │           ├── __init__.py
+│   │           ├── key_manager.py
+│   │           ├── filesystem.py
+│   │           └── crypto.py
+│   ├── aico-data/              # Data models & schemas
+│   │   ├── setup.py
+│   │   └── aico/
+│   │       └── data/
+│   │           ├── models.py
+│   │           ├── schemas.py
+│   │           └── repositories.py
+│   ├── aico-core/              # Core utilities
+│   │   ├── setup.py
+│   │   └── aico/
+│   │       └── core/
+│   │           ├── config.py
+│   │           ├── logging.py
+│   │           └── bus.py
+│   └── aico-common/            # Common utilities
+│       ├── setup.py
+│       └── aico/
+│           └── common/
+│               ├── utils.py
+│               └── constants.py
+├── backend/                    # Python backend service
+│   ├── requirements.txt        # includes -e ../shared/aico-*
+│   └── main.py
+├── cli/                        # Development CLI
+│   ├── requirements.txt        # includes -e ../shared/aico-*
+│   └── main.py
+└── frontend/                   # Flutter frontend
+    └── pubspec.yaml            # May reference shared schemas
+```
+
+### Implementation Patterns
+
+#### Namespace Packages
+All shared libraries use Python namespace packages:
+
+```python
+# setup.py for each shared library
+setup(
+    name="aico-security",
+    packages=["aico.security"],
+    namespace_packages=["aico"]
+)
+```
+
+#### Development Installation
+Subsystems install shared libraries in development mode:
+
+```bash
+# In backend/requirements.txt or cli/requirements.txt
+-e ../shared/aico-security
+-e ../shared/aico-data
+-e ../shared/aico-core
+-e ../shared/aico-common
+```
+
+#### Usage Examples
+
+**CLI Usage** (Early Development):
+```python
+# CLI can use security features before backend exists
+from aico.security import AICOKeyManager
+from aico.security.filesystem import SecureFilesystem
+
+key_manager = AICOKeyManager()
+fs = SecureFilesystem(key_manager)
+fs.setup_encrypted_directory("/path/to/data")
+```
+
+**Backend Usage** (Production):
+```python
+# Backend imports same libraries
+from aico.security import AICOKeyManager
+from aico.data.models import Conversation
+from aico.core.config import Config
+
+# Identical API, different context
+key_manager = AICOKeyManager()
+config = Config.load()
+```
+
+### Development Workflow
+
+1. **Library-First Development**: Core functionality implemented as shared libraries
+2. **CLI Integration**: Development tools import and use shared libraries
+3. **Backend Integration**: Production backend imports same libraries
+4. **Cross-Language Sharing**: Data models/schemas can be shared with frontend via JSON/Protocol Buffers
+
+### Library Categories
+
+- **aico.security**: Key management, encryption, authentication
+- **aico.data**: Data models, schemas, repositories
+- **aico.core**: Configuration, logging, message bus
+- **aico.common**: Utilities, constants, helpers
+- **aico.ai**: AI/ML utilities (when needed)
+- **aico.tools**: Development and debugging utilities
+
+This approach ensures **KISS** (simple imports), **DRY** (single implementation), and enables rapid development while maintaining professional code organization.
 

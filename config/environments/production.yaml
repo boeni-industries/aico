@@ -1,0 +1,15 @@
+system:
+  log_level: "WARNING"  # Minimal system logging in production
+  
+api:
+  cors_origins:
+    - "http://localhost:3000"    # Studio admin UI (production)
+    - "http://127.0.0.1:3000"    # IP variant for compatibility
+
+security:
+  audit:
+    log_level: "WARNING"  # Security events and above only
+    retention_days: 365
+
+message_bus:
+  heartbeat_interval: 60

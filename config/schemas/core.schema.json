@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AICO Core Configuration",
+  "description": "JSON Schema for AICO core system configuration. Validates system settings, message bus configuration, API settings, and cross-platform path resolution. Used by ConfigurationManager for runtime validation and CLI config commands.",
+  "type": "object",
+  "properties": {
+    "system": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "default": "AICO"
+        },
+        "version": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "string",
+          "enum": ["development", "staging", "production"],
+          "default": "development"
+        },
+        "paths": {
+          "type": "object",
+          "properties": {
+            "directory_mode": {
+              "type": "string",
+              "enum": ["auto", "current"],
+              "default": "auto",
+              "description": "Path resolution mode: 'auto' for OS-appropriate directories, 'current' for ./data"
+            },
+            "data_subdirectory": {
+              "type": "string",
+              "default": "data",
+              "description": "Subdirectory within user data dir for databases"
+            },
+            "config_subdirectory": {
+              "type": "string", 
+              "default": "config",
+              "description": "Subdirectory within user config dir"
+            },
+            "cache_subdirectory": {
+              "type": "string",
+              "default": "cache", 
+              "description": "Subdirectory within user cache dir"
+            },
+            "logs_subdirectory": {
+              "type": "string",
+              "default": "logs",
+              "description": "Subdirectory within user logs dir"
+            }
+          },
+          "required": ["directory_mode", "data_subdirectory", "config_subdirectory", "cache_subdirectory", "logs_subdirectory"]
+        },
+        "log_level": {
+          "type": "string",
+          "enum": ["DEBUG", "INFO", "WARN", "ERROR"],
+          "default": "INFO"
+        }
+      },
+      "required": ["name", "environment", "paths", "log_level"]
+    },
+    "message_bus": {
+      "type": "object",
+      "properties": {
+        "backend_port": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "default": 5555
+        },
+        "frontend_port": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "default": 5556
+        },
+        "max_message_size": {
+          "type": "integer",
+          "minimum": 1024,
+          "default": 1048576
+        },
+        "heartbeat_interval": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30
+        }
+      },
+      "required": ["backend_port", "frontend_port", "max_message_size", "heartbeat_interval"]
+    },
+    "api": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string",
+          "default": "127.0.0.1"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "default": 8770
+        },
+        "cors_origins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["http://localhost:3000"]
+        },
+        "rate_limit": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 100
+        }
+      },
+      "required": ["host", "port", "cors_origins", "rate_limit"]
+    }
+  },
+  "required": ["system", "message_bus", "api"]
+}

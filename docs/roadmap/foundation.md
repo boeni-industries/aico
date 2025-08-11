@@ -33,6 +33,15 @@ Build the foundational system infrastructure that enables all AICO functionality
 - [ ] **Basic Schema**: Minimal tables for system state and config
 - [ ] **Migration System**: Simple schema versioning
 
+### Basic Security Layer
+- [ ] **Master Password Setup**: Require user to set a master password on first run. Never store the password—use it transiently for key derivation only. Derived keys stored securely for automatic service authentication.
+- [ ] **Unified Key Management**: Implement `AICOKeyManager` class supporting three scenarios: initial setup (interactive), user authentication (interactive), and service startup (automatic). Uses Argon2id-based key derivation from user master password with platform-native secure storage.
+- [ ] **Persistent Service Authentication**: Backend services can restart automatically without user password re-entry. Master key retrieved from secure storage (macOS Keychain, Windows Credential Manager, Linux Secret Service) on service startup, enabling zero-effort security for non-technical users.
+- [ ] **Database Encryption Setup**: Implement application-level encryption using database-native features (SQLCipher for libSQL, DuckDB encryption, RocksDB EncryptedEnv). All data at rest is encrypted by default with optimal performance.
+- [ ] **File Encryption Wrapper**: Create `EncryptedFile` wrapper class using AES-256-GCM for files without native encryption support (configs, logs, ChromaDB files). Drop-in replacement for Python's `open()` function.
+- [ ] **Database Key Derivation**: Extend `AICOKeyManager` with `derive_database_key()` and `derive_file_encryption_key()` methods for purpose-specific key generation from master key.
+- [ ] **Access Control Skeleton**: Add a basic access control mechanism (deny by default, allow for core system processes only). All access is explicit, with a foundation for future ABAC/RBAC policies.
+
 ## Phase 2: Core Infrastructure
 
 ### Enhanced Message Bus

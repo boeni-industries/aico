@@ -1,0 +1,13 @@
+# Backend-specific dependencies
+fastapi
+uvicorn
+pyzmq
+libsql-client
+duckdb
+chromadb
+httpx
+pydantic
+pytest
+
+# AICO shared functionality
+-e ../shared/

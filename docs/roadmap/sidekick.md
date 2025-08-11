@@ -110,4 +110,4 @@ User experiences AICO as a true sidekick that:
 7. **Meta-Cognitive Awareness**: Reflects on its own learning and capabilities
 8. **True Partnership**: Feels like a genuine partner in achieving life goals
 
-See [Co-Adventurer Roadmap](co-adventurer.md) for the next stage of AICO's evolution.
+See [Co-Adventurer Roadmap](co_adventurer.md) for the next stage of AICO's evolution.
