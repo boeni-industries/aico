@@ -65,13 +65,14 @@ def sensitive(reason: str = "sensitive operation"):
                 # Cache the session so subsequent authenticate() calls in the function work
                 key_manager._cache_session(master_key)
                 
-                # Log sensitive command execution
+                # Log sensitive command execution (audit trail)
                 try:
                     from aico.core.logging import _get_logger
                     _get_logger().info(f"Sensitive command executed: {command_path} ({reason})")
                 except ImportError:
-                    # Fallback logging if _get_logger not available
-                    print(f"🔐 Sensitive command executed: {command_path} ({reason})")
+                    # Fallback: logging system unavailable (missing deps, import issues, etc.)
+                    # Command should never fail due to logging problems, so continue silently
+                    pass
             except Exception as e:
                 from rich.console import Console
                 console = Console()
@@ -128,13 +129,14 @@ def destructive(reason: str = "dangerous operation"):
                 # Cache the session so subsequent authenticate() calls in the function work
                 key_manager._cache_session(master_key)
                 
-                # Log dangerous command execution
+                # Log dangerous command execution (audit trail)
                 try:
                     from aico.core.logging import _get_logger
                     _get_logger().info(f"Dangerous command executed: {command_path} ({reason})")
                 except ImportError:
-                    # Fallback logging if _get_logger not available
-                    print(f"⚠️ Dangerous command executed: {command_path} ({reason})")
+                    # Fallback: logging system unavailable (missing deps, import issues, etc.)
+                    # Command should never fail due to logging problems, so continue silently
+                    pass
             except Exception as e:
                 from rich.console import Console
                 console = Console()
