@@ -48,6 +48,12 @@ Build the foundational system infrastructure that enables all AICO functionality
 - [ ] **Topic Hierarchy**: Full topic structure (emotion.*, personality.*, agency.*)
 - [ ] **Schema Validation**: JSON Schema validation for message types
 - [ ] **Error Handling**: Message delivery guarantees and error recovery
+
+### Task Scheduler Component
+- [ ] **Background Scheduler**: Implement task scheduler for zero-maintenance operations (log cleanup, key rotation, health checks)
+- [ ] **Cron-like Scheduling**: Support for periodic tasks with configurable intervals
+- [ ] **Task Registry**: Plugin system for registering scheduled tasks from different subsystems
+- [ ] **Failure Recovery**: Automatic retry logic and error handling for scheduled tasks
 - [ ] **Performance**: Optimize for 1000+ messages/second with <100ms latency
 
 ### Service Layer Enhancement

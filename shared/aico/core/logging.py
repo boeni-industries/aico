@@ -233,10 +233,10 @@ class DirectDatabaseTransport:
 class ZMQLogTransport:
     """ZeroMQ transport for sending logs to the message bus"""
     
-    def __init__(self, config_manager):
-        self.config = config_manager
-        self._context = None
-        self._socket = None
+    def __init__(self, config: ConfigurationManager):
+        self.config = config
+        self.db = None  # Will be initialized when needed
+        self.cleanup_task = None  # Background cleanup task
         self._setup_zmq()
     
     def _setup_zmq(self):

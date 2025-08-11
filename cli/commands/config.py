@@ -62,7 +62,7 @@ def config_callback(ctx: typer.Context):
         examples = [
             "aico config list",
             "aico config get api.port",
-            "aico config set api.port 8080",
+            "aico config set api.port 8770",
             "aico config show",
             "aico config domains"
         ]

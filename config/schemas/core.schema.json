@@ -114,6 +114,150 @@
         }
       },
       "required": ["host", "port", "cors_origins", "rate_limit"]
+    },
+    "api_gateway": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "host": {
+          "type": "string",
+          "default": "127.0.0.1"
+        },
+        "protocols": {
+          "type": "object",
+          "properties": {
+            "rest": {
+              "type": "object",
+              "properties": {
+                "enabled": {"type": "boolean", "default": true},
+                "port": {"type": "integer", "minimum": 1024, "maximum": 65535, "default": 8771},
+                "prefix": {"type": "string", "default": "/api/v1"},
+                "cors": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {"type": "boolean", "default": true},
+                    "origins": {"type": "array", "items": {"type": "string"}}
+                  }
+                }
+              }
+            },
+            "websocket": {
+              "type": "object", 
+              "properties": {
+                "enabled": {"type": "boolean", "default": true},
+                "port": {"type": "integer", "minimum": 1024, "maximum": 65535, "default": 8081},
+                "path": {"type": "string", "default": "/ws"},
+                "heartbeat_interval": {"type": "integer", "minimum": 1, "default": 30},
+                "max_connections": {"type": "integer", "minimum": 1, "default": 1000}
+              }
+            },
+            "zeromq_ipc": {
+              "type": "object",
+              "properties": {
+                "enabled": {"type": "boolean", "default": true}
+              }
+            },
+            "grpc": {
+              "type": "object",
+              "properties": {
+                "enabled": {"type": "boolean", "default": false},
+                "port": {"type": "integer", "minimum": 1024, "maximum": 65535, "default": 8083}
+              }
+            }
+          }
+        },
+        "security": {
+          "type": "object",
+          "properties": {
+            "use_aico_security": {"type": "boolean", "default": true},
+            "auth": {
+              "type": "object",
+              "properties": {
+                "jwt": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {"type": "boolean", "default": true},
+                    "algorithm": {"type": "string", "default": "HS256"},
+                    "expiry_hours": {"type": "integer", "minimum": 1, "default": 24}
+                  }
+                },
+                "api_key": {
+                  "type": "object", 
+                  "properties": {
+                    "enabled": {"type": "boolean", "default": true},
+                    "header_name": {"type": "string", "default": "X-API-Key"}
+                  }
+                },
+                "session": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {"type": "boolean", "default": true},
+                    "cookie_name": {"type": "string", "default": "aico_session"},
+                    "timeout_minutes": {"type": "integer", "minimum": 1, "default": 1440}
+                  }
+                }
+              }
+            },
+            "rbac": {
+              "type": "object",
+              "properties": {
+                "enabled": {"type": "boolean", "default": true},
+                "default_role": {"type": "string", "default": "user"}
+              }
+            },
+            "input_security": {
+              "type": "object",
+              "properties": {
+                "max_request_size": {"type": "integer", "minimum": 1024, "default": 10485760},
+                "sanitize_input": {"type": "boolean", "default": true},
+                "block_suspicious_patterns": {"type": "boolean", "default": true},
+                "allowed_ips": {"type": "array", "items": {"type": "string"}, "default": []},
+                "blocked_ips": {"type": "array", "items": {"type": "string"}, "default": []}
+              }
+            }
+          }
+        },
+        "rate_limiting": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean", "default": true},
+            "default_requests_per_minute": {"type": "integer", "minimum": 1, "default": 100},
+            "burst_size": {"type": "integer", "minimum": 1, "default": 20},
+            "cleanup_interval_minutes": {"type": "integer", "minimum": 1, "default": 5}
+          }
+        },
+        "admin": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean", "default": true},
+            "host": {"type": "string", "default": "127.0.0.1"},
+            "port": {"type": "integer", "minimum": 1024, "maximum": 65535, "default": 8090},
+            "require_auth": {"type": "boolean", "default": true}
+          }
+        },
+        "transport": {
+          "type": "object",
+          "properties": {
+            "priority": {
+              "type": "array",
+              "items": {"type": "string"},
+              "default": ["zeromq_ipc", "websocket", "rest", "grpc"]
+            },
+            "fallback_enabled": {"type": "boolean", "default": true}
+          }
+        },
+        "routing": {
+          "type": "object",
+          "properties": {
+            "timeout_seconds": {"type": "integer", "minimum": 1, "default": 30},
+            "retry_attempts": {"type": "integer", "minimum": 0, "default": 3},
+            "correlation_cleanup_minutes": {"type": "integer", "minimum": 1, "default": 60}
+          }
+        }
+      }
     }
   },
   "required": ["system", "message_bus", "api"]

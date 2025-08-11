@@ -72,6 +72,14 @@ app.add_typer(logs_app, name="logs", help="📋 Log management and analysis")
 app.add_typer(dev_app, name="dev", help="🧹 Development utilities")
 app.add_typer(bus_app, name="bus", help="🚌 Message bus management")
 
+# Import and register gateway commands
+try:
+    from commands import gateway
+    app.add_typer(gateway.app, name="gateway", help="🌐 API Gateway management")
+except ImportError as e:
+    # Gateway commands not available
+    pass
+
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit.")):
     """
@@ -94,6 +102,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             (chars["security"], "security", "Master password setup and security management"),
             (chars["config"], "config", "Configuration management and validation"),
             ("🚌", "bus", "Message bus testing, monitoring, and management"),
+            ("🌐", "gateway", "API Gateway management and protocol control"),
             ("🧹", "dev", "Development utilities (data cleanup, security reset)")
         ]
         

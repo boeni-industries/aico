@@ -70,7 +70,8 @@ console = Console()
 
 @app.command()
 def setup(
-    password: str = typer.Option(None, "--password", "-p", help="Master password (will prompt if not provided)")
+    password: str = typer.Option(None, "--password", "-p", help="Master password (will prompt if not provided)"),
+    jwt_only: bool = typer.Option(False, "--jwt-only", help="Only initialize JWT secrets (when master password exists)")
 ):
     """Set up master password for AICO (first-time setup)."""
     
@@ -78,28 +79,39 @@ def setup(
     
     # Check if already set up
     if key_manager.has_stored_key():
-        console.print("⚠️ [yellow]Master password already set up.[/yellow]")
-        console.print("Use 'aico security passwd' to update it.")
-        raise typer.Exit(1)
-    
-    # Get password if not provided
-    if not password:
-        password = typer.prompt("Enter master password", hide_input=True)
-        confirm_password = typer.prompt("Confirm master password", hide_input=True)
-        
-        if password != confirm_password:
-            console.print("❌ [red]Passwords do not match[/red]")
+        if not jwt_only:
+            console.print("⚠️ [yellow]Master password already set up.[/yellow]")
+            console.print("Use 'aico security passwd' to update it, or --jwt-only to initialize JWT secrets.")
             raise typer.Exit(1)
+        else:
+            console.print("🔐 [cyan]Master password exists, initializing JWT secrets only...[/cyan]")
+    
+    # Get password if not provided (only for new setup)
+    if not jwt_only:
+        if not password:
+            password = typer.prompt("Enter master password", hide_input=True)
+            confirm_password = typer.prompt("Confirm master password", hide_input=True)
+            
+            if password != confirm_password:
+                console.print("❌ [red]Passwords do not match[/red]")
+                raise typer.Exit(1)
     
     try:
-        console.print("🔐 Setting up master password...")
+        # Set up master password (only if not jwt_only)
+        if not jwt_only:
+            console.print("🔐 Setting up master password...")
+            master_key = key_manager.setup_master_password(password)
+            console.print("✅ [green]Master password set up successfully![/green]")
+            console.print("🔑 Master key derived and stored in system keyring")
+            console.print("🔐 You can now initialize encrypted databases")
         
-        # Set up master password
-        master_key = key_manager.setup_master_password(password)
-        
-        console.print("✅ [green]Master password set up successfully![/green]")
-        console.print("🔑 Master key derived and stored in system keyring")
-        console.print("🔐 You can now initialize encrypted databases")
+        # Initialize JWT secret for API Gateway (zero-effort security)
+        try:
+            jwt_secret = key_manager.get_jwt_secret("api_gateway")
+            console.print("🔒 [green]JWT secret initialized for API Gateway[/green]")
+        except Exception as e:
+            console.print(f"⚠️ [yellow]JWT secret initialization failed: {e}[/yellow]")
+            console.print("   Run 'aico security setup --jwt-only' to retry JWT initialization")
         
     except Exception as e:
         console.print(f"❌ [red]Failed to set up master password: {e}[/red]")

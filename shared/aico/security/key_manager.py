@@ -65,30 +65,69 @@ class AICOKeyManager:
         _get_logger().debug(f"Initialized AICOKeyManager for service: {service_name}")
     
     def _is_sensitive_command(self, command_path: str) -> bool:
-        """
-        Check if a command path requires fresh authentication.
+        """Check if command requires fresh authentication."""
+        sensitive_commands = {
+            'security.passwd',
+            'security.reset', 
+            'security.export',
+            'security.import',
+            'logs.export',
+            'dev.reset'
+        }
+        return command_path in sensitive_commands
         
-        Args:
-            command_path: Command path like 'security.passwd' or 'logs.export'
-            
-        Returns:
-            True if command requires fresh authentication
-        """
-        # Hardcoded sensitive commands (cannot be overridden for security)
-        CORE_SENSITIVE = {"security", "export", "passwd", "clear", "setup"}
+    
+    def get_jwt_secret(self, service_name: str = "api_gateway") -> str:
+        """Get or create JWT signing secret for a service"""
+        import secrets
         
-        # Check if any part of command path matches core sensitive commands
-        command_parts = command_path.lower().split('.')
-        if any(part in CORE_SENSITIVE for part in command_parts):
-            return True
+        key_name = f"{service_name}_jwt_secret"
         
-        # Check user-configurable sensitive commands from config
         try:
-            user_sensitive = self._get_security_config("cli.sensitive_commands") or []
-            return any(sensitive in command_path.lower() for sensitive in user_sensitive)
+            # Try to get existing secret from keyring
+            secret = keyring.get_password(self.service_name, key_name)
+            if secret:
+                return secret
         except Exception:
-            # If config fails, err on side of security
-            return False
+            pass
+        
+        # Create new JWT secret
+        secret = secrets.token_urlsafe(32)
+        
+        try:
+            keyring.set_password(self.service_name, key_name, secret)
+            _get_logger().info(f"Created new JWT secret for service: {service_name}")
+        except Exception as e:
+            _get_logger().warning(f"Could not store JWT secret in keyring: {e}")
+        
+        return secret
+    
+    def rotate_jwt_secret(self, service_name: str = "api_gateway") -> str:
+        """Rotate JWT secret for a service"""
+        import secrets
+        
+        key_name = f"{service_name}_jwt_secret"
+        old_key_name = f"{service_name}_jwt_secret_old"
+        
+        try:
+            # Move current secret to old
+            current_secret = keyring.get_password(self.service_name, key_name)
+            if current_secret:
+                keyring.set_password(self.service_name, old_key_name, current_secret)
+                _get_logger().info(f"Moved current JWT secret to old for service: {service_name}")
+        except Exception:
+            pass
+        
+        # Create new secret
+        new_secret = secrets.token_urlsafe(32)
+        
+        try:
+            keyring.set_password(self.service_name, key_name, new_secret)
+            _get_logger().info(f"Created new JWT secret for service: {service_name}")
+        except Exception as e:
+            _get_logger().warning(f"Could not store new JWT secret in keyring: {e}")
+        
+        return new_secret
     
     def _get_security_config(self, key: str):
         """Get security configuration value using hierarchical YAML system."""
