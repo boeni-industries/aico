@@ -19,9 +19,7 @@ import uvicorn
 import sys
 from pathlib import Path
 
-# Add shared module to path
-shared_path = Path(__file__).parent.parent.parent.parent / "shared"
-sys.path.insert(0, str(shared_path))
+# Shared modules now installed via UV editable install
 
 from aico.core.logging import get_logger
 from aico.core.bus import AICOMessage, MessageMetadata, MessagePriority
@@ -50,7 +48,7 @@ class RESTAdapter:
                  rate_limiter: RateLimiter, validator: MessageValidator,
                  security_middleware: SecurityMiddleware):
         
-        self.logger = get_logger("api_gateway.rest")
+        self.logger = get_logger("api_gateway", "rest")
         self.config = config
         self.auth_manager = auth_manager
         self.authz_manager = authz_manager

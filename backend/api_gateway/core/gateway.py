@@ -10,13 +10,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
-# Add shared module to path
-shared_path = Path(__file__).parent.parent.parent.parent / "shared"
-sys.path.insert(0, str(shared_path))
-
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
-from aico.core.bus import AICOMessageBus
+from aico.core.bus import MessageBusBroker, MessageBusClient
 
 # Initialize logger
 logger = get_logger("api_gateway", "core")
@@ -60,7 +56,8 @@ class AICOAPIGateway:
     """
     
     def __init__(self, config_manager: Optional[ConfigurationManager] = None):
-        # Logger already initialized at module level
+        # Initialize logger for this instance
+        self.logger = get_logger("api_gateway", "gateway")
         
         # Configuration
         self.config_manager = config_manager or ConfigurationManager()
@@ -77,7 +74,7 @@ class AICOAPIGateway:
         
         # Core components
         self.message_bus_client: Optional[MessageBusClient] = None
-        self.auth_manager = AuthenticationManager(self.config_manager.get_all())
+        self.auth_manager = AuthenticationManager(self.config)
         self.authz_manager = AuthorizationManager(self.config.get("security", {}))
         self.adaptive_transport = AdaptiveTransport(self.config.get("transport", {}))
         self.message_router = MessageRouter(self.config.get("routing", {}))
@@ -85,15 +82,15 @@ class AICOAPIGateway:
         # Middleware
         self.rate_limiter = RateLimiter(self.config.get("rate_limiting", {}))
         self.validator = MessageValidator()
-        self.security_middleware = SecurityMiddleware(self.config.security)
+        self.security_middleware = SecurityMiddleware(self.config.get("security", {}))
         
         # Protocol adapters
         self.adapters: Dict[str, Any] = {}
         self.running = False
         
         self.logger.info("API Gateway initialized", extra={
-            "protocols": list(self.config.protocols.keys()),
-            "admin_enabled": self.config.admin["enabled"]
+            "protocols": list(self.config.get("protocols", {}).keys()),
+            "admin_enabled": self.config.get("admin", {}).get("enabled", False)
         })
     
     def _load_config(self) -> GatewayConfig:
@@ -130,7 +127,7 @@ class AICOAPIGateway:
     
     async def start(self, message_bus_address: str = "tcp://localhost:5555"):
         """Start the API Gateway"""
-        if not self.config.enabled:
+        if not self.config.get("enabled", True):
             self.logger.info("API Gateway is disabled in configuration")
             return
         
@@ -150,7 +147,7 @@ class AICOAPIGateway:
             await self._start_adapters()
             
             # Start admin interface if enabled
-            if self.config.admin["enabled"]:
+            if self.config.get("admin", {}).get("enabled", False):
                 await self._start_admin_interface()
             self.running = True
             self.logger.info("API Gateway started successfully", extra={
@@ -190,7 +187,7 @@ class AICOAPIGateway:
     
     async def _start_adapters(self):
         """Start enabled protocol adapters"""
-        protocols = self.config.protocols
+        protocols = self.config.get("protocols", {})
         
         # REST Adapter
         if protocols.get("rest", {}).get("enabled", False):
@@ -203,9 +200,9 @@ class AICOAPIGateway:
                 validator=self.validator,
                 security_middleware=self.security_middleware
             )
-            await rest_adapter.start(self.config.host)
+            await rest_adapter.start(self.config.get("host", "127.0.0.1"))
             self.adapters["rest"] = rest_adapter
-            self.logger.info(f"REST adapter started on {self.config.host}:{protocols['rest']['port']}")
+            self.logger.info(f"REST adapter started on {self.config.get('host', '127.0.0.1')}:{protocols['rest']['port']}")
         
         # WebSocket Adapter
         if protocols.get("websocket", {}).get("enabled", False):
@@ -217,9 +214,9 @@ class AICOAPIGateway:
                 rate_limiter=self.rate_limiter,
                 validator=self.validator
             )
-            await ws_adapter.start(self.config.host)
+            await ws_adapter.start(self.config.get("host", "127.0.0.1"))
             self.adapters["websocket"] = ws_adapter
-            self.logger.info(f"WebSocket adapter started on {self.config.host}:{protocols['websocket']['port']}")
+            self.logger.info(f"WebSocket adapter started on {self.config.get('host', '127.0.0.1')}:{protocols['websocket']['port']}")
         
         # ZeroMQ IPC Adapter
         if protocols.get("zeromq_ipc", {}).get("enabled", False):
@@ -244,9 +241,9 @@ class AICOAPIGateway:
                     authz_manager=self.authz_manager,
                     message_router=self.message_router
                 )
-                await grpc_adapter.start(self.config.host)
+                await grpc_adapter.start(self.config.get("host", "127.0.0.1"))
                 self.adapters["grpc"] = grpc_adapter
-                self.logger.info(f"gRPC adapter started on {self.config.host}:{protocols['grpc']['port']}")
+                self.logger.info(f"gRPC adapter started on {self.config.get('host', '127.0.0.1')}:{protocols['grpc']['port']}")
             except ImportError:
                 self.logger.warning("gRPC adapter requested but gRPC dependencies not available")
     
@@ -254,7 +251,7 @@ class AICOAPIGateway:
         """Start admin interface on separate port"""
         from ..admin.endpoints import create_admin_app
         
-        admin_config = self.config.admin
+        admin_config = self.config.get("admin", {})
         admin_app = create_admin_app(
             auth_manager=self.auth_manager,
             authz_manager=self.authz_manager,
@@ -319,8 +316,8 @@ class AICOAPIGateway:
             },
             "message_bus": "connected" if self.message_bus_client and self.message_bus_client.running else "disconnected",
             "config": {
-                "protocols_enabled": [name for name, proto in self.config.protocols.items() if proto.get("enabled")],
-                "admin_enabled": self.config.admin["enabled"]
+                "protocols_enabled": [name for name, proto in self.config.get("protocols", {}).items() if proto.get("enabled")],
+                "admin_enabled": self.config.get("admin", {}).get("enabled", False)
             }
         }
 

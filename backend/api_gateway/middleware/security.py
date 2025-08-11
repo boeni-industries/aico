@@ -38,15 +38,16 @@ class SecurityMiddleware:
     - Attack pattern detection
     """
     
-    def __init__(self, config: SecurityConfig):
+    def __init__(self, config: dict):
         self.config = config
         
         # Compile IP networks for efficient checking
         self.allowed_networks = []
         self.blocked_networks = []
         
-        if config.allowed_ips:
-            for ip in config.allowed_ips:
+        allowed_ips = config.get("allowed_ips", [])
+        if allowed_ips:
+            for ip in allowed_ips:
                 try:
                     self.allowed_networks.append(ipaddress.ip_network(ip, strict=False))
                 except ValueError as e:
@@ -57,8 +58,9 @@ class SecurityMiddleware:
                         "error": str(e)
                     })
         
-        if config.blocked_ips:
-            for ip in config.blocked_ips:
+        blocked_ips = config.get("blocked_ips", [])
+        if blocked_ips:
+            for ip in blocked_ips:
                 try:
                     self.blocked_networks.append(ipaddress.ip_network(ip, strict=False))
                 except ValueError as e:
@@ -103,11 +105,11 @@ class SecurityMiddleware:
         self._check_request_size(request_data)
         
         # Sanitize input if enabled
-        if self.config.sanitize_input:
+        if self.config.get("sanitize_input", True):
             request_data = self._sanitize_request(request_data)
         
         # Check for suspicious patterns
-        if self.config.block_suspicious_patterns:
+        if self.config.get("block_suspicious_patterns", True):
             self._check_suspicious_patterns(request_data)
         
         logger.debug("Request passed security checks", extra={
@@ -160,13 +162,13 @@ class SecurityMiddleware:
         
         try:
             request_size = len(json.dumps(request_data).encode('utf-8'))
-            if request_size > self.config.max_request_size:
+            if request_size > self.config.get("max_request_size", 10485760):
                 logger.warning(f"Request size exceeded limit: {request_size} bytes", extra={
                     "module": "api_gateway",
                     "function": "_check_request_size",
                     "topic": "security.request_too_large",
                     "size": request_size,
-                    "limit": self.config.max_request_size
+                    "limit": self.config.get("max_request_size", 10485760)
                 })
                 raise SecurityError(f"Request too large: {request_size} bytes")
         except Exception as e:

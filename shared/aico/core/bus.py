@@ -101,7 +101,7 @@ class MessageBusClient:
     def __init__(self, client_id: str, broker_address: str = "tcp://localhost:5555"):
         self.client_id = client_id
         self.broker_address = broker_address
-        self.logger = get_logger(f"bus.client.{client_id}")
+        self.logger = get_logger("bus", f"client.{client_id}")
         
         # ZeroMQ context and sockets
         self.context = zmq.asyncio.Context()
@@ -119,11 +119,11 @@ class MessageBusClient:
         try:
             # Publisher socket for sending messages
             self.publisher = self.context.socket(zmq.PUB)
-            self.publisher.connect(f"{self.broker_address}/pub")
+            self.publisher.connect(self.broker_address)
             
             # Subscriber socket for receiving messages
             self.subscriber = self.context.socket(zmq.SUB)
-            self.subscriber.connect(f"{self.broker_address}/sub")
+            self.subscriber.connect(self.broker_address)
             
             self.running = True
             self.logger.info(f"Connected to message bus at {self.broker_address}")
@@ -311,7 +311,7 @@ class MessageBusBroker:
     
     def __init__(self, bind_address: str = "tcp://*:5555"):
         self.bind_address = bind_address
-        self.logger = get_logger("bus.broker")
+        self.logger = get_logger("bus", "broker")
         
         # ZeroMQ context and sockets
         self.context = zmq.asyncio.Context()
@@ -329,10 +329,12 @@ class MessageBusBroker:
         try:
             # Frontend socket for publishers
             self.frontend = self.context.socket(zmq.XSUB)
+            self.frontend.setsockopt(zmq.LINGER, 0)  # Don't wait on close
             self.frontend.bind(f"{self.bind_address}/pub")
             
-            # Backend socket for subscribers
+            # Backend socket for subscribers  
             self.backend = self.context.socket(zmq.XPUB)
+            self.backend.setsockopt(zmq.LINGER, 0)  # Don't wait on close
             self.backend.bind(f"{self.bind_address}/sub")
             
             self.running = True
@@ -349,12 +351,19 @@ class MessageBusBroker:
         """Stop the message bus broker"""
         self.running = False
         
+        # Close sockets with proper cleanup
         if self.frontend:
-            self.frontend.close()
+            self.frontend.close(linger=0)
         if self.backend:
-            self.backend.close()
+            self.backend.close(linger=0)
         
-        self.context.term()
+        # Small delay to ensure sockets are fully closed
+        await asyncio.sleep(0.1)
+        
+        # Terminate context
+        if self.context:
+            self.context.term()
+        
         self.logger.info("Message bus broker stopped")
     
     async def _proxy_loop(self):

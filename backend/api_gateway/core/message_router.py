@@ -15,9 +15,7 @@ from dataclasses import dataclass
 import sys
 from pathlib import Path
 
-# Add shared module to path
-shared_path = Path(__file__).parent.parent.parent.parent / "shared"
-sys.path.insert(0, str(shared_path))
+# Shared modules now installed via UV editable install
 
 from aico.core.logging import get_logger
 from aico.core.bus import MessageBusClient, AICOMessage, MessageMetadata, MessagePriority
@@ -44,14 +42,14 @@ class MessageRouter:
     - Error handling and recovery
     """
     
-    def __init__(self, routing_config: Dict[str, Any]):
-        self.logger = get_logger("api_gateway.router")
-        self.config = routing_config
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        self.logger = get_logger("api_gateway", "router")
         
         # Configuration
-        self.timeout = routing_config.get("timeout", 30)
-        self.max_message_size = routing_config.get("max_message_size", 10485760)  # 10MB
-        self.topic_mapping = routing_config.get("topic_mapping", {})
+        self.timeout = config.get("timeout", 30)
+        self.max_message_size = config.get("max_message_size", 10485760)  # 10MB
+        self.topic_mapping = config.get("topic_mapping", {})
         
         # Message bus client (set by gateway)
         self.message_bus: Optional[MessageBusClient] = None

@@ -16,9 +16,7 @@ from dataclasses import dataclass
 import sys
 from pathlib import Path
 
-# Add shared module to path
-shared_path = Path(__file__).parent.parent.parent.parent / "shared"
-sys.path.insert(0, str(shared_path))
+# Shared modules now installed via UV editable install
 
 from aico.core.logging import get_logger
 
@@ -51,14 +49,14 @@ class AdaptiveTransport:
     - Performance requirements
     """
     
-    def __init__(self, transport_config: Dict[str, Any]):
-        self.logger = get_logger("api_gateway.transport")
-        self.config = transport_config
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        self.logger = get_logger("api_gateway", "transport")
         
         # Transport priority order
-        self.priority = transport_config.get("priority", ["zeromq_ipc", "websocket", "rest"])
-        self.negotiation_timeout = transport_config.get("negotiation_timeout", 5)
-        self.auto_fallback = transport_config.get("auto_fallback", True)
+        self.priority = config.get("priority", ["zeromq_ipc", "websocket", "rest"])
+        self.negotiation_timeout = config.get("negotiation_timeout", 5)
+        self.auto_fallback = config.get("auto_fallback", True)
         
         # Platform detection
         self.platform = platform.system().lower()

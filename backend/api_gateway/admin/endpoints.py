@@ -15,9 +15,7 @@ from typing import Dict, Any, Optional
 import sys
 from pathlib import Path
 
-# Add shared module to path
-shared_path = Path(__file__).parent.parent.parent.parent / "shared"
-sys.path.insert(0, str(shared_path))
+# Shared modules now installed via UV editable install
 
 from aico.core.logging import get_logger
 
@@ -27,7 +25,7 @@ security = HTTPBearer()
 def create_admin_app(auth_manager, authz_manager, message_router, gateway) -> FastAPI:
     """Create admin FastAPI application"""
     
-    logger = get_logger("api_gateway.admin")
+    logger = get_logger("api_gateway", "admin")
     
     app = FastAPI(
         title="AICO API Gateway Admin",

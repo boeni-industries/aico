@@ -46,6 +46,7 @@ api_gateway:
   # Protocol adapters
   protocols:
     rest:
+      enabled: true
       port: 8771
       prefix: "/api/v1"
       cors_origins:
@@ -53,6 +54,7 @@ api_gateway:
         - "http://127.0.0.1:3000"
     
     websocket:
+      enabled: true
       port: 8772
       path: "/ws"
       heartbeat_interval: 30
@@ -62,7 +64,8 @@ api_gateway:
       enabled: true  # Can be disabled for external-only deployments
       
     grpc:
-      port: 8774  # Optional protocol, disabled by default
+      enabled: false  # Optional protocol, disabled by default
+      port: 8774
   
   # Authentication (both JWT and API key supported simultaneously)
   auth:

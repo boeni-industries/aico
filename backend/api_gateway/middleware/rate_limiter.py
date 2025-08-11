@@ -15,9 +15,7 @@ from dataclasses import dataclass
 import sys
 from pathlib import Path
 
-# Add shared module to path
-shared_path = Path(__file__).parent.parent.parent.parent / "shared"
-sys.path.insert(0, str(shared_path))
+# Shared modules now installed via UV editable install
 
 from aico.core.logging import get_logger
 
@@ -56,19 +54,21 @@ class RateLimiter:
     
     Provides:
     - Per-client rate limiting
-    - Configurable limits and burst handling
+    - Configurable limits and windows
+    - Burst handling
     - Memory-efficient token bucket implementation
     - Automatic cleanup of inactive buckets
     """
     
-    def __init__(self, rate_limiting_config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
         self.logger = get_logger("api_gateway", "rate_limiter")
         
         # Configuration - convert per-minute to per-second
-        requests_per_minute = rate_limiting_config.get("default_requests_per_minute", 100)
+        requests_per_minute = config.get("default_requests_per_minute", 100)
         self.requests_per_second = requests_per_minute / 60.0
-        self.burst_size = rate_limiting_config.get("burst_size", 20)
-        self.cleanup_interval = rate_limiting_config.get("cleanup_interval_minutes", 5) * 60  # Convert to seconds
+        self.burst_size = config.get("burst_size", 20)
+        self.cleanup_interval = config.get("cleanup_interval_minutes", 5) * 60  # Convert to seconds
         
         # Token buckets per client
         self.buckets: Dict[str, TokenBucket] = {}

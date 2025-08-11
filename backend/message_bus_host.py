@@ -19,7 +19,7 @@ class AICOMessageBusHost:
     
     def __init__(self, bind_address: str = "tcp://*:5555"):
         self.bind_address = bind_address
-        self.logger = get_logger("backend.message_bus_host")
+        self.logger = get_logger("backend", "message_bus_host")
         
         # Core components
         self.broker = MessageBusBroker(bind_address)

@@ -13,10 +13,13 @@ import json
 import sys
 import traceback
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 from dataclasses import dataclass, asdict
 from pathlib import Path
 import inspect
+
+if TYPE_CHECKING:
+    from aico.core.config import ConfigurationManager
 
 try:
     import zmq
@@ -233,7 +236,7 @@ class DirectDatabaseTransport:
 class ZMQLogTransport:
     """ZeroMQ transport for sending logs to the message bus"""
     
-    def __init__(self, config: ConfigurationManager):
+    def __init__(self, config: "ConfigurationManager"):
         self.config = config
         self.db = None  # Will be initialized when needed
         self.cleanup_task = None  # Background cleanup task

@@ -16,9 +16,7 @@ from typing import Dict, Any, Optional
 import sys
 from pathlib import Path
 
-# Add shared module to path
-shared_path = Path(__file__).parent.parent.parent.parent / "shared"
-sys.path.insert(0, str(shared_path))
+# Shared modules now installed via UV editable install
 
 import zmq
 import zmq.asyncio
@@ -46,7 +44,7 @@ class ZeroMQAdapter:
                  authz_manager: AuthorizationManager, message_router: MessageRouter,
                  adaptive_transport: AdaptiveTransport):
         
-        self.logger = get_logger("api_gateway.zeromq")
+        self.logger = get_logger("api_gateway", "zeromq")
         self.config = config
         self.auth_manager = auth_manager
         self.authz_manager = authz_manager

@@ -13,9 +13,7 @@ from typing import Dict, Any, Optional
 import sys
 from pathlib import Path
 
-# Add shared module to path
-shared_path = Path(__file__).parent.parent.parent.parent / "shared"
-sys.path.insert(0, str(shared_path))
+# Shared modules now installed via UV editable install
 
 from aico.core.logging import get_logger
 from aico.core.bus import AICOMessage, MessageMetadata, MessagePriority
@@ -33,7 +31,7 @@ class MessageValidator:
     """
     
     def __init__(self):
-        self.logger = get_logger("api_gateway.validator")
+        self.logger = get_logger("api_gateway", "validator")
         
         # Message schemas (would be loaded from schema files in production)
         self.schemas = self._load_schemas()

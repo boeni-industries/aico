@@ -2,41 +2,42 @@ from fastapi import FastAPI
 import asyncio
 import sys
 from pathlib import Path
+from contextlib import asynccontextmanager
 
-# Add shared module to path
-shared_path = Path(__file__).parent.parent / "shared"
-sys.path.insert(0, str(shared_path))
+# Shared modules now installed via UV editable install
 
-from aico.core.logging import get_logger
+from aico.core.logging import initialize_logging, get_logger
 from aico.core.config import ConfigurationManager
 
-# Import API Gateway
+__version__ = "0.0.1"
+
+# Initialize configuration and logging FIRST
+config_manager = ConfigurationManager()
+config_manager.initialize(lightweight=True)
+
+# Initialize logging system
+initialize_logging(config_manager)
+
+# Now we can safely get loggers
+logger = get_logger("backend", "main")
+
+# Import API Gateway AFTER logging is initialized
 from api_gateway import AICOAPIGateway
 
 # Import Message Bus Host
 from message_bus_host import AICOMessageBusHost
 
-__version__ = "0.0.1"
-
-# Initialize logger for backend
-logger = get_logger("backend.main")
-
-# Global instances
-config_manager = None
+# Global instances (config_manager already initialized above)
 message_bus_host = None
 api_gateway = None
 
-app = FastAPI(
-    title="AICO Backend",
-    description="AICO AI Companion Backend Service",
-    version=__version__
-)
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize and start all backend services"""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Modern FastAPI lifespan event handler"""
     global config_manager, message_bus_host, api_gateway
     
+    # Startup
     try:
         logger.info("AICO backend server starting up", extra={
             "version": __version__,
@@ -64,35 +65,44 @@ async def startup_event():
         
         logger.info("AICO backend fully initialized")
         
+        yield  # This is where the application runs
+        
     except Exception as e:
         logger.error(f"Failed to start backend services: {e}")
         raise
-
-@app.on_event("shutdown") 
-async def shutdown_event():
-    """Shutdown all backend services"""
-    global message_bus_host, api_gateway
     
-    try:
-        logger.info("AICO backend server shutting down", extra={
-            "version": __version__,
-            "component": "fastapi_server"
-        })
-        
-        # Stop API Gateway
-        if api_gateway:
-            await api_gateway.stop()
-            logger.info("API Gateway stopped")
-        
-        # Stop message bus host
-        if message_bus_host:
-            await message_bus_host.stop()
-            logger.info("Message bus host stopped")
-        
-        logger.info("AICO backend shutdown complete")
-        
-    except Exception as e:
-        logger.error(f"Error during backend shutdown: {e}")
+    finally:
+        # Shutdown
+        try:
+            logger.info("AICO backend server shutting down", extra={
+                "version": __version__,
+                "component": "fastapi_server"
+            })
+            
+            # Stop API Gateway
+            if api_gateway:
+                await api_gateway.stop()
+                logger.info("API Gateway stopped")
+            
+            # Stop message bus host
+            if message_bus_host:
+                await message_bus_host.stop()
+                logger.info("Message bus host stopped")
+            else:
+                logger.info("Message bus host was disabled")
+            
+            logger.info("AICO backend shutdown complete")
+            
+        except Exception as e:
+            logger.error(f"Error during backend shutdown: {e}")
+
+
+app = FastAPI(
+    title="AICO Backend",
+    description="AICO AI Companion Backend Service",
+    version=__version__,
+    lifespan=lifespan
+)
 
 @app.get("/")
 def read_root():
@@ -136,3 +146,32 @@ def health_check():
         health_status["components"]["api_gateway"] = api_gateway.get_health_status()
     
     return health_status
+
+
+if __name__ == "__main__":
+    """Start the server when run directly"""
+    import uvicorn
+    import os
+    
+    # Get configuration for server settings
+    host = config_manager.get("api_gateway.host", "127.0.0.1")
+    port = config_manager.get("api_gateway.protocols.rest.port", 8771)
+    
+    # Check if we're in gateway service mode
+    service_mode = os.environ.get("AICO_SERVICE_MODE", "backend")
+    
+    logger.info(f"Starting AICO backend server in {service_mode} mode", extra={
+        "host": host,
+        "port": port,
+        "version": __version__
+    })
+    
+    # Start the Uvicorn server
+    uvicorn.run(
+        "main:app",
+        host=host,
+        port=port,
+        reload=False,  # Disable reload in production
+        log_config=None,  # Use our custom logging
+        access_log=False  # Disable uvicorn access logs (we have our own)
+    )
