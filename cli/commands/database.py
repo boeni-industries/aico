@@ -332,52 +332,122 @@ def test(
         console.print(f"❌ [red]Database not found: {db_file}[/red]")
         raise typer.Exit(1)
     
-    # Get password if not provided
-    if not password:
-        password = typer.prompt("Enter master password", hide_input=True)
-    
     try:
         console.print(f"🔐 Testing database connection: [cyan]{db_file}[/cyan]")
         
-        # Create connection with proper authentication
-        key_manager = AICOKeyManager()
-        master_key = key_manager.authenticate(password, interactive=False)
-        db_key = key_manager.derive_database_key(master_key, "libsql", str(db_file))
+        # Use clean connection without automatic logging (to avoid transaction conflicts)
+        if password:
+            # If password provided, authenticate with it first
+            key_manager = AICOKeyManager()
+            key_manager.authenticate(password, interactive=False)
         
-        conn = EncryptedLibSQLConnection(
-            db_path=str(db_file),
-            encryption_key=db_key
-        )
+        # Create clean connection without the automatic INSERT that _get_db_connection() does
+        conn = _get_database_connection(str(db_file))
         
-        # Initialize CLI logging with direct database access
-        from aico.core.logging import initialize_cli_logging
-        config = ConfigurationManager()
-        initialize_cli_logging(config, conn)
+        # Comprehensive database test with full CRUD operations
+        test_table_name = f"aico_test_{int(__import__('time').time())}"  # Unique table name
         
-        # Test basic operations
-        with conn:
-            # Test table creation
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS test_table (
+        try:
+            # Test 1: Basic connectivity
+            console.print("🔍 Testing basic connectivity...")
+            conn.execute("SELECT 1").fetchone()
+            console.print("✅ Basic connectivity successful")
+            
+            # Test 2: Schema check
+            console.print("🔍 Testing database schema...")
+            tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+            console.print(f"✅ Found {len(tables)} tables")
+            
+            # Test 3: CREATE - Create test table
+            console.print(f"🔍 Testing table creation ({test_table_name})...")
+            conn.execute(f"""
+                CREATE TABLE {test_table_name} (
                     id INTEGER PRIMARY KEY,
-                    message TEXT,
+                    message TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            conn.commit()  # Explicit commit to close transaction
+            console.print("✅ Table creation successful")
             
-            # Test insert
-            conn.execute(
-                "INSERT INTO test_table (message) VALUES (?)",
-                ("CLI test message",)
+            # Test 4: INSERT - Add test record
+            console.print("🔍 Testing insert operation...")
+            test_message = f"AICO CLI test message at {__import__('datetime').datetime.now().isoformat()}"
+            cursor = conn.execute(
+                f"INSERT INTO {test_table_name} (message) VALUES (?)",
+                (test_message,)
             )
+            test_id = cursor.lastrowid
+            conn.commit()  # Explicit commit to close transaction
+            console.print(f"✅ Insert operation successful (ID: {test_id})")
             
-            # Test select
-            result = conn.execute("SELECT COUNT(*) as count FROM test_table").fetchone()
-            count = result[0] if result else 0
+            # Test 5: READ - Verify the record exists
+            console.print("🔍 Testing select operation...")
+            result = conn.execute(
+                f"SELECT id, message FROM {test_table_name} WHERE id = ?",
+                (test_id,)
+            ).fetchone()
+            if result and result[1] == test_message:
+                console.print(f"✅ Select operation successful - record found")
+            else:
+                raise Exception("Inserted record not found or data mismatch")
             
-            # Clean up test data
-            conn.execute("DELETE FROM test_table WHERE message = 'CLI test message'")
-            conn.commit()
+            # Test 6: UPDATE - Modify the record
+            console.print("🔍 Testing update operation...")
+            updated_message = f"UPDATED: {test_message}"
+            conn.execute(
+                f"UPDATE {test_table_name} SET message = ? WHERE id = ?",
+                (updated_message, test_id)
+            )
+            conn.commit()  # Explicit commit to close transaction
+            # Verify update
+            result = conn.execute(
+                f"SELECT message FROM {test_table_name} WHERE id = ?",
+                (test_id,)
+            ).fetchone()
+            if result and result[0] == updated_message:
+                console.print("✅ Update operation successful")
+            else:
+                raise Exception("Update operation failed - data not modified")
+            
+            # Test 7: DELETE - Remove the test record
+            console.print("🔍 Testing delete operation...")
+            conn.execute(f"DELETE FROM {test_table_name} WHERE id = ?", (test_id,))
+            conn.commit()  # Explicit commit to close transaction
+            # Verify deletion
+            result = conn.execute(
+                f"SELECT COUNT(*) FROM {test_table_name} WHERE id = ?",
+                (test_id,)
+            ).fetchone()
+            if result[0] == 0:
+                console.print("✅ Delete operation successful")
+            else:
+                raise Exception("Delete operation failed - record still exists")
+            
+            # Test 8: DROP - Remove the test table completely
+            console.print(f"🔍 Testing table deletion ({test_table_name})...")
+            conn.execute(f"DROP TABLE {test_table_name}")
+            conn.commit()  # Explicit commit to close transaction
+            # Verify table is gone
+            result = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = ?",
+                (test_table_name,)
+            ).fetchone()
+            if result[0] == 0:
+                console.print("✅ Table deletion successful")
+                count = 0  # No records since table is deleted
+            else:
+                raise Exception("Table deletion failed - table still exists")
+                
+        except Exception as test_error:
+            # Cleanup: Try to drop test table if it exists
+            try:
+                conn.execute(f"DROP TABLE IF EXISTS {test_table_name}")
+                console.print(f"🧹 Cleaned up test table: {test_table_name}")
+            except:
+                pass
+            console.print(f"❌ [red]Database test failed: {test_error}[/red]")
+            raise test_error
         
         console.print("✅ [green]Database test completed successfully![/green]")
         console.print(f"📊 Total records in test_table: {count}")
