@@ -127,9 +127,8 @@ AICO uses [UV](https://github.com/astral-sh/uv) and `requirements.txt` for depen
   py -3.13 -m venv .venv
   .venv\Scripts\Activate.ps1
   uv pip install -r requirements.txt
-  python aico.py
-  pyinstaller --onefile aico.py --name aico
-  # Executable will be in dist/aico.exe
+  uv pip install -e .
+  aico --help
   ```
 
   **Windows Cmd**
@@ -138,9 +137,8 @@ AICO uses [UV](https://github.com/astral-sh/uv) and `requirements.txt` for depen
   py -3.13 -m venv .venv
   .venv\Scripts\activate.bat
   uv pip install -r requirements.txt
-  python aico.py
-  pyinstaller --onefile aico.py --name aico
-  REM Executable will be in dist\aico.exe
+  uv pip install -e .
+  aico --help
   ```
 
   **macOS/Linux**
@@ -149,9 +147,8 @@ AICO uses [UV](https://github.com/astral-sh/uv) and `requirements.txt` for depen
   python3.13 -m venv .venv
   source .venv/bin/activate
   uv pip install -r requirements.txt
-  python aico.py
-  pyinstaller --onefile aico.py --name aico
-  # Executable will be in dist/aico
+  uv pip install -e .
+  aico --help
   ```
 
 **Backend:**

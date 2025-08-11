@@ -5,6 +5,16 @@ The `aico` command-line interface (CLI) is your central tool for automating, adm
 
 ---
 
+## Installation
+
+### End Users
+```bash
+uv tool install aico-cli    # Recommended
+pipx install aico-cli       # Alternative
+```
+
+---
+
 ## Version Command Group
 
 ### Purpose

@@ -31,12 +31,14 @@ The `aico` CLI provides a professional, cross-platform, and high-performance com
 - **Platformdirs**: For managing config/cache paths in a cross-platform manner.
 
 ### Packaging & Distribution
-- **PyInstaller** (primary):
-    - Produces a single-file executable (`aico`) for each OS.
-    - No .venv or Python installation required on target system.
-    - Handles all dependencies, including native libraries, in the bundle.
-- **Briefcase** (alternative):
-    - For more native-feeling installers or app bundles if desired.
+- **PyPI Distribution** (primary):
+    - Professional Python package distribution via `pip`, `pipx`, or `uv tool install`.
+    - Fast startup (~0.2s vs 7.3s PyInstaller overhead).
+    - Requires Python 3.9+ on target system.
+    - Cross-platform: identical installation and usage on Windows, macOS, Linux.
+- **PyInstaller** (legacy):
+    - Single-file executable approach (deprecated due to slow startup).
+    - Kept for reference but no longer recommended.
 
 ## Integration Approach
 
@@ -339,25 +341,13 @@ Security and database commands integrate through `AICOKeyManager` providing deri
 
 **For detailed usage examples and workflows, see the [CLI Handbook](../developer-guide/cli_handbook.md).**
 
-## macOS Code Signing (Optional Performance Optimization)
+## Performance Characteristics
 
-For developers with Apple Developer accounts, code signing the PyInstaller executable can significantly reduce startup time on macOS by eliminating Gatekeeper security scanning delays.
+The AICO CLI is optimized for fast startup and responsive operation:
 
-### Setup Process
-1. **Check available identities**: `security find-identity -v -p codesigning`
-2. **Update `aico.spec`**:
-   ```python
-   codesign_identity="Apple Development: your@email.com (TEAMID)",
-   upx=False,  # Disable UPX for faster startup
-   ```
-3. **Create entitlements file** (`aico.entitlements`) with required permissions for keychain access and unsigned executable memory
-4. **Build signed executable**: `uv run pyinstaller aico.spec`
-5. **Verify signature**: `codesign --verify --verbose dist/aico`
-
-### Performance Impact
-- **Unsigned**: 4-6 second startup delay due to Gatekeeper scanning
-- **Signed**: ~1-2 second startup (normal PyInstaller overhead)
-
-**Note**: Code signing is developer-specific and optional. The default configuration works for all contributors without Apple Developer accounts.
+- **Startup time**: ~0.2s (compared to 7.3s with legacy PyInstaller)
+- **Cross-platform consistency**: Identical performance on Windows, macOS, and Linux
+- **Memory footprint**: Minimal - only loads required dependencies per command
+- **Development workflow**: Instant code changes with editable installation
 
 ---

@@ -6,7 +6,6 @@ Uses platformdirs for OS-appropriate data directories.
 """
 
 from pathlib import Path
-import platformdirs
 import os
 import platform
 from typing import Optional
@@ -36,7 +35,8 @@ class AICOPaths:
         if override := os.getenv("AICO_DATA_DIR"):
             return Path(override)
         
-        # Use platformdirs for OS-appropriate location
+        # Lazy import platformdirs only when needed
+        import platformdirs
         return Path(platformdirs.user_data_dir(cls.APP_NAME, cls.APP_AUTHOR))
     
     @classmethod

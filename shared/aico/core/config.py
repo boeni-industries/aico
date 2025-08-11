@@ -14,8 +14,6 @@ from dataclasses import dataclass
 from enum import Enum
 
 import jsonschema
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 
 
 class ConfigurationError(Exception):
@@ -99,12 +97,13 @@ class ConfigurationManager:
         self.encryption_key: Optional[bytes] = None
         self._instance_initialized = False
         
-    def initialize(self, encryption_key: Optional[bytes] = None) -> None:
+    def initialize(self, encryption_key: Optional[bytes] = None, lightweight: bool = False) -> None:
         """
         Initialize configuration system.
         
         Args:
             encryption_key: Optional encryption key for sensitive configuration
+            lightweight: If True, skip heavy operations like file watchers for simple commands
         """
         if self._instance_initialized:
             return
@@ -113,7 +112,11 @@ class ConfigurationManager:
         self._ensure_directories()
         self._load_schemas()
         self._load_configurations()
-        self._setup_file_watchers()
+        
+        # Skip file watchers in lightweight mode (for --help, version, etc.)
+        if not lightweight:
+            self._setup_file_watchers()
+            
         self._instance_initialized = True
         ConfigurationManager._initialized = True
         
@@ -424,6 +427,10 @@ class ConfigurationManager:
                 
     def _setup_file_watchers(self) -> None:
         """Setup file system watchers for hot reloading."""
+        # Lazy import watchdog only when file watchers are actually needed
+        from watchdog.observers import Observer
+        from watchdog.events import FileSystemEventHandler
+        
         class ConfigFileHandler(FileSystemEventHandler):
             def __init__(self, config_manager):
                 self.config_manager = config_manager

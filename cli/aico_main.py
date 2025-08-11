@@ -33,14 +33,14 @@ if platform.system() == "Windows":
     os.environ["PYTHONIOENCODING"] = "utf-8"
 
 # Add shared directory to Python path for imports
+# This is needed because the CLI module name 'aico' conflicts with the shared package name
 if getattr(sys, 'frozen', False):
     # Running in PyInstaller bundle
     shared_path = Path(sys._MEIPASS) / 'shared'
 else:
-    # Running in development
-    shared_path = Path(__file__).parent.parent / "shared"
-
-sys.path.insert(0, str(shared_path))
+    # Running in development - shared package is installed as editable
+    # But we need to ensure it's accessible before our module imports
+    pass  # The shared package should be available via pip install
 
 import typer
 from rich.console import Console
