@@ -50,6 +50,12 @@ def sensitive(reason: str = "sensitive operation"):
             # Get command path for logging
             command_path = f"{func.__module__.split('.')[-1]}.{func.__name__}"
             
+            # Show explanation BEFORE asking for password (better UX)
+            from rich.console import Console
+            console = Console()
+            console.print(f"🔐 [yellow]Sensitive operation:[/yellow] {reason}")
+            console.print("   [dim]Fresh authentication required for security[/dim]")
+            
             # Force fresh authentication for sensitive commands
             key_manager = AICOKeyManager()
             
@@ -84,23 +90,67 @@ def sensitive(reason: str = "sensitive operation"):
     return decorator
 
 
-def destructive(reason: str = "destructive operation"):
+def destructive(reason: str = "dangerous operation"):
     """
-    Decorator to mark a command as destructive, requiring fresh authentication.
+    Decorator to mark a command as dangerous, requiring fresh authentication.
     
     This is an alias for @sensitive but with clearer semantic meaning for
-    operations that can cause data loss or system changes.
+    operations that could cause data loss or system issues if interrupted.
     
     Args:
-        reason: Human-readable reason why this command is destructive
+        reason: Human-readable reason why this command is dangerous
         
     Usage:
-        @destructive("deletes database tables")
+        @destructive("rebuilds database structure")
         @app.command()
-        def drop():
+        def vacuum():
             pass
     """
-    return sensitive(f"destructive: {reason}")
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            
+            # Get command path for logging
+            command_path = f"{func.__module__.split('.')[-1]}.{func.__name__}"
+            
+            # Show explanation BEFORE asking for password (better UX)
+            from rich.console import Console
+            console = Console()
+            console.print(f"⚠️  [red]Dangerous operation:[/red] {reason}")
+            console.print("   [dim]Fresh authentication required for security[/dim]")
+            
+            # Force fresh authentication for destructive commands
+            key_manager = AICOKeyManager()
+            
+            # Force fresh authentication and cache it
+            try:
+                master_key = key_manager.authenticate(interactive=True, force_fresh=True)
+                # Cache the session so subsequent authenticate() calls in the function work
+                key_manager._cache_session(master_key)
+                
+                # Log dangerous command execution
+                try:
+                    from aico.core.logging import _get_logger
+                    _get_logger().info(f"Dangerous command executed: {command_path} ({reason})")
+                except ImportError:
+                    # Fallback logging if _get_logger not available
+                    print(f"⚠️ Dangerous command executed: {command_path} ({reason})")
+            except Exception as e:
+                from rich.console import Console
+                console = Console()
+                console.print(f"[red]Authentication failed: {e}[/red]")
+                import typer
+                raise typer.Exit(1)
+            
+            # Execute the original command - it will find the cached session
+            return func(*args, **kwargs)
+        
+        # Mark function as destructive for introspection
+        wrapper._is_sensitive = True
+        wrapper._sensitive_reason = f"destructive: {reason}"
+        return wrapper
+    
+    return decorator
 
 
 def is_sensitive_command(func: Callable) -> bool:
