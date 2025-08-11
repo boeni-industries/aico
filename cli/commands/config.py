@@ -14,6 +14,13 @@ import os
 import yaml
 import json
 
+# Import decorators
+import sys
+from pathlib import Path
+decorators_path = Path(__file__).parent.parent / "decorators"
+sys.path.insert(0, str(decorators_path))
+from sensitive import sensitive
+
 # Standard Rich console - encoding is fixed at app startup
 from rich.console import Console
 
@@ -220,6 +227,7 @@ def validate(domain: str = typer.Option(None, "--domain", "-d", help="Domain to 
 
 
 @app.command()
+@sensitive("exports potentially sensitive configuration data to external files")
 def export(
     file: str,
     domains: str = typer.Option(None, "--domains", "-d", help="Comma-separated list of domains to export"),

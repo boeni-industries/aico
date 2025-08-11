@@ -9,14 +9,19 @@ import sys
 import json
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 
 import typer
 from rich.console import Console
 from rich.table import Table
-from rich import box
 from rich.panel import Panel
+from rich import box
 from rich.text import Text
+
+# Import decorators
+decorators_path = Path(__file__).parent.parent / "decorators"
+sys.path.insert(0, str(decorators_path))
+from sensitive import sensitive
 
 # Add shared path for imports
 shared_path = Path(__file__).parent.parent.parent / "shared"
@@ -79,15 +84,52 @@ def _get_log_repository() -> LogRepository:
         paths = AICOPaths()
         db_path = paths.resolve_database_path("aico.db")
         
-        # Get encryption key using proper authentication
+        # Get encryption key using session-based authentication
         if not key_manager.has_stored_key():
             console.print("[red]Error: Master key not found. Run 'aico security setup' first.[/red]")
             raise typer.Exit(1)
             
-        # Authenticate to get master key
-        password = typer.prompt("Enter master password", hide_input=True)
-        master_key = key_manager.authenticate(password, interactive=False)
+        # Authenticate using session cache (will prompt only if session expired)
+        master_key = key_manager.authenticate(interactive=True)
         db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+        
+        # Connect to database
+        conn = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+        return LogRepository(conn)
+        
+    except Exception as e:
+        console.print(f"[red]Error connecting to database: {e}[/red]")
+        raise typer.Exit(1)
+
+def _get_log_repository_no_auth() -> LogRepository:
+    """Get configured log repository without authentication (assumes already authenticated)"""
+    try:
+        config_manager = ConfigurationManager()
+        key_manager = AICOKeyManager()
+        
+        # Get database path and connection
+        from aico.core.paths import AICOPaths
+        paths = AICOPaths()
+        db_path = paths.resolve_database_path("aico.db")
+        
+        # Get encryption key from session cache (no prompting)
+        if not key_manager.has_stored_key():
+            console.print("[red]Error: Master key not found. Run 'aico security setup' first.[/red]")
+            raise typer.Exit(1)
+            
+        # Get cached session key (decorator should have already authenticated)
+        cached_key = key_manager._get_cached_session()
+        if not cached_key:
+            # Fallback to stored key
+            import keyring
+            stored_key = keyring.get_password(key_manager.service_name, "master_key")
+            if stored_key:
+                cached_key = bytes.fromhex(stored_key)
+            else:
+                console.print("[red]Error: No authenticated session found[/red]")
+                raise typer.Exit(1)
+        
+        db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
         
         # Connect to database
         conn = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
@@ -471,35 +513,39 @@ def grep(
 
 
 @app.command()
+@sensitive("exports potentially sensitive log data to external files")
 def export(
     output: str = typer.Option("logs_export.json", "--output", "-o", help="Output file path"),
     format: str = typer.Option("json", "--format", help="Export format: json, csv"),
     last: Optional[str] = typer.Option(None, "--last", help="Export logs from last period"),
-    level: Optional[str] = typer.Option(None, "--level", help="Filter by log level")
+    level: Optional[str] = typer.Option(None, "--level", help="Filter by log level"),
+    subsystem: Optional[str] = typer.Option(None, "--subsystem", help="Filter by subsystem")
 ):
     """Export logs to file"""
     
-    repo = _get_log_repository()
-    
-    # Build filters
-    filters = {}
-    if level:
-        filters["level"] = level.upper()
-    if last:
-        if last.endswith('d'):
-            days = int(last[:-1])
-            since_time = datetime.utcnow() - timedelta(days=days)
-            filters["since"] = since_time.isoformat() + "Z"
-    
-    # Get logs
-    logs = repo.get_logs(limit=10000, **filters)  # Large limit for export
-    
-    if not logs:
-        console.print("[yellow]No logs found to export[/yellow]")
-        return
-    
-    # Export
     try:
+        repo = _get_log_repository()
+        
+        # Build filters
+        filters = {}
+        if level:
+            filters["level"] = level.upper()
+        if subsystem:
+            filters["subsystem"] = subsystem
+        if last:
+            if last.endswith('d'):
+                days = int(last[:-1])
+                since_time = datetime.utcnow() - timedelta(days=days)
+                filters["since"] = since_time.isoformat() + "Z"
+        
+        # Get logs
+        logs = repo.get_logs(limit=10000, **filters)  # Large limit for export
+        
+        if not logs:
+            console.print("[yellow]No logs found to export[/yellow]")
+            return
+        
+        # Export
         output_path = Path(output)
         
         if format == "json":

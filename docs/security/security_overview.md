@@ -314,22 +314,22 @@ AICO's key management system handles the lifecycle of cryptographic keys from cr
   AICO backend services can restart automatically without user password re-entry while maintaining security:
   
   - **One-Time Setup**: User enters master password during initial setup or password change
-  - **Secure Storage**: Derived master key stored in platform-native secure storage
+  - **Secure Storage**: Derived master key stored in platform-native secure storage (Keychain, Credential Manager, Secret Service)
   - **Service Startup**: Backend retrieves stored key automatically on restart
-  - **No User Interaction**: Services start without requiring command-line or password entry
-  - **Security Maintained**: Keys protected by OS-level security, accessible only to AICO service
+  - **No User Interaction**: Services restart seamlessly without password prompts
+  - **Security Maintained**: Platform-level protection and service isolation provide security
+  - **Biometric Enhancement**: Optional biometric unlock for accessing stored keys
+  - **Platform compatibility**: Works across macOS, Windows, and Linux
+
+- **CLI Session Management**:
+  AICO CLI implements session-based authentication for improved developer experience:
   
-  **Implementation Flow**:
-  ```python
-  # During setup (interactive)
-  key_manager = AICOKeyManager()
-  master_key = key_manager.setup_or_retrieve_key(password="user_password")
-  
-  # During service startup (automatic)
-  key_manager = AICOKeyManager()
-  master_key = key_manager.setup_or_retrieve_key(interactive=False)
-  # Service can now mount encrypted filesystem and operate normally
-  ```
+  - **30-Minute Sessions**: Automatic session timeout after 30 minutes of inactivity
+  - **Activity Extension**: Sessions extend automatically on CLI usage
+  - **Secure Caching**: Master key cached in memory during active sessions
+  - **Force Fresh Auth**: Sensitive operations (password changes, exports) always require fresh authentication
+  - **Session Visibility**: `aico security session` command shows session status and remaining time
+  - **Manual Control**: `aico security clear` forces immediate session termination
   
   This approach supports:
   - **Non-technical users**: No command-line interaction required

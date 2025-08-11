@@ -41,6 +41,10 @@ authentication:
   max_failed_attempts: 5
   lockout_duration: 300
 
+cli:
+  session_timeout_minutes: 30
+  extend_on_activity: true
+
 audit:
   enabled: true
   retention_days: 90

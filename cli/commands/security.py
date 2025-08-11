@@ -12,6 +12,11 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from pathlib import Path
 import sys
 
+# Import decorators
+decorators_path = Path(__file__).parent.parent / "decorators"
+sys.path.insert(0, str(decorators_path))
+from sensitive import sensitive
+
 # Add shared module to path for CLI usage
 if getattr(sys, 'frozen', False):
     # Running in PyInstaller bundle
@@ -33,6 +38,7 @@ def security_callback(ctx: typer.Context):
             ("setup", "Set up master password for AICO (first-time setup)"),
             ("passwd", "Change the master password (affects all databases)"),
             ("status", "Check security health and key management status"),
+            ("session", "Show CLI session status and timeout information"),
             ("clear", "Clear cached master key (forces password re-entry)"),
             ("test", "Performance diagnostics and key derivation benchmarking")
         ]
@@ -40,6 +46,7 @@ def security_callback(ctx: typer.Context):
         examples = [
             "aico security setup",
             "aico security status",
+            "aico security session",
             "aico security test",
             "aico security passwd"
         ]
@@ -100,6 +107,7 @@ def setup(
 
 
 @app.command("passwd")
+@sensitive("changes master password - affects all encrypted databases")
 def passwd():
     """Change the master password (affects all databases)."""
     
@@ -209,21 +217,84 @@ def status():
 
 
 @app.command()
+def session():
+    """Show CLI session status and timeout information."""
+    
+    key_manager = AICOKeyManager()
+    
+    if not key_manager.has_stored_key():
+        console.print("❌ [red]No master password set up.[/red]")
+        console.print("Use 'aico security setup' first.")
+        raise typer.Exit(1)
+    
+    # Get session information
+    session_info = key_manager.get_session_info()
+    
+    console.print("\n🔐 [bold cyan]CLI Session Status[/bold cyan]\n")
+    
+    if session_info["active"]:
+        # Active session
+        console.print("✅ [green]Session Active[/green]")
+        
+        # Create session details table
+        session_table = Table(
+            border_style="bright_blue",
+            header_style="bold yellow",
+            show_lines=False,
+            box=box.SIMPLE_HEAD,
+            padding=(0, 1)
+        )
+        session_table.add_column("Property", style="bold white", justify="left")
+        session_table.add_column("Value", style="cyan", justify="left")
+        
+        from datetime import datetime
+        created_at = datetime.fromisoformat(session_info["created_at"])
+        last_accessed = datetime.fromisoformat(session_info["last_accessed"])
+        expires_at = datetime.fromisoformat(session_info["expires_at"])
+        
+        session_table.add_row("Created", created_at.strftime("%Y-%m-%d %H:%M:%S"))
+        session_table.add_row("Last Accessed", last_accessed.strftime("%Y-%m-%d %H:%M:%S"))
+        session_table.add_row("Expires", expires_at.strftime("%Y-%m-%d %H:%M:%S"))
+        session_table.add_row("Timeout", f"{session_info['timeout_minutes']} minutes")
+        session_table.add_row("Time Remaining", f"{session_info['time_remaining_minutes']} minutes")
+        
+        console.print(session_table)
+        
+        # Show status based on time remaining
+        time_remaining = session_info['time_remaining_minutes']
+        if time_remaining > 15:
+            console.print(f"\n🟢 [green]Session expires in {time_remaining} minutes[/green]")
+        elif time_remaining > 5:
+            console.print(f"\n🟡 [yellow]Session expires in {time_remaining} minutes[/yellow]")
+        else:
+            console.print(f"\n🔴 [red]Session expires soon ({time_remaining} minutes)[/red]")
+            
+        console.print("\n💡 [dim]Session automatically extends on CLI activity[/dim]")
+        
+    else:
+        # No active session
+        console.print("❌ [red]No Active Session[/red]")
+        console.print("\n📝 [cyan]Next CLI command will prompt for password[/cyan]")
+        console.print(f"🕐 [dim]Session timeout: {key_manager.SESSION_TIMEOUT_MINUTES} minutes[/dim]")
+
+
+@app.command()
+@sensitive("clears security credentials and active sessions")
 def clear(
     confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt")
 ):
-    """Clear cached master key (forces password re-entry)."""
+    """Clear cached master key and active session (forces password re-entry)."""
     
     if not confirm:
-        console.print("⚠️ [bold red]WARNING: This will clear your cached master key![/bold red]")
+        console.print("⚠️ [bold red]WARNING: This will clear your cached master key and session![/bold red]")
         console.print("📝 [cyan]What this does:[/cyan]")
         console.print("  • Removes cached key from system keyring")
+        console.print("  • Clears active CLI session")
         console.print("  • Forces password re-entry for next operation")
         console.print("  • [green]NO DATA LOSS[/green] - encrypted databases remain intact")
         console.print("  • Same password will regenerate identical key")
         console.print("")
-        console.print("⚠️ [yellow]Risk: If you forget your master password after clearing,")
-        console.print("   all encrypted data becomes permanently inaccessible![/yellow]")
+        console.print("⚠️ [yellow]Risk: If you forget your master password after clearing,\n   all encrypted data becomes permanently inaccessible![/yellow]")
         
         if not typer.confirm("Are you sure you want to continue?"):
             console.print("Operation cancelled.")

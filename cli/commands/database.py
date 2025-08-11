@@ -14,6 +14,11 @@ import sys
 import os
 from typing import Optional
 
+# Import decorators
+decorators_path = Path(__file__).parent.parent / "decorators"
+sys.path.insert(0, str(decorators_path))
+from sensitive import sensitive, destructive
+
 # Add shared module to path for CLI usage
 if getattr(sys, 'frozen', False):
     # Running in PyInstaller bundle
@@ -79,6 +84,45 @@ app = typer.Typer(
 console = Console()
 
 
+def _get_database_connection(db_path: str, force_fresh: bool = False) -> EncryptedLibSQLConnection:
+    """Helper function to get authenticated database connection with session support."""
+    try:
+        key_manager = AICOKeyManager()
+        
+        if not key_manager.has_stored_key():
+            console.print("[red]Error: Master key not found. Run 'aico security setup' first.[/red]")
+            raise typer.Exit(1)
+        
+        # Try session-based authentication first
+        if not force_fresh:
+            cached_key = key_manager._get_cached_session()
+            if cached_key:
+                # Use active session
+                key_manager._extend_session()
+                db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
+                return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+        
+        # Try stored key from keyring
+        import keyring
+        stored_key = keyring.get_password(key_manager.service_name, "master_key")
+        if stored_key:
+            master_key = bytes.fromhex(stored_key)
+            key_manager._cache_session(master_key)  # Cache for future use
+            db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+            return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+        
+        # Need password - use typer.prompt instead of getpass to avoid hanging
+        password = typer.prompt("Enter master password", hide_input=True)
+        master_key = key_manager.authenticate(password, interactive=False, force_fresh=force_fresh)
+        db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+        
+        return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+        
+    except Exception as e:
+        console.print(f"[red]Error connecting to database: {e}[/red]")
+        raise typer.Exit(1)
+
+
 
 
 
@@ -127,26 +171,14 @@ def init(
         master_password_was_created = True
         console.print("✅ [green]Security setup complete[/green]")
     
-    # Get password if not provided (authentication, not setup)
-    if not password:
-        if key_manager.has_stored_key():
-            # Master password exists - just authenticate
-            password = typer.prompt("Enter master password", hide_input=True)
-        else:
-            # This shouldn't happen (should be handled above), but safety fallback
-            console.print("❌ [red]Master password not set up. Run 'aico security setup' first.[/red]")
-            raise typer.Exit(1)
-    
     try:
         # Check if database already exists
         if db_file.exists():
             console.print(f"📁 Database already exists: [cyan]{db_file}[/cyan]")
             console.print("🔗 Connecting to existing database...")
             
-            # Connect to existing database
-            master_key = key_manager.authenticate(password, interactive=False)
-            db_key = key_manager.derive_database_key(master_key, "libsql", str(db_file))
-            conn = EncryptedLibSQLConnection(str(db_file), encryption_key=db_key)
+            # Connect to existing database using session-based auth
+            conn = _get_database_connection(str(db_file))
             
             # Initialize CLI logging with direct database access
             from aico.core.logging import initialize_cli_logging
@@ -162,19 +194,19 @@ def init(
             else:
                 console.print("ℹ️ [blue]Database is up to date - no missing schemas[/blue]")
         else:
-            console.print(f"🔐 Creating encrypted {db_type} database: [cyan]{db_path}[/cyan]")
+            console.print(f"🔐 Creating encrypted {db_type} database: [cyan]{db_file}[/cyan]")
             
             # Create encrypted database (currently only LibSQL supported)
             if db_type != "libsql":
                 console.print(f"❌ [red]Database type '{db_type}' not yet implemented[/red]")
                 console.print("Currently supported: libsql")
                 raise typer.Exit(1)
-                
-            conn = create_encrypted_database(
-                db_path=str(db_file),
-                master_password=password,
-                store_in_keyring=True
-            )
+            
+            # Connect to database using session-based authentication
+            conn = _get_database_connection(str(db_file))
+            
+            # Create the database file
+            conn.execute("SELECT 1")  # This creates the database file
             
             # Apply core schemas using schema registry
             console.print("📋 Applying core database schemas...")
@@ -224,13 +256,8 @@ def status(
         key_manager = AICOKeyManager()
         
         if key_manager.has_stored_key():
-            # Database likely encrypted, authenticate and connect properly
-            password = typer.prompt("Enter master password", hide_input=True)
-            master_key = key_manager.authenticate(password, interactive=False)
-            db_key = key_manager.derive_database_key(master_key, "libsql", str(db_file))
-            
-            # Connect with encryption key for accurate status
-            conn = EncryptedLibSQLConnection(db_path=str(db_file), encryption_key=db_key)
+            # Database likely encrypted, use session-based authentication
+            conn = _get_database_connection(str(db_file))
             
             # Initialize CLI logging with direct database access
             from aico.core.logging import initialize_cli_logging
@@ -484,18 +511,8 @@ def _get_db_connection():
         paths = AICOPaths()
         db_path = paths.resolve_database_path("aico.db")
         
-        # Get encryption key
-        if not key_manager.has_stored_key():
-            console.print("[red]Error: Master key not found. Run 'aico security setup' first.[/red]")
-            raise typer.Exit(1)
-            
-        # Authenticate to get master key
-        password = typer.prompt("Enter master password", hide_input=True)
-        master_key = key_manager.authenticate(password, interactive=False)
-        db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-        
-        # Create connection first
-        conn = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+        # Connect to database using session-based authentication
+        conn = _get_database_connection(str(db_path))
         
         # Simple CLI logging: manually write a test log to verify database logging works
         try:
@@ -763,6 +780,7 @@ def stat():
 
 
 @app.command()
+@destructive("rebuilds database structure, risk of data loss if interrupted")
 def vacuum():
     """Optimize database (VACUUM)"""
     conn = _get_db_connection()
@@ -854,6 +872,7 @@ def tail(
 
 
 @app.command()
+@destructive("allows arbitrary SQL execution including DROP, DELETE, UPDATE")
 def exec(
     query: str = typer.Argument(..., help="SQL query to execute"),
     format: str = typer.Option("table", "--format", help="Output format: table, json")

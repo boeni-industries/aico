@@ -104,7 +104,8 @@ Manages master password setup and security operations for AICO's encrypted data 
 | `setup` | First-time master password setup |
 | `passwd` | Change master password (affects all databases) |
 | `status` | Check security health and key management status |
-| `clear` | Clear cached master key (forces password re-entry) |
+| `session` | Show CLI session status and timeout information |
+| `clear` | Clear cached master key and active session (forces password re-entry) |
 | `test` | Performance diagnostics and key derivation benchmarking |
 
 ### Examples
@@ -116,12 +117,35 @@ aico security setup
 # Check status
 aico security status
 
+# Check session status
+aico security session
+
 # Change master password
 aico security passwd
 
 # Test authentication
 aico security test
+
+# Clear session (force re-authentication)
+aico security clear
 ```
+
+### Session Management
+
+AICO CLI uses session-based authentication for improved developer experience:
+
+- **30-minute timeout**: Sessions automatically expire after 30 minutes of inactivity
+- **Activity extension**: Sessions extend automatically on CLI usage
+- **Secure storage**: Master key stored in platform keyring (Keychain/Credential Manager)
+- **One-time setup**: Password entered once, then cached until session expires
+- **Force fresh auth**: Sensitive commands like `security passwd` always require fresh authentication
+
+### Session Workflow
+
+1. **First command**: Prompts for master password, creates 30-minute session
+2. **Subsequent commands**: Use cached session, no password prompt
+3. **Session expiry**: Next command prompts for password, creates new session
+4. **Manual clear**: `aico security clear` forces immediate re-authentication
 
 ## Database Commands (`aico db`)
 
