@@ -1,6 +1,11 @@
-from fastapi import FastAPI
 import asyncio
 import sys
+
+# Fix ZeroMQ compatibility on Windows - must be set before any ZMQ imports
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+from fastapi import FastAPI
 from pathlib import Path
 from contextlib import asynccontextmanager
 
