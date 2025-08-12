@@ -429,95 +429,122 @@ def status():
         else:
             config = {}
         
-        # Create status table
-        table = Table(title="🌐 API Gateway Status", show_header=True, header_style="bold magenta")
-        table.add_column("Component", style="cyan", no_wrap=True)
-        table.add_column("Status", justify="center")
-        table.add_column("Details", style="dim")
+        # Get live status first for primary display
+        host = config.get('host', '127.0.0.1')
+        rest_port = config.get('protocols', {}).get('rest', {}).get('port', 8771)
+        is_running = False
+        health_data = {}
         
-        # Gateway status
-        enabled = config.get("enabled", False)
-        status_color = "green" if enabled else "red"
-        status_text = "✓ Enabled" if enabled else "✗ Disabled"
-        table.add_row("Gateway", f"[{status_color}]{status_text}[/{status_color}]", f"Host: {config.get('host', 'N/A')}")
-        
-        # Try to get live status from running gateway (public health check first)
         try:
-            # First try public health endpoint (no auth required)
-            host = config.get('host', '127.0.0.1')
-            rest_port = config.get('protocols', {}).get('rest', {}).get('port', 8771)
             health_response = requests.get(f"http://{host}:{rest_port}/health", timeout=3)
-            
             if health_response.status_code == 200:
+                is_running = True
                 health_data = health_response.json()
-                table.add_row("Live Status", "[green]✓ Running[/green]", f"Version: {health_data.get('version', 'N/A')}")
-                
-                # Try authenticated status for more details (optional)
-                token = _get_jwt_token()
-                if token:
-                    try:
-                        auth_response = _make_authenticated_request("GET", "/api/v1/system/status")
-                        if auth_response.status_code == 200:
-                            auth_data = auth_response.json()
-                            if 'uptime' in auth_data:
-                                table.add_row("Uptime", "[green]✓ Available[/green]", f"{auth_data.get('uptime', 'N/A')}")
-                    except:
-                        pass  # Auth failed, but we already have basic status
-            else:
-                table.add_row("Live Status", "[red]✗ Not responding[/red]", f"HTTP {health_response.status_code}")
-                
         except requests.RequestException:
-            table.add_row("Live Status", "[yellow]○ Offline[/yellow]", "Cannot connect")
+            pass
         
-        # Protocol status
-        protocols = config.get("protocols", {})
-        for protocol, proto_config in protocols.items():
-            proto_enabled = proto_config.get("enabled", False)
-            proto_color = "green" if proto_enabled else "yellow"
-            proto_status = "✓ Active" if proto_enabled else "○ Inactive"
-            
-            if protocol == "rest":
-                details = f"Port: {proto_config.get('port', 'N/A')}"
-            elif protocol == "websocket":
-                details = f"Port: {proto_config.get('port', 'N/A')}"
-            elif protocol == "zeromq_ipc":
-                details = "IPC Socket"
-            elif protocol == "grpc":
-                details = f"Port: {proto_config.get('port', 'N/A')}"
+        # Primary status header - most important info first
+        if is_running:
+            console.print("🌐 [bold green]API Gateway Status: RUNNING[/bold green]")
+            console.print(f"   [dim]Version {health_data.get('version', 'Unknown')} • {host}:{rest_port}[/dim]")
+        else:
+            enabled = config.get("enabled", False)
+            if enabled:
+                console.print("🌐 [bold yellow]API Gateway Status: OFFLINE[/bold yellow]")
+                console.print(f"   [dim]Configured but not responding • {host}:{rest_port}[/dim]")
             else:
-                details = "N/A"
-                
-            table.add_row(f"{protocol.upper()}", f"[{proto_color}]{proto_status}[/{proto_color}]", details)
+                console.print("🌐 [bold red]API Gateway Status: DISABLED[/bold red]")
+                console.print(f"   [dim]Not enabled in configuration • {host}:{rest_port}[/dim]")
         
-        console.print(table)
+        console.print()
         
-        # Show authentication status
-        token = _get_jwt_token()
-        auth_status = "[green]✓ Authenticated[/green]" if token else "[red]✗ Not authenticated[/red]"
-        console.print(f"\n🔐 CLI Authentication: {auth_status}")
-        if not token:
-            console.print("[dim]Run 'aico gateway auth login' to authenticate[/dim]")
-        
-        # Show available authentication methods from config
-        auth_config = config.get("auth", {})
-        auth_methods = []
-        if auth_config.get("jwt"):
-            auth_methods.append("JWT")
-        if auth_config.get("api_key"):
-            auth_methods.append("API Key")
-        if auth_config.get("session"):
-            auth_methods.append("Session")
+        # Protocol endpoints table - clean and focused
+        protocols = config.get("protocols", {})
+        if protocols:
+            table = Table(title="Protocol Endpoints", show_header=True, header_style="bold blue")
+            table.add_column("Protocol", style="cyan", no_wrap=True)
+            table.add_column("Status", justify="left")
+            table.add_column("Endpoint", style="dim")
             
-        if auth_methods:
-            auth_panel = Panel(
-                f"Authentication: {', '.join(auth_methods)}",
-                title="🔒 Security",
-                border_style="green"
-            )
-            console.print(auth_panel)
+            for protocol, proto_config in protocols.items():
+                proto_enabled = proto_config.get("enabled", False)
+                
+                if proto_enabled and is_running:
+                    status_icon = "✅"
+                    status_text = "Active"
+                    status_color = "green"
+                elif proto_enabled:
+                    status_icon = "🟡"
+                    status_text = "Ready"
+                    status_color = "yellow"
+                else:
+                    status_icon = "⚫"
+                    status_text = "Disabled"
+                    status_color = "dim"
+                
+                # Format endpoint info
+                if protocol == "rest":
+                    endpoint = f"http://{host}:{proto_config.get('port', 'N/A')}"
+                elif protocol == "websocket":
+                    endpoint = f"ws://{host}:{proto_config.get('port', 'N/A')}"
+                elif protocol == "zeromq_ipc":
+                    endpoint = "IPC Socket"
+                elif protocol == "grpc":
+                    endpoint = f"grpc://{host}:{proto_config.get('port', 'N/A')}"
+                else:
+                    endpoint = "N/A"
+                
+                table.add_row(
+                    protocol.upper(),
+                    f"{status_icon} [{status_color}]{status_text}[/{status_color}]",
+                    endpoint
+                )
+            
+            console.print(table)
+            console.print()
+        
+        # Authentication status - clear and actionable
+        token = _get_jwt_token()
+        if token:
+            # Test token validity if gateway is running
+            token_valid = False
+            if is_running:
+                try:
+                    auth_response = _make_authenticated_request("GET", "/api/v1/system/status")
+                    token_valid = auth_response.status_code == 200
+                except:
+                    pass
+            
+            if token_valid:
+                console.print("🔐 [bold green]CLI Authentication: AUTHENTICATED[/bold green]")
+                console.print("   [dim]Token is valid and working[/dim]")
+            elif is_running:
+                console.print("🔐 [bold yellow]CLI Authentication: TOKEN EXPIRED[/bold yellow]")
+                console.print("   [dim]Run [cyan]aico gateway auth login[/cyan] to refresh[/dim]")
+            else:
+                console.print("🔐 [bold blue]CLI Authentication: READY[/bold blue]")
+                console.print("   [dim]Token stored (gateway offline for verification)[/dim]")
+        else:
+            console.print("🔐 [bold red]CLI Authentication: NOT AUTHENTICATED[/bold red]")
+            console.print("   [dim]Run [cyan]aico gateway auth login[/cyan] to authenticate[/dim]")
+        
+        # Quick actions based on status
+        console.print()
+        if not is_running and config.get("enabled", False):
+            console.print("💡 [bold]Quick Actions:[/bold]")
+            console.print("   • [cyan]aico gateway start[/cyan] - Start the gateway service")
+            console.print("   • [cyan]aico gateway test[/cyan] - Test connectivity")
+        elif not config.get("enabled", False):
+            console.print("💡 [bold]Quick Actions:[/bold]")
+            console.print("   • [cyan]aico config set api_gateway.enabled true[/cyan] - Enable gateway")
+            console.print("   • [cyan]aico gateway start[/cyan] - Start the gateway service")
+        elif is_running and not token:
+            console.print("💡 [bold]Quick Actions:[/bold]")
+            console.print("   • [cyan]aico gateway auth login[/cyan] - Authenticate CLI access")
+            console.print("   • [cyan]aico gateway test[/cyan] - Test API endpoints")
         
     except Exception as e:
-        console.print(f"[red]✗ Failed to get gateway status: {e}[/red]")
+        console.print(f"❌ [red]Failed to get gateway status: {e}[/red]")
         raise typer.Exit(1)
 
 
