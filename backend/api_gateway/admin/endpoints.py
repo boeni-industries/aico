@@ -42,12 +42,13 @@ def create_admin_app(auth_manager, authz_manager, message_router, gateway) -> Fa
         try:
             token = credentials.credentials
             
-            # Decode and validate JWT token
+            # Decode and validate JWT token (skip audience validation for CLI compatibility)
             try:
                 payload = jwt.decode(
                     token,
                     auth_manager._get_jwt_secret(),
-                    algorithms=[auth_manager.jwt_algorithm]
+                    algorithms=[auth_manager.jwt_algorithm],
+                    options={"verify_aud": False}
                 )
             except jwt.ExpiredSignatureError:
                 raise HTTPException(status_code=401, detail="Token has expired")

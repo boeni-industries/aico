@@ -106,7 +106,8 @@ def gateway_callback(ctx: typer.Context):
             ("test", "Test API Gateway connectivity"),
             ("enable", "Enable a protocol adapter"),
             ("disable", "Disable a protocol adapter"),
-            ("auth", "JWT authentication management")
+            ("auth", "JWT authentication management"),
+            ("admin", "Administrative operations")
         ]
         
         examples = [
@@ -798,6 +799,10 @@ def disable_protocol(
 auth_app = typer.Typer(help="JWT authentication management")
 app.add_typer(auth_app, name="auth")
 
+# Admin subcommand group
+admin_app = typer.Typer(help="Administrative operations")
+app.add_typer(admin_app, name="admin")
+
 @auth_app.command("login")
 def auth_login():
     """Generate and store JWT token for CLI authentication (zero-effort security)"""
@@ -823,15 +828,16 @@ def auth_login():
         # Get or generate JWT secret using key manager
         jwt_secret = key_manager.get_jwt_secret("api_gateway")
         
-        # Create CLI token payload
+        # Create CLI token payload (matching backend admin endpoint expectations)
         now = datetime.utcnow()
         payload = {
             "sub": "aico-cli",  # Subject: AICO CLI
+            "username": "aico-cli",  # Username field expected by backend
             "iss": "aico-gateway",  # Issuer: AICO Gateway
             "aud": "aico-api",  # Audience: AICO API
             "iat": int(now.timestamp()),  # Issued at
             "exp": int((now + timedelta(days=7)).timestamp()),  # Expires in 7 days
-            "scope": "admin",  # Admin privileges for CLI
+            "roles": ["admin"],  # Admin role array expected by backend
             "type": "cli_token"  # Token type
         }
         
@@ -896,7 +902,8 @@ def auth_status():
                 exp_time = datetime.fromtimestamp(decoded.get('exp', 0))
                 console.print(f"[green]✓ Token is valid and properly signed[/green]")
                 console.print(f"[dim]Subject: {decoded.get('sub', 'Unknown')}[/dim]")
-                console.print(f"[dim]Scope: {decoded.get('scope', 'Unknown')}[/dim]")
+                console.print(f"[dim]Username: {decoded.get('username', 'Unknown')}[/dim]")
+                console.print(f"[dim]Roles: {', '.join(decoded.get('roles', []))}[/dim]")
                 console.print(f"[dim]Expires: {exp_time.strftime('%Y-%m-%d %H:%M:%S')}[/dim]")
                 
             except jwt.ExpiredSignatureError:
@@ -910,6 +917,171 @@ def auth_status():
     else:
         console.print("[red]✗ No authentication token found in keyring[/red]")
         console.print("[dim]Run 'aico gateway auth login' to authenticate[/dim]")
+
+
+# Admin commands
+@admin_app.command("sessions")
+def admin_list_sessions(
+    user_id: Optional[str] = typer.Option(None, "--user", help="Filter by specific user ID"),
+    admin_only: bool = typer.Option(False, "--admin-only", help="Show only admin sessions"),
+    include_stats: bool = typer.Option(True, "--stats/--no-stats", help="Include session statistics")
+):
+    """📋 List active user sessions"""
+    try:
+        # Build query parameters
+        params = {}
+        if user_id:
+            params["user_id"] = user_id
+        if admin_only:
+            params["admin_only"] = "true"
+        if not include_stats:
+            params["include_stats"] = "false"
+        
+        # Make authenticated request to admin endpoint
+        response = _make_authenticated_request("get", "/admin/auth/sessions", params=params)
+        data = response.json()
+        
+        console.print("\n🔐 [bold cyan]Active Sessions[/bold cyan]\n")
+        
+        # Display sessions
+        sessions = data.get("sessions", [])
+        if not sessions:
+            console.print("[yellow]No active sessions found[/yellow]")
+            return
+        
+        # Create sessions table
+        table = Table(
+            title=f"Sessions ({data.get('total', 0)} total)",
+            show_header=True,
+            header_style="bold magenta",
+            border_style="blue"
+        )
+        
+        table.add_column("Session ID", style="cyan", width=12)
+        table.add_column("User", style="green")
+        table.add_column("Status", style="yellow")
+        table.add_column("Created", style="dim")
+        table.add_column("Last Active", style="dim")
+        table.add_column("IP Address", style="blue")
+        
+        for session in sessions:
+            # Truncate session ID for display
+            session_id = session.get("session_id", "")[:8] + "..."
+            user_id = session.get("user_id", "Unknown")
+            status = session.get("status", "unknown").title()
+            created = session.get("created_at", "")[:19] if session.get("created_at") else "Unknown"
+            last_active = session.get("last_accessed_at", "")[:19] if session.get("last_accessed_at") else "Unknown"
+            ip_address = session.get("ip_address", "Unknown")
+            
+            # Color code status
+            if status.lower() == "active":
+                status = f"[green]{status}[/green]"
+            elif status.lower() == "expired":
+                status = f"[red]{status}[/red]"
+            
+            table.add_row(session_id, user_id, status, created, last_active, ip_address)
+        
+        console.print(table)
+        
+        # Display statistics if included
+        if include_stats and "stats" in data:
+            stats = data["stats"]
+            console.print("\n📊 [bold cyan]Session Statistics[/bold cyan]")
+            
+            stats_table = Table(show_header=False, border_style="dim")
+            stats_table.add_column("Metric", style="bold white")
+            stats_table.add_column("Count", style="cyan")
+            
+            stats_table.add_row("Total Sessions", str(stats.get("total_sessions", 0)))
+            stats_table.add_row("Active Sessions", str(stats.get("active_sessions", 0)))
+            stats_table.add_row("Admin Sessions", str(stats.get("admin_sessions", 0)))
+            stats_table.add_row("Expired Sessions", str(stats.get("expired_sessions", 0)))
+            stats_table.add_row("Revoked Sessions", str(stats.get("revoked_sessions", 0)))
+            
+            console.print(stats_table)
+        
+    except requests.RequestException as e:
+        if "No authentication token" in str(e):
+            console.print("[red]✗ Not authenticated. Run 'aico gateway auth login' first[/red]")
+        elif "Authentication failed" in str(e):
+            console.print("[red]✗ Authentication failed. Token may be expired[/red]")
+            console.print("[dim]Run 'aico gateway auth login' to refresh token[/dim]")
+        else:
+            console.print(f"[red]✗ Request failed: {e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Failed to list sessions: {e}[/red]")
+        raise typer.Exit(1)
+
+@admin_app.command("revoke-session") 
+def admin_revoke_session(
+    session_id: str = typer.Argument(..., help="Session ID to revoke")
+):
+    """🚫 Revoke a user session"""
+    try:
+        # Make authenticated request to revoke session
+        response = _make_authenticated_request("delete", f"/admin/auth/sessions/{session_id}")
+        
+        if response.status_code == 200:
+            console.print(f"[green]✓ Session {session_id} revoked successfully[/green]")
+        else:
+            console.print(f"[red]✗ Failed to revoke session: {response.text}[/red]")
+            raise typer.Exit(1)
+            
+    except requests.RequestException as e:
+        if "No authentication token" in str(e):
+            console.print("[red]✗ Not authenticated. Run 'aico gateway auth login' first[/red]")
+        elif "Authentication failed" in str(e):
+            console.print("[red]✗ Authentication failed. Token may be expired[/red]")
+            console.print("[dim]Run 'aico gateway auth login' to refresh token[/dim]")
+        else:
+            console.print(f"[red]✗ Request failed: {e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Failed to revoke session: {e}[/red]")
+        raise typer.Exit(1)
+
+@admin_app.command("gateway-status")
+def admin_gateway_status():
+    """📊 Get detailed gateway status"""
+    try:
+        response = _make_authenticated_request("get", "/admin/gateway/status")
+        data = response.json()
+        
+        console.print("\n🚀 [bold cyan]Gateway Status[/bold cyan]\n")
+        
+        # Display gateway health status
+        status_table = Table(show_header=False, border_style="green")
+        status_table.add_column("Component", style="bold white")
+        status_table.add_column("Status", style="cyan")
+        
+        # Main status
+        main_status = data.get("status", "unknown")
+        status_color = "green" if main_status == "healthy" else "red"
+        status_table.add_row("Gateway", f"[{status_color}]{main_status.title()}[/{status_color}]")
+        
+        # Components
+        components = data.get("components", {})
+        for component, info in components.items():
+            if isinstance(info, dict):
+                comp_status = info.get("status", "unknown")
+                comp_color = "green" if comp_status in ["running", "healthy"] else "red"
+                status_table.add_row(component.replace("_", " ").title(), f"[{comp_color}]{comp_status.title()}[/{comp_color}]")
+        
+        console.print(status_table)
+        
+    except requests.RequestException as e:
+        if "No authentication token" in str(e):
+            console.print("[red]✗ Not authenticated. Run 'aico gateway auth login' first[/red]")
+        elif "Authentication failed" in str(e):
+            console.print("[red]✗ Authentication failed. Token may be expired[/red]")
+            console.print("[dim]Run 'aico gateway auth login' to refresh token[/dim]")
+        else:
+            console.print(f"[red]✗ Request failed: {e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Failed to get gateway status: {e}[/red]")
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":
