@@ -633,11 +633,11 @@ aico/
 │               ├── utils.py
 │               └── constants.py
 ├── backend/                    # Python backend service
-│   ├── requirements.txt        # includes -e ../shared/aico-*
+│   ├── pyproject.toml          # includes aico-shared dependency
 │   └── main.py
 ├── cli/                        # Development CLI
-│   ├── requirements.txt        # includes -e ../shared/aico-*
-│   └── main.py
+│   ├── pyproject.toml          # includes aico-shared dependency
+│   └── aico_main.py
 └── frontend/                   # Flutter frontend
     └── pubspec.yaml            # May reference shared schemas
 ```
@@ -659,12 +659,16 @@ setup(
 #### Development Installation
 Subsystems install shared libraries in development mode:
 
-```bash
-# In backend/requirements.txt or cli/requirements.txt
--e ../shared/aico-security
--e ../shared/aico-data
--e ../shared/aico-core
--e ../shared/aico-common
+```toml
+# In backend/pyproject.toml or cli/pyproject.toml
+[tool.uv.sources]
+aico-shared = { path = "../shared", editable = true }
+
+# Dependencies section includes:
+dependencies = [
+    "aico-shared",
+    # ... other dependencies
+]
 ```
 
 #### Usage Examples

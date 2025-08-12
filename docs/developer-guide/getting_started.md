@@ -109,10 +109,10 @@ You should see `Python 3.13.5`.
 > 
 > AICO uses application-level encryption with database-native features (SQLCipher, DuckDB encryption, RocksDB EncryptedEnv) rather than filesystem-level encryption. This provides better cross-platform compatibility and performance without requiring additional system dependencies.
 
-### 3. Python Dependency Management with UV (CLI & Backend)
-AICO uses [UV](https://github.com/astral-sh/uv) and `requirements.txt` for dependency management in all Python components. Each component is isolated with its own `.venv` and `requirements.txt` file.
+### 3. Python Dependency Management with Modern Tools
+AICO uses modern Python packaging with `pyproject.toml` files for dependency management. Each component (CLI, backend, shared) uses `pyproject.toml` for clean, standardized dependency declarations.
 
-**Install UV globally (once per system):**
+**Install UV globally (recommended):**
 
   ```sh
   pip install uv
@@ -126,8 +126,7 @@ AICO uses [UV](https://github.com/astral-sh/uv) and `requirements.txt` for depen
   cd cli
   py -3.13 -m venv .venv
   .venv\Scripts\Activate.ps1
-  uv pip install -r requirements.txt
-  uv pip install -e .
+  uv pip install -e .[dev]
   aico --help
   ```
 
@@ -136,18 +135,16 @@ AICO uses [UV](https://github.com/astral-sh/uv) and `requirements.txt` for depen
   cd cli
   py -3.13 -m venv .venv
   .venv\Scripts\activate.bat
-  uv pip install -r requirements.txt
-  uv pip install -e .
+  uv pip install -e .[dev]
   aico --help
   ```
 
-  **macOS/Linux**
+  **Git Bash/WSL/Linux/macOS:**
   ```sh
   cd cli
   python3.13 -m venv .venv
   source .venv/bin/activate
-  uv pip install -r requirements.txt
-  uv pip install -e .
+  uv pip install -e .[dev]
   aico --help
   ```
 
@@ -158,9 +155,8 @@ AICO uses [UV](https://github.com/astral-sh/uv) and `requirements.txt` for depen
   cd backend
   py -3.13 -m venv .venv
   .venv\Scripts\Activate.ps1
-  uv pip install -r requirements.txt
-  uvicorn main:app --reload --port 8770
-  # Visit http://127.0.0.1:8770
+  uv pip install -e .
+  uvicorn main:app --reload --port 8700
   ```
 
   **Windows Cmd**
@@ -168,24 +164,24 @@ AICO uses [UV](https://github.com/astral-sh/uv) and `requirements.txt` for depen
   cd backend
   py -3.13 -m venv .venv
   .venv\Scripts\activate.bat
-  uv pip install -r requirements.txt
-  uvicorn main:app --reload --port 8770
-  REM Visit http://127.0.0.1:8770
+  uv pip install -e .
+  uvicorn main:app --reload --port 8700
   ```
 
-  **macOS/Linux**
+  **Git Bash/WSL/Linux/macOS:**
   ```sh
   cd backend
   python3.13 -m venv .venv
   source .venv/bin/activate
-  uv pip install -r requirements.txt
-  uvicorn main:app --reload --port 8770
-  # Visit http://127.0.0.1:8770
+  uv pip install -e .
+  uvicorn main:app --reload --port 8700
   ```
 
-> **Tip:** Each Python component uses its own `.venv` and `requirements.txt`. Always activate the correct environment before installing or running anything. In VS Code or Windsurf, select the correct Python interpreter from `.venv` for best experience.
+> **Tip:** Each Python component uses its own `.venv` and `pyproject.toml`. Always activate the correct environment before installing or running anything. In VS Code or Windsurf, select the correct Python interpreter from `.venv` for best experience.
 > 
-> Use `uv pip install <package>` and `uv pip freeze > requirements.txt` to add or update dependencies.
+> **Shared Library:** The `/shared` directory contains common functionality used by both CLI and backend. It's automatically included as an editable dependency when you install with `[dev]` extras for CLI or directly for backend.
+> 
+> **Adding Dependencies:** Edit the respective `pyproject.toml` file and run `uv pip install -e .` to update your environment.
 
 !!! warning
     Only one Python virtual environment can be active per terminal session. If you need to work with both the CLI and backend at the same time, open separate terminal windows and activate the appropriate environment in each. Changing directories does not automatically switch the active environment—you must activate it explicitly.
@@ -251,12 +247,35 @@ npm --version
 **Run the app:**
   ```sh
   npm start
+  # Visit http://localhost:3000
   ```
 
 **.gitignore:** Already configured to exclude build artifacts and `node_modules`.
 
 > **Tip:**
-> Use VS Code, Windsurf, or any modern IDE with JS/TS support for development.
+> Use VS Code,  **Windows PowerShell**
+  ```powershell
+  cd studio
+  npm install
+  npm start
+  # Visit http://localhost:3000
+  ```
+
+  **Windows Cmd**
+  ```cmd
+  cd studio
+  npm install
+  npm start
+  REM Visit http://localhost:3000
+  ```
+
+  **macOS/Linux**
+  ```sh
+  cd studio
+  npm install
+  npm start
+  # Visit http://localhost:3000
+  ```
 
 ---
 
@@ -270,7 +289,7 @@ Below are the build and run commands for each major part of the system. Substitu
   ```sh
   cd backend
   .venv\Scripts\Activate.ps1
-  uv pip install -r requirements.txt
+  uv pip install -e .
   uvicorn main:app --reload --port 8700
   # Visit http://127.0.0.1:8700
   ```
@@ -278,14 +297,14 @@ Below are the build and run commands for each major part of the system. Substitu
   ```sh
   cd backend
   .venv\Scripts\activate.bat
-  uv pip install -r requirements.txt
+  uv pip install -e .
   uvicorn main:app --reload --port 8700
   ```
 - **Git Bash/WSL/Linux/macOS:**
   ```sh
   cd backend
   source .venv/bin/activate
-  uv pip install -r requirements.txt
+  uv pip install -e .
   uvicorn main:app --reload --port 8700
   ```
 
@@ -296,8 +315,8 @@ Below are the build and run commands for each major part of the system. Substitu
   ```sh
   cd cli
   # Activate venv (see above)
-  uv pip install -r requirements.txt
-  python aico.py
+  uv pip install -e .[dev]
+  python aico_main.py
   ```
 
 #### Build the CLI executable (PyInstaller)
@@ -305,8 +324,8 @@ Below are the build and run commands for each major part of the system. Substitu
   ```sh
   cd cli
   # Activate venv (see above)
-  uv pip install -r requirements.txt
-  pyinstaller aico.spec
+  uv pip install -e .[dev]
+  pyinstaller aico_main.py --onefile --name aico
   # Executable will be in dist/aico(.exe)
   ```
 
@@ -349,7 +368,9 @@ Below are the build and run commands for each major part of the system. Substitu
 
 #### Python Dependency Management
 - **Previous approach:** Each Python component (`cli/`, `backend/`) used its own `pyproject.toml` (PEP 621/Poetry) for dependencies and metadata. Poetry was used for dependency management and packaging. This was replaced due to friction, IDE integration issues, and version pinning complexity.
-- **Current approach:** Each Python component (`cli/`, `backend/`) now uses its own `.venv` and `requirements.txt`. [UV](https://github.com/astral-sh/uv) is used for ultra-fast dependency installs and lockfile management. This approach is simpler, more compatible with IDEs, and easier for contributors.
+- **Current approach:** Each Python component (`cli/`, `backend/`, `shared/`) now uses modern `pyproject.toml` files for dependency management. [UV](https://github.com/astral-sh/uv) is used for ultra-fast dependency installs. This approach follows modern Python packaging standards and is simpler for contributors.
+
+- Add dependencies by editing the respective `pyproject.toml` file and running `uv pip install -e .` to update your environment.
 - The supported Python version is pinned to `>=3.13,<3.15` due to PyInstaller compatibility. Update this restriction only after verifying all key dependencies support newer Python versions.
 - Use `uv pip install <package>` to add dependencies and `uv pip freeze > requirements.txt` to refresh lockfiles.
 - PyInstaller is included as a CLI dependency for building distributable executables.
