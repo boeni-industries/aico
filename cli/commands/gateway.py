@@ -43,23 +43,19 @@ if sys.platform == "win32":
 
 console = Console()
 
-# JWT token storage path
-JWT_TOKEN_FILE = Path.home() / ".aico" / "gateway_token"
-
 def _get_jwt_token() -> Optional[str]:
-    """Get stored JWT token for CLI authentication"""
+    """Get stored JWT token for CLI authentication from secure keyring"""
     try:
-        if JWT_TOKEN_FILE.exists():
-            return JWT_TOKEN_FILE.read_text().strip()
-        return None
+        key_manager = AICOKeyManager()
+        return key_manager.get_jwt_token("api_gateway")
     except Exception:
         return None
 
 def _store_jwt_token(token: str) -> None:
-    """Store JWT token for CLI authentication"""
+    """Store JWT token for CLI authentication in secure keyring"""
     try:
-        JWT_TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-        JWT_TOKEN_FILE.write_text(token)
+        key_manager = AICOKeyManager()
+        key_manager.store_jwt_token("api_gateway", token)
     except Exception:
         pass
 
@@ -371,10 +367,15 @@ def stop():
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
                 cmdline = proc.info['cmdline']
-                if cmdline and any('main.py' in arg and 'backend' in arg for arg in cmdline):
-                    proc.terminate()
-                    stopped_count += 1
-                    console.print(f"[yellow]Terminated process {proc.info['pid']}[/yellow]")
+                if cmdline:
+                    # Look for gateway processes (uvicorn or direct main.py)
+                    cmdline_str = ' '.join(cmdline)
+                    if ('uvicorn' in cmdline_str and 'api_gateway' in cmdline_str) or \
+                       ('main.py' in cmdline_str) or \
+                       ('api_gateway.main:app' in cmdline_str):
+                        proc.terminate()
+                        stopped_count += 1
+                        console.print(f"[yellow]Terminated process {proc.info['pid']}[/yellow]")
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
         
@@ -506,14 +507,29 @@ def status():
         # Authentication status - clear and actionable
         token = _get_jwt_token()
         if token:
-            # Test token validity if gateway is running
+            # Validate token locally using the same JWT secret
             token_valid = False
-            if is_running:
-                try:
-                    auth_response = _make_authenticated_request("GET", "/api/v1/system/status")
-                    token_valid = auth_response.status_code == 200
-                except:
-                    pass
+            try:
+                import jwt
+                from aico.security.key_manager import AICOKeyManager
+                
+                key_manager = AICOKeyManager()
+                jwt_secret = key_manager.get_jwt_secret("api_gateway")
+                
+                # Decode and validate the token (skip audience validation for CLI)
+                decoded = jwt.decode(
+                    token, 
+                    jwt_secret, 
+                    algorithms=["HS256"],
+                    options={"verify_aud": False}  # Skip audience validation for CLI tokens
+                )
+                token_valid = True
+            except jwt.ExpiredSignatureError:
+                # Token is actually expired
+                token_valid = False
+            except Exception:
+                # Token is invalid for other reasons
+                token_valid = False
             
             if token_valid:
                 console.print("🔐 [bold green]CLI Authentication: AUTHENTICATED[/bold green]")
@@ -786,33 +802,41 @@ app.add_typer(auth_app, name="auth")
 def auth_login():
     """Generate and store JWT token for CLI authentication (zero-effort security)"""
     try:
-        # Check if JWT secrets are initialized first
+        # Check if master password is set up first
         key_manager = AICOKeyManager()
         if not key_manager.has_stored_key():
             console.print("[red]✗ Master password not set up. Run 'aico security setup' first.[/red]")
             raise typer.Exit(1)
         
-        # Import auth manager to generate CLI token
-        import sys
-        from pathlib import Path
+        # Generate CLI JWT token directly without backend dependencies
+        import jwt
+        import time
+        from datetime import datetime, timedelta
         
-        # Add backend to path temporarily for import
-        backend_dir = Path(__file__).parent.parent.parent / "backend"
-        if str(backend_dir) not in sys.path:
-            sys.path.insert(0, str(backend_dir))
-        
-        try:
-            from api_gateway.core.auth import AuthenticationManager
-        except ImportError as ie:
-            console.print(f"[red]✗ Cannot import AuthenticationManager: {ie}[/red]")
-            console.print("[yellow]💡 Make sure backend dependencies are installed with 'uv sync' in backend directory[/yellow]")
-            raise typer.Exit(1)
-        
+        # Load gateway config to get JWT secret
         config_manager = ConfigurationManager()
         config_manager.initialize(lightweight=True)
+        gateway_config = config_manager.get("api_gateway", {})
+        auth_config = gateway_config.get("auth", {})
+        jwt_config = auth_config.get("jwt", {})
         
-        auth_manager = AuthenticationManager(config_manager.get_all())
-        token = auth_manager.generate_cli_token()
+        # Get or generate JWT secret using key manager
+        jwt_secret = key_manager.get_jwt_secret("api_gateway")
+        
+        # Create CLI token payload
+        now = datetime.utcnow()
+        payload = {
+            "sub": "aico-cli",  # Subject: AICO CLI
+            "iss": "aico-gateway",  # Issuer: AICO Gateway
+            "aud": "aico-api",  # Audience: AICO API
+            "iat": int(now.timestamp()),  # Issued at
+            "exp": int((now + timedelta(days=7)).timestamp()),  # Expires in 7 days
+            "scope": "admin",  # Admin privileges for CLI
+            "type": "cli_token"  # Token type
+        }
+        
+        # Generate JWT token
+        token = jwt.encode(payload, jwt_secret, algorithm="HS256")
         
         # Store token securely
         _store_jwt_token(token)
@@ -820,10 +844,13 @@ def auth_login():
         console.print("[green]✓ CLI authentication token generated and stored[/green]")
         console.print("[dim]Token valid for 7 days with admin privileges[/dim]")
         
+    except ImportError:
+        console.print("[red]✗ JWT library not available. Run 'uv pip install -r requirements.txt' in CLI directory[/red]")
+        raise typer.Exit(1)
     except Exception as e:
-        if "JWT secret" in str(e):
+        if "JWT secret" in str(e) or "key" in str(e).lower():
             console.print(f"[red]✗ JWT secrets not initialized: {e}[/red]")
-            console.print("[yellow]Run 'aico security setup --jwt-only' to initialize JWT secrets[/yellow]")
+            console.print("[yellow]Run 'aico security setup' to initialize security keys[/yellow]")
         else:
             console.print(f"[red]✗ Failed to generate authentication token: {e}[/red]")
         raise typer.Exit(1)
@@ -832,11 +859,11 @@ def auth_login():
 def auth_logout():
     """Remove stored JWT token"""
     try:
-        if JWT_TOKEN_FILE.exists():
-            JWT_TOKEN_FILE.unlink()
-            console.print("[green]✓ Authentication token removed[/green]")
+        key_manager = AICOKeyManager()
+        if key_manager.remove_jwt_token("api_gateway"):
+            console.print("[green]✓ Authentication token removed from secure keyring[/green]")
         else:
-            console.print("[yellow]⚠ No authentication token found[/yellow]")
+            console.print("[yellow]⚠ No authentication token found or failed to remove[/yellow]")
     except Exception as e:
         console.print(f"[red]✗ Failed to remove token: {e}[/red]")
 
@@ -846,23 +873,42 @@ def auth_status():
     token = _get_jwt_token()
     if token:
         try:
-            console.print("[green]✓ Authentication token found[/green]")
-            console.print(f"[dim]Token stored at: {JWT_TOKEN_FILE}[/dim]")
+            console.print("[green]✓ Authentication token found in secure keyring[/green]")
             
-            # Test token by making a simple request
+            # Validate token locally using the same logic as status command
             try:
-                response = _make_authenticated_request("GET", "/api/v1/system/status")
-                if response.status_code == 200:
-                    console.print("[green]✓ Token is valid and working[/green]")
-                else:
-                    console.print("[yellow]⚠ Token may be expired or invalid[/yellow]")
-            except:
-                console.print("[yellow]⚠ Could not verify token (gateway may be offline)[/yellow]")
+                import jwt
+                from aico.security.key_manager import AICOKeyManager
+                
+                key_manager = AICOKeyManager()
+                jwt_secret = key_manager.get_jwt_secret("api_gateway")
+                
+                # Decode and validate the token (skip audience validation for CLI)
+                decoded = jwt.decode(
+                    token, 
+                    jwt_secret, 
+                    algorithms=["HS256"],
+                    options={"verify_aud": False}
+                )
+                
+                # Show token details
+                from datetime import datetime
+                exp_time = datetime.fromtimestamp(decoded.get('exp', 0))
+                console.print(f"[green]✓ Token is valid and properly signed[/green]")
+                console.print(f"[dim]Subject: {decoded.get('sub', 'Unknown')}[/dim]")
+                console.print(f"[dim]Scope: {decoded.get('scope', 'Unknown')}[/dim]")
+                console.print(f"[dim]Expires: {exp_time.strftime('%Y-%m-%d %H:%M:%S')}[/dim]")
+                
+            except jwt.ExpiredSignatureError:
+                console.print("[red]✗ Token has expired[/red]")
+                console.print("[dim]Run 'aico gateway auth login' to refresh[/dim]")
+            except Exception as e:
+                console.print(f"[yellow]⚠ Token validation error: {e}[/yellow]")
                 
         except Exception as e:
             console.print(f"[red]✗ Error checking token: {e}[/red]")
     else:
-        console.print("[red]✗ No authentication token found[/red]")
+        console.print("[red]✗ No authentication token found in keyring[/red]")
         console.print("[dim]Run 'aico gateway auth login' to authenticate[/dim]")
 
 

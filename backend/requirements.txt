@@ -9,6 +9,7 @@ httpx
 pydantic
 pytest
 platformdirs
+passlib[bcrypt]
 
 # AICO shared functionality
 -e ../shared/

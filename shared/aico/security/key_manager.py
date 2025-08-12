@@ -798,3 +798,88 @@ class AICOKeyManager:
         
         # Salt and derived key automatically garbage collected
         # No disk writes, no cleanup needed, no security risk
+    
+    def store_jwt_token(self, service_name: str, token: str) -> None:
+        """
+        Store JWT token securely in platform keyring.
+        
+        Args:
+            service_name: Service identifier (e.g., 'api_gateway', 'cli')
+            token: JWT token to store
+        """
+        token_key = f"{service_name}_jwt_token"
+        
+        try:
+            keyring.set_password(self.service_name, token_key, token)
+            _get_logger().debug(f"JWT token stored securely for service: {service_name}")
+        except Exception as e:
+            _get_logger().error(f"Failed to store JWT token in keyring: {e}")
+            raise RuntimeError(f"Could not store JWT token securely: {e}")
+    
+    def get_jwt_token(self, service_name: str) -> Optional[str]:
+        """
+        Retrieve JWT token from platform keyring.
+        
+        Args:
+            service_name: Service identifier (e.g., 'api_gateway', 'cli')
+            
+        Returns:
+            JWT token if found, None otherwise
+        """
+        token_key = f"{service_name}_jwt_token"
+        
+        try:
+            token = keyring.get_password(self.service_name, token_key)
+            if token:
+                _get_logger().debug(f"JWT token retrieved for service: {service_name}")
+                return token
+            else:
+                _get_logger().debug(f"No JWT token found for service: {service_name}")
+                return None
+        except Exception as e:
+            _get_logger().error(f"Failed to retrieve JWT token from keyring: {e}")
+            return None
+    
+    def remove_jwt_token(self, service_name: str) -> bool:
+        """
+        Remove JWT token from platform keyring.
+        
+        Args:
+            service_name: Service identifier (e.g., 'api_gateway', 'cli')
+            
+        Returns:
+            True if token was removed or didn't exist, False on error
+        """
+        token_key = f"{service_name}_jwt_token"
+        
+        try:
+            # Check if token exists first
+            if keyring.get_password(self.service_name, token_key):
+                keyring.delete_password(self.service_name, token_key)
+                _get_logger().info(f"JWT token removed for service: {service_name}")
+            else:
+                _get_logger().debug(f"No JWT token to remove for service: {service_name}")
+            return True
+        except Exception as e:
+            _get_logger().error(f"Failed to remove JWT token from keyring: {e}")
+            return False
+    
+    def list_jwt_tokens(self) -> Dict[str, bool]:
+        """
+        List all JWT tokens stored for this service.
+        
+        Returns:
+            Dictionary mapping service names to token existence
+        """
+        tokens = {}
+        common_services = ['api_gateway', 'cli', 'admin', 'studio']
+        
+        for service in common_services:
+            token_key = f"{service}_jwt_token"
+            try:
+                token = keyring.get_password(self.service_name, token_key)
+                tokens[service] = token is not None
+            except Exception:
+                tokens[service] = False
+                
+        return tokens
