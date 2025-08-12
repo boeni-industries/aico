@@ -154,9 +154,7 @@ class AICOAPIGateway:
             # Start protocol adapters
             await self._start_adapters()
             
-            # Start admin interface if enabled
-            if self.config.get("admin", {}).get("enabled", False):
-                await self._start_admin_interface()
+            # Admin endpoints are now served on the main REST port
             self.running = True
             self.logger.info("API Gateway started successfully", extra={
                 "adapters": list(self.adapters.keys()),
@@ -255,21 +253,7 @@ class AICOAPIGateway:
             except ImportError:
                 self.logger.warning("gRPC adapter requested but gRPC dependencies not available")
     
-    async def _start_admin_interface(self):
-        """Start admin interface on separate port"""
-        from ..admin.endpoints import create_admin_app
-        
-        admin_config = self.config.get("admin", {})
-        admin_app = create_admin_app(
-            auth_manager=self.auth_manager,
-            authz_manager=self.authz_manager,
-            message_router=self.message_router,
-            gateway=self
-        )
-        
-        # Start admin server (implementation depends on chosen framework)
-        # This will be implemented in the admin module
-        self.logger.info(f"Admin interface started on {admin_config['bind_host']}:{admin_config['port']}")
+
     
     async def handle_request(self, protocol: str, request_data: Any, client_info: Dict[str, Any]) -> Any:
         """

@@ -25,6 +25,9 @@ from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
 from aico.security.key_manager import AICOKeyManager
 
+# Import session management
+from ..models.session import SessionManager, SessionInfo, SessionStatus
+
 # Logger will be initialized in classes
 
 
@@ -96,15 +99,14 @@ class AuthenticationManager:
         # API key storage (in production, use database)
         self.api_keys: Dict[str, Dict[str, Any]] = {}
         
-        # Session storage (in production, use Redis or database)
-        self.sessions: Dict[str, Dict[str, Any]] = {}
+        # Enhanced session management
+        self.session_manager = SessionManager(config)
         
         # Password context for API key hashing
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         
         # In-memory stores (in production, these would be in database)
         self.api_keys: Dict[str, Dict[str, Any]] = {}
-        self.sessions: Dict[str, Dict[str, Any]] = {}
         self.revoked_tokens: Set[str] = set()
         
         # Initialize default service accounts
@@ -391,16 +393,33 @@ class AuthenticationManager:
         """Revoke JWT token"""
         self.revoked_tokens.add(token)
     
-    def create_session(self, user: User) -> str:
+    def create_session(self, user: User, ip_address: str = None, user_agent: str = None) -> str:
         """Create session for user"""
-        session_id = secrets.token_urlsafe(32)
-        user.session_id = session_id
-        self.sessions[session_id] = user
-        return session_id
+        session_info = self.session_manager.create_session(
+            user_id=user.user_id,
+            username=user.username,
+            roles=user.roles,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+        user.session_id = session_info.session_id
+        return session_info.session_id
     
-    def revoke_session(self, session_id: str):
+    def revoke_session(self, session_id: str) -> bool:
         """Revoke session"""
-        self.sessions.pop(session_id, None)
+        return self.session_manager.revoke_session(session_id)
+    
+    def get_session(self, session_id: str) -> Optional[SessionInfo]:
+        """Get session information"""
+        return self.session_manager.get_session(session_id)
+    
+    def list_sessions(self, user_id: str = None, admin_only: bool = False) -> List[SessionInfo]:
+        """List sessions with optional filtering"""
+        return self.session_manager.list_sessions(user_id=user_id, admin_only=admin_only)
+    
+    def get_session_stats(self) -> Dict[str, Any]:
+        """Get session statistics"""
+        return self.session_manager.get_session_stats()
 
 
 class AuthorizationManager:

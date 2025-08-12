@@ -101,11 +101,6 @@ api_gateway:
   log_cleanup:
     cleanup_interval_hours: 24
   
-  # Admin interface
-  admin:
-    host: "127.0.0.1"
-    port: 8773
-  
   # Transport priority for client negotiation
   transport:
     priority:

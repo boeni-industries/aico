@@ -74,6 +74,18 @@ async def lifespan(app: FastAPI):
             logger.info("API Gateway created, calling start()...")
             await api_gateway.start()
             logger.info("API Gateway started")
+            
+            # Register admin endpoints after gateway is initialized
+            from api_gateway.admin.endpoints import create_admin_app
+            admin_app = create_admin_app(
+                auth_manager=api_gateway.auth_manager,
+                authz_manager=api_gateway.authz_manager,
+                message_router=api_gateway.message_router,
+                gateway=api_gateway
+            )
+            # Mount admin endpoints to main app
+            app.mount("/admin", admin_app)
+            logger.info("Admin endpoints registered")
         else:
             logger.info("API Gateway disabled in configuration")
         
@@ -105,6 +117,8 @@ app = FastAPI(
     version=__version__,
     lifespan=lifespan
 )
+
+# Admin endpoints will be registered after gateway initialization
 
 @app.get("/")
 def read_root():
