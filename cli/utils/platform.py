@@ -23,14 +23,23 @@ def get_platform_chars():
         dict: Character mappings for current platform/terminal
     """
     # Only use ASCII fallbacks for actual Windows CMD
-    # CMD doesn't set TERM environment variable, while Git Bash sets TERM=xterm
-    if platform.system() == "Windows" and "TERM" not in os.environ:
+    # More robust Windows CMD detection for various environments including Cascade
+    is_windows_cmd = (
+        platform.system() == "Windows" and 
+        ("TERM" not in os.environ or os.environ.get("TERM", "") == "")
+    )
+    
+    if is_windows_cmd:
         return {
             "sparkle": "*",
-            "package": ">",
-            "database": ">",
-            "security": ">", 
-            "config": ">",
+            "package": "*",
+            "database": "*",
+            "security": "*", 
+            "config": "*",
+            "logs": "*",
+            "dev": "*",
+            "bus": "*",
+            "gateway": "*",
             "check": "✓",
             "cross": "✗",
             "arrow": "->",
@@ -41,9 +50,13 @@ def get_platform_chars():
     return {
         "sparkle": "✨",
         "package": "📦",
-        "database": "🛢️",
+        "database": "💾",
         "security": "🔐",
         "config": "📝",
+        "logs": "📋",
+        "dev": "🧹",
+        "bus": "🚌",
+        "gateway": "🌐",
         "check": "✅",
         "cross": "❌", 
         "arrow": "→",

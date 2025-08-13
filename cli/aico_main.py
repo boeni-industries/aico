@@ -55,27 +55,31 @@ from commands.security import app as security_app
 from commands.dev import app as dev_app
 from commands.logs import app as logs_app
 from commands.bus import app as bus_app
+from utils.platform import get_platform_chars
+
+# Get platform-appropriate characters
+chars = get_platform_chars()
 
 app = typer.Typer(
     name="aico",
-    help="✨ AICO - Your AI Companion CLI",
+    help=f"{chars['sparkle']} AICO - Your AI Companion CLI",
     rich_markup_mode="rich",
     context_settings={"help_option_names": []}  # Disable built-in help to use custom formatting
 )
 
-# Add subcommands
-app.add_typer(config_app, name="config", help="📝 Configuration management")
-app.add_typer(version_app, name="version", help="📦 Version and build information") 
-app.add_typer(database_app, name="db", help="🛢️ Database management")
-app.add_typer(security_app, name="security", help="🔐 Security and encryption")
-app.add_typer(logs_app, name="logs", help="📋 Log management and analysis")
-app.add_typer(dev_app, name="dev", help="🧹 Development utilities")
-app.add_typer(bus_app, name="bus", help="🚌 Message bus management")
+# Add subcommands with platform-aware characters
+app.add_typer(config_app, name="config", help=f"{chars['config']} Configuration management")
+app.add_typer(version_app, name="version", help=f"{chars['package']} Version and build information") 
+app.add_typer(database_app, name="db", help=f"{chars['database']} Database management")
+app.add_typer(security_app, name="security", help=f"{chars['security']} Security and encryption")
+app.add_typer(logs_app, name="logs", help=f"{chars['logs']} Log management and analysis")
+app.add_typer(dev_app, name="dev", help=f"{chars['dev']} Development utilities")
+app.add_typer(bus_app, name="bus", help=f"{chars['bus']} Message bus management")
 
 # Import and register gateway commands
 try:
     from commands import gateway
-    app.add_typer(gateway.app, name="gateway", help="🌐 API Gateway management")
+    app.add_typer(gateway.app, name="gateway", help=f"{chars['gateway']} API Gateway management")
 except ImportError as e:
     # Gateway commands not available
     pass  # Expected when gateway dependencies not installed - CLI continues without gateway commands
