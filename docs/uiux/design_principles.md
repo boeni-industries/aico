@@ -1,128 +1,207 @@
-# AICO UI/UX Design Principles & Guidelines
+# AICO UI/UX Design Principles
 
-This document synthesizes your rules and the AICO project vision—delivering a **clean, intuitive, minimal, responsive, and embodiment-ready UI**. It also includes actionable directions for color, shape, Gestalt, and UI flow—all in a markdown format suitable for creative and technical handoff.
+This document integrates all previous guidance—including your latest preference to use **soft purple as a stylistic accent, not as a large-area base**—and provides a full, ready-to-copy markdown spec for creating a modern, minimal, adaptive, emotionally-present, and consistent AICO interface.
 
 ***
 
-## 1. **Core Design Rules**
+## 1. Core Design Rules
 
-- **Minimalism First:**  
-  - Strip away visual clutter: use negative space generously, limit elements to essentials, and avoid decorative ornamentation.
-  - Keep typography crisp; avoid unnecessary color or weight variations.
-
-- **Intuitive Discovery-First Approach:**  
-  - The interface must be immediately usable with **zero onboarding required**.
-  - Clear affordances: buttons look like buttons, avatars feel interactive, actions are visible (not hidden).
-  - Gradual revelation: simple start, intelligent hints/suggestions arise contextually through use, encouraging natural exploration over forced instruction.
-
-- **Lightning-Quick Responsiveness:**  
-  - Fast load, instant feedback. Micro-interactions (e.g., subtle animations or state changes) must be used for confirmation, not showiness.
-  - UI layer always feels one step ahead of the user—no dead clicks or jarring waits.
-
+- **Minimalism:**  
+  - Use ample whitespace; remove visual clutter and superfluous decoration.
+  - Typography is kept crisp, simple, and unobtrusive.
+- **Intuitive, Zero-Barrier Start:**  
+  - All interactions are immediately understandable; no up-front instructions.
+  - Key actions are visually prominent and consistently placed.
+  - Users explore and discover depth over time—never confronted with complexity up front.
+- **Responsiveness:**  
+  - App loads and reacts instantly, with smooth feedback via subtle, purposeful micro-interactions.
 - **Adaptive & Embodiment-Ready:**  
-  - Design is fully **responsive**: elegantly adapts to web, mobile, and mixed/AR devices.
-  - Avatar and key controls are modular—progressively reveal deeper controls on large/immersive screens, but keep the starting experience identical everywhere.
+  - Design is fully responsive—from mobile to desktop to mixed/AR devices.
+  - Layout and key components adapt to available space, embodiment, or modality.
 
 ***
 
-## 2. **Color Concepts**
+## 2. Color Concepts
 
-- **Primary Palette:**  
-  - Soft neutrals (white, pale grayscale backgrounds) for overall spaciousness.
-  - One main brand color (suggestive of calmness, trust, or tech warmth—e.g., gentle blue, mint, or soft violet) for highlights, focus states, and call-to-actions.
+### Base Palette
 
-- **Secondary/Accent Colors:**  
-  - Use as emotion or state indicators only (e.g., emotion/mood rings) but keep saturation low—avoid distracting vibrancy.
+- `Background`: `#F5F6FA` (soft white-neutral)
+- `Surface` (cards/panels): `#FFFFFF`
+- `Shadow`: `rgba(36,52,85,0.09)`
+- **Never use purple or any accent as a large background color.**
 
-- **Dark Mode:**  
-  - True blacks and deep grays combined with muted accent hues.  
-  - Respect user OS preferences; color contrast must always meet accessibility standards.
+### Brand & Accents
 
-- **Feedback Colors:**  
-  - **Success:** Muted green  
-  - **Error/Warning:** Muted red/orange (only for user-impactful issues)  
-  - Never use color as the only indicator—combine with icons or subtle animation.
+- `Primary Accent`: **Soft Lavender** `#B8A1EA`  
+  - Use strictly for emphasis: buttons, highlights, interactive states, mood/status rings, avatar glows, progress bars, etc.
+- `Secondary Accents` (optional/limited):  
+  - Mint `#8DD6B8` (good for success, activity tags)
+  - Coral `#ED7867` (error/warning only)
+  - Muted Green `#8DD686` (confirmation)
+- `Dark Mode Equivalents`: Mirror above, always keeping high contrast (background: `#181A21`, surface: `#21242E`, accent: `#B9A7E6`)
 
-***
+### Color Application Rules
 
-## 3. **Shape / Gestalt Concepts**
-
-- **General Shape Language:**  
-  - Soft, rounded rectangles dominate: all cards, panels, buttons, chat/input fields have radiused corners (~16–24px).
-  - Avoid sharp-edged cards and hard geometry.
-
-- **Gestalt Flow:**  
-  - Strict visual hierarchy: 1–2 levels of grouping per view.  
-  - Group related actions as horizontal clusters (e.g., action row at bottom of cards, not scattered).
-  - Use subtle drop shadows or gentle elevation to distinguish layers—never harsh borders.
-
-- **Component Consistency:**  
-  - Avatar/embodiment area: always circular/elliptical to create "focus halo."
-  - Micro-animations: breathing glows, pulse effects, slow attention states for presence—never hyperactive or distracting.
+- Large backgrounds stay neutral.
+- **Purple accents are consistent and restrained—used for CTAs, focus, avatar emotion, and highlight elements.**
+- Maintain color contrast for accessibility (WCAG AA+ for interactive/text).
 
 ***
 
-## 4. **General UI Flow Principles**
+## 3. Shape & Gestalt Concepts
 
-- **First Contact:**  
-  - On first launch, the user sees only an expressive avatar and a single, primary input below ("Say hi..." or voice tap)—no settings, menus, or signups upfront.
-
-- **Progressive Disclosure:**  
-  - As the user interacts, deeper functions (emotion dials, relationship/history, skills) gently slide into view or appear as extension panels.
-  - Use contextually-timed tooltips or ghost labels (appear only after repeated behaviors).
-
-- **Direct Manipulation:**  
-  - Everything interactive is clearly tappable/clickable—no hidden gestures or menu nesting.
-  - Users can drag, rearrange, or dismiss items with instant, visible feedback.
-
-- **Navigation Simplicity:**  
-  - Flat structure: avoid deep menu trees; limit top-level sections (e.g., Home, Memories, Explore, Settings).
-  - Back/forward always available, large tappable targets on touch devices.
-
-- **Focus on Natural Feedback:**  
-  - Every interaction sparkles with purposeful micro-interaction—e.g., when AICO is "thinking," avatar animates subtly; when privacy changes, badge gently pulses.
-  - Errors and system issues use language that is gentle, never alarming, in clear non-technical terms.
+- **Shape Language:**  
+  - Rounded, soft rectangles for cards, panels, buttons (`16–24px` radius).
+  - Circular/elliptical zones for avatars and key emotion/status elements.
+  - Avoid sharp, angular geometry.
+- **Gestalt:**  
+  - Clear 1–2 level groupings; do not visually nest deeply.
+  - Action controls are horizontally clustered (at the bottom of cards or panels).
+  - Use soft drop shadows or gentle elevation—no harsh borders.
+- **Element Consistency:**  
+  - All highlight states (focus, selected, pulsing) use the **soft purple accent**.
+  - Animated micro-interactions use breathing/pulse effects—never distracting.
 
 ***
 
-## 5. **Sample UI Structure Outline**
+## 4. Typography
+
+| Type         | Font             | Size      | Weight |
+|--------------|------------------|-----------|--------|
+| Headline 1   | Inter, Sans-Serif| 2.0rem    | 700    |
+| Headline 2   | Inter, Sans-Serif| 1.5rem    | 600    |
+| Subtitle     | Inter, Sans-Serif| 1.125rem  | 500    |
+| Body Main    | Inter, Sans-Serif| 1.0rem    | 400    |
+| Caption      | Inter, Sans-Serif| 0.875rem  | 400    |
+| Button Text  | Inter, Sans-Serif| 1.0rem    | 600    |
+
+- **Spacing:** 1.5× font size line-height.
+- **Letter Spacing:** 0.02em on titles/headlines.
+
+***
+
+## 5. Spacing & Sizing
+
+- **Unit grid:** 8px multiples.
+- **Container max-width:** 1200px (desktop), 100% (mobile).
+- **Padding:** Cards/panels: 24px; buttons: 24px horizontal, 12px vertical.
+- **Avatar Sizes:** Main: 96px; Mini: 32px.
+
+***
+
+## 6. Components
+
+### Buttons
+
+- Types: `primary`, `secondary`, `minimal`, `destructive`
+- Primary uses **soft purple** for background and focus states
+- All have rounded corners, clear elevation on hover; spinner for loading
+
+### Input Fields
+
+- Types: `text`, `voice`, `dropdown`, `emotion selector`
+- Rounded, with subtle purple focus/active underline or ring
+- States: active, error (coral border), disabled (dimmed)
+
+### Avatar
+
+- Always central, circular, animates with mood/states (idle, thinking, speaking, attention)
+- Mood/status rings in **soft purple** or derivative hues
+
+### Cards & Panels
+
+- Rounded, airy, subtle elevation (shadow)
+- Bottom-aligned horizontal action row
+
+### Navigation
+
+- Flat structure: 4–5 root items only
+- Mobile: bottom navigation; Desktop: vertical sidebar
+- No deep nesting; back/forward always visible and accessible
+
+### Tooltip/Feedback
+
+- Minimal, appears on (focus|hover|repeat usage)
+- Caption font, gentle fade in/out; non-intrusive
+
+***
+
+## 7. Interaction Patterns
+
+- **Micro-interactions:** Button pulse, avatar expression, input shake (error), selection glow—all use **soft purple accent** where appropriate.
+- **Transitions:** Slide-in for panels; fade between states/views.
+- **Error/Success:** Coral for errors, mint/green for success; always pair color with icon/text.
+- **Autonomy Feed:** Proactive suggestions as swipeable card stack, using soft purple border/highlight for AICO prompts.
+
+***
+
+## 8. Accessibility
+
+- All text/interactive color contrast meets WCAG AA+.
+- No color is the sole indicator; always pair with icon/label/animation.
+- Full keyboard navigation (focus outlines in purple), ARIA roles on interactives, logical tab order.
+
+***
+
+## 9. Layout
+
+- **Grid:** Responsive flex-box/grid—1–2 columns desktop, single column mobile.
+- **Avatar** is primary visual focus on home.
+- **Main input** always persistently accessible, beneath/overlaying avatar as space allows.
+
+***
+
+## 10. Theming & Adaptivity
+
+- **Tokenized colors and spacing** for easy theme updates (JSON/YAML).
+- Avatar and controls modular; layout adapts gracefully across device types.
+- **Embodiment mode:** Larger touch targets for AR/VR, rearranged navigation and input for spatial/modal environments.
+
+***
+
+## 11. Content & Tone
+
+- **Voice:** Warm, friendly, direct. Never clinical.
+- **Messaging:** Helpful and actionable; errors are gentle, not alarming.
+- **Language:** Inclusive, jargon-free, clear.
+
+***
+
+## 12. Versioning
+
+- Keep tokens and component specs versioned in `/docs/design/tokens.json` and `/docs/design/components.md`
+- All changes logged in `/docs/design/CHANGELOG.md`
+
+***
+
+## 13. Copy-Paste Reference Table
+
+| Section      | Principle/Rule                                                        |
+|--------------|-----------------------------------------------------------------------|
+| Color        | White base, soft purple highlights, minimal color elsewhere           |
+| Shape        | Rounded rects/circles, soft elevation, no harsh borders               |
+| Gestalt      | 1–2 grouping levels, horizontal action rows, distinct layers          |
+| Typography   | Inter, minimal weights, spaced for clarity                            |
+| UI Flow      | No-barrier start, flat navigation, immediate affordances              |
+| Responsiveness| Modular for web/mobile/AR, avatar-centric, input always at hand      |
+| Feedback     | Subtle confirmations, avatar expression, micro-interactions highlight |
+| Accessibility| Color contrast, icons+labels, focus outlines, ARIA roles              |
+
+***
+
+## 14. Sample UI Structure Outline
 
 ```text
 [Avatar Centerpiece]
     | 
 [Primary Input (chat, voice, mood)]
     |
-[Emotion/Status Bar]      [Quick Actions Row]
+[Emotion/Status Bar]     [Quick Actions Row]
     |
-[Relationship Timeline]   [Memory/Privacy Drawer]
+[Relationship Timeline]  [Memory/Privacy Drawer]
     |
-[Autonomy / Suggestions Feed] 
+[Autonomy/Suggestions Feed]
 
-[Optional: Menu/Extensions slide-in from edge; Admin/Settings hidden by default]
+[Optional: Extensions/Admin slide-in; minimalist menu hides behind gesture or icon]
 ```
 
-***
-
-## 6. **Copy-Paste Reference Table**
-
-| Section                      | Principle/Rule                                |
-|------------------------------|-----------------------------------------------|
-| Color                        | Soft neutrals, 1 calming highlight, low-accent|
-| Shape                        | Rounded rects/circles, gentle elevation/shadow|
-| Gestalt                      | Visual hierarchy, grouped horizontal actions  |
-| UI Flow                      | No-barrier launch, zero help, open to explore |
-| Responsive/Adaptive          | Avatar/input modularity, fits any screen      |
-| Feedback                     | Micro-interactions for state/confirmation     |
-| Navigation                   | Flat, fast, back/forward always               |
-
-***
-
-## 7. **Key Takeaways**
-
-- **Let the interface "disappear":** The user’s focus should be dialogue and presence, not the frame around it.
-- **Design for trust and delight, not productivity.**
-- **Every additional feature must earn its place at the edge—not the center—of the UI.**
-
-***
-
-*This document is ready for direct use as a design brief or reference for implementation.*
