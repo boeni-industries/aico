@@ -319,12 +319,12 @@ def status(
         
         console.print(table)
         
-        # Test connection
-        console.print("\n🔍 Testing database connection...")
+        # Test encrypted connection
+        console.print("\n🔍 Testing encrypted database connection...")
         if conn.verify_encryption():
-            console.print("✅ [green]Database encryption verified successfully[/green]")
+            console.print("✅ [green]Encrypted connection verified successfully[/green]")
         else:
-            console.print("⚠️ [yellow]Database encryption verification failed[/yellow]")
+            console.print("⚠️ [yellow]Encrypted connection verification failed[/yellow]")
         
     except Exception as e:
         console.print(f"❌ [red]Failed to check database status: {e}[/red]")
