@@ -84,12 +84,14 @@ class AICOKeyManager:
         key_name = f"{service_name}_jwt_secret"
         
         try:
-            # Try to get existing secret from keyring
+            # Try to get existing secret
             secret = keyring.get_password(self.service_name, key_name)
             if secret:
                 return secret
-        except Exception:
-            pass
+        except Exception as e:
+            # Log keyring access failure - this could indicate system keyring issues
+            _get_logger().warning(f"Failed to retrieve secret from keyring for {key_name}: {e}")
+            # Continue to create new secret as fallback
         
         # Create new JWT secret
         secret = secrets.token_urlsafe(32)
@@ -115,8 +117,10 @@ class AICOKeyManager:
             if current_secret:
                 keyring.set_password(self.service_name, old_key_name, current_secret)
                 _get_logger().info(f"Moved current JWT secret to old for service: {service_name}")
-        except Exception:
-            pass
+        except Exception as e:
+            # Log keyring backup failure - this could indicate system keyring issues
+            _get_logger().warning(f"Failed to backup current JWT secret to old key: {e}")
+            # Continue with rotation as this is not critical for security
         
         # Create new secret
         new_secret = secrets.token_urlsafe(32)

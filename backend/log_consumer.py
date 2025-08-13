@@ -113,8 +113,9 @@ class AICOLogConsumer:
             # Use proper LibSQL disconnect method
             try:
                 self.db_connection.disconnect()
-            except Exception:
-                pass
+            except Exception as e:
+                # Log cleanup failure but don't crash - this is during shutdown
+                print(f"[LOG CONSUMER] Warning: Database cleanup failed during shutdown: {e}")
 
     
     async def _zmq_message_loop(self):
@@ -133,8 +134,10 @@ class AICOLogConsumer:
                 await self._handle_log_message(log_entry)
             except Exception as e:
                 if self.running:
-                    # Log error but continue processing
-                    pass
+                    # Log error but continue processing - critical for log consumer stability
+                    print(f"[LOG CONSUMER] Error processing message (continuing): {e}")
+                    import traceback
+                    print(f"[LOG CONSUMER] Traceback: {traceback.format_exc()}")
             await asyncio.sleep(0.1)
     
     async def _handle_log_message(self, log_entry: LogEntry):
@@ -144,8 +147,11 @@ class AICOLogConsumer:
             self._insert_log_to_database(log_entry)
             
         except Exception as e:
-            # Silent fallback - don't break log consumer if database fails
-            pass
+            # CRITICAL: Database insertion failed - log to console as last resort
+            print(f"[LOG CONSUMER] CRITICAL: Failed to insert log to database: {e}")
+            print(f"[LOG CONSUMER] Lost log entry: {log_entry.subsystem}.{log_entry.module} - {log_entry.message}")
+            import traceback
+            print(f"[LOG CONSUMER] Traceback: {traceback.format_exc()}")
     
     def _insert_log_to_database(self, log_entry: LogEntry):
         """Insert protobuf log entry into the database"""
@@ -199,8 +205,17 @@ class AICOLogConsumer:
             self.db_connection.commit()
             
         except Exception as e:
-            # Silent fallback - don't break log consumer if database fails
-            pass
+            # CRITICAL: Database insertion failed - log to console as last resort
+            print(f"[LOG CONSUMER] CRITICAL: Database insertion failed: {e}")
+            print(f"[LOG CONSUMER] Failed to insert: level={log_entry.level}, subsystem={log_entry.subsystem}, module={log_entry.module}")
+            print(f"[LOG CONSUMER] Message: {log_entry.message}")
+            import traceback
+            print(f"[LOG CONSUMER] Traceback: {traceback.format_exc()}")
+            # Try to rollback transaction
+            try:
+                self.db_connection.rollback()
+            except Exception as rollback_error:
+                print(f"[LOG CONSUMER] CRITICAL: Rollback also failed: {rollback_error}")
 
 if __name__ == "__main__":
     import asyncio

@@ -75,9 +75,12 @@ def create_console() -> Console:
             kernel32.SetConsoleOutputCP(65001)
             # Set console input code page to UTF-8  
             kernel32.SetConsoleCP(65001)
-        except:
-            # If that fails, we'll rely on PYTHONIOENCODING
-            pass
+        except Exception as e:
+            # Console encoding setup failed - log warning but continue with fallback
+            # This is acceptable as PYTHONIOENCODING provides fallback behavior
+            import sys
+            print(f"[PLATFORM] Warning: Failed to set console UTF-8 encoding: {e}", file=sys.stderr)
+            print(f"[PLATFORM] Falling back to PYTHONIOENCODING", file=sys.stderr)
     
     # Now just use Rich normally - it will work beautifully everywhere
     return Console(

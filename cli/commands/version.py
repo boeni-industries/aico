@@ -409,8 +409,11 @@ def update_studio_version(version: str):
                 with open(package_file, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
                 return True
-    except (json.JSONDecodeError, IOError):
-        pass
+    except (json.JSONDecodeError, IOError) as e:
+        # Log JSON file operation failure - this could indicate file corruption or permissions
+        from rich.console import Console
+        console = Console()
+        console.print(f"[yellow]Warning: Failed to update package.json version in {package_file}: {e}[/yellow]")
     
     return False
 

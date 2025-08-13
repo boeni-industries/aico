@@ -471,8 +471,11 @@ class ConfigurationManager:
                 try:
                     watcher.stop()
                     watcher.join()
-                except:
-                    pass  # Ignore cleanup errors
+                except Exception as e:
+                    # Log cleanup failure but don't crash during shutdown
+                    # This is acceptable during cleanup as it's non-critical
+                    import sys
+                    print(f"[CONFIG] Warning: Failed to stop config watcher during cleanup: {e}", file=sys.stderr)
             cls._instance = None
             cls._initialized = False
     
@@ -482,5 +485,8 @@ class ConfigurationManager:
             try:
                 watcher.stop()
                 watcher.join()
-            except:
-                pass  # Ignore cleanup errors during destruction
+            except Exception as e:
+                # Log cleanup failure but don't crash during destruction
+                # This is acceptable during object destruction as it's non-critical
+                import sys
+                print(f"[CONFIG] Warning: Failed to stop config watcher during destruction: {e}", file=sys.stderr)

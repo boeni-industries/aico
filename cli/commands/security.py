@@ -130,8 +130,10 @@ def setup(
             existing_jwt = None
             try:
                 existing_jwt = key_manager.get_jwt_secret("api_gateway")
-            except Exception:
-                pass
+            except Exception as e:
+                # Log JWT retrieval failure but continue - this is expected for first-time setup
+                logger.debug(f"JWT secret retrieval failed (expected for first setup): {e}")
+                existing_jwt = None
             
             if not existing_jwt:
                 jwt_secret = key_manager.get_jwt_secret("api_gateway")  # This will create it

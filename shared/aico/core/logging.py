@@ -159,8 +159,12 @@ class AICOLogger:
             temp_log_path.parent.mkdir(exist_ok=True)
             with open(temp_log_path, "a", encoding="utf-8") as f:
                 f.write(log_entry.to_json() + "\n")
-        except Exception:
-            pass  # Silent fallback failure
+        except Exception as e:
+            # Last resort fallback failed - log to stderr but don't crash
+            # This is acceptable because it's the final fallback in a chain
+            import sys
+            print(f"[LOGGING] Warning: Emergency file fallback failed: {e}", file=sys.stderr)
+            print(f"[LOGGING] Lost log: {log_entry.level} {log_entry.subsystem}.{log_entry.module}: {log_entry.message}", file=sys.stderr)
     
     def _send_to_database(self, log_entry: LogEntry):
         """Send log entry to database via transport"""
@@ -312,8 +316,11 @@ class ZMQLogTransport:
             ], zmq.NOBLOCK)
             
         except Exception as e:
-            # Silent fallback - don't break logging if transport fails
-            pass
+            # Log transport failure but don't crash - logging must be resilient
+            # This is acceptable because logging failures shouldn't break the application
+            import sys
+            print(f"[ZMQ TRANSPORT] Warning: Failed to send log via ZMQ: {e}", file=sys.stderr)
+            print(f"[ZMQ TRANSPORT] Lost log: {log_entry.level} {log_entry.subsystem}.{log_entry.module}: {log_entry.message[:100]}...", file=sys.stderr)
     
     def close(self):
         """Clean up ZMQ resources"""

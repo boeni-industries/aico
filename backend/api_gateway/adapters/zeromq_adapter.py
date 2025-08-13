@@ -111,6 +111,7 @@ class ZeroMQAdapter:
                 try:
                     await self.message_task
                 except asyncio.CancelledError:
+                    # Expected during shutdown - this is the correct behavior
                     pass
             
             # Close socket
@@ -189,8 +190,9 @@ class ZeroMQAdapter:
                         "error": str(e)
                     })
                     await self.socket.send_string(error_response)
-                except:
-                    pass  # Ignore send errors
+                except Exception as e:
+                    # Log error response send failure - this indicates network issues
+                    self.logger.warning(f"Failed to send error response to client: {e}")
     
     async def _handle_request(self, raw_message: str) -> str:
         """Handle incoming request"""
