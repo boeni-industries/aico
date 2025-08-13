@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from aico.core.logging import initialize_logging, get_logger
 from aico.core.config import ConfigurationManager
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # Initialize configuration FIRST
 config_manager = ConfigurationManager()
