@@ -197,12 +197,7 @@ class AICOMessageBusHost:
             
             self.logger.info(f"Unregistered module: {module_name}")
             
-            # Publish module unregistration event
-            await self.internal_client.publish(
-                "system.module.unregistered",
-                {"module_name": module_name},
-                
-            )
+            # Module unregistration logged above - no need for message bus event
             
         except Exception as e:
             self.logger.error(f"Error unregistering module {module_name}: {e}")

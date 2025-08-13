@@ -279,7 +279,8 @@ class ZMQLogTransport:
         try:
             import zmq
             
-            self._context = zmq.asyncio.Context()
+            # Use synchronous ZMQ context for thread compatibility
+            self._context = zmq.Context()
             self._socket = self._context.socket(zmq.PUB)
             
             # Connect to message bus publisher port
@@ -287,8 +288,11 @@ class ZMQLogTransport:
             address = f"tcp://localhost:{publisher_port}"
             self._socket.connect(address)
             
+            print(f"[ZMQ TRANSPORT DEBUG] Initialized synchronous ZMQ socket connected to {address}")
+            
         except Exception as e:
             # Fallback to no transport
+            print(f"[ZMQ TRANSPORT ERROR] Failed to initialize: {e}")
             self._socket = None
             self._context = None
     

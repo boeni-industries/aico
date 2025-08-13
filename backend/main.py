@@ -1,5 +1,6 @@
 import asyncio
 import sys
+from datetime import datetime
 
 # Fix ZeroMQ compatibility on Windows - must be set before any ZMQ imports
 if sys.platform == "win32":
@@ -164,9 +165,19 @@ def read_root():
 
 @app.get("/health")
 def health_check():
-    """Detailed health check endpoint"""
-    # Log health check access
-    logger.info("Health check endpoint accessed")
+    """Health check endpoint"""
+    # Create a fresh logger (after log consumer is ready)
+    health_logger = get_logger("backend", "health")
+    
+    # Manually ensure database ready flag is set
+    health_logger._db_ready = True
+    
+    # Log health check access at debug level for normal operation
+    health_logger.debug("Health endpoint accessed", extra={
+        "endpoint": "/health",
+        "method": "GET",
+        "component": "fastapi_health"
+    })
     
     health_status = {
         "status": "healthy",
