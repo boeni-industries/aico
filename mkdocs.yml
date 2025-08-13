@@ -192,6 +192,8 @@ nav:
     - Namespaces: developer-guide/namespaces.md
     - CLI Handbook: developer-guide/cli_handbook.md
     - Schema Management: developer-guide/schema_management.md
+    - UUID Standards: developer-guide/uuid_standards.md
+    - UI/UX: uiux/design_principles.md
   - Roadmap:
     - Foundation: roadmap/foundation.md
     - MVP: roadmap/mvp.md

@@ -2365,6 +2365,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -2575,6 +2579,52 @@
   
   <span class="md-ellipsis">
     Schema Management
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/uuid_standards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    UUID Standards
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../uiux/design_principles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    UI/UX
     
   </span>
   
@@ -2853,8 +2903,9 @@
 
 <h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h1>
 <h2 id="project-summary">Project Summary<a class="headerlink" href="#project-summary" title="Permanent link">&para;</a></h2>
-<p>AICO is an open-source experiment to build an <strong>emotionally present, visually embodied, and proactive AI companion</strong>—intended to act as a confidante and sidekick, not just an assistant. Unlike productivity-oriented chatbots, AICO is designed to sense and adapt to the user's moods, initiate engagement, and form an evolving, personality-rich relationship with a visual, emotional, and proactive presence.</p>
+<p>AICO is an open-source experiment to build an <strong>emotionally present, visually embodied, and proactive AI companion</strong>—intended to act as a family member, confidante and sidekick, not just an assistant. Unlike productivity-oriented chatbots, AICO naturally recognizes and builds individual relationships with family members through multi-modal identification, creating authentic bonds without technical barriers while maintaining a consistent core personality.</p>
 <p><strong>Core Principles:</strong>
+- <strong>Natural Family Recognition:</strong> Multi-modal identification without technical authentication barriers.
 - <strong>Embodiment:</strong> Visual/audio presence and non-verbal communication are core MVP requirements.
 - <strong>Autonomous Agency:</strong> AICO initiates, acts, and pursues its own goals and curiosities.
 - <strong>Personality &amp; Emotion:</strong> Consistent, evolving personality and sophisticated emotion simulation.
@@ -2863,6 +2914,15 @@
 - <strong>Real-Time Emotional Awareness:</strong> Multi-modal emotion recognition, simulation, and expression.</p>
 <h2 id="system-features">System Features<a class="headerlink" href="#system-features" title="Permanent link">&para;</a></h2>
 <p>AICO's features are organized into logical modules for development and deployment:</p>
+<h3 id="natural-family-recognition">👥 Natural Family Recognition<a class="headerlink" href="#natural-family-recognition" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Multi-Modal Recognition</strong>: Voice biometrics, behavioral patterns, conversation style analysis</li>
+<li><strong>Individual Relationships</strong>: Unique relationship context per family member while maintaining core personality</li>
+<li><strong>Natural Interaction</strong>: "Hi Sarah, how was your piano lesson?" - contextual, warm recognition</li>
+<li><strong>Privacy Boundaries</strong>: Personal conversations remain private per individual</li>
+<li><strong>Confidence Thresholds</strong>: 95%+ recognition confidence with gentle fallback verification</li>
+<li><strong>Zero Technical Barriers</strong>: No passwords, logins, or authentication friction</li>
+</ul>
 <h3 id="conversation-interaction">🗣️ Conversation &amp; Interaction<a class="headerlink" href="#conversation-interaction" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Chat Interface</strong>: Real-time text-based conversation</li>
@@ -3472,11 +3532,11 @@ The CLI is a Python application that provides a command-line interface for inter
 </span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>│               ├── utils.py
 </span><span id="__span-1-30"><a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>│               └── constants.py
 </span><span id="__span-1-31"><a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>├── backend/                    # Python backend service
-</span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>│   ├── requirements.txt        # includes -e ../shared/aico-*
+</span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>│   ├── pyproject.toml          # includes aico-shared dependency
 </span><span id="__span-1-33"><a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a>│   └── main.py
 </span><span id="__span-1-34"><a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a>├── cli/                        # Development CLI
-</span><span id="__span-1-35"><a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a>│   ├── requirements.txt        # includes -e ../shared/aico-*
-</span><span id="__span-1-36"><a id="__codelineno-1-36" name="__codelineno-1-36" href="#__codelineno-1-36"></a>│   └── main.py
+</span><span id="__span-1-35"><a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a>│   ├── pyproject.toml          # includes aico-shared dependency
+</span><span id="__span-1-36"><a id="__codelineno-1-36" name="__codelineno-1-36" href="#__codelineno-1-36"></a>│   └── aico_main.py
 </span><span id="__span-1-37"><a id="__codelineno-1-37" name="__codelineno-1-37" href="#__codelineno-1-37"></a>└── frontend/                   # Flutter frontend
 </span><span id="__span-1-38"><a id="__codelineno-1-38" name="__codelineno-1-38" href="#__codelineno-1-38"></a>    └── pubspec.yaml            # May reference shared schemas
 </span></code></pre></div>
@@ -3492,17 +3552,21 @@ The CLI is a Python application that provides a command-line interface for inter
 </span></code></pre></div>
 <h4 id="development-installation">Development Installation<a class="headerlink" href="#development-installation" title="Permanent link">&para;</a></h4>
 <p>Subsystems install shared libraries in development mode:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># In backend/requirements.txt or cli/requirements.txt</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>-e<span class="w"> </span>../shared/aico-security
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>-e<span class="w"> </span>../shared/aico-data
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>-e<span class="w"> </span>../shared/aico-core
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>-e<span class="w"> </span>../shared/aico-common
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># In backend/pyproject.toml or cli/pyproject.toml</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">[tool.uv.sources]</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">aico-shared</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">path</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">&quot;../shared&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">editable</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># Dependencies section includes:</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">dependencies</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="s2">&quot;aico-shared&quot;</span><span class="p">,</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="c1"># ... other dependencies</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="p">]</span>
 </span></code></pre></div>
 <h4 id="usage-examples">Usage Examples<a class="headerlink" href="#usage-examples" title="Permanent link">&para;</a></h4>
 <p><strong>CLI Usage</strong> (Early Development):
 <div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># CLI can use security features before backend exists</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span> <span class="nn">aico.security</span> <span class="kn">import</span> <span class="n">AICOKeyManager</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span> <span class="nn">aico.security.filesystem</span> <span class="kn">import</span> <span class="n">SecureFilesystem</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.security</span><span class="w"> </span><span class="kn">import</span> <span class="n">AICOKeyManager</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.security.filesystem</span><span class="w"> </span><span class="kn">import</span> <span class="n">SecureFilesystem</span>
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
 </span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">key_manager</span> <span class="o">=</span> <span class="n">AICOKeyManager</span><span class="p">()</span>
 </span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">fs</span> <span class="o">=</span> <span class="n">SecureFilesystem</span><span class="p">(</span><span class="n">key_manager</span><span class="p">)</span>
@@ -3510,9 +3574,9 @@ The CLI is a Python application that provides a command-line interface for inter
 </span></code></pre></div></p>
 <p><strong>Backend Usage</strong> (Production):
 <div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Backend imports same libraries</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">from</span> <span class="nn">aico.security</span> <span class="kn">import</span> <span class="n">AICOKeyManager</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kn">from</span> <span class="nn">aico.data.models</span> <span class="kn">import</span> <span class="n">Conversation</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="kn">from</span> <span class="nn">aico.core.config</span> <span class="kn">import</span> <span class="n">Config</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.security</span><span class="w"> </span><span class="kn">import</span> <span class="n">AICOKeyManager</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.data.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversation</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.core.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">Config</span>
 </span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
 </span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1"># Identical API, different context</span>
 </span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">key_manager</span> <span class="o">=</span> <span class="n">AICOKeyManager</span><span class="p">()</span>

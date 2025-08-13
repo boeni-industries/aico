@@ -162,7 +162,7 @@ AICO implements a **natural family recognition system** that replaces traditiona
 
 ### Message Bus Security
 - **Topic-Level Authorization**: Fine-grained access control per message topic
-- **Authentication Context**: User identity propagated through message metadata
+- **Authentication Context**: Family member UUID propagated through message metadata
 - **Plugin Isolation**: Strict permission boundaries for plugin access
 
 ### Database Security

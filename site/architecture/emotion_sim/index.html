@@ -2320,6 +2320,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -2530,6 +2534,52 @@
   
   <span class="md-ellipsis">
     Schema Management
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/uuid_standards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    UUID Standards
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../uiux/design_principles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    UI/UX
     
   </span>
   
@@ -2835,8 +2885,8 @@
 <h2 id="processing-pipeline">Processing Pipeline<a class="headerlink" href="#processing-pipeline" title="Permanent link">&para;</a></h2>
 <h3 id="1-input-aggregation">1. Input Aggregation<a class="headerlink" href="#1-input-aggregation" title="Permanent link">&para;</a></h3>
 <p>The Emotion Simulation module subscribes to multiple input topics and aggregates them into a unified context:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">class</span> <span class="nc">EmotionSimulationModule</span><span class="p">:</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message_bus</span><span class="p">):</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">EmotionSimulationModule</span><span class="p">:</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message_bus</span><span class="p">):</span>
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">bus</span> <span class="o">=</span> <span class="n">message_bus</span>
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">current_context</span> <span class="o">=</span> <span class="n">EmotionalContext</span><span class="p">()</span>
 </span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>
@@ -2846,19 +2896,19 @@
 </span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">bus</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="s2">&quot;conversation.context&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">on_conversation_context</span><span class="p">)</span>
 </span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">bus</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="s2">&quot;personality.state&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">on_personality_state</span><span class="p">)</span>
 </span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="k">def</span> <span class="nf">on_user_emotion</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">on_user_emotion</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
 </span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">current_context</span><span class="o">.</span><span class="n">user_emotion</span> <span class="o">=</span> <span class="n">message</span><span class="p">[</span><span class="s1">&#39;emotion&#39;</span><span class="p">]</span>
 </span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">current_context</span><span class="o">.</span><span class="n">emotion_modalities</span> <span class="o">=</span> <span class="n">message</span><span class="p">[</span><span class="s1">&#39;modalities&#39;</span><span class="p">]</span>
 </span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">trigger_emotion_processing</span><span class="p">()</span>
 </span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>
-</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    <span class="k">def</span> <span class="nf">trigger_emotion_processing</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">trigger_emotion_processing</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 </span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">current_context</span><span class="o">.</span><span class="n">is_complete</span><span class="p">():</span>
 </span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>            <span class="n">emotional_state</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">process_emotional_response</span><span class="p">()</span>
 </span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">publish_emotional_outputs</span><span class="p">(</span><span class="n">emotional_state</span><span class="p">)</span>
 </span></code></pre></div>
 <h3 id="2-appraisal-processing">2. Appraisal Processing<a class="headerlink" href="#2-appraisal-processing" title="Permanent link">&para;</a></h3>
 <p>The core AppraisalCloudPCT algorithm processes the aggregated context:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">def</span> <span class="nf">process_emotional_response</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EmotionalState</span><span class="p">:</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">process_emotional_response</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EmotionalState</span><span class="p">:</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="c1"># Stage 1: Relevance Assessment</span>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">relevance</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">assess_relevance</span><span class="p">(</span>
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="n">user_emotion</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">current_context</span><span class="o">.</span><span class="n">user_emotion</span><span class="p">,</span>
@@ -2891,7 +2941,7 @@
 </span></code></pre></div>
 <h3 id="3-output-generation">3. Output Generation<a class="headerlink" href="#3-output-generation" title="Permanent link">&para;</a></h3>
 <p>Generated emotional states are published to multiple output topics:</p>
-<p><div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">def</span> <span class="nf">publish_emotional_outputs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">emotional_state</span><span class="p">:</span> <span class="n">EmotionalState</span><span class="p">):</span>
+<p><div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">publish_emotional_outputs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">emotional_state</span><span class="p">:</span> <span class="n">EmotionalState</span><span class="p">):</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="c1"># Publish current emotional state</span>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">bus</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="s2">&quot;emotion.state.current&quot;</span><span class="p">,</span> <span class="p">{</span>
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>        <span class="s2">&quot;timestamp&quot;</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">utcnow</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(),</span>
@@ -2958,7 +3008,7 @@
 </span><span id="__span-4-65"><a id="__codelineno-4-65" name="__codelineno-4-65" href="#__codelineno-4-65"></a><span class="c1">## Performance Requirements</span>
 </span><span id="__span-4-66"><a id="__codelineno-4-66" name="__codelineno-4-66" href="#__codelineno-4-66"></a>
 </span><span id="__span-4-67"><a id="__codelineno-4-67" name="__codelineno-4-67" href="#__codelineno-4-67"></a><span class="c1">### Latency Targets</span>
-</span><span id="__span-4-68"><a id="__codelineno-4-68" name="__codelineno-4-68" href="#__codelineno-4-68"></a><span class="o">-</span> <span class="o">**</span><span class="n">End</span><span class="o">-</span><span class="n">to</span><span class="o">-</span><span class="n">end</span> <span class="n">emotion</span> <span class="n">processing</span><span class="o">**</span><span class="p">:</span> <span class="o">&lt;</span><span class="mi">200</span><span class="n">ms</span> <span class="kn">from</span> <span class="nn">input</span> <span class="n">to</span> <span class="n">output</span>
+</span><span id="__span-4-68"><a id="__codelineno-4-68" name="__codelineno-4-68" href="#__codelineno-4-68"></a><span class="o">-</span> <span class="o">**</span><span class="n">End</span><span class="o">-</span><span class="n">to</span><span class="o">-</span><span class="n">end</span> <span class="n">emotion</span> <span class="n">processing</span><span class="o">**</span><span class="p">:</span> <span class="o">&lt;</span><span class="mi">200</span><span class="n">ms</span> <span class="kn">from</span><span class="w"> </span><span class="nn">input</span> <span class="n">to</span> <span class="n">output</span>
 </span><span id="__span-4-69"><a id="__codelineno-4-69" name="__codelineno-4-69" href="#__codelineno-4-69"></a><span class="o">-</span> <span class="o">**</span><span class="n">Voice</span> <span class="n">parameter</span> <span class="n">generation</span><span class="o">**</span><span class="p">:</span> <span class="o">&lt;</span><span class="mi">50</span><span class="n">ms</span> <span class="k">for</span> <span class="n">real</span><span class="o">-</span><span class="n">time</span> <span class="n">speech</span> <span class="n">synthesis</span>
 </span><span id="__span-4-70"><a id="__codelineno-4-70" name="__codelineno-4-70" href="#__codelineno-4-70"></a><span class="o">-</span> <span class="o">**</span><span class="n">Avatar</span> <span class="n">parameter</span> <span class="n">generation</span><span class="o">**</span><span class="p">:</span> <span class="o">&lt;</span><span class="mi">33</span><span class="n">ms</span> <span class="k">for</span> <span class="mi">30</span><span class="n">fps</span> <span class="n">animation</span> <span class="n">updates</span>
 </span><span id="__span-4-71"><a id="__codelineno-4-71" name="__codelineno-4-71" href="#__codelineno-4-71"></a><span class="o">-</span> <span class="o">**</span><span class="n">Text</span> <span class="n">context</span> <span class="n">generation</span><span class="o">**</span><span class="p">:</span> <span class="o">&lt;</span><span class="mi">100</span><span class="n">ms</span> <span class="k">for</span> <span class="n">conversation</span> <span class="n">flow</span>
@@ -2979,7 +3029,7 @@
 </span><span id="__span-4-86"><a id="__codelineno-4-86" name="__codelineno-4-86" href="#__codelineno-4-86"></a>
 </span><span id="__span-4-87"><a id="__codelineno-4-87" name="__codelineno-4-87" href="#__codelineno-4-87"></a><span class="c1">### 1. Input Aggregation Component</span>
 </span><span id="__span-4-88"><a id="__codelineno-4-88" name="__codelineno-4-88" href="#__codelineno-4-88"></a>
-</span><span id="__span-4-89"><a id="__codelineno-4-89" name="__codelineno-4-89" href="#__codelineno-4-89"></a><span class="o">**</span><span class="n">Purpose</span><span class="o">**</span><span class="p">:</span> <span class="n">Collects</span> <span class="ow">and</span> <span class="n">synchronizes</span> <span class="n">inputs</span> <span class="kn">from</span> <span class="nn">multiple</span> <span class="n">message</span> <span class="n">bus</span> <span class="n">topics</span> <span class="n">into</span> <span class="n">a</span> <span class="n">unified</span> <span class="n">emotional</span> <span class="n">context</span><span class="o">.</span>
+</span><span id="__span-4-89"><a id="__codelineno-4-89" name="__codelineno-4-89" href="#__codelineno-4-89"></a><span class="o">**</span><span class="n">Purpose</span><span class="o">**</span><span class="p">:</span> <span class="n">Collects</span> <span class="ow">and</span> <span class="n">synchronizes</span> <span class="n">inputs</span> <span class="kn">from</span><span class="w"> </span><span class="nn">multiple</span> <span class="n">message</span> <span class="n">bus</span> <span class="n">topics</span> <span class="n">into</span> <span class="n">a</span> <span class="n">unified</span> <span class="n">emotional</span> <span class="n">context</span><span class="o">.</span>
 </span><span id="__span-4-90"><a id="__codelineno-4-90" name="__codelineno-4-90" href="#__codelineno-4-90"></a>
 </span><span id="__span-4-91"><a id="__codelineno-4-91" name="__codelineno-4-91" href="#__codelineno-4-91"></a><span class="o">**</span><span class="n">Responsibilities</span><span class="o">**</span><span class="p">:</span>
 </span><span id="__span-4-92"><a id="__codelineno-4-92" name="__codelineno-4-92" href="#__codelineno-4-92"></a><span class="o">-</span> <span class="o">**</span><span class="n">Message</span> <span class="n">Subscription</span><span class="o">**</span><span class="p">:</span> <span class="n">Subscribes</span> <span class="n">to</span> <span class="nb">all</span> <span class="nb">input</span> <span class="n">topics</span> <span class="p">(</span><span class="err">`</span><span class="n">user</span><span class="o">.</span><span class="n">emotion</span><span class="o">.</span><span class="n">detected</span><span class="err">`</span><span class="p">,</span> <span class="err">`</span><span class="n">conversation</span><span class="o">.</span><span class="n">message</span><span class="err">`</span><span class="p">,</span> <span class="err">`</span><span class="n">conversation</span><span class="o">.</span><span class="n">context</span><span class="err">`</span><span class="p">,</span> <span class="err">`</span><span class="n">personality</span><span class="o">.</span><span class="n">state</span><span class="err">`</span><span class="p">)</span>

@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://boeni-industries.github.io/aico/roadmap/foundation/">
       
       
-        <link rel="prev" href="../../developer-guide/schema_management/">
+        <link rel="prev" href="../../uiux/design_principles/">
       
       
         <link rel="next" href="../mvp/">
@@ -2231,6 +2231,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -2441,6 +2445,52 @@
   
   <span class="md-ellipsis">
     Schema Management
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/uuid_standards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    UUID Standards
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../uiux/design_principles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    UI/UX
     
   </span>
   
@@ -2876,6 +2926,13 @@
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Topic Hierarchy</strong>: Full topic structure (emotion.<em>, personality.</em>, agency.*)</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Schema Validation</strong>: JSON Schema validation for message types</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Error Handling</strong>: Message delivery guarantees and error recovery</li>
+</ul>
+<h3 id="task-scheduler-component">Task Scheduler Component<a class="headerlink" href="#task-scheduler-component" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Background Scheduler</strong>: Implement task scheduler for zero-maintenance operations (log cleanup, key rotation, health checks)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Cron-like Scheduling</strong>: Support for periodic tasks with configurable intervals</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Task Registry</strong>: Plugin system for registering scheduled tasks from different subsystems</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Failure Recovery</strong>: Automatic retry logic and error handling for scheduled tasks</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Performance</strong>: Optimize for 1000+ messages/second with &lt;100ms latency</li>
 </ul>
 <h3 id="service-layer-enhancement">Service Layer Enhancement<a class="headerlink" href="#service-layer-enhancement" title="Permanent link">&para;</a></h3>
@@ -2904,6 +2961,17 @@
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Caching</strong>: Local caching for offline functionality</li>
 </ul>
 <h2 id="phase-3-advanced-infrastructure">Phase 3: Advanced Infrastructure<a class="headerlink" href="#phase-3-advanced-infrastructure" title="Permanent link">&para;</a></h2>
+<h3 id="api-gateway-advanced-features">API Gateway Advanced Features<a class="headerlink" href="#api-gateway-advanced-features" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Rate Limiting</strong>: Advanced token bucket rate limiting with per-client quotas</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Admin Endpoint Separation</strong>: Secure admin interface with role-based access control</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Federation Support</strong>: Device-to-device communication for multi-device sync</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>gRPC Protocol Support</strong>: High-performance binary protocol adapter</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Protocol Buffer Schemas</strong>: Unified message schemas across all protocols</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Transport Negotiation</strong>: Automatic fallback between ZeroMQ IPC, WebSocket, REST</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Security Middleware</strong>: Request sanitization, XSS protection, input validation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Connection Pooling</strong>: Efficient resource management for high-throughput scenarios</li>
+</ul>
 <h3 id="resource-management">Resource Management<a class="headerlink" href="#resource-management" title="Permanent link">&para;</a></h3>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Resource Monitor</strong>: CPU, memory, battery, and system load tracking</li>
