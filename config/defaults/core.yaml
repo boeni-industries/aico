@@ -17,7 +17,7 @@ logging:
     default: "INFO"  # Default log level for all subsystems
     subsystems:
       cli: "INFO"
-      backend: "INFO" 
+      backend: "DEBUG" 
       frontend: "INFO"
       studio: "INFO"
     modules:

@@ -57,6 +57,11 @@ async def lifespan(app: FastAPI):
         config_manager.initialize(lightweight=False)
         logger.info("Configuration system initialized")
         
+        # Update logger factory with full configuration
+        from aico.core.logging import _logger_factory
+        if _logger_factory:
+            _logger_factory.config = config_manager
+        
         # Start message bus host (now non-blocking with threaded proxy)
         logger.info("Starting message bus host...")
         message_bus_host = AICOMessageBusHost()
@@ -165,14 +170,8 @@ def read_root():
 
 @app.get("/health")
 def health_check():
-    """Health check endpoint"""
-    # Create a fresh logger (after log consumer is ready)
     health_logger = get_logger("backend", "health")
-    
-    # Manually ensure database ready flag is set
     health_logger._db_ready = True
-    
-    # Log health check access at debug level for normal operation
     health_logger.debug("Health endpoint accessed", extra={
         "endpoint": "/health",
         "method": "GET",

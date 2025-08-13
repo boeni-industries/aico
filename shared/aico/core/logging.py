@@ -113,15 +113,20 @@ class AICOLogger:
         return log_entry
     
     def _should_log(self, level: str) -> bool:
-        """Check if log level should be recorded based on configuration"""
-        # Get configured log level for this subsystem/module
-        default_level = self.config.get("logging.levels.default", "INFO")
-        subsystem_level = self.config.get(f"logging.levels.subsystems.{self.subsystem}", default_level)
-        module_level = self.config.get(f"logging.levels.modules.{self.module}", subsystem_level)
+        """Determine if a log message should be recorded based on configured levels."""
+        # Access the core domain configuration directly
+        core_config = self.config.config_cache.get('core', {})
         
-        # Simple level hierarchy: DEBUG < INFO < WARNING < ERROR
+        # Hierarchical configuration: module > subsystem > default
+        default_level = core_config.get('logging', {}).get('levels', {}).get('default', 'INFO')
+        subsystem_level = core_config.get('logging', {}).get('levels', {}).get('subsystems', {}).get(self.subsystem, default_level)
+        module_level = core_config.get('logging', {}).get('levels', {}).get('modules', {}).get(self.module, subsystem_level)
+        
+        # Convert levels to numeric values for comparison
         levels = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3}
-        return levels.get(level, 1) >= levels.get(module_level, 1)
+        result = levels.get(level, 1) >= levels.get(module_level, 1)
+        
+        return result
     
     def _log(self, level: str, message: str, **kwargs):
         """Internal logging method"""
@@ -167,16 +172,14 @@ class AICOLogger:
             print(f"[LOGGING] Lost log: {log_entry.level} {log_entry.subsystem}.{log_entry.module}: {log_entry.message}", file=sys.stderr)
     
     def _send_to_database(self, log_entry: LogEntry):
-        """Send log entry to database via transport"""
+        """Send log entry to database via transport or fallback logging"""
         if self.transport:
             try:
                 self.transport.send_log(log_entry)
             except Exception as e:
-                # Fallback to console if transport fails
-                print(f"[LOG TRANSPORT ERROR] {log_entry.level} "
-                      f"{log_entry.subsystem}.{log_entry.module}: {log_entry.message}")
+                # Silent fallback - transport failed, use fallback logging
+                self._try_fallback_logging(log_entry)
         else:
-            # No transport available - use fallback logging
             self._try_fallback_logging(log_entry)
     
     def mark_database_ready(self):
@@ -233,12 +236,10 @@ class AICOLoggerFactory:
         return logger
     
     def _get_transport(self):
-        """Get or create the logging transport (ZeroMQ)"""
+        """Get or create transport for this logger factory"""
         if not self._transport and ZMQ_AVAILABLE:
             self._transport = ZMQLogTransport(self.config)
             self._transport.initialize()
-        elif not ZMQ_AVAILABLE:
-            print(f"[LOGGER FACTORY] ZeroMQ not available, no transport created")
         return self._transport
     
     def mark_all_databases_ready(self):
@@ -276,27 +277,23 @@ class ZMQLogTransport:
         self._context = None
         
     def initialize(self):
-        """Initialize ZMQ transport with raw socket"""
+        """Initialize the ZMQ transport"""
         if not ZMQ_AVAILABLE:
             return
             
         try:
             import zmq
             
-            # Use synchronous ZMQ context for thread compatibility
             self._context = zmq.Context()
             self._socket = self._context.socket(zmq.PUB)
             
-            # Connect to message bus publisher port
-            publisher_port = self.config.get("message_bus.ports.publisher", 5555)
+            # Get message bus configuration - use specific publisher port
+            publisher_port = self.config.get("message_bus.pub_port", 5555)
             address = f"tcp://localhost:{publisher_port}"
+            
             self._socket.connect(address)
-            
-            print(f"[ZMQ TRANSPORT DEBUG] Initialized synchronous ZMQ socket connected to {address}")
-            
         except Exception as e:
-            # Fallback to no transport
-            print(f"[ZMQ TRANSPORT ERROR] Failed to initialize: {e}")
+            # Silent failure - transport initialization failed
             self._socket = None
             self._context = None
     
