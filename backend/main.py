@@ -75,6 +75,8 @@ async def lifespan(app: FastAPI):
             from aico.core.logging import _logger_factory
             if _logger_factory:
                 _logger_factory.mark_all_databases_ready()
+                # Explicitly update the main logger's database ready state
+                logger._db_ready = True
                 logger.info("Logging system activated - bootstrap buffer flushed")
             else:
                 logger.warning("Logger factory not available for activation")
@@ -164,8 +166,8 @@ def read_root():
 @app.get("/health")
 def health_check():
     """Detailed health check endpoint"""
-    # Force a log entry to test the pipeline
-
+    # Log health check access
+    logger.info("Health check endpoint accessed")
     
     health_status = {
         "status": "healthy",
