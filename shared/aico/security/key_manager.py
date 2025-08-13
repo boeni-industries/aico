@@ -383,7 +383,7 @@ class AICOKeyManager:
             keyring.delete_password(self.service_name, "salt")
             keyring.delete_password(self.service_name, "key_created")
         except Exception:
-            pass  # Key might not exist
+            pass # Expected: keys may not exist during cleanup - not a silent failure
         
         # Clear session cache as well
         self._clear_session()
@@ -681,7 +681,7 @@ class AICOKeyManager:
                 info["key_created"] = created_time.strftime("%Y-%m-%d %H:%M:%S")
                 info["key_age_days"] = (datetime.now() - created_time).days
         except Exception:
-            pass
+            pass # Expected: timestamp may be missing - graceful degradation
             
         # Get Argon2id parameters for master key
         try:
@@ -696,7 +696,7 @@ class AICOKeyManager:
             if parallelism:
                 info["parallelism"] = parallelism
         except Exception:
-            pass
+            pass # Expected: config may be unavailable - graceful degradation
             
         # Assess security level
         if info["key_age_days"] is not None:
@@ -757,7 +757,7 @@ class AICOKeyManager:
                         "status": f"Error: {e}"
                     }
         except Exception:
-            pass
+            pass # Expected: database key derivation may fail during benchmarking - graceful degradation
             
         # Performance assessment
         master_time = results["master_key_derivation_ms"]

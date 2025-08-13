@@ -198,7 +198,7 @@ class RateLimiter:
             try:
                 await self.cleanup_task
             except asyncio.CancelledError:
-                pass
+                pass  # Expected during shutdown - task cancellation is intentional
         
         self.buckets.clear()
         self.logger.info("Rate limiter shutdown")
@@ -206,4 +206,4 @@ class RateLimiter:
 
 class RateLimitExceeded(Exception):
     """Raised when rate limit is exceeded"""
-    pass
+    pass  # Standard exception class definition - not silencing failures

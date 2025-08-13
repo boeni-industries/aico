@@ -18,12 +18,12 @@ import jsonschema
 
 class ConfigurationError(Exception):
     """Configuration-related errors."""
-    pass
+    pass  # Standard exception class definition - no additional implementation needed
 
 
 class ConfigurationValidationError(ConfigurationError):
     """Configuration validation errors."""
-    pass
+    pass  # Standard exception class definition - inherits from ConfigurationError
 
 
 @dataclass
@@ -403,13 +403,13 @@ class ConfigurationManager:
         """Load runtime configuration changes from encrypted store."""
         # TODO: Implement encrypted runtime configuration storage
         # This will be implemented when we add the encryption layer
-        pass
+        pass  # Placeholder for future encrypted runtime config implementation
         
     def _persist_configuration(self) -> None:
         """Persist current configuration to encrypted store."""
         # TODO: Implement encrypted configuration persistence
         # This will be implemented when we add the encryption layer
-        pass
+        pass  # Placeholder for future encrypted config persistence implementation
         
     def _deep_merge(self, base: Dict, override: Dict) -> None:
         """
@@ -460,7 +460,7 @@ class ConfigurationManager:
         """
         # TODO: Implement audit logging
         # This will be implemented when we add the audit system
-        pass
+        pass  # Placeholder for future audit logging implementation
         
     @classmethod
     def reset_singleton(cls):

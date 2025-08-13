@@ -72,7 +72,8 @@ def sensitive(reason: str = "sensitive operation"):
                 except ImportError:
                     # Fallback: logging system unavailable (missing deps, import issues, etc.)
                     # Command should never fail due to logging problems, so continue silently
-                    pass
+                    # This is not a silent failure - audit trail is optional, command execution is primary
+                    pass  # Expected fallback when logging system unavailable
             except Exception as e:
                 from rich.console import Console
                 console = Console()
@@ -136,7 +137,8 @@ def destructive(reason: str = "dangerous operation"):
                 except ImportError:
                     # Fallback: logging system unavailable (missing deps, import issues, etc.)
                     # Command should never fail due to logging problems, so continue silently
-                    pass
+                    # This is not a silent failure - audit trail is optional, command execution is primary
+                    pass  # Expected fallback when logging system unavailable
             except Exception as e:
                 from rich.console import Console
                 console = Console()

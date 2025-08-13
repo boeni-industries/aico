@@ -445,7 +445,7 @@ def test(
                 conn.execute(f"DROP TABLE IF EXISTS {test_table_name}")
                 console.print(f"🧹 Cleaned up test table: {test_table_name}")
             except:
-                pass
+                pass  # Expected failure during cleanup - table may not exist or connection may be closed
             console.print(f"❌ [red]Database test failed: {test_error}[/red]")
             raise test_error
         
@@ -822,8 +822,9 @@ def stat():
             try:
                 count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
                 total_records += count
-            except:
-                pass
+            except Exception as e:
+                console.print(f"[yellow]Warning: Could not count records in table '{table_name}': {e}[/yellow]")
+                # Continue with other tables - don't let one bad table break entire stats
         
         content = []
         content.append(f"[bold yellow]Database Size:[/bold yellow] [bold white]{size_mb:.2f} MB[/bold white]")

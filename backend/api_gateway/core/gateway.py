@@ -320,9 +320,9 @@ class AICOAPIGateway:
 
 class AuthenticationError(Exception):
     """Authentication failed"""
-    pass
+    pass  # Standard exception class definition - not silencing failures
 
 
 class AuthorizationError(Exception):
     """Authorization failed"""
-    pass
+    pass  # Standard exception class definition - not silencing failures

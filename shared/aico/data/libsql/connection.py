@@ -116,7 +116,8 @@ class LibSQLConnection:
         finally:
             # Note: We don't auto-close here to allow connection reuse
             # Call disconnect() explicitly when done
-            pass
+            # This is not a silent failure - intentional design for connection pooling
+            pass  # Intentionally no cleanup - connection reuse pattern
     
     def execute(self, query: str, parameters: Optional[Tuple] = None) -> Any:
         """

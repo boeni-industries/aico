@@ -20,14 +20,14 @@ if platform.system() == "Windows":
             sys.stdout = open(sys.stdout.fileno(), 'w', encoding='utf-8', closefd=False)
             sys.stderr = open(sys.stderr.fileno(), 'w', encoding='utf-8', closefd=False)
     except:
-        pass
+        pass  # Expected failure on non-PyInstaller or already UTF-8 systems
     
     # Set console code page to UTF-8 for Windows CMD
     try:
         import ctypes
         ctypes.windll.kernel32.SetConsoleOutputCP(65001)
     except:
-        pass
+        pass  # Expected failure if ctypes/kernel32 not available or already set
     
     # Set environment variable for Python I/O encoding
     os.environ["PYTHONIOENCODING"] = "utf-8"
@@ -40,7 +40,7 @@ if getattr(sys, 'frozen', False):
 else:
     # Running in development - shared package is installed as editable
     # But we need to ensure it's accessible before our module imports
-    pass  # The shared package should be available via pip install
+    pass  # Development mode - shared package installed via editable install
 
 import typer
 from rich.console import Console
@@ -78,7 +78,7 @@ try:
     app.add_typer(gateway.app, name="gateway", help="🌐 API Gateway management")
 except ImportError as e:
     # Gateway commands not available
-    pass
+    pass  # Expected when gateway dependencies not installed - CLI continues without gateway commands
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit.")):

@@ -121,8 +121,7 @@ class WebSocketAdapter:
                 try:
                     await self.heartbeat_task
                 except asyncio.CancelledError:
-                    # Expected during shutdown - this is the correct behavior
-                    pass
+                    pass # Expected during shutdown - this is the correct behavior
             
             # Close all connections
             for connection in list(self.connections.values()):
@@ -393,9 +392,7 @@ class WebSocketAdapter:
             message_json = json.dumps(message)
             await connection.websocket.send(message_json)
         except websockets.exceptions.ConnectionClosed:
-            # Connection already closed - this is expected and acceptable
-            # No action needed as the connection cleanup will be handled elsewhere
-            pass
+            pass # Connection already closed - this is expected and acceptable. No action needed as the connection cleanup will be handled elsewhere
         except Exception as e:
             self.logger.error(f"Error sending WebSocket message: {e}")
     

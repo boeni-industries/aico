@@ -188,8 +188,10 @@ def wipe(
                     try:
                         keyring.delete_password(service_name, key_name)
                         console.print(f"🗑️ Cleared: {key_name}")
-                    except:
-                        pass
+                    except keyring.errors.PasswordDeleteError:
+                        console.print(f"📭 [dim]Key '{key_name}' not found in keyring[/dim]")
+                    except Exception as e:
+                        console.print(f"⚠️ [yellow]Failed to delete key '{key_name}': {e}[/yellow]")
                 
                 # Clear database-specific passwords (multiple patterns)
                 db_patterns = [
@@ -202,16 +204,20 @@ def wipe(
                     try:
                         keyring.delete_password(service_name, pattern)
                         console.print(f"🗑️ Cleared: {pattern}")
-                    except:
-                        pass
+                    except keyring.errors.PasswordDeleteError:
+                        console.print(f"📭 [dim]Password '{pattern}' not found in keyring[/dim]")
+                    except Exception as e:
+                        console.print(f"⚠️ [yellow]Failed to delete password '{pattern}': {e}[/yellow]")
                 
                 # Also try clearing with @AICO suffix (Windows Credential Manager pattern)
                 for pattern in db_patterns:
                     try:
                         keyring.delete_password(service_name, f"{pattern}@AICO")
                         console.print(f"🗑️ Cleared: {pattern}@AICO")
-                    except:
-                        pass
+                    except keyring.errors.PasswordDeleteError:
+                        console.print(f"📭 [dim]Password '{pattern}@AICO' not found in keyring[/dim]")
+                    except Exception as e:
+                        console.print(f"⚠️ [yellow]Failed to delete password '{pattern}@AICO': {e}[/yellow]")
                         
             except Exception as e:
                 console.print(f"⚠️ [yellow]Keyring cleanup warning: {e}[/yellow]")

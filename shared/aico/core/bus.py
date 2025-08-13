@@ -46,12 +46,12 @@ def _create_message_metadata(message_id: str, source: str, message_type: str) ->
 
 class MessageBusError(Exception):
     """Base exception for message bus errors"""
-    pass
+    pass  # Standard exception class definition - no additional implementation needed
 
 
 class TopicAccessError(MessageBusError):
     """Raised when access to a topic is denied"""
-    pass
+    pass  # Standard exception class definition - inherits from MessageBusError
 
 
 class MessageBusClient:

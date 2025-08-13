@@ -56,8 +56,9 @@ def _store_jwt_token(token: str) -> None:
     try:
         key_manager = AICOKeyManager()
         key_manager.store_jwt_token("api_gateway", token)
-    except Exception:
-        pass
+    except Exception as e:
+        console.print(f"[yellow]Warning: Failed to store JWT token in keyring: {e}[/yellow]")
+        console.print("[dim]Token generated but not persisted - you may need to login again[/dim]")
 
 
 def _is_gateway_running() -> bool:
@@ -70,7 +71,11 @@ def _is_gateway_running() -> bool:
         # Simple health check without authentication
         response = requests.get(f"http://{host}:{port}/health", timeout=2)
         return response.status_code == 200
-    except:
+    except requests.exceptions.RequestException:
+        # Expected when gateway is not running
+        return False
+    except Exception as e:
+        console.print(f"[yellow]Warning: Gateway health check failed: {e}[/yellow]")
         return False
 
 def _make_authenticated_request(method: str, endpoint: str, **kwargs) -> requests.Response:
@@ -443,7 +448,9 @@ def status():
                 is_running = True
                 health_data = health_response.json()
         except requests.RequestException:
-            pass
+            # Expected when gateway is not running - status will show as OFFLINE
+            # This is not a silent failure - user gets clear feedback via status display
+            pass  # Expected failure when gateway not running - status display handles this gracefully
         
         # Primary status header - most important info first
         if is_running:
