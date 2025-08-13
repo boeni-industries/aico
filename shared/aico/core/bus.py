@@ -6,6 +6,7 @@ using Protocol Buffers for all message serialization.
 """
 
 import asyncio
+import platform
 import threading
 import uuid
 import zmq
@@ -15,6 +16,10 @@ from typing import Dict, List, Callable, Optional, Any
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.message import Message as ProtobufMessage
+
+# Windows compatibility fix for ZeroMQ
+if platform.system() == "Windows":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from .config import ConfigurationManager
 from ..proto.core import AicoMessage, MessageMetadata

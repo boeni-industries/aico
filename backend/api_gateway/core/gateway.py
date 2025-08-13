@@ -188,10 +188,6 @@ class AICOAPIGateway:
             
             # Disconnect from message bus
             if self.message_bus_client:
-                await self.message_bus_client.publish(
-                    "system.gateway.stopped",
-                    {"timestamp": "now"}
-                )
                 await self.message_bus_client.disconnect()
                 
             self.logger.info("API Gateway stopped")

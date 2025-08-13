@@ -75,6 +75,7 @@ async def lifespan(app: FastAPI):
             from aico.core.logging import _logger_factory
             if _logger_factory:
                 _logger_factory.mark_all_databases_ready()
+                logger._db_ready = True
                 logger.info("Logging system activated - bootstrap buffer flushed")
             else:
                 logger.warning("Logger factory not available for activation")
