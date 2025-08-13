@@ -621,42 +621,76 @@ def show_config(
 def list_protocols():
     """🔌 List available protocol adapters"""
     try:
-        config = _get_gateway_config()
-        protocols = config.get("protocols", {})
+        # Load config directly inline (same pattern as status command)
+        import yaml
+        from pathlib import Path
         
-        table = Table(title="🔌 Protocol Adapters", show_header=True, header_style="bold blue")
-        table.add_column("Protocol", style="cyan", no_wrap=True)
-        table.add_column("Status", justify="center")
-        table.add_column("Endpoint", style="dim")
+        current = Path(__file__).parent.parent.parent
+        config_dir = current / "config"
+        core_yaml_path = config_dir / "defaults" / "core.yaml"
+        
+        if core_yaml_path.exists():
+            with open(core_yaml_path, 'r', encoding='utf-8') as f:
+                yaml_content = yaml.safe_load(f)
+            config = yaml_content.get("api_gateway", {})
+        else:
+            config = {}
+        
+        protocols = config.get("protocols", {})
+        host = config.get('host', '127.0.0.1')
+        
+        # Print title following AICO CLI style guide
+        console.print("✨ [bold cyan]Protocol Adapters[/bold cyan]\n")
+        
+        # Use AICO CLI style guide - no emojis in table, SIMPLE_HEAD box
+        from rich import box
+        table = Table(
+            show_header=True, 
+            header_style="bold yellow",
+            box=box.SIMPLE_HEAD
+        )
+        table.add_column("Protocol", style="cyan")
+        table.add_column("Status")
+        table.add_column("Endpoint", style="white")
         table.add_column("Features", style="green")
+        
+        if not protocols:
+            console.print("[yellow]No protocol configuration found[/yellow]")
+            return
         
         for protocol_name, protocol_config in protocols.items():
             enabled = protocol_config.get("enabled", False)
-            status = "✅ Enabled" if enabled else "❌ Disabled"
+            status = "Enabled" if enabled else "Disabled"
+            status_color = "green" if enabled else "red"
             
             # Build endpoint
             if protocol_name == "rest":
                 port = protocol_config.get("port", 8771)
                 prefix = protocol_config.get("prefix", "/api/v1")
-                endpoint = f"http://127.0.0.1:{port}{prefix}"
+                endpoint = f"http://{host}:{port}{prefix}"
                 features = "HTTP/JSON, CORS, OpenAPI"
             elif protocol_name == "websocket":
                 port = protocol_config.get("port", 8081)
                 path = protocol_config.get("path", "/ws")
-                endpoint = f"ws://127.0.0.1:{port}{path}"
+                endpoint = f"ws://{host}:{port}{path}"
                 features = "Real-time, Bidirectional, Subscriptions"
             elif protocol_name == "zeromq_ipc":
                 endpoint = "Platform-specific IPC"
                 features = "High-performance, Local-only"
             elif protocol_name == "grpc":
                 port = protocol_config.get("port", 8083)
-                endpoint = f"grpc://127.0.0.1:{port}"
+                endpoint = f"grpc://{host}:{port}"
                 features = "Binary, Streaming, Type-safe"
             else:
                 endpoint = "Unknown"
                 features = ""
             
-            table.add_row(protocol_name.upper(), status, endpoint, features)
+            table.add_row(
+                protocol_name.upper(), 
+                f"[{status_color}]{status}[/{status_color}]", 
+                endpoint, 
+                features
+            )
         
         console.print(table)
         
