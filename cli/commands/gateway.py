@@ -806,8 +806,36 @@ def disable_protocol(
 auth_app = typer.Typer(help="JWT authentication management")
 app.add_typer(auth_app, name="auth")
 
+def admin_callback(ctx: typer.Context):
+    """Show help when no admin subcommand is given instead of showing an error."""
+    if ctx.invoked_subcommand is None:
+        from utils.help_formatter import format_subcommand_help
+        
+        subcommands = [
+            ("sessions", "List active user sessions"),
+            ("revoke-session", "Revoke a user session")
+        ]
+        
+        examples = [
+            "aico gateway admin sessions",
+            "aico gateway admin sessions --admin-only",
+            "aico gateway admin revoke-session abc123..."
+        ]
+        
+        format_subcommand_help(
+            console=console,
+            command_name="gateway admin",
+            description="Administrative operations for the API Gateway",
+            subcommands=subcommands,
+            examples=examples
+        )
+
 # Admin subcommand group
-admin_app = typer.Typer(help="Administrative operations")
+admin_app = typer.Typer(
+    help="Administrative operations", 
+    callback=admin_callback,
+    invoke_without_command=True
+)
 app.add_typer(admin_app, name="admin")
 
 @auth_app.command("login")
@@ -1048,47 +1076,7 @@ def admin_revoke_session(
         console.print(f"[red]✗ Failed to revoke session: {e}[/red]")
         raise typer.Exit(1)
 
-@admin_app.command("gateway-status")
-def admin_gateway_status():
-    """📊 Get detailed gateway status"""
-    try:
-        response = _make_authenticated_request("get", "/admin/gateway/status")
-        data = response.json()
-        
-        console.print("\n🚀 [bold cyan]Gateway Status[/bold cyan]\n")
-        
-        # Display gateway health status
-        status_table = Table(show_header=False, border_style="green")
-        status_table.add_column("Component", style="bold white")
-        status_table.add_column("Status", style="cyan")
-        
-        # Main status
-        main_status = data.get("status", "unknown")
-        status_color = "green" if main_status == "healthy" else "red"
-        status_table.add_row("Gateway", f"[{status_color}]{main_status.title()}[/{status_color}]")
-        
-        # Components
-        components = data.get("components", {})
-        for component, info in components.items():
-            if isinstance(info, dict):
-                comp_status = info.get("status", "unknown")
-                comp_color = "green" if comp_status in ["running", "healthy"] else "red"
-                status_table.add_row(component.replace("_", " ").title(), f"[{comp_color}]{comp_status.title()}[/{comp_color}]")
-        
-        console.print(status_table)
-        
-    except requests.RequestException as e:
-        if "No authentication token" in str(e):
-            console.print("[red]✗ Not authenticated. Run 'aico gateway auth login' first[/red]")
-        elif "Authentication failed" in str(e):
-            console.print("[red]✗ Authentication failed. Token may be expired[/red]")
-            console.print("[dim]Run 'aico gateway auth login' to refresh token[/dim]")
-        else:
-            console.print(f"[red]✗ Request failed: {e}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]✗ Failed to get gateway status: {e}[/red]")
-        raise typer.Exit(1)
+
 
 
 if __name__ == "__main__":
