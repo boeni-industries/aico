@@ -165,8 +165,8 @@ def read_root():
 @app.get("/health")
 def health_check():
     """Detailed health check endpoint"""
-    # Force a log entry to test the pipeline
-
+    # Log health check access
+    logger.info("Health check endpoint accessed")
     
     health_status = {
         "status": "healthy",
