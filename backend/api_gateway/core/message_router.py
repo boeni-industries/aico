@@ -18,7 +18,8 @@ from pathlib import Path
 # Shared modules now installed via UV editable install
 
 from aico.core.logging import get_logger
-from aico.core.bus import MessageBusClient, AICOMessage, MessageMetadata, MessagePriority
+from aico.core.bus import MessageBusClient
+from aico.core import AicoMessage, MessageMetadata
 
 
 @dataclass
@@ -72,7 +73,7 @@ class MessageRouter:
         
         self.logger.info("Message bus connected for routing")
     
-    async def route_message(self, message: AICOMessage) -> RoutingResult:
+    async def route_message(self, message: AicoMessage) -> RoutingResult:
         """
         Route message to appropriate internal topic
         
@@ -187,7 +188,7 @@ class MessageRouter:
         
         return topic == pattern
     
-    def _estimate_message_size(self, message: AICOMessage) -> int:
+    def _estimate_message_size(self, message: AicoMessage) -> int:
         """Estimate message size in bytes"""
         try:
             # Convert to dict and estimate JSON size
@@ -198,7 +199,7 @@ class MessageRouter:
             # Fallback estimation
             return 1024  # 1KB default
     
-    async def _handle_response(self, response_message: AICOMessage):
+    async def _handle_response(self, response_message: AicoMessage):
         """Handle response from internal services"""
         try:
             correlation_id = response_message.metadata.correlation_id
@@ -220,7 +221,7 @@ class MessageRouter:
         except Exception as e:
             self.logger.error(f"Error handling response: {e}")
     
-    async def _handle_error(self, error_message: AICOMessage):
+    async def _handle_error(self, error_message: AicoMessage):
         """Handle error from internal services"""
         try:
             correlation_id = error_message.metadata.correlation_id

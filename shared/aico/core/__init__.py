@@ -12,11 +12,11 @@ from .paths import AICOPaths
 from .bus import (
     MessageBusClient, 
     MessageBusBroker, 
-    AICOMessage, 
-    MessageMetadata, 
-    MessagePriority,
     create_client,
     create_broker
 )
 
-__all__ = ['ConfigurationManager', 'get_logger', 'AICOLogger', 'AICOPaths', 'MessageBusClient', 'MessageBusBroker', 'AICOMessage', 'MessageMetadata', 'MessagePriority', 'create_client', 'create_broker']
+# Import protobuf message types
+from ..proto.core import AicoMessage, MessageMetadata
+
+__all__ = ['ConfigurationManager', 'get_logger', 'AICOLogger', 'AICOPaths', 'MessageBusClient', 'MessageBusBroker', 'AicoMessage', 'MessageMetadata', 'create_client', 'create_broker']

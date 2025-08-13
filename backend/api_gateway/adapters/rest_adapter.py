@@ -22,7 +22,8 @@ from pathlib import Path
 # Shared modules now installed via UV editable install
 
 from aico.core.logging import get_logger
-from aico.core.bus import AICOMessage, MessageMetadata, MessagePriority
+from aico.core.bus import MessageBusClient
+from aico.core import AicoMessage, MessageMetadata
 
 from ..core.auth import AuthenticationManager, AuthorizationManager
 from ..core.message_router import MessageRouter
@@ -234,14 +235,14 @@ class RESTAdapter:
             import uuid
             from datetime import datetime
             
-            message = AICOMessage(
+            message = AicoMessage(
                 metadata=MessageMetadata(
                     message_id=str(uuid.uuid4()),
                     timestamp=datetime.utcnow(),
                     source="rest_api",
                     message_type=message_type,
                     version="1.0",
-                    priority=MessagePriority.NORMAL
+                    
                 ),
                 payload=payload
             )

@@ -133,10 +133,16 @@ class AICOAPIGateway:
         try:
             # Connect to message bus with timeout
             self.logger.info(f"Connecting API Gateway to message bus at {message_bus_address}")
-            self.message_bus_client = MessageBusClient(
-                "api_gateway", 
-                message_bus_address
-            )
+            
+            try:
+                self.message_bus_client = MessageBusClient(
+                    "api_gateway", 
+                    message_bus_address
+                )
+                self.logger.info(f"MessageBusClient created: {self.message_bus_client}")
+            except Exception as e:
+                self.logger.error(f"Failed to create MessageBusClient: {e}")
+                raise
             
             # Add timeout to prevent hanging
             import asyncio
@@ -149,6 +155,8 @@ class AICOAPIGateway:
             
             # Initialize message router with bus client
             self.logger.info("Setting up message router...")
+            if self.message_bus_client is None:
+                raise RuntimeError("MessageBusClient is None - cannot set up message router")
             await self.message_router.set_message_bus(self.message_bus_client)
             
             # Start protocol adapters

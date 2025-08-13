@@ -16,11 +16,11 @@ from aico.core.config import ConfigurationManager
 
 __version__ = "0.1.0"
 
-# Initialize configuration and logging FIRST
+# Initialize configuration FIRST
 config_manager = ConfigurationManager()
 config_manager.initialize(lightweight=True)
 
-# Initialize logging system
+# Initialize logging system - will use bootstrap buffering until message bus is ready
 initialize_logging(config_manager)
 
 # Now we can safely get loggers
@@ -63,7 +63,26 @@ async def lifespan(app: FastAPI):
         await message_bus_host.start()
         logger.info("Message bus host started")
         
-        # Start API Gateway if enabled
+        # Start log consumer IMMEDIATELY after message bus - before API Gateway
+        try:
+            from log_consumer import AICOLogConsumer
+            log_consumer = AICOLogConsumer(config_manager)
+            logger.info("Log consumer created, starting...")
+            await log_consumer.start()
+            logger.info("Log consumer started - backend logs will now be persisted")
+            
+            # Activate proper logging now that log consumer is running
+            from aico.core.logging import _logger_factory
+            if _logger_factory:
+                _logger_factory.mark_all_databases_ready()
+                logger.info("Logging system activated - bootstrap buffer flushed")
+            else:
+                logger.warning("Logger factory not available for activation")
+                
+        except Exception as e:
+            logger.error(f"Failed to start log consumer: {e}")
+        
+        # Start API Gateway if enabled (after log consumer is running)
         logger.info("Checking API Gateway configuration...")
         gateway_config = config_manager.get("api_gateway", {})
         logger.info(f"Gateway config loaded: enabled={gateway_config.get('enabled', True)}")
@@ -118,6 +137,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Modern FastAPI uses lifespan events only
+
 # Admin endpoints will be registered after gateway initialization
 
 @app.get("/")
@@ -143,6 +164,9 @@ def read_root():
 @app.get("/health")
 def health_check():
     """Detailed health check endpoint"""
+    # Force a log entry to test the pipeline
+
+    
     health_status = {
         "status": "healthy",
         "version": __version__,
@@ -169,6 +193,11 @@ if __name__ == "__main__":
     import uvicorn
     import os
     
+    # Initialize config_manager before accessing it
+    if config_manager is None:
+        config_manager = ConfigurationManager()
+        config_manager.initialize(lightweight=False)
+    
     # Get configuration for server settings
     host = config_manager.get("api_gateway.host", "127.0.0.1")
     port = config_manager.get("api_gateway.protocols.rest.port", 8771)
@@ -184,7 +213,7 @@ if __name__ == "__main__":
     
     # Start the Uvicorn server
     uvicorn.run(
-        "main:app",
+        app,
         host=host,
         port=port,
         reload=False,  # Disable reload in production

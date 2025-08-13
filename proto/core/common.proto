@@ -19,7 +19,7 @@ message DeviceInfo {
   string version = 5;                  // AICO version running on device
   
   enum DeviceType {
-    UNKNOWN = 0;
+    DEVICE_UNKNOWN = 0;
     DESKTOP = 1;
     LAPTOP = 2;
     MOBILE = 3;
@@ -41,13 +41,13 @@ message RoamingMode {
   ConnectionType connection_type = 4;  // Type of connection between devices
   
   enum RoamingType {
-    UNKNOWN = 0;
+    ROAMING_UNKNOWN = 0;
     COUPLED = 1;                       // Frontend and backend on same device
     DETACHED = 2;                      // Frontend and backend on different devices
   }
   
   enum ConnectionType {
-    UNKNOWN = 0;
+    CONNECTION_UNKNOWN = 0;
     LOCAL_IPC = 1;                     // Local inter-process communication
     LOCAL_NETWORK = 2;                 // Local network connection
     REMOTE_NETWORK = 3;                // Remote network connection
@@ -64,7 +64,7 @@ message SecurityContext {
   bool encrypted = 5;                  // Whether payload is encrypted
   
   enum AuthType {
-    UNKNOWN = 0;
+    AUTH_UNKNOWN = 0;
     NONE = 1;                          // No authentication
     JWT = 2;                           // JSON Web Token
     MTLS = 3;                          // Mutual TLS
@@ -80,7 +80,7 @@ message ResourceReference {
   AccessMode access_mode = 4;          // Access mode for the resource
   
   enum AccessMode {
-    UNKNOWN = 0;
+    ACCESS_UNKNOWN = 0;
     READ = 1;
     WRITE = 2;
     READ_WRITE = 3;
@@ -95,7 +95,7 @@ message ErrorInfo {
   map<string, string> details = 4;     // Additional error details
   
   enum ErrorSeverity {
-    UNKNOWN = 0;
+    SEVERITY_UNKNOWN = 0;
     INFO = 1;
     WARNING = 2;
     ERROR = 3;

@@ -6,13 +6,22 @@ Runs the central message bus broker and provides integration with backend module
 
 import asyncio
 import logging
+import uuid
 from typing import Dict, List, Optional
+from datetime import datetime
+from google.protobuf.timestamp_pb2 import Timestamp
+from google.protobuf.any_pb2 import Any as ProtoAny
 
-from aico.core.bus import MessageBusBroker, MessageBusClient, MessagePriority
+from aico.core.config import ConfigurationManager
+from aico.core.logging import initialize_logging
+initialize_logging(ConfigurationManager())
+
+from aico.core.bus import MessageBusBroker, MessageBusClient
 from aico.core.logging import get_logger
+from aico.proto.core import ApiEvent
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
-
+from aico.core.paths import AICOPaths
 
 class AICOMessageBusHost:
     """Central message bus host for AICO backend"""
@@ -55,12 +64,28 @@ class AICOMessageBusHost:
             self.running = True
             self.logger.info(f"Message bus host started on {self.bind_address}")
             
-            # Publish system startup event
+            # Publish system startup event with proper protobuf message
+            startup_event = ApiEvent()
+            startup_event.event_id = str(uuid.uuid4())
+            startup_event.event_type = "system.bus.started"
+            startup_event.client_id = "system.message_bus_host"
+            startup_event.session_id = "system"
+            
+            # Set timestamp
+            now = datetime.utcnow()
+            startup_event.timestamp.seconds = int(now.timestamp())
+            startup_event.timestamp.nanos = int((now.timestamp() % 1) * 1e9)
+            
+            # Set metadata
+            startup_event.metadata["broker_address"] = self.bind_address
+            startup_event.metadata["status"] = "started"
+            
             await self.internal_client.publish(
                 "system.bus.started",
-                {"timestamp": "now", "broker_address": self.bind_address},
-                priority=MessagePriority.HIGH
+                startup_event
             )
+            
+            self.logger.info("Message bus host started successfully")
             
         except Exception as e:
             self.logger.error(f"Failed to start message bus host: {e}")
@@ -75,12 +100,29 @@ class AICOMessageBusHost:
         
         try:
             # Publish system shutdown event
+            # Publish system shutdown event with proper protobuf message
             if self.internal_client:
+                shutdown_event = ApiEvent()
+                shutdown_event.event_id = str(uuid.uuid4())
+                shutdown_event.event_type = "system.bus.stopping"
+                shutdown_event.client_id = "system.message_bus_host"
+                shutdown_event.session_id = "system"
+                
+                # Set timestamp
+                now = datetime.utcnow()
+                shutdown_event.timestamp.seconds = int(now.timestamp())
+                shutdown_event.timestamp.nanos = int((now.timestamp() % 1) * 1e9)
+                
+                # Set metadata
+                shutdown_event.metadata["reason"] = "shutdown"
+                shutdown_event.metadata["status"] = "stopping"
+                
                 await self.internal_client.publish(
                     "system.bus.stopping",
-                    {"timestamp": "now"},
-                    priority=MessagePriority.HIGH
+                    shutdown_event
                 )
+            
+            self.logger.info("Message bus host stopping")
             
             # Stop all module clients
             for module_name, client in self.modules.items():
@@ -126,16 +168,15 @@ class AICOMessageBusHost:
             self.modules[module_name] = client
             self.logger.info(f"Registered module: {module_name}")
             
-            # Publish module registration event
-            await self.internal_client.publish(
-                "system.module.registered",
-                {
-                    "module_name": module_name,
-                    "client_id": f"backend.{module_name}",
-                    "permissions": topic_permissions or []
-                },
-                priority=MessagePriority.NORMAL
-            )
+            # Publish module registration event (must be protobuf, not dict)
+            # await self.internal_client.publish(
+            #     "system.module.registered",
+            #     {
+            #         "module_name": module_name,
+            #         "client_id": f"backend.{module_name}",
+            #         "permissions": topic_permissions or []
+            #     },
+            # )
             
             return client
             
@@ -160,7 +201,7 @@ class AICOMessageBusHost:
             await self.internal_client.publish(
                 "system.module.unregistered",
                 {"module_name": module_name},
-                priority=MessagePriority.NORMAL
+                
             )
             
         except Exception as e:
@@ -292,7 +333,7 @@ async def example_emotion_module(bus_host: AICOMessageBusHost):
                 "dominance": 0.6,
                 "primary_emotion": "contentment"
             },
-            priority=MessagePriority.HIGH
+            
         )
     
     await client.subscribe("conversation.*", handle_conversation_event)
@@ -339,19 +380,16 @@ async def main():
         # Start the message bus (without database for this example)
         await bus_host.start()
         
-        # Register example modules
-        emotion_client = await example_emotion_module(bus_host)
-        personality_client = await example_personality_module(bus_host)
-        
+        # Register example modules (disabled for log pipeline test)
+        # emotion_client = await example_emotion_module(bus_host)
+        # personality_client = await example_personality_module(bus_host)
         # Simulate some message traffic
-        await emotion_client.publish(
-            "conversation.user_input",
-            {"text": "Hello AICO!", "timestamp": "now"},
-            priority=MessagePriority.NORMAL
-        )
-        
+        # await emotion_client.publish(
+        #     "conversation.user_input",
+        #     {"text": "Hello AICO!", "timestamp": "now"},
+        # )
         # Let messages flow for a bit
-        await asyncio.sleep(2)
+        # await asyncio.sleep(2)
         
         # Get statistics
         stats = await bus_host.get_message_stats()

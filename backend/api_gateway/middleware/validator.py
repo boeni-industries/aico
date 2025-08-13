@@ -16,7 +16,8 @@ from pathlib import Path
 # Shared modules now installed via UV editable install
 
 from aico.core.logging import get_logger
-from aico.core.bus import AICOMessage, MessageMetadata, MessagePriority
+from aico.core.bus import MessageBusClient
+from aico.core import AicoMessage, MessageMetadata
 
 
 class MessageValidator:
@@ -88,7 +89,7 @@ class MessageValidator:
             }
         }
     
-    async def validate_and_convert(self, message: AICOMessage) -> AICOMessage:
+    async def validate_and_convert(self, message: AicoMessage) -> AicoMessage:
         """
         Validate and convert message
         
@@ -128,9 +129,9 @@ class MessageValidator:
             self.logger.error(f"Message validation error: {e}")
             raise ValidationError(f"Validation failed: {e}")
     
-    def _validate_message_structure(self, message: AICOMessage):
+    def _validate_message_structure(self, message: AicoMessage):
         """Validate basic message structure"""
-        if not isinstance(message, AICOMessage):
+        if not isinstance(message, AicoMessage):
             raise ValidationError("Invalid message type")
         
         if not message.metadata:
@@ -158,7 +159,7 @@ class MessageValidator:
         except Exception as e:
             raise ValidationError(f"Schema validation error: {e}")
     
-    def _convert_message(self, message: AICOMessage) -> AICOMessage:
+    def _convert_message(self, message: AicoMessage) -> AicoMessage:
         """Convert and normalize message"""
         # Ensure payload is serializable
         if hasattr(message.payload, 'SerializeToString'):
@@ -180,15 +181,8 @@ class MessageValidator:
             except Exception as e:
                 raise ValidationError(f"Cannot serialize payload: {e}")
         
-        # Normalize priority
-        if not isinstance(message.metadata.priority, MessagePriority):
-            try:
-                if isinstance(message.metadata.priority, int):
-                    message.metadata.priority = MessagePriority(message.metadata.priority)
-                else:
-                    message.metadata.priority = MessagePriority.NORMAL
-            except ValueError:
-                message.metadata.priority = MessagePriority.NORMAL
+        # Priority validation removed - not in protobuf schema
+        # (MessagePriority enum no longer exists in protobuf)
         
         return message
     

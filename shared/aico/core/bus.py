@@ -2,87 +2,41 @@
 Core Message Bus Implementation for AICO
 
 Provides a hybrid broker pattern with ZeroMQ for internal communication
-and protocol adapters for external subsystems.
+using Protocol Buffers for all message serialization.
 """
 
 import asyncio
-import json
-import logging
 import threading
-import time
 import uuid
-from datetime import datetime
-from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Union
-from dataclasses import dataclass, asdict
-
 import zmq
 import zmq.asyncio
-from google.protobuf.message import Message as ProtobufMessage
-from google.protobuf.any_pb2 import Any as ProtobufAny
+from datetime import datetime
+from typing import Dict, List, Callable, Optional, Any
 from google.protobuf.timestamp_pb2 import Timestamp
+from google.protobuf.any_pb2 import Any as ProtoAny
+from google.protobuf.message import Message as ProtobufMessage
 
+from .config import ConfigurationManager
+from ..proto.core import AicoMessage, MessageMetadata
 from aico.core.logging import get_logger
 
 
-class TransportType(Enum):
-    """Message bus transport types"""
-    INPROC = "inproc"      # Same process
-    IPC = "ipc"            # Inter-process communication
-    TCP = "tcp"            # Network communication
+def _create_timestamp(dt: datetime) -> Timestamp:
+    """Convert datetime to protobuf Timestamp"""
+    timestamp = Timestamp()
+    timestamp.FromDatetime(dt)
+    return timestamp
 
 
-class MessagePriority(Enum):
-    """Message priority levels"""
-    LOW = 0
-    NORMAL = 1
-    HIGH = 2
-    CRITICAL = 3
-
-
-@dataclass
-class MessageMetadata:
-    """Message metadata structure"""
-    message_id: str
-    timestamp: datetime
-    source: str
-    message_type: str
-    version: str
-    priority: MessagePriority = MessagePriority.NORMAL
-    correlation_id: Optional[str] = None
-    attributes: Optional[Dict[str, str]] = None
-
-
-@dataclass
-class AICOMessage:
-    """AICO message envelope"""
-    metadata: MessageMetadata
-    payload: Union[Dict[str, Any], ProtobufMessage, bytes]
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert message to dictionary for JSON serialization"""
-        return {
-            'metadata': {
-                'message_id': self.metadata.message_id,
-                'timestamp': self.metadata.timestamp.isoformat(),
-                'source': self.metadata.source,
-                'message_type': self.metadata.message_type,
-                'version': self.metadata.version,
-                'priority': self.metadata.priority.value,
-                'correlation_id': self.metadata.correlation_id,
-                'attributes': self.metadata.attributes or {}
-            },
-            'payload': self._serialize_payload()
-        }
-    
-    def _serialize_payload(self) -> Any:
-        """Serialize payload based on type"""
-        if isinstance(self.payload, ProtobufMessage):
-            return self.payload.SerializeToString().hex()
-        elif isinstance(self.payload, bytes):
-            return self.payload.hex()
-        else:
-            return self.payload
+def _create_message_metadata(message_id: str, source: str, message_type: str) -> MessageMetadata:
+    """Create protobuf MessageMetadata"""
+    metadata = MessageMetadata()
+    metadata.message_id = message_id
+    metadata.timestamp.CopyFrom(_create_timestamp(datetime.utcnow()))
+    metadata.source = source
+    metadata.message_type = message_type
+    metadata.version = "1.0"
+    return metadata
 
 
 class MessageBusError(Exception):
@@ -162,52 +116,60 @@ class MessageBusClient:
         self.context.term()
         self.logger.info("Disconnected from message bus")
     
-    async def publish(self, topic: str, payload: Any, priority: MessagePriority = MessagePriority.NORMAL,
+    async def publish(self, topic: str, payload: ProtobufMessage, 
                      correlation_id: Optional[str] = None, attributes: Optional[Dict[str, str]] = None):
-        """Publish a message to a topic"""
+        """Publish a protobuf message to a topic"""
         if not self.running:
             raise MessageBusError("Client not connected")
         
         # Create message metadata
-        metadata = MessageMetadata(
+        metadata = _create_message_metadata(
             message_id=str(uuid.uuid4()),
-            timestamp=datetime.utcnow(),
             source=self.client_id,
-            message_type=topic,
-            version="1.0",
-            priority=priority,
-            correlation_id=correlation_id,
-            attributes=attributes
+            message_type=topic
         )
         
-        # Create AICO message
-        message = AICOMessage(metadata=metadata, payload=payload)
+        # Add optional attributes
+        if correlation_id:
+            metadata.attributes["correlation_id"] = correlation_id
+        if attributes:
+            metadata.attributes.update(attributes)
         
-        # Serialize message
-        message_data = json.dumps(message.to_dict()).encode('utf-8')
+        # Create AICO message envelope
+        message = AicoMessage()
+        message.metadata.CopyFrom(metadata)
+        
+        # Pack payload into Any field
+        any_payload = ProtoAny()
+        any_payload.Pack(payload)
+        message.any_payload.CopyFrom(any_payload)
+        
+        # Serialize to binary protobuf
+        message_data = message.SerializeToString()
         
         # Send message with topic as routing key
         await self.publisher.send_multipart([topic.encode('utf-8'), message_data])
         
-        self.logger.debug(f"Published message to topic '{topic}': {metadata.message_id}")
+        self.logger.debug(f"Published protobuf message to topic '{topic}': {metadata.message_id}")
         
         # Persist message if enabled
         if self.persistence_enabled:
             await self._persist_message(message)
     
-    async def subscribe(self, topic_pattern: str, callback: Callable[[AICOMessage], None]):
+    async def subscribe(self, topic_pattern: str, callback: Callable[[AicoMessage], None]):
         """Subscribe to messages matching a topic pattern"""
         if not self.running:
             raise MessageBusError("Client not connected")
+            
+        # Convert pattern to ZMQ filter
+        zmq_filter = self._pattern_to_zmq_filter(topic_pattern)
+        self.subscriber.setsockopt(zmq.SUBSCRIBE, zmq_filter.encode('utf-8'))
         
-        # Add subscription
+        # Store callback for application-level pattern matching
         self.subscriptions[topic_pattern] = callback
         
-        # Subscribe to topic pattern
-        self.subscriber.setsockopt(zmq.SUBSCRIBE, topic_pattern.encode('utf-8'))
-        
         self.logger.info(f"Subscribed to topic pattern: {topic_pattern}")
-    
+        
     async def unsubscribe(self, topic_pattern: str):
         """Unsubscribe from a topic pattern"""
         if topic_pattern in self.subscriptions:
@@ -223,38 +185,39 @@ class MessageBusClient:
                 topic, message_data = await self.subscriber.recv_multipart()
                 topic = topic.decode('utf-8')
                 
-                # Deserialize message
-                message_dict = json.loads(message_data.decode('utf-8'))
-                message = self._deserialize_message(message_dict)
+                # Deserialize protobuf message
+                message = AicoMessage()
+                message.ParseFromString(message_data)
                 
-                # Find matching subscriptions
+                # Find matching subscriptions and invoke callbacks
                 for pattern, callback in self.subscriptions.items():
                     if self._topic_matches_pattern(topic, pattern):
-                        try:
-                            await self._invoke_callback(callback, message)
-                        except Exception as e:
-                            self.logger.error(f"Error in callback for topic '{topic}': {e}")
-                
+                        await self._invoke_callback(callback, message)
+                        
             except Exception as e:
-                if self.running:  # Only log if we're supposed to be running
+                if self.running:
                     self.logger.error(f"Error in message loop: {e}")
-                    await asyncio.sleep(0.1)  # Brief pause before retrying
+                    await asyncio.sleep(0.1)  # Brief pause on error
     
-    def _deserialize_message(self, message_dict: Dict[str, Any]) -> AICOMessage:
-        """Deserialize message from dictionary"""
-        metadata_dict = message_dict['metadata']
-        metadata = MessageMetadata(
-            message_id=metadata_dict['message_id'],
-            timestamp=datetime.fromisoformat(metadata_dict['timestamp']),
-            source=metadata_dict['source'],
-            message_type=metadata_dict['message_type'],
-            version=metadata_dict['version'],
-            priority=MessagePriority(metadata_dict['priority']),
-            correlation_id=metadata_dict.get('correlation_id'),
-            attributes=metadata_dict.get('attributes')
-        )
+    def _pattern_to_zmq_filter(self, pattern: str) -> str:
+        """Convert wildcard pattern to ZeroMQ prefix filter"""
+        if pattern == "*" or pattern == "**":
+            return ""  # Empty filter = receive all messages
         
-        return AICOMessage(metadata=metadata, payload=message_dict['payload'])
+        # Find the longest prefix before any wildcard
+        if "*" in pattern:
+            # For "test.*" -> "test."
+            # For "system.auth.*" -> "system.auth."
+            wildcard_pos = pattern.find("*")
+            prefix = pattern[:wildcard_pos]
+            # Remove trailing dot if pattern ends with ".*"
+            if prefix.endswith("."):
+                return prefix
+            else:
+                return prefix
+        else:
+            # No wildcards, use exact pattern as filter
+            return pattern
     
     def _topic_matches_pattern(self, topic: str, pattern: str) -> bool:
         """Check if topic matches subscription pattern"""
@@ -291,30 +254,29 @@ class MessageBusClient:
             return (topic_parts[0] == pattern_parts[0] and 
                    self._match_parts(topic_parts[1:], pattern_parts[1:]))
     
-    async def _invoke_callback(self, callback: Callable, message: AICOMessage):
+    async def _invoke_callback(self, callback: Callable, message: AicoMessage):
         """Invoke callback, handling both sync and async functions"""
         if asyncio.iscoroutinefunction(callback):
             await callback(message)
         else:
             callback(message)
     
-    async def _persist_message(self, message: AICOMessage):
+    async def _persist_message(self, message: AicoMessage):
         """Persist message using the provided handler (if persistence enabled)"""
-        if not self.message_log:
-            return
-        
-        try:
-            # Call the persistence handler function
-            await self.message_log(message)
-            
-        except Exception as e:
-            self.logger.error(f"Failed to persist message {message.metadata.message_id}: {e}")
+        if self.persistence_enabled and self.message_log:
+            try:
+                if asyncio.iscoroutinefunction(self.message_log):
+                    await self.message_log(message)
+                else:
+                    self.message_log(message)
+            except Exception as e:
+                self.logger.error(f"Error persisting message: {e}")
     
     def enable_persistence(self, persistence_handler: Callable):
         """Enable message persistence with a handler function
         
         Args:
-            persistence_handler: Async function that takes (message: AICOMessage) -> None
+            persistence_handler: Async function that takes (message: AicoMessage) -> None
         """
         self.persistence_enabled = True
         self.message_log = persistence_handler
@@ -366,6 +328,9 @@ class MessageBusBroker:
             # Start proxy loop
             asyncio.create_task(self._proxy_loop())
             
+            # Give the task a moment to start
+            await asyncio.sleep(0.1)
+            
         except Exception as e:
             self.logger.error(f"Failed to start message bus broker: {e}")
             raise MessageBusError(f"Broker startup failed: {e}")
@@ -408,9 +373,14 @@ class MessageBusBroker:
                 try:
                     # Use ZeroMQ proxy for efficient message forwarding
                     zmq.proxy(self.frontend, self.backend)
+                    
+                    self.logger.info("zmq.proxy() returned (this should never happen)")
                 except Exception as e:
-                    if self.running:
-                        self.logger.error(f"Error in proxy thread: {e}")
+                    self.logger.error(f"Error in proxy thread: {e}")
+                    import traceback
+                    self.logger.error(f"Proxy thread traceback: {traceback.format_exc()}")
+                finally:
+                    self.logger.info("Proxy thread exiting")
             
             # Start proxy in background thread
             self.proxy_thread = threading.Thread(target=run_proxy, daemon=True)
@@ -444,10 +414,9 @@ async def create_client(client_id: str, broker_address: str = "tcp://localhost:5
     return client
 
 
-async def publish_message(client: MessageBusClient, topic: str, payload: Any, 
-                         priority: MessagePriority = MessagePriority.NORMAL):
-    """Convenience function to publish a message"""
-    await client.publish(topic, payload, priority)
+async def publish_message(client: MessageBusClient, topic: str, payload: ProtobufMessage):
+    """Convenience function to publish a protobuf message"""
+    await client.publish(topic, payload)
 
 
 def create_broker(bind_address: str = "tcp://*:5555") -> MessageBusBroker:

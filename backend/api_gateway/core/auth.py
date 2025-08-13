@@ -459,7 +459,7 @@ class AuthorizationManager:
         Args:
             user: Authenticated user
             action: Action being performed (e.g., "conversation.start", "admin.system.stats")
-            resource: Optional resource context (e.g., AICOMessage)
+            resource: Optional resource context (e.g., AicoMessage)
         """
         try:
             # Check if user has explicit permission
@@ -521,7 +521,7 @@ class AuthorizationManager:
     def _check_context_permissions(self, user: User, action: str, resource: Any) -> bool:
         """Check context-specific permissions"""
         # Example: Allow users to access their own data
-        if isinstance(resource, AICOMessage):
+        if isinstance(resource, AicoMessage):
             # Check if user is accessing their own conversation
             if action.startswith("conversation.") and resource.metadata.source == user.user_id:
                 return True

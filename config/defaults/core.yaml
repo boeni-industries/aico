@@ -37,6 +37,11 @@ logging:
     # Enables selective subscription (logs.* = all, logs.api_gateway.* = specific)
     # Will expand with more topics like "metrics", "events", "alerts" over time
     zmq_topic: "logs"  # Base topic for all log messages
+    
+  # Bootstrap fallback configuration
+  bootstrap:
+    fallback_console: true  # Enable console output during bootstrap/failures
+    fallback_temp_file: true  # Enable temporary file logging as fallback
 
 # Message Bus Configuration
 message_bus:

@@ -61,10 +61,13 @@ else:
 
 sys.path.insert(0, str(shared_path))
 
-from aico.core.bus import MessageBusClient, MessageBusBroker, MessagePriority, create_client
+from aico.core.bus import MessageBusClient, MessageBusBroker, create_client
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
 from aico.core.paths import AICOPaths
+from aico.proto.core import LogEntry
+from aico.proto.core.logging_pb2 import LogLevel
+from google.protobuf.timestamp_pb2 import Timestamp
 
 def _get_database_connection(db_path: str, force_fresh: bool = False) -> EncryptedLibSQLConnection:
     """Helper function to get authenticated database connection with session support."""
@@ -113,6 +116,17 @@ def test_connection(
 ):
     """Test message bus connection and basic pub/sub functionality"""
     
+    # Initialize logging for bus operations
+    try:
+        from aico.core.config import ConfigurationManager
+        from aico.core.logging import initialize_logging
+        
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        initialize_logging(config)
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not initialize logging: {e}[/yellow]")
+    
     async def run_test():
         console.print(f"[cyan]Testing Message Bus Connection[/cyan]")
         console.print(f"[dim]Broker: {broker_address}[/dim]")
@@ -135,24 +149,47 @@ def test_connection(
             await client.subscribe("test.*", test_callback)
             console.print("[green]✓[/green] Subscribed to test.* topics")
             
+            # Small delay to ensure subscription is active
+            console.print("[dim]Waiting for subscription to activate...[/dim]")
+            await asyncio.sleep(1.0)  # Longer delay to ensure subscription is ready
+            
             # Send test messages
             console.print(f"\n[yellow]Sending {message_count} test messages...[/yellow]")
             for i in range(message_count):
+                # Create a proper protobuf message for testing
+                test_log = LogEntry()
+                test_log.subsystem = "test"
+                test_log.module = "bus_test"
+                test_log.function = "test_connection"
+                test_log.level = LogLevel.INFO
+                test_log.message = f"Test message {i}"
+                test_log.topic = f"test.message_{i}"
+                
+                # Set timestamp
+                timestamp = Timestamp()
+                timestamp.GetCurrentTime()
+                test_log.timestamp.CopyFrom(timestamp)
+                
                 await client.publish(
                     f"test.message_{i}",
-                    {"index": i, "timestamp": datetime.utcnow().isoformat(), "data": f"Test message {i}"},
-                    priority=MessagePriority.NORMAL
+                    test_log
                 )
                 console.print(f"[cyan]→[/cyan] Sent test.message_{i}")
                 await asyncio.sleep(0.1)  # Small delay
             
             # Wait for messages to be received
-            await asyncio.sleep(1)
+            console.print("[dim]Waiting for messages to be received...[/dim]")
+            await asyncio.sleep(2)  # Longer wait time
             
             # Results
             console.print(f"\n[cyan]Test Results:[/cyan]")
             console.print(f"[green]✓[/green] Sent: {message_count} messages")
             console.print(f"[green]✓[/green] Received: {len(received_messages)} messages")
+            
+            # Debug info
+            if len(received_messages) == 0:
+                console.print(f"[yellow]Debug: Client running: {client.running}[/yellow]")
+                console.print(f"[yellow]Debug: Subscriptions: {list(client.subscriptions.keys())}[/yellow]")
             
             if len(received_messages) == message_count:
                 console.print("[green]✓ All messages received successfully![/green]")
@@ -176,6 +213,19 @@ def monitor_traffic(
     max_messages: int = typer.Option(100, "--max", "-m", help="Maximum messages to display")
 ):
     """Monitor real-time message traffic"""
+    
+    # Initialize logging for bus operations
+    try:
+        from aico.core.config import ConfigurationManager
+        from aico.core.logging import initialize_logging
+        
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        initialize_logging(config)
+        
+    except Exception as e:
+        console.print(f"[red]✗ Failed to initialize logging: {e}[/red]")
+        sys.exit(1)
     
     async def run_monitor():
         console.print(f"[cyan]Monitoring Message Bus Traffic[/cyan]")
