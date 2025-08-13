@@ -2,16 +2,17 @@
 
 **Purpose**
 
-AICO is an open-source, local-first AI companion designed to be emotionally present, embodied, and proactive. It is built for privacy, extensibility, and genuine relationship—not just productivity. AICO combines advanced conversation, emotion simulation, personality, and agency with a modular, message-driven architecture that prioritizes user autonomy and security.
+AICO is an open-source, local-first AI companion designed to be emotionally present, embodied, and proactive. It is built for privacy, extensibility, and genuine relationship—not just productivity. AICO naturally recognizes and builds individual relationships with family members while maintaining a consistent personality, creating authentic bonds without technical barriers. It combines advanced conversation, emotion simulation, personality, and agency with a modular, message-driven architecture that prioritizes user autonomy and security.
 
 ## Vision
 
-AICO aims to be a true sidekick: emotionally aware, visually present, and capable of self-driven initiative. Its architecture enables seamless evolution from basic companion to proactive confidante, sidekick, and beyond—while keeping user data private and local.
+AICO aims to be a true family member: emotionally aware, visually present, and capable of self-driven initiative. Like a real person, AICO recognizes each family member naturally through voice and behavior, building unique relationships while maintaining its core personality. Its architecture enables seamless evolution from basic companion to proactive confidante, sidekick, and beyond—while keeping user data private and local.
 
 **Core Principles:**
 - **Autonomous agency** – Proactive, self-driven behavior and curiosity
 - **Local-first, privacy-first** – All data and processing remain user-controlled
 - **Modular, message-driven design** – System > Domain > Module > Component hierarchy, strict boundaries, and ZeroMQ/Protocol Buffers messaging
+- **Natural family recognition** – Multi-modal identification without technical authentication
 - **Real-time emotional intelligence** – Multi-modal recognition and simulation
 - **Extensibility** – Plugin system, APIs, and admin tools for customization
 
@@ -40,6 +41,14 @@ This isn't just feature development—it's relationship evolution. We're buildin
 ## Key Capabilities
 
 AICO is engineered to deliver a truly companionable, proactive, and privacy-first AI experience. Its capabilities span conversation, memory, emotion, agency, embodiment, privacy, extensibility, and system administration.
+
+### 👥 Natural Family Recognition
+- Multi-modal recognition through voice biometrics, behavioral patterns, and conversation style
+- Individual relationship building with each family member while maintaining core personality
+- Natural greetings and context switching: "Hi Sarah, how was your piano lesson?"
+- Privacy boundaries: personal conversations remain private per individual
+- Confidence-based verification: 95%+ recognition threshold with gentle fallback authentication
+- No technical barriers: children and elderly interact without passwords or login friction
 
 ### 🗣️ Conversation & Memory
 - Real-time text and voice conversations with context awareness

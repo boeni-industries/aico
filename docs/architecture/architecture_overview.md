@@ -6,9 +6,10 @@ title: Architecture Overview
 
 ## Project Summary
 
-AICO is an open-source experiment to build an **emotionally present, visually embodied, and proactive AI companion**—intended to act as a confidante and sidekick, not just an assistant. Unlike productivity-oriented chatbots, AICO is designed to sense and adapt to the user's moods, initiate engagement, and form an evolving, personality-rich relationship with a visual, emotional, and proactive presence.
+AICO is an open-source experiment to build an **emotionally present, visually embodied, and proactive AI companion**—intended to act as a family member, confidante and sidekick, not just an assistant. Unlike productivity-oriented chatbots, AICO naturally recognizes and builds individual relationships with family members through multi-modal identification, creating authentic bonds without technical barriers while maintaining a consistent core personality.
 
 **Core Principles:**
+- **Natural Family Recognition:** Multi-modal identification without technical authentication barriers.
 - **Embodiment:** Visual/audio presence and non-verbal communication are core MVP requirements.
 - **Autonomous Agency:** AICO initiates, acts, and pursues its own goals and curiosities.
 - **Personality & Emotion:** Consistent, evolving personality and sophisticated emotion simulation.
@@ -19,6 +20,14 @@ AICO is an open-source experiment to build an **emotionally present, visually em
 ## System Features
 
 AICO's features are organized into logical modules for development and deployment:
+
+### 👥 Natural Family Recognition
+- **Multi-Modal Recognition**: Voice biometrics, behavioral patterns, conversation style analysis
+- **Individual Relationships**: Unique relationship context per family member while maintaining core personality
+- **Natural Interaction**: "Hi Sarah, how was your piano lesson?" - contextual, warm recognition
+- **Privacy Boundaries**: Personal conversations remain private per individual
+- **Confidence Thresholds**: 95%+ recognition confidence with gentle fallback verification
+- **Zero Technical Barriers**: No passwords, logins, or authentication friction
 
 ### 🗣️ Conversation & Interaction
 - **Chat Interface**: Real-time text-based conversation
