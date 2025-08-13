@@ -30,6 +30,9 @@ sys.path.insert(0, str(shared_path))
 
 from aico.security import AICOKeyManager
 
+# Import shared utilities using the same pattern as other CLI modules
+from utils.timezone import format_timestamp_local
+
 def security_callback(ctx: typer.Context):
     """Show help when no subcommand is given instead of showing an error."""
     if ctx.invoked_subcommand is None:
@@ -196,7 +199,9 @@ def passwd():
 
 
 @app.command()
-def status():
+def status(
+    utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
+):
     """Check security health and key management status."""
     
     key_manager = AICOKeyManager()
@@ -242,7 +247,8 @@ def status():
         key_table.add_column("Value", style="cyan", justify="left")
         
         if health_info["key_created"]:
-            key_table.add_row("Created", health_info["key_created"])
+            formatted_created = format_timestamp_local(health_info["key_created"], show_utc=utc)
+            key_table.add_row("Created", formatted_created)
         if health_info["key_age_days"] is not None:
             age_display = f"{health_info['key_age_days']} days"
             if health_info["key_age_days"] > 365:
@@ -346,7 +352,9 @@ def status():
 
 
 @app.command()
-def session():
+def session(
+    utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
+):
     """Show CLI session status and timeout information."""
     
     key_manager = AICOKeyManager()
@@ -376,14 +384,14 @@ def session():
         session_table.add_column("Property", style="bold white", justify="left")
         session_table.add_column("Value", style="cyan", justify="left")
         
-        from datetime import datetime
-        created_at = datetime.fromisoformat(session_info["created_at"])
-        last_accessed = datetime.fromisoformat(session_info["last_accessed"])
-        expires_at = datetime.fromisoformat(session_info["expires_at"])
+        # Format timestamps with timezone awareness
+        formatted_created = format_timestamp_local(session_info["created_at"], show_utc=utc)
+        formatted_last_accessed = format_timestamp_local(session_info["last_accessed"], show_utc=utc)
+        formatted_expires = format_timestamp_local(session_info["expires_at"], show_utc=utc)
         
-        session_table.add_row("Created", created_at.strftime("%Y-%m-%d %H:%M:%S"))
-        session_table.add_row("Last Accessed", last_accessed.strftime("%Y-%m-%d %H:%M:%S"))
-        session_table.add_row("Expires", expires_at.strftime("%Y-%m-%d %H:%M:%S"))
+        session_table.add_row("Created", formatted_created)
+        session_table.add_row("Last Accessed", formatted_last_accessed)
+        session_table.add_row("Expires", formatted_expires)
         session_table.add_row("Timeout", f"{session_info['timeout_minutes']} minutes")
         session_table.add_row("Time Remaining", f"{session_info['time_remaining_minutes']} minutes")
         

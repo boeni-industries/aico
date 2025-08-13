@@ -1,9 +1,17 @@
 import typer
+from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
 from pathlib import Path
 import sys
+import re
+import json
+
+# Import utils
+utils_path = Path(__file__).parent.parent / "utils"
+sys.path.insert(0, str(utils_path))
+from timezone import format_timestamp_local, get_timezone_suffix
 
 # Standard Rich console - encoding is fixed at app startup
 from rich.console import Console
@@ -161,7 +169,8 @@ def history(
         None,
         help="Which subsystem to show history for (shared/cli/backend/frontend/studio/all). If omitted, shows all.",
         show_default=False
-    )
+    ),
+    utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """
     Show the version history for a subsystem (or all subsystems).
@@ -200,14 +209,14 @@ def history(
         elif line.startswith("Author:") and current_commit:
             current_commit["author"] = line[len("Author:"):].strip()
         elif line.startswith("Date:") and current_commit:
-            # Format date as YYYY-MM-DD HH:MM
+            # Parse Git date and store as ISO format for timezone handling
             dt = line[len("Date:"):].strip()
             try:
                 dt_obj = datetime.datetime.strptime(dt, "%a %b %d %H:%M:%S %Y %z")
-                dt_fmt = dt_obj.strftime("%Y-%m-%d %H:%M")
+                # Store as ISO format with timezone for later formatting
+                current_commit["date"] = dt_obj.isoformat()
             except Exception:
-                dt_fmt = dt
-            current_commit["date"] = dt_fmt
+                current_commit["date"] = dt
         elif line.startswith("    ") and current_commit and not current_commit["msg"]:
             current_commit["msg"] = line.strip()
         elif line.startswith("@@") and current_commit:
@@ -259,7 +268,9 @@ def history(
         table.add_column("New", style="bold green", justify="left")
         table.add_column("Commit", style="dim", justify="left")
         table.add_column("Author", style="white", justify="left")
-        table.add_column("Date", style="white", justify="left")
+        # Dynamic date column header based on timezone preference
+        date_header = f"Date{get_timezone_suffix(utc)}"
+        table.add_column(date_header, style="white", justify="left")
         table.add_column("Message", style="dim", justify="left")
 
         # Build version change pairs (old, new)
@@ -272,12 +283,14 @@ def history(
                 version_pairs.append((prev, change["version"], change))
                 prev = None
         for old, new, meta in version_pairs:
+            # Format timestamp using timezone utility
+            formatted_date = format_timestamp_local(meta["date"], show_utc=utc) if meta["date"] and "T" in str(meta["date"]) else meta["date"]
             table.add_row(
                 old,
                 f"[bold green]{new}[/bold green]",
                 meta["commit"][:8],
                 meta["author"],
-                meta["date"],
+                formatted_date,
                 meta["msg"]
             )
         console.print()

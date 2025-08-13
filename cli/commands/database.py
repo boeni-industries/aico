@@ -37,6 +37,7 @@ from aico.core.config import ConfigurationManager
 
 # Import shared utilities using the same pattern as other CLI modules
 from utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
+from utils.timezone import format_timestamp_local, get_timezone_suffix
 
 def database_callback(ctx: typer.Context):
     """Show help when no subcommand is given instead of showing an error."""
@@ -123,7 +124,31 @@ def _get_database_connection(db_path: str, force_fresh: bool = False) -> Encrypt
         raise typer.Exit(1)
 
 
-
+def _format_table_value(value, column_name: str, utc: bool = False):
+    """Format table value with timezone handling for timestamp columns (display only)"""
+    if value is None:
+        return ""
+    
+    str_value = str(value)
+    
+    # Detect timestamp columns by name and format
+    timestamp_indicators = ['timestamp', 'created_at', 'updated_at', 'date', 'time']
+    is_timestamp_column = any(indicator in column_name.lower() for indicator in timestamp_indicators)
+    
+    # Check if value looks like ISO timestamp
+    is_timestamp_value = ('T' in str_value and ('Z' in str_value or '+' in str_value or str_value.count(':') >= 2))
+    
+    if (is_timestamp_column or is_timestamp_value) and len(str_value) > 10:
+        try:
+            return format_timestamp_local(str_value, show_utc=utc)
+        except:
+            pass  # Fall through to regular formatting
+    
+    # Truncate long values for display
+    if len(str_value) > 50:
+        str_value = str_value[:47] + "..."
+    
+    return str_value
 
 
 @app.command()
@@ -752,7 +777,8 @@ def count(
 @app.command()
 def head(
     table_name: str = typer.Argument(..., help="Table name"),
-    limit: int = typer.Option(10, "--limit", "-n", help="Number of records to show")
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of records to show"),
+    utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Show first N records from table"""
     conn = _get_db_connection()
@@ -765,7 +791,7 @@ def head(
             return
         
         # Get column names
-        columns = [desc[0] for desc in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
+        columns = [desc[1] for desc in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
         
         table = Table(
             title=f"✨ [bold cyan]First {limit} records from {table_name}[/bold cyan]",
@@ -777,16 +803,14 @@ def head(
         )
         
         for col in columns:
-            table.add_column(col, style="white")
+            col_header = col + get_timezone_suffix(utc) if col.lower() in ['timestamp', 'created_at', 'updated_at', 'date'] else col
+            table.add_column(col_header, style="white")
         
         for record in records:
-            # Truncate long values for display
             row_data = []
-            for value in record:
-                str_value = str(value) if value is not None else ""
-                if len(str_value) > 50:
-                    str_value = str_value[:47] + "..."
-                row_data.append(str_value)
+            for i, value in enumerate(record):
+                formatted_value = _format_table_value(value, columns[i], utc)
+                row_data.append(formatted_value)
             table.add_row(*row_data)
         
         console.print()
@@ -888,7 +912,8 @@ def check():
 @app.command()
 def tail(
     table_name: str = typer.Argument(..., help="Table name"),
-    limit: int = typer.Option(10, "--limit", "-n", help="Number of records to show")
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of records to show"),
+    utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Show last N records from table"""
     conn = _get_db_connection()
@@ -909,7 +934,7 @@ def tail(
             return
         
         # Get column names
-        columns = [desc[0] for desc in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
+        columns = [desc[1] for desc in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
         
         table = Table(
             title=f"✨ [bold cyan]Last {limit} records from {table_name}[/bold cyan]",
@@ -921,16 +946,14 @@ def tail(
         )
         
         for col in columns:
-            table.add_column(col, style="white")
+            col_header = col + get_timezone_suffix(utc) if col.lower() in ['timestamp', 'created_at', 'updated_at', 'date'] else col
+            table.add_column(col_header, style="white")
         
         for record in records:
-            # Truncate long values for display
             row_data = []
-            for value in record:
-                str_value = str(value) if value is not None else ""
-                if len(str_value) > 50:
-                    str_value = str_value[:47] + "..."
-                row_data.append(str_value)
+            for i, value in enumerate(record):
+                formatted_value = _format_table_value(value, columns[i], utc)
+                row_data.append(formatted_value)
             table.add_row(*row_data)
         
         console.print()
@@ -946,7 +969,8 @@ def tail(
 @destructive("allows arbitrary SQL execution including DROP, DELETE, UPDATE")
 def exec(
     query: str = typer.Argument(..., help="SQL query to execute"),
-    format: str = typer.Option("table", "--format", help="Output format: table, json")
+    format: str = typer.Option("table", "--format", help="Output format: table, json"),
+    utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Execute raw SQL query"""
     conn = _get_db_connection()
@@ -1015,11 +1039,16 @@ def exec(
                     columns = [f"col_{i+1}" for i in range(len(result[0]))]
                 
                 for col in columns:
-                    table.add_column(col, style="white")
+                    col_header = col + get_timezone_suffix(utc) if col.lower() in ['timestamp', 'created_at', 'updated_at', 'date'] else col
+                    table.add_column(col_header, style="white")
                 
                 # Add rows
                 for row in result:
-                    table.add_row(*[str(val) if val is not None else "" for val in row])
+                    row_data = []
+                    for i, val in enumerate(row):
+                        formatted_value = _format_table_value(val, columns[i], utc)
+                        row_data.append(formatted_value)
+                    table.add_row(*row_data)
                 
                 console.print()
                 console.print(table)
