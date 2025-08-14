@@ -135,6 +135,9 @@ nav:
     - Message Bus: architecture/message_bus.md
     - Plugin Manager: architecture/plugin_system.md
     - API Gateway: architecture/api_gateway.md
+    - API Reference: architecture/api_reference.md
+    - P2P Mesh Network: architecture/p2p_mesh.md
+    - Device Roaming: architecture/roaming.md
     - Update System: architecture/update_system.md
     - Data Layer: architecture/data_layer.md
     - Data Federation: architecture/data_federation.md
