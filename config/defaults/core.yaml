@@ -14,7 +14,7 @@ system:
 logging:
   # Log levels and filtering
   levels:
-    default: "INFO"  # Default log level for all subsystems
+    default: "DEBUG"  # Default log level for all subsystems
     subsystems:
       cli: "INFO"
       backend: "DEBUG" 
@@ -47,8 +47,8 @@ logging:
 message_bus:
   host: "localhost"
   bind_address: "tcp://*:5555"
-  pub_port: 5555
-  sub_port: 5556
+  pub_port: 5555  # Frontend port for publishers (broker binds here)
+  sub_port: 5556  # Backend port for subscribers (broker binds here)
 
 # API Gateway configuration
 api_gateway:
@@ -119,9 +119,6 @@ api_gateway:
     retry_attempts: 3
     correlation_cleanup_minutes: 60
 
-message_bus:
-  backend_port: 5555
-  frontend_port: 5556
 
 api:
   host: "127.0.0.1"

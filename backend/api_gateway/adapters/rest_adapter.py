@@ -25,8 +25,8 @@ from aico.core.logging import get_logger
 from aico.core.bus import MessageBusClient
 from aico.core import AicoMessage, MessageMetadata
 
-from ..core.auth import AuthenticationManager, AuthorizationManager
-from ..core.message_router import MessageRouter
+from ..models.core.auth import AuthenticationManager, AuthorizationManager
+from ..models.core.message_router import MessageRouter
 from ..middleware.rate_limiter import RateLimiter
 from ..middleware.validator import MessageValidator
 from ..middleware.security import SecurityMiddleware
@@ -162,7 +162,7 @@ class RESTAdapter:
             """User login endpoint"""
             # This would integrate with user management system
             # For now, return a demo JWT token
-            from ..core.auth import User
+            from ..models.core.auth import User
             
             user = User(
                 user_id=credentials.get("username", "demo_user"),

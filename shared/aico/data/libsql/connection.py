@@ -51,7 +51,7 @@ class LibSQLConnection:
         Initialize LibSQL connection.
         
         Args:
-            db_path: Path to the database file
+            db_path: Path to database file
             **kwargs: Additional connection parameters
         """
         self.db_path = Path(db_path)
@@ -80,6 +80,32 @@ class LibSQLConnection:
                     **self.connection_params
                 )
                 _get_logger().debug(f"Connected to LibSQL database: {self.db_path}")
+                
+                # Configure SQLite for concurrent access
+                try:
+                    # Set busy timeout for lock waiting (10 seconds)
+                    self._connection.execute("PRAGMA busy_timeout=10000")
+                    
+                    # Test basic connectivity
+                    self._connection.execute("SELECT 1").fetchone()
+                    _get_logger().debug("Database connection test successful")
+                    
+                    # Enable WAL mode for concurrent access
+                    try:
+                        result = self._connection.execute("PRAGMA journal_mode=WAL")
+                        mode = result.fetchone()[0] if result else "unknown"
+                        _get_logger().debug(f"Journal mode: {mode}")
+                        
+                        # Additional WAL optimizations
+                        self._connection.execute("PRAGMA synchronous=NORMAL")
+                        self._connection.execute("PRAGMA wal_autocheckpoint=1000")
+                        
+                    except Exception as wal_error:
+                        _get_logger().warning(f"Could not configure WAL mode: {wal_error}")
+                        
+                except Exception as test_error:
+                    _get_logger().error(f"Database connection setup failed: {test_error}")
+                    raise
             
             return self._connection
             
@@ -121,7 +147,7 @@ class LibSQLConnection:
     
     def execute(self, query: str, parameters: Optional[Tuple] = None) -> Any:
         """
-        Execute a SQL query.
+        Execute a SQL query with retry logic for concurrent access.
         
         Args:
             query: SQL query string
@@ -131,21 +157,59 @@ class LibSQLConnection:
             Query result
             
         Raises:
-            DatabaseError: If query execution fails
+            DatabaseError: If query execution fails after retries
         """
-        try:
-            with self.get_connection() as conn:
+        max_retries = 3
+        retry_delay = 0.1  # 100ms
+        
+        for attempt in range(max_retries + 1):
+            try:
+                if self._connection is None:
+                    self._connection = self.connect()
+                
+                # Test connection health before executing
+                try:
+                    self._connection.execute("SELECT 1").fetchone()
+                except Exception as e:
+                    # Connection is stale/corrupted, force full reconnect
+                    _get_logger().debug(f"Connection stale ({e}), forcing full reconnect...")
+                    try:
+                        self._connection.close()
+                    except:
+                        pass
+                    self._connection = None
+                    self._connection = self.connect()
+                
                 if parameters:
-                    result = conn.execute(query, parameters)
+                    result = self._connection.execute(query, parameters)
                 else:
-                    result = conn.execute(query)
+                    result = self._connection.execute(query)
                 
                 _get_logger().debug(f"Executed query: {query[:100]}...")
                 return result
+                    
+            except Exception as e:
+                error_msg = str(e).lower()
+                is_retryable_error = any(error_phrase in error_msg for error_phrase in [
+                    'database is locked', 'database is busy', 'sqlite_busy', 'sqlite_locked',
+                    'file is not a database', 'database disk image is malformed'
+                ])
                 
-        except Exception as e:
-            _get_logger().error(f"Query execution failed: {e}")
-            raise RuntimeError(f"Database query failed: {e}") from e
+                if is_retryable_error and attempt < max_retries:
+                    _get_logger().debug(f"Database error detected, forcing reconnect and retrying ({attempt + 1}/{max_retries}): {e}")
+                    # Force complete reconnection for "file is not a database" errors
+                    try:
+                        self._connection.close()
+                    except:
+                        pass
+                    self._connection = None
+                    
+                    import time
+                    time.sleep(retry_delay * (2 ** attempt))  # Exponential backoff
+                    continue
+                
+                _get_logger().error(f"Query execution failed: {e}")
+                raise RuntimeError(f"Database query failed: {e}") from e
     
     def execute_many(self, query: str, parameters_list: List[Tuple]) -> None:
         """

@@ -16,10 +16,9 @@ dependencies = [
     "PyJWT>=2.8.0,<3.0.0",
     "requests>=2.31.0,<3.0.0",
     "psutil>=5.9.0,<6.0.0",
-    
     # Shared dependencies (bundled from ../shared/)
     "cryptography",
-    "keyring", 
+    "keyring",
     "libsql==0.1.8",
     "pyyaml",
     "jsonschema",
@@ -27,6 +26,7 @@ dependencies = [
     "pyzmq",
     "platformdirs",
     "protobuf>=4.21.0,<6.0.0",
+    "passlib",
 ]
 
 # Development dependencies (shared library as editable install)

@@ -44,7 +44,15 @@ def security_callback(ctx: typer.Context):
             ("status", "Check security health and key management status"),
             ("session", "Show CLI session status and timeout information"),
             ("clear", "Clear cached master key (forces password re-entry)"),
-            ("test", "Performance diagnostics and key derivation benchmarking")
+            ("test", "Performance diagnostics and key derivation benchmarking"),
+            ("user-create", "Create a new user with optional PIN authentication"),
+            ("user-list", "List all users with filtering options"),
+            ("user-update", "Update user profile information"),
+            ("user-delete", "Soft delete user (mark as inactive)"),
+            ("user-auth", "Authenticate user with PIN"),
+            ("user-set-pin", "Set or update user PIN"),
+            ("user-relate", "Create relationship between two users"),
+            ("user-stats", "Show user statistics and authentication info")
         ]
         
         examples = [
@@ -608,7 +616,592 @@ def test():
         console.print("❌ [red]Performance summary unavailable due to test failures[/red]")
 
 
+# User Management Commands
 
+@app.command("user-create")
+def user_create(
+    full_name: str = typer.Argument(..., help="User's full name"),
+    nickname: str = typer.Option(None, "--nickname", "-n", help="Optional nickname"),
+    user_type: str = typer.Option("parent", "--type", "-t", help="User type (parent, child, admin)"),
+    pin: str = typer.Option(None, "--pin", "-p", help="Optional PIN for authentication"),
+    ctx: typer.Context = typer.Context
+):
+    """Create a new user with optional PIN authentication"""
+    import asyncio
+    from pathlib import Path
+    from aico.core.config import ConfigurationManager
+    from aico.core.paths import AICOPaths
+    from aico.security.key_manager import AICOKeyManager
+    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.user import UserService
+    
+    console = Console()
+    
+    try:
+        # Initialize configuration and paths
+        config_manager = ConfigurationManager()
+        paths = AICOPaths()
+        
+        # Get database path
+        db_path = paths.resolve_database_path("main.db")
+        
+        # Initialize key manager and get database key
+        key_manager = AICOKeyManager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        # Connect to database
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        user_service = UserService(db_conn)
+        
+        # Create user
+        async def create_user():
+            user = await user_service.create_user(
+                full_name=full_name,
+                nickname=nickname,
+                user_type=user_type,
+                pin=pin
+            )
+            return user
+        
+        user = asyncio.run(create_user())
+        
+        # Display success
+        console.print(f"\n✅ [green]User created successfully[/green]")
+        console.print(f"UUID: {user.uuid}")
+        console.print(f"Name: {user.full_name}")
+        if user.nickname:
+            console.print(f"Nickname: {user.nickname}")
+        console.print(f"Type: {user.user_type}")
+        if pin:
+            console.print("PIN: [dim]Configured[/dim]")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to create user: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("user-list")
+def user_list(
+    user_type: str = typer.Option(None, "--type", "-t", help="Filter by user type"),
+    limit: int = typer.Option(100, "--limit", "-l", help="Maximum number of users to show")
+):
+    """List all users"""
+    import asyncio
+    from pathlib import Path
+    from rich.table import Table
+    from aico.core.config import ConfigurationManager
+    from aico.core.paths import AICOPaths
+    from aico.security.key_manager import AICOKeyManager
+    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.user import UserService
+    
+    console = Console()
+    
+    try:
+        # Initialize configuration and paths
+        config_manager = ConfigurationManager()
+        paths = AICOPaths()
+        
+        # Get database path
+        db_path = paths.resolve_database_path("main.db")
+        
+        # Initialize key manager and get database key
+        key_manager = AICOKeyManager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        # Connect to database
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        user_service = UserService(db_conn)
+        
+        # List users
+        async def list_users():
+            users = await user_service.list_users(user_type=user_type, limit=limit)
+            return users
+        
+        users = asyncio.run(list_users())
+        
+        if not users:
+            console.print("No users found.")
+            return
+        
+        # Create table
+        table = Table(title="AICO Users")
+        table.add_column("UUID", style="cyan")
+        table.add_column("Name", style="green")
+        table.add_column("Nickname", style="yellow")
+        table.add_column("Type", style="blue")
+        table.add_column("Created", style="dim")
+        
+        for user in users:
+            table.add_row(
+                user.uuid[:8] + "...",
+                user.full_name,
+                user.nickname or "-",
+                user.user_type,
+                str(user.created_at)[:19] if user.created_at else "-"
+            )
+        
+        console.print(table)
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to list users: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("user-auth")
+def user_auth(
+    user_uuid: str = typer.Argument(..., help="User UUID"),
+    pin: str = typer.Option(..., "--pin", "-p", help="User PIN", hide_input=True)
+):
+    """Authenticate user with PIN"""
+    import asyncio
+    from pathlib import Path
+    from aico.core.config import ConfigurationManager
+    from aico.core.paths import AICOPaths
+    from aico.security.key_manager import AICOKeyManager
+    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.user import UserService
+    
+    console = Console()
+    
+    try:
+        # Initialize configuration and paths
+        config_manager = ConfigurationManager()
+        paths = AICOPaths()
+        
+        # Get database path
+        db_path = paths.resolve_database_path("main.db")
+        
+        # Initialize key manager and get database key
+        key_manager = AICOKeyManager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        # Connect to database
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        user_service = UserService(db_conn)
+        
+        # Authenticate user
+        async def authenticate():
+            result = await user_service.authenticate_user(user_uuid, pin)
+            return result
+        
+        result = asyncio.run(authenticate())
+        
+        if result["success"]:
+            user = result["user"]
+            console.print(f"\n✅ [green]Authentication successful[/green]")
+            console.print(f"User: {user.full_name}")
+            if user.nickname:
+                console.print(f"Nickname: {user.nickname}")
+            if result.get("last_login"):
+                console.print(f"Last login: {result['last_login']}")
+        else:
+            console.print(f"\n❌ [red]Authentication failed: {result['error']}[/red]")
+            if result.get("failed_attempts"):
+                console.print(f"Failed attempts: {result['failed_attempts']}")
+            if result.get("locked"):
+                console.print("⚠️ [yellow]Account is locked[/yellow]")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Authentication error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("user-update")
+def user_update(
+    user_uuid: str = typer.Argument(..., help="User UUID to update"),
+    full_name: str = typer.Option(None, "--name", "-n", help="Update full name"),
+    nickname: str = typer.Option(None, "--nickname", help="Update nickname"),
+    user_type: str = typer.Option(None, "--type", "-t", help="Update user type (parent, child, admin)")
+):
+    """Update user profile information"""
+    import asyncio
+    from pathlib import Path
+    from aico.core.config import ConfigurationManager
+    from aico.core.paths import AICOPaths
+    from aico.security.key_manager import AICOKeyManager
+    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.user import UserService
+    
+    console = Console()
+    
+    # Use hardcoded user types (configuration removed as too arbitrary)
+    valid_user_types = ['parent', 'child', 'guardian', 'guest']
+    
+    # Validate user_type if provided
+    if user_type and user_type not in valid_user_types:
+        console.print(f"❌ [red]Invalid user type '{user_type}'. Valid types: {', '.join(valid_user_types)}[/red]")
+        raise typer.Exit(1)
+    
+    # Check if any updates provided
+    updates = {}
+    if full_name:
+        updates['full_name'] = full_name
+    if nickname is not None:  # Allow empty string to clear nickname
+        updates['nickname'] = nickname if nickname else None
+    if user_type:
+        updates['user_type'] = user_type
+    
+    if not updates:
+        console.print("❌ [red]No updates provided. Use --name, --nickname, or --type[/red]")
+        raise typer.Exit(1)
+    
+    try:
+        # Initialize configuration and paths
+        config_manager = ConfigurationManager()
+        paths = AICOPaths()
+        
+        # Get database path
+        db_path = paths.resolve_database_path("main.db")
+        
+        # Initialize key manager and get database key
+        key_manager = AICOKeyManager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        # Connect to database
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        user_service = UserService(db_conn)
+        
+        # Update user
+        async def update_user():
+            user = await user_service.update_user(user_uuid, updates)
+            return user
+        
+        user = asyncio.run(update_user())
+        
+        if user:
+            console.print(f"\n✅ [green]User updated successfully[/green]")
+            console.print(f"UUID: {user.uuid}")
+            console.print(f"Name: {user.full_name}")
+            if user.nickname:
+                console.print(f"Nickname: {user.nickname}")
+            console.print(f"Type: {user.user_type}")
+            console.print(f"Updated: {user.updated_at}")
+        else:
+            console.print(f"❌ [red]User not found: {user_uuid}[/red]")
+            raise typer.Exit(1)
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to update user: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("user-delete")
+def user_delete(
+    user_uuid: str = typer.Argument(..., help="User UUID to delete"),
+    confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt")
+):
+    """Soft delete user (mark as inactive)"""
+    import asyncio
+    from pathlib import Path
+    from aico.core.config import ConfigurationManager
+    from aico.core.paths import AICOPaths
+    from aico.security.key_manager import AICOKeyManager
+    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.user import UserService
+    
+    console = Console()
+    
+    try:
+        # Initialize configuration and paths
+        config_manager = ConfigurationManager()
+        paths = AICOPaths()
+        
+        # Get database path
+        db_path = paths.resolve_database_path("main.db")
+        
+        # Initialize key manager and get database key
+        key_manager = AICOKeyManager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        # Connect to database
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        user_service = UserService(db_conn)
+        
+        # Get user first to show what will be deleted
+        async def get_user():
+            user = await user_service.get_user(user_uuid)
+            return user
+        
+        user = asyncio.run(get_user())
+        
+        if not user:
+            console.print(f"❌ [red]User not found: {user_uuid}[/red]")
+            raise typer.Exit(1)
+        
+        # Confirmation prompt
+        if not confirm:
+            console.print(f"⚠️ [yellow]About to delete user:[/yellow]")
+            console.print(f"  UUID: {user.uuid}")
+            console.print(f"  Name: {user.full_name}")
+            if user.nickname:
+                console.print(f"  Nickname: {user.nickname}")
+            console.print(f"  Type: {user.user_type}")
+            console.print(f"\n[dim]Note: This is a soft delete - user will be marked inactive but data preserved[/dim]")
+            
+            if not typer.confirm("Are you sure you want to delete this user?"):
+                console.print("Operation cancelled.")
+                raise typer.Exit()
+        
+        # Delete user
+        async def delete_user():
+            success = await user_service.delete_user(user_uuid)
+            return success
+        
+        success = asyncio.run(delete_user())
+        
+        if success:
+            console.print(f"\n✅ [green]User deleted successfully[/green]")
+            console.print(f"User '{user.full_name}' has been marked as inactive")
+        else:
+            console.print(f"❌ [red]Failed to delete user (may already be inactive)[/red]")
+            raise typer.Exit(1)
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to delete user: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("user-set-pin")
+def user_set_pin(
+    user_uuid: str = typer.Argument(..., help="User UUID"),
+    new_pin: str = typer.Option(..., "--new-pin", "-n", help="New PIN", hide_input=True),
+    old_pin: str = typer.Option(None, "--old-pin", "-o", help="Current PIN (required if user has existing PIN)", hide_input=True)
+):
+    """Set or update user PIN"""
+    import asyncio
+    from pathlib import Path
+    from aico.core.config import ConfigurationManager
+    from aico.core.paths import AICOPaths
+    from aico.security.key_manager import AICOKeyManager
+    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.user import UserService
+    
+    console = Console()
+    
+    try:
+        # Initialize configuration and paths
+        config_manager = ConfigurationManager()
+        paths = AICOPaths()
+        
+        # Get database path
+        db_path = paths.resolve_database_path("main.db")
+        
+        # Initialize key manager and get database key
+        key_manager = AICOKeyManager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        # Connect to database
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        user_service = UserService(db_conn)
+        
+        # Set PIN
+        async def set_pin():
+            try:
+                result = await user_service.set_pin(user_uuid, new_pin, old_pin)
+                return result
+            except ValueError as e:
+                if "Old PIN required" in str(e):
+                    return "old_pin_required"
+                elif "User not found" in str(e):
+                    return "user_not_found"
+                else:
+                    raise
+        
+        result = asyncio.run(set_pin())
+        
+        if result == "user_not_found":
+            console.print(f"❌ [red]User not found: {user_uuid}[/red]")
+            raise typer.Exit(1)
+        elif result == "old_pin_required":
+            console.print("❌ [red]User already has a PIN. Please provide --old-pin to update it.[/red]")
+            raise typer.Exit(1)
+        elif result is False:
+            console.print("❌ [red]Invalid old PIN[/red]")
+            raise typer.Exit(1)
+        elif result is True:
+            console.print("✅ [green]PIN set successfully[/green]")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Error setting PIN: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("user-relate")
+def user_relate(
+    user_uuid: str = typer.Argument(..., help="Primary user UUID"),
+    related_user_uuid: str = typer.Argument(..., help="Related user UUID"),
+    relationship_type: str = typer.Option(..., "--type", "-t", help="Relationship type (parent_child, sibling, guardian)")
+):
+    """Create relationship between two users"""
+    import asyncio
+    from pathlib import Path
+    from aico.core.config import ConfigurationManager
+    from aico.core.paths import AICOPaths
+    from aico.security.key_manager import AICOKeyManager
+    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.user import UserService
+    
+    console = Console()
+    
+    # Use hardcoded relationship types (configuration removed as too arbitrary)
+    valid_relationship_types = ['parent_child', 'sibling', 'guardian']
+    
+    # Validate relationship_type
+    if relationship_type not in valid_relationship_types:
+        console.print(f"❌ [red]Invalid relationship type '{relationship_type}'. Valid types: {', '.join(valid_relationship_types)}[/red]")
+        raise typer.Exit(1)
+    
+    # Validate that users are different
+    if user_uuid == related_user_uuid:
+        console.print("❌ [red]Cannot create relationship with self[/red]")
+        raise typer.Exit(1)
+    
+    try:
+        # Initialize configuration and paths
+        paths = AICOPaths()
+        
+        # Get database path
+        db_path = paths.resolve_database_path("main.db")
+        
+        # Initialize key manager and get database key
+        key_manager = AICOKeyManager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        # Connect to database
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        user_service = UserService(db_conn)
+        
+        # Verify both users exist
+        async def verify_users():
+            user1 = await user_service.get_user(user_uuid)
+            user2 = await user_service.get_user(related_user_uuid)
+            return user1, user2
+        
+        user1, user2 = asyncio.run(verify_users())
+        
+        if not user1:
+            console.print(f"❌ [red]Primary user not found: {user_uuid}[/red]")
+            raise typer.Exit(1)
+        
+        if not user2:
+            console.print(f"❌ [red]Related user not found: {related_user_uuid}[/red]")
+            raise typer.Exit(1)
+        
+        # Create relationship using direct database access (UserService doesn't have relationship methods yet)
+        import uuid as uuid_lib
+        relationship_uuid = str(uuid_lib.uuid4())
+        
+        # Check if relationship already exists
+        existing = db_conn.fetch_one("""
+            SELECT uuid FROM user_relationships 
+            WHERE user_uuid = ? AND related_user_uuid = ? AND relationship_type = ? AND is_active = TRUE
+        """, (user_uuid, related_user_uuid, relationship_type))
+        
+        if existing:
+            console.print(f"❌ [red]Relationship already exists between these users[/red]")
+            raise typer.Exit(1)
+        
+        # Insert relationship
+        db_conn.execute("""
+            INSERT INTO user_relationships (uuid, user_uuid, related_user_uuid, relationship_type, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """, (relationship_uuid, user_uuid, related_user_uuid, relationship_type))
+        
+        # Check if relationship is bidirectional
+        is_bidirectional = False
+        try:
+            relationship_config = relationship_types_config.get(relationship_type, {})
+            is_bidirectional = relationship_config.get('bidirectional', False)
+        except Exception:
+            # Default bidirectional for sibling
+            is_bidirectional = relationship_type == 'sibling'
+        
+        # Create reverse relationship if bidirectional
+        if is_bidirectional:
+            reverse_uuid = str(uuid_lib.uuid4())
+            db_conn.execute("""
+                INSERT INTO user_relationships (uuid, user_uuid, related_user_uuid, relationship_type, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """, (reverse_uuid, related_user_uuid, user_uuid, relationship_type))
+        
+        console.print(f"\n✅ [green]Relationship created successfully[/green]")
+        console.print(f"Primary User: {user1.full_name} ({user1.user_type})")
+        console.print(f"Related User: {user2.full_name} ({user2.user_type})")
+        console.print(f"Relationship: {relationship_type}")
+        if is_bidirectional:
+            console.print("[dim]Bidirectional relationship created[/dim]")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to create relationship: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("user-stats")
+def user_stats():
+    """Show user statistics"""
+    import asyncio
+    from pathlib import Path
+    from rich.table import Table
+    from aico.core.config import ConfigurationManager
+    from aico.core.paths import AICOPaths
+    from aico.security.key_manager import AICOKeyManager
+    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.user import UserService
+    
+    console = Console()
+    
+    try:
+        # Initialize configuration and paths
+        config_manager = ConfigurationManager()
+        paths = AICOPaths()
+        
+        # Get database path
+        db_path = paths.resolve_database_path("main.db")
+        
+        # Initialize key manager and get database key
+        key_manager = AICOKeyManager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        # Connect to database
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        user_service = UserService(db_conn)
+        
+        # Get stats
+        async def get_stats():
+            stats = await user_service.get_user_stats()
+            return stats
+        
+        stats = asyncio.run(get_stats())
+        
+        console.print("\n📊 [bold]User Statistics[/bold]")
+        console.print(f"Total Users: {stats.get('total_users', 0)}")
+        
+        # Users by type
+        users_by_type = stats.get('users_by_type', {})
+        if users_by_type:
+            console.print("\nUsers by Type:")
+            for user_type, count in users_by_type.items():
+                console.print(f"  {user_type}: {count}")
+        
+        # Authentication stats
+        auth_stats = stats.get('authentication', {})
+        if auth_stats:
+            console.print(f"\nAuthentication:")
+            console.print(f"  Users with PIN: {auth_stats.get('total_with_auth', 0)}")
+            console.print(f"  Locked accounts: {auth_stats.get('locked_accounts', 0)}")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Failed to get user stats: {e}[/red]")
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

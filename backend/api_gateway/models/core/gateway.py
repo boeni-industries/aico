@@ -19,12 +19,12 @@ from aico.core.bus import MessageBusBroker, MessageBusClient
 from .auth import AuthenticationManager, AuthorizationManager
 from .transport import AdaptiveTransport
 from .message_router import MessageRouter
-from ..adapters.rest_adapter import RESTAdapter
-from ..adapters.websocket_adapter import WebSocketAdapter
-from ..adapters.zeromq_adapter import ZeroMQAdapter
-from ..middleware.rate_limiter import RateLimiter
-from ..middleware.validator import MessageValidator
-from ..middleware.security import SecurityMiddleware
+from ...adapters.rest_adapter import RESTAdapter
+from ...adapters.websocket_adapter import WebSocketAdapter
+from ...adapters.zeromq_adapter import ZeroMQAdapter
+from ...middleware.rate_limiter import RateLimiter
+from ...middleware.validator import MessageValidator
+from ...middleware.security import SecurityMiddleware
 
 
 @dataclass

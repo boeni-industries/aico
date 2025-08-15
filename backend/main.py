@@ -171,7 +171,6 @@ def read_root():
 @app.get("/health")
 def health_check():
     health_logger = get_logger("backend", "health")
-    health_logger._db_ready = True
     health_logger.debug("Health endpoint accessed", extra={
         "endpoint": "/health",
         "method": "GET",

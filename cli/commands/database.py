@@ -34,6 +34,7 @@ from aico.data.libsql import create_encrypted_database, EncryptedLibSQLConnectio
 from aico.data.libsql.registry import SchemaRegistry
 from aico.core.paths import AICOPaths
 from aico.core.config import ConfigurationManager
+from aico.core.logging import initialize_cli_logging, get_logger
 
 # Import schemas to ensure they're registered
 import aico.data.schemas.core
@@ -212,9 +213,19 @@ def init(
             # Connect to existing database using session-based auth
             conn = _get_database_connection(str(db_file))
             
-            # Initialize CLI logging with direct database access
-            from aico.core.logging import initialize_cli_logging
-            initialize_cli_logging(config, conn)
+            # Initialize CLI logging with direct database access BEFORE operations
+            from aico.core.logging import initialize_cli_logging, get_logger
+            try:
+                initialize_cli_logging(config, conn)
+                # Test that logging actually works by attempting a log write
+                test_logger = get_logger("cli", "database")
+                test_logger.info("CLI logging initialized successfully for database init")
+                console.print("✅ [green]CLI logging initialized and verified[/green]")
+            except Exception as e:
+                console.print(f"❌ [red]CRITICAL: CLI logging initialization failed: {e}[/red]")
+                console.print(f"[red]Logs will only appear in console, not database[/red]")
+                import traceback
+                console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
             
             # Apply any missing schemas
             console.print("📋 Checking for missing database schemas...")
@@ -225,6 +236,9 @@ def init(
                 console.print(f"📋 Applied missing schemas: [cyan]{', '.join(applied_schemas)}[/cyan]")
             else:
                 console.print("ℹ️ [blue]Database is up to date - no missing schemas[/blue]")
+            
+            # Keep connection alive for logging - don't close here
+            # Connection will be closed when CLI command exits
         else:
             console.print(f"🔐 Creating encrypted {db_type} database: [cyan]{db_file}[/cyan]")
             
@@ -291,10 +305,19 @@ def status(
             # Database likely encrypted, use session-based authentication
             conn = _get_database_connection(str(db_file))
             
-            # Initialize CLI logging with direct database access
-            from aico.core.logging import initialize_cli_logging
+            # Initialize CLI logging with direct database access BEFORE operations
+            from aico.core.logging import initialize_cli_logging, get_logger
             config = ConfigurationManager()
-            initialize_cli_logging(config, conn)
+            try:
+                initialize_cli_logging(config, conn)
+                # Test that logging actually works
+                test_logger = get_logger("cli", "database")
+                test_logger.info("CLI logging initialized successfully for database status")
+                console.print("✅ [green]CLI logging verified[/green]")
+            except Exception as e:
+                console.print(f"❌ [red]CRITICAL: CLI logging failed: {e}[/red]")
+                import traceback
+                console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
             
             info = conn.get_encryption_info()
         else:
@@ -607,6 +630,8 @@ def _get_db_connection():
     """Get database connection for content commands"""
     try:
         config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        
         key_manager = AICOKeyManager()
         
         # Get database path
@@ -616,32 +641,18 @@ def _get_db_connection():
         # Connect to database using session-based authentication
         conn = _get_database_connection(str(db_path))
         
-        # Simple CLI logging: manually write a test log to verify database logging works
+        # Initialize CLI logging with direct database transport BEFORE operations
         try:
-            from datetime import datetime
-            test_log_sql = """
-                INSERT INTO logs (
-                    timestamp, level, subsystem, module, function_name,
-                    file_path, line_number, topic, message, user_id,
-                    session_id, trace_id, extra
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-            test_values = [
-                datetime.utcnow().isoformat() + "Z",
-                "INFO",
-                "cli",
-                "database",
-                "_get_db_connection",
-                __file__,
-                None,
-                "cli.database.connection",
-                "CLI database connection established",
-                None, None, None, None
-            ]
-            conn.execute(test_log_sql, test_values)
-            conn.commit()
+            initialize_cli_logging(config, conn)
+            # Verify logging works by testing actual log write
+            test_logger = get_logger("cli", "database")
+            test_logger.info("CLI logging test - database test command")
+            console.print("✅ [green]CLI logging verified for test command[/green]")
         except Exception as e:
-            print(f"[CLI LOG TEST ERROR] {e}")
+            console.print(f"❌ [red]CRITICAL: CLI logging failed: {e}[/red]")
+            console.print(f"[red]Database logging will not work - logs only in console[/red]")
+            import traceback
+            console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
         
         return conn
         

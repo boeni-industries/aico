@@ -26,7 +26,7 @@ from aico.core.config import ConfigurationManager
 from aico.security.key_manager import AICOKeyManager
 
 # Import session management
-from ..models.session import SessionManager, SessionInfo, SessionStatus
+from ..session import SessionManager, SessionInfo, SessionStatus
 
 # Logger will be initialized in classes
 

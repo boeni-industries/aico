@@ -23,7 +23,10 @@ if platform.system() == "Windows":
 
 from .config import ConfigurationManager
 from ..proto.core import AicoMessage, MessageMetadata
-from aico.core.logging import get_logger
+try:
+    from aico.core.logging import get_logger
+except ImportError:
+    from shared.aico.core.logging import get_logger
 
 
 def _create_timestamp(dt: datetime) -> Timestamp:
