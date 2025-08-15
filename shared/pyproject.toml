@@ -28,6 +28,7 @@ dependencies = [
     
     # Cross-platform utilities
     "platformdirs",
+    "psutil",
 ]
 
 [tool.setuptools]

@@ -100,6 +100,28 @@ class AICOPaths:
         return cls.get_data_directory() / "logs"
     
     @classmethod
+    def get_runtime_path(cls) -> Path:
+        """
+        Get AICO runtime directory for PID files and temporary runtime data.
+        
+        Platform-specific locations:
+        - Windows: %APPDATA%/aico/runtime
+        - macOS: ~/Library/Application Support/aico/runtime
+        - Linux: ~/.local/share/aico/runtime
+        
+        Returns:
+            Path: Platform-appropriate runtime directory
+        """
+        # Check for explicit override first
+        if override := os.getenv("AICO_RUNTIME_DIR"):
+            return Path(override)
+        
+        # Use unified approach - all subdirectories under main data directory
+        runtime_dir = cls.get_data_directory() / "runtime"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        return runtime_dir
+    
+    @classmethod
     def get_directory_mode_from_config(cls) -> str:
         """
         Get directory_mode from configuration, with fallback to 'auto'.
@@ -216,6 +238,7 @@ class AICOPaths:
             "config_directory": str(cls.get_config_directory()),
             "cache_directory": str(cls.get_cache_directory()),
             "logs_directory": str(cls.get_logs_directory()),
+            "runtime_directory": str(cls.get_runtime_path()),
             "environment_overrides": {
                 "AICO_DATA_DIR": os.getenv("AICO_DATA_DIR"),
                 "AICO_CONFIG_DIR": os.getenv("AICO_CONFIG_DIR"),

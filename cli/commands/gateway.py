@@ -9,6 +9,7 @@ import json
 import requests
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 from rich.console import Console
@@ -64,19 +65,50 @@ def _store_jwt_token(token: str) -> None:
 def _is_gateway_running() -> bool:
     """Check if API Gateway is currently running"""
     try:
-        config = _get_gateway_config()
-        host = config.get('host', '127.0.0.1')
-        port = config.get('protocols', {}).get('rest', {}).get('port', 8771)
+        # First check via PID file
+        from pathlib import Path
+        import sys
         
-        # Simple health check without authentication
-        response = requests.get(f"http://{host}:{port}/health", timeout=2)
-        return response.status_code == 200
-    except requests.exceptions.RequestException:
-        # Expected when gateway is not running
+        # Add shared module to path
+        if getattr(sys, 'frozen', False):
+            shared_path = Path(sys._MEIPASS) / 'shared'
+        else:
+            shared_path = Path(__file__).parent.parent.parent / "shared"
+        sys.path.insert(0, str(shared_path))
+        
+        from aico.core.process import ProcessManager
+        
+        process_manager = ProcessManager("gateway")
+        status = process_manager.get_service_status()
+        
+        if status["running"]:
+            # Double-check with HTTP health check
+            config = _get_gateway_config()
+            host = config.get('host', '127.0.0.1')
+            port = config.get('protocols', {}).get('rest', {}).get('port', 8771)
+            
+            try:
+                response = requests.get(f"http://{host}:{port}/health", timeout=2)
+                return response.status_code == 200
+            except requests.exceptions.RequestException:
+                # Process running but not responding - might be starting up
+                return True
+        
         return False
+        
     except Exception as e:
-        console.print(f"[yellow]Warning: Gateway health check failed: {e}[/yellow]")
-        return False
+        # Fallback to simple HTTP check
+        try:
+            config = _get_gateway_config()
+            host = config.get('host', '127.0.0.1')
+            port = config.get('protocols', {}).get('rest', {}).get('port', 8771)
+            
+            response = requests.get(f"http://{host}:{port}/health", timeout=2)
+            return response.status_code == 200
+        except requests.exceptions.RequestException:
+            return False
+        except Exception:
+            return False
 
 def _make_authenticated_request(method: str, endpoint: str, **kwargs) -> requests.Response:
     """Make authenticated request to API Gateway"""
@@ -196,11 +228,11 @@ def start(
             # Development mode: Use UV
             use_uv = True
             if use_uv:
-                cmd = ["uv", "run", "--active", "python", str(backend_main)]
+                cmd = ["uv", "run", "--active", "pythonw", str(backend_main)]
                 console.print("[yellow]🔧 Starting in development mode (UV)[/yellow]")
             else:
                 try:
-                    cmd = ["uv", "run", "python", str(backend_main)]
+                    cmd = ["uv", "run", "pythonw", str(backend_main)]
                     console.print("[yellow]🔧 Starting in development mode (UV)[/yellow]")
                 except FileNotFoundError:
                     console.print("[red]✗ UV not found. Install UV or use production mode[/red]")
@@ -216,7 +248,7 @@ def start(
                 
                 # Use UV without --active flag - let UV manage backend's own environment
                 # The key is that UV will run in backend_dir, so it uses backend's pyproject.toml/requirements.txt
-                cmd = ["uv", "run", "python", "main.py"]
+                cmd = ["uv", "run", "pythonw", "main.py"]
                 console.print("[dim]Using UV for dependency management[/dim]")
                 
             except (FileNotFoundError, subprocess.CalledProcessError):
@@ -239,20 +271,35 @@ def start(
                     console.print("[yellow]💡 Try: 'aico gateway start --dev' or install UV[/yellow]")
                     raise typer.Exit(1)
                 
-                cmd = [sys.executable, str(backend_main)]
+                # Use pythonw.exe instead of python.exe to avoid console window
+                python_dir = Path(sys.executable).parent
+                pythonw_exe = python_dir / "pythonw.exe"
+                if pythonw_exe.exists():
+                    cmd = [str(pythonw_exe), str(backend_main)]
+                else:
+                    cmd = [sys.executable, str(backend_main)]
         
         # Configure process options
+        env = dict(os.environ, 
+                  AICO_SERVICE_MODE="gateway",
+                  AICO_DETACH_MODE="true" if detach else "false")
+        
         process_kwargs = {
             "cwd": str(backend_dir),
-            "env": dict(os.environ, AICO_SERVICE_MODE="gateway")
+            "env": env
         }
         
         if detach:
             # Background service mode (non-blocking)
             if sys.platform == "win32":
-                # Windows: Use DETACHED_PROCESS to run in background
+                # Windows: Use STARTUPINFO with STARTF_USESHOWWINDOW to hide console
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                
                 process_kwargs.update({
                     "creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                    "startupinfo": startupinfo,
                     "stdout": subprocess.DEVNULL,
                     "stderr": subprocess.DEVNULL,
                     "stdin": subprocess.DEVNULL
@@ -314,9 +361,13 @@ def start(
             console.print()
             
             # Remove background-specific process options for foreground mode
+            fg_env = dict(os.environ, 
+                         AICO_SERVICE_MODE="gateway",
+                         AICO_DETACH_MODE="false")
+            
             fg_process_kwargs = {
                 "cwd": str(backend_dir),
-                "env": dict(os.environ, AICO_SERVICE_MODE="gateway")
+                "env": fg_env
             }
             
             # Show the exact command being run
@@ -333,7 +384,7 @@ def start(
                 result = subprocess.run(
                     cmd, 
                     cwd=str(backend_dir),
-                    env=dict(os.environ, AICO_SERVICE_MODE="gateway"),
+                    env=fg_env,
                     # Don't capture output - let it stream to console
                     stdout=None,
                     stderr=None
@@ -366,33 +417,43 @@ def stop():
     try:
         console.print("[yellow]⏳ Stopping API Gateway...[/yellow]")
         
-        # Find and terminate gateway processes
-        import psutil
+        # Use our ProcessManager for proper shutdown
+        from pathlib import Path
+        import sys
         
-        stopped_count = 0
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                cmdline = proc.info['cmdline']
-                if cmdline:
-                    # Look for gateway processes (uvicorn or direct main.py)
-                    cmdline_str = ' '.join(cmdline)
-                    if ('uvicorn' in cmdline_str and 'api_gateway' in cmdline_str) or \
-                       ('main.py' in cmdline_str) or \
-                       ('api_gateway.main:app' in cmdline_str):
-                        proc.terminate()
-                        stopped_count += 1
-                        console.print(f"[yellow]Terminated process {proc.info['pid']}[/yellow]")
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-        
-        if stopped_count > 0:
-            console.print(f"[green]✓ Stopped {stopped_count} API Gateway process(es)[/green]")
+        # Add shared module to path
+        if getattr(sys, 'frozen', False):
+            shared_path = Path(sys._MEIPASS) / 'shared'
         else:
-            console.print("[yellow]⚠ No running API Gateway processes found[/yellow]")
+            shared_path = Path(__file__).parent.parent.parent / "shared"
+        sys.path.insert(0, str(shared_path))
+        
+        from aico.core.process import ProcessManager
+        
+        process_manager = ProcessManager("gateway")
+        
+        # Try graceful shutdown first
+        success = process_manager.stop_service(timeout=30)
+        
+        if success:
+            console.print("[green]✓ API Gateway stopped gracefully[/green]")
+        else:
+            console.print("[yellow]⚠ Graceful shutdown failed, trying process cleanup...[/yellow]")
             
-    except ImportError:
-        console.print("[red]✗ psutil not available. Cannot stop processes automatically.[/red]")
-        console.print("[yellow]Please stop the gateway process manually[/yellow]")
+            # Fallback: Find and terminate gateway processes
+            try:
+                import psutil
+                stopped_count = process_manager.cleanup_stale_processes()
+                
+                if stopped_count > 0:
+                    console.print(f"[green]✓ Stopped {stopped_count} stale process(es)[/green]")
+                else:
+                    console.print("[yellow]⚠ No running API Gateway processes found[/yellow]")
+                    
+            except ImportError:
+                console.print("[red]✗ psutil not available. Cannot stop processes automatically.[/red]")
+                console.print("[yellow]Please stop the gateway process manually[/yellow]")
+            
     except Exception as e:
         console.print(f"[red]✗ Failed to stop gateway: {e}[/red]")
         raise typer.Exit(1)
@@ -452,13 +513,38 @@ def status():
             # This is not a silent failure - user gets clear feedback via status display
             pass  # Expected failure when gateway not running - status display handles this gracefully
         
-        # Primary status header - most important info first
+        # Enhanced status with process monitoring
+        from pathlib import Path
+        import sys
+        
+        # Add shared module to path for ProcessManager
+        if getattr(sys, 'frozen', False):
+            shared_path = Path(sys._MEIPASS) / 'shared'
+        else:
+            shared_path = Path(__file__).parent.parent.parent / "shared"
+        sys.path.insert(0, str(shared_path))
+        
+        from aico.core.process import ProcessManager
+        
+        process_manager = ProcessManager("gateway")
+        process_status = process_manager.get_service_status()
+        
+        # Primary status header with enhanced process info
         if is_running:
             console.print("🌐 [bold green]API Gateway Status: RUNNING[/bold green]")
-            console.print(f"   [dim]Version {health_data.get('version', 'Unknown')} • {host}:{rest_port}[/dim]")
+            if process_status.get("process_info"):
+                proc_info = process_status["process_info"]
+                uptime = time.time() - proc_info.get("create_time", time.time())
+                uptime_str = f"{int(uptime//3600)}h {int((uptime%3600)//60)}m" if uptime > 3600 else f"{int(uptime//60)}m {int(uptime%60)}s"
+                console.print(f"   [dim]PID {process_status['pid']} • Uptime {uptime_str} • {host}:{rest_port}[/dim]")
+            else:
+                console.print(f"   [dim]Version {health_data.get('version', 'Unknown')} • {host}:{rest_port}[/dim]")
         else:
             enabled = config.get("enabled", False)
-            if enabled:
+            if process_status.get("stale_pid"):
+                console.print("🌐 [bold yellow]API Gateway Status: STALE PROCESS[/bold yellow]")
+                console.print(f"   [dim]PID file exists but process not running • {host}:{rest_port}[/dim]")
+            elif enabled:
                 console.print("🌐 [bold yellow]API Gateway Status: OFFLINE[/bold yellow]")
                 console.print(f"   [dim]Configured but not responding • {host}:{rest_port}[/dim]")
             else:
@@ -552,9 +638,30 @@ def status():
             console.print("🔐 [bold red]CLI Authentication: NOT AUTHENTICATED[/bold red]")
             console.print("   [dim]Run [cyan]aico gateway auth login[/cyan] to authenticate[/dim]")
         
+        # Process details section
+        if process_status.get("metadata") or process_status.get("process_info"):
+            console.print()
+            console.print("📊 [bold blue]Process Information:[/bold blue]")
+            
+            if process_status.get("process_info"):
+                proc_info = process_status["process_info"]
+                console.print(f"   • CPU Usage: {proc_info.get('cpu_percent', 0):.1f}%")
+                console.print(f"   • Memory Usage: {proc_info.get('memory_percent', 0):.1f}%")
+                console.print(f"   • Status: {proc_info.get('status', 'Unknown')}")
+            
+            if process_status.get("metadata"):
+                metadata = process_status["metadata"]
+                console.print(f"   • Started: {metadata.get('started_at', 'Unknown')}")
+                console.print(f"   • Platform: {metadata.get('platform', 'Unknown')}")
+                console.print(f"   • Working Dir: {metadata.get('working_directory', 'Unknown')}")
+        
         # Quick actions based on status
         console.print()
-        if not is_running and config.get("enabled", False):
+        if process_status.get("stale_pid"):
+            console.print("💡 [bold]Quick Actions:[/bold]")
+            console.print("   • [cyan]aico gateway stop[/cyan] - Clean up stale process")
+            console.print("   • [cyan]aico gateway start[/cyan] - Start fresh gateway service")
+        elif not is_running and config.get("enabled", False):
             console.print("💡 [bold]Quick Actions:[/bold]")
             console.print("   • [cyan]aico gateway start[/cyan] - Start the gateway service")
             console.print("   • [cyan]aico gateway test[/cyan] - Test connectivity")

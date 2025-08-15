@@ -3,65 +3,92 @@ import sys
 import signal
 from datetime import datetime
 
+print("Starting AICO backend server v0.1.1")
+
 # Fix ZeroMQ compatibility on Windows - must be set before any ZMQ imports
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-from fastapi import FastAPI
-from pathlib import Path
-from contextlib import asynccontextmanager
+try:
+    from fastapi import FastAPI
+    from pathlib import Path
+    from contextlib import asynccontextmanager
+    print("FastAPI imports successful")
 
-# Shared modules now installed via UV editable install
-
-from aico.core.logging import initialize_logging, get_logger
-from aico.core.config import ConfigurationManager
+    # Shared modules now installed via UV editable install
+    from aico.core.logging import initialize_logging, get_logger
+    from aico.core.config import ConfigurationManager
+    print("AICO core imports successful")
+except Exception as e:
+    print(f"Import error: {e}")
+    sys.exit(1)
 
 __version__ = "0.1.1"
 
 # Initialize configuration FIRST
-config_manager = ConfigurationManager()
-config_manager.initialize(lightweight=True)
+try:
+    config_manager = ConfigurationManager()
+    config_manager.initialize(lightweight=True)
+    print("Configuration manager initialized")
 
-# Initialize logging system - will use bootstrap buffering until message bus is ready
-initialize_logging(config_manager)
+    # Initialize logging system - will use bootstrap buffering until message bus is ready
+    initialize_logging(config_manager)
+    print("Logging system initialized")
+except Exception as e:
+    print(f"Configuration/logging error: {e}")
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
 
 # Now we can safely get loggers
-logger = get_logger("backend", "main")
+try:
+    logger = get_logger("backend", "main")
+    print("Logger initialized")
 
-# Register signal handlers EARLY - before any blocking operations
-def signal_handler(signum, frame):
-    """Handle shutdown signals gracefully"""
-    logger.info(f"Received signal {signum}, initiating graceful shutdown...")
-    shutdown_event.set()
+    # Register signal handlers EARLY - before any blocking operations
+    def signal_handler(signum, frame):
+        """Handle shutdown signals gracefully"""
+        print(f"Signal handler called with signal {signum}")
+        logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+        shutdown_event.set()
 
-# Register signal handlers immediately
-if sys.platform != "win32":
-    # Unix-like systems
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
-else:
-    # Windows
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
+    # Register signal handlers immediately
+    if sys.platform != "win32":
+        # Unix-like systems
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+    else:
+        # Windows
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
 
-logger.info("Signal handlers registered for graceful shutdown")
+    logger.info("Signal handlers registered for graceful shutdown")
+    print("Signal handlers registered")
 
-# Import API Gateway AFTER logging is initialized
-from api_gateway import AICOAPIGateway
+    # Import API Gateway AFTER logging is initialized
+    from api_gateway import AICOAPIGateway
+    print("API Gateway imported")
 
-# Import Message Bus Host
-from message_bus_host import AICOMessageBusHost
+    # Import Message Bus Host
+    from message_bus_host import AICOMessageBusHost
+    print("Message Bus Host imported")
+except Exception as e:
+    print(f"Logger/import error: {e}")
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
 
 # Global instances (config_manager already initialized above)
 message_bus_host = None
 api_gateway = None
 shutdown_event = asyncio.Event()
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Modern FastAPI lifespan event handler"""
     global config_manager, message_bus_host, api_gateway
+    
+    print("Lifespan startup called")
     
     # Startup
     try:
@@ -244,10 +271,33 @@ def health_check():
     return health_status
 
 
+# Create FastAPI app with lifespan
+print("Creating FastAPI app...")
+app = FastAPI(
+    title="AICO Backend API",
+    description="AICO AI Companion Backend Services",
+    version=__version__,
+    lifespan=lifespan
+)
+print("FastAPI app created")
+
+# Add health endpoint
+@app.get("/health")
+async def health():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "version": __version__,
+        "service": "gateway"
+    }
+
+
 async def main():
     """Main async function with proper signal handling"""
-    import uvicorn
     import os
+    from server import run_server_async
+    
+    print("Main function called")
     
     # Initialize config_manager before accessing it
     global config_manager
@@ -255,57 +305,56 @@ async def main():
         config_manager = ConfigurationManager()
         config_manager.initialize(lightweight=False)
     
-    # Get configuration for server settings
-    host = config_manager.get("api_gateway.host", "127.0.0.1")
-    port = config_manager.get("api_gateway.protocols.rest.port", 8771)
+    print("Config manager ready")
     
     # Check if we're in gateway service mode
     service_mode = os.environ.get("AICO_SERVICE_MODE", "backend")
+    detach_mode = os.environ.get("AICO_DETACH_MODE", "true").lower() == "true"
+    
+    # Add console output for --no-detach mode
+    if not detach_mode:
+        print(f"Starting AICO backend server v{__version__}")
+        print(f"Service mode: {service_mode}")
+        print(f"Detach mode: {detach_mode}")
     
     logger.info(f"Starting AICO backend server in {service_mode} mode", extra={
-        "host": host,
-        "port": port,
+        "detach": detach_mode,
         "version": __version__
     })
     
-    # Create server config
-    config = uvicorn.Config(
-        app,
-        host=host,
-        port=port,
-        reload=False,  # Disable reload in production
-        log_config=None,  # Use our custom logging
-        access_log=False  # Disable uvicorn access logs (we have our own)
-    )
+    # Set up proper signal handling for graceful shutdown
+    def signal_handler(signum, frame):
+        print(f"\nSIGNAL HANDLER: Received signal {signum}")
+        print("SIGNAL HANDLER: Initiating shutdown...")
+        if not detach_mode:
+            print(f"Received signal {signum}, shutting down gracefully...")
+        logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+        shutdown_event.set()
+        print("SIGNAL HANDLER: Shutdown event set")
     
-    server = uvicorn.Server(config)
+    # Install signal handlers in main() - these will be the final handlers
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
     
-    # Start server in background task
-    server_task = asyncio.create_task(server.serve())
+    if not detach_mode:
+        print("Signal handlers installed for SIGTERM and SIGINT")
+        print(f"Main process PID: {os.getpid()}")
     
-    try:
-        # Wait for shutdown signal
-        await shutdown_event.wait()
-        logger.info("Shutdown signal received, stopping server...")
-        
-        # Graceful shutdown
-        server.should_exit = True
-        await server_task
-        
-    except KeyboardInterrupt:
-        logger.info("Keyboard interrupt received, stopping server...")
-        server.should_exit = True
-        await server_task
-    
-    logger.info("Server shutdown complete")
+    # Use our custom server wrapper
+    await run_server_async(app, config_manager, detach=detach_mode)
 
 
 if __name__ == "__main__":
     """Start the server when run directly"""
     try:
+        print("Starting asyncio.run(main())")
         asyncio.run(main())
     except KeyboardInterrupt:
+        print("Application interrupted by user")
         logger.info("Application interrupted by user")
     except Exception as e:
+        print(f"Application failed: {e}")
+        import traceback
+        traceback.print_exc()
         logger.error(f"Application failed: {e}")
         sys.exit(1)
