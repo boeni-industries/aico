@@ -96,17 +96,62 @@ AICO implements a **natural family recognition system** that replaces traditiona
 
 ## Technical Implementation
 
+### MVP Foundation: Smart PIN Authentication
+
+**Architecture Overview:**
+- **Device-Level Security**: Master password encrypts database (user-agnostic)
+- **User-Level Identity**: Smart PIN system for individual family member identification
+- **Progressive Enhancement**: Start with PINs, evolve to voice recognition
+
+**Smart PIN System Design:**
+```
+Authentication Flow:
+1. Device unlocks database with master password (keyring-stored)
+2. User enters PIN for individual identification
+3. System creates JWT session with family member context
+4. Conversation proceeds with personalized relationship context
+```
+
+**Family-Aware PIN Logic:**
+- **PIN Length = User Type**: No need to select user category first
+- **4-digit PINs**: Parents/primary users (1234-9999)
+- **3-digit PINs**: Children/secondary users (100-999)  
+- **2-digit PINs**: Guests/temporary users (10-99)
+- **Collision Detection**: System prevents duplicate PINs automatically
+- **Quick Switching**: Enter different PIN to switch users mid-conversation
+
+**User Experience Benefits:**
+- Natural conversation flow: "Hey AICO" → "Hi! What's your PIN?" → "123" → "Hi Sarah!"
+- Age-appropriate complexity: Even 5-year-olds can remember 3 digits
+- Zero friction user switching during family conversations
+- Emergency override: Master password can access any profile
+
+**Security Features:**
+- Database encryption provides device-level security
+- PINs only work after database is unlocked
+- Individual privacy maintained per PIN
+- Brute force protection with lockout after failed attempts
+- Audit logging of all authentication attempts
+
 ### Current Status
 **✅ Implemented:**
 - Basic JWT token creation and validation
 - Platform keyring integration (AICOKeyManager)
 - Session management infrastructure
+- Encrypted database with master password system
 
-**❌ Missing for MVP:**
-- Device certificate generation and validation
-- Automatic token refresh mechanism
-- Device pairing workflow for detached mode
-- Platform biometric authentication integration
+**🚧 MVP Implementation (Smart PIN System):**
+- PIN-based family member identification
+- PIN length-based user type detection
+- Enhanced family_members schema with PIN storage
+- PIN validation and session creation endpoints
+- Family member management with PIN assignment
+
+**🔮 Future Enhancement (Voice Recognition):**
+- Multi-modal recognition (voice + behavioral patterns)
+- Confidence-based verification system
+- Natural family recognition without PINs
+- Advanced biometric integration
 
 ### Required Endpoints
 

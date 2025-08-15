@@ -133,7 +133,7 @@ class SchemaRegistry:
     def apply_core_schemas(
         cls, 
         connection: Union[LibSQLConnection, EncryptedLibSQLConnection]
-    ) -> Dict[str, int]:
+    ) -> List[str]:
         """
         Apply all core schemas in priority order.
         
@@ -141,29 +141,42 @@ class SchemaRegistry:
             connection: Database connection
             
         Returns:
-            Dictionary mapping schema names to applied versions
+            List of schema names that were applied/updated
         """
-        applied_versions = {}
+        applied_schemas = []
         core_schemas = cls.get_core_schemas()
         
         _get_logger().info(f"Applying {len(core_schemas)} core schemas")
         
+        # Apply each schema independently using its own SchemaManager
+        # This allows each schema to have its own version tracking
         for schema in core_schemas:
             try:
+                # Create schema manager for this specific schema
                 manager = SchemaManager(connection, schema.definitions)
-                manager.migrate_to_latest()
                 
-                version = manager.get_current_version()
-                applied_versions[schema.name] = version
+                # Check if migration is needed
+                current_version = manager.get_current_version() or 0
+                latest_version = max(schema.definitions.keys()) if schema.definitions else 0
                 
-                _get_logger().info(f"Applied core schema '{schema.name}' at version {version}")
+                if current_version < latest_version:
+                    # Apply migrations sequentially from current to latest
+                    success = manager.migrate_to_version(latest_version)
+                    if success:
+                        applied_schemas.append(schema.name)
+                        _get_logger().info(f"Applied core schema '{schema.name}' at version {latest_version}")
+                    else:
+                        _get_logger().error(f"Failed to migrate schema '{schema.name}' to version {latest_version}")
+                else:
+                    _get_logger().debug(f"Schema '{schema.name}' already at latest version {current_version}")
                 
             except Exception as e:
                 _get_logger().error(f"Failed to apply core schema '{schema.name}': {e}")
-                raise
+                # Don't raise - continue with other schemas
+                continue
         
         cls._initialized = True
-        return applied_versions
+        return applied_schemas
     
     @classmethod
     def apply_plugin_schema(

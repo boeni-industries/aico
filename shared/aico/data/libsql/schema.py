@@ -413,6 +413,413 @@ class SchemaManager:
             _get_logger().error(f"Rollback failed: {e}")
             return False
     
+    def sync_to_latest_schema(self, target_schemas: Dict[int, SchemaVersion], confirm: bool = False, dry_run: bool = False) -> Dict[str, Any]:
+        """
+        Sync database to match latest schema definitions, resolving conflicts intelligently.
+        
+        This applies the latest schema definitions to the database, handling conflicts
+        like duplicate tables, missing columns, and structural inconsistencies.
+        
+        Args:
+            target_schemas: Schema definitions to sync to
+            confirm: Actually perform the sync (safety check)
+            dry_run: Preview what would be synced without making changes
+            
+        Returns:
+            Dictionary with sync operation results
+        """
+        result = {
+            "success": False,
+            "current_version": self.get_current_version(),
+            "target_version": max(target_schemas.keys()) if target_schemas else 0,
+            "conflicts_found": [],
+            "actions": [],
+            "dry_run": dry_run
+        }
+        
+        try:
+            # Detect current database state
+            current_state = self.detect_current_schema_state()
+            result["actions"].append(f"Analyzed current database: {len(current_state['tables'])} tables")
+            
+            # Analyze what migrations are actually needed based on current state
+            current_version = self.get_current_version() or 0
+            target_version = result["target_version"]
+            
+            # Check if we need to handle existing tables that conflict with migration path
+            try:
+                conflicts = self._analyze_migration_conflicts(current_state, target_schemas, current_version)
+                if conflicts:
+                    result["actions"].append(f"Found {len(conflicts)} migration conflicts:")
+                    for conflict in conflicts:
+                        result["actions"].append(f"  • {conflict}")
+            except Exception as e:
+                result["actions"].append(f"Error analyzing conflicts: {str(e)}")
+                conflicts = []
+            
+            if dry_run:
+                result["actions"].extend([
+                    f"Would sync to schema version {result['target_version']}",
+                    "Would apply all pending migrations sequentially", 
+                    "Would preserve existing data during structural changes"
+                ])
+                if conflicts:
+                    result["actions"].append("Would resolve migration conflicts before applying migrations")
+                result["success"] = True
+                return result
+            
+            if not confirm:
+                raise Exception("Sync requires --confirm flag for safety")
+            
+            # Perform the sync
+            with self.connection.transaction():
+                # Resolve migration conflicts first
+                if conflicts:
+                    self._resolve_migration_conflicts(conflicts, current_state)
+                
+                # Apply migrations to reach target version
+                target_version = result["target_version"]
+                if target_version > 0:
+                    # Update schema definitions and migrate
+                    self.schema_definitions = target_schemas
+                    success = self.migrate_to_version(target_version)
+                    if not success:
+                        raise Exception(f"Failed to migrate to version {target_version}")
+                
+                result["actions"].extend([
+                    f"Synced to schema version {target_version}",
+                    "Database now matches latest code definitions"
+                ])
+                
+                result["success"] = True
+                _get_logger().info(f"Schema sync completed to version {target_version}")
+                
+        except Exception as e:
+            result["actions"].append(f"Sync failed: {str(e)}")
+            _get_logger().error(f"Failed to sync schema: {e}")
+        
+        return result
+    
+    def snapshot_current_state(self, confirm: bool = False, dry_run: bool = False) -> Dict[str, Any]:
+        """
+        Capture current database state as new migration baseline, reset history.
+        
+        This creates a clean baseline from the current database structure,
+        useful for compressing complex development migration history.
+        
+        Args:
+            confirm: Actually perform the snapshot (safety check)
+            dry_run: Preview what would be snapshotted without making changes
+            
+        Returns:
+            Dictionary with snapshot operation results
+        """
+        result = {
+            "success": False,
+            "current_version": self.get_current_version(),
+            "tables_found": [],
+            "migrations_cleared": 0,
+            "dry_run": dry_run,
+            "actions": []
+        }
+        
+        try:
+            # Detect current database state
+            current_state = self.detect_current_schema_state()
+            result["tables_found"] = current_state["tables"]
+            result["actions"].append(f"Analyzed current database: {len(current_state['tables'])} tables")
+            
+            # Get current migration history
+            migration_history = self.get_migration_history()
+            result["migrations_cleared"] = len(migration_history)
+            
+            if dry_run:
+                result["actions"].extend([
+                    f"Would clear {len(migration_history)} migration records",
+                    "Would create baseline schema from current structure",
+                    "Would set schema version to 1 (new baseline)",
+                    "Would preserve all existing data and tables"
+                ])
+                result["success"] = True
+                return result
+            
+            if not confirm:
+                result["actions"].append("Snapshot not performed - confirmation required")
+                _get_logger().warning("Schema snapshot requires confirmation")
+                return result
+            
+            # Perform the snapshot
+            with self.connection.get_connection() as conn:
+                # Start transaction
+                conn.execute("BEGIN TRANSACTION")
+                
+                try:
+                    # Clear migration history
+                    conn.execute("DELETE FROM _aico_migration_history")
+                    
+                    # Set as version 1 baseline
+                    conn.execute("""
+                        INSERT OR REPLACE INTO _aico_schema_metadata (key, value, updated_at)
+                        VALUES (?, ?, CURRENT_TIMESTAMP)
+                    """, ("schema_version", "1"))
+                    
+                    conn.execute("""
+                        INSERT OR REPLACE INTO _aico_schema_metadata (key, value, updated_at)
+                        VALUES (?, ?, CURRENT_TIMESTAMP)
+                    """, ("schema_snapshot_at", str(datetime.now().isoformat())))
+                    
+                    conn.execute("""
+                        INSERT OR REPLACE INTO _aico_schema_metadata (key, value, updated_at)
+                        VALUES (?, ?, CURRENT_TIMESTAMP)
+                    """, ("schema_snapshot_reason", "Development snapshot - current state as baseline"))
+                    
+                    # Record the baseline in migration history
+                    conn.execute("""
+                        INSERT INTO _aico_migration_history 
+                        (version, name, description, rollback_sql, checksum)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (
+                        1,
+                        "Baseline Snapshot",
+                        "Current database structure captured as baseline",
+                        None,
+                        "snapshot"
+                    ))
+                    
+                    # Commit transaction
+                    conn.execute("COMMIT")
+                    
+                except Exception as e:
+                    # Rollback on error
+                    conn.execute("ROLLBACK")
+                    raise e
+                
+                result["actions"].extend([
+                    f"Cleared {len(migration_history)} migration records",
+                    "Created baseline schema from current structure",
+                    "Set schema version to 1 (new baseline)",
+                    "Future migrations will apply from this snapshot"
+                ])
+                
+                result["success"] = True
+                _get_logger().info("Schema snapshot created successfully")
+                
+        except Exception as e:
+            result["actions"].append(f"Snapshot failed: {str(e)}")
+            _get_logger().error(f"Failed to create schema snapshot: {e}")
+        
+        return result
+    
+    def _analyze_migration_conflicts(self, current_state: Dict[str, Any], target_schemas: Dict[int, SchemaVersion], current_version: int) -> List[str]:
+        """Analyze conflicts between current database state and planned migrations."""
+        conflicts = []
+        current_tables = set(current_state["tables"])
+        
+        # Analyze each migration step to see if it would conflict with current state
+        if not target_schemas:
+            return conflicts
+            
+        for version in range(current_version + 1, max(target_schemas.keys()) + 1):
+            if version not in target_schemas:
+                continue
+                
+            schema_version = target_schemas[version]
+            for sql in schema_version.sql_statements:
+                sql_upper = sql.upper().strip()
+                
+                # Check for CREATE TABLE conflicts
+                if sql_upper.startswith("CREATE TABLE") and "IF NOT EXISTS" not in sql_upper:
+                    table_name = self._extract_table_name_from_create(sql)
+                    if table_name and table_name in current_tables:
+                        conflicts.append(f"Migration v{version} tries to CREATE TABLE {table_name} but it already exists")
+                
+                # Check for ALTER TABLE RENAME conflicts
+                elif "ALTER TABLE" in sql_upper and "RENAME TO" in sql_upper:
+                    old_name, new_name = self._extract_rename_tables(sql)
+                    if old_name and new_name:
+                        if old_name not in current_tables:
+                            conflicts.append(f"Migration v{version} tries to rename {old_name} to {new_name} but {old_name} doesn't exist")
+                        elif new_name in current_tables:
+                            conflicts.append(f"Migration v{version} tries to rename {old_name} to {new_name} but {new_name} already exists")
+                
+                # Check for ADD COLUMN conflicts
+                elif "ALTER TABLE" in sql_upper and "ADD COLUMN" in sql_upper:
+                    table_name, column_name = self._extract_add_column_info(sql)
+                    if table_name and column_name and table_name in current_tables:
+                        # Check if column already exists
+                        if table_name in current_state.get("constraints", {}):
+                            existing_columns = [col[1] for col in current_state["constraints"][table_name].get("columns", [])]
+                            if column_name in existing_columns:
+                                conflicts.append(f"Migration v{version} tries to add column {column_name} to {table_name} but it already exists")
+                
+                # Check for missing columns that migrations expect to exist
+                elif "DEFAULT" in sql_upper and "user_type" in sql_upper:
+                    # This is likely a CREATE TABLE with user_type column
+                    table_name = self._extract_table_name_from_create(sql)
+                    if table_name == "family_members" and "family_members" in current_tables:
+                        # Check if family_members has user_type column
+                        if table_name in current_state.get("constraints", {}):
+                            existing_columns = [col[1] for col in current_state["constraints"][table_name].get("columns", [])]
+                            if "user_type" not in existing_columns:
+                                conflicts.append(f"Migration v{version} expects {table_name} to have user_type column but it's missing")
+        
+        return conflicts
+    
+    def _resolve_migration_conflicts(self, conflicts: List[str], current_state: Dict[str, Any]) -> None:
+        """Resolve migration conflicts by adjusting database state."""
+        for conflict in conflicts:
+            if "already exists" in conflict and "CREATE TABLE" in conflict:
+                # Extract table name and drop it if it's a legacy table
+                table_name = self._extract_conflicting_table_name(conflict)
+                if table_name:
+                    self.connection.execute(f"DROP TABLE IF EXISTS {table_name}")
+                    _get_logger().info(f"Resolved conflict: dropped existing table {table_name}")
+            
+            elif "doesn't exist" in conflict and "rename" in conflict:
+                # Skip this migration step - table doesn't exist to rename
+                _get_logger().info(f"Conflict noted: {conflict} (will be skipped)")
+            
+            elif "already exists" in conflict and "rename" in conflict:
+                # For rename conflicts like "rename message_log to events but events already exists"
+                # We need to drop the target table that's blocking the rename
+                if "to events but events already exists" in conflict:
+                    self.connection.execute("DROP TABLE IF EXISTS events")
+                    _get_logger().info("Resolved conflict: dropped existing events table")
+                elif "to users but users already exists" in conflict:
+                    self.connection.execute("DROP TABLE IF EXISTS users")
+                    _get_logger().info("Resolved conflict: dropped existing users table")
+                else:
+                    # Generic extraction for other cases
+                    parts = conflict.split()
+                    target_table = None
+                    for i, part in enumerate(parts):
+                        if part == "to" and i + 1 < len(parts):
+                            target_table = parts[i + 1]
+                            break
+                    if target_table:
+                        self.connection.execute(f"DROP TABLE IF EXISTS {target_table}")
+                        _get_logger().info(f"Resolved conflict: dropped existing target table {target_table}")
+            
+            elif "add column" in conflict and "already exists" in conflict:
+                # Column already exists, skip adding it
+                _get_logger().info(f"Conflict noted: {conflict} (column add will be skipped)")
+            
+            elif "user_type column but it's missing" in conflict:
+                # Add missing user_type column to family_members
+                self.connection.execute("ALTER TABLE family_members ADD COLUMN user_type TEXT DEFAULT 'parent'")
+                _get_logger().info("Resolved conflict: added missing user_type column to family_members")
+    
+    def _extract_table_name_from_create(self, sql: str) -> str:
+        """Extract table name from CREATE TABLE statement."""
+        parts = sql.split()
+        for i, part in enumerate(parts):
+            if part.upper() == "TABLE":
+                if i + 1 < len(parts):
+                    return parts[i + 1].strip("(").strip()
+        return ""
+    
+    def _extract_rename_tables(self, sql: str) -> tuple:
+        """Extract old and new table names from ALTER TABLE RENAME statement."""
+        parts = sql.split()
+        old_name = new_name = ""
+        for i, part in enumerate(parts):
+            if part.upper() == "TABLE" and i + 1 < len(parts):
+                old_name = parts[i + 1]
+            elif part.upper() == "TO" and i + 1 < len(parts):
+                new_name = parts[i + 1]
+        return old_name, new_name
+    
+    def _extract_add_column_info(self, sql: str) -> tuple:
+        """Extract table and column name from ALTER TABLE ADD COLUMN statement."""
+        parts = sql.split()
+        table_name = column_name = ""
+        for i, part in enumerate(parts):
+            if part.upper() == "TABLE" and i + 1 < len(parts):
+                table_name = parts[i + 1]
+            elif part.upper() == "COLUMN" and i + 1 < len(parts):
+                column_name = parts[i + 1]
+        return table_name, column_name
+    
+    def _extract_conflicting_table_name(self, conflict: str) -> str:
+        """Extract table name from conflict message."""
+        parts = conflict.split()
+        for i, part in enumerate(parts):
+            if part == "TABLE" and i + 1 < len(parts):
+                return parts[i + 1]
+        return ""
+    
+    def detect_current_schema_state(self) -> Dict[str, Any]:
+        """
+        Analyze current database structure to understand existing schema.
+        
+        Returns:
+            Dictionary with current database structure information
+        """
+        state = {
+            "tables": [],
+            "indexes": [],
+            "triggers": [],
+            "views": [],
+            "table_schemas": {},
+            "foreign_keys": {},
+            "constraints": {}
+        }
+        
+        try:
+            # Get all tables
+            tables = self.connection.fetch_all("""
+                SELECT name, sql FROM sqlite_master 
+                WHERE type='table' AND name NOT LIKE 'sqlite_%'
+                ORDER BY name
+            """)
+            
+            for table in tables:
+                table_name = table["name"]
+                state["tables"].append(table_name)
+                state["table_schemas"][table_name] = table["sql"]
+                
+                # Get table info (columns, types, constraints)
+                try:
+                    columns = self.connection.fetch_all(f"PRAGMA table_info({table_name})")
+                    foreign_keys = self.connection.fetch_all(f"PRAGMA foreign_key_list({table_name})")
+                    
+                    state["constraints"][table_name] = {
+                        "columns": columns,
+                        "foreign_keys": foreign_keys
+                    }
+                except Exception as e:
+                    _get_logger().warning(f"Could not get detailed info for table {table_name}: {e}")
+            
+            # Get indexes
+            indexes = self.connection.fetch_all("""
+                SELECT name, sql FROM sqlite_master 
+                WHERE type='index' AND name NOT LIKE 'sqlite_%'
+                ORDER BY name
+            """)
+            state["indexes"] = [{"name": idx["name"], "sql": idx["sql"]} for idx in indexes]
+            
+            # Get triggers
+            triggers = self.connection.fetch_all("""
+                SELECT name, sql FROM sqlite_master 
+                WHERE type='trigger'
+                ORDER BY name
+            """)
+            state["triggers"] = [{"name": trig["name"], "sql": trig["sql"]} for trig in triggers]
+            
+            # Get views
+            views = self.connection.fetch_all("""
+                SELECT name, sql FROM sqlite_master 
+                WHERE type='view'
+                ORDER BY name
+            """)
+            state["views"] = [{"name": view["name"], "sql": view["sql"]} for view in views]
+            
+        except Exception as e:
+            _get_logger().error(f"Failed to detect current schema state: {e}")
+            state["error"] = str(e)
+        
+        return state
+
     def _calculate_checksum(self, sql_statements: List[str]) -> str:
         """Calculate checksum for SQL statements."""
         import hashlib

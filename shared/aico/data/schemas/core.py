@@ -5,44 +5,18 @@ Defines the foundational database schemas for AICO's core functionality.
 All schemas use the decorator-based registration system for automatic discovery.
 """
 
-from dataclasses import dataclass
-from typing import List, Dict, Any
-
-
-@dataclass
-class SchemaVersion:
-    """Represents a single version of a database schema"""
-    version: int
-    name: str
-    description: str
-    sql_statements: List[str]
-    rollback_statements: List[str] = None
-
-
-# Schema registry (will be populated by decorators)
-_SCHEMA_REGISTRY: Dict[str, Dict[str, Any]] = {}
-
-
-def register_schema(schema_name: str, schema_type: str, priority: int = 10):
-    """Decorator for registering database schemas"""
-    def decorator(schema_dict):
-        _SCHEMA_REGISTRY[schema_name] = {
-            "schema": schema_dict,
-            "type": schema_type,
-            "priority": priority
-        }
-        return schema_dict
-    return decorator
+from ..libsql.schema import SchemaVersion
+from ..libsql.registry import register_schema
 
 
 # Register message bus schema
 MESSAGE_BUS_SCHEMA = register_schema("message_bus", "core", priority=1)({
     1: SchemaVersion(
         version=1,
-        name="Message Bus Persistence",
-        description="Message log for debugging, audit, and cross-device sync",
+        name="Event Bus Persistence",
+        description="Event log for debugging, audit, and cross-device sync",
         sql_statements=[
-            """CREATE TABLE IF NOT EXISTS message_log (
+            """CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
                 topic TEXT NOT NULL,
@@ -55,26 +29,6 @@ MESSAGE_BUS_SCHEMA = register_schema("message_bus", "core", priority=1)({
                 metadata JSON,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )""",
-            """CREATE INDEX IF NOT EXISTS idx_message_log_topic_timestamp 
-               ON message_log(topic, timestamp)""",
-            """CREATE INDEX IF NOT EXISTS idx_message_log_source 
-               ON message_log(source)""",
-            """CREATE INDEX IF NOT EXISTS idx_message_log_correlation 
-               ON message_log(correlation_id) WHERE correlation_id IS NOT NULL"""
-        ],
-        rollback_statements=[
-            "DROP INDEX IF EXISTS idx_message_log_correlation",
-            "DROP INDEX IF EXISTS idx_message_log_source", 
-            "DROP INDEX IF EXISTS idx_message_log_topic_timestamp",
-            "DROP TABLE IF EXISTS message_log"
-        ]
-    ),
-    2: SchemaVersion(
-        version=2,
-        name="Rename to Industry Standard",
-        description="Rename message_log to events following industry conventions",
-        sql_statements=[
-            """ALTER TABLE message_log RENAME TO events""",
             """CREATE INDEX IF NOT EXISTS idx_events_topic_timestamp 
                ON events(topic, timestamp)""",
             """CREATE INDEX IF NOT EXISTS idx_events_source 
@@ -84,9 +38,9 @@ MESSAGE_BUS_SCHEMA = register_schema("message_bus", "core", priority=1)({
         ],
         rollback_statements=[
             "DROP INDEX IF EXISTS idx_events_correlation",
-            "DROP INDEX IF EXISTS idx_events_source",
-            "DROP INDEX IF EXISTS idx_events_topic_timestamp", 
-            "ALTER TABLE events RENAME TO message_log"
+            "DROP INDEX IF EXISTS idx_events_source", 
+            "DROP INDEX IF EXISTS idx_events_topic_timestamp",
+            "DROP TABLE IF EXISTS events"
         ]
     )
 })
@@ -134,49 +88,127 @@ LOGS_SCHEMA = register_schema("logs", "core", priority=0)({
     )
 })
 
+# Register authentication schema
+AUTH_SCHEMA = register_schema("auth", "core", priority=2)({
+    1: SchemaVersion(
+        version=1,
+        name="Authentication System",
+        description="Core authentication, user CRUD, and authorization tables",
+        sql_statements=[
+            # Users table - core user profiles
+            """CREATE TABLE IF NOT EXISTS users (
+                uuid TEXT PRIMARY KEY,
+                full_name TEXT NOT NULL,
+                nickname TEXT,
+                user_type TEXT DEFAULT 'parent',
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            
+            # User authentication table - separated authentication concerns
+            """CREATE TABLE IF NOT EXISTS user_authentication (
+                uuid TEXT PRIMARY KEY,
+                user_uuid TEXT NOT NULL,
+                pin_hash TEXT NOT NULL,
+                failed_attempts INTEGER DEFAULT 0,
+                locked_until TIMESTAMP,
+                last_login TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            
+            # Authentication sessions - JWT token management
+            """CREATE TABLE IF NOT EXISTS auth_sessions (
+                uuid TEXT PRIMARY KEY,
+                user_uuid TEXT NOT NULL,
+                device_uuid TEXT NOT NULL,
+                jwt_token_hash TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_active BOOLEAN DEFAULT TRUE,
+                FOREIGN KEY (user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            
+            # Access policies - authorization rules
+            """CREATE TABLE IF NOT EXISTS access_policies (
+                uuid TEXT PRIMARY KEY,
+                user_uuid TEXT NOT NULL,
+                resource_type TEXT NOT NULL,
+                resource_uuid TEXT,
+                permission TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            
+            # Devices table for device management
+            """CREATE TABLE IF NOT EXISTS devices (
+                uuid TEXT PRIMARY KEY,
+                device_name TEXT NOT NULL,
+                device_type TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                last_seen TIMESTAMP,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            
+            # User relationships junction table
+            """CREATE TABLE IF NOT EXISTS user_relationships (
+                uuid TEXT PRIMARY KEY,
+                user_uuid TEXT NOT NULL,
+                related_user_uuid TEXT NOT NULL,
+                relationship_type TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_uuid) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (related_user_uuid) REFERENCES users(uuid) ON DELETE CASCADE,
+                UNIQUE(user_uuid, related_user_uuid, relationship_type)
+            )""",
+            
+            # Indexes for performance
+            "CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active)",
+            "CREATE INDEX IF NOT EXISTS idx_users_user_type ON users(user_type)",
+            "CREATE INDEX IF NOT EXISTS idx_user_authentication_user ON user_authentication(user_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_user_authentication_pin_hash ON user_authentication(pin_hash)",
+            "CREATE INDEX IF NOT EXISTS idx_user_authentication_locked_until ON user_authentication(locked_until)",
+            "CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_auth_sessions_active ON auth_sessions(is_active, expires_at)",
+            "CREATE INDEX IF NOT EXISTS idx_access_policies_user ON access_policies(user_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_access_policies_resource ON access_policies(resource_type, resource_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_devices_active ON devices(is_active)",
+            "CREATE INDEX IF NOT EXISTS idx_user_relationships_user ON user_relationships(user_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_user_relationships_related ON user_relationships(related_user_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_logs_user_timestamp ON logs(user_uuid, timestamp)",
+            "CREATE INDEX IF NOT EXISTS idx_events_message_id ON events(message_id)"
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_events_message_id",
+            "DROP INDEX IF EXISTS idx_logs_user_timestamp",
+            "DROP INDEX IF EXISTS idx_user_relationships_related",
+            "DROP INDEX IF EXISTS idx_user_relationships_user",
+            "DROP INDEX IF EXISTS idx_devices_active",
+            "DROP INDEX IF EXISTS idx_access_policies_resource",
+            "DROP INDEX IF EXISTS idx_access_policies_user", 
+            "DROP INDEX IF EXISTS idx_auth_sessions_active",
+            "DROP INDEX IF EXISTS idx_auth_sessions_user",
+            "DROP INDEX IF EXISTS idx_user_authentication_locked_until",
+            "DROP INDEX IF EXISTS idx_user_authentication_pin_hash",
+            "DROP INDEX IF EXISTS idx_user_authentication_user",
+            "DROP INDEX IF EXISTS idx_users_user_type",
+            "DROP INDEX IF EXISTS idx_users_active",
+            "DROP TABLE IF EXISTS user_relationships",
+            "DROP TABLE IF EXISTS devices",
+            "DROP TABLE IF EXISTS access_policies",
+            "DROP TABLE IF EXISTS auth_sessions",
+            "DROP TABLE IF EXISTS user_authentication",
+            "DROP TABLE IF EXISTS users"
+        ]
+    )
+})
 
-class SchemaRegistry:
-    """Manages schema registration and application"""
-    
-    @classmethod
-    def get_core_schemas(cls) -> Dict[str, Dict]:
-        """Get all registered core schemas sorted by priority"""
-        core_schemas = {
-            name: data for name, data in _SCHEMA_REGISTRY.items() 
-            if data["type"] == "core"
-        }
-        return dict(sorted(core_schemas.items(), key=lambda x: x[1]["priority"]))
-    
-    @classmethod
-    def get_plugin_schemas(cls, plugin_name: str = None) -> Dict[str, Dict]:
-        """Get plugin schemas, optionally filtered by plugin name"""
-        plugin_schemas = {
-            name: data for name, data in _SCHEMA_REGISTRY.items() 
-            if data["type"] == "plugin"
-        }
-        if plugin_name:
-            plugin_schemas = {
-                name: data for name, data in plugin_schemas.items()
-                if name.startswith(plugin_name)
-            }
-        return plugin_schemas
-    
-    @classmethod
-    def apply_core_schemas(cls, connection):
-        """Apply all core schemas in priority order"""
-        applied_versions = []
-        core_schemas = cls.get_core_schemas()
-        
-        for schema_name, schema_data in core_schemas.items():
-            schema_dict = schema_data["schema"]
-            # Apply latest version (for now, just version 1)
-            latest_version = max(schema_dict.keys())
-            schema_version = schema_dict[latest_version]
-            
-            # Execute SQL statements
-            for sql in schema_version.sql_statements:
-                connection.execute(sql)
-            
-            applied_versions.append(f"{schema_name}:v{latest_version}")
-        
-        return applied_versions
+
+

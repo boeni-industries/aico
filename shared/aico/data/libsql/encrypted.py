@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
 import sqlite3
+import libsql
 
 from .connection import LibSQLConnection
 from aico.security.key_manager import AICOKeyManager
@@ -132,18 +133,19 @@ class EncryptedLibSQLConnection(LibSQLConnection):
         try:
             # Get base connection
             connection = super().connect()
-            
             # Set up encryption
             encryption_key = self._setup_encryption()
             
             # Convert key to hex string for PRAGMA
             key_hex = encryption_key.hex()
             
-            # Apply encryption via PRAGMA
-            # Note: This follows SQLCipher conventions
+            # Establish connection with encryption key
+            connection = libsql.connect(str(self.db_path))
+            
+            # Apply encryption key
             connection.execute(f"PRAGMA key = 'x\"{key_hex}\"'")
             
-            # Apply database configuration settings
+            # Apply database configuration settings (must be done outside transactions)
             self._apply_database_settings(connection)
             
             # Test that encryption is working by creating/accessing a test table
