@@ -23,7 +23,7 @@ except Exception as e:
     print(f"Import error: {e}")
     sys.exit(1)
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 # Initialize configuration FIRST
 try:
