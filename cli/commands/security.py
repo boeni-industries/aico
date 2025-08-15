@@ -416,6 +416,30 @@ def session(
 
 
 @app.command()
+def logout():
+    """Clear CLI authentication session."""
+    
+    try:
+        key_manager = AICOKeyManager()
+        
+        # Check if there's an active session
+        session_info = key_manager.get_session_info()
+        if not session_info.get('active', False):
+            console.print("📝 [cyan]Already logged out[/cyan]")
+            return
+        
+        # Simple: just clear the session cache
+        key_manager._clear_session()
+        
+        console.print("✅ [green]Logged out successfully[/green]")
+        console.print("🔐 Next sensitive command will prompt for password")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Logout failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
 @sensitive("clears security credentials and active sessions")
 def clear(
     confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt")

@@ -62,6 +62,7 @@ class AICOKeyManager:
         self.service_name = service_name
         self._session_cache_file = self._get_session_cache_file()
         self._session_cache = self._load_session_cache()  # Load persistent session cache
+        self._keyring_bypass_count = self._session_cache.get("keyring_bypass_count", 0)
         _get_logger().debug(f"Initialized AICOKeyManager for service: {service_name}")
     
     def _is_sensitive_command(self, command_path: str) -> bool:
@@ -76,6 +77,27 @@ class AICOKeyManager:
         }
         return command_path in sensitive_commands
         
+    def _should_bypass_keyring(self) -> bool:
+        """Check if keyring access should be bypassed for logout functionality."""
+        return self._keyring_bypass_count > 0
+    
+    def _set_temporary_keyring_bypass(self) -> None:
+        """Set temporary keyring bypass for next authentication (logout functionality)."""
+        self._keyring_bypass_count = 1
+        self._session_cache["keyring_bypass_count"] = self._keyring_bypass_count
+        self._save_session_cache()
+        _get_logger().debug("Temporary keyring bypass set for logout")
+    
+    def _consume_keyring_bypass(self) -> None:
+        """Consume one keyring bypass count after successful authentication."""
+        if self._keyring_bypass_count > 0:
+            self._keyring_bypass_count -= 1
+            if self._keyring_bypass_count == 0:
+                self._session_cache.pop("keyring_bypass_count", None)
+            else:
+                self._session_cache["keyring_bypass_count"] = self._keyring_bypass_count
+            self._save_session_cache()
+            _get_logger().debug("Keyring bypass consumed")
     
     def get_jwt_secret(self, service_name: str = "api_gateway") -> str:
         """Get or create JWT signing secret for a service"""
@@ -220,7 +242,8 @@ class AICOKeyManager:
                 return cached_key
         
         # Try stored key from keyring (service mode) - only if not force_fresh
-        if not force_fresh:
+        # Note: Keyring is for backend services, not CLI sessions
+        if not force_fresh and not interactive:
             stored_key = keyring.get_password(self.service_name, "master_key")
             if stored_key:
                 master_key = bytes.fromhex(stored_key)
@@ -235,6 +258,7 @@ class AICOKeyManager:
             if not self.has_stored_key():
                 self._store_key(derived_key)
             self._cache_session(derived_key)  # Cache for session timeout
+            self._consume_keyring_bypass()  # Clear bypass after successful auth
             return derived_key
             
         elif interactive:

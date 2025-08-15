@@ -54,16 +54,15 @@ def sensitive(reason: str = "sensitive operation"):
             from rich.console import Console
             console = Console()
             console.print(f"🔐 [yellow]Sensitive operation:[/yellow] {reason}")
-            console.print("   [dim]Fresh authentication required for security[/dim]")
+            console.print("   [dim]Authentication required for security[/dim]")
             
-            # Force fresh authentication for sensitive commands
+            # Authenticate for sensitive commands (respects session cache)
             key_manager = AICOKeyManager()
             
-            # Force fresh authentication and cache it
+            # Try cached session first, then interactive auth if needed
             try:
-                master_key = key_manager.authenticate(interactive=True, force_fresh=True)
-                # Cache the session so subsequent authenticate() calls in the function work
-                key_manager._cache_session(master_key)
+                master_key = key_manager.authenticate(interactive=True, force_fresh=False)
+                # Session is automatically cached and extended by authenticate()
                 
                 # Log sensitive command execution (audit trail)
                 try:
@@ -119,16 +118,15 @@ def destructive(reason: str = "dangerous operation"):
             from rich.console import Console
             console = Console()
             console.print(f"⚠️  [red]Dangerous operation:[/red] {reason}")
-            console.print("   [dim]Fresh authentication required for security[/dim]")
+            console.print("   [dim]Authentication required for security[/dim]")
             
-            # Force fresh authentication for destructive commands
+            # Authenticate for destructive commands (respects session cache)
             key_manager = AICOKeyManager()
             
-            # Force fresh authentication and cache it
+            # Try cached session first, then interactive auth if needed
             try:
-                master_key = key_manager.authenticate(interactive=True, force_fresh=True)
-                # Cache the session so subsequent authenticate() calls in the function work
-                key_manager._cache_session(master_key)
+                master_key = key_manager.authenticate(interactive=True, force_fresh=False)
+                # Session is automatically cached and extended by authenticate()
                 
                 # Log dangerous command execution (audit trail)
                 try:
