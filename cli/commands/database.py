@@ -646,7 +646,7 @@ def _get_db_connection():
             initialize_cli_logging(config, conn)
             # Verify logging works by testing actual log write
             test_logger = get_logger("cli", "database")
-            #test_logger.info("CLI logging test - database test command")
+            test_logger.info("Establishing DB connection from CLI.")
             console.print("✅ [green]CLI logging verified for test command[/green]")
         except Exception as e:
             console.print(f"❌ [red]CRITICAL: CLI logging failed: {e}[/red]")
