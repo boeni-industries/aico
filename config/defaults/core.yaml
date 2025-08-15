@@ -14,10 +14,10 @@ system:
 logging:
   # Log levels and filtering
   levels:
-    default: "DEBUG"  # Default log level for all subsystems
+    default: "INFO"  # Default log level for all subsystems
     subsystems:
       cli: "INFO"
-      backend: "DEBUG" 
+      backend: "INFO" 
       frontend: "INFO"
       studio: "INFO"
     modules:

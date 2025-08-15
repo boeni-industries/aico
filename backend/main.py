@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import signal
 from datetime import datetime
 
 # Fix ZeroMQ compatibility on Windows - must be set before any ZMQ imports
@@ -27,6 +28,24 @@ initialize_logging(config_manager)
 # Now we can safely get loggers
 logger = get_logger("backend", "main")
 
+# Register signal handlers EARLY - before any blocking operations
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully"""
+    logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+    shutdown_event.set()
+
+# Register signal handlers immediately
+if sys.platform != "win32":
+    # Unix-like systems
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+else:
+    # Windows
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+logger.info("Signal handlers registered for graceful shutdown")
+
 # Import API Gateway AFTER logging is initialized
 from api_gateway import AICOAPIGateway
 
@@ -36,6 +55,7 @@ from message_bus_host import AICOMessageBusHost
 # Global instances (config_manager already initialized above)
 message_bus_host = None
 api_gateway = None
+shutdown_event = asyncio.Event()
 
 
 @asynccontextmanager
@@ -89,6 +109,11 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Failed to start log consumer: {e}")
         
+        # Check for shutdown signal before starting API Gateway
+        if shutdown_event.is_set():
+            logger.info("Shutdown requested during startup, aborting...")
+            return
+        
         # Start API Gateway if enabled (after log consumer is running)
         logger.info("Checking API Gateway configuration...")
         gateway_config = config_manager.get("api_gateway", {})
@@ -98,6 +123,12 @@ async def lifespan(app: FastAPI):
             logger.info("Starting API Gateway...")
             api_gateway = AICOAPIGateway(config_manager)
             logger.info("API Gateway created, calling start()...")
+            
+            # Check for shutdown signal before the potentially blocking start() call
+            if shutdown_event.is_set():
+                logger.info("Shutdown requested before API Gateway start, aborting...")
+                return
+                
             await api_gateway.start()
             logger.info("API Gateway started")
             
@@ -117,7 +148,22 @@ async def lifespan(app: FastAPI):
         
         logger.info("AICO backend fully initialized")
         
-        yield  # This is where the application runs
+        # Create a task to monitor shutdown signal during app runtime
+        async def shutdown_monitor():
+            await shutdown_event.wait()
+            logger.info("Shutdown signal received during runtime")
+        
+        shutdown_task = asyncio.create_task(shutdown_monitor())
+        
+        try:
+            yield  # This is where the application runs
+        finally:
+            # Cancel the shutdown monitor
+            shutdown_task.cancel()
+            try:
+                await shutdown_task
+            except asyncio.CancelledError:
+                pass
         
     except Exception as e:
         logger.error(f"Failed to start backend services: {e}")
@@ -198,12 +244,13 @@ def health_check():
     return health_status
 
 
-if __name__ == "__main__":
-    """Start the server when run directly"""
+async def main():
+    """Main async function with proper signal handling"""
     import uvicorn
     import os
     
     # Initialize config_manager before accessing it
+    global config_manager
     if config_manager is None:
         config_manager = ConfigurationManager()
         config_manager.initialize(lightweight=False)
@@ -221,8 +268,8 @@ if __name__ == "__main__":
         "version": __version__
     })
     
-    # Start the Uvicorn server
-    uvicorn.run(
+    # Create server config
+    config = uvicorn.Config(
         app,
         host=host,
         port=port,
@@ -230,3 +277,35 @@ if __name__ == "__main__":
         log_config=None,  # Use our custom logging
         access_log=False  # Disable uvicorn access logs (we have our own)
     )
+    
+    server = uvicorn.Server(config)
+    
+    # Start server in background task
+    server_task = asyncio.create_task(server.serve())
+    
+    try:
+        # Wait for shutdown signal
+        await shutdown_event.wait()
+        logger.info("Shutdown signal received, stopping server...")
+        
+        # Graceful shutdown
+        server.should_exit = True
+        await server_task
+        
+    except KeyboardInterrupt:
+        logger.info("Keyboard interrupt received, stopping server...")
+        server.should_exit = True
+        await server_task
+    
+    logger.info("Server shutdown complete")
+
+
+if __name__ == "__main__":
+    """Start the server when run directly"""
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Application interrupted by user")
+    except Exception as e:
+        logger.error(f"Application failed: {e}")
+        sys.exit(1)

@@ -101,7 +101,7 @@ class LibSQLConnection:
                         self._connection.execute("PRAGMA wal_autocheckpoint=1000")
                         
                     except Exception as wal_error:
-                        _get_logger().warning(f"Could not configure WAL mode: {wal_error}")
+                        _get_logger().debug(f"Could not configure WAL mode (expected during concurrent access): {wal_error}")
                         
                 except Exception as test_error:
                     _get_logger().error(f"Database connection setup failed: {test_error}")
