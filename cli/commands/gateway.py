@@ -223,16 +223,45 @@ def start(
             console.print(f"[red]✗ Backend service not found at: {backend_main}[/red]")
             raise typer.Exit(1)
         
+        # Get cross-platform Python executable for headless execution
+        def get_headless_python(force_visible=False):
+            """Get appropriate Python executable for headless execution per platform
+            
+            Args:
+                force_visible: If True, always return visible python (for foreground mode)
+            """
+            if force_visible or not detach:
+                # Foreground mode: Always use regular python to show output
+                return sys.executable
+            elif sys.platform == "win32":
+                # Windows background mode: Use pythonw.exe to avoid console window
+                python_dir = Path(sys.executable).parent
+                pythonw_exe = python_dir / "pythonw.exe"
+                return str(pythonw_exe) if pythonw_exe.exists() else sys.executable
+            else:
+                # macOS/Linux: Use regular python (process will be detached)
+                return sys.executable
+        
         # Determine startup method
         if dev:
             # Development mode: Use UV
             use_uv = True
             if use_uv:
-                cmd = ["uv", "run", "--active", "pythonw", str(backend_main)]
+                # For UV, use python executable name (UV will resolve the path)
+                if detach and sys.platform == "win32":
+                    headless_python = "pythonw"  # UV will find pythonw.exe
+                else:
+                    headless_python = "python"   # UV will find python.exe/python
+                cmd = ["uv", "run", "--active", headless_python, str(backend_main)]
                 console.print("[yellow]🔧 Starting in development mode (UV)[/yellow]")
             else:
                 try:
-                    cmd = ["uv", "run", "pythonw", str(backend_main)]
+                    # For UV, use python executable name (UV will resolve the path)
+                    if detach and sys.platform == "win32":
+                        headless_python = "pythonw"  # UV will find pythonw.exe
+                    else:
+                        headless_python = "python"   # UV will find python.exe/python
+                    cmd = ["uv", "run", headless_python, str(backend_main)]
                     console.print("[yellow]🔧 Starting in development mode (UV)[/yellow]")
                 except FileNotFoundError:
                     console.print("[red]✗ UV not found. Install UV or use production mode[/red]")
@@ -248,7 +277,11 @@ def start(
                 
                 # Use UV without --active flag - let UV manage backend's own environment
                 # The key is that UV will run in backend_dir, so it uses backend's pyproject.toml/requirements.txt
-                cmd = ["uv", "run", "pythonw", "main.py"]
+                if detach and sys.platform == "win32":
+                    headless_python = "pythonw"  # UV will find pythonw.exe
+                else:
+                    headless_python = "python"   # UV will find python.exe/python
+                cmd = ["uv", "run", headless_python, "main.py"]
                 console.print("[dim]Using UV for dependency management[/dim]")
                 
             except (FileNotFoundError, subprocess.CalledProcessError):
@@ -271,13 +304,9 @@ def start(
                     console.print("[yellow]💡 Try: 'aico gateway start --dev' or install UV[/yellow]")
                     raise typer.Exit(1)
                 
-                # Use pythonw.exe instead of python.exe to avoid console window
-                python_dir = Path(sys.executable).parent
-                pythonw_exe = python_dir / "pythonw.exe"
-                if pythonw_exe.exists():
-                    cmd = [str(pythonw_exe), str(backend_main)]
-                else:
-                    cmd = [sys.executable, str(backend_main)]
+                # Use appropriate Python executable (respects detach mode)
+                headless_python = get_headless_python()
+                cmd = [headless_python, str(backend_main)]
         
         # Configure process options
         env = dict(os.environ, 
