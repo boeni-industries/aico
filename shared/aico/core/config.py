@@ -370,9 +370,9 @@ class ConfigurationManager:
         # Map environment variables to configuration keys
         env_mappings = {
             "AICO_LOG_LEVEL": "system.log_level",
-            "AICO_API_PORT": "api.port",
+            "AICO_API_PORT": "api_gateway.protocols.rest.port",
             "AICO_ENVIRONMENT": "system.environment",
-            "AICO_API_HOST": "api.host",
+            "AICO_API_HOST": "api_gateway.host",
             # Path-related environment variables are handled by AICOPaths class
             # AICO_DATA_DIR, AICO_CONFIG_DIR, etc. are used directly by AICOPaths
         }

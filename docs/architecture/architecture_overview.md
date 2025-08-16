@@ -21,13 +21,14 @@ AICO is an open-source experiment to build an **emotionally present, visually em
 
 AICO's features are organized into logical modules for development and deployment:
 
-### 👥 Natural Family Recognition
-- **Multi-Modal Recognition**: Voice biometrics, behavioral patterns, conversation style analysis
-- **Individual Relationships**: Unique relationship context per family member while maintaining core personality
-- **Natural Interaction**: "Hi Sarah, how was your piano lesson?" - contextual, warm recognition
-- **Privacy Boundaries**: Personal conversations remain private per individual
-- **Confidence Thresholds**: 95%+ recognition confidence with gentle fallback verification
-- **Zero Technical Barriers**: No passwords, logins, or authentication friction
+### 👥 Social Relationship Intelligence
+- **Hybrid Vector-Graph Architecture**: Modern relationship modeling using vector embeddings and graph neural networks
+- **Dynamic Learning**: Relationships learned from interactions rather than predefined categories
+- **Multi-dimensional Understanding**: Authority, intimacy, care responsibility, and interaction patterns
+- **Natural Recognition**: Voice biometrics, behavioral patterns, and conversation style analysis
+- **Adaptive Context**: "Hi Sarah, how was your piano lesson?" with relationship-appropriate responses
+- **Privacy Boundaries**: Personal conversations compartmentalized per relationship context
+- **Zero Technical Barriers**: Natural interaction without passwords or authentication friction
 
 ### 🗣️ Conversation & Interaction
 - **Chat Interface**: Real-time text-based conversation

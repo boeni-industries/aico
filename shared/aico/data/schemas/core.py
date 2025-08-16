@@ -55,7 +55,7 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
                 uuid TEXT PRIMARY KEY,
                 full_name TEXT NOT NULL,
                 nickname TEXT,
-                user_type TEXT DEFAULT 'parent',
+                user_type TEXT DEFAULT 'person',
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

@@ -42,13 +42,14 @@ This isn't just feature development—it's relationship evolution. We're buildin
 
 AICO is engineered to deliver a truly companionable, proactive, and privacy-first AI experience. Its capabilities span conversation, memory, emotion, agency, embodiment, privacy, extensibility, and system administration.
 
-### 👥 Natural Family Recognition
-- Multi-modal recognition through voice biometrics, behavioral patterns, and conversation style
-- Individual relationship building with each family member while maintaining core personality
-- Natural greetings and context switching: "Hi Sarah, how was your piano lesson?"
-- Privacy boundaries: personal conversations remain private per individual
-- Confidence-based verification: 95%+ recognition threshold with gentle fallback authentication
-- No technical barriers: children and elderly interact without passwords or login friction
+### 👥 Social Relationship Intelligence
+- **Hybrid Vector-Graph Architecture**: Modern relationship modeling using vector embeddings and graph neural networks
+- **Dynamic Learning**: Relationships learned from interactions rather than predefined categories
+- **Multi-dimensional Understanding**: Authority, intimacy, care responsibility, and interaction patterns
+- **Natural Recognition**: Voice biometrics, behavioral patterns, and conversation style analysis
+- **Adaptive Context**: "Hi Sarah, how was your piano lesson?" with relationship-appropriate responses
+- **Privacy Boundaries**: Personal conversations compartmentalized per relationship context
+- **Zero Technical Barriers**: Natural interaction without passwords or authentication friction
 
 ### 🗣️ Conversation & Memory
 - Real-time text and voice conversations with context awareness

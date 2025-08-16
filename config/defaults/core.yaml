@@ -119,10 +119,7 @@ api_gateway:
     retry_attempts: 3
     correlation_cleanup_minutes: 60
 
+# User profile configuration
+user_profiles:
+  default_user_type: "person"
 
-api:
-  host: "127.0.0.1"
-  port: 8770
-  cors_origins:
-    - "http://localhost:3000"
-    - "http://127.0.0.1:3000"

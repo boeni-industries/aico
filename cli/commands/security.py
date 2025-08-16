@@ -51,7 +51,6 @@ def security_callback(ctx: typer.Context):
             ("user-delete", "Soft delete user (mark as inactive)"),
             ("user-auth", "Authenticate user with PIN"),
             ("user-set-pin", "Set or update user PIN"),
-            ("user-relate", "Create relationship between two users"),
             ("user-stats", "Show user statistics and authentication info")
         ]
         
@@ -620,13 +619,29 @@ def test():
 
 @app.command("user-create")
 def user_create(
-    full_name: str = typer.Argument(..., help="User's full name"),
+    full_name: str = typer.Argument(None, help="User's full name"),
     nickname: str = typer.Option(None, "--nickname", "-n", help="Optional nickname"),
     user_type: str = typer.Option("parent", "--type", "-t", help="User type (parent, child, admin)"),
     pin: str = typer.Option(None, "--pin", "-p", help="Optional PIN for authentication"),
     ctx: typer.Context = typer.Context
 ):
     """Create a new user with optional PIN authentication"""
+    
+    if full_name is None:
+        console.print("\n❌ [red]Missing required argument: FULL_NAME[/red]\n")
+        console.print("[bold cyan]Usage:[/bold cyan]")
+        console.print("  aico security user-create [OPTIONS] FULL_NAME\n")
+        console.print("[bold yellow]Examples:[/bold yellow]")
+        console.print('  aico security user-create "John Doe"')
+        console.print('  aico security user-create "Jane Smith" --nickname "Janie" --type child')
+        console.print('  aico security user-create "Bob Wilson" --pin 1234 --type parent')
+        console.print('  aico security user-create "Alice Cooper" --nickname "Al" --type admin --pin 5678')
+        console.print("\n[bold yellow]Options:[/bold yellow]")
+        console.print("  --nickname, -n    Optional nickname for the user")
+        console.print("  --type, -t        User type: parent, child, admin (default: parent)")
+        console.print("  --pin, -p         Optional PIN for authentication")
+        console.print("\n[dim]Use 'aico security user-list' to see existing users[/dim]")
+        raise typer.Exit(1)
     import asyncio
     from pathlib import Path
     from aico.core.config import ConfigurationManager
@@ -635,15 +650,16 @@ def user_create(
     from aico.data.libsql.encrypted import EncryptedLibSQLConnection
     from aico.data.user import UserService
     
-    console = Console()
-    
     try:
         # Initialize configuration and paths
         config_manager = ConfigurationManager()
-        paths = AICOPaths()
         
-        # Get database path
-        db_path = paths.resolve_database_path("main.db")
+        # Use configuration-based path resolution (following database command pattern)
+        db_config = config_manager.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
         key_manager = AICOKeyManager()
@@ -701,10 +717,13 @@ def user_list(
     try:
         # Initialize configuration and paths
         config_manager = ConfigurationManager()
-        paths = AICOPaths()
         
-        # Get database path
-        db_path = paths.resolve_database_path("main.db")
+        # Use configuration-based path resolution (following database command pattern)
+        db_config = config_manager.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
         key_manager = AICOKeyManager()
@@ -752,10 +771,32 @@ def user_list(
 
 @app.command("user-auth")
 def user_auth(
-    user_uuid: str = typer.Argument(..., help="User UUID"),
-    pin: str = typer.Option(..., "--pin", "-p", help="User PIN", hide_input=True)
+    user_uuid: str = typer.Argument(None, help="User UUID"),
+    pin: str = typer.Option(None, "--pin", "-p", help="User PIN", hide_input=True)
 ):
     """Authenticate user with PIN"""
+    
+    if user_uuid is None:
+        console.print("\n❌ [red]Missing required argument: USER_UUID[/red]\n")
+        console.print("[bold cyan]Usage:[/bold cyan]")
+        console.print("  aico security user-auth [OPTIONS] USER_UUID\n")
+        console.print("[bold yellow]Examples:[/bold yellow]")
+        console.print('  aico security user-auth abc123def --pin 1234')
+        console.print('  aico security user-auth 550e8400-e29b-41d4-a716-446655440000 -p 5678')
+        console.print("\n[bold yellow]Required Options:[/bold yellow]")
+        console.print("  --pin, -p         User's PIN for authentication")
+        console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
+        raise typer.Exit(1)
+    
+    if pin is None:
+        console.print("\n❌ [red]Missing required option: --pin[/red]\n")
+        console.print("[bold cyan]Usage:[/bold cyan]")
+        console.print("  aico security user-auth [OPTIONS] USER_UUID\n")
+        console.print("[bold yellow]Examples:[/bold yellow]")
+        console.print(f'  aico security user-auth {user_uuid} --pin 1234')
+        console.print(f'  aico security user-auth {user_uuid} -p 5678')
+        console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
+        raise typer.Exit(1)
     import asyncio
     from pathlib import Path
     from aico.core.config import ConfigurationManager
@@ -764,15 +805,16 @@ def user_auth(
     from aico.data.libsql.encrypted import EncryptedLibSQLConnection
     from aico.data.user import UserService
     
-    console = Console()
-    
     try:
         # Initialize configuration and paths
         config_manager = ConfigurationManager()
-        paths = AICOPaths()
         
-        # Get database path
-        db_path = paths.resolve_database_path("main.db")
+        # Use configuration-based path resolution (following database command pattern)
+        db_config = config_manager.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
         key_manager = AICOKeyManager()
@@ -812,12 +854,27 @@ def user_auth(
 
 @app.command("user-update")
 def user_update(
-    user_uuid: str = typer.Argument(..., help="User UUID to update"),
+    user_uuid: str = typer.Argument(None, help="User UUID to update"),
     full_name: str = typer.Option(None, "--name", "-n", help="Update full name"),
     nickname: str = typer.Option(None, "--nickname", help="Update nickname"),
     user_type: str = typer.Option(None, "--type", "-t", help="Update user type (parent, child, admin)")
 ):
     """Update user profile information"""
+    
+    if user_uuid is None:
+        console.print("\n❌ [red]Missing required argument: USER_UUID[/red]\n")
+        console.print("[bold cyan]Usage:[/bold cyan]")
+        console.print("  aico security user-update [OPTIONS] USER_UUID\n")
+        console.print("[bold yellow]Examples:[/bold yellow]")
+        console.print('  aico security user-update abc123def --name "John Smith"')
+        console.print('  aico security user-update abc123def --nickname "Johnny"')
+        console.print('  aico security user-update abc123def --name "Jane Doe" --nickname "Janie"')
+        console.print("\n[bold yellow]Options:[/bold yellow]")
+        console.print("  --name, -n        Update user's full name")
+        console.print("  --nickname        Update user's nickname (use empty string to clear)")
+        console.print("  --type, -t        User type (defaults to 'person' - currently not used)")
+        console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
+        raise typer.Exit(1)
     import asyncio
     from pathlib import Path
     from aico.core.config import ConfigurationManager
@@ -826,14 +883,14 @@ def user_update(
     from aico.data.libsql.encrypted import EncryptedLibSQLConnection
     from aico.data.user import UserService
     
-    console = Console()
+    # Get default user type from configuration
+    default_user_type = config_manager.get("user_profiles.default_user_type", "person")
     
-    # Use hardcoded user types (configuration removed as too arbitrary)
-    valid_user_types = ['parent', 'child', 'guardian', 'guest']
-    
-    # Validate user_type if provided
-    if user_type and user_type not in valid_user_types:
-        console.print(f"❌ [red]Invalid user type '{user_type}'. Valid types: {', '.join(valid_user_types)}[/red]")
+    # Note: user_type field is currently not used - all users are 'person' type
+    # Validate user_type if provided (only 'person' is valid)
+    if user_type and user_type != "person":
+        console.print(f"❌ [red]Invalid user type '{user_type}'. Only 'person' is currently supported.[/red]")
+        console.print(f"[dim]Note: The user_type field defaults to '{default_user_type}' and is currently not used.[/dim]")
         raise typer.Exit(1)
     
     # Check if any updates provided
@@ -852,10 +909,13 @@ def user_update(
     try:
         # Initialize configuration and paths
         config_manager = ConfigurationManager()
-        paths = AICOPaths()
         
-        # Get database path
-        db_path = paths.resolve_database_path("main.db")
+        # Use configuration-based path resolution (following database command pattern)
+        db_config = config_manager.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
         key_manager = AICOKeyManager()
@@ -892,10 +952,23 @@ def user_update(
 
 @app.command("user-delete")
 def user_delete(
-    user_uuid: str = typer.Argument(..., help="User UUID to delete"),
+    user_uuid: str = typer.Argument(None, help="User UUID to delete"),
     confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt")
 ):
     """Soft delete user (mark as inactive)"""
+    
+    if user_uuid is None:
+        console.print("\n❌ [red]Missing required argument: USER_UUID[/red]\n")
+        console.print("[bold cyan]Usage:[/bold cyan]")
+        console.print("  aico security user-delete [OPTIONS] USER_UUID\n")
+        console.print("[bold yellow]Examples:[/bold yellow]")
+        console.print('  aico security user-delete abc123def')
+        console.print('  aico security user-delete 550e8400-e29b-41d4-a716-446655440000 --confirm')
+        console.print("\n[bold yellow]Options:[/bold yellow]")
+        console.print("  --confirm         Skip confirmation prompt")
+        console.print("\n[dim]This is a soft delete - user data is preserved but marked inactive[/dim]")
+        console.print("[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
+        raise typer.Exit(1)
     import asyncio
     from pathlib import Path
     from aico.core.config import ConfigurationManager
@@ -904,15 +977,16 @@ def user_delete(
     from aico.data.libsql.encrypted import EncryptedLibSQLConnection
     from aico.data.user import UserService
     
-    console = Console()
-    
     try:
         # Initialize configuration and paths
         config_manager = ConfigurationManager()
-        paths = AICOPaths()
         
-        # Get database path
-        db_path = paths.resolve_database_path("main.db")
+        # Use configuration-based path resolution (following database command pattern)
+        db_config = config_manager.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
         key_manager = AICOKeyManager()
@@ -969,11 +1043,35 @@ def user_delete(
 
 @app.command("user-set-pin")
 def user_set_pin(
-    user_uuid: str = typer.Argument(..., help="User UUID"),
-    new_pin: str = typer.Option(..., "--new-pin", "-n", help="New PIN", hide_input=True),
+    user_uuid: str = typer.Argument(None, help="User UUID"),
+    new_pin: str = typer.Option(None, "--new-pin", "-n", help="New PIN", hide_input=True),
     old_pin: str = typer.Option(None, "--old-pin", "-o", help="Current PIN (required if user has existing PIN)", hide_input=True)
 ):
     """Set or update user PIN"""
+    
+    if user_uuid is None:
+        console.print("\n❌ [red]Missing required argument: USER_UUID[/red]\n")
+        console.print("[bold cyan]Usage:[/bold cyan]")
+        console.print("  aico security user-set-pin [OPTIONS] USER_UUID\n")
+        console.print("[bold yellow]Examples:[/bold yellow]")
+        console.print('  aico security user-set-pin abc123def --new-pin 1234')
+        console.print('  aico security user-set-pin abc123def -n 5678 --old-pin 1234')
+        console.print("\n[bold yellow]Required Options:[/bold yellow]")
+        console.print("  --new-pin, -n     New PIN for the user")
+        console.print("\n[bold yellow]Optional:[/bold yellow]")
+        console.print("  --old-pin, -o     Current PIN (required if user already has a PIN)")
+        console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
+        raise typer.Exit(1)
+    
+    if new_pin is None:
+        console.print("\n❌ [red]Missing required option: --new-pin[/red]\n")
+        console.print("[bold cyan]Usage:[/bold cyan]")
+        console.print("  aico security user-set-pin [OPTIONS] USER_UUID\n")
+        console.print("[bold yellow]Examples:[/bold yellow]")
+        console.print(f'  aico security user-set-pin {user_uuid} --new-pin 1234')
+        console.print(f'  aico security user-set-pin {user_uuid} -n 5678 --old-pin 1234')
+        console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
+        raise typer.Exit(1)
     import asyncio
     from pathlib import Path
     from aico.core.config import ConfigurationManager
@@ -982,15 +1080,16 @@ def user_set_pin(
     from aico.data.libsql.encrypted import EncryptedLibSQLConnection
     from aico.data.user import UserService
     
-    console = Console()
-    
     try:
         # Initialize configuration and paths
         config_manager = ConfigurationManager()
-        paths = AICOPaths()
         
-        # Get database path
-        db_path = paths.resolve_database_path("main.db")
+        # Use configuration-based path resolution (following database command pattern)
+        db_config = config_manager.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
         key_manager = AICOKeyManager()
@@ -1033,116 +1132,6 @@ def user_set_pin(
         raise typer.Exit(1)
 
 
-@app.command("user-relate")
-def user_relate(
-    user_uuid: str = typer.Argument(..., help="Primary user UUID"),
-    related_user_uuid: str = typer.Argument(..., help="Related user UUID"),
-    relationship_type: str = typer.Option(..., "--type", "-t", help="Relationship type (parent_child, sibling, guardian)")
-):
-    """Create relationship between two users"""
-    import asyncio
-    from pathlib import Path
-    from aico.core.config import ConfigurationManager
-    from aico.core.paths import AICOPaths
-    from aico.security.key_manager import AICOKeyManager
-    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
-    from aico.data.user import UserService
-    
-    console = Console()
-    
-    # Use hardcoded relationship types (configuration removed as too arbitrary)
-    valid_relationship_types = ['parent_child', 'sibling', 'guardian']
-    
-    # Validate relationship_type
-    if relationship_type not in valid_relationship_types:
-        console.print(f"❌ [red]Invalid relationship type '{relationship_type}'. Valid types: {', '.join(valid_relationship_types)}[/red]")
-        raise typer.Exit(1)
-    
-    # Validate that users are different
-    if user_uuid == related_user_uuid:
-        console.print("❌ [red]Cannot create relationship with self[/red]")
-        raise typer.Exit(1)
-    
-    try:
-        # Initialize configuration and paths
-        paths = AICOPaths()
-        
-        # Get database path
-        db_path = paths.resolve_database_path("main.db")
-        
-        # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
-        master_key = key_manager.authenticate()
-        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
-        
-        # Connect to database
-        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
-        user_service = UserService(db_conn)
-        
-        # Verify both users exist
-        async def verify_users():
-            user1 = await user_service.get_user(user_uuid)
-            user2 = await user_service.get_user(related_user_uuid)
-            return user1, user2
-        
-        user1, user2 = asyncio.run(verify_users())
-        
-        if not user1:
-            console.print(f"❌ [red]Primary user not found: {user_uuid}[/red]")
-            raise typer.Exit(1)
-        
-        if not user2:
-            console.print(f"❌ [red]Related user not found: {related_user_uuid}[/red]")
-            raise typer.Exit(1)
-        
-        # Create relationship using direct database access (UserService doesn't have relationship methods yet)
-        import uuid as uuid_lib
-        relationship_uuid = str(uuid_lib.uuid4())
-        
-        # Check if relationship already exists
-        existing = db_conn.fetch_one("""
-            SELECT uuid FROM user_relationships 
-            WHERE user_uuid = ? AND related_user_uuid = ? AND relationship_type = ? AND is_active = TRUE
-        """, (user_uuid, related_user_uuid, relationship_type))
-        
-        if existing:
-            console.print(f"❌ [red]Relationship already exists between these users[/red]")
-            raise typer.Exit(1)
-        
-        # Insert relationship
-        db_conn.execute("""
-            INSERT INTO user_relationships (uuid, user_uuid, related_user_uuid, relationship_type, is_active, created_at, updated_at)
-            VALUES (?, ?, ?, ?, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        """, (relationship_uuid, user_uuid, related_user_uuid, relationship_type))
-        
-        # Check if relationship is bidirectional
-        is_bidirectional = False
-        try:
-            relationship_config = relationship_types_config.get(relationship_type, {})
-            is_bidirectional = relationship_config.get('bidirectional', False)
-        except Exception:
-            # Default bidirectional for sibling
-            is_bidirectional = relationship_type == 'sibling'
-        
-        # Create reverse relationship if bidirectional
-        if is_bidirectional:
-            reverse_uuid = str(uuid_lib.uuid4())
-            db_conn.execute("""
-                INSERT INTO user_relationships (uuid, user_uuid, related_user_uuid, relationship_type, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            """, (reverse_uuid, related_user_uuid, user_uuid, relationship_type))
-        
-        console.print(f"\n✅ [green]Relationship created successfully[/green]")
-        console.print(f"Primary User: {user1.full_name} ({user1.user_type})")
-        console.print(f"Related User: {user2.full_name} ({user2.user_type})")
-        console.print(f"Relationship: {relationship_type}")
-        if is_bidirectional:
-            console.print("[dim]Bidirectional relationship created[/dim]")
-        
-    except Exception as e:
-        console.print(f"❌ [red]Failed to create relationship: {e}[/red]")
-        raise typer.Exit(1)
-
 
 @app.command("user-stats")
 def user_stats():
@@ -1161,10 +1150,13 @@ def user_stats():
     try:
         # Initialize configuration and paths
         config_manager = ConfigurationManager()
-        paths = AICOPaths()
         
-        # Get database path
-        db_path = paths.resolve_database_path("main.db")
+        # Use configuration-based path resolution (following database command pattern)
+        db_config = config_manager.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
         key_manager = AICOKeyManager()

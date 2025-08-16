@@ -164,6 +164,7 @@ nav:
     - Personality Simulation: architecture/personality_sim.md
     - Emotion Simulation: architecture/emotion_sim.md
     - Emotion Recognition: '#'
+    - Social Relationship Modeling: concepts/social/social_relationship_modeling.md
   - Self-Awareness:
     - State Monitoring: '#'
     - Meta-Cognition: '#'
