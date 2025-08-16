@@ -26,7 +26,8 @@ dependencies = [
     "pyzmq",
     "platformdirs",
     "protobuf>=4.21.0,<6.0.0",
-    "passlib",
+    "passlib[bcrypt]",
+    "bcrypt>=3.2.0,<4.0.0",
 ]
 
 # Development dependencies (shared library as editable install)

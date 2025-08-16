@@ -48,7 +48,7 @@ def security_callback(ctx: typer.Context):
             ("user-create", "Create a new user with optional PIN authentication"),
             ("user-list", "List all users with filtering options"),
             ("user-update", "Update user profile information"),
-            ("user-delete", "Soft delete user (mark as inactive)"),
+            ("user-delete", "Delete user (soft delete by default, --hard for permanent)"),
             ("user-auth", "Authenticate user with PIN"),
             ("user-set-pin", "Set or update user PIN"),
             ("user-stats", "Show user statistics and authentication info")
@@ -621,7 +621,7 @@ def test():
 def user_create(
     full_name: str = typer.Argument(None, help="User's full name"),
     nickname: str = typer.Option(None, "--nickname", "-n", help="Optional nickname"),
-    user_type: str = typer.Option("parent", "--type", "-t", help="User type (parent, child, admin)"),
+    user_type: str = typer.Option("person", "--type", "-t", help="User type (person, child, admin)"),
     pin: str = typer.Option(None, "--pin", "-p", help="Optional PIN for authentication"),
     ctx: typer.Context = typer.Context
 ):
@@ -634,11 +634,11 @@ def user_create(
         console.print("[bold yellow]Examples:[/bold yellow]")
         console.print('  aico security user-create "John Doe"')
         console.print('  aico security user-create "Jane Smith" --nickname "Janie" --type child')
-        console.print('  aico security user-create "Bob Wilson" --pin 1234 --type parent')
+        console.print('  aico security user-create "Bob Wilson" --pin 1234 --type person')
         console.print('  aico security user-create "Alice Cooper" --nickname "Al" --type admin --pin 5678')
         console.print("\n[bold yellow]Options:[/bold yellow]")
         console.print("  --nickname, -n    Optional nickname for the user")
-        console.print("  --type, -t        User type: parent, child, admin (default: parent)")
+        console.print("  --type, -t        User type: person, child, admin (default: person)")
         console.print("  --pin, -p         Optional PIN for authentication")
         console.print("\n[dim]Use 'aico security user-list' to see existing users[/dim]")
         raise typer.Exit(1)
@@ -699,10 +699,12 @@ def user_create(
 
 @app.command("user-list")
 def user_list(
+    user_uuid: str = typer.Argument(None, help="Specific user UUID to show (only with --detailed)"),
     user_type: str = typer.Option(None, "--type", "-t", help="Filter by user type"),
-    limit: int = typer.Option(100, "--limit", "-l", help="Maximum number of users to show")
+    limit: int = typer.Option(100, "--limit", "-l", help="Maximum number of users to show"),
+    detailed: bool = typer.Option(False, "--detailed", "-d", help="Show detailed information from all user-related tables")
 ):
-    """List all users"""
+    """List all users (or show detailed view of specific user)"""
     import asyncio
     from pathlib import Path
     from rich.table import Table
@@ -713,6 +715,15 @@ def user_list(
     from aico.data.user import UserService
     
     console = Console()
+    
+    # Validate arguments
+    if user_uuid and not detailed:
+        console.print("\n❌ [red]User UUID can only be specified with --detailed flag[/red]\n")
+        console.print("[bold cyan]Usage:[/bold cyan]")
+        console.print("  aico security user-list [OPTIONS]                    # List all users")
+        console.print("  aico security user-list --detailed                   # Detailed view of all users")
+        console.print("  aico security user-list <USER_UUID> --detailed       # Detailed view of specific user")
+        raise typer.Exit(1)
     
     try:
         # Initialize configuration and paths
@@ -734,39 +745,198 @@ def user_list(
         db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
         user_service = UserService(db_conn)
         
-        # List users
-        async def list_users():
-            users = await user_service.list_users(user_type=user_type, limit=limit)
-            return users
-        
-        users = asyncio.run(list_users())
-        
-        if not users:
-            console.print("No users found.")
-            return
-        
-        # Create table
-        table = Table(title="AICO Users")
-        table.add_column("UUID", style="cyan")
-        table.add_column("Name", style="green")
-        table.add_column("Nickname", style="yellow")
-        table.add_column("Type", style="blue")
-        table.add_column("Created", style="dim")
-        
-        for user in users:
-            table.add_row(
-                user.uuid[:8] + "...",
-                user.full_name,
-                user.nickname or "-",
-                user.user_type,
-                str(user.created_at)[:19] if user.created_at else "-"
+        if detailed:
+            # Detailed view
+            if user_uuid:
+                # Show detailed info for specific user
+                async def get_detailed_user():
+                    users = await user_service.list_users(limit=1000)
+                    user = next((u for u in users if u.uuid == user_uuid), None)
+                    if not user:
+                        return None, None, None, None
+                    
+                    # Get additional data
+                    auth_data = await user_service.get_user_authentication(user_uuid)
+                    relationships = await user_service.get_user_relationships(user_uuid)
+                    # Note: user_sessions would need to be implemented in UserService if available
+                    
+                    return user, auth_data, relationships, None
+                
+                user, auth_data, relationships, sessions = asyncio.run(get_detailed_user())
+                
+                if not user:
+                    console.print(f"❌ [red]User not found: {user_uuid}[/red]")
+                    raise typer.Exit(1)
+                
+                # Create detailed table for single user
+                table = Table(
+                    title=f"✨ [bold cyan]User Details: {user.full_name}[/bold cyan]",
+                    title_style="bold cyan",
+                    title_justify="left",
+                    border_style="bright_blue",
+                    header_style="bold yellow",
+                    show_lines=False,
+                    box=box.SIMPLE_HEAD,
+                    padding=(0, 1)
+                )
+                table.add_column("Field", style="bold white", justify="left")
+                table.add_column("Value", style="green", justify="left")
+                
+                # Basic user info
+                table.add_row("UUID", user.uuid)
+                table.add_row("Full Name", user.full_name)
+                table.add_row("Nickname", user.nickname or "-")
+                table.add_row("User Type", user.user_type)
+                table.add_row("Active", "[green]Yes[/green]" if user.is_active else "[red]No[/red]")
+                table.add_row("Created", str(user.created_at)[:19] if user.created_at else "-")
+                table.add_row("Updated", str(user.updated_at)[:19] if user.updated_at else "-")
+                
+                # Authentication info
+                if auth_data:
+                    table.add_row("Has PIN", "[green]Yes[/green]" if auth_data.get('has_pin') else "[red]No[/red]")
+                    table.add_row("Account Locked", "[red]Yes[/red]" if auth_data.get('is_locked') else "[green]No[/green]")
+                    if auth_data.get('failed_attempts'):
+                        table.add_row("Failed Attempts", str(auth_data.get('failed_attempts', 0)))
+                    if auth_data.get('last_login'):
+                        table.add_row("Last Login", str(auth_data.get('last_login'))[:19])
+                else:
+                    table.add_row("Has PIN", "[red]No[/red]")
+                    table.add_row("Account Locked", "[green]No[/green]")
+                
+                # Relationships
+                if relationships:
+                    table.add_row("Relationships", f"{len(relationships)} active")
+                    for rel in relationships[:3]:  # Show first 3
+                        table.add_row(f"  └─ {rel.get('relationship_type', 'unknown')}", rel.get('related_user_name', 'Unknown'))
+                    if len(relationships) > 3:
+                        table.add_row("  └─ ...", f"+{len(relationships) - 3} more")
+                else:
+                    table.add_row("Relationships", "None")
+                
+                console.print()
+                console.print(table)
+                console.print()
+                
+            else:
+                # Show detailed info for all users
+                async def get_all_detailed():
+                    users = await user_service.list_users(user_type=user_type, limit=limit)
+                    detailed_users = []
+                    
+                    for user in users:
+                        auth_data = await user_service.get_user_authentication(user.uuid)
+                        relationships = await user_service.get_user_relationships(user.uuid)
+                        detailed_users.append({
+                            'user': user,
+                            'auth': auth_data,
+                            'relationships': relationships
+                        })
+                    
+                    return detailed_users
+                
+                detailed_users = asyncio.run(get_all_detailed())
+                
+                if not detailed_users:
+                    console.print("No users found.")
+                    return
+                
+                # Create detailed table for all users
+                table = Table(
+                    title="✨ [bold cyan]AICO Users (Detailed)[/bold cyan]",
+                    title_style="bold cyan",
+                    title_justify="left",
+                    border_style="bright_blue",
+                    header_style="bold yellow",
+                    show_lines=False,
+                    box=box.SIMPLE_HEAD,
+                    padding=(0, 1)
+                )
+                table.add_column("UUID", style="bold white", justify="left", no_wrap=True, min_width=36)
+                table.add_column("Name", style="bold white", justify="left")
+                table.add_column("Type", style="green", justify="left")
+                table.add_column("Active", style="bold white", justify="left")
+                table.add_column("PIN", style="bold white", justify="left")
+                table.add_column("Locked", style="bold white", justify="left")
+                table.add_column("Relationships", style="dim", justify="left")
+                table.add_column("Created", style="dim", justify="left")
+                
+                for item in detailed_users:
+                    user = item['user']
+                    auth = item['auth'] or {}
+                    relationships = item['relationships'] or []
+                    
+                    # Format status indicators
+                    active_status = "[green]Yes[/green]" if user.is_active else "[red]No[/red]"
+                    pin_status = "[green]Yes[/green]" if auth.get('has_pin') else "[red]No[/red]"
+                    locked_status = "[red]Yes[/red]" if auth.get('is_locked') else "[green]No[/green]"
+                    rel_count = f"{len(relationships)}" if relationships else "0"
+                    
+                    table.add_row(
+                        user.uuid,
+                        user.full_name,
+                        user.user_type,
+                        active_status,
+                        pin_status,
+                        locked_status,
+                        rel_count,
+                        str(user.created_at)[:19] if user.created_at else "-"
+                    )
+                
+                console.print()
+                console.print(table)
+                console.print()
+        else:
+            # Standard list view
+            async def list_users():
+                users = await user_service.list_users(user_type=user_type, limit=limit)
+                return users
+            
+            users = asyncio.run(list_users())
+            
+            if not users:
+                console.print("No users found.")
+                return
+            
+            # Create table following CLI style guide
+            table = Table(
+                title="✨ [bold cyan]AICO Users[/bold cyan]",
+                title_style="bold cyan",
+                title_justify="left",
+                border_style="bright_blue",
+                header_style="bold yellow",
+                show_lines=False,
+                box=box.SIMPLE_HEAD,
+                padding=(0, 1)
             )
-        
-        console.print(table)
+            table.add_column("UUID", style="bold white", justify="left", no_wrap=True, min_width=36)
+            table.add_column("Name", style="bold white", justify="left")
+            table.add_column("Nickname", style="bold white", justify="left")
+            table.add_column("Type", style="green", justify="left")
+            table.add_column("Active", style="bold white", justify="left")
+            table.add_column("Created", style="dim", justify="left")
+            
+            for user in users:
+                # Format active status with color coding
+                active_status = "[green]Yes[/green]" if user.is_active else "[red]No[/red]"
+                
+                table.add_row(
+                    user.uuid,  # Full UUID - no truncation
+                    user.full_name,
+                    user.nickname or "-",
+                    user.user_type,
+                    active_status,
+                    str(user.created_at)[:19] if user.created_at else "-"
+                )
+            
+            console.print()
+            console.print(table)
+            console.print()
         
     except Exception as e:
         console.print(f"❌ [red]Failed to list users: {e}[/red]")
         raise typer.Exit(1)
+
+
 
 
 @app.command("user-auth")
@@ -857,12 +1027,13 @@ def user_update(
     user_uuid: str = typer.Argument(None, help="User UUID to update"),
     full_name: str = typer.Option(None, "--name", "-n", help="Update full name"),
     nickname: str = typer.Option(None, "--nickname", help="Update nickname"),
-    user_type: str = typer.Option(None, "--type", "-t", help="Update user type (parent, child, admin)")
+    user_type: str = typer.Option(None, "--type", "-t", help="Update user type (person, child, admin)"),
 ):
     """Update user profile information"""
     
     if user_uuid is None:
         console.print("\n❌ [red]Missing required argument: USER_UUID[/red]\n")
+    # ... (rest of the code remains the same)
         console.print("[bold cyan]Usage:[/bold cyan]")
         console.print("  aico security user-update [OPTIONS] USER_UUID\n")
         console.print("[bold yellow]Examples:[/bold yellow]")
@@ -953,21 +1124,19 @@ def user_update(
 @app.command("user-delete")
 def user_delete(
     user_uuid: str = typer.Argument(None, help="User UUID to delete"),
+    hard: bool = typer.Option(False, "--hard", help="Permanently delete user and all related data (IRREVERSIBLE)"),
     confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt")
 ):
-    """Soft delete user (mark as inactive)"""
+    """Delete user (soft delete by default, --hard for permanent deletion)"""
     
     if user_uuid is None:
         console.print("\n❌ [red]Missing required argument: USER_UUID[/red]\n")
         console.print("[bold cyan]Usage:[/bold cyan]")
         console.print("  aico security user-delete [OPTIONS] USER_UUID\n")
         console.print("[bold yellow]Examples:[/bold yellow]")
-        console.print('  aico security user-delete abc123def')
-        console.print('  aico security user-delete 550e8400-e29b-41d4-a716-446655440000 --confirm')
-        console.print("\n[bold yellow]Options:[/bold yellow]")
-        console.print("  --confirm         Skip confirmation prompt")
-        console.print("\n[dim]This is a soft delete - user data is preserved but marked inactive[/dim]")
-        console.print("[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
+        console.print('  aico security user-delete abc123def --confirm  # Soft delete')
+        console.print('  aico security user-delete abc123def --hard     # Permanent delete')
+        console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
         raise typer.Exit(1)
     import asyncio
     from pathlib import Path
@@ -981,7 +1150,7 @@ def user_delete(
         # Initialize configuration and paths
         config_manager = ConfigurationManager()
         
-        # Use configuration-based path resolution (following database command pattern)
+        # Use configuration-based path resolution
         db_config = config_manager.get("database.libsql", {})
         filename = db_config.get("filename", "aico.db")
         directory_mode = db_config.get("directory_mode", "auto")
@@ -997,10 +1166,10 @@ def user_delete(
         db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
         user_service = UserService(db_conn)
         
-        # Get user first to show what will be deleted
+        # Get user first to confirm deletion
         async def get_user():
-            user = await user_service.get_user(user_uuid)
-            return user
+            users = await user_service.list_users(limit=1000)  # Get all users
+            return next((u for u in users if u.uuid == user_uuid), None)
         
         user = asyncio.run(get_user())
         
@@ -1008,33 +1177,79 @@ def user_delete(
             console.print(f"❌ [red]User not found: {user_uuid}[/red]")
             raise typer.Exit(1)
         
-        # Confirmation prompt
-        if not confirm:
-            console.print(f"⚠️ [yellow]About to delete user:[/yellow]")
-            console.print(f"  UUID: {user.uuid}")
-            console.print(f"  Name: {user.full_name}")
+        if hard:
+            # Hard delete - permanent deletion
+            console.print(f"\n[bold red]⚠️  PERMANENT DELETION WARNING[/bold red]")
+            console.print(f"[bold white]User to be permanently deleted:[/bold white]")
+            console.print(f"UUID: {user.uuid}")
+            console.print(f"Name: {user.full_name}")
             if user.nickname:
-                console.print(f"  Nickname: {user.nickname}")
-            console.print(f"  Type: {user.user_type}")
-            console.print(f"\n[dim]Note: This is a soft delete - user will be marked inactive but data preserved[/dim]")
+                console.print(f"Nickname: {user.nickname}")
+            console.print(f"Type: {user.user_type}")
+            console.print(f"Status: {'Active' if user.is_active else 'Inactive'}")
             
-            if not typer.confirm("Are you sure you want to delete this user?"):
-                console.print("Operation cancelled.")
-                raise typer.Exit()
-        
-        # Delete user
-        async def delete_user():
-            success = await user_service.delete_user(user_uuid)
-            return success
-        
-        success = asyncio.run(delete_user())
-        
-        if success:
-            console.print(f"\n✅ [green]User deleted successfully[/green]")
-            console.print(f"User '{user.full_name}' has been marked as inactive")
+            console.print(f"\n[bold red]This will permanently delete:[/bold red]")
+            console.print("• User profile and account data")
+            console.print("• Authentication data (PIN/passwords)")
+            console.print("• User relationships and connections")
+            console.print("• Access policies and permissions")
+            console.print("• ALL related data in the database")
+            
+            console.print(f"\n[bold red]This action CANNOT be undone![/bold red]")
+            
+            if not confirm:
+                # Require typing YES to confirm
+                confirmation = typer.prompt(f"\nType 'YES' (in capitals) to permanently delete user '{user.full_name}'", show_default=False)
+                if confirmation != "YES":
+                    console.print("❌ [yellow]Confirmation failed. Operation cancelled.[/yellow]")
+                    raise typer.Exit(0)
+            
+            # Perform hard delete
+            async def hard_delete():
+                result = await user_service.hard_delete_user(user_uuid)
+                return result
+            
+            result = asyncio.run(hard_delete())
+            
+            if result:
+                console.print(f"\n✅ [green]User permanently deleted[/green]")
+                console.print(f"UUID: {user_uuid}")
+                console.print(f"Name: {user.full_name}")
+                console.print(f"\n[bold yellow]All related data has been permanently removed from the database.[/bold yellow]")
+            else:
+                console.print(f"❌ [red]Failed to delete user (may have already been deleted)[/red]")
+                raise typer.Exit(1)
         else:
-            console.print(f"❌ [red]Failed to delete user (may already be inactive)[/red]")
-            raise typer.Exit(1)
+            # Soft delete - default behavior
+            if not confirm:
+                console.print(f"\n[bold yellow]Soft delete user:[/bold yellow]")
+                console.print(f"UUID: {user.uuid}")
+                console.print(f"Name: {user.full_name}")
+                if user.nickname:
+                    console.print(f"Nickname: {user.nickname}")
+                console.print(f"Type: {user.user_type}")
+                console.print(f"\n[dim]This will mark the user as inactive but keep all data.[/dim]")
+                
+                response = typer.confirm(f"\nAre you sure you want to soft delete user '{user.full_name}'?")
+                if not response:
+                    console.print("Operation cancelled.")
+                    raise typer.Exit(0)
+            
+            # Perform soft delete
+            async def soft_delete():
+                result = await user_service.delete_user(user_uuid)
+                return result
+            
+            result = asyncio.run(soft_delete())
+            
+            if result:
+                console.print(f"\n✅ [green]User soft deleted (marked as inactive)[/green]")
+                console.print(f"UUID: {user_uuid}")
+                console.print(f"Name: {user.full_name}")
+                console.print(f"\n[dim]User data is preserved and can be reactivated if needed.[/dim]")
+            else:
+                console.print(f"❌ [red]Failed to delete user (may have already been deleted)[/red]")
+                raise typer.Exit(1)
         
     except Exception as e:
         console.print(f"❌ [red]Failed to delete user: {e}[/red]")
@@ -1174,22 +1389,38 @@ def user_stats():
         
         stats = asyncio.run(get_stats())
         
-        console.print("\n📊 [bold]User Statistics[/bold]")
-        console.print(f"Total Users: {stats.get('total_users', 0)}")
+        # Create main statistics table
+        table = Table(
+            title="✨ [bold cyan]User Statistics[/bold cyan]",
+            title_style="bold cyan",
+            title_justify="left",
+            border_style="bright_blue",
+            box=box.SIMPLE_HEAD,
+            show_header=True,
+            header_style="bold yellow",
+            padding=(0, 1)
+        )
         
-        # Users by type
+        table.add_column("Metric", style="white", justify="left")
+        table.add_column("Count", style="bold green", justify="right")
+        
+        # Add total users
+        table.add_row("Total Users", str(stats.get('total_users', 0)))
+        
+        # Add users by type
         users_by_type = stats.get('users_by_type', {})
         if users_by_type:
-            console.print("\nUsers by Type:")
             for user_type, count in users_by_type.items():
-                console.print(f"  {user_type}: {count}")
+                table.add_row(f"  └─ {user_type.title()}", str(count))
         
-        # Authentication stats
+        # Add authentication stats
         auth_stats = stats.get('authentication', {})
         if auth_stats:
-            console.print(f"\nAuthentication:")
-            console.print(f"  Users with PIN: {auth_stats.get('total_with_auth', 0)}")
-            console.print(f"  Locked accounts: {auth_stats.get('locked_accounts', 0)}")
+            table.add_row("Users with PIN", str(auth_stats.get('total_with_auth', 0)))
+            table.add_row("Locked Accounts", str(auth_stats.get('locked_accounts', 0)))
+        
+        console.print()
+        console.print(table)
         
     except Exception as e:
         console.print(f"❌ [red]Failed to get user stats: {e}[/red]")

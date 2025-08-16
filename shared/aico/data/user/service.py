@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 
 from aico.core.logging import get_logger
+from aico.core.config import ConfigurationManager
 from aico.data.libsql.connection import LibSQLConnection
 from passlib.context import CryptContext
 
@@ -27,12 +28,22 @@ class UserService:
         self.db = db_connection
         self.logger = get_logger("user_service", "core")
         
-        # Password context for PIN hashing
-        self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        # Load configuration
+        self.config = ConfigurationManager()
+        security_config = self.config.config_cache.get('security', {})
+        auth_config = security_config.get('authentication', {})
         
-        # Maximum failed login attempts before lockout
-        self.max_failed_attempts = 5
-        self.lockout_duration_minutes = 15
+        # Password context for PIN hashing with configurable rounds
+        bcrypt_rounds = auth_config.get('password_hashing', {}).get('rounds', 12)
+        self.pwd_context = CryptContext(
+            schemes=["bcrypt"], 
+            deprecated="auto",
+            bcrypt__rounds=bcrypt_rounds
+        )
+        
+        # Configurable authentication settings
+        self.max_failed_attempts = auth_config.get('max_failed_attempts', 5)
+        self.lockout_duration_minutes = auth_config.get('lockout_duration', 300) // 60  # Convert seconds to minutes
         
         self.logger.info("User service initialized")
     
@@ -359,34 +370,40 @@ class UserService:
             })
             raise
     
-    async def list_users(self, user_type: str = None, limit: int = 100) -> List[UserProfile]:
+    async def list_users(self, user_type: str = None, limit: int = 100, include_inactive: bool = True) -> List[UserProfile]:
         """
         List users with optional filtering
         
         Args:
             user_type: Optional filter by user type
             limit: Maximum number of users to return
+            include_inactive: Include soft-deleted users (default: True)
             
         Returns:
             List of user profiles
         """
         try:
+            # Build WHERE clause based on filters
+            where_conditions = []
+            params = []
+            
+            if not include_inactive:
+                where_conditions.append("is_active = TRUE")
+            
             if user_type:
-                results = self.db.fetch_all("""
-                    SELECT uuid, full_name, nickname, user_type, is_active, created_at, updated_at
-                    FROM users 
-                    WHERE is_active = TRUE AND user_type = ?
-                    ORDER BY created_at DESC
-                    LIMIT ?
-                """, (user_type, limit))
-            else:
-                results = self.db.fetch_all("""
-                    SELECT uuid, full_name, nickname, user_type, is_active, created_at, updated_at
-                    FROM users 
-                    WHERE is_active = TRUE
-                    ORDER BY created_at DESC
-                    LIMIT ?
-                """, (limit,))
+                where_conditions.append("user_type = ?")
+                params.append(user_type)
+            
+            where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+            params.append(limit)
+            
+            results = self.db.fetch_all(f"""
+                SELECT uuid, full_name, nickname, user_type, is_active, created_at, updated_at
+                FROM users 
+                {where_clause}
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, tuple(params))
             
             return [
                 UserProfile(
@@ -663,3 +680,86 @@ class UserService:
                 "error": str(e)
             })
             return {}
+    
+    async def get_user_authentication(self, user_uuid: str) -> Optional[Dict[str, Any]]:
+        """
+        Get user authentication data
+        
+        Args:
+            user_uuid: User UUID
+            
+        Returns:
+            Dictionary with authentication data or None if not found
+        """
+        try:
+            result = self.db.fetch_one("""
+                SELECT pin_hash, failed_attempts, locked_until, last_login, created_at, updated_at
+                FROM user_authentication WHERE user_uuid = ?
+            """, (user_uuid,))
+            
+            if not result:
+                return None
+                
+            return {
+                'has_pin': bool(result['pin_hash']),
+                'is_locked': bool(result['locked_until'] and datetime.fromisoformat(result['locked_until']) > datetime.now()),
+                'failed_attempts': result['failed_attempts'],
+                'last_login': result['last_login'],
+                'created_at': result['created_at'],
+                'updated_at': result['updated_at']
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get user authentication: {e}", extra={
+                "module": "user_service",
+                "function": "get_user_authentication",
+                "topic": "authentication",
+                "zmq_topic": "logs",
+                "user_uuid": user_uuid,
+                "error": str(e)
+            })
+            return None
+    
+    async def get_user_relationships(self, user_uuid: str) -> List[Dict[str, Any]]:
+        """
+        Get user relationships
+        
+        Args:
+            user_uuid: User UUID
+            
+        Returns:
+            List of relationship dictionaries
+        """
+        try:
+            results = self.db.fetch_all("""
+                SELECT 
+                    ur.relationship_type,
+                    ur.related_user_uuid,
+                    u.full_name as related_user_name,
+                    ur.created_at
+                FROM user_relationships ur
+                JOIN users u ON ur.related_user_uuid = u.uuid
+                WHERE ur.user_uuid = ? AND u.is_active = TRUE
+                ORDER BY ur.created_at DESC
+            """, (user_uuid,))
+            
+            return [
+                {
+                    'relationship_type': row['relationship_type'],
+                    'related_user_uuid': row['related_user_uuid'],
+                    'related_user_name': row['related_user_name'],
+                    'created_at': row['created_at']
+                }
+                for row in results
+            ]
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get user relationships: {e}", extra={
+                "module": "user_service",
+                "function": "get_user_relationships",
+                "topic": "user_management",
+                "zmq_topic": "logs",
+                "user_uuid": user_uuid,
+                "error": str(e)
+            })
+            return []

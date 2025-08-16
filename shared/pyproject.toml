@@ -29,6 +29,9 @@ dependencies = [
     # Cross-platform utilities
     "platformdirs",
     "psutil",
+    
+    # User authentication (used by UserService)
+    "passlib[bcrypt]",
 ]
 
 [tool.setuptools]

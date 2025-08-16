@@ -42,6 +42,9 @@ pin_policy:
   require_numeric: true
 
 authentication:
+  password_hashing:
+    algorithm: "bcrypt"
+    rounds: 12  # Cost factor for bcrypt (2^12 iterations)
   session_timeout: 3600
   max_failed_attempts: 5
   lockout_duration: 300
