@@ -9,49 +9,14 @@ from ..libsql.schema import SchemaVersion
 from ..libsql.registry import register_schema
 
 
-# Register message bus schema
-MESSAGE_BUS_SCHEMA = register_schema("message_bus", "core", priority=1)({
+# Register unified core schema
+CORE_SCHEMA = register_schema("core", "core", priority=0)({
     1: SchemaVersion(
         version=1,
-        name="Event Bus Persistence",
-        description="Event log for debugging, audit, and cross-device sync",
+        name="AICO Core Database",
+        description="All core tables: logging, events, authentication, and user management",
         sql_statements=[
-            """CREATE TABLE IF NOT EXISTS events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                topic TEXT NOT NULL,
-                source TEXT NOT NULL,
-                message_type TEXT NOT NULL,
-                message_id TEXT NOT NULL UNIQUE,
-                priority INTEGER DEFAULT 1,
-                correlation_id TEXT,
-                payload BLOB,
-                metadata JSON,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )""",
-            """CREATE INDEX IF NOT EXISTS idx_events_topic_timestamp 
-               ON events(topic, timestamp)""",
-            """CREATE INDEX IF NOT EXISTS idx_events_source 
-               ON events(source)""",
-            """CREATE INDEX IF NOT EXISTS idx_events_correlation 
-               ON events(correlation_id) WHERE correlation_id IS NOT NULL"""
-        ],
-        rollback_statements=[
-            "DROP INDEX IF EXISTS idx_events_correlation",
-            "DROP INDEX IF EXISTS idx_events_source", 
-            "DROP INDEX IF EXISTS idx_events_topic_timestamp",
-            "DROP TABLE IF EXISTS events"
-        ]
-    )
-})
-
-# Register logs schema
-LOGS_SCHEMA = register_schema("logs", "core", priority=0)({
-    1: SchemaVersion(
-        version=1,
-        name="Unified Logging System",
-        description="Single source of truth for all subsystem logs",
-        sql_statements=[
+            # Logs table - unified logging system
             """CREATE TABLE IF NOT EXISTS logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
@@ -69,32 +34,22 @@ LOGS_SCHEMA = register_schema("logs", "core", priority=0)({
                 extra TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )""",
-            "CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp)",
-            "CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level)",
-            "CREATE INDEX IF NOT EXISTS idx_logs_subsystem ON logs(subsystem)",
-            "CREATE INDEX IF NOT EXISTS idx_logs_module ON logs(module)",
-            "CREATE INDEX IF NOT EXISTS idx_logs_trace_id ON logs(trace_id)",
-            "CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id)"
-        ],
-        rollback_statements=[
-            "DROP INDEX IF EXISTS idx_logs_session_id",
-            "DROP INDEX IF EXISTS idx_logs_trace_id",
-            "DROP INDEX IF EXISTS idx_logs_module",
-            "DROP INDEX IF EXISTS idx_logs_subsystem",
-            "DROP INDEX IF EXISTS idx_logs_level",
-            "DROP INDEX IF EXISTS idx_logs_timestamp",
-            "DROP TABLE IF EXISTS logs"
-        ]
-    )
-})
-
-# Register authentication schema
-AUTH_SCHEMA = register_schema("auth", "core", priority=2)({
-    1: SchemaVersion(
-        version=1,
-        name="Authentication System",
-        description="Core authentication, user CRUD, and authorization tables",
-        sql_statements=[
+            
+            # Events table - message bus persistence
+            """CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                topic TEXT NOT NULL,
+                source TEXT NOT NULL,
+                message_type TEXT NOT NULL,
+                message_id TEXT NOT NULL UNIQUE,
+                priority INTEGER DEFAULT 1,
+                correlation_id TEXT,
+                payload BLOB,
+                metadata JSON,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )""",
+            
             # Users table - core user profiles
             """CREATE TABLE IF NOT EXISTS users (
                 uuid TEXT PRIMARY KEY,
@@ -170,6 +125,21 @@ AUTH_SCHEMA = register_schema("auth", "core", priority=2)({
             )""",
             
             # Indexes for performance
+            # Logs table indexes
+            "CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp)",
+            "CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level)",
+            "CREATE INDEX IF NOT EXISTS idx_logs_subsystem ON logs(subsystem)",
+            "CREATE INDEX IF NOT EXISTS idx_logs_module ON logs(module)",
+            "CREATE INDEX IF NOT EXISTS idx_logs_trace_id ON logs(trace_id)",
+            "CREATE INDEX IF NOT EXISTS idx_logs_session_id ON logs(session_id)",
+            
+            # Events table indexes
+            "CREATE INDEX IF NOT EXISTS idx_events_topic_timestamp ON events(topic, timestamp)",
+            "CREATE INDEX IF NOT EXISTS idx_events_source ON events(source)",
+            "CREATE INDEX IF NOT EXISTS idx_events_correlation ON events(correlation_id) WHERE correlation_id IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_events_message_id ON events(message_id)",
+            
+            # User tables indexes
             "CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active)",
             "CREATE INDEX IF NOT EXISTS idx_users_user_type ON users(user_type)",
             "CREATE INDEX IF NOT EXISTS idx_user_authentication_user ON user_authentication(user_uuid)",
@@ -182,11 +152,21 @@ AUTH_SCHEMA = register_schema("auth", "core", priority=2)({
             "CREATE INDEX IF NOT EXISTS idx_devices_active ON devices(is_active)",
             "CREATE INDEX IF NOT EXISTS idx_user_relationships_user ON user_relationships(user_uuid)",
             "CREATE INDEX IF NOT EXISTS idx_user_relationships_related ON user_relationships(related_user_uuid)",
-            "CREATE INDEX IF NOT EXISTS idx_logs_user_timestamp ON logs(user_uuid, timestamp)",
+            "CREATE INDEX IF NOT EXISTS idx_logs_user_timestamp ON logs(user_id, timestamp)",
             "CREATE INDEX IF NOT EXISTS idx_events_message_id ON events(message_id)"
         ],
         rollback_statements=[
+            # Drop indexes first (reverse order)
             "DROP INDEX IF EXISTS idx_events_message_id",
+            "DROP INDEX IF EXISTS idx_events_correlation",
+            "DROP INDEX IF EXISTS idx_events_source",
+            "DROP INDEX IF EXISTS idx_events_topic_timestamp",
+            "DROP INDEX IF EXISTS idx_logs_session_id",
+            "DROP INDEX IF EXISTS idx_logs_trace_id",
+            "DROP INDEX IF EXISTS idx_logs_module",
+            "DROP INDEX IF EXISTS idx_logs_subsystem",
+            "DROP INDEX IF EXISTS idx_logs_level",
+            "DROP INDEX IF EXISTS idx_logs_timestamp",
             "DROP INDEX IF EXISTS idx_logs_user_timestamp",
             "DROP INDEX IF EXISTS idx_user_relationships_related",
             "DROP INDEX IF EXISTS idx_user_relationships_user",
@@ -205,7 +185,9 @@ AUTH_SCHEMA = register_schema("auth", "core", priority=2)({
             "DROP TABLE IF EXISTS access_policies",
             "DROP TABLE IF EXISTS auth_sessions",
             "DROP TABLE IF EXISTS user_authentication",
-            "DROP TABLE IF EXISTS users"
+            "DROP TABLE IF EXISTS users",
+            "DROP TABLE IF EXISTS events",
+            "DROP TABLE IF EXISTS logs"
         ]
     )
 })

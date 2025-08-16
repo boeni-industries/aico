@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.9"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -80,7 +80,7 @@ requires-dist = [
     { name = "keyring" },
     { name = "libsql-client", specifier = ">=0.3.1" },
     { name = "platformdirs" },
-    { name = "protobuf", specifier = ">=4.21.0,<6.0.0" },
+    { name = "protobuf", specifier = ">=5.29.5" },
     { name = "psutil" },
     { name = "pyyaml" },
     { name = "pyzmq", specifier = ">=25.0.0" },

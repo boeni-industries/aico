@@ -131,9 +131,7 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             ConnectionError: If connection or encryption setup fails
         """
         try:
-            # Get base connection
-            connection = super().connect()
-            # Set up encryption
+            # Set up encryption key first
             encryption_key = self._setup_encryption()
             
             # Convert key to hex string for PRAGMA
@@ -142,7 +140,7 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             # Establish connection with encryption key
             connection = libsql.connect(str(self.db_path))
             
-            # Apply encryption key
+            # Apply encryption key immediately after connection
             connection.execute(f"PRAGMA key = 'x\"{key_hex}\"'")
             
             # Apply database configuration settings (must be done outside transactions)
@@ -156,6 +154,8 @@ class EncryptedLibSQLConnection(LibSQLConnection):
                 _get_logger().error(f"Database encryption verification failed: {e}")
                 raise ConnectionError("Invalid encryption key or corrupted database") from e
             
+            # Store the connection for future use
+            self._connection = connection
             return connection
             
         except Exception as e:

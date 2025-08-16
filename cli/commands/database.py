@@ -61,9 +61,7 @@ def database_callback(ctx: typer.Context):
             ("stat", "Database statistics"),
             ("vacuum", "Optimize database"),
             ("check", "Integrity check"),
-            ("exec", "Execute raw SQL query"),
-            ("sync", "Sync database to match code definitions"),
-            ("snapshot", "Capture current state as migration baseline")
+            ("exec", "Execute raw SQL query")
         ]
         
         examples = [
@@ -72,8 +70,7 @@ def database_callback(ctx: typer.Context):
             "aico db ls",
             "aico db desc logs",
             "aico db count --table=logs",
-            "aico db sync --dry-run",
-            "aico db snapshot --confirm"
+            "aico db head logs --limit=5"
         ]
         
         format_subcommand_help(
@@ -229,6 +226,8 @@ def init(
             
             # Apply any missing schemas
             console.print("📋 Checking for missing database schemas...")
+            # Import core schema to ensure registration
+            import aico.data.schemas.core
             applied_schemas = SchemaRegistry.apply_core_schemas(conn)
             
             if applied_schemas:
@@ -256,6 +255,8 @@ def init(
             
             # Apply core schemas using schema registry
             console.print("📋 Applying core database schemas...")
+            # Import core schema to ensure registration
+            import aico.data.schemas.core
             applied_schemas = SchemaRegistry.apply_core_schemas(conn)
             
             console.print("✅ [green]Database created successfully![/green]")
@@ -294,7 +295,8 @@ def status(
         db_file = AICOPaths.resolve_database_path(filename, directory_mode)
     
     if not db_file.exists():
-        console.print(f"❌ [red]Database not found: {db_path}[/red]")
+        console.print(f"❌ [red]Database not found: {db_file}[/red]")
+        console.print("💡 [yellow]Run 'aico db init' to create the database first[/yellow]")
         raise typer.Exit(1)
     
     try:
@@ -348,6 +350,48 @@ def status(
             table.add_row("KDF Iterations", str(info["kdf_iterations"]))
         
         console.print(table)
+        
+        # Add schema version information
+        console.print("\n📋 Schema Information:")
+        try:
+            from aico.data.libsql.registry import SchemaRegistry
+            from aico.data.libsql.schema import SchemaManager
+            
+            # Get schema version info
+            manager = SchemaManager(conn)
+            current_version = manager.get_current_version()
+            
+            # Get latest available version from registry
+            # Import core schema to ensure registration
+            import aico.data.schemas.core
+            core_schemas = SchemaRegistry.get_core_schemas()
+            latest_version = 0
+            if core_schemas:
+                schema = core_schemas[0]  # Should be only one "core" schema now
+                latest_version = max(schema.definitions.keys()) if schema.definitions else 0
+            
+            # Create schema status table
+            schema_table = Table(title="Schema Status")
+            schema_table.add_column("Property", style="cyan")
+            schema_table.add_column("Value", style="green")
+            
+            schema_table.add_row("Current Version", str(current_version) if current_version else "Not initialized")
+            schema_table.add_row("Latest Version", str(latest_version))
+            
+            if current_version is None:
+                schema_table.add_row("Status", "❌ Not initialized")
+                schema_table.add_row("Action Needed", "Run 'aico db init'")
+            elif current_version < latest_version:
+                schema_table.add_row("Status", "⚠️ Update available")
+                schema_table.add_row("Action Needed", "Run 'aico db init' to update")
+            else:
+                schema_table.add_row("Status", "✅ Up to date")
+                schema_table.add_row("Action Needed", "None")
+            
+            console.print(schema_table)
+            
+        except Exception as e:
+            console.print(f"⚠️ [yellow]Could not check schema version: {e}[/yellow]")
         
         # Test encrypted connection
         console.print("\n🔍 Testing encrypted database connection...")
@@ -638,10 +682,17 @@ def _get_db_connection():
         paths = AICOPaths()
         db_path = paths.resolve_database_path("aico.db")
         
+        # Check if database file exists first
+        if not db_path.exists():
+            console.print(f"❌ [red]Database not found: {db_path}[/red]")
+            console.print("💡 [yellow]Run 'aico db init' to create the database first[/yellow]")
+            raise typer.Exit(1)
+        
         # Connect to database using session-based authentication
         conn = _get_database_connection(str(db_path))
         
         # Initialize CLI logging with direct database transport BEFORE operations
+        # But don't fail if logging setup fails - just warn
         try:
             initialize_cli_logging(config, conn)
             # Verify logging works by testing actual log write
@@ -649,13 +700,13 @@ def _get_db_connection():
             test_logger.info("Accessing DB from CLI.")
             console.print("✅ [green]CLI logging verified for test command[/green]")
         except Exception as e:
-            console.print(f"❌ [red]CRITICAL: CLI logging failed: {e}[/red]")
-            console.print(f"[red]Database logging will not work - logs only in console[/red]")
-            import traceback
-            console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
+            console.print(f"⚠️ [yellow]CLI logging setup failed (continuing without database logging): {e}[/yellow]")
         
         return conn
         
+    except typer.Exit:
+        # Re-raise typer exits (like database not found)
+        raise
     except Exception as e:
         console.print(f"[red]Error connecting to database: {e}[/red]")
         raise typer.Exit(1)
@@ -1079,229 +1130,7 @@ def exec(
         raise typer.Exit(1)
 
 
-@app.command()
-def sync(
-    db_path: str = typer.Option(None, help="Database file path (optional - uses config default)"),
-    db_type: str = typer.Option("libsql", help="Database type (libsql, duckdb, chroma, rocksdb)"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview what would be synced without making changes"),
-    confirm: bool = typer.Option(False, "--confirm", help="Actually perform the sync (required for safety)")
-):
-    """Sync database to match latest schema definitions from code."""
-    
-    # Load configuration and resolve database path
-    config = ConfigurationManager()
-    
-    if db_path:
-        db_file = Path(db_path)
-    else:
-        db_config = config.get(f"database.{db_type}", {})
-        filename = db_config.get("filename", "aico.db")
-        directory_mode = db_config.get("directory_mode", "auto")
-        db_file = AICOPaths.resolve_database_path(filename, directory_mode)
-    
-    if not db_file.exists():
-        console.print(f"❌ [red]Database not found: {db_file}[/red]")
-        raise typer.Exit(1)
-    
-    try:
-        console.print(f"🔄 [bold yellow]Database Schema Sync[/bold yellow]")
-        console.print(f"📁 Database: [cyan]{db_file}[/cyan]")
-        
-        if dry_run:
-            console.print("🔍 [yellow]DRY RUN MODE - No changes will be made[/yellow]")
-        
-        # Get database connection
-        conn = _get_database_connection(str(db_file))
-        
-        # Get latest schema definitions from registry
-        from aico.data.libsql.registry import SchemaRegistry
-        from aico.data.libsql.schema import SchemaManager
-        
-        # Get all core schemas and their latest definitions
-        core_schemas = SchemaRegistry.get_core_schemas()
-        if not core_schemas:
-            console.print("❌ [red]No core schemas found in registry[/red]")
-            raise typer.Exit(1)
-        
-        # For each schema, sync to latest version
-        all_results = []
-        for schema in core_schemas:
-            console.print(f"\n📋 [bold cyan]Syncing '{schema.name}' schema[/bold cyan]")
-            
-            # Create schema manager for this schema
-            manager = SchemaManager(conn, schema.definitions)
-            
-            # Perform sync operation
-            result = manager.sync_to_latest_schema(schema.definitions, confirm=confirm, dry_run=dry_run)
-            all_results.append((schema.name, result))
-            
-            # Display results for this schema
-            if result["conflicts_found"]:
-                console.print(f"⚠️  [yellow]Conflicts found in '{schema.name}':[/yellow]")
-                for conflict in result["conflicts_found"]:
-                    console.print(f"  • {conflict}")
-            
-            if result["actions"]:
-                console.print(f"📋 [bold cyan]Actions for '{schema.name}':[/bold cyan]")
-                for action in result["actions"]:
-                    console.print(f"  • {action}")
-        
-        # Summary
-        console.print(f"\n📊 [bold cyan]Sync Summary[/bold cyan]")
-        
-        summary_table = Table(
-            title="Schema Sync Results",
-            border_style="bright_blue",
-            header_style="bold yellow",
-            box=box.SIMPLE_HEAD,
-            padding=(0, 1)
-        )
-        
-        summary_table.add_column("Schema", style="cyan")
-        summary_table.add_column("Status", style="white")
-        summary_table.add_column("Version", style="white")
-        summary_table.add_column("Conflicts", style="yellow")
-        
-        for schema_name, result in all_results:
-            status = "✅ Success" if result["success"] else "❌ Failed"
-            version = f"{result['current_version']} → {result['target_version']}"
-            conflicts = str(len(result["conflicts_found"]))
-            
-            summary_table.add_row(schema_name, status, version, conflicts)
-        
-        console.print(summary_table)
-        
-        # Show next steps
-        all_success = all(result[1]["success"] for result in all_results)
-        if all_success:
-            if dry_run:
-                console.print(f"\n💡 [bold green]Next Steps[/bold green]")
-                console.print("  • Run without --dry-run and with --confirm to apply changes")
-                console.print("  • Database will be synced to match latest code definitions")
-            else:
-                console.print(f"\n✅ [bold green]Database Sync Complete[/bold green]")
-                console.print("  • Database now matches latest schema definitions")
-                console.print("  • All conflicts have been resolved")
-        else:
-            console.print(f"\n❌ [bold red]Sync Failed[/bold red]")
-            if not confirm and not dry_run:
-                console.print("  • Use --confirm to actually perform the sync")
-                console.print("  • Use --dry-run to preview changes")
-        
-    except Exception as e:
-        console.print(f"❌ [red]Failed to sync database: {e}[/red]")
-        raise typer.Exit(1)
-
-
-@app.command()
-def snapshot(
-    db_path: str = typer.Option(None, help="Database file path (optional - uses config default)"),
-    db_type: str = typer.Option("libsql", help="Database type (libsql, duckdb, chroma, rocksdb)"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview what would be snapshotted without making changes"),
-    confirm: bool = typer.Option(False, "--confirm", help="Actually perform the snapshot (required for safety)")
-):
-    """Capture current database state as migration baseline, reset history."""
-    
-    # Load configuration and resolve database path
-    config = ConfigurationManager()
-    
-    if db_path:
-        db_file = Path(db_path)
-    else:
-        db_config = config.get(f"database.{db_type}", {})
-        filename = db_config.get("filename", "aico.db")
-        directory_mode = db_config.get("directory_mode", "auto")
-        db_file = AICOPaths.resolve_database_path(filename, directory_mode)
-    
-    if not db_file.exists():
-        console.print(f"❌ [red]Database not found: {db_file}[/red]")
-        raise typer.Exit(1)
-    
-    try:
-        console.print(f"📸 [bold yellow]Database Schema Snapshot[/bold yellow]")
-        console.print(f"📁 Database: [cyan]{db_file}[/cyan]")
-        
-        if dry_run:
-            console.print("🔍 [yellow]DRY RUN MODE - No changes will be made[/yellow]")
-        
-        # Get database connection
-        conn = _get_database_connection(str(db_file))
-        
-        # Import schema manager
-        from aico.data.libsql.schema import SchemaManager
-        
-        # Create schema manager instance
-        schema_manager = SchemaManager(conn)
-        
-        # Perform snapshot operation
-        result = schema_manager.snapshot_current_state(confirm=confirm, dry_run=dry_run)
-        
-        # Display results
-        console.print(f"\n📊 [bold cyan]Snapshot Operation Results[/bold cyan]")
-        
-        # Create results table
-        results_table = Table(
-            title="Snapshot Summary",
-            border_style="bright_blue",
-            header_style="bold yellow",
-            box=box.SIMPLE_HEAD,
-            padding=(0, 1)
-        )
-        
-        results_table.add_column("Property", style="cyan")
-        results_table.add_column("Value", style="white")
-        
-        results_table.add_row("Success", "✅ Yes" if result["success"] else "❌ No")
-        results_table.add_row("Current Version", str(result["current_version"]))
-        results_table.add_row("Tables Found", str(len(result["tables_found"])))
-        results_table.add_row("Migrations Cleared", str(result["migrations_cleared"]))
-        results_table.add_row("Dry Run", "✅ Yes" if result["dry_run"] else "❌ No")
-        
-        console.print(results_table)
-        
-        # Display actions taken
-        if result["actions"]:
-            console.print(f"\n📋 [bold cyan]Actions Performed[/bold cyan]")
-            for action in result["actions"]:
-                console.print(f"  • {action}")
-        
-        # Display tables found
-        if result["tables_found"]:
-            console.print(f"\n📊 [bold cyan]Tables in Database[/bold cyan]")
-            tables_table = Table(
-                border_style="bright_blue",
-                header_style="bold yellow",
-                box=box.SIMPLE_HEAD,
-                padding=(0, 1)
-            )
-            tables_table.add_column("Table Name", style="cyan")
-            
-            for table_name in sorted(result["tables_found"]):
-                tables_table.add_row(table_name)
-            
-            console.print(tables_table)
-        
-        # Show next steps
-        if result["success"]:
-            if dry_run:
-                console.print(f"\n💡 [bold green]Next Steps[/bold green]")
-                console.print("  • Run without --dry-run and with --confirm to create snapshot")
-                console.print("  • Current database structure will become new baseline")
-                console.print("  • Migration history will be compressed to single baseline")
-            else:
-                console.print(f"\n✅ [bold green]Snapshot Created Successfully[/bold green]")
-                console.print("  • Current database structure is now baseline (version 1)")
-                console.print("  • Migration history has been compressed")
-                console.print("  • Future migrations will apply from this snapshot")
-        else:
-            console.print(f"\n❌ [bold red]Snapshot Failed[/bold red]")
-            if not confirm and not dry_run:
-                console.print("  • Use --confirm to actually create the snapshot")
-                console.print("  • Use --dry-run to preview what would be captured")
-        
-    except Exception as e:
-        console.print(f"❌ [red]Failed to create database snapshot: {e}[/red]")
-        raise typer.Exit(1)
+# Removed sync and snapshot commands - use 'aico db init' for database creation and updates
 
 
 if __name__ == "__main__":

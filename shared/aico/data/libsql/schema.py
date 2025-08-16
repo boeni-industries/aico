@@ -61,7 +61,8 @@ class SchemaManager:
     Database schema management for LibSQL databases.
     
     Handles schema versioning, migrations, validation, and provides
-    support for both production and test schemas.
+    support for both production and test schemas. Supports both single-schema
+    and multi-schema version tracking.
     """
     
     # Core metadata table for tracking schema versions
@@ -114,12 +115,15 @@ class SchemaManager:
                 self.connection.execute(self.METADATA_TABLE_SQL)
                 self.connection.execute(self.MIGRATION_HISTORY_SQL)
                 
-                # Set initial version if not exists
+                # Always set initial version if no version exists
+                # This ensures metadata row exists for version tracking
                 current_version = self.get_current_version()
                 if current_version is None:
+                    # If we have schema definitions, start at 0 and let migration handle it
+                    # If no schema definitions, also start at 0 (empty database)
                     self._set_metadata("schema_version", "0")
                     self._set_metadata("schema_initialized", str(datetime.now().isoformat()))
-                    _get_logger().info("Initialized schema metadata tables")
+                    _get_logger().info("Initialized schema metadata tables with version 0")
                     
         except Exception as e:
             _get_logger().error(f"Failed to initialize metadata tables: {e}")
