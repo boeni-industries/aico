@@ -594,15 +594,15 @@ def status():
                 proto_enabled = proto_config.get("enabled", False)
                 
                 if proto_enabled and is_running:
-                    status_icon = "✅"
-                    status_text = "Active"
+                    status_icon = "✓"
+                    status_text = "Running"
                     status_color = "green"
                 elif proto_enabled:
-                    status_icon = "🟡"
-                    status_text = "Ready"
-                    status_color = "yellow"
+                    status_icon = "○"
+                    status_text = "Stopped"
+                    status_color = "blue"
                 else:
-                    status_icon = "⚫"
+                    status_icon = "✗"
                     status_text = "Disabled"
                     status_color = "dim"
                 
@@ -620,7 +620,7 @@ def status():
                 
                 table.add_row(
                     protocol.upper(),
-                    f"{status_icon} [{status_color}]{status_text}[/{status_color}]",
+                    f"[{status_color}]{status_icon} {status_text}[/{status_color}]",
                     endpoint
                 )
             
