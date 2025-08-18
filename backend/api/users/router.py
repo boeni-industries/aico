@@ -12,6 +12,18 @@ from .schemas import (
     CreateUserRequest, UpdateUserRequest, AuthenticateRequest, SetPinRequest,
     UserResponse, AuthenticationResponse, UserStatsResponse, UserListResponse
 )
+
+def _user_to_response(user) -> UserResponse:
+    """Convert UserProfile to UserResponse (DRY helper)"""
+    return UserResponse(
+        uuid=user.uuid,
+        full_name=user.full_name,
+        nickname=user.nickname,
+        user_type=user.user_type,
+        is_active=user.is_active,
+        created_at=user.created_at.isoformat() if user.created_at else None,
+        updated_at=user.updated_at.isoformat() if user.updated_at else None
+    )
 from .dependencies import validate_uuid, validate_user_type, validate_pin
 from .exceptions import (
     UserNotFoundError, UserServiceError, InvalidCredentialsError,
@@ -39,7 +51,7 @@ def initialize_router(user_svc: UserService, auth_mgr, admin_dependency):
 @handle_user_service_exceptions
 async def create_user(
     request: CreateUserRequest,
-    admin_user: dict = Depends(lambda: verify_admin_access)
+    admin_user = Depends(verify_admin_access) if verify_admin_access else None
 ):
     """Create a new user"""
     if not user_service:
@@ -62,7 +74,7 @@ async def create_user(
     logger.info("User created via API", extra={
         "user_uuid": user.uuid,
         "full_name": user.full_name,
-        "created_by": admin_user.get("user_id")
+        "created_by": admin_user.get("user_id") if admin_user else "unknown"
     })
     
     return UserResponse(
@@ -80,7 +92,7 @@ async def create_user(
 @handle_user_service_exceptions
 async def get_user(
     user_uuid: str,
-    admin_user: dict = Depends(lambda: verify_admin_access)
+    admin_user = Depends(verify_admin_access) if verify_admin_access else None
 ):
     """Get user by UUID"""
     if not user_service:
@@ -109,7 +121,7 @@ async def get_user(
 async def update_user(
     user_uuid: str,
     request: UpdateUserRequest,
-    admin_user: dict = Depends(lambda: verify_admin_access)
+    admin_user = Depends(verify_admin_access) if verify_admin_access else None
 ):
     """Update user profile"""
     if not user_service:
@@ -138,7 +150,7 @@ async def update_user(
     logger.info("User updated via API", extra={
         "user_uuid": user_uuid,
         "updated_fields": list(updates.keys()),
-        "updated_by": admin_user.get("user_id")
+        "updated_by": admin_user.get("user_id") if admin_user else "unknown"
     })
     
     return UserResponse(
@@ -156,7 +168,7 @@ async def update_user(
 @handle_user_service_exceptions
 async def delete_user(
     user_uuid: str,
-    admin_user: dict = Depends(lambda: verify_admin_access)
+    admin_user = Depends(verify_admin_access) if verify_admin_access else None
 ):
     """Delete user (soft delete)"""
     if not user_service:
@@ -171,7 +183,7 @@ async def delete_user(
     
     logger.info("User deleted via API", extra={
         "user_uuid": user_uuid,
-        "deleted_by": admin_user.get("user_id")
+        "deleted_by": admin_user.get("user_id") if admin_user else "unknown"
     })
 
 
@@ -180,7 +192,7 @@ async def delete_user(
 async def list_users(
     user_type: Optional[str] = None,
     limit: int = 100,
-    admin_user: dict = Depends(lambda: verify_admin_access)
+    admin_user = Depends(verify_admin_access) if verify_admin_access else None
 ):
     """List users with optional filtering"""
     if not user_service:
@@ -196,18 +208,7 @@ async def list_users(
     
     users = await user_service.list_users(user_type=user_type, limit=limit)
     
-    user_responses = [
-        UserResponse(
-            uuid=user.uuid,
-            full_name=user.full_name,
-            nickname=user.nickname,
-            user_type=user.user_type,
-            is_active=user.is_active,
-            created_at=user.created_at.isoformat() if user.created_at else None,
-            updated_at=user.updated_at.isoformat() if user.updated_at else None
-        )
-        for user in users
-    ]
+    user_responses = [_user_to_response(user) for user in users]
     
     return UserListResponse(
         users=user_responses,
@@ -255,15 +256,7 @@ async def authenticate_user(request: AuthenticateRequest):
         
         return AuthenticationResponse(
             success=True,
-            user=UserResponse(
-                uuid=user.uuid,
-                full_name=user.full_name,
-                nickname=user.nickname,
-                user_type=user.user_type,
-                is_active=user.is_active,
-                created_at=user.created_at.isoformat() if user.created_at else None,
-                updated_at=user.updated_at.isoformat() if user.updated_at else None
-            ),
+            user=_user_to_response(user),
             jwt_token=jwt_token,
             last_login=result.get("last_login")
         )
@@ -281,7 +274,7 @@ async def authenticate_user(request: AuthenticateRequest):
 async def set_user_pin(
     user_uuid: str,
     request: SetPinRequest,
-    admin_user: dict = Depends(lambda: verify_admin_access)
+    admin_user = Depends(verify_admin_access) if verify_admin_access else None
 ):
     """Set or update user's PIN"""
     if not user_service:
@@ -299,7 +292,7 @@ async def set_user_pin(
     
     logger.info("User PIN updated via API", extra={
         "user_uuid": user_uuid,
-        "updated_by": admin_user.get("user_id")
+        "updated_by": admin_user.get("user_id") if admin_user else "unknown"
     })
 
 
@@ -307,7 +300,7 @@ async def set_user_pin(
 @handle_user_service_exceptions
 async def unlock_user(
     user_uuid: str,
-    admin_user: dict = Depends(lambda: verify_admin_access)
+    admin_user = Depends(verify_admin_access) if verify_admin_access else None
 ):
     """Unlock user account"""
     if not user_service:
@@ -325,7 +318,7 @@ async def unlock_user(
     
     logger.info("User unlocked via API", extra={
         "user_uuid": user_uuid,
-        "unlocked_by": admin_user.get("user_id")
+        "unlocked_by": admin_user.get("user_id") if admin_user else "unknown"
     })
 
 

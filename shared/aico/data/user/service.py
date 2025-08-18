@@ -11,6 +11,10 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 
+# Fix bcrypt compatibility with passlib
+import bcrypt
+bcrypt.__about__ = bcrypt
+
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
 from aico.data.libsql.connection import LibSQLConnection

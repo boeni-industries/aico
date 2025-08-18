@@ -5,34 +5,74 @@ Pydantic models for user-related API requests and responses.
 """
 
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 import uuid
+from aico.core.config import ConfigurationManager
 
 
 class CreateUserRequest(BaseModel):
     """Request schema for creating a new user"""
-    full_name: str = Field(..., min_length=1, max_length=100, description="User's full name")
-    nickname: Optional[str] = Field(None, max_length=50, description="Optional nickname")
-    user_type: str = Field(default='parent', pattern='^(parent|child|admin)$', description="User type")
-    pin: Optional[str] = Field(None, min_length=4, max_length=8, description="Optional PIN for authentication")
+    full_name: str = Field(..., description="User's full name")
+    nickname: Optional[str] = Field(None, description="Optional nickname")
+    user_type: str = Field(default_factory=lambda: ConfigurationManager().get('user_profiles.default_user_type', 'person'), pattern=f'^{ConfigurationManager().get("user_profiles.default_user_type", "person")}$', description="User type")
+    pin: Optional[str] = Field(None, description="Optional PIN for authentication")
+    
+    @validator('full_name')
+    def validate_full_name(cls, v):
+        from .dependencies import validate_full_name
+        return validate_full_name(v)
+    
+    @validator('nickname')
+    def validate_nickname(cls, v):
+        from .dependencies import validate_nickname
+        return validate_nickname(v)
+    
+    @validator('pin')
+    def validate_pin(cls, v):
+        if v is not None:
+            from .dependencies import validate_pin
+            return validate_pin(v)
+        return v
 
 
 class UpdateUserRequest(BaseModel):
     """Request schema for updating user profile"""
-    full_name: Optional[str] = Field(None, min_length=1, max_length=100, description="User's full name")
-    nickname: Optional[str] = Field(None, max_length=50, description="Optional nickname")
-    user_type: Optional[str] = Field(None, pattern='^(parent|child|admin)$', description="User type")
+    full_name: Optional[str] = Field(None, description="User's full name")
+    nickname: Optional[str] = Field(None, description="Optional nickname")
+    user_type: Optional[str] = Field(None, pattern=f'^{ConfigurationManager().get("user_profiles.default_user_type", "person")}$', description="User type")
+    
+    @validator('full_name')
+    def validate_full_name(cls, v):
+        if v is not None:
+            from .dependencies import validate_full_name
+            return validate_full_name(v)
+        return v
+    
+    @validator('nickname')
+    def validate_nickname(cls, v):
+        from .dependencies import validate_nickname
+        return validate_nickname(v)
 
 
 class AuthenticateRequest(BaseModel):
     """Request schema for user authentication"""
     user_uuid: str = Field(..., pattern='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', description="User UUID")
-    pin: str = Field(..., min_length=4, max_length=8, description="User PIN")
+    pin: str = Field(..., description="User PIN")
+    
+    @validator('pin')
+    def validate_pin(cls, v):
+        from .dependencies import validate_pin
+        return validate_pin(v)
 
 
 class SetPinRequest(BaseModel):
     """Request schema for setting/updating user PIN"""
-    new_pin: str = Field(..., min_length=4, max_length=8, description="New PIN")
+    new_pin: str = Field(..., description="New PIN")
+    
+    @validator('new_pin')
+    def validate_new_pin(cls, v):
+        from .dependencies import validate_pin
+        return validate_pin(v)
 
 
 class UserResponse(BaseModel):
