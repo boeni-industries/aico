@@ -127,14 +127,25 @@ class UserService:
             if not result:
                 return None
                 
+            from datetime import datetime
+            
+            # Convert string timestamps to datetime objects if needed
+            created_at = result['created_at']
+            if isinstance(created_at, str):
+                created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            
+            updated_at = result['updated_at']
+            if isinstance(updated_at, str):
+                updated_at = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+            
             return UserProfile(
                 uuid=result['uuid'],
                 full_name=result['full_name'],
                 nickname=result['nickname'],
                 user_type=result['user_type'],
                 is_active=result['is_active'],
-                created_at=result['created_at'],
-                updated_at=result['updated_at']
+                created_at=created_at,
+                updated_at=updated_at
             )
             
         except Exception as e:
@@ -405,18 +416,30 @@ class UserService:
                 LIMIT ?
             """, tuple(params))
             
-            return [
-                UserProfile(
+            from datetime import datetime
+            
+            users = []
+            for row in results:
+                # Convert string timestamps to datetime objects if needed
+                created_at = row['created_at']
+                if isinstance(created_at, str):
+                    created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                
+                updated_at = row['updated_at']
+                if isinstance(updated_at, str):
+                    updated_at = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+                
+                users.append(UserProfile(
                     uuid=row['uuid'],
                     full_name=row['full_name'],
                     nickname=row['nickname'],
                     user_type=row['user_type'],
                     is_active=row['is_active'],
-                    created_at=row['created_at'],
-                    updated_at=row['updated_at']
-                )
-                for row in results
-            ]
+                    created_at=created_at,
+                    updated_at=updated_at
+                ))
+            
+            return users
             
         except Exception as e:
             self.logger.error(f"Failed to list users: {e}", extra={

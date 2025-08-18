@@ -178,6 +178,46 @@ async def lifespan(app: FastAPI):
                     import traceback
                     traceback.print_exc()
                 
+                # Initialize users router with existing UserService
+                try:
+                    from api.users.router import initialize_router as initialize_users_router
+                    from api.admin.dependencies import verify_admin_token
+                    from aico.data.user import UserService
+                    from aico.data import LibSQLConnection
+                    
+                    # Create database connection using shared functions - database is encrypted
+                    from aico.core.paths import get_default_database_path
+                    from aico.security.key_manager import AICOKeyManager
+                    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+                    
+                    db_path = get_default_database_path()
+                    key_manager = AICOKeyManager()
+                    
+                    # Get database key using session or keyring
+                    cached_key = key_manager._get_cached_session()
+                    if cached_key:
+                        db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
+                    else:
+                        import keyring
+                        stored_key = keyring.get_password(key_manager.service_name, "master_key")
+                        master_key = bytes.fromhex(stored_key)
+                        db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+                    
+                    db_connection = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+                    user_service = UserService(db_connection)
+                    
+                    # Initialize users router with proper service
+                    initialize_users_router(
+                        user_service,
+                        api_gateway.auth_manager,
+                        verify_admin_token
+                    )
+                    logger.info("Users router initialized with UserService")
+                except Exception as e:
+                    logger.error(f"Failed to initialize users router: {e}")
+                    import traceback
+                    traceback.print_exc()
+                
                 # Now import and mount the unified API router
                 from api import api_router
                 app.include_router(api_router, prefix="/api/v1")
