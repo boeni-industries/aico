@@ -14,54 +14,72 @@ security = HTTPBearer()
 logger = get_logger("api", "admin_dependencies")
 
 
+# Global auth manager - will be set during initialization
+_auth_manager = None
+
+def set_auth_manager(auth_manager):
+    """Set the global auth manager for dependencies"""
+    global _auth_manager
+    _auth_manager = auth_manager
+
+def verify_admin_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """
+    Verify admin JWT token and require admin role.
+    """
+    if not _auth_manager:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Authentication manager not initialized"
+        )
+    
+    try:
+        token = credentials.credentials
+        
+        # Decode and validate JWT token (skip audience validation for CLI compatibility)
+        try:
+            payload = jwt.decode(
+                token,
+                _auth_manager._get_jwt_secret(),
+                algorithms=[_auth_manager.jwt_algorithm],
+                options={"verify_aud": False}
+            )
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=401, detail="Token has expired")
+        except jwt.InvalidTokenError:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # Check if token is revoked
+        if token in _auth_manager.revoked_tokens:
+            raise HTTPException(status_code=401, detail="Token has been revoked")
+        
+        # Extract user information
+        user_id = payload.get("sub")
+        username = payload.get("username", user_id)
+        roles = payload.get("roles", [])
+        
+        # Verify admin role
+        if "admin" not in roles:
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        return {
+            "user_id": user_id,
+            "username": username,
+            "roles": roles,
+            "token": token
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Admin token verification failed: {e}")
+        raise HTTPException(status_code=401, detail="Authentication failed")
+
 def create_admin_auth_dependency(auth_manager):
     """
     Factory function to create admin auth dependency with injected auth_manager.
     Requires admin role for administrative operations.
     """
-    async def verify_admin_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
-        try:
-            token = credentials.credentials
-            
-            # Decode and validate JWT token (skip audience validation for CLI compatibility)
-            try:
-                payload = jwt.decode(
-                    token,
-                    auth_manager._get_jwt_secret(),
-                    algorithms=[auth_manager.jwt_algorithm],
-                    options={"verify_aud": False}
-                )
-            except jwt.ExpiredSignatureError:
-                raise HTTPException(status_code=401, detail="Token has expired")
-            except jwt.InvalidTokenError:
-                raise HTTPException(status_code=401, detail="Invalid token")
-            
-            # Check if token is revoked
-            if token in auth_manager.revoked_tokens:
-                raise HTTPException(status_code=401, detail="Token has been revoked")
-            
-            # Extract user information
-            user_id = payload.get("sub")
-            username = payload.get("username", user_id)
-            roles = payload.get("roles", [])
-            
-            # Verify admin role
-            if "admin" not in roles:
-                raise HTTPException(status_code=403, detail="Admin access required")
-            
-            return {
-                "user_id": user_id,
-                "username": username,
-                "roles": roles,
-                "token": token
-            }
-            
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Admin token verification failed: {e}")
-            raise HTTPException(status_code=401, detail="Authentication failed")
-    
+    set_auth_manager(auth_manager)
     return verify_admin_token
 
 

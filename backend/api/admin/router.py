@@ -6,43 +6,69 @@ session control, security operations, and system configuration.
 """
 
 from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi.responses import JSONResponse
 from datetime import datetime
-from aico.core.logging import get_logger
+from typing import Dict, Any
+
+from .dependencies import verify_admin_token
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from .schemas import (
-    GatewayStatusResponse, GatewayStatsResponse, SessionListResponse,
-    RevokeTokenRequest, BlockIpRequest, SecurityStatsResponse,
-    ConfigResponse, RouteMappingRequest, RouteMappingResponse,
-    AdminHealthResponse, AdminOperationResponse
+    AdminHealthResponse,
+    GatewayStatusResponse,
+    GatewayStatsResponse,
+    SecurityStatsResponse,
+    SessionListResponse as UserSessionsResponse,
+    RevokeTokenRequest as RevokeSessionRequest,
+    AdminOperationResponse,
+    BlockIpRequest
 )
-from .dependencies import validate_ip_address, validate_topic_name, validate_session_id
+from .schemas import ConfigResponse, RouteMappingRequest, RouteMappingResponse
 from .exceptions import (
-    SessionNotFoundError, GatewayServiceError, SecurityOperationError,
-    RoutingConfigurationError, handle_admin_service_exceptions
+    GatewayServiceError,
+    SessionNotFoundError,
+    handle_admin_service_exceptions
 )
 
-router = APIRouter()
-logger = get_logger("api", "admin_router")
-
-# These will be injected during app initialization
+# Global variables for dependency injection
 auth_manager = None
 authz_manager = None
 message_router = None
 gateway = None
-verify_admin_access = None
 
+# Admin authentication dependency function
+async def get_admin_user():
+    """Admin authentication dependency"""
+    from .dependencies import _auth_manager
+    if not _auth_manager:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Admin router not properly initialized"
+        )
+    # verify_admin_token is already configured with the auth manager
+    # Just need to call it with the credentials dependency
+    from fastapi.security import HTTPBearer
+    from fastapi import Depends
+    security = HTTPBearer()
+    # This will be handled by FastAPI's dependency injection
+    pass
 
-def initialize_router(auth_mgr, authz_mgr, msg_router, gw, admin_dependency):
+def initialize_router(auth_mgr, authz_mgr, msg_router, gw):
     """Initialize router with dependencies from main.py"""
-    global auth_manager, authz_manager, message_router, gateway, verify_admin_access
+    global auth_manager, authz_manager, message_router, gateway
     auth_manager = auth_mgr
     authz_manager = authz_mgr
     message_router = msg_router
     gateway = gw
-    verify_admin_access = admin_dependency
+    
+    # Initialize dependencies module with auth manager
+    from .dependencies import set_auth_manager
+    set_auth_manager(auth_mgr)
 
+# Health endpoint without authentication (public)
+health_router = APIRouter()
 
-@router.get("/health", response_model=AdminHealthResponse)
+@health_router.get("/health", response_model=AdminHealthResponse)
 async def admin_health():
     """Admin health check"""
     return AdminHealthResponse(
@@ -51,11 +77,17 @@ async def admin_health():
         timestamp=datetime.utcnow().isoformat()
     )
 
+# Protected admin endpoints - authentication handled per endpoint
+router = APIRouter()
+
 
 @router.get("/gateway/status", response_model=GatewayStatusResponse)
 @handle_admin_service_exceptions
-async def gateway_status(user: dict = Depends(lambda: verify_admin_access)):
+async def gateway_status(credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())):
     """Get gateway status"""
+    # Verify admin token
+    user = verify_admin_token(credentials)
+    
     if not gateway:
         raise GatewayServiceError("Gateway not initialized")
     
@@ -65,8 +97,11 @@ async def gateway_status(user: dict = Depends(lambda: verify_admin_access)):
 
 @router.get("/gateway/stats", response_model=GatewayStatsResponse)
 @handle_admin_service_exceptions
-async def gateway_stats(user: dict = Depends(lambda: verify_admin_access)):
+async def gateway_stats(credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())):
     """Get gateway statistics including routing and adapter metrics"""
+    # Verify admin token
+    user = verify_admin_token(credentials)
+    
     # TODO: Implement comprehensive gateway statistics collection
     # Need to add get_stats() methods to REST and ZeroMQ adapters
     # Currently returning placeholder response - not implemented yet
@@ -81,13 +116,12 @@ async def gateway_stats(user: dict = Depends(lambda: verify_admin_access)):
     return GatewayStatsResponse(**stats)
 
 
-@router.get("/auth/sessions", response_model=SessionListResponse)
+@router.get("/auth/sessions", response_model=UserSessionsResponse)
 @handle_admin_service_exceptions
 async def list_sessions(
     user_id: Optional[str] = None,
     admin_only: bool = False,
-    include_stats: bool = True,
-    user: dict = Depends(lambda: verify_admin_access)
+    include_stats: bool = True
 ):
     """
     List sessions with comprehensive information
@@ -121,21 +155,17 @@ async def list_sessions(
         response_data["stats"] = auth_manager.get_session_stats()
     
     logger.info("Sessions listed", extra={
-        "admin_user": user["username"],
         "filter_user_id": user_id,
         "admin_only": admin_only,
         "total_returned": len(session_data)
     })
     
-    return SessionListResponse(**response_data)
+    return UserSessionsResponse(**response_data)
 
 
 @router.delete("/auth/sessions/{session_id}", response_model=AdminOperationResponse)
 @handle_admin_service_exceptions
-async def revoke_session(
-    session_id: str,
-    user: dict = Depends(lambda: verify_admin_access)
-):
+async def revoke_session(session_id: str):
     """Revoke user session"""
     if not auth_manager:
         raise GatewayServiceError("Authentication manager not initialized")
@@ -147,8 +177,7 @@ async def revoke_session(
         auth_manager.revoke_session(session_id)
         
         logger.info("Session revoked", extra={
-            "session_id": session_id,
-            "revoked_by": user["username"]
+            "session_id": session_id
         })
         
         return AdminOperationResponse(
@@ -163,19 +192,14 @@ async def revoke_session(
 
 @router.post("/auth/tokens/revoke", response_model=AdminOperationResponse)
 @handle_admin_service_exceptions
-async def revoke_token(
-    token_data: RevokeTokenRequest,
-    user: dict = Depends(lambda: verify_admin_access)
-):
+async def revoke_token(token_data: RevokeSessionRequest):
     """Revoke JWT token"""
     if not auth_manager:
         raise GatewayServiceError("Authentication manager not initialized")
     
     auth_manager.revoke_token(token_data.token)
     
-    logger.info("Token revoked", extra={
-        "revoked_by": user["username"]
-    })
+    logger.info("Token revoked")
     
     return AdminOperationResponse(
         success=True,
@@ -185,7 +209,7 @@ async def revoke_token(
 
 @router.get("/security/stats", response_model=SecurityStatsResponse)
 @handle_admin_service_exceptions
-async def security_stats(user: dict = Depends(lambda: verify_admin_access)):
+async def security_stats():
     """Get security statistics"""
     # TODO: Implement security statistics collection
     # Need to add get_security_stats() method to SecurityMiddleware
@@ -202,10 +226,7 @@ async def security_stats(user: dict = Depends(lambda: verify_admin_access)):
 
 @router.post("/security/block-ip", response_model=AdminOperationResponse)
 @handle_admin_service_exceptions
-async def block_ip(
-    ip_data: BlockIpRequest,
-    user: dict = Depends(lambda: verify_admin_access)
-):
+async def block_ip(ip_data: BlockIpRequest):
     """Block IP address"""
     if not gateway:
         raise GatewayServiceError("Gateway not initialized")
@@ -217,8 +238,7 @@ async def block_ip(
     
     logger.warning("IP address blocked", extra={
         "ip_address": ip_data.ip,
-        "reason": ip_data.reason,
-        "blocked_by": user["username"]
+        "reason": ip_data.reason
     })
     
     return AdminOperationResponse(
@@ -229,10 +249,7 @@ async def block_ip(
 
 @router.delete("/security/block-ip/{ip}", response_model=AdminOperationResponse)
 @handle_admin_service_exceptions
-async def unblock_ip(
-    ip: str,
-    user: dict = Depends(lambda: verify_admin_access)
-):
+async def unblock_ip(ip: str):
     """Unblock IP address"""
     if not gateway:
         raise GatewayServiceError("Gateway not initialized")
@@ -243,8 +260,7 @@ async def unblock_ip(
     gateway.security_middleware.remove_blocked_ip(ip)
     
     logger.info("IP address unblocked", extra={
-        "ip_address": ip,
-        "unblocked_by": user["username"]
+        "ip": ip
     })
     
     return AdminOperationResponse(
@@ -255,7 +271,7 @@ async def unblock_ip(
 
 @router.get("/config", response_model=ConfigResponse)
 @handle_admin_service_exceptions
-async def get_config(user: dict = Depends(lambda: verify_admin_access)):
+async def get_config():
     """Get gateway configuration"""
     if not gateway:
         raise GatewayServiceError("Gateway not initialized")
@@ -269,10 +285,7 @@ async def get_config(user: dict = Depends(lambda: verify_admin_access)):
 
 @router.post("/routing/mapping", response_model=RouteMappingResponse)
 @handle_admin_service_exceptions
-async def add_route_mapping(
-    mapping_data: RouteMappingRequest,
-    user: dict = Depends(lambda: verify_admin_access)
-):
+async def add_route_mapping(mapping_data: RouteMappingRequest):
     """Add topic route mapping"""
     if not message_router:
         raise GatewayServiceError("Message router not initialized")
@@ -285,8 +298,7 @@ async def add_route_mapping(
     
     logger.info("Route mapping added", extra={
         "external_topic": mapping_data.external_topic,
-        "internal_topic": mapping_data.internal_topic,
-        "added_by": user["username"]
+        "internal_topic": mapping_data.internal_topic
     })
     
     return RouteMappingResponse(
@@ -298,10 +310,7 @@ async def add_route_mapping(
 
 @router.delete("/routing/mapping/{external_topic}", response_model=RouteMappingResponse)
 @handle_admin_service_exceptions
-async def remove_route_mapping(
-    external_topic: str,
-    user: dict = Depends(lambda: verify_admin_access)
-):
+async def remove_route_mapping(external_topic: str):
     """Remove topic route mapping"""
     if not message_router:
         raise GatewayServiceError("Message router not initialized")
@@ -312,8 +321,7 @@ async def remove_route_mapping(
     message_router.remove_topic_mapping(external_topic)
     
     logger.info("Route mapping removed", extra={
-        "external_topic": external_topic,
-        "removed_by": user["username"]
+        "external_topic": external_topic
     })
     
     return RouteMappingResponse(

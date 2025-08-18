@@ -161,9 +161,25 @@ async def lifespan(app: FastAPI):
             
             # Mount domain-based API routers
             try:
-                from api import api_router
+                # Initialize admin router with dependencies
+                try:
+                    from api.admin.router import initialize_router
+                    
+                    # Initialize admin router with all dependencies
+                    initialize_router(
+                        api_gateway.auth_manager, 
+                        api_gateway.authz_manager, 
+                        api_gateway.message_router, 
+                        api_gateway
+                    )
+                    logger.info("Admin router initialized with dependencies")
+                except Exception as e:
+                    logger.error(f"Failed to initialize admin router: {e}")
+                    import traceback
+                    traceback.print_exc()
                 
-                # Mount the unified API router which includes all domain routers
+                # Now import and mount the unified API router
+                from api import api_router
                 app.include_router(api_router, prefix="/api/v1")
                 logger.info("Domain-based API routers mounted at /api/v1")
                 
@@ -174,8 +190,10 @@ async def lifespan(app: FastAPI):
                     "health": "/api/v1/health/*"
                 })
                 
-            except ImportError as e:
-                logger.error(f"Failed to import API routers: {e}")
+            except Exception as e:
+                logger.error(f"Failed to initialize API routers: {e}")
+                import traceback
+                traceback.print_exc()
                 logger.info("Falling back to basic health endpoint only")
         else:
             logger.info("API Gateway disabled in configuration")

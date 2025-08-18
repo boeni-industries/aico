@@ -92,6 +92,9 @@ def handle_admin_service_exceptions(func):
     """
     Decorator to handle common admin service exceptions and convert them to HTTP exceptions.
     """
+    from functools import wraps
+    
+    @wraps(func)
     async def wrapper(*args, **kwargs):
         try:
             return await func(*args, **kwargs)

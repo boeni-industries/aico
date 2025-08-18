@@ -33,3 +33,13 @@
 **Solution**: Use `pythonw.exe` (windowless Python interpreter) instead of `python.exe` for background processes.
 
 **Key Lessons**: The executable itself determines console behavior on Windows. Subprocess flags cannot override the fundamental nature of console vs. windowless executables.
+
+## FastAPI Decorator Signature Preservation
+
+**Problem**: Admin API endpoints generated incorrect `args` and `kwargs` parameters in OpenAPI spec, causing "Field required" errors despite correct authentication.
+
+**Root Cause**: Custom exception handling decorator not using `@functools.wraps(func)`, causing FastAPI to lose original function signatures.
+
+**Solution**: Add `@functools.wraps(func)` to preserve function metadata in decorators.
+
+**Key Lessons**: FastAPI relies on function signatures for OpenAPI generation. Always use `@functools.wraps` in decorators to preserve metadata.
