@@ -190,6 +190,11 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             connection.execute(f"PRAGMA cache_size = {cache_size}")
             _get_logger().debug(f"Set cache_size to {cache_size}")
             
+            # Apply busy timeout for database locking (default: 30 seconds)
+            busy_timeout = libsql_config.get("busy_timeout", 30000)
+            connection.execute(f"PRAGMA busy_timeout = {busy_timeout}")
+            _get_logger().debug(f"Set busy_timeout to {busy_timeout}ms")
+            
             _get_logger().debug("Applied LibSQL configuration settings")
             
         except Exception as e:

@@ -23,10 +23,10 @@ from aico.core.paths import AICOPaths
 class AICOLogConsumer:
     """Consumes log messages from message bus and persists to database"""
     
-    def __init__(self, config_manager):
+    def __init__(self, config_manager, db_connection=None):
         self.config_manager = config_manager
         self.client: Optional[MessageBusClient] = None
-        self.db_connection = None
+        self.db_connection = db_connection  # Accept injected connection
         self.running = False
     
     def _get_database_connection(self) -> EncryptedLibSQLConnection:
@@ -95,11 +95,18 @@ class AICOLogConsumer:
         print(f"[LOG CONSUMER DEBUG] Received ANY message - Topic: {topic}, Type: {type(payload)}")
     
     async def start(self):
-        """Start the log consumer service"""
+        """Start the log consumer"""
         try:
-            # Get database connection
-            self.db_connection = self._get_database_connection()
-            print("[LOG CONSUMER] Database connection established")
+            # Use injected connection or create new one as fallback
+            if self.db_connection is None:
+                self.db_connection = self._get_database_connection()
+                print(f"[LOG CONSUMER] Created new database connection")
+            else:
+                print(f"[LOG CONSUMER] Using injected database connection")
+            
+            # Initialize database schema if needed
+            self._initialize_database()
+            print(f"[LOG CONSUMER] Database schema initialized")
             
             # Use direct ZMQ subscription for raw LogEntry messages
             import zmq

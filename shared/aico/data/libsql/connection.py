@@ -164,21 +164,24 @@ class LibSQLConnection:
         
         for attempt in range(max_retries + 1):
             try:
+                # Reconnect if connection is None or closed
                 if self._connection is None:
                     self._connection = self.connect()
                 
-                # Test connection health before executing
+                # Test connection health with a simple query
                 try:
                     self._connection.execute("SELECT 1").fetchone()
-                except Exception as e:
-                    # Connection is stale/corrupted, force full reconnect
-                    _get_logger().debug(f"Connection stale ({e}), forcing full reconnect...")
-                    try:
-                        self._connection.close()
-                    except:
-                        pass
+                except Exception:
+                    # Connection is stale, reconnect
                     self._connection = None
                     self._connection = self.connect()
+                
+                # Enable WAL mode and busy timeout for better concurrency
+                try:
+                    self._connection.execute("PRAGMA journal_mode = WAL")
+                    self._connection.execute("PRAGMA busy_timeout = 30000")  # 30 second timeout
+                except Exception as pragma_e:
+                    _get_logger().debug(f"Could not set PRAGMA settings: {pragma_e}")
                 
                 if parameters:
                     result = self._connection.execute(query, parameters)

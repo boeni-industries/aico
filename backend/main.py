@@ -116,11 +116,41 @@ async def lifespan(app: FastAPI):
         await message_bus_host.start()
         logger.info("Message bus host started")
         
-        # Start log consumer IMMEDIATELY after message bus - before API Gateway
+        # Create shared database connection for both LogConsumer and UserService
+        shared_db_connection = None
+        try:
+            # Create single encrypted database connection
+            from aico.security import AICOKeyManager
+            from aico.core.paths import AICOPaths
+            from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+            
+            key_manager = AICOKeyManager()
+            paths = AICOPaths()
+            db_path = paths.resolve_database_path("aico.db")
+            
+            # Get encryption key (same logic as before)
+            cached_key = key_manager._get_cached_session()
+            if cached_key:
+                key_manager._extend_session()
+                db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
+            else:
+                import keyring
+                stored_key = keyring.get_password(key_manager.service_name, "master_key")
+                master_key = bytes.fromhex(stored_key)
+                db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+            
+            shared_db_connection = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+            logger.info("Created shared database connection for LogConsumer and UserService")
+            
+        except Exception as e:
+            logger.error(f"Failed to create shared database connection: {e}")
+            raise
+        
+        # Start log consumer with injected shared connection
         try:
             from log_consumer import AICOLogConsumer
-            log_consumer = AICOLogConsumer(config_manager)
-            logger.info("Log consumer created, starting...")
+            log_consumer = AICOLogConsumer(config_manager, db_connection=shared_db_connection)
+            logger.info("Log consumer created with shared connection, starting...")
             await log_consumer.start()
             logger.info("Log consumer started - backend logs will now be persisted")
             
@@ -181,36 +211,17 @@ async def lifespan(app: FastAPI):
                 # Initialize users router with existing UserService
                 try:
                     from api.users.router import initialize_router as initialize_users_router
-                    from api.admin.dependencies import verify_admin_token
                     from aico.data.user import UserService
                     from aico.data import LibSQLConnection
                     
-                    # Create database connection using shared functions - database is encrypted
-                    from aico.core.paths import get_default_database_path
-                    from aico.security.key_manager import AICOKeyManager
-                    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
-                    
-                    db_path = get_default_database_path()
-                    key_manager = AICOKeyManager()
-                    
-                    # Get database key using session or keyring
-                    cached_key = key_manager._get_cached_session()
-                    if cached_key:
-                        db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-                    else:
-                        import keyring
-                        stored_key = keyring.get_password(key_manager.service_name, "master_key")
-                        master_key = bytes.fromhex(stored_key)
-                        db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-                    
-                    db_connection = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-                    user_service = UserService(db_connection)
+                    # Initialize UserService with shared database connection
+                    user_service = UserService(shared_db_connection)
                     
                     # Initialize users router with proper service
                     initialize_users_router(
                         user_service,
                         api_gateway.auth_manager,
-                        verify_admin_token
+                        api_gateway.authz_manager
                     )
                     logger.info("Users router initialized with UserService")
                 except Exception as e:
