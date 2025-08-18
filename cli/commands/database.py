@@ -43,9 +43,9 @@ import aico.data.schemas.core
 from utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
 from utils.timezone import format_timestamp_local, get_timezone_suffix
 
-def database_callback(ctx: typer.Context):
-    """Show help when no subcommand is given instead of showing an error."""
-    if ctx.invoked_subcommand is None:
+def database_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
+    """Show help when no subcommand is given or --help is used."""
+    if ctx.invoked_subcommand is None or help:
         from utils.help_formatter import format_subcommand_help
         
         subcommands = [
@@ -85,7 +85,8 @@ def database_callback(ctx: typer.Context):
 app = typer.Typer(
     help="Database initialization, status, and management.",
     callback=database_callback,
-    invoke_without_command=True
+    invoke_without_command=True,
+    context_settings={"help_option_names": []}
 )
 console = Console()
 
@@ -156,7 +157,7 @@ def _format_table_value(value, column_name: str, utc: bool = False):
     return str_value
 
 
-@app.command()
+@app.command(help="Initialize a new encrypted AICO database")
 def init(
     db_path: str = typer.Option(None, help="Database file path (optional - uses config default)"),
     db_type: str = typer.Option("libsql", help="Database type (libsql, duckdb, chroma, rocksdb)"),
@@ -273,7 +274,7 @@ def init(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Check database encryption status and information")
 def status(
     db_path: str = typer.Option(None, help="Database file path (optional - uses config default)"),
     db_type: str = typer.Option("libsql", help="Database type (libsql, duckdb, chroma, rocksdb)")
@@ -405,7 +406,7 @@ def status(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Test database connection and basic operations")
 def test(
     db_path: str = typer.Option(None, help="Database file path (optional - uses config default)"),
     db_type: str = typer.Option("libsql", help="Database type (libsql, duckdb, chroma, rocksdb)"),
@@ -712,7 +713,7 @@ def _get_db_connection():
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="List all tables in database")
 def ls():
     """List all tables in database"""
     conn = _get_db_connection()
@@ -747,7 +748,7 @@ def ls():
     console.print()
 
 
-@app.command()
+@app.command(help="Describe table structure (schema)")
 def desc(table_name: str = typer.Argument(..., help="Table name to describe")):
     """Describe table structure (schema)"""
     conn = _get_db_connection()
@@ -792,7 +793,7 @@ def desc(table_name: str = typer.Argument(..., help="Table name to describe")):
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Count records in table(s)")
 def count(
     table: Optional[str] = typer.Option(None, "--table", help="Specific table to count"),
     all: bool = typer.Option(False, "--all", help="Count all tables")
@@ -843,7 +844,7 @@ def count(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Show first N records from table")
 def head(
     table_name: str = typer.Argument(..., help="Table name"),
     limit: int = typer.Option(10, "--limit", "-n", help="Number of records to show"),
@@ -891,7 +892,7 @@ def head(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Database statistics (size, indexes, etc.)")
 def stat():
     """Database statistics (size, indexes, etc.)"""
     conn = _get_db_connection()
@@ -959,7 +960,7 @@ def vacuum():
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Database integrity check")
 def check():
     """Integrity check"""
     conn = _get_db_connection()
@@ -978,7 +979,7 @@ def check():
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Show last N records from table")
 def tail(
     table_name: str = typer.Argument(..., help="Table name"),
     limit: int = typer.Option(10, "--limit", "-n", help="Number of records to show"),

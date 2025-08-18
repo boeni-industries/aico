@@ -16,9 +16,9 @@ from timezone import format_timestamp_local, get_timezone_suffix
 # Standard Rich console - encoding is fixed at app startup
 from rich.console import Console
 
-def version_callback(ctx: typer.Context):
-    """Show help when no subcommand is given instead of showing an error."""
-    if ctx.invoked_subcommand is None:
+def version_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
+    """Show help when no subcommand is given or --help is used."""
+    if ctx.invoked_subcommand is None or help:
         from utils.help_formatter import format_subcommand_help
         
         subcommands = [
@@ -50,7 +50,8 @@ def version_callback(ctx: typer.Context):
 app = typer.Typer(
     help="Manage and synchronize versions across all AICO subsystems.",
     callback=version_callback,
-    invoke_without_command=True
+    invoke_without_command=True,
+    context_settings={"help_option_names": []}
 )
 
 # Standard Rich console - encoding is fixed at app startup

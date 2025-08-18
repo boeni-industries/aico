@@ -18,9 +18,9 @@ from aico.core.config import ConfigurationManager
 
 console = Console()
 
-def dev_callback(ctx: typer.Context):
-    """Show help when no subcommand is given instead of showing an error."""
-    if ctx.invoked_subcommand is None:
+def dev_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
+    """Show help when no subcommand is given or --help is used."""
+    if ctx.invoked_subcommand is None or help:
         from utils.help_formatter import format_subcommand_help
         
         subcommands = [
@@ -47,7 +47,8 @@ def dev_callback(ctx: typer.Context):
 app = typer.Typer(
     help="🧹 Development utilities (DESTRUCTIVE - dev only)",
     callback=dev_callback,
-    invoke_without_command=True
+    invoke_without_command=True,
+    context_settings={"help_option_names": []}
 )
 
 
@@ -93,7 +94,7 @@ def _require_explicit_confirmation(operation_name: str, items_to_delete: list):
         raise typer.Exit()
 
 
-@app.command()
+@app.command(help="Wipe development data with granular control")
 def wipe(
     security: bool = typer.Option(False, "--security", help="Clear master password and keyring data"),
     data: bool = typer.Option(False, "--data", help="Remove databases and salt files"),

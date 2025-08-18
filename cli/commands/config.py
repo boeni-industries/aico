@@ -40,9 +40,9 @@ from aico.core.paths import AICOPaths
 # Import shared utilities using the same pattern as other CLI modules
 from utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
 
-def config_callback(ctx: typer.Context):
-    """Show help when no subcommand is given instead of showing an error."""
-    if ctx.invoked_subcommand is None:
+def config_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
+    """Show help when no subcommand is given or --help is used."""
+    if ctx.invoked_subcommand is None or help:
         from utils.help_formatter import format_subcommand_help
         
         subcommands = [
@@ -79,7 +79,8 @@ def config_callback(ctx: typer.Context):
 app = typer.Typer(
     help="Configuration management and validation.",
     callback=config_callback,
-    invoke_without_command=True
+    invoke_without_command=True,
+    context_settings={"help_option_names": []}
 )
 # Standard Rich console - encoding is fixed at app startup
 console = Console()
@@ -87,7 +88,7 @@ console = Console()
 
 
 
-@app.command()
+@app.command(help="Get configuration value using dot notation")
 def get(key: str):
     """Get configuration value using dot notation."""
     try:
@@ -106,7 +107,7 @@ def get(key: str):
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Set configuration value using dot notation")
 def set(
     key: str,
     value: str,
@@ -133,7 +134,7 @@ def set(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="List configuration values")
 def list(
     domain: str = typer.Option(None, "--domain", "-d", help="Configuration domain to list"),
     format: str = typer.Option("table", "--format", "-f", help="Output format: table, yaml, json")
@@ -180,7 +181,7 @@ def list(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Validate configuration against schemas")
 def validate(domain: str = typer.Option(None, "--domain", "-d", help="Domain to validate")):
     """Validate configuration against schemas."""
     try:
@@ -259,7 +260,7 @@ def export(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Import configuration from file")
 def import_config(
     file: str,
     validate: bool = typer.Option(True, "--no-validate", help="Skip validation during import")
@@ -294,7 +295,7 @@ def import_config(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Reload configuration from files")
 def reload():
     """Reload configuration from files."""
     try:
@@ -309,7 +310,7 @@ def reload():
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="List available configuration domains")
 def domains():
     """List available configuration domains."""
     try:
@@ -334,7 +335,7 @@ def domains():
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Show schema for a configuration domain")
 def schema(domain: str):
     """Show schema for a configuration domain."""
     try:

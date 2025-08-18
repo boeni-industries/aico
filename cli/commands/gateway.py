@@ -128,9 +128,9 @@ def _make_authenticated_request(method: str, endpoint: str, **kwargs) -> request
         raise requests.RequestException("Authentication failed - token may be expired")
     return response
 
-def gateway_callback(ctx: typer.Context):
-    """Show help when no subcommand is given instead of showing an error."""
-    if ctx.invoked_subcommand is None:
+def gateway_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
+    """Show help when no subcommand is given or --help is used."""
+    if ctx.invoked_subcommand is None or help:
         from utils.help_formatter import format_subcommand_help
         
         subcommands = [
@@ -166,7 +166,8 @@ def gateway_callback(ctx: typer.Context):
 app = typer.Typer(
     help="API Gateway management, protocol control, and JWT authentication.",
     callback=gateway_callback,
-    invoke_without_command=True
+    invoke_without_command=True,
+    context_settings={"help_option_names": []}
 )
 
 

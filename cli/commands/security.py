@@ -33,9 +33,9 @@ from aico.security import AICOKeyManager
 # Import shared utilities using the same pattern as other CLI modules
 from utils.timezone import format_timestamp_local
 
-def security_callback(ctx: typer.Context):
-    """Show help when no subcommand is given instead of showing an error."""
-    if ctx.invoked_subcommand is None:
+def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
+    """Show help when no subcommand is given or --help is used."""
+    if ctx.invoked_subcommand is None or help:
         from utils.help_formatter import format_subcommand_help
         
         subcommands = [
@@ -74,12 +74,24 @@ def security_callback(ctx: typer.Context):
 app = typer.Typer(
     help="Master password setup and security management.",
     callback=security_callback,
-    invoke_without_command=True
+    invoke_without_command=True,
+    context_settings={"help_option_names": []}
 )
 console = Console()
 
 
-@app.command()
+@app.command(
+    help="""Set up master password for AICO (first-time setup).
+
+Initializes the master password and JWT secrets for secure AICO operations.
+This is required before using any encrypted features.
+
+Examples:
+  aico security setup
+  aico security setup --password mypassword
+  aico security setup --jwt-only
+"""
+)
 def setup(
     password: str = typer.Option(None, "--password", "-p", help="Master password (will prompt if not provided)"),
     jwt_only: bool = typer.Option(False, "--jwt-only", help="Only initialize JWT secrets (when master password exists)")
@@ -205,7 +217,16 @@ def passwd():
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(
+    help="""Check security health and key management status.
+
+Shows master password status, keyring health, JWT secrets, and security diagnostics.
+
+Examples:
+  aico security status
+  aico security status --utc
+"""
+)
 def status(
     utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
@@ -358,7 +379,16 @@ def status(
             console.print("🔐 All systems ready for encrypted operations")
 
 
-@app.command()
+@app.command(
+    help="""Show CLI session status and timeout information.
+
+Displays current authentication session details, timeout settings, and session health.
+
+Examples:
+  aico security session
+  aico security session --utc
+"""
+)
 def session(
     utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
@@ -422,7 +452,15 @@ def session(
         console.print(f"🕐 [dim]Session timeout: {key_manager.SESSION_TIMEOUT_MINUTES} minutes[/dim]")
 
 
-@app.command()
+@app.command(
+    help="""Clear CLI authentication session.
+
+Clears the current CLI authentication session, requiring re-authentication for future commands.
+
+Examples:
+  aico security logout
+"""
+)
 def logout():
     """Clear CLI authentication session."""
     
@@ -446,7 +484,7 @@ def logout():
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Clear cached master key and active session (forces password re-entry)")
 @sensitive("clears security credentials and active sessions")
 def clear(
     confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt")
@@ -481,7 +519,16 @@ def clear(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(
+    help="""Test security operations and benchmark key derivation performance.
+
+Runs comprehensive security diagnostics including key derivation benchmarks,
+encryption/decryption tests, and keyring connectivity checks.
+
+Examples:
+  aico security test
+"""
+)
 def test():
     """🧪 Test security operations and benchmark key derivation performance."""
     

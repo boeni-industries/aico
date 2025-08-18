@@ -39,9 +39,9 @@ from aico.security.key_manager import AICOKeyManager
 
 console = Console()
 
-def logs_callback(ctx: typer.Context):
-    """Show help when no subcommand is given instead of showing an error."""
-    if ctx.invoked_subcommand is None:
+def logs_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
+    """Show help when no subcommand is given or --help is used."""
+    if ctx.invoked_subcommand is None or help:
         from utils.help_formatter import format_subcommand_help
         
         subcommands = [
@@ -74,7 +74,8 @@ def logs_callback(ctx: typer.Context):
 app = typer.Typer(
     help="Manage AICO logs with Unix-style commands.",
     callback=logs_callback,
-    invoke_without_command=True
+    invoke_without_command=True,
+    context_settings={"help_option_names": []}
 )
 
 
@@ -145,7 +146,7 @@ def _get_log_repository_no_auth() -> LogRepository:
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="List recent logs with filtering options")
 def ls(
     limit: int = typer.Option(100, "--limit", "-n", help="Number of logs to show"),
     level: Optional[str] = typer.Option(None, "--level", help="Filter by log level"),
@@ -236,7 +237,7 @@ def ls(
         console.print()
 
 
-@app.command()
+@app.command(help="Display full log entry details")
 def cat(
     id: Optional[int] = typer.Option(None, "--id", help="Show specific log by ID"),
     trace_id: Optional[str] = typer.Option(None, "--trace-id", help="Show logs by trace ID"),
@@ -333,7 +334,7 @@ def cat(
                 console.print()
 
 
-@app.command()
+@app.command(help="Remove log entries based on criteria")
 def rm(
     before: Optional[str] = typer.Option(None, "--before", help="Delete logs before date"),
     older_than: Optional[str] = typer.Option(None, "--older-than", help="Delete logs older than period (e.g., 7d)"),
@@ -387,7 +388,7 @@ def rm(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Show logging statistics and summary")
 def stat():
     """Show logging statistics and summary"""
     
@@ -426,7 +427,7 @@ def stat():
     console.print()
 
 
-@app.command()
+@app.command(help="Show recent logs (like tail -f)")
 def tail(
     follow: bool = typer.Option(False, "--follow", "-f", help="Follow log output in real-time"),
     level: Optional[str] = typer.Option(None, "--level", help="Filter by log level"),
@@ -460,7 +461,7 @@ def tail(
         # TODO: Implement real-time following via ZeroMQ subscription
 
 
-@app.command()
+@app.command(help="Search logs by pattern/content")
 def grep(
     pattern: str = typer.Argument(..., help="Search pattern"),
     level: Optional[str] = typer.Option(None, "--level", help="Filter by log level"),
