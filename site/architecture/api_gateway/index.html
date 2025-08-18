@@ -3067,7 +3067,35 @@
 <li>Provides efficient binary serialization</li>
 <li>Enables strong typing through Protocol Buffers</li>
 </ul>
-<h3 id="2-core-gateway-services">2. Core Gateway Services<a class="headerlink" href="#2-core-gateway-services" title="Permanent link">&para;</a></h3>
+<h3 id="2-domain-based-api-organization">2. Domain-Based API Organization<a class="headerlink" href="#2-domain-based-api-organization" title="Permanent link">&para;</a></h3>
+<p>The API Gateway organizes endpoints using a <strong>domain-based module-functionality</strong> pattern for improved maintainability and scalability:</p>
+<ul>
+<li><strong>Domain Separation</strong>: Business functionality grouped by domain (users, admin, conversations, health)</li>
+<li><strong>Self-Contained Modules</strong>: Each domain contains its own routers, schemas, dependencies, and exceptions</li>
+<li><strong>Consistent Structure</strong>: Standardized file patterns across all domains following FastAPI best practices</li>
+<li><strong>Clean Architecture</strong>: Clear separation between API layer, business logic, and infrastructure</li>
+</ul>
+<p><strong>API Structure</strong>:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>api/
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── users/          # User management domain
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│   ├── router.py   # User API endpoints
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│   ├── schemas.py  # Pydantic request/response models
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│   ├── dependencies.py  # User-specific auth and validation
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│   └── exceptions.py    # User-specific error handling
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>├── admin/          # Administrative domain
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│   ├── router.py   # Admin API endpoints
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│   ├── schemas.py  # Admin Pydantic models
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│   ├── dependencies.py  # Admin authentication
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│   └── exceptions.py    # Admin-specific errors
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>├── conversations/ # Conversation management domain
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>└── health/        # System health and monitoring
+</span></code></pre></div></p>
+<p>This organization provides:
+- <strong>Scalability</strong>: Easy addition of new domains (personality, emotion, etc.)
+- <strong>Maintainability</strong>: Related functionality grouped together
+- <strong>Team Collaboration</strong>: Clear ownership boundaries
+- <strong>Professional Standards</strong>: Follows established FastAPI patterns</p>
+<h3 id="3-core-gateway-services">3. Core Gateway Services<a class="headerlink" href="#3-core-gateway-services" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Request Router</strong>: Maps external endpoints to internal message bus topics</li>
 <li>Handles URL routing for REST requests</li>
@@ -3090,7 +3118,7 @@
 <li>Handles timeouts and partial responses</li>
 <li>Manages response transformation back to client format</li>
 </ul>
-<h3 id="3-security-layer">3. Security Layer<a class="headerlink" href="#3-security-layer" title="Permanent link">&para;</a></h3>
+<h3 id="4-security-layer">4. Security Layer<a class="headerlink" href="#4-security-layer" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Authentication Handler</strong>: Verifies client identity</li>
 <li>JWT token validation for REST and WebSocket</li>
@@ -3121,7 +3149,7 @@
 <li>Graduated response to excessive requests</li>
 <li>Configurable limits based on endpoint sensitivity</li>
 </ul>
-<h3 id="4-roaming-and-federation-support">4. Roaming and Federation Support<a class="headerlink" href="#4-roaming-and-federation-support" title="Permanent link">&para;</a></h3>
+<h3 id="5-roaming-and-federation-support">5. Roaming and Federation Support<a class="headerlink" href="#5-roaming-and-federation-support" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Device Registry</strong>: Manages connected frontend devices</li>
 <li>Tracks active connections and their capabilities</li>
@@ -3169,10 +3197,10 @@
 <li>Communication remains encrypted but avoids network overhead</li>
 <li>Connection manager optimizes for local performance</li>
 </ol>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>┌────────────┐      Local IPC      ┌────────────┐      ZeroMQ      ┌────────────┐
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>│  Frontend  │ ─────────────────── │ API Gateway│ ─────────────────│  Backend   │
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│  (Flutter) │                     │            │                   │  Services  │
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>└────────────┘                     └────────────┘                   └────────────┘
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>┌────────────┐      Local IPC      ┌────────────┐      ZeroMQ      ┌────────────┐
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>│  Frontend  │ ─────────────────── │ API Gateway│ ─────────────────│  Backend   │
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>│  (Flutter) │                     │            │                   │  Services  │
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>└────────────┘                     └────────────┘                   └────────────┘
 </span></code></pre></div>
 <h3 id="detached-mode">Detached Mode<a class="headerlink" href="#detached-mode" title="Permanent link">&para;</a></h3>
 <p>In detached mode, where frontend and backend run on separate devices:</p>
@@ -3182,10 +3210,10 @@
 <li>End-to-end encryption protects all communications</li>
 <li>Connection manager handles network reliability challenges</li>
 </ol>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>┌────────────┐    HTTPS/WSS/gRPC   ┌────────────┐      ZeroMQ      ┌────────────┐
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>│  Frontend  │ ─────────────────── │ API Gateway│ ─────────────────│  Backend   │
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>│  (Flutter) │      Encrypted      │            │                   │  Services  │
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>└────────────┘                     └────────────┘                   └────────────┘
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>┌────────────┐    HTTPS/WSS/gRPC   ┌────────────┐      ZeroMQ      ┌────────────┐
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>│  Frontend  │ ─────────────────── │ API Gateway│ ─────────────────│  Backend   │
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>│  (Flutter) │      Encrypted      │            │                   │  Services  │
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>└────────────┘                     └────────────┘                   └────────────┘
 </span></code></pre></div>
 <h3 id="federated-device-network-mode">Federated Device Network Mode<a class="headerlink" href="#federated-device-network-mode" title="Permanent link">&para;</a></h3>
 <p>In federated mode, where multiple devices synchronize data across the network:</p>
@@ -3195,17 +3223,17 @@
 <li>Selective sync policies determine what data is synchronized and when</li>
 <li>Conflict resolution strategies are applied based on data types</li>
 </ol>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>┌────────────┐                     ┌────────────┐                     ┌────────────┐
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>│  Device A  │◄───P2P Encrypted────►  Device B  │◄───P2P Encrypted────►  Device C  │
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>│            │       Sync          │            │       Sync          │            │
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>└────────────┘                     └────────────┘                     └────────────┘
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>      │                                  │                                  │
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>      └──────────────┐     ┌─────────────┘                                  │
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>                     ▼     ▼                                                ▼
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>               ┌─────────────────┐                                   ┌────────────┐
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>               │ Encrypted Cloud │◄──────────Fallback Only──────────►│  Device D  │
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>               │     Relay       │                                   │            │
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>               └─────────────────┘                                   └────────────┘
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>┌────────────┐                     ┌────────────┐                     ┌────────────┐
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>│  Device A  │◄───P2P Encrypted────►  Device B  │◄───P2P Encrypted────►  Device C  │
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>│            │       Sync          │            │       Sync          │            │
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>└────────────┘                     └────────────┘                     └────────────┘
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>      │                                  │                                  │
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>      └──────────────┐     ┌─────────────┘                                  │
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>                     ▼     ▼                                                ▼
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>               ┌─────────────────┐                                   ┌────────────┐
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>               │ Encrypted Cloud │◄──────────Fallback Only──────────►│  Device D  │
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>               │     Relay       │                                   │            │
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>               └─────────────────┘                                   └────────────┘
 </span></code></pre></div>
 <h2 id="implementation-details">Implementation Details<a class="headerlink" href="#implementation-details" title="Permanent link">&para;</a></h2>
 <h3 id="technology-stack">Technology Stack<a class="headerlink" href="#technology-stack" title="Permanent link">&para;</a></h3>
