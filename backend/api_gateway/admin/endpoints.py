@@ -1,12 +1,10 @@
 """
-Admin Endpoints for AICO API Gateway
+DEPRECATED: Admin Endpoints
 
-Provides administrative interface with:
-- System status and monitoring
-- Configuration management
-- User and session management
-- Security controls
-- Gateway statistics
+This file has been moved to backend/api/admin/ following domain-based organization.
+This file will be removed in a future cleanup.
+
+Use backend/api/admin/router.py instead.
 """
 
 from fastapi import FastAPI, HTTPException, Depends, Request

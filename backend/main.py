@@ -159,17 +159,24 @@ async def lifespan(app: FastAPI):
             await api_gateway.start()
             logger.info("API Gateway started")
             
-            # Register admin endpoints after gateway is initialized
-            from api_gateway.admin.endpoints import create_admin_app
-            admin_app = create_admin_app(
-                auth_manager=api_gateway.auth_manager,
-                authz_manager=api_gateway.authz_manager,
-                message_router=api_gateway.message_router,
-                gateway=api_gateway
-            )
-            # Mount admin endpoints to main app
-            app.mount("/admin", admin_app)
-            logger.info("Admin endpoints registered")
+            # Mount domain-based API routers
+            try:
+                from api import api_router
+                
+                # Mount the unified API router which includes all domain routers
+                app.include_router(api_router, prefix="/api/v1")
+                logger.info("Domain-based API routers mounted at /api/v1")
+                
+                # Log available endpoints
+                logger.info("Available API endpoints:", extra={
+                    "users": "/api/v1/users/*",
+                    "admin": "/api/v1/admin/*", 
+                    "health": "/api/v1/health/*"
+                })
+                
+            except ImportError as e:
+                logger.error(f"Failed to import API routers: {e}")
+                logger.info("Falling back to basic health endpoint only")
         else:
             logger.info("API Gateway disabled in configuration")
         
@@ -211,85 +218,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="AICO Backend",
-    description="AICO AI Companion Backend Service",
-    version=__version__,
-    lifespan=lifespan
-)
-
-# Modern FastAPI uses lifespan events only
-
-# Admin endpoints will be registered after gateway initialization
-
-@app.get("/")
-def read_root():
-    """Root health check endpoint"""
-    logger.debug("Health check endpoint accessed")
-    
-    status = {
-        "service": "AICO Backend",
-        "version": __version__,
-        "status": "running"
-    }
-    
-    # Add component status if available
-    if message_bus_host:
-        status["message_bus"] = "running" if message_bus_host.running else "stopped"
-    
-    if api_gateway:
-        status["api_gateway"] = "running" if api_gateway.running else "stopped"
-    
-    return status
-
-@app.get("/health")
-def health_check():
-    health_logger = get_logger("backend", "health")
-    health_logger.debug("Health endpoint accessed", extra={
-        "endpoint": "/health",
-        "method": "GET",
-        "component": "fastapi_health"
-    })
-    
-    health_status = {
-        "status": "healthy",
-        "version": __version__,
-        "components": {}
-    }
-    
-    # Check message bus health
-    if message_bus_host:
-        health_status["components"]["message_bus"] = {
-            "status": "running" if message_bus_host.running else "stopped",
-            "modules": len(message_bus_host.modules),
-            "address": message_bus_host.bind_address
-        }
-    
-    # Check API Gateway health
-    if api_gateway:
-        health_status["components"]["api_gateway"] = api_gateway.get_health_status()
-    
-    return health_status
-
-
-# Create FastAPI app with lifespan
-print("Creating FastAPI app...")
-app = FastAPI(
     title="AICO Backend API",
     description="AICO AI Companion Backend Services",
     version=__version__,
     lifespan=lifespan
 )
-print("FastAPI app created")
-
-# Add health endpoint
-@app.get("/health")
-async def health():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "version": __version__,
-        "service": "gateway"
-    }
 
 
 async def main():

@@ -58,7 +58,39 @@ The API Gateway implements multiple protocol adapters to support various client 
   - Provides efficient binary serialization
   - Enables strong typing through Protocol Buffers
 
-### 2. Core Gateway Services
+### 2. Domain-Based API Organization
+
+The API Gateway organizes endpoints using a **domain-based module-functionality** pattern for improved maintainability and scalability:
+
+- **Domain Separation**: Business functionality grouped by domain (users, admin, conversations, health)
+- **Self-Contained Modules**: Each domain contains its own routers, schemas, dependencies, and exceptions
+- **Consistent Structure**: Standardized file patterns across all domains following FastAPI best practices
+- **Clean Architecture**: Clear separation between API layer, business logic, and infrastructure
+
+**API Structure**:
+```
+api/
+├── users/          # User management domain
+│   ├── router.py   # User API endpoints
+│   ├── schemas.py  # Pydantic request/response models
+│   ├── dependencies.py  # User-specific auth and validation
+│   └── exceptions.py    # User-specific error handling
+├── admin/          # Administrative domain
+│   ├── router.py   # Admin API endpoints
+│   ├── schemas.py  # Admin Pydantic models
+│   ├── dependencies.py  # Admin authentication
+│   └── exceptions.py    # Admin-specific errors
+├── conversations/ # Conversation management domain
+└── health/        # System health and monitoring
+```
+
+This organization provides:
+- **Scalability**: Easy addition of new domains (personality, emotion, etc.)
+- **Maintainability**: Related functionality grouped together
+- **Team Collaboration**: Clear ownership boundaries
+- **Professional Standards**: Follows established FastAPI patterns
+
+### 3. Core Gateway Services
 
 - **Request Router**: Maps external endpoints to internal message bus topics
   - Handles URL routing for REST requests
@@ -75,7 +107,7 @@ The API Gateway implements multiple protocol adapters to support various client 
   - Handles timeouts and partial responses
   - Manages response transformation back to client format
 
-### 3. Security Layer
+### 4. Security Layer
 
 - **Authentication Handler**: Verifies client identity
   - JWT token validation for REST and WebSocket
@@ -97,7 +129,7 @@ The API Gateway implements multiple protocol adapters to support various client 
   - Graduated response to excessive requests
   - Configurable limits based on endpoint sensitivity
 
-### 4. Roaming and Federation Support
+### 5. Roaming and Federation Support
 
 - **Device Registry**: Manages connected frontend devices
   - Tracks active connections and their capabilities

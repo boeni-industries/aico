@@ -1,8 +1,10 @@
 """
-User Management Endpoints for AICO API Gateway
+DEPRECATED: User Management Endpoints
 
-Provides REST API endpoints for user CRUD operations and authentication.
-Integrates with UserService and follows AICO's security patterns.
+This file has been moved to backend/api/users/ following domain-based organization.
+This file will be removed in a future cleanup.
+
+Use backend/api/users/router.py instead.
 """
 
 from typing import Dict, List, Optional, Any

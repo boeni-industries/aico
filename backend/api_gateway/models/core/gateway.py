@@ -6,6 +6,7 @@ Main orchestrator for the unified multi-protocol API Gateway following AICO patt
 
 import asyncio
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
@@ -87,10 +88,36 @@ class AICOAPIGateway:
         self.adapters: Dict[str, Any] = {}
         self.running = False
         
+        # Version and timing tracking
+        self.version = self._get_backend_version()
+        self.start_time: Optional[float] = None
+        
         self.logger.info("API Gateway initialized", extra={
             "protocols": list(self.config.get("protocols", {}).keys()),
             "admin_enabled": self.config.get("admin", {}).get("enabled", False)
         })
+    
+    def _get_backend_version(self) -> str:
+        """Read backend version from VERSIONS file"""
+        try:
+            # Find VERSIONS file relative to this module
+            current_dir = Path(__file__).parent
+            versions_file = current_dir / ".." / ".." / ".." / ".." / "VERSIONS"
+            versions_file = versions_file.resolve()
+            
+            if versions_file.exists():
+                with open(versions_file, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('backend:'):
+                            return line.split(':', 1)[1].strip()
+            
+            # Fallback if VERSIONS file not found or backend line missing
+            return "0.2.0"
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to read version from VERSIONS file: {e}")
+            return "0.2.0"
     
     def _load_config(self) -> GatewayConfig:
         """Load and validate gateway configuration"""
@@ -164,6 +191,7 @@ class AICOAPIGateway:
             
             # Admin endpoints are now served on the main REST port
             self.running = True
+            self.start_time = time.time()
             self.logger.info("API Gateway started successfully", extra={
                 "adapters": list(self.adapters.keys()),
                 "host": self.config.get("host", "127.0.0.1")
@@ -305,15 +333,21 @@ class AICOAPIGateway:
     
     def get_health_status(self) -> Dict[str, Any]:
         """Get gateway health status"""
+        uptime = time.time() - self.start_time if self.start_time else 0.0
+        
         return {
             "status": "healthy" if self.running else "stopped",
-            "adapters": {
-                name: "running" for name in self.adapters.keys()
-            },
-            "message_bus": "connected" if self.message_bus_client and self.message_bus_client.running else "disconnected",
-            "config": {
-                "protocols_enabled": [name for name, proto in self.config.get("protocols", {}).items() if proto.get("enabled")],
-                "admin_enabled": self.config.get("admin", {}).get("enabled", False)
+            "version": self.version,
+            "uptime": uptime,
+            "components": {
+                "adapters": {
+                    name: "running" for name in self.adapters.keys()
+                },
+                "message_bus": "connected" if self.message_bus_client and self.message_bus_client.running else "disconnected",
+                "config": {
+                    "protocols_enabled": [name for name, proto in self.config.get("protocols", {}).items() if proto.get("enabled")],
+                    "admin_enabled": self.config.get("admin", {}).get("enabled", False)
+                }
             }
         }
 
