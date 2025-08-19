@@ -195,12 +195,19 @@ async def lifespan(app: FastAPI):
                 try:
                     from api.admin.router import initialize_router
                     
-                    # Initialize admin router with all dependencies
+                    # Initialize admin router with all dependencies including log repository
+                    from aico.data.logs import LogRepository
+                    
+                    # Create log repository with shared database connection
+                    log_repository = LogRepository(shared_db_connection)
+                    
                     initialize_router(
                         api_gateway.auth_manager, 
                         api_gateway.authz_manager, 
                         api_gateway.message_router, 
-                        api_gateway
+                        api_gateway,
+                        log_repository,
+                        config_manager
                     )
                     logger.info("Admin router initialized with dependencies")
                 except Exception as e:

@@ -174,7 +174,41 @@ class ConfigurationManager:
         self._log_config_change(key, old_value, value)
         
         if persist:
+            # Update or create runtime source
+            self._update_runtime_source(key, value)
             self._persist_configuration()
+    
+    def _update_runtime_source(self, key: str, value: Any) -> None:
+        """Update runtime configuration source with new value."""
+        # Find existing runtime source or create new one
+        runtime_source = None
+        for source in self.sources:
+            if source.name == "runtime":
+                runtime_source = source
+                break
+        
+        if runtime_source is None:
+            # Create new runtime source
+            runtime_source = ConfigSource(
+                name="runtime",
+                priority=5,
+                path=self.config_dir / "user" / "runtime.yaml",
+                data={}
+            )
+            self.sources.append(runtime_source)
+        
+        # Update runtime data with new value
+        keys = key.split('.')
+        runtime_data = runtime_source.data
+        
+        # Navigate to parent in runtime data
+        for k in keys[:-1]:
+            if k not in runtime_data:
+                runtime_data[k] = {}
+            runtime_data = runtime_data[k]
+        
+        # Set value in runtime data
+        runtime_data[keys[-1]] = value
             
     def validate(self, domain: str, config: Dict[str, Any]) -> bool:
         """
@@ -401,15 +435,43 @@ class ConfigurationManager:
                 
     def _load_runtime_configs(self) -> None:
         """Load runtime configuration changes from encrypted store."""
-        # TODO: Implement encrypted runtime configuration storage
-        # This will be implemented when we add the encryption layer
-        pass  # Placeholder for future encrypted runtime config implementation
+        runtime_file = self.config_dir / "user" / "runtime.yaml"
+        
+        if runtime_file.exists():
+            try:
+                with open(runtime_file, 'r', encoding='utf-8') as f:
+                    runtime_config = yaml.safe_load(f) or {}
+                    if runtime_config:
+                        self._deep_merge(self.config_cache, runtime_config)
+                        self.sources.append(ConfigSource(
+                            name="runtime",
+                            priority=5,
+                            path=runtime_file,
+                            data=runtime_config
+                        ))
+            except (yaml.YAMLError, IOError) as e:
+                # Log error but don't crash - runtime config is optional
+                print(f"Warning: Failed to load runtime config '{runtime_file}': {e}")
         
     def _persist_configuration(self) -> None:
         """Persist current configuration to encrypted store."""
-        # TODO: Implement encrypted configuration persistence
-        # This will be implemented when we add the encryption layer
-        pass  # Placeholder for future encrypted config persistence implementation
+        runtime_file = self.config_dir / "user" / "runtime.yaml"
+        
+        # Extract runtime changes (priority 5 source)
+        runtime_data = {}
+        for source in self.sources:
+            if source.name == "runtime" and source.data:
+                runtime_data = source.data
+                break
+        
+        # Ensure user directory exists
+        runtime_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            with open(runtime_file, 'w', encoding='utf-8') as f:
+                yaml.safe_dump(runtime_data, f, default_flow_style=False, sort_keys=True)
+        except (yaml.YAMLError, IOError) as e:
+            raise ConfigurationError(f"Failed to persist runtime config to '{runtime_file}': {e}")
         
     def _deep_merge(self, base: Dict, override: Dict) -> None:
         """
@@ -458,9 +520,22 @@ class ConfigurationManager:
             old_value: Previous value
             new_value: New value
         """
-        # TODO: Implement audit logging
-        # This will be implemented when we add the audit system
-        pass  # Placeholder for future audit logging implementation
+        # Import here to avoid circular dependency
+        try:
+            from .logging import AICOLogger
+            logger = AICOLogger("config")
+            logger.info(
+                f"Configuration changed: {key}",
+                extra={
+                    "config_key": key,
+                    "old_value": str(old_value) if old_value is not None else None,
+                    "new_value": str(new_value) if new_value is not None else None,
+                    "change_type": "update" if old_value is not None else "create"
+                }
+            )
+        except ImportError:
+            # Fallback to print if logging system not available
+            print(f"[CONFIG] {key}: {old_value} -> {new_value}")
         
     @classmethod
     def reset_singleton(cls):

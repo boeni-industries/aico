@@ -1034,6 +1034,10 @@ def auth_login():
         # Get or generate JWT secret using key manager
         jwt_secret = key_manager.get_jwt_secret("api_gateway")
         
+        # Get CLI roles from configuration - CLI gets admin access by default
+        # This is intentional: CLI operations require admin privileges for system management
+        cli_roles = ["cli", "admin"]  # CLI role includes admin privileges
+        
         # Create CLI token payload (matching backend admin endpoint expectations)
         now = datetime.utcnow()
         payload = {
@@ -1043,7 +1047,7 @@ def auth_login():
             "aud": "aico-api",  # Audience: AICO API
             "iat": int(now.timestamp()),  # Issued at
             "exp": int((now + timedelta(days=7)).timestamp()),  # Expires in 7 days
-            "roles": ["admin"],  # Admin role array expected by backend
+            "roles": cli_roles,  # CLI gets admin access for system operations
             "type": "cli_token"  # Token type
         }
         

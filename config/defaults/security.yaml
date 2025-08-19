@@ -58,3 +58,58 @@ audit:
   retention_days: 90
   log_level: "standard"
 
+# Role-Based Access Control (RBAC) Configuration
+rbac:
+  enabled: true
+  default_policy: "deny"  # Deny by default, explicit grants required
+  
+  # Role definitions with permissions
+  roles:
+    # Admin role - full system access
+    admin:
+      - "admin.*"           # All admin operations
+      - "system.*"          # System management
+      - "logs.*"            # Log management
+      - "config.*"          # Configuration management
+      - "users.*"           # User management
+      - "audit.*"           # Audit access
+    
+    # User role - standard user permissions
+    user:
+      - "conversation.*"    # Chat and conversation
+      - "memory.read"       # Read memory
+      - "personality.read"  # Read personality
+      - "profile.*"         # Own profile management
+    
+    # Service role - for internal services
+    service:
+      - "system.health"     # Health checks
+      - "logs.write"        # Write logs
+      - "events.*"          # Event handling
+    
+    # CLI role - for CLI operations
+    cli:
+      - "admin.*"           # CLI gets admin access
+      - "system.*"          # Full system access for CLI
+      - "debug.*"           # Debug operations
+
+# Authorization policies for specific resources
+authorization:
+  # Resource-based permissions
+  resources:
+    logs:
+      read: ["admin", "service"]
+      write: ["admin", "service"] 
+      delete: ["admin"]
+    
+    config:
+      read: ["admin", "service"]
+      write: ["admin"]
+      reload: ["admin"]
+    
+    users:
+      read: ["admin"]
+      write: ["admin"]
+      create: ["admin"]
+      delete: ["admin"]
+

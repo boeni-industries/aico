@@ -242,12 +242,18 @@ async def authenticate_user(request: AuthenticateRequest):
         
         user = result["user"]
         
-        # Generate JWT token with user claims and session backing
+        # Get user roles from authorization service
+        from aico.core.authorization import AuthorizationService
+        authz_service = AuthorizationService(user_service.db)
+        user_roles = authz_service.get_user_roles(user.uuid)
+        user_permissions = authz_service.get_user_permissions(user.uuid)
+        
+        # Generate JWT token with proper roles and permissions
         jwt_token = auth_manager.generate_jwt_token(
             user_id=user.uuid,
             username=user.full_name,
-            roles=[user.user_type],
-            permissions={"conversation.*", "memory.read", "personality.read"},
+            roles=user_roles,
+            permissions=user_permissions,
             device_uuid="web-client"  # Default device for web authentication
         )
         

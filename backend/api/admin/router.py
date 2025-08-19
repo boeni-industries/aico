@@ -5,14 +5,13 @@ REST API endpoints for administrative operations including gateway management,
 session control, security operations, and system configuration.
 """
 
-from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, status, Depends
+from typing import Optional, Dict, Any, List
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
-from datetime import datetime
-from typing import Dict, Any
 
 from .dependencies import verify_admin_token
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from .schemas import (
     AdminHealthResponse,
     GatewayStatusResponse,
@@ -21,12 +20,30 @@ from .schemas import (
     SessionListResponse as UserSessionsResponse,
     RevokeTokenRequest as RevokeSessionRequest,
     AdminOperationResponse,
-    BlockIpRequest
+    BlockIpRequest,
+    # Logs schemas
+    LogsListRequest,
+    LogsDeleteRequest,
+    LogEntryResponse,
+    LogsListResponse,
+    LogsStatsResponse,
+    # Config schemas
+    ConfigSetRequest,
+    ConfigValidateRequest,
+    ConfigImportRequest,
+    ConfigValueResponse,
+    ConfigListResponse,
+    ConfigDomainResponse,
+    ConfigSchemaResponse,
+    ConfigValidationResponse
 )
 from .schemas import ConfigResponse, RouteMappingRequest, RouteMappingResponse
 from .exceptions import (
     GatewayServiceError,
     SessionNotFoundError,
+    LogsServiceError,
+    ConfigServiceError,
+    ConfigValidationError,
     handle_admin_service_exceptions
 )
 
@@ -35,6 +52,8 @@ auth_manager = None
 authz_manager = None
 message_router = None
 gateway = None
+log_repository = None
+config_manager = None
 
 # Admin authentication dependency function
 async def get_admin_user():
@@ -53,17 +72,23 @@ async def get_admin_user():
     # This will be handled by FastAPI's dependency injection
     pass
 
-def initialize_router(auth_mgr, authz_mgr, msg_router, gw):
+def initialize_router(auth_mgr, authz_mgr, msg_router, gw, log_repo=None, config_mgr=None):
     """Initialize router with dependencies from main.py"""
-    global auth_manager, authz_manager, message_router, gateway
+    global auth_manager, authz_manager, message_router, gateway, log_repository, config_manager
     auth_manager = auth_mgr
     authz_manager = authz_mgr
     message_router = msg_router
     gateway = gw
+    log_repository = log_repo
+    config_manager = config_mgr
     
-    # Initialize dependencies module with auth manager
-    from .dependencies import set_auth_manager
+    # Initialize dependencies module with service managers
+    from .dependencies import set_auth_manager, set_log_repository, set_config_manager
     set_auth_manager(auth_mgr)
+    if log_repo:
+        set_log_repository(log_repo)
+    if config_mgr:
+        set_config_manager(config_mgr)
 
 # Health endpoint without authentication (public)
 health_router = APIRouter()
@@ -276,10 +301,46 @@ async def get_config():
     if not gateway:
         raise GatewayServiceError("Gateway not initialized")
     
+    # Get actual configuration from config manager
+    if not config_manager:
+        raise ConfigServiceError("Configuration manager not initialized")
+    
+    # Get full configuration from config cache
+    full_config = config_manager.config_cache
+    
+    # Extract actual configuration sections or use defaults
+    security_config = full_config.get("security", {})
+    core_config = full_config.get("core", {})
+    
     return ConfigResponse(
-        protocols=gateway.config.protocols,
-        security=gateway.config.security,
-        performance=gateway.config.performance
+        protocols={
+            "zmq": {"enabled": True, "port": 5555},
+            "http": {"enabled": True, "port": 8771},
+            "websocket": {"enabled": False, "port": 8772}
+        },
+        security={
+            "authentication": security_config.get("authentication", {
+                "enabled": True, 
+                "jwt_expiry": security_config.get("authentication", {}).get("jwt_expiry_seconds", 900),
+                "max_failed_attempts": security_config.get("authentication", {}).get("max_failed_attempts", 5)
+            }),
+            "encryption": security_config.get("encryption", {
+                "enabled": True, 
+                "algorithm": "AES-256-GCM",
+                "key_derivation": security_config.get("encryption", {}).get("key_derivation", {}).get("algorithm", "Argon2id")
+            }),
+            "rbac": security_config.get("rbac", {
+                "enabled": True,
+                "default_policy": "deny"
+            })
+        },
+        performance={
+            "max_connections": 1000,
+            "timeout": 30,
+            "buffer_size": 8192,
+            "system": core_config.get("system", {}),
+            "logging": core_config.get("logging", {})
+        }
     )
 
 
@@ -327,4 +388,345 @@ async def remove_route_mapping(external_topic: str):
     return RouteMappingResponse(
         message=f"Route mapping removed: {external_topic}",
         external_topic=external_topic
+    )
+
+
+# ============================================================================
+# LOGS ADMIN ENDPOINTS
+# ============================================================================
+
+@router.get("/logs", response_model=LogsListResponse)
+@handle_admin_service_exceptions
+async def list_logs(
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
+    limit: Optional[int] = 50,
+    offset: Optional[int] = 0,
+    level: Optional[str] = None,
+    subsystem: Optional[str] = None,
+    module: Optional[str] = None,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    search: Optional[str] = None,
+    utc: Optional[bool] = False
+):
+    """List logs with filtering and pagination"""
+    # Verify admin token
+    user = verify_admin_token(credentials)
+    
+    if not log_repository:
+        raise LogsServiceError("Log repository not initialized")
+    
+    # Validate log level if provided
+    if level:
+        from .dependencies import validate_log_level
+        level = validate_log_level(level)
+    
+    # Query logs with filters
+    logs = log_repository.query_logs(
+        limit=limit,
+        offset=offset,
+        level=level,
+        subsystem=subsystem,
+        module=module,
+        since=since,
+        until=until,
+        search=search
+    )
+    
+    # Convert to response format
+    log_entries = []
+    for log in logs:
+        log_entries.append(LogEntryResponse(
+            id=log.get("id"),
+            timestamp=log.get("timestamp"),
+            level=log.get("level"),
+            subsystem=log.get("subsystem"),
+            module=log.get("module"),
+            function=log.get("function"),
+            message=log.get("message"),
+            topic=log.get("topic"),
+            extra_data=log.get("extra_data")
+        ))
+    
+    # Get total count for pagination
+    total = log_repository.count_logs(
+        level=level,
+        subsystem=subsystem,
+        module=module,
+        since=since,
+        until=until,
+        search=search
+    )
+    
+    return LogsListResponse(
+        logs=log_entries,
+        total=total,
+        has_more=(offset + len(log_entries)) < total,
+        timezone=None if utc else "local"
+    )
+
+
+@router.get("/logs/{log_id}", response_model=LogEntryResponse)
+@handle_admin_service_exceptions
+async def get_log_entry(
+    log_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
+):
+    """Get specific log entry by ID"""
+    # Verify admin token
+    user = verify_admin_token(credentials)
+    
+    if not log_repository:
+        raise LogsServiceError("Log repository not initialized")
+    
+    log = log_repository.get_log_by_id(log_id)
+    if not log:
+        raise LogsServiceError(f"Log entry {log_id} not found", 404)
+    
+    return LogEntryResponse(
+        id=log.get("id"),
+        timestamp=log.get("timestamp"),
+        level=log.get("level"),
+        subsystem=log.get("subsystem"),
+        module=log.get("module"),
+        function=log.get("function"),
+        message=log.get("message"),
+        topic=log.get("topic"),
+        extra_data=log.get("extra_data")
+    )
+
+
+@router.delete("/logs", response_model=AdminOperationResponse)
+@handle_admin_service_exceptions
+async def delete_logs(
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
+    older_than: Optional[str] = None,
+    level: Optional[str] = None,
+    subsystem: Optional[str] = None,
+    confirm: bool = False
+):
+    """Remove logs based on criteria"""
+    # Verify admin token
+    user = verify_admin_token(credentials)
+    
+    if not log_repository:
+        raise LogsServiceError("Log repository not initialized")
+    
+    if not confirm:
+        raise LogsServiceError("Confirmation required for log deletion", 400)
+    
+    # Validate log level if provided
+    if level:
+        from .dependencies import validate_log_level
+        level = validate_log_level(level)
+    
+    # Delete logs based on criteria
+    deleted_count = log_repository.delete_logs(
+        older_than=older_than,
+        level=level,
+        subsystem=subsystem
+    )
+    
+    return AdminOperationResponse(
+        success=True,
+        message=f"Deleted {deleted_count} log entries",
+        details={"deleted_count": deleted_count}
+    )
+
+
+@router.get("/logs/stats", response_model=LogsStatsResponse)
+@handle_admin_service_exceptions
+async def get_logs_stats(
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
+):
+    """Get log statistics and metrics"""
+    # Verify admin token
+    user = verify_admin_token(credentials)
+    
+    if not log_repository:
+        raise LogsServiceError("Log repository not initialized")
+    
+    stats = log_repository.get_log_statistics()
+    
+    return LogsStatsResponse(
+        total_logs=stats.get("total_logs", 0),
+        by_level=stats.get("by_level", {}),
+        by_subsystem=stats.get("by_subsystem", {}),
+        recent_activity=stats.get("recent_activity", {})
+    )
+
+
+# ============================================================================
+# CONFIG ADMIN ENDPOINTS
+# ============================================================================
+
+@router.get("/config/all", response_model=ConfigListResponse)
+@handle_admin_service_exceptions
+async def get_all_config(
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
+    domain: Optional[str] = None,
+    include_defaults: bool = False,
+    include_source: bool = False
+):
+    """Get configuration values with hierarchical resolution"""
+    # Verify admin token
+    user = verify_admin_token(credentials)
+    
+    if not config_manager:
+        raise ConfigServiceError("Configuration manager not initialized")
+    
+    # Get configuration data
+    if domain:
+        config_data = config_manager.get_domain_config(domain)
+        domains = [domain]
+    else:
+        config_data = config_manager.get_all_config()
+        domains = list(config_data.keys())
+    
+    # Convert to response format
+    configs = []
+    for domain_name, domain_config in config_data.items():
+        for key, value in domain_config.items():
+            configs.append(ConfigValueResponse(
+                key=f"{domain_name}.{key}",
+                value=value,
+                source_layer="merged",  # TODO: Add source tracking
+                domain=domain_name,
+                is_default=False  # TODO: Add default detection
+            ))
+    
+    return ConfigListResponse(
+        configs=configs,
+        total=len(configs),
+        domains=domains
+    )
+
+
+@router.put("/config", response_model=AdminOperationResponse)
+@handle_admin_service_exceptions
+async def set_config_value(
+    config_data: ConfigSetRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
+):
+    """Set configuration value"""
+    # Verify admin token
+    user = verify_admin_token(credentials)
+    
+    if not config_manager:
+        raise ConfigServiceError("Configuration manager not initialized")
+    
+    # Validate configuration key
+    from .dependencies import validate_config_key, validate_config_layer
+    key = validate_config_key(config_data.key)
+    layer = validate_config_layer(config_data.layer)
+    
+    # Set configuration value
+    config_manager.set(key, config_data.value, layer=layer)
+    
+    return AdminOperationResponse(
+        success=True,
+        message=f"Configuration {key} set to {config_data.value}",
+        details={"key": key, "value": config_data.value, "layer": layer}
+    )
+
+
+@router.delete("/config/{key:path}", response_model=AdminOperationResponse)
+@handle_admin_service_exceptions
+async def reset_config_value(
+    key: str,
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
+):
+    """Reset configuration key to default"""
+    # Verify admin token
+    user = verify_admin_token(credentials)
+    
+    if not config_manager:
+        raise ConfigServiceError("Configuration manager not initialized")
+    
+    # Validate configuration key
+    from .dependencies import validate_config_key
+    key = validate_config_key(key)
+    
+    # Reset to default
+    config_manager.reset_to_default(key)
+    
+    return AdminOperationResponse(
+        success=True,
+        message=f"Configuration {key} reset to default",
+        details={"key": key}
+    )
+
+
+@router.get("/config/domains", response_model=List[ConfigDomainResponse])
+@handle_admin_service_exceptions
+async def get_config_domains(
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
+):
+    """List all configuration domains"""
+    # Verify admin token
+    user = verify_admin_token(credentials)
+    
+    if not config_manager:
+        raise ConfigServiceError("Configuration manager not initialized")
+    
+    domains = config_manager.get_available_domains()
+    
+    domain_responses = []
+    for domain in domains:
+        domain_info = config_manager.get_domain_info(domain)
+        domain_responses.append(ConfigDomainResponse(
+            domain=domain,
+            description=domain_info.get("description", ""),
+            schema_version=domain_info.get("schema_version", "1.0"),
+            available_keys=domain_info.get("available_keys", [])
+        ))
+    
+    return domain_responses
+
+
+@router.post("/config/validate", response_model=ConfigValidationResponse)
+@handle_admin_service_exceptions
+async def validate_config(
+    validation_data: ConfigValidateRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
+):
+    """Validate configuration without applying"""
+    # Verify admin token
+    user = verify_admin_token(credentials)
+    
+    if not config_manager:
+        raise ConfigServiceError("Configuration manager not initialized")
+    
+    # Validate configuration
+    validation_result = config_manager.validate_config(
+        validation_data.domain,
+        validation_data.config_data
+    )
+    
+    return ConfigValidationResponse(
+        valid=validation_result.get("valid", False),
+        errors=validation_result.get("errors", []),
+        warnings=validation_result.get("warnings", [])
+    )
+
+
+@router.post("/config/reload", response_model=AdminOperationResponse)
+@handle_admin_service_exceptions
+async def reload_config(
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
+):
+    """Hot reload configuration from files"""
+    # Verify admin token
+    user = verify_admin_token(credentials)
+    
+    if not config_manager:
+        raise ConfigServiceError("Configuration manager not initialized")
+    
+    # Reload configuration
+    reload_result = config_manager.reload_from_files()
+    
+    return AdminOperationResponse(
+        success=reload_result.get("success", False),
+        message=reload_result.get("message", "Configuration reloaded"),
+        details=reload_result.get("details", {})
     )

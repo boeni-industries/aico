@@ -14,13 +14,43 @@ security = HTTPBearer()
 logger = get_logger("api", "admin_dependencies")
 
 
-# Global auth manager - will be set during initialization
+# Global service managers - will be set during initialization
 _auth_manager = None
+_log_repository = None
+_config_manager = None
 
 def set_auth_manager(auth_manager):
     """Set the global auth manager for dependencies"""
     global _auth_manager
     _auth_manager = auth_manager
+
+def set_log_repository(log_repo):
+    """Set the global log repository for dependencies"""
+    global _log_repository
+    _log_repository = log_repo
+
+def set_config_manager(config_mgr):
+    """Set the global config manager for dependencies"""
+    global _config_manager
+    _config_manager = config_mgr
+
+def get_log_repository():
+    """Get the log repository dependency"""
+    if not _log_repository:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Log repository not initialized"
+        )
+    return _log_repository
+
+def get_config_manager():
+    """Get the config manager dependency"""
+    if not _config_manager:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Configuration manager not initialized"
+        )
+    return _config_manager
 
 def verify_admin_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """
@@ -139,3 +169,50 @@ def validate_session_id(session_id: str) -> str:
         )
     
     return session_id.strip()
+
+
+def validate_log_level(level: str) -> str:
+    """
+    Validate log level format.
+    """
+    valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    if level.upper() not in valid_levels:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid log level. Must be one of: {', '.join(valid_levels)}"
+        )
+    return level.upper()
+
+
+def validate_config_key(key: str) -> str:
+    """
+    Validate configuration key format (dot notation).
+    """
+    if not key or len(key.strip()) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Configuration key cannot be empty"
+        )
+    
+    # Basic validation - keys should be alphanumeric with dots and underscores
+    import re
+    if not re.match(r'^[a-zA-Z0-9._]+$', key):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Configuration key can only contain letters, numbers, dots, and underscores"
+        )
+    
+    return key.strip()
+
+
+def validate_config_layer(layer: str) -> str:
+    """
+    Validate configuration layer.
+    """
+    valid_layers = ["user", "environment", "runtime"]
+    if layer not in valid_layers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid configuration layer. Must be one of: {', '.join(valid_layers)}"
+        )
+    return layer
