@@ -24,14 +24,14 @@ security = HTTPBearer()
 class CreateUserRequest(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=100)
     nickname: Optional[str] = Field(None, max_length=50)
-    user_type: str = Field(default='parent', regex='^(parent|child|admin)$')
+    user_type: str = Field(default='person', regex='^person$')
     pin: Optional[str] = Field(None, min_length=4, max_length=8)
 
 
 class UpdateUserRequest(BaseModel):
     full_name: Optional[str] = Field(None, min_length=1, max_length=100)
     nickname: Optional[str] = Field(None, max_length=50)
-    user_type: Optional[str] = Field(None, regex='^(parent|child|admin)$')
+    user_type: Optional[str] = Field(None, regex='^person$')
 
 
 class AuthenticateRequest(BaseModel):

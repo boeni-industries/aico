@@ -668,7 +668,7 @@ def test():
 def user_create(
     full_name: str = typer.Argument(None, help="User's full name"),
     nickname: str = typer.Option(None, "--nickname", "-n", help="Optional nickname"),
-    user_type: str = typer.Option("person", "--type", "-t", help="User type (person, child, admin)"),
+    user_type: str = typer.Option("person", "--type", "-t", help="User type (person)"),
     pin: str = typer.Option(None, "--pin", "-p", help="Optional PIN for authentication"),
     ctx: typer.Context = typer.Context
 ):
@@ -680,12 +680,12 @@ def user_create(
         console.print("  aico security user-create [OPTIONS] FULL_NAME\n")
         console.print("[bold yellow]Examples:[/bold yellow]")
         console.print('  aico security user-create "John Doe"')
-        console.print('  aico security user-create "Jane Smith" --nickname "Janie" --type child')
+        console.print('  aico security user-create "Jane Smith" --nickname "Janie" --type person')
         console.print('  aico security user-create "Bob Wilson" --pin 1234 --type person')
         console.print('  aico security user-create "Alice Cooper" --nickname "Al" --type admin --pin 5678')
         console.print("\n[bold yellow]Options:[/bold yellow]")
         console.print("  --nickname, -n    Optional nickname for the user")
-        console.print("  --type, -t        User type: person, child, admin (default: person)")
+        console.print("  --type, -t        User type: person (default: person)")
         console.print("  --pin, -p         Optional PIN for authentication")
         console.print("\n[dim]Use 'aico security user-list' to see existing users[/dim]")
         raise typer.Exit(1)
@@ -1074,7 +1074,7 @@ def user_update(
     user_uuid: str = typer.Argument(None, help="User UUID to update"),
     full_name: str = typer.Option(None, "--name", "-n", help="Update full name"),
     nickname: str = typer.Option(None, "--nickname", help="Update nickname"),
-    user_type: str = typer.Option(None, "--type", "-t", help="Update user type (person, child, admin)"),
+    user_type: str = typer.Option(None, "--type", "-t", help="Update user type)"),
 ):
     """Update user profile information"""
     
