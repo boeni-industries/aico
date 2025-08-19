@@ -8,7 +8,7 @@ Follows the CLI visual style guide with modern, minimal, clean aesthetics.
 import sys
 import json
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
 import typer
@@ -23,6 +23,11 @@ decorators_path = Path(__file__).parent.parent / "decorators"
 sys.path.insert(0, str(decorators_path))
 from sensitive import sensitive
 
+# Import utils
+utils_path = Path(__file__).parent.parent / "utils"
+sys.path.insert(0, str(utils_path))
+from timezone import format_timestamp_local, get_timezone_suffix
+
 # Add shared path for imports
 shared_path = Path(__file__).parent.parent.parent / "shared"
 sys.path.insert(0, str(shared_path))
@@ -34,9 +39,9 @@ from aico.security.key_manager import AICOKeyManager
 
 console = Console()
 
-def logs_callback(ctx: typer.Context):
-    """Show help when no subcommand is given instead of showing an error."""
-    if ctx.invoked_subcommand is None:
+def logs_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
+    """Show help when no subcommand is given or --help is used."""
+    if ctx.invoked_subcommand is None or help:
         from utils.help_formatter import format_subcommand_help
         
         subcommands = [
@@ -69,7 +74,8 @@ def logs_callback(ctx: typer.Context):
 app = typer.Typer(
     help="Manage AICO logs with Unix-style commands.",
     callback=logs_callback,
-    invoke_without_command=True
+    invoke_without_command=True,
+    context_settings={"help_option_names": []}
 )
 
 
@@ -140,16 +146,17 @@ def _get_log_repository_no_auth() -> LogRepository:
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="List recent logs with filtering options")
 def ls(
     limit: int = typer.Option(100, "--limit", "-n", help="Number of logs to show"),
     level: Optional[str] = typer.Option(None, "--level", help="Filter by log level"),
     subsystem: Optional[str] = typer.Option(None, "--subsystem", help="Filter by subsystem"),
     module: Optional[str] = typer.Option(None, "--module", help="Filter by module"),
     since: Optional[str] = typer.Option(None, "--since", help="Show logs since timestamp"),
-    last: Optional[str] = typer.Option(None, "--last", help="Show logs from last period (e.g., 24h, 7d)"),
+    last: Optional[str] = typer.Option(None, "--last", help="Show logs from last period (e.g., 1h, 30m, 7d)"),
     format: str = typer.Option("table", "--format", help="Output format: table, json, oneline"),
-    oneline: bool = typer.Option(False, "--oneline", help="Compact one-line format")
+    oneline: bool = typer.Option(False, "--oneline", help="Compact one-line format"),
+    utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """List recent logs with filtering options"""
     
@@ -190,7 +197,7 @@ def ls(
         console.print(json.dumps(logs, indent=2, default=str))
     elif format == "oneline" or oneline:
         for log in logs:
-            console.print(f"[dim]{log['timestamp']}[/dim] "
+            console.print(f"[dim]{format_timestamp_local(log['timestamp'], show_utc=utc)}[/dim] "
                          f"[bold {_get_level_color(log['level'])}]{log['level']}[/bold {_get_level_color(log['level'])}] "
                          f"[cyan]{log['subsystem']}.{log['module']}[/cyan] {log['message']}")
     else:
@@ -205,7 +212,9 @@ def ls(
             padding=(0, 1)
         )
         
-        table.add_column("Time (UTC)", style="dim")
+        # Dynamic column header based on timezone preference
+        time_header = f"Time{get_timezone_suffix(utc)}"
+        table.add_column(time_header, style="dim")
         table.add_column("Level", style="bold")
         table.add_column("Source", style="cyan")
         table.add_column("Message", style="white")
@@ -217,7 +226,7 @@ def ls(
                 message = message[:57] + "..."
                 
             table.add_row(
-                log['timestamp'][:19],  # Remove timezone for brevity
+                format_timestamp_local(log['timestamp'], show_utc=utc),
                 f"[{_get_level_color(log['level'])}]{log['level']}[/{_get_level_color(log['level'])}]",
                 f"{log['subsystem']}.{log['module']}",
                 message
@@ -228,13 +237,14 @@ def ls(
         console.print()
 
 
-@app.command()
+@app.command(help="Display full log entry details")
 def cat(
     id: Optional[int] = typer.Option(None, "--id", help="Show specific log by ID"),
     trace_id: Optional[str] = typer.Option(None, "--trace-id", help="Show logs by trace ID"),
     level: Optional[str] = typer.Option(None, "--level", help="Filter by log level"),
     last: Optional[str] = typer.Option(None, "--last", help="Show logs from last period"),
-    format: str = typer.Option("pretty", "--format", help="Output format: pretty, json")
+    format: str = typer.Option("pretty", "--format", help="Output format: pretty, json"),
+    utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Display full log entry details"""
     
@@ -281,7 +291,7 @@ def cat(
             panel_title = f"Log #{log['id']} - {log['level']} - {log['subsystem']}.{log['module']}"
             
             content = []
-            content.append(f"[bold yellow]Timestamp:[/bold yellow] {log['timestamp']}")
+            content.append(f"[bold yellow]Timestamp:[/bold yellow] {format_timestamp_local(log['timestamp'], show_utc=utc)}")
             content.append(f"[bold yellow]Level:[/bold yellow] [{_get_level_color(log['level'])}]{log['level']}[/{_get_level_color(log['level'])}]")
             content.append(f"[bold yellow]Source:[/bold yellow] [cyan]{log['subsystem']}.{log['module']}[/cyan]")
             
@@ -324,7 +334,7 @@ def cat(
                 console.print()
 
 
-@app.command()
+@app.command(help="Remove log entries based on criteria")
 def rm(
     before: Optional[str] = typer.Option(None, "--before", help="Delete logs before date"),
     older_than: Optional[str] = typer.Option(None, "--older-than", help="Delete logs older than period (e.g., 7d)"),
@@ -378,7 +388,7 @@ def rm(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Show logging statistics and summary")
 def stat():
     """Show logging statistics and summary"""
     
@@ -417,12 +427,13 @@ def stat():
     console.print()
 
 
-@app.command()
+@app.command(help="Show recent logs (like tail -f)")
 def tail(
     follow: bool = typer.Option(False, "--follow", "-f", help="Follow log output in real-time"),
     level: Optional[str] = typer.Option(None, "--level", help="Filter by log level"),
     subsystem: Optional[str] = typer.Option(None, "--subsystem", help="Filter by subsystem"),
-    lines: int = typer.Option(20, "--lines", "-n", help="Number of lines to show")
+    lines: int = typer.Option(20, "--lines", "-n", help="Number of lines to show"),
+    utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Show recent logs (like tail -f)"""
     
@@ -440,9 +451,8 @@ def tail(
     
     # Display logs
     for log in reversed(logs):  # Show oldest first
-        timestamp = log['timestamp'][:19]  # Remove timezone
         level_color = _get_level_color(log['level'])
-        console.print(f"[dim]{timestamp}[/dim] "
+        console.print(f"[dim]{format_timestamp_local(log['timestamp'], show_utc=utc)}[/dim] "
                      f"[bold {level_color}]{log['level']}[/bold {level_color}] "
                      f"[cyan]{log['subsystem']}.{log['module']}[/cyan] {log['message']}")
     
@@ -451,12 +461,13 @@ def tail(
         # TODO: Implement real-time following via ZeroMQ subscription
 
 
-@app.command()
+@app.command(help="Search logs by pattern/content")
 def grep(
     pattern: str = typer.Argument(..., help="Search pattern"),
     level: Optional[str] = typer.Option(None, "--level", help="Filter by log level"),
     subsystem: Optional[str] = typer.Option(None, "--subsystem", help="Filter by subsystem"),
-    limit: int = typer.Option(100, "--limit", help="Maximum results to show")
+    limit: int = typer.Option(100, "--limit", help="Maximum results to show"),
+    utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Search logs by pattern/content"""
     
@@ -498,7 +509,6 @@ def grep(
     console.print(f"\n[bold cyan]Found {len(matching_logs)} logs matching '{pattern}':[/bold cyan]\n")
     
     for log in matching_logs:
-        timestamp = log['timestamp'][:19]
         level_color = _get_level_color(log['level'])
         
         # Highlight the pattern in the message
@@ -507,7 +517,7 @@ def grep(
             pattern, f"[bold yellow on red]{pattern}[/bold yellow on red]"
         )
         
-        console.print(f"[dim]{timestamp}[/dim] "
+        console.print(f"[dim]{format_timestamp_local(log['timestamp'], show_utc=utc)}[/dim] "
                      f"[bold {level_color}]{log['level']}[/bold {level_color}] "
                      f"[cyan]{log['subsystem']}.{log['module']}[/cyan] {highlighted_message}")
 
@@ -564,6 +574,9 @@ def export(
     except Exception as e:
         console.print(f"[red]Error exporting logs: {e}[/red]")
         raise typer.Exit(1)
+
+
+
 
 
 def _get_level_color(level: str) -> str:

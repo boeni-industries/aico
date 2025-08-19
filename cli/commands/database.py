@@ -31,16 +31,21 @@ sys.path.insert(0, str(shared_path))
 
 from aico.security import AICOKeyManager
 from aico.data.libsql import create_encrypted_database, EncryptedLibSQLConnection
-from aico.data.schemas.core import SchemaRegistry
+from aico.data.libsql.registry import SchemaRegistry
 from aico.core.paths import AICOPaths
 from aico.core.config import ConfigurationManager
+from aico.core.logging import initialize_cli_logging, get_logger
+
+# Import schemas to ensure they're registered
+import aico.data.schemas.core
 
 # Import shared utilities using the same pattern as other CLI modules
 from utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
+from utils.timezone import format_timestamp_local, get_timezone_suffix
 
-def database_callback(ctx: typer.Context):
-    """Show help when no subcommand is given instead of showing an error."""
-    if ctx.invoked_subcommand is None:
+def database_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
+    """Show help when no subcommand is given or --help is used."""
+    if ctx.invoked_subcommand is None or help:
         from utils.help_formatter import format_subcommand_help
         
         subcommands = [
@@ -64,7 +69,8 @@ def database_callback(ctx: typer.Context):
             "aico db status",
             "aico db ls",
             "aico db desc logs",
-            "aico db count --table=logs"
+            "aico db count --table=logs",
+            "aico db head logs --limit=5"
         ]
         
         format_subcommand_help(
@@ -79,7 +85,8 @@ def database_callback(ctx: typer.Context):
 app = typer.Typer(
     help="Database initialization, status, and management.",
     callback=database_callback,
-    invoke_without_command=True
+    invoke_without_command=True,
+    context_settings={"help_option_names": []}
 )
 console = Console()
 
@@ -123,10 +130,34 @@ def _get_database_connection(db_path: str, force_fresh: bool = False) -> Encrypt
         raise typer.Exit(1)
 
 
+def _format_table_value(value, column_name: str, utc: bool = False):
+    """Format table value with timezone handling for timestamp columns (display only)"""
+    if value is None:
+        return ""
+    
+    str_value = str(value)
+    
+    # Detect timestamp columns by name and format
+    timestamp_indicators = ['timestamp', 'created_at', 'updated_at', 'date', 'time']
+    is_timestamp_column = any(indicator in column_name.lower() for indicator in timestamp_indicators)
+    
+    # Check if value looks like ISO timestamp
+    is_timestamp_value = ('T' in str_value and ('Z' in str_value or '+' in str_value or str_value.count(':') >= 2))
+    
+    if (is_timestamp_column or is_timestamp_value) and len(str_value) > 10:
+        try:
+            return format_timestamp_local(str_value, show_utc=utc)
+        except:
+            pass  # Fall through to regular formatting
+    
+    # Truncate long values for display
+    if len(str_value) > 50:
+        str_value = str_value[:47] + "..."
+    
+    return str_value
 
 
-
-@app.command()
+@app.command(help="Initialize a new encrypted AICO database")
 def init(
     db_path: str = typer.Option(None, help="Database file path (optional - uses config default)"),
     db_type: str = typer.Option("libsql", help="Database type (libsql, duckdb, chroma, rocksdb)"),
@@ -180,12 +211,24 @@ def init(
             # Connect to existing database using session-based auth
             conn = _get_database_connection(str(db_file))
             
-            # Initialize CLI logging with direct database access
-            from aico.core.logging import initialize_cli_logging
-            initialize_cli_logging(config, conn)
+            # Initialize CLI logging with direct database access BEFORE operations
+            from aico.core.logging import initialize_cli_logging, get_logger
+            try:
+                initialize_cli_logging(config, conn)
+                # Test that logging actually works by attempting a log write
+                test_logger = get_logger("cli", "database")
+                test_logger.info("CLI logging initialized successfully for database init")
+                console.print("✅ [green]CLI logging initialized and verified[/green]")
+            except Exception as e:
+                console.print(f"❌ [red]CRITICAL: CLI logging initialization failed: {e}[/red]")
+                console.print(f"[red]Logs will only appear in console, not database[/red]")
+                import traceback
+                console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
             
             # Apply any missing schemas
             console.print("📋 Checking for missing database schemas...")
+            # Import core schema to ensure registration
+            import aico.data.schemas.core
             applied_schemas = SchemaRegistry.apply_core_schemas(conn)
             
             if applied_schemas:
@@ -193,6 +236,9 @@ def init(
                 console.print(f"📋 Applied missing schemas: [cyan]{', '.join(applied_schemas)}[/cyan]")
             else:
                 console.print("ℹ️ [blue]Database is up to date - no missing schemas[/blue]")
+            
+            # Keep connection alive for logging - don't close here
+            # Connection will be closed when CLI command exits
         else:
             console.print(f"🔐 Creating encrypted {db_type} database: [cyan]{db_file}[/cyan]")
             
@@ -210,6 +256,8 @@ def init(
             
             # Apply core schemas using schema registry
             console.print("📋 Applying core database schemas...")
+            # Import core schema to ensure registration
+            import aico.data.schemas.core
             applied_schemas = SchemaRegistry.apply_core_schemas(conn)
             
             console.print("✅ [green]Database created successfully![/green]")
@@ -226,7 +274,7 @@ def init(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Check database encryption status and information")
 def status(
     db_path: str = typer.Option(None, help="Database file path (optional - uses config default)"),
     db_type: str = typer.Option("libsql", help="Database type (libsql, duckdb, chroma, rocksdb)")
@@ -248,7 +296,8 @@ def status(
         db_file = AICOPaths.resolve_database_path(filename, directory_mode)
     
     if not db_file.exists():
-        console.print(f"❌ [red]Database not found: {db_path}[/red]")
+        console.print(f"❌ [red]Database not found: {db_file}[/red]")
+        console.print("💡 [yellow]Run 'aico db init' to create the database first[/yellow]")
         raise typer.Exit(1)
     
     try:
@@ -259,10 +308,19 @@ def status(
             # Database likely encrypted, use session-based authentication
             conn = _get_database_connection(str(db_file))
             
-            # Initialize CLI logging with direct database access
-            from aico.core.logging import initialize_cli_logging
+            # Initialize CLI logging with direct database access BEFORE operations
+            from aico.core.logging import initialize_cli_logging, get_logger
             config = ConfigurationManager()
-            initialize_cli_logging(config, conn)
+            try:
+                initialize_cli_logging(config, conn)
+                # Test that logging actually works
+                test_logger = get_logger("cli", "database")
+                test_logger.info("CLI logging initialized successfully for database status")
+                console.print("✅ [green]CLI logging verified[/green]")
+            except Exception as e:
+                console.print(f"❌ [red]CRITICAL: CLI logging failed: {e}[/red]")
+                import traceback
+                console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
             
             info = conn.get_encryption_info()
         else:
@@ -294,19 +352,61 @@ def status(
         
         console.print(table)
         
-        # Test connection
-        console.print("\n🔍 Testing database connection...")
+        # Add schema version information
+        console.print("\n📋 Schema Information:")
+        try:
+            from aico.data.libsql.registry import SchemaRegistry
+            from aico.data.libsql.schema import SchemaManager
+            
+            # Get schema version info
+            manager = SchemaManager(conn)
+            current_version = manager.get_current_version()
+            
+            # Get latest available version from registry
+            # Import core schema to ensure registration
+            import aico.data.schemas.core
+            core_schemas = SchemaRegistry.get_core_schemas()
+            latest_version = 0
+            if core_schemas:
+                schema = core_schemas[0]  # Should be only one "core" schema now
+                latest_version = max(schema.definitions.keys()) if schema.definitions else 0
+            
+            # Create schema status table
+            schema_table = Table(title="Schema Status")
+            schema_table.add_column("Property", style="cyan")
+            schema_table.add_column("Value", style="green")
+            
+            schema_table.add_row("Current Version", str(current_version) if current_version else "Not initialized")
+            schema_table.add_row("Latest Version", str(latest_version))
+            
+            if current_version is None:
+                schema_table.add_row("Status", "❌ Not initialized")
+                schema_table.add_row("Action Needed", "Run 'aico db init'")
+            elif current_version < latest_version:
+                schema_table.add_row("Status", "⚠️ Update available")
+                schema_table.add_row("Action Needed", "Run 'aico db init' to update")
+            else:
+                schema_table.add_row("Status", "✅ Up to date")
+                schema_table.add_row("Action Needed", "None")
+            
+            console.print(schema_table)
+            
+        except Exception as e:
+            console.print(f"⚠️ [yellow]Could not check schema version: {e}[/yellow]")
+        
+        # Test encrypted connection
+        console.print("\n🔍 Testing encrypted database connection...")
         if conn.verify_encryption():
-            console.print("✅ [green]Database encryption verified successfully[/green]")
+            console.print("✅ [green]Encrypted connection verified successfully[/green]")
         else:
-            console.print("⚠️ [yellow]Database encryption verification failed[/yellow]")
+            console.print("⚠️ [yellow]Encrypted connection verification failed[/yellow]")
         
     except Exception as e:
         console.print(f"❌ [red]Failed to check database status: {e}[/red]")
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Test database connection and basic operations")
 def test(
     db_path: str = typer.Option(None, help="Database file path (optional - uses config default)"),
     db_type: str = typer.Option("libsql", help="Database type (libsql, duckdb, chroma, rocksdb)"),
@@ -445,7 +545,7 @@ def test(
                 conn.execute(f"DROP TABLE IF EXISTS {test_table_name}")
                 console.print(f"🧹 Cleaned up test table: {test_table_name}")
             except:
-                pass
+                pass  # Expected failure during cleanup - table may not exist or connection may be closed
             console.print(f"❌ [red]Database test failed: {test_error}[/red]")
             raise test_error
         
@@ -575,50 +675,45 @@ def _get_db_connection():
     """Get database connection for content commands"""
     try:
         config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        
         key_manager = AICOKeyManager()
         
         # Get database path
         paths = AICOPaths()
         db_path = paths.resolve_database_path("aico.db")
         
+        # Check if database file exists first
+        if not db_path.exists():
+            console.print(f"❌ [red]Database not found: {db_path}[/red]")
+            console.print("💡 [yellow]Run 'aico db init' to create the database first[/yellow]")
+            raise typer.Exit(1)
+        
         # Connect to database using session-based authentication
         conn = _get_database_connection(str(db_path))
         
-        # Simple CLI logging: manually write a test log to verify database logging works
+        # Initialize CLI logging with direct database transport BEFORE operations
+        # But don't fail if logging setup fails - just warn
         try:
-            from datetime import datetime
-            test_log_sql = """
-                INSERT INTO logs (
-                    timestamp, level, subsystem, module, function_name,
-                    file_path, line_number, topic, message, user_id,
-                    session_id, trace_id, extra
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-            test_values = [
-                datetime.utcnow().isoformat() + "Z",
-                "INFO",
-                "cli",
-                "database",
-                "_get_db_connection",
-                __file__,
-                None,
-                "cli.database.connection",
-                "CLI database connection established",
-                None, None, None, None
-            ]
-            conn.execute(test_log_sql, test_values)
-            conn.commit()
+            initialize_cli_logging(config, conn)
+            # Verify logging works by testing actual log write
+            test_logger = get_logger("cli", "database")
+            test_logger.info("Accessing DB from CLI.")
+            console.print("✅ [green]CLI logging verified for test command[/green]")
         except Exception as e:
-            print(f"[CLI LOG TEST ERROR] {e}")
+            console.print(f"⚠️ [yellow]CLI logging setup failed (continuing without database logging): {e}[/yellow]")
         
         return conn
         
+    except typer.Exit:
+        # Re-raise typer exits (like database not found)
+        raise
     except Exception as e:
         console.print(f"[red]Error connecting to database: {e}[/red]")
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="List all tables in database")
 def ls():
     """List all tables in database"""
     conn = _get_db_connection()
@@ -653,7 +748,7 @@ def ls():
     console.print()
 
 
-@app.command()
+@app.command(help="Describe table structure (schema)")
 def desc(table_name: str = typer.Argument(..., help="Table name to describe")):
     """Describe table structure (schema)"""
     conn = _get_db_connection()
@@ -698,7 +793,7 @@ def desc(table_name: str = typer.Argument(..., help="Table name to describe")):
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Count records in table(s)")
 def count(
     table: Optional[str] = typer.Option(None, "--table", help="Specific table to count"),
     all: bool = typer.Option(False, "--all", help="Count all tables")
@@ -749,10 +844,11 @@ def count(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Show first N records from table")
 def head(
     table_name: str = typer.Argument(..., help="Table name"),
-    limit: int = typer.Option(10, "--limit", "-n", help="Number of records to show")
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of records to show"),
+    utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Show first N records from table"""
     conn = _get_db_connection()
@@ -765,7 +861,7 @@ def head(
             return
         
         # Get column names
-        columns = [desc[0] for desc in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
+        columns = [desc[1] for desc in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
         
         table = Table(
             title=f"✨ [bold cyan]First {limit} records from {table_name}[/bold cyan]",
@@ -777,16 +873,14 @@ def head(
         )
         
         for col in columns:
-            table.add_column(col, style="white")
+            col_header = col + get_timezone_suffix(utc) if col.lower() in ['timestamp', 'created_at', 'updated_at', 'date'] else col
+            table.add_column(col_header, style="white")
         
         for record in records:
-            # Truncate long values for display
             row_data = []
-            for value in record:
-                str_value = str(value) if value is not None else ""
-                if len(str_value) > 50:
-                    str_value = str_value[:47] + "..."
-                row_data.append(str_value)
+            for i, value in enumerate(record):
+                formatted_value = _format_table_value(value, columns[i], utc)
+                row_data.append(formatted_value)
             table.add_row(*row_data)
         
         console.print()
@@ -798,7 +892,7 @@ def head(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Database statistics (size, indexes, etc.)")
 def stat():
     """Database statistics (size, indexes, etc.)"""
     conn = _get_db_connection()
@@ -822,8 +916,9 @@ def stat():
             try:
                 count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
                 total_records += count
-            except:
-                pass
+            except Exception as e:
+                console.print(f"[yellow]Warning: Could not count records in table '{table_name}': {e}[/yellow]")
+                # Continue with other tables - don't let one bad table break entire stats
         
         content = []
         content.append(f"[bold yellow]Database Size:[/bold yellow] [bold white]{size_mb:.2f} MB[/bold white]")
@@ -865,7 +960,7 @@ def vacuum():
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Database integrity check")
 def check():
     """Integrity check"""
     conn = _get_db_connection()
@@ -884,10 +979,11 @@ def check():
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help="Show last N records from table")
 def tail(
     table_name: str = typer.Argument(..., help="Table name"),
-    limit: int = typer.Option(10, "--limit", "-n", help="Number of records to show")
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of records to show"),
+    utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Show last N records from table"""
     conn = _get_db_connection()
@@ -908,7 +1004,7 @@ def tail(
             return
         
         # Get column names
-        columns = [desc[0] for desc in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
+        columns = [desc[1] for desc in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
         
         table = Table(
             title=f"✨ [bold cyan]Last {limit} records from {table_name}[/bold cyan]",
@@ -920,16 +1016,14 @@ def tail(
         )
         
         for col in columns:
-            table.add_column(col, style="white")
+            col_header = col + get_timezone_suffix(utc) if col.lower() in ['timestamp', 'created_at', 'updated_at', 'date'] else col
+            table.add_column(col_header, style="white")
         
         for record in records:
-            # Truncate long values for display
             row_data = []
-            for value in record:
-                str_value = str(value) if value is not None else ""
-                if len(str_value) > 50:
-                    str_value = str_value[:47] + "..."
-                row_data.append(str_value)
+            for i, value in enumerate(record):
+                formatted_value = _format_table_value(value, columns[i], utc)
+                row_data.append(formatted_value)
             table.add_row(*row_data)
         
         console.print()
@@ -945,7 +1039,8 @@ def tail(
 @destructive("allows arbitrary SQL execution including DROP, DELETE, UPDATE")
 def exec(
     query: str = typer.Argument(..., help="SQL query to execute"),
-    format: str = typer.Option("table", "--format", help="Output format: table, json")
+    format: str = typer.Option("table", "--format", help="Output format: table, json"),
+    utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Execute raw SQL query"""
     conn = _get_db_connection()
@@ -1014,11 +1109,16 @@ def exec(
                     columns = [f"col_{i+1}" for i in range(len(result[0]))]
                 
                 for col in columns:
-                    table.add_column(col, style="white")
+                    col_header = col + get_timezone_suffix(utc) if col.lower() in ['timestamp', 'created_at', 'updated_at', 'date'] else col
+                    table.add_column(col_header, style="white")
                 
                 # Add rows
                 for row in result:
-                    table.add_row(*[str(val) if val is not None else "" for val in row])
+                    row_data = []
+                    for i, val in enumerate(row):
+                        formatted_value = _format_table_value(val, columns[i], utc)
+                        row_data.append(formatted_value)
+                    table.add_row(*row_data)
                 
                 console.print()
                 console.print(table)
@@ -1029,6 +1129,9 @@ def exec(
     except Exception as e:
         console.print(f"[red]Error executing query: {e}[/red]")
         raise typer.Exit(1)
+
+
+# Removed sync and snapshot commands - use 'aico db init' for database creation and updates
 
 
 if __name__ == "__main__":

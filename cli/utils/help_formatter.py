@@ -42,7 +42,9 @@ def format_command_help(
     # Commands with proper alignment
     for icon, name, description in commands:
         # Use consistent spacing like the original design
-        console.print(f"{icon} [green]{name:<12}[/green] {description}")
+        # Add extra space for compound emojis that take more visual width
+        spacing = "  " if icon == "🛢️" else " "
+        console.print(f"{icon}{spacing}[green]{name:<12}[/green] {description}")
     
     console.print()
     

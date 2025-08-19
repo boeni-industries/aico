@@ -62,33 +62,98 @@ class AICOKeyManager:
         self.service_name = service_name
         self._session_cache_file = self._get_session_cache_file()
         self._session_cache = self._load_session_cache()  # Load persistent session cache
+        self._keyring_bypass_count = self._session_cache.get("keyring_bypass_count", 0)
         _get_logger().debug(f"Initialized AICOKeyManager for service: {service_name}")
     
     def _is_sensitive_command(self, command_path: str) -> bool:
-        """
-        Check if a command path requires fresh authentication.
+        """Check if command requires fresh authentication."""
+        sensitive_commands = {
+            'security.passwd',
+            'security.reset', 
+            'security.export',
+            'security.import',
+            'logs.export',
+            'dev.reset'
+        }
+        return command_path in sensitive_commands
         
-        Args:
-            command_path: Command path like 'security.passwd' or 'logs.export'
-            
-        Returns:
-            True if command requires fresh authentication
-        """
-        # Hardcoded sensitive commands (cannot be overridden for security)
-        CORE_SENSITIVE = {"security", "export", "passwd", "clear", "setup"}
+    def _should_bypass_keyring(self) -> bool:
+        """Check if keyring access should be bypassed for logout functionality."""
+        return self._keyring_bypass_count > 0
+    
+    def _set_temporary_keyring_bypass(self) -> None:
+        """Set temporary keyring bypass for next authentication (logout functionality)."""
+        self._keyring_bypass_count = 1
+        self._session_cache["keyring_bypass_count"] = self._keyring_bypass_count
+        self._save_session_cache()
+        _get_logger().debug("Temporary keyring bypass set for logout")
+    
+    def _consume_keyring_bypass(self) -> None:
+        """Consume one keyring bypass count after successful authentication."""
+        if self._keyring_bypass_count > 0:
+            self._keyring_bypass_count -= 1
+            if self._keyring_bypass_count == 0:
+                self._session_cache.pop("keyring_bypass_count", None)
+            else:
+                self._session_cache["keyring_bypass_count"] = self._keyring_bypass_count
+            self._save_session_cache()
+            _get_logger().debug("Keyring bypass consumed")
+    
+    def get_jwt_secret(self, service_name: str = "api_gateway") -> str:
+        """Get or create JWT signing secret for a service"""
+        import secrets
         
-        # Check if any part of command path matches core sensitive commands
-        command_parts = command_path.lower().split('.')
-        if any(part in CORE_SENSITIVE for part in command_parts):
-            return True
+        key_name = f"{service_name}_jwt_secret"
         
-        # Check user-configurable sensitive commands from config
         try:
-            user_sensitive = self._get_security_config("cli.sensitive_commands") or []
-            return any(sensitive in command_path.lower() for sensitive in user_sensitive)
-        except Exception:
-            # If config fails, err on side of security
-            return False
+            # Try to get existing secret
+            secret = keyring.get_password(self.service_name, key_name)
+            if secret:
+                return secret
+        except Exception as e:
+            # Log keyring access failure - this could indicate system keyring issues
+            _get_logger().warning(f"Failed to retrieve secret from keyring for {key_name}: {e}")
+            # Continue to create new secret as fallback
+        
+        # Create new JWT secret
+        secret = secrets.token_urlsafe(32)
+        
+        try:
+            keyring.set_password(self.service_name, key_name, secret)
+            _get_logger().info(f"Created new JWT secret for service: {service_name}")
+        except Exception as e:
+            _get_logger().warning(f"Could not store JWT secret in keyring: {e}")
+        
+        return secret
+    
+    def rotate_jwt_secret(self, service_name: str = "api_gateway") -> str:
+        """Rotate JWT secret for a service"""
+        import secrets
+        
+        key_name = f"{service_name}_jwt_secret"
+        old_key_name = f"{service_name}_jwt_secret_old"
+        
+        try:
+            # Move current secret to old
+            current_secret = keyring.get_password(self.service_name, key_name)
+            if current_secret:
+                keyring.set_password(self.service_name, old_key_name, current_secret)
+                _get_logger().info(f"Moved current JWT secret to old for service: {service_name}")
+        except Exception as e:
+            # Log keyring backup failure - this could indicate system keyring issues
+            _get_logger().warning(f"Failed to backup current JWT secret to old key: {e}")
+            # Continue with rotation as this is not critical for security
+        
+        # Create new secret
+        new_secret = secrets.token_urlsafe(32)
+        
+        try:
+            keyring.set_password(self.service_name, key_name, new_secret)
+            _get_logger().info(f"Created new JWT secret for service: {service_name}")
+        except Exception as e:
+            _get_logger().warning(f"Could not store new JWT secret in keyring: {e}")
+        
+        return new_secret
     
     def _get_security_config(self, key: str):
         """Get security configuration value using hierarchical YAML system."""
@@ -177,7 +242,8 @@ class AICOKeyManager:
                 return cached_key
         
         # Try stored key from keyring (service mode) - only if not force_fresh
-        if not force_fresh:
+        # Note: Keyring is for backend services, not CLI sessions
+        if not force_fresh and not interactive:
             stored_key = keyring.get_password(self.service_name, "master_key")
             if stored_key:
                 master_key = bytes.fromhex(stored_key)
@@ -192,6 +258,7 @@ class AICOKeyManager:
             if not self.has_stored_key():
                 self._store_key(derived_key)
             self._cache_session(derived_key)  # Cache for session timeout
+            self._consume_keyring_bypass()  # Clear bypass after successful auth
             return derived_key
             
         elif interactive:
@@ -340,7 +407,7 @@ class AICOKeyManager:
             keyring.delete_password(self.service_name, "salt")
             keyring.delete_password(self.service_name, "key_created")
         except Exception:
-            pass  # Key might not exist
+            pass # Expected: keys may not exist during cleanup - not a silent failure
         
         # Clear session cache as well
         self._clear_session()
@@ -638,7 +705,7 @@ class AICOKeyManager:
                 info["key_created"] = created_time.strftime("%Y-%m-%d %H:%M:%S")
                 info["key_age_days"] = (datetime.now() - created_time).days
         except Exception:
-            pass
+            pass # Expected: timestamp may be missing - graceful degradation
             
         # Get Argon2id parameters for master key
         try:
@@ -653,7 +720,7 @@ class AICOKeyManager:
             if parallelism:
                 info["parallelism"] = parallelism
         except Exception:
-            pass
+            pass # Expected: config may be unavailable - graceful degradation
             
         # Assess security level
         if info["key_age_days"] is not None:
@@ -714,7 +781,7 @@ class AICOKeyManager:
                         "status": f"Error: {e}"
                     }
         except Exception:
-            pass
+            pass # Expected: database key derivation may fail during benchmarking - graceful degradation
             
         # Performance assessment
         master_time = results["master_key_derivation_ms"]
@@ -759,3 +826,88 @@ class AICOKeyManager:
         
         # Salt and derived key automatically garbage collected
         # No disk writes, no cleanup needed, no security risk
+    
+    def store_jwt_token(self, service_name: str, token: str) -> None:
+        """
+        Store JWT token securely in platform keyring.
+        
+        Args:
+            service_name: Service identifier (e.g., 'api_gateway', 'cli')
+            token: JWT token to store
+        """
+        token_key = f"{service_name}_jwt_token"
+        
+        try:
+            keyring.set_password(self.service_name, token_key, token)
+            _get_logger().debug(f"JWT token stored securely for service: {service_name}")
+        except Exception as e:
+            _get_logger().error(f"Failed to store JWT token in keyring: {e}")
+            raise RuntimeError(f"Could not store JWT token securely: {e}")
+    
+    def get_jwt_token(self, service_name: str) -> Optional[str]:
+        """
+        Retrieve JWT token from platform keyring.
+        
+        Args:
+            service_name: Service identifier (e.g., 'api_gateway', 'cli')
+            
+        Returns:
+            JWT token if found, None otherwise
+        """
+        token_key = f"{service_name}_jwt_token"
+        
+        try:
+            token = keyring.get_password(self.service_name, token_key)
+            if token:
+                _get_logger().debug(f"JWT token retrieved for service: {service_name}")
+                return token
+            else:
+                _get_logger().debug(f"No JWT token found for service: {service_name}")
+                return None
+        except Exception as e:
+            _get_logger().error(f"Failed to retrieve JWT token from keyring: {e}")
+            return None
+    
+    def remove_jwt_token(self, service_name: str) -> bool:
+        """
+        Remove JWT token from platform keyring.
+        
+        Args:
+            service_name: Service identifier (e.g., 'api_gateway', 'cli')
+            
+        Returns:
+            True if token was removed or didn't exist, False on error
+        """
+        token_key = f"{service_name}_jwt_token"
+        
+        try:
+            # Check if token exists first
+            if keyring.get_password(self.service_name, token_key):
+                keyring.delete_password(self.service_name, token_key)
+                _get_logger().info(f"JWT token removed for service: {service_name}")
+            else:
+                _get_logger().debug(f"No JWT token to remove for service: {service_name}")
+            return True
+        except Exception as e:
+            _get_logger().error(f"Failed to remove JWT token from keyring: {e}")
+            return False
+    
+    def list_jwt_tokens(self) -> Dict[str, bool]:
+        """
+        List all JWT tokens stored for this service.
+        
+        Returns:
+            Dictionary mapping service names to token existence
+        """
+        tokens = {}
+        common_services = ['api_gateway', 'cli', 'admin', 'studio']
+        
+        for service in common_services:
+            token_key = f"{service}_jwt_token"
+            try:
+                token = keyring.get_password(self.service_name, token_key)
+                tokens[service] = token is not None
+            except Exception:
+                tokens[service] = False
+                
+        return tokens

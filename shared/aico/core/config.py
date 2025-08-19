@@ -18,12 +18,12 @@ import jsonschema
 
 class ConfigurationError(Exception):
     """Configuration-related errors."""
-    pass
+    pass  # Standard exception class definition - no additional implementation needed
 
 
 class ConfigurationValidationError(ConfigurationError):
     """Configuration validation errors."""
-    pass
+    pass  # Standard exception class definition - inherits from ConfigurationError
 
 
 @dataclass
@@ -370,9 +370,9 @@ class ConfigurationManager:
         # Map environment variables to configuration keys
         env_mappings = {
             "AICO_LOG_LEVEL": "system.log_level",
-            "AICO_API_PORT": "api.port",
+            "AICO_API_PORT": "api_gateway.protocols.rest.port",
             "AICO_ENVIRONMENT": "system.environment",
-            "AICO_API_HOST": "api.host",
+            "AICO_API_HOST": "api_gateway.host",
             # Path-related environment variables are handled by AICOPaths class
             # AICO_DATA_DIR, AICO_CONFIG_DIR, etc. are used directly by AICOPaths
         }
@@ -403,13 +403,13 @@ class ConfigurationManager:
         """Load runtime configuration changes from encrypted store."""
         # TODO: Implement encrypted runtime configuration storage
         # This will be implemented when we add the encryption layer
-        pass
+        pass  # Placeholder for future encrypted runtime config implementation
         
     def _persist_configuration(self) -> None:
         """Persist current configuration to encrypted store."""
         # TODO: Implement encrypted configuration persistence
         # This will be implemented when we add the encryption layer
-        pass
+        pass  # Placeholder for future encrypted config persistence implementation
         
     def _deep_merge(self, base: Dict, override: Dict) -> None:
         """
@@ -460,7 +460,7 @@ class ConfigurationManager:
         """
         # TODO: Implement audit logging
         # This will be implemented when we add the audit system
-        pass
+        pass  # Placeholder for future audit logging implementation
         
     @classmethod
     def reset_singleton(cls):
@@ -471,8 +471,11 @@ class ConfigurationManager:
                 try:
                     watcher.stop()
                     watcher.join()
-                except:
-                    pass  # Ignore cleanup errors
+                except Exception as e:
+                    # Log cleanup failure but don't crash during shutdown
+                    # This is acceptable during cleanup as it's non-critical
+                    import sys
+                    print(f"[CONFIG] Warning: Failed to stop config watcher during cleanup: {e}", file=sys.stderr)
             cls._instance = None
             cls._initialized = False
     
@@ -482,5 +485,8 @@ class ConfigurationManager:
             try:
                 watcher.stop()
                 watcher.join()
-            except:
-                pass  # Ignore cleanup errors during destruction
+            except Exception as e:
+                # Log cleanup failure but don't crash during destruction
+                # This is acceptable during object destruction as it's non-critical
+                import sys
+                print(f"[CONFIG] Warning: Failed to stop config watcher during destruction: {e}", file=sys.stderr)

@@ -134,7 +134,8 @@ console.print("[dim]Use 'aico COMMAND --help' for more information.[/dim]")
 table = Table(
     title="✨ [bold cyan]Title Here[/bold cyan]",
     title_style="bold cyan",
-    border_style="bright_blue",
+    title_justify="left",
+    border_style="bright_blue", 
     header_style="bold yellow",
     show_lines=False,
     box=box.SIMPLE_HEAD,

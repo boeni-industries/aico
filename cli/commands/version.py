@@ -1,16 +1,24 @@
 import typer
+from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
 from pathlib import Path
 import sys
+import re
+import json
+
+# Import utils
+utils_path = Path(__file__).parent.parent / "utils"
+sys.path.insert(0, str(utils_path))
+from timezone import format_timestamp_local, get_timezone_suffix
 
 # Standard Rich console - encoding is fixed at app startup
 from rich.console import Console
 
-def version_callback(ctx: typer.Context):
-    """Show help when no subcommand is given instead of showing an error."""
-    if ctx.invoked_subcommand is None:
+def version_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
+    """Show help when no subcommand is given or --help is used."""
+    if ctx.invoked_subcommand is None or help:
         from utils.help_formatter import format_subcommand_help
         
         subcommands = [
@@ -42,7 +50,8 @@ def version_callback(ctx: typer.Context):
 app = typer.Typer(
     help="Manage and synchronize versions across all AICO subsystems.",
     callback=version_callback,
-    invoke_without_command=True
+    invoke_without_command=True,
+    context_settings={"help_option_names": []}
 )
 
 # Standard Rich console - encoding is fixed at app startup
@@ -161,7 +170,8 @@ def history(
         None,
         help="Which subsystem to show history for (shared/cli/backend/frontend/studio/all). If omitted, shows all.",
         show_default=False
-    )
+    ),
+    utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """
     Show the version history for a subsystem (or all subsystems).
@@ -200,14 +210,14 @@ def history(
         elif line.startswith("Author:") and current_commit:
             current_commit["author"] = line[len("Author:"):].strip()
         elif line.startswith("Date:") and current_commit:
-            # Format date as YYYY-MM-DD HH:MM
+            # Parse Git date and store as ISO format for timezone handling
             dt = line[len("Date:"):].strip()
             try:
                 dt_obj = datetime.datetime.strptime(dt, "%a %b %d %H:%M:%S %Y %z")
-                dt_fmt = dt_obj.strftime("%Y-%m-%d %H:%M")
+                # Store as ISO format with timezone for later formatting
+                current_commit["date"] = dt_obj.isoformat()
             except Exception:
-                dt_fmt = dt
-            current_commit["date"] = dt_fmt
+                current_commit["date"] = dt
         elif line.startswith("    ") and current_commit and not current_commit["msg"]:
             current_commit["msg"] = line.strip()
         elif line.startswith("@@") and current_commit:
@@ -259,7 +269,9 @@ def history(
         table.add_column("New", style="bold green", justify="left")
         table.add_column("Commit", style="dim", justify="left")
         table.add_column("Author", style="white", justify="left")
-        table.add_column("Date", style="white", justify="left")
+        # Dynamic date column header based on timezone preference
+        date_header = f"Date{get_timezone_suffix(utc)}"
+        table.add_column(date_header, style="white", justify="left")
         table.add_column("Message", style="dim", justify="left")
 
         # Build version change pairs (old, new)
@@ -272,12 +284,14 @@ def history(
                 version_pairs.append((prev, change["version"], change))
                 prev = None
         for old, new, meta in version_pairs:
+            # Format timestamp using timezone utility
+            formatted_date = format_timestamp_local(meta["date"], show_utc=utc) if meta["date"] and "T" in str(meta["date"]) else meta["date"]
             table.add_row(
                 old,
                 f"[bold green]{new}[/bold green]",
                 meta["commit"][:8],
                 meta["author"],
-                meta["date"],
+                formatted_date,
                 meta["msg"]
             )
         console.print()
@@ -296,17 +310,17 @@ def get_project_root():
         return Path(__file__).parent.parent.parent
 
 def update_cli_version(version: str):
-    """Update version in cli/aico.py"""
-    cli_file = get_project_root() / "cli" / "aico.py"
+    """Update version in cli/pyproject.toml"""
+    cli_file = get_project_root() / "cli" / "pyproject.toml"
     if not cli_file.exists():
         return False
     
     content = cli_file.read_text(encoding='utf-8')
-    # Replace __version__ = "x.x.x" with new version
+    # Replace version = "x.x.x" with new version
     import re
     new_content = re.sub(
-r'__version__\s*=\s*["\'][^"\']*["\']',
-        f'__version__ = "{version}"',
+        r'version\s*=\s*["\'][^"\']*["\']',
+        f'version = "{version}"',
         content
     )
     
@@ -317,45 +331,60 @@ r'__version__\s*=\s*["\'][^"\']*["\']',
 
 # Update version in shared/setup.py
 def update_shared_version(version: str):
-    """Update version in shared/setup.py"""
-    setup_file = get_project_root() / "shared" / "setup.py"
-    if not setup_file.exists():
+    """Update version in shared/pyproject.toml"""
+    pyproject_file = get_project_root() / "shared" / "pyproject.toml"
+    if not pyproject_file.exists():
         return False
     
-    content = setup_file.read_text(encoding='utf-8')
-    # Replace version="x.x.x" with new version
+    content = pyproject_file.read_text(encoding='utf-8')
+    # Replace version = "x.x.x" with new version
     import re
     new_content = re.sub(
         r'version\s*=\s*["\'][^"\']*["\']',
-        f'version="{version}"',
+        f'version = "{version}"',
         content
     )
     
     if new_content != content:
-        setup_file.write_text(new_content, encoding='utf-8')
+        pyproject_file.write_text(new_content, encoding='utf-8')
         return True
     return False
 
 # Update version in backend project files
 def update_backend_version(version: str):
-    """Update version in backend project files"""
+    """Update version in backend project files (both pyproject.toml and main.py)"""
     backend_dir = get_project_root() / "backend"
+    updated = False
     
-    # Check main.py first (current structure)
+    # Update pyproject.toml
+    pyproject_file = backend_dir / "pyproject.toml"
+    if pyproject_file.exists():
+        content = pyproject_file.read_text(encoding='utf-8')
+        import re
+        new_content = re.sub(
+            r'version\s*=\s*["\'][^"\']*["\']',
+            f'version = "{version}"',
+            content
+        )
+        if new_content != content:
+            pyproject_file.write_text(new_content, encoding='utf-8')
+            updated = True
+    
+    # Update main.py __version__
     main_file = backend_dir / "main.py"
     if main_file.exists():
         content = main_file.read_text(encoding='utf-8')
         import re
         new_content = re.sub(
-        r'__version__\s*=\s*["\'][^"\']*["\']',
-        f'__version__ = "{version}"',
+            r'__version__\s*=\s*["\'][^"\']*["\']',
+            f'__version__ = "{version}"',
             content
         )
         if new_content != content:
             main_file.write_text(new_content, encoding='utf-8')
-            return True
+            updated = True
     
-    return False
+    return updated
 
 def update_frontend_version(version: str):
     """Update version in frontend/pubspec.yaml"""
@@ -394,8 +423,11 @@ def update_studio_version(version: str):
                 with open(package_file, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
                 return True
-    except (json.JSONDecodeError, IOError):
-        pass
+    except (json.JSONDecodeError, IOError) as e:
+        # Log JSON file operation failure - this could indicate file corruption or permissions
+        from rich.console import Console
+        console = Console()
+        console.print(f"[yellow]Warning: Failed to update package.json version in {package_file}: {e}[/yellow]")
     
     return False
 
@@ -543,22 +575,34 @@ def check(
         console.print("[bold green]All versions match![/bold green]\n")
 
 def read_cli_version():
-    cli_file = get_project_root() / "cli" / "aico.py"
+    cli_file = get_project_root() / "cli" / "pyproject.toml"
     if not cli_file.exists():
         return None
-    import re
     content = cli_file.read_text(encoding='utf-8')
-    match = re.search(r'__version__\s*=\s*["\']([^"\']*)["\']', content)
+    import re
+    match = re.search(r'version\s*=\s*["\']([^"\']*)["\']', content)
     return match.group(1) if match else None
 
 def read_backend_version():
-    backend_file = get_project_root() / "backend" / "main.py"
-    if not backend_file.exists():
-        return None
-    import re
-    content = backend_file.read_text(encoding='utf-8')
-    match = re.search(r'__version__\s*=\s*["\']([^"\']*)["\']', content)
-    return match.group(1) if match else None
+    # Try pyproject.toml first (canonical source)
+    backend_file = get_project_root() / "backend" / "pyproject.toml"
+    if backend_file.exists():
+        content = backend_file.read_text(encoding='utf-8')
+        import re
+        match = re.search(r'version\s*=\s*["\']([^"\']*)["\']', content)
+        if match:
+            return match.group(1)
+    
+    # Fallback to main.py
+    main_file = get_project_root() / "backend" / "main.py"
+    if main_file.exists():
+        content = main_file.read_text(encoding='utf-8')
+        import re
+        match = re.search(r'__version__\s*=\s*["\']([^"\']*)["\']', content)
+        if match:
+            return match.group(1)
+    
+    return None
 
 def read_frontend_version():
     frontend_file = get_project_root() / "frontend" / "pubspec.yaml"
@@ -570,12 +614,12 @@ def read_frontend_version():
     return match.group(1) if match else None
 
 def read_shared_version():
-    """Read version from shared/setup.py by parsing the version string."""
-    setup_file = get_project_root() / "shared" / "setup.py"
-    if not setup_file.exists():
+    """Read version from shared/pyproject.toml by parsing the version string."""
+    pyproject_file = get_project_root() / "shared" / "pyproject.toml"
+    if not pyproject_file.exists():
         return None
     try:
-        content = setup_file.read_text(encoding='utf-8')
+        content = pyproject_file.read_text(encoding='utf-8')
         import re
         match = re.search(r'version\s*=\s*["\']([^"\']*)["\']', content)
         return match.group(1) if match else None
@@ -761,14 +805,24 @@ def bump(
     # Commit changes
     commit_msg = f"Bump {subsystem} version to {new_version}"
     subprocess.run(["git", "add", str(versions_path)], check=True)
-    project_file = {
-        "shared": get_project_root() / "shared" / "setup.py",
-        "cli": get_project_root() / "cli" / "aico.py",
-        "backend": get_project_root() / "backend" / "main.py",
-        "frontend": get_project_root() / "frontend" / "pubspec.yaml",
-        "studio": get_project_root() / "studio" / "package.json"
-    }[subsystem]
-    subprocess.run(["git", "add", str(project_file)], check=True)
+    # For git commits, we need to add both files for backend
+    if subsystem == "backend":
+        # Add both pyproject.toml and main.py for backend
+        backend_pyproject = get_project_root() / "backend" / "pyproject.toml"
+        backend_main = get_project_root() / "backend" / "main.py"
+        if backend_pyproject.exists():
+            subprocess.run(["git", "add", str(backend_pyproject)], check=True)
+        if backend_main.exists():
+            subprocess.run(["git", "add", str(backend_main)], check=True)
+    else:
+        project_file = {
+            "shared": get_project_root() / "shared" / "pyproject.toml",
+            "cli": get_project_root() / "cli" / "pyproject.toml",
+            "frontend": get_project_root() / "frontend" / "pubspec.yaml",
+            "studio": get_project_root() / "studio" / "package.json"
+        }[subsystem]
+        subprocess.run(["git", "add", str(project_file)], check=True)
+    # Project file addition is now handled above
     subprocess.run(["git", "commit", "-m", commit_msg], check=True)
 
     tag_name = f"aico-{subsystem}-v{new_version}"

@@ -1,0 +1,62 @@
+/Users/mbo/Documents/dev/aico/backend/message_bus_host.py:75: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  now = datetime.utcnow()
+/Users/mbo/Documents/dev/aico/backend/message_bus_host.py:112: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  now = datetime.utcnow()
+[LOGGER FACTORY] Creating logger for backend.message_bus_host
+[LOGGER FACTORY] Creating ZMQ transport, ZMQ_AVAILABLE=True
+[ZMQ TRANSPORT] Connecting to tcp://localhost:5555
+[ZMQ TRANSPORT] Connected successfully
+[LOGGER FACTORY] Transport for backend.message_bus_host: <aico.core.logging.ZMQLogTransport object at 0x106df4ad0>
+[LOGGER FACTORY] Creating logger for bus.broker
+[LOGGER FACTORY] Transport for bus.broker: <aico.core.logging.ZMQLogTransport object at 0x106df4ad0>
+[seconds: 1755040445
+nanos: 714256000
+] 20 bus.broker: Message bus broker started on tcp://*:5555
+[LOGGER FACTORY] Creating logger for bus.client.system.message_bus_host
+[LOGGER FACTORY] Transport for bus.client.system.message_bus_host: <aico.core.logging.ZMQLogTransport object at 0x106df4ad0>
+[seconds: 1755040445
+nanos: 714483000
+] 20 bus.client.system.message_bus_host: Connecting to message bus at localhost:5555/5556
+[seconds: 1755040445
+nanos: 714680000
+] 20 bus.client.system.message_bus_host: Connected to message bus at tcp://localhost:5555
+[seconds: 1755040445
+nanos: 714708000
+] 20 bus.broker: Granted topic '*' access to client 'system.message_bus_host'
+[seconds: 1755040445
+nanos: 714725000
+] 20 bus.broker: Granted topic 'conversation.*' access to client 'backend.api_gateway'
+[seconds: 1755040445
+nanos: 714739000
+] 20 bus.broker: Granted topic 'emotion.*' access to client 'backend.api_gateway'
+[seconds: 1755040445
+nanos: 714755000
+] 20 bus.broker: Granted topic 'personality.*' access to client 'backend.api_gateway'
+[seconds: 1755040445
+nanos: 714766000
+] 20 bus.broker: Granted topic 'system.status.*' access to client 'backend.api_gateway'
+[seconds: 1755040445
+nanos: 714778000
+] 20 bus.broker: Granted topic 'admin.*' access to client 'backend.api_gateway'
+[seconds: 1755040445
+nanos: 714790000
+] 20 backend.message_bus_host: Message bus host started on tcp://*:5555
+[seconds: 1755040445
+nanos: 715085000
+] 20 backend.message_bus_host: Message bus host started successfully
+Message bus stats: {'persistence_enabled': False}
+[seconds: 1755040445
+nanos: 715197000
+] 20 backend.message_bus_host: Message bus host stopping
+[seconds: 1755040445
+nanos: 715423000
+] 20 bus.client.system.message_bus_host: Disconnected from message bus
+[seconds: 1755040445
+nanos: 715598000
+] 20 bus.broker: ZeroMQ proxy started in background thread
+[seconds: 1755040445
+nanos: 816121000
+] 20 bus.broker: Message bus broker stopped
+[seconds: 1755040445
+nanos: 816160000
+] 20 backend.message_bus_host: Message bus host stopped

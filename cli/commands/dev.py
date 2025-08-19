@@ -18,9 +18,9 @@ from aico.core.config import ConfigurationManager
 
 console = Console()
 
-def dev_callback(ctx: typer.Context):
-    """Show help when no subcommand is given instead of showing an error."""
-    if ctx.invoked_subcommand is None:
+def dev_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
+    """Show help when no subcommand is given or --help is used."""
+    if ctx.invoked_subcommand is None or help:
         from utils.help_formatter import format_subcommand_help
         
         subcommands = [
@@ -47,7 +47,8 @@ def dev_callback(ctx: typer.Context):
 app = typer.Typer(
     help="🧹 Development utilities (DESTRUCTIVE - dev only)",
     callback=dev_callback,
-    invoke_without_command=True
+    invoke_without_command=True,
+    context_settings={"help_option_names": []}
 )
 
 
@@ -93,7 +94,7 @@ def _require_explicit_confirmation(operation_name: str, items_to_delete: list):
         raise typer.Exit()
 
 
-@app.command()
+@app.command(help="Wipe development data with granular control")
 def wipe(
     security: bool = typer.Option(False, "--security", help="Clear master password and keyring data"),
     data: bool = typer.Option(False, "--data", help="Remove databases and salt files"),
@@ -188,8 +189,10 @@ def wipe(
                     try:
                         keyring.delete_password(service_name, key_name)
                         console.print(f"🗑️ Cleared: {key_name}")
-                    except:
-                        pass
+                    except keyring.errors.PasswordDeleteError:
+                        console.print(f"📭 [dim]Key '{key_name}' not found in keyring[/dim]")
+                    except Exception as e:
+                        console.print(f"⚠️ [yellow]Failed to delete key '{key_name}': {e}[/yellow]")
                 
                 # Clear database-specific passwords (multiple patterns)
                 db_patterns = [
@@ -202,16 +205,20 @@ def wipe(
                     try:
                         keyring.delete_password(service_name, pattern)
                         console.print(f"🗑️ Cleared: {pattern}")
-                    except:
-                        pass
+                    except keyring.errors.PasswordDeleteError:
+                        console.print(f"📭 [dim]Password '{pattern}' not found in keyring[/dim]")
+                    except Exception as e:
+                        console.print(f"⚠️ [yellow]Failed to delete password '{pattern}': {e}[/yellow]")
                 
                 # Also try clearing with @AICO suffix (Windows Credential Manager pattern)
                 for pattern in db_patterns:
                     try:
                         keyring.delete_password(service_name, f"{pattern}@AICO")
                         console.print(f"🗑️ Cleared: {pattern}@AICO")
-                    except:
-                        pass
+                    except keyring.errors.PasswordDeleteError:
+                        console.print(f"📭 [dim]Password '{pattern}@AICO' not found in keyring[/dim]")
+                    except Exception as e:
+                        console.print(f"⚠️ [yellow]Failed to delete password '{pattern}@AICO': {e}[/yellow]")
                         
             except Exception as e:
                 console.print(f"⚠️ [yellow]Keyring cleanup warning: {e}[/yellow]")

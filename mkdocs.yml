@@ -135,6 +135,9 @@ nav:
     - Message Bus: architecture/message_bus.md
     - Plugin Manager: architecture/plugin_system.md
     - API Gateway: architecture/api_gateway.md
+    - API Reference: architecture/api_reference.md
+    - P2P Mesh Network: architecture/p2p_mesh.md
+    - Device Roaming: architecture/roaming.md
     - Update System: architecture/update_system.md
     - Data Layer: architecture/data_layer.md
     - Data Federation: architecture/data_federation.md
@@ -161,6 +164,7 @@ nav:
     - Personality Simulation: architecture/personality_sim.md
     - Emotion Simulation: architecture/emotion_sim.md
     - Emotion Recognition: '#'
+    - Social Relationship Modeling: concepts/social/social_relationship_modeling.md
   - Self-Awareness:
     - State Monitoring: '#'
     - Meta-Cognition: '#'
@@ -192,6 +196,9 @@ nav:
     - Namespaces: developer-guide/namespaces.md
     - CLI Handbook: developer-guide/cli_handbook.md
     - Schema Management: developer-guide/schema_management.md
+    - UUID Standards: developer-guide/uuid_standards.md
+    - UI/UX: uiux/design_principles.md
+    - Lessons Learned: developer-guide/lessons_learned.md
   - Roadmap:
     - Foundation: roadmap/foundation.md
     - MVP: roadmap/mvp.md

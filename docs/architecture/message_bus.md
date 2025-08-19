@@ -63,14 +63,31 @@ All message formats are explicitly versioned to enable:
 
 ## Technical Implementation
 
+### Message Bus Architecture
+
+The Core Message Bus implements a **hybrid broker pattern** with the backend service acting as the central message coordinator:
+
+**Internal Communication (Backend Modules):**
+- **Protocol**: ZeroMQ with Protocol Buffers
+- **Transport**: `inproc://` for same-process modules, `ipc://` for cross-process
+- **Pattern**: Pub/Sub with topic hierarchy
+- **Host**: Backend service runs central ZeroMQ broker on `tcp://localhost:5555`
+
+**External Communication (Subsystems):**
+- **Frontend (Flutter)**: WebSocket for real-time updates, REST API for commands
+- **CLI (Python)**: ZeroMQ IPC with localhost REST fallback
+- **Studio (React)**: REST API for admin operations, WebSocket for monitoring
+- **Transport**: All external clients connect to backend's API Gateway
+
 ### Message Bus Technology
 
-The Core Message Bus is implemented using **ZeroMQ** as the standard and only supported internal message bus for AICO.
+The Core Message Bus uses **ZeroMQ** as the standard internal messaging system:
 
 - High-performance, asynchronous messaging library
 - Lightweight and embedded within the application
 - Supports multiple messaging patterns (pub/sub, request/reply)
 - Provides reliable message delivery with minimal overhead
+- Proven architecture pattern (similar to ROS robotics framework)
 
 ZeroMQ is chosen for its performance, flexibility, and suitability for all local and internal communication needs in AICO.
 
@@ -250,6 +267,34 @@ The message bus is designed to handle:
    - Fine-grained topic subscriptions to reduce unnecessary message processing
    - Message filtering at the source when possible
    - Local caching of frequently accessed message data
+
+## Message Persistence
+
+### Storage Strategy
+
+**Database**: libSQL (already integrated and encrypted)
+- **Selective persistence** for audit logs, debugging, and cross-device sync
+- **Append-only message log** with SQL queryability
+- **JSON metadata** support for flexible message attributes
+
+**Storage Schema**:
+```sql
+CREATE TABLE events (
+    id INTEGER PRIMARY KEY,
+    timestamp DATETIME,
+    topic TEXT,
+    source TEXT,
+    message_type TEXT,
+    payload BLOB,      -- Protocol Buffer binary
+    metadata JSON,     -- Flexible attributes
+    INDEX(topic, timestamp)
+);
+```
+
+**Persistence Policy**:
+- **Always**: Security events, audit logs, admin actions
+- **Optional**: Debug mode message replay, cross-device sync
+- **Never**: High-frequency emotion states (unless debugging)
 
 ## Monitoring and Debugging
 

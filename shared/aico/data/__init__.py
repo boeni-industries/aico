@@ -23,6 +23,11 @@ from .libsql import (
     SchemaRegistry,
     register_schema
 )
+from .user import (
+    UserProfile,
+    AuthenticationData,
+    UserService
+)
 
 __all__ = [
     "LibSQLConnection",
@@ -32,4 +37,7 @@ __all__ = [
     "SchemaVersion",
     "SchemaRegistry",
     "register_schema",
+    "UserProfile",
+    "AuthenticationData", 
+    "UserService",
 ]

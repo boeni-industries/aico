@@ -48,6 +48,12 @@ Build the foundational system infrastructure that enables all AICO functionality
 - [ ] **Topic Hierarchy**: Full topic structure (emotion.*, personality.*, agency.*)
 - [ ] **Schema Validation**: JSON Schema validation for message types
 - [ ] **Error Handling**: Message delivery guarantees and error recovery
+
+### Task Scheduler Component
+- [ ] **Background Scheduler**: Implement task scheduler for zero-maintenance operations (log cleanup, key rotation, health checks)
+- [ ] **Cron-like Scheduling**: Support for periodic tasks with configurable intervals
+- [ ] **Task Registry**: Plugin system for registering scheduled tasks from different subsystems
+- [ ] **Failure Recovery**: Automatic retry logic and error handling for scheduled tasks
 - [ ] **Performance**: Optimize for 1000+ messages/second with <100ms latency
 
 ### Service Layer Enhancement
@@ -73,6 +79,16 @@ Build the foundational system infrastructure that enables all AICO functionality
 - [ ] **Caching**: Local caching for offline functionality
 
 ## Phase 3: Advanced Infrastructure
+
+### API Gateway Advanced Features
+- [ ] **Rate Limiting**: Advanced token bucket rate limiting with per-client quotas
+- [ ] **Admin Endpoint Separation**: Secure admin interface with role-based access control
+- [ ] **Federation Support**: Device-to-device communication for multi-device sync
+- [ ] **gRPC Protocol Support**: High-performance binary protocol adapter
+- [ ] **Protocol Buffer Schemas**: Unified message schemas across all protocols
+- [ ] **Transport Negotiation**: Automatic fallback between ZeroMQ IPC, WebSocket, REST
+- [ ] **Security Middleware**: Request sanitization, XSS protection, input validation
+- [ ] **Connection Pooling**: Efficient resource management for high-throughput scenarios
 
 ### Resource Management
 - [ ] **Resource Monitor**: CPU, memory, battery, and system load tracking

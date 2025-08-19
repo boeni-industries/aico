@@ -9,14 +9,25 @@ Provides unified logging infrastructure for all AICO subsystems with:
 - ZeroMQ message bus integration
 """
 
-import json
+import logging
+import os
 import sys
-import traceback
+import time
+import uuid
+import zmq
+import zmq.asyncio
 from datetime import datetime
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict
+from enum import Enum
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+from google.protobuf.timestamp_pb2 import Timestamp
+
+from ..proto.core import LogEntry, LogLevel
 import inspect
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from aico.core.config import ConfigurationManager
 
 try:
     import zmq
@@ -25,30 +36,27 @@ except ImportError:
     ZMQ_AVAILABLE = False
 
 
-@dataclass
-class LogEntry:
-    """Structured log entry matching our unified schema"""
-    timestamp: str
-    level: str
-    subsystem: str
-    module: str
-    function_name: Optional[str] = None
-    file_path: Optional[str] = None
-    line_number: Optional[int] = None
-    topic: str = ""
-    message: str = ""
-    user_id: Optional[str] = None
-    session_id: Optional[str] = None
-    trace_id: Optional[str] = None
-    extra: Optional[Dict[str, Any]] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization"""
-        return asdict(self)
-    
-    def to_json(self) -> str:
-        """Convert to JSON string"""
-        return json.dumps(self.to_dict(), default=str)
+def _create_timestamp(dt: datetime) -> Timestamp:
+    """Convert datetime to protobuf Timestamp"""
+    timestamp = Timestamp()
+    timestamp.FromDatetime(dt)
+    return timestamp
+
+
+def _python_level_to_protobuf(level: int) -> LogLevel:
+    """Convert Python logging level to protobuf LogLevel"""
+    if level >= 50:
+        return LogLevel.CRITICAL
+    elif level >= 40:
+        return LogLevel.ERROR
+    elif level >= 30:
+        return LogLevel.WARNING
+    elif level >= 20:
+        return LogLevel.INFO
+    elif level >= 10:
+        return LogLevel.DEBUG
+    else:
+        return LogLevel.UNKNOWN
 
 
 class AICOLogger:
@@ -60,11 +68,12 @@ class AICOLogger:
         self.config = config_manager
         self.transport = transport
         self._bootstrap_buffer: List[LogEntry] = []
-        self._db_ready = False
+        # If we have a transport, assume database is ready (CLI mode or ZMQ initialized)
+        self._db_ready = transport is not None
         self._max_buffer_size = self.config.get("logging.bootstrap.buffer_size", 100)
         
     def _create_log_entry(self, level: str, message: str, **kwargs) -> LogEntry:
-        """Create a structured log entry with automatic context detection"""
+        """Create a structured protobuf log entry with automatic context detection"""
         
         # Get caller information automatically
         frame = inspect.currentframe().f_back.f_back  # Skip this method and the calling log method
@@ -76,32 +85,48 @@ class AICOLogger:
         if file_path:
             file_path = Path(file_path).name
             
-        return LogEntry(
-            timestamp=datetime.utcnow().isoformat() + "Z",
-            level=level,
-            subsystem=self.subsystem,
-            module=self.module,
-            function_name=function_name,
-            file_path=file_path,
-            line_number=line_number,
-            topic=kwargs.get("topic", f"{self.subsystem}.{self.module}"),
-            message=message,
-            user_id=kwargs.get("user_id"),
-            session_id=kwargs.get("session_id"),
-            trace_id=kwargs.get("trace_id"),
-            extra=kwargs.get("extra")
-        )
+        # Create protobuf LogEntry
+        log_entry = LogEntry()
+        log_entry.timestamp.CopyFrom(_create_timestamp(datetime.utcnow()))
+        log_entry.level = _python_level_to_protobuf(getattr(logging, level.upper(), 20))
+        log_entry.subsystem = self.subsystem
+        log_entry.module = self.module
+        log_entry.function = function_name or ""
+        log_entry.message = message
+        log_entry.topic = kwargs.get("topic", f"{self.subsystem}.{self.module}")
+        
+        # Optional fields
+        if file_path:
+            log_entry.file_path = file_path
+        if line_number:
+            log_entry.line_number = line_number
+        if kwargs.get("user_id"):
+            log_entry.user_id = kwargs["user_id"]
+        if kwargs.get("session_id"):
+            log_entry.session_id = kwargs["session_id"]
+        if kwargs.get("trace_id"):
+            log_entry.trace_id = kwargs["trace_id"]
+        if kwargs.get("extra"):
+            for key, value in kwargs["extra"].items():
+                log_entry.extra[key] = str(value)
+                
+        return log_entry
     
     def _should_log(self, level: str) -> bool:
-        """Check if log level should be recorded based on configuration"""
-        # Get configured log level for this subsystem/module
-        default_level = self.config.get("logging.levels.default", "INFO")
-        subsystem_level = self.config.get(f"logging.levels.subsystems.{self.subsystem}", default_level)
-        module_level = self.config.get(f"logging.levels.modules.{self.module}", subsystem_level)
+        """Determine if a log message should be recorded based on configured levels."""
+        # Access the core domain configuration directly
+        core_config = self.config.config_cache.get('core', {})
         
-        # Simple level hierarchy: DEBUG < INFO < WARNING < ERROR
+        # Hierarchical configuration: module > subsystem > default
+        default_level = core_config.get('logging', {}).get('levels', {}).get('default', 'INFO')
+        subsystem_level = core_config.get('logging', {}).get('levels', {}).get('subsystems', {}).get(self.subsystem, default_level)
+        module_level = core_config.get('logging', {}).get('levels', {}).get('modules', {}).get(self.module, subsystem_level)
+        
+        # Convert levels to numeric values for comparison
         levels = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3}
-        return levels.get(level, 1) >= levels.get(module_level, 1)
+        result = levels.get(level, 1) >= levels.get(module_level, 1)
+        
+        return result
     
     def _log(self, level: str, message: str, **kwargs):
         """Internal logging method"""
@@ -125,7 +150,12 @@ class AICOLogger:
         
         # Layer 1: Console output (always available)
         if self.config.get("logging.bootstrap.fallback_console", True):
-            print(f"[{log_entry.timestamp}] {log_entry.level} "
+            # Convert protobuf timestamp to readable format
+            from datetime import datetime
+            timestamp = datetime.fromtimestamp(log_entry.timestamp.seconds + log_entry.timestamp.nanos / 1e9)
+            timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            
+            print(f"[{timestamp_str}] {log_entry.level} "
                   f"{log_entry.subsystem}.{log_entry.module}: {log_entry.message}")
         
         # Layer 2: Temporary file (if configured)
@@ -139,25 +169,38 @@ class AICOLogger:
             temp_log_path.parent.mkdir(exist_ok=True)
             with open(temp_log_path, "a", encoding="utf-8") as f:
                 f.write(log_entry.to_json() + "\n")
-        except Exception:
-            pass  # Silent fallback failure
+        except Exception as e:
+            # Last resort fallback failed - log to stderr but don't crash
+            # This is acceptable because it's the final fallback in a chain
+            import sys
+            print(f"[LOGGING] Warning: Emergency file fallback failed: {e}", file=sys.stderr)
+            print(f"[LOGGING] Lost log: {log_entry.level} {log_entry.subsystem}.{log_entry.module}: {log_entry.message}", file=sys.stderr)
     
     def _send_to_database(self, log_entry: LogEntry):
-        """Send log entry to database via transport"""
+        """Send log entry to database via transport or fallback logging"""
         if self.transport:
             try:
                 self.transport.send_log(log_entry)
             except Exception as e:
-                # Fallback to console if transport fails
-                print(f"[LOG TRANSPORT ERROR] {log_entry.level} "
-                      f"{log_entry.subsystem}.{log_entry.module}: {log_entry.message}")
+                # Print error and fallback, never log recursively
+                print(f"[AICO LOGGING] Failed to send log to transport: {e}", file=sys.stderr)
+                import traceback
+                print(traceback.format_exc(), file=sys.stderr)
+                self._try_fallback_logging(log_entry)
+        else:
+            self._try_fallback_logging(log_entry)
     
     def mark_database_ready(self):
         """Called after database initialization to flush bootstrap buffer"""
         self._db_ready = True
         # Flush bootstrap buffer to database
         for buffered_log in self._bootstrap_buffer:
-            self._send_to_database(buffered_log)
+            try:
+                self._send_to_database(buffered_log)
+            except Exception as e:
+                print(f"[AICO LOGGING] Error flushing buffered log: {e}", file=sys.stderr)
+                import traceback
+                print(traceback.format_exc(), file=sys.stderr)
         self._bootstrap_buffer.clear()
     
     # Public logging methods
@@ -187,84 +230,109 @@ class AICOLoggerFactory:
         self.config = config_manager
         self._transport = None
         self._loggers = []  # Track created loggers
+        self._db_ready = False  # Track global database ready state
     
     def create_logger(self, subsystem: str, module: str) -> AICOLogger:
         """Create a logger instance for the specified subsystem and module"""
+        transport = self._get_transport()
         logger = AICOLogger(
             subsystem=subsystem,
             module=module,
             config_manager=self.config,
-            transport=self._get_transport()
+            transport=transport
         )
+        # Apply global database ready state to new logger
+        if self._db_ready:
+            logger._db_ready = True
+        
         self._loggers.append(logger)  # Track logger
         return logger
     
     def _get_transport(self):
-        """Get or create the logging transport (ZeroMQ)"""
+        """Get or create transport for this logger factory"""
         if not self._transport and ZMQ_AVAILABLE:
             self._transport = ZMQLogTransport(self.config)
+            self._transport.initialize()
         return self._transport
     
     def mark_all_databases_ready(self):
         """Mark database ready for all created loggers"""
+        self._db_ready = True  
         for logger in self._loggers:
             logger.mark_database_ready()
 
 
 class DirectDatabaseTransport:
     """Direct database transport for CLI commands (bypasses ZeroMQ)"""
-    
+
     def __init__(self, config_manager, db_connection):
         self.config = config_manager
         self.db = db_connection
         self.repository = LogRepository(db_connection)
-    
+
     def send_log(self, log_entry: LogEntry):
-        """Send log entry directly to database"""
         try:
             self.repository.store_log(log_entry)
         except Exception as e:
-            # Debug: Print error to understand why logging fails
-            print(f"[CLI LOG ERROR] Failed to store log: {e}")
+            print(f"[CLI LOG ERROR] Failed to store log: {e}", file=sys.stderr)
             import traceback
-            print(f"[CLI LOG ERROR] Traceback: {traceback.format_exc()}")
+            print(traceback.format_exc(), file=sys.stderr)
 
 
 class ZMQLogTransport:
-    """ZeroMQ transport for sending logs to the message bus"""
+    """ZeroMQ-based log transport for sending logs to message bus"""
     
-    def __init__(self, config_manager):
-        self.config = config_manager
-        self._context = None
+    def __init__(self, config):
+        self.config = config
         self._socket = None
-        self._setup_zmq()
-    
-    def _setup_zmq(self):
-        """Setup ZeroMQ connection"""
+        self._context = None
+        
+    def initialize(self):
+        """Initialize the ZMQ transport"""
         if not ZMQ_AVAILABLE:
             return
             
         try:
+            import zmq
+            
             self._context = zmq.Context()
             self._socket = self._context.socket(zmq.PUB)
-            backend_port = self.config.get("message_bus.backend_port", 5555)
-            self._socket.connect(f"tcp://localhost:{backend_port}")
-        except Exception:
-            # Silent failure - fallback will handle logging
-            pass
+            
+            # Get message bus configuration - connect to broker frontend port
+            host = self.config.get("message_bus.host", "localhost")
+            publisher_port = self.config.get("message_bus.pub_port", 5555)
+            address = f"tcp://{host}:{publisher_port}"
+            
+            self._socket.connect(address)
+        except Exception as e:
+            # Debug: Print ZMQ transport initialization failure
+            print(f"[ZMQ TRANSPORT] Failed to initialize: {e}")
+            import traceback
+            print(f"[ZMQ TRANSPORT] Traceback: {traceback.format_exc()}")
+            self._socket = None
+            self._context = None
     
     def send_log(self, log_entry: LogEntry):
-        """Send log entry to message bus"""
+        """Send log entry to message bus as protobuf LogEntry"""
         if not self._socket:
-            raise Exception("ZMQ transport not available")
+            return
             
-        topic = self.config.get("logging.transport.zmq_topic", "logs")
-        full_topic = f"{topic}.{log_entry.subsystem}.{log_entry.module}"
-        
-        self._socket.send_multipart([
-            full_topic.encode('utf-8'),
-            log_entry.to_json().encode('utf-8')
-        ])
+        try:
+            topic = self.config.get("logging.transport.zmq_topic", "logs")
+            full_topic = f"{topic}.{log_entry.subsystem}.{log_entry.module}"
+            
+            # Send protobuf LogEntry (binary serialization)
+            self._socket.send_multipart([
+                full_topic.encode('utf-8'),
+                log_entry.SerializeToString()
+            ], zmq.NOBLOCK)
+            
+        except Exception as e:
+            # Log transport failure but don't crash - logging must be resilient
+            # This is acceptable because logging failures shouldn't break the application
+            import sys
+            print(f"[ZMQ TRANSPORT] Warning: Failed to send log via ZMQ: {e}", file=sys.stderr)
+            raise e  # Re-raise to trigger fallback logging
     
     def close(self):
         """Clean up ZMQ resources"""
@@ -308,7 +376,6 @@ class LogCollector:
             except zmq.Again:
                 continue
             except Exception as e:
-                # Log collector error - print to console as last resort
                 print(f"[LOG COLLECTOR ERROR] {e}")
     
     def _store_log(self, log_data: Dict[str, Any]):
@@ -352,6 +419,52 @@ class LogRepository:
     
     def __init__(self, db_connection):
         self.db = db_connection
+
+    def store_log(self, log_entry):
+        """Persist a protobuf LogEntry to the logs table"""
+        import json
+        from aico.proto.core.logging_pb2 import LogLevel
+        try:
+            timestamp_str = log_entry.timestamp.ToDatetime().isoformat() + "Z"
+            level_str = LogLevel.Name(log_entry.level)
+            extra_json = None
+            if log_entry.extra:
+                try:
+                    extra_json = json.dumps(dict(log_entry.extra))
+                except Exception:
+                    extra_json = json.dumps({k: str(v) for k, v in dict(log_entry.extra).items()})
+            file_path = getattr(log_entry, 'file_path', None)
+            line_number = getattr(log_entry, 'line_number', None)
+            user_id = getattr(log_entry, 'user_id', None)
+            session_id = getattr(log_entry, 'session_id', None)
+            trace_id = getattr(log_entry, 'trace_id', None)
+            self.db.execute("""
+                INSERT INTO logs (
+                    timestamp, level, subsystem, module, function_name, 
+                    file_path, line_number, topic, message, user_id, 
+                    session_id, trace_id, extra
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                timestamp_str,
+                level_str,
+                log_entry.subsystem,
+                log_entry.module,
+                log_entry.function,
+                file_path,
+                line_number,
+                log_entry.topic,
+                log_entry.message,
+                user_id,
+                session_id,
+                trace_id,
+                extra_json
+            ))
+            self.db.commit()
+        except Exception as e:
+            print(f"[REPOSITORY DEBUG] Failed to persist log in LogRepository: {e}", file=sys.stderr)
+            print(f"[REPOSITORY DEBUG] Log entry details: level={log_entry.level}, subsystem={log_entry.subsystem}, module={log_entry.module}, message={log_entry.message}", file=sys.stderr)
+            import traceback
+            print(traceback.format_exc(), file=sys.stderr)
     
     def get_logs(self, limit: int = 100, **filters) -> List[Dict[str, Any]]:
         """Retrieve logs with optional filtering"""
@@ -542,6 +655,7 @@ def initialize_cli_logging(config_manager, db_connection) -> AICOLoggerFactory:
     _logger_factory = AICOLoggerFactory(config_manager)
     _logger_factory._transport = DirectDatabaseTransport(config_manager, db_connection)
     _logger_factory._cli_mode = True  # Mark as CLI mode
+    _logger_factory.mark_all_databases_ready()  # Mark database as ready for CLI
     return _logger_factory
 
 

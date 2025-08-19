@@ -6,9 +6,10 @@ title: Architecture Overview
 
 ## Project Summary
 
-AICO is an open-source experiment to build an **emotionally present, visually embodied, and proactive AI companion**—intended to act as a confidante and sidekick, not just an assistant. Unlike productivity-oriented chatbots, AICO is designed to sense and adapt to the user's moods, initiate engagement, and form an evolving, personality-rich relationship with a visual, emotional, and proactive presence.
+AICO is an open-source experiment to build an **emotionally present, visually embodied, and proactive AI companion**—intended to act as a family member, confidante and sidekick, not just an assistant. Unlike productivity-oriented chatbots, AICO naturally recognizes and builds individual relationships with family members through multi-modal identification, creating authentic bonds without technical barriers while maintaining a consistent core personality.
 
 **Core Principles:**
+- **Natural Family Recognition:** Multi-modal identification without technical authentication barriers.
 - **Embodiment:** Visual/audio presence and non-verbal communication are core MVP requirements.
 - **Autonomous Agency:** AICO initiates, acts, and pursues its own goals and curiosities.
 - **Personality & Emotion:** Consistent, evolving personality and sophisticated emotion simulation.
@@ -19,6 +20,15 @@ AICO is an open-source experiment to build an **emotionally present, visually em
 ## System Features
 
 AICO's features are organized into logical modules for development and deployment:
+
+### 👥 Social Relationship Intelligence
+- **Hybrid Vector-Graph Architecture**: Modern relationship modeling using vector embeddings and graph neural networks
+- **Dynamic Learning**: Relationships learned from interactions rather than predefined categories
+- **Multi-dimensional Understanding**: Authority, intimacy, care responsibility, and interaction patterns
+- **Natural Recognition**: Voice biometrics, behavioral patterns, and conversation style analysis
+- **Adaptive Context**: "Hi Sarah, how was your piano lesson?" with relationship-appropriate responses
+- **Privacy Boundaries**: Personal conversations compartmentalized per relationship context
+- **Zero Technical Barriers**: Natural interaction without passwords or authentication friction
 
 ### 🗣️ Conversation & Interaction
 - **Chat Interface**: Real-time text-based conversation
@@ -633,11 +643,11 @@ aico/
 │               ├── utils.py
 │               └── constants.py
 ├── backend/                    # Python backend service
-│   ├── requirements.txt        # includes -e ../shared/aico-*
+│   ├── pyproject.toml          # includes aico-shared dependency
 │   └── main.py
 ├── cli/                        # Development CLI
-│   ├── requirements.txt        # includes -e ../shared/aico-*
-│   └── main.py
+│   ├── pyproject.toml          # includes aico-shared dependency
+│   └── aico_main.py
 └── frontend/                   # Flutter frontend
     └── pubspec.yaml            # May reference shared schemas
 ```
@@ -659,12 +669,16 @@ setup(
 #### Development Installation
 Subsystems install shared libraries in development mode:
 
-```bash
-# In backend/requirements.txt or cli/requirements.txt
--e ../shared/aico-security
--e ../shared/aico-data
--e ../shared/aico-core
--e ../shared/aico-common
+```toml
+# In backend/pyproject.toml or cli/pyproject.toml
+[tool.uv.sources]
+aico-shared = { path = "../shared", editable = true }
+
+# Dependencies section includes:
+dependencies = [
+    "aico-shared",
+    # ... other dependencies
+]
 ```
 
 #### Usage Examples

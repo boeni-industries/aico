@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
 import sqlite3
+import libsql
 
 from .connection import LibSQLConnection
 from aico.security.key_manager import AICOKeyManager
@@ -130,20 +131,19 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             ConnectionError: If connection or encryption setup fails
         """
         try:
-            # Get base connection
-            connection = super().connect()
-            
-            # Set up encryption
+            # Set up encryption key first
             encryption_key = self._setup_encryption()
             
             # Convert key to hex string for PRAGMA
             key_hex = encryption_key.hex()
             
-            # Apply encryption via PRAGMA
-            # Note: This follows SQLCipher conventions
+            # Establish connection with encryption key
+            connection = libsql.connect(str(self.db_path))
+            
+            # Apply encryption key immediately after connection
             connection.execute(f"PRAGMA key = 'x\"{key_hex}\"'")
             
-            # Apply database configuration settings
+            # Apply database configuration settings (must be done outside transactions)
             self._apply_database_settings(connection)
             
             # Test that encryption is working by creating/accessing a test table
@@ -154,6 +154,8 @@ class EncryptedLibSQLConnection(LibSQLConnection):
                 _get_logger().error(f"Database encryption verification failed: {e}")
                 raise ConnectionError("Invalid encryption key or corrupted database") from e
             
+            # Store the connection for future use
+            self._connection = connection
             return connection
             
         except Exception as e:
@@ -187,6 +189,11 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             cache_size = libsql_config.get("cache_size", 2000)
             connection.execute(f"PRAGMA cache_size = {cache_size}")
             _get_logger().debug(f"Set cache_size to {cache_size}")
+            
+            # Apply busy timeout for database locking (default: 30 seconds)
+            busy_timeout = libsql_config.get("busy_timeout", 30000)
+            connection.execute(f"PRAGMA busy_timeout = {busy_timeout}")
+            _get_logger().debug(f"Set busy_timeout to {busy_timeout}ms")
             
             _get_logger().debug("Applied LibSQL configuration settings")
             

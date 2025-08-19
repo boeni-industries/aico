@@ -11,6 +11,7 @@ libsql:
   journal_mode: "WAL"
   synchronous: "NORMAL"
   cache_size: 2000
+  busy_timeout: 30000  # 30 seconds for database lock timeout
 
 chromadb:
   # Directory name for ChromaDB collection storage

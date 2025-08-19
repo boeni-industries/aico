@@ -12,12 +12,6 @@ system:
 
 # Unified logging configuration - single source of truth for all subsystems
 logging:
-  # Storage configuration
-  storage:
-    type: "database"  # database only - no file logging
-    database: "libsql"  # Use encrypted libSQL for log storage
-    table: "logs"  # Table name for log storage
-    
   # Log levels and filtering
   levels:
     default: "INFO"  # Default log level for all subsystems
@@ -31,50 +25,101 @@ logging:
       security: "WARNING"  # Security logs are important
       database: "INFO"
       
-  # Log format and schema
-  format:
-    include_function: true  # Include calling function name
-    include_file_line: true  # Include file and line number
-    include_trace_id: true  # Include distributed tracing
-    include_session_id: true  # Include user session context
-    
   # Retention and cleanup
   retention:
     days: 30  # Keep logs for 30 days
     max_size_mb: 500  # Maximum total log storage size
-    cleanup_interval_hours: 24  # How often to run cleanup
     
   # Transport configuration
   transport:
     # All subsystems use ZeroMQ message bus for unified logging
+    # Creates topic hierarchy: logs.api_gateway.auth, logs.cli.security, etc.
+    # Enables selective subscription (logs.* = all, logs.api_gateway.* = specific)
+    # Will expand with more topics like "metrics", "events", "alerts" over time
     zmq_topic: "logs"  # Base topic for all log messages
-    buffer_size: 1000  # Local buffer size for failed sends
-    retry_attempts: 3  # Number of retry attempts
-    retry_backoff_ms: [1000, 2000, 4000]  # Exponential backoff
     
-  # Privacy and security
-  privacy:
-    redact_pii: true  # Automatically redact personal information
-    encrypt_sensitive: true  # Encrypt sensitive log data
-    audit_log_access: true  # Log all access to logs themselves
-    
-  # Bootstrap and fallback configuration
+  # Bootstrap fallback configuration
   bootstrap:
-    buffer_size: 100  # Max logs to buffer during bootstrap
-    fallback_console: true  # Always fallback to console
-    fallback_temp_file: false  # Optional temp file fallback
-    fallback_system_log: false  # Optional system log fallback
+    fallback_console: true  # Enable console output during bootstrap/failures
+    fallback_temp_file: true  # Enable temporary file logging as fallback
 
+# Message Bus Configuration
 message_bus:
-  backend_port: 5555
-  frontend_port: 5556
-  max_message_size: 1048576
-  heartbeat_interval: 30
+  host: "localhost"
+  bind_address: "tcp://*:5555"
+  pub_port: 5555  # Frontend port for publishers (broker binds here)
+  sub_port: 5556  # Backend port for subscribers (broker binds here)
 
-api:
+# API Gateway configuration
+api_gateway:
+  enabled: true
   host: "127.0.0.1"
-  port: 8770
-  cors_origins:
-    - "http://localhost:3000"
-    - "http://127.0.0.1:3000"
-  rate_limit: 100
+  
+  # Protocol adapters
+  protocols:
+    rest:
+      enabled: true
+      port: 8771
+      prefix: "/api/v1"
+      cors_origins:
+        - "http://localhost:3000"
+        - "http://127.0.0.1:3000"
+    
+    websocket:
+      enabled: true
+      port: 8772
+      path: "/ws"
+      heartbeat_interval: 30
+      max_connections: 1000
+    
+    zeromq_ipc:
+      enabled: true  # Can be disabled for external-only deployments
+      
+    grpc:
+      enabled: false  # Optional protocol, disabled by default
+      port: 8774
+  
+  # Authentication (both JWT and API key supported simultaneously)
+  auth:
+    jwt:
+      algorithm: "HS256"
+      expiry_hours: 24
+    api_key:
+      header_name: "X-API-Key"
+    session:
+      cookie_name: "aico_session"
+      timeout_minutes: 1440  # 24 hours
+  
+  # Input security
+  input_security:
+    max_request_size: 10485760  # 10MB
+    allowed_ips: []
+    blocked_ips: []
+  
+  # Rate limiting
+  rate_limiting:
+    default_requests_per_minute: 100
+    burst_size: 20
+    cleanup_interval_minutes: 5
+    
+  # Log cleanup scheduling
+  log_cleanup:
+    cleanup_interval_hours: 24
+  
+  # Transport priority for client negotiation
+  transport:
+    priority:
+      - "zeromq_ipc"
+      - "websocket"
+      - "rest"
+  
+  # Message routing
+  routing:
+    timeout_seconds: 30
+    retry_attempts: 3
+    correlation_cleanup_minutes: 60
+
+# User profile configuration
+user_profiles:
+  default_user_type: "person"
+

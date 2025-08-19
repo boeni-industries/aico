@@ -36,7 +36,15 @@ password_policy:
   min_length: 12
   require_complexity: true
 
+pin_policy:
+  min_length: 4
+  max_length: 8
+  require_numeric: true
+
 authentication:
+  password_hashing:
+    algorithm: "bcrypt"
+    rounds: 12  # Cost factor for bcrypt (2^12 iterations)
   session_timeout: 3600
   max_failed_attempts: 5
   lockout_duration: 300
@@ -49,3 +57,4 @@ audit:
   enabled: true
   retention_days: 90
   log_level: "standard"
+

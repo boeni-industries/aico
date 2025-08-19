@@ -5,8 +5,8 @@ api:
   cors_origins:
     - "http://localhost:3000"
     - "http://127.0.0.1:3000"
-    - "http://localhost:8080"
-    - "http://127.0.0.1:8080"
+    - "http://localhost:8771"
+    - "http://127.0.0.1:8771"
 
 audit:
   log_level: "DEBUG"  # Detailed audit logging for development
