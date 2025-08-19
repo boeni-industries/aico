@@ -95,7 +95,6 @@ class WebSocketAdapter:
                 self._handle_connection,
                 host,
                 self.port,
-                path=self.path,
                 max_size=10 * 1024 * 1024,  # 10MB max message size
                 max_queue=100,  # Max queued messages per connection
                 compression=None,  # Disable compression for lower latency
@@ -106,7 +105,7 @@ class WebSocketAdapter:
             # Start heartbeat task
             self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())
             
-            self.logger.info(f"WebSocket adapter started on {host}:{self.port}{self.path}")
+            self.logger.info(f"WebSocket server running on ws://{host}:{self.port}{self.path} (Press CTRL+C to quit)")
             
         except Exception as e:
             self.logger.error(f"Failed to start WebSocket adapter: {e}")
@@ -137,7 +136,7 @@ class WebSocketAdapter:
         except Exception as e:
             self.logger.error(f"Error stopping WebSocket adapter: {e}")
     
-    async def _handle_connection(self, websocket, path):
+    async def _handle_connection(self, websocket):
         """Handle new WebSocket connection"""
         client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
         

@@ -1,6 +1,8 @@
 import asyncio
+import os
 import sys
 import signal
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 print("Starting AICO backend server v0.1.1")
@@ -10,9 +12,10 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 try:
+    import uvicorn
     from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
     from pathlib import Path
-    from contextlib import asynccontextmanager
     print("FastAPI imports successful")
 
     # Shared modules now installed via UV editable install
@@ -87,8 +90,6 @@ shutdown_event = asyncio.Event()
 async def lifespan(app: FastAPI):
     """Modern FastAPI lifespan event handler"""
     global config_manager, message_bus_host, api_gateway
-    
-    print("Lifespan startup called")
     
     # Startup
     try:
@@ -173,21 +174,38 @@ async def lifespan(app: FastAPI):
         
         # Start API Gateway if enabled (after log consumer is running)
         logger.info("Checking API Gateway configuration...")
-        gateway_config = config_manager.get("api_gateway", {})
+        gateway_config = config_manager.config_cache.get('core', {}).get('api_gateway', {})
         logger.info(f"Gateway config loaded: enabled={gateway_config.get('enabled', True)}")
         
         if gateway_config.get("enabled", True):
             logger.info("Starting API Gateway...")
             api_gateway = AICOAPIGateway(config_manager, db_connection=shared_db_connection)
-            logger.info("API Gateway created with database connection, calling start()...")
+            logger.info("API Gateway created with database connection")
             
             # Check for shutdown signal before the potentially blocking start() call
             if shutdown_event.is_set():
                 logger.info("Shutdown requested before API Gateway start, aborting...")
                 return
+            
+            try:
+                await api_gateway.start()
+                logger.info("API Gateway started successfully")
+            except Exception as e:
+                logger.error(f"Failed to start API Gateway: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
+            
+            # Add console output for WebSocket in --no-detach mode (similar to Uvicorn)
+            protocols = gateway_config.get('protocols', {})
+            if protocols.get('websocket', {}).get('enabled', False):
+                ws_port = protocols['websocket'].get('port', 8772)
+                ws_host = gateway_config.get('host', '127.0.0.1')
+                ws_path = protocols['websocket'].get('path', '/ws')
                 
-            await api_gateway.start()
-            logger.info("API Gateway started")
+                detach_mode = os.environ.get("AICO_DETACH_MODE", "true").lower() == "true"
+                if not detach_mode:
+                    print(f"INFO:     WebSocket server running on ws://{ws_host}:{ws_port}{ws_path} (Press CTRL+C to quit)")
             
             # Mount domain-based API routers
             try:
@@ -233,6 +251,16 @@ async def lifespan(app: FastAPI):
                     logger.info("Users router initialized with UserService")
                 except Exception as e:
                     logger.error(f"Failed to initialize users router: {e}")
+                    import traceback
+                    traceback.print_exc()
+                
+                # Initialize health router with dependencies
+                try:
+                    from api.health.router import initialize_router as initialize_health_router
+                    initialize_health_router(api_gateway, message_bus_host)
+                    logger.info("Health router initialized with dependencies")
+                except Exception as e:
+                    logger.error(f"Failed to initialize health router: {e}")
                     import traceback
                     traceback.print_exc()
                 

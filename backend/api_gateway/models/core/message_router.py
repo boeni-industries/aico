@@ -65,13 +65,16 @@ class MessageRouter:
     
     async def set_message_bus(self, message_bus: MessageBusClient):
         """Set message bus client and set up response handling"""
+        self.logger.info("[ROUTER] Setting message bus client...")
         self.message_bus = message_bus
         
         # Subscribe to response topics
+        self.logger.info("[ROUTER] Subscribing to api.response.* topics...")
         await self.message_bus.subscribe("api.response.*", self._handle_response)
+        self.logger.info("[ROUTER] Subscribing to system.error.* topics...")
         await self.message_bus.subscribe("system.error.*", self._handle_error)
         
-        self.logger.info("Message bus connected for routing")
+        self.logger.info("[ROUTER] Message bus connected for routing")
     
     async def route_message(self, message: AicoMessage) -> RoutingResult:
         """

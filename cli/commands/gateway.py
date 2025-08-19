@@ -529,12 +529,12 @@ def status():
         
         # Get live status first for primary display
         host = config.get('host', '127.0.0.1')
-        rest_port = config.get('protocols', {}).get('rest', {}).get('port', 8771)
+        rest_port = config.get('rest', {}).get('port', 8771)
         is_running = False
         health_data = {}
         
         try:
-            health_response = requests.get(f"http://{host}:{rest_port}/health", timeout=3)
+            health_response = requests.get(f"http://{host}:{rest_port}/api/v1/health", timeout=3)
             if health_response.status_code == 200:
                 is_running = True
                 health_data = health_response.json()
@@ -585,6 +585,16 @@ def status():
         
         # Protocol endpoints table - clean and focused
         protocols = config.get("protocols", {})
+        
+        # Add REST protocol from separate config section (put first)
+        if config.get("rest", {}).get("port"):
+            rest_config = {
+                "enabled": True,  # REST is always enabled if configured
+                "port": config.get("rest", {}).get("port", 8771)
+            }
+            # Put REST first by creating new ordered dict
+            protocols = {"rest": rest_config, **protocols}
+        
         if protocols:
             table = Table(title="Protocol Endpoints", show_header=True, header_style="bold blue")
             table.add_column("Protocol", style="cyan", no_wrap=True)

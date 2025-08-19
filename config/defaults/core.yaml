@@ -55,15 +55,17 @@ api_gateway:
   enabled: true
   host: "127.0.0.1"
   
+  # Main REST API configuration (handled by FastAPI backend)
+  rest:
+    port: 8771
+    host: "127.0.0.1"
+    cors_origins:
+      - "http://localhost:3000"
+      - "http://127.0.0.1:3000"
+  
   # Protocol adapters
   protocols:
-    rest:
-      enabled: true
-      port: 8771
-      prefix: "/api/v1"
-      cors_origins:
-        - "http://localhost:3000"
-        - "http://127.0.0.1:3000"
+    # REST endpoints handled by main FastAPI backend - no separate adapter needed
     
     websocket:
       enabled: true

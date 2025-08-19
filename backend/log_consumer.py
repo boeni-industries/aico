@@ -34,37 +34,37 @@ class AICOLogConsumer:
         key_manager = AICOKeyManager()
         paths = AICOPaths()
         db_path = paths.resolve_database_path("aico.db")
-        print(f"[LOG CONSUMER] Using database path: {db_path}")
+        # print(f"[LOG CONSUMER] Using database path: {db_path}")
         
         # Check if database file exists
         if not db_path.exists():
-            print(f"[LOG CONSUMER] ERROR: Database file does not exist: {db_path}")
+            # print(f"[LOG CONSUMER] ERROR: Database file does not exist: {db_path}")
             raise FileNotFoundError(f"Database file not found: {db_path}")
         
         # Check if salt file exists
         salt_path = db_path.with_suffix(db_path.suffix + '.salt')
         if not salt_path.exists():
-            print(f"[LOG CONSUMER] ERROR: Salt file does not exist: {salt_path}")
+            # print(f"[LOG CONSUMER] ERROR: Salt file does not exist: {salt_path}")
             raise FileNotFoundError(f"Salt file not found: {salt_path}")
         
-        print(f"[LOG CONSUMER] Database file size: {db_path.stat().st_size} bytes")
-        print(f"[LOG CONSUMER] Salt file size: {salt_path.stat().st_size} bytes")
+        # print(f"[LOG CONSUMER] Database file size: {db_path.stat().st_size} bytes")
+        # print(f"[LOG CONSUMER] Salt file size: {salt_path.stat().st_size} bytes")
         
         # Try cached key first (for active sessions)
         cached_key = key_manager._get_cached_session()
         if cached_key:
             key_manager._extend_session()
             db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-            print(f"[LOG CONSUMER] Using cached session key: {db_key.hex()[:16]}...")
+            # print(f"[LOG CONSUMER] Using cached session key: {db_key.hex()[:16]}...")
             conn = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
             try:
                 conn.connect()
                 # Test the connection with a simple query
                 conn.execute("SELECT 1").fetchone()
-                print(f"[LOG CONSUMER] Database connection successful (cached key)")
+                # print(f"[LOG CONSUMER] Database connection successful (cached key)")
                 return conn
             except Exception as e:
-                print(f"[LOG CONSUMER] Database connection failed (cached key): {e}")
+                # print(f"[LOG CONSUMER] Database connection failed (cached key): {e}")
                 raise
         
         # Try stored key from keyring (for backend services)
@@ -74,16 +74,16 @@ class AICOLogConsumer:
             master_key = bytes.fromhex(stored_key)
             key_manager._cache_session(master_key)  # Cache for future use
             db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-            print(f"[LOG CONSUMER] Using stored master key: {db_key.hex()[:16]}...")
+            # print(f"[LOG CONSUMER] Using stored master key: {db_key.hex()[:16]}...")
             conn = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
             try:
                 conn.connect()
                 # Test the connection with a simple query
                 conn.execute("SELECT 1").fetchone()
-                print(f"[LOG CONSUMER] Database connection successful (stored key)")
+                # print(f"[LOG CONSUMER] Database connection successful (stored key)")
                 return conn
             except Exception as e:
-                print(f"[LOG CONSUMER] Database connection failed (stored key): {e}")
+                # print(f"[LOG CONSUMER] Database connection failed (stored key): {e}")
                 raise
         
         # No key available - backend cannot run without authentication
@@ -100,9 +100,10 @@ class AICOLogConsumer:
             # Use injected connection or create new one as fallback
             if self.db_connection is None:
                 self.db_connection = self._get_database_connection()
-                print(f"[LOG CONSUMER] Created new database connection")
+                # print(f"[LOG CONSUMER] Created new database connection")
             else:
-                print(f"[LOG CONSUMER] Using injected database connection")
+                pass
+                # print(f"[LOG CONSUMER] Using injected database connection")
             
             # Use direct ZMQ subscription for raw LogEntry messages
             import zmq
@@ -113,21 +114,21 @@ class AICOLogConsumer:
             sub_port = self.config_manager.get("message_bus.sub_port", 5556)
             host = self.config_manager.get("message_bus.host", "localhost")
             
-            print(f"[LOG CONSUMER] Connecting to SUBSCRIBER port tcp://{host}:{sub_port}")
+            # print(f"[LOG CONSUMER] Connecting to SUBSCRIBER port tcp://{host}:{sub_port}")
             self.context = zmq.asyncio.Context()
             self.subscriber = self.context.socket(zmq.SUB)
             self.subscriber.connect(f"tcp://{host}:{sub_port}")
-            print(f"[LOG CONSUMER] Connected SUB socket to tcp://{host}:{sub_port}")
+            # print(f"[LOG CONSUMER] Connected SUB socket to tcp://{host}:{sub_port}")
             
             # Subscribe to logs.* topics only
             self.subscriber.setsockopt(zmq.SUBSCRIBE, b"logs.")
-            print(f"[LOG CONSUMER] SUBSCRIBED to topic prefix: b'logs.'")
+            # print(f"[LOG CONSUMER] SUBSCRIBED to topic prefix: b'logs.'")
             
             self.running = True
             
             # Start message processing loop
             asyncio.create_task(self._zmq_message_loop())
-            print("[LOG CONSUMER] Started successfully with direct ZMQ subscription")
+            # print("[LOG CONSUMER] Started successfully with direct ZMQ subscription")
             
         except Exception as e:
             print(f"[LOG CONSUMER ERROR] Failed to start: {e}")

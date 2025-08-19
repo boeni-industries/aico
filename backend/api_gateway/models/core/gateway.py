@@ -62,7 +62,8 @@ class AICOAPIGateway:
         # Configuration
         self.config_manager = config_manager or ConfigurationManager()
         self.config_manager.initialize(lightweight=False)
-        self.config = self.config_manager.get("api_gateway", {})
+        self.config = self.config_manager.config_cache.get('core', {}).get('api_gateway', {})
+        
         
         # Check if API Gateway is enabled
         if not self.config.get("enabled", True):
@@ -160,35 +161,43 @@ class AICOAPIGateway:
         
         try:
             # Connect to message bus with timeout
-            self.logger.info(f"Connecting API Gateway to message bus at {message_bus_address}")
+            self.logger.info(f"[GATEWAY] Starting API Gateway connection to message bus at {message_bus_address}")
             
             try:
+                self.logger.info(f"[GATEWAY] Creating MessageBusClient...")
                 self.message_bus_client = MessageBusClient(
                     "api_gateway", 
                     message_bus_address
                 )
-                self.logger.info(f"MessageBusClient created: {self.message_bus_client}")
+                self.logger.info(f"[GATEWAY] MessageBusClient created successfully")
             except Exception as e:
-                self.logger.error(f"Failed to create MessageBusClient: {e}")
+                self.logger.error(f"[GATEWAY] Failed to create MessageBusClient: {e}")
                 raise
             
             # Add timeout to prevent hanging
             import asyncio
             try:
+                self.logger.info(f"[GATEWAY] Attempting to connect to message bus with 5s timeout...")
                 await asyncio.wait_for(self.message_bus_client.connect(), timeout=5.0)
-                self.logger.info(f"Connected to message bus at {message_bus_address}")
+                self.logger.info(f"[GATEWAY] Connected to message bus successfully")
             except asyncio.TimeoutError:
-                self.logger.error("Timeout connecting to message bus")
+                self.logger.error("[GATEWAY] Timeout connecting to message bus")
+                raise
+            except Exception as e:
+                self.logger.error(f"[GATEWAY] Error connecting to message bus: {e}")
                 raise
             
             # Initialize message router with bus client
-            self.logger.info("Setting up message router...")
+            self.logger.info("[GATEWAY] Setting up message router...")
             if self.message_bus_client is None:
                 raise RuntimeError("MessageBusClient is None - cannot set up message router")
             await self.message_router.set_message_bus(self.message_bus_client)
+            self.logger.info("[GATEWAY] Message router setup complete")
             
             # Start protocol adapters
+            self.logger.info("[GATEWAY] Starting protocol adapters...")
             await self._start_adapters()
+            self.logger.info("[GATEWAY] Protocol adapters started successfully")
             
             # Admin endpoints are now served on the main REST port
             self.running = True
@@ -228,20 +237,7 @@ class AICOAPIGateway:
         """Start enabled protocol adapters"""
         protocols = self.config.get("protocols", {})
         
-        # REST Adapter
-        if protocols.get("rest", {}).get("enabled", False):
-            rest_adapter = RESTAdapter(
-                config=protocols["rest"],
-                auth_manager=self.auth_manager,
-                authz_manager=self.authz_manager,
-                message_router=self.message_router,
-                rate_limiter=self.rate_limiter,
-                validator=self.validator,
-                security_middleware=self.security_middleware
-            )
-            await rest_adapter.start(self.config.get("host", "127.0.0.1"))
-            self.adapters["rest"] = rest_adapter
-            self.logger.info(f"REST adapter started on {self.config.get('host', '127.0.0.1')}:{protocols['rest']['port']}")
+        # REST endpoints handled by main FastAPI backend - no separate adapter needed
         
         # WebSocket Adapter
         if protocols.get("websocket", {}).get("enabled", False):
