@@ -26,7 +26,7 @@ from aico.core.config import ConfigurationManager
 from aico.security.key_manager import AICOKeyManager
 
 # Import session management
-from ..session import SessionManager, SessionInfo, SessionStatus
+from aico.security import SessionService, SessionInfo
 
 # Logger will be initialized in classes
 
@@ -80,9 +80,10 @@ class User:
 class AuthenticationManager:
     """
     Handles authentication for API Gateway requests using AICO security infrastructure
+    with database-backed session management for JWT tokens.
     """
     
-    def __init__(self, config: ConfigurationManager):
+    def __init__(self, config: ConfigurationManager, db_connection=None):
         self.config = config
         self.logger = get_logger("api_gateway", "auth")
         
@@ -91,54 +92,86 @@ class AuthenticationManager:
         
         # JWT configuration - secrets managed by AICOKeyManager
         self.jwt_algorithm = config.get("api_gateway.security.auth.jwt.algorithm", "HS256")
-        self.jwt_expiry_hours = config.get("api_gateway.security.auth.jwt.expiry_hours", 24)
+        self.jwt_expiry_minutes = config.get("api_gateway.security.auth.jwt.expiry_minutes", 15)  # Short-lived tokens
         
         # Get JWT secret from AICOKeyManager (zero-effort security)
         self.jwt_secret = self._get_jwt_secret()
         
-        # API key storage (in production, use database)
-        self.api_keys: Dict[str, Dict[str, Any]] = {}
-        
-        # Enhanced session management
-        self.session_manager = SessionManager(config)
+        # Database-backed session management
+        if db_connection:
+            self.session_service = SessionService(db_connection)
+            # Track cleanup operations
+            self._last_cleanup = datetime.utcnow()
+            self._cleanup_interval_hours = 24  # Run full cleanup daily
+        else:
+            self.session_service = None
+            self.logger.warning("No database connection provided - session management disabled")
         
         # Password context for API key hashing
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         
-        # In-memory stores (in production, these would be in database)
-        self.api_keys: Dict[str, Dict[str, Any]] = {}
-        self.revoked_tokens: Set[str] = set()
+        # In-memory stores for API keys and fallback token revocation
+        self.api_keys: Dict[str, User] = {}
+        self.revoked_tokens: Set[str] = set()  # Fallback when session service unavailable
         
         # Initialize default service accounts
         self._initialize_service_accounts()
     
     def generate_jwt_token(self, user_id: str, username: str = None, roles: List[str] = None, 
-                          permissions: Set[str] = None, expires_hours: int = None) -> str:
-        """Generate JWT token for user (zero-effort security)"""
+                          permissions: Set[str] = None, device_uuid: str = None, expires_minutes: int = None) -> str:
+        """Generate JWT token for user with session backing (zero-effort security)"""
         import time
         from datetime import datetime, timedelta
         
-        expires_hours = expires_hours or self.jwt_expiry_hours
-        exp_time = datetime.utcnow() + timedelta(hours=expires_hours)
+        expires_minutes = expires_minutes or self.jwt_expiry_minutes
+        current_time = int(time.time())
+        exp_time = current_time + (expires_minutes * 60)
         
         payload = {
             "sub": user_id,
             "username": username or user_id,
             "roles": roles or ["user"],
             "permissions": list(permissions or set()),
-            "iat": int(time.time()),
-            "exp": int(exp_time.timestamp()),
+            "iat": current_time,
+            "exp": exp_time,
             "iss": "aico-api-gateway"
         }
         
         token = jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
+        
+        # Create session record if session service is available
+        if self.session_service and device_uuid:
+            try:
+                self.session_service.create_session(
+                    user_uuid=user_id,
+                    device_uuid=device_uuid,
+                    jwt_token=token,
+                    expires_in_minutes=expires_minutes
+                )
+                self.logger.info("Session created successfully", extra={
+                    "user_id": user_id,
+                    "device_uuid": device_uuid
+                })
+                
+                # Trigger periodic cleanup check
+                self._periodic_cleanup()
+                
+            except Exception as e:
+                self.logger.error("Failed to create session record", extra={
+                    "error": str(e),
+                    "user_id": user_id,
+                    "expires_minutes": expires_minutes,
+                    "error_type": type(e).__name__
+                })
+                # Don't fail token generation if session creation fails
+                pass
         
         self.logger.info("JWT token generated", extra={
             "module": "api_gateway",
             "function": "generate_jwt_token",
             "topic": "auth.jwt.token_generated",
             "user_id": user_id,
-            "expires": exp_time.isoformat()
+            "expires": datetime.fromtimestamp(exp_time).isoformat()
         })
         
         return token
@@ -153,21 +186,32 @@ class AuthenticationManager:
             expires_hours=24 * 7  # 7 days for CLI convenience
         )
     
-    def revoke_token(self, token: str) -> None:
-        """Revoke JWT token"""
-        self.revoked_tokens.add(token)
+    def revoke_token(self, token: str) -> bool:
+        """Revoke JWT token using session service or fallback"""
+        success = False
+        
+        # Try session service first
+        if self.session_service:
+            try:
+                success = self.session_service.revoke_token(token)
+            except Exception as e:
+                self.logger.error("Failed to revoke token via session service", extra={
+                    "error": str(e)
+                })
+        
+        # Fallback to in-memory revocation
+        if not success:
+            self.revoked_tokens.add(token)
+            success = True
+        
         self.logger.info("JWT token revoked", extra={
             "module": "api_gateway",
             "function": "revoke_token", 
-            "topic": "auth.jwt.token_revoked"
+            "topic": "auth.jwt.token_revoked",
+            "via_session_service": self.session_service is not None
         })
         
-        self.logger.info("Authentication manager initialized", extra={
-            "methods": list(auth_config.keys()),
-            "jwt_enabled": self.jwt_config.get("enabled", False),
-            "api_key_enabled": self.api_key_config.get("enabled", False),
-            "session_enabled": self.session_config.get("enabled", False)
-        })
+        return success
     
     def _get_jwt_secret(self) -> str:
         """Get JWT secret from AICOKeyManager"""
@@ -287,14 +331,24 @@ class AuthenticationManager:
             return AuthResult(success=False, error=f"Unsupported auth method: {method}")
     
     async def _authenticate_jwt(self, token: str, client_info: Dict[str, Any]) -> AuthResult:
-        """Authenticate JWT token"""
+        """Authenticate JWT token with session validation"""
         try:
-            # Check if token is revoked
-            if token in self.revoked_tokens:
-                return AuthResult(success=False, error="Token revoked")
+            # Check session service first if available
+            if self.session_service:
+                if not self.session_service.is_token_valid(token):
+                    return AuthResult(success=False, error="Token revoked or expired")
+            else:
+                # Fallback to in-memory revocation check
+                if token in self.revoked_tokens:
+                    return AuthResult(success=False, error="Token revoked")
             
             # Decode and validate JWT
-            payload = jwt.decode(token, self.jwt_secret, algorithms=[self.jwt_algorithm])
+            payload = jwt.decode(
+                token, 
+                self.jwt_secret, 
+                algorithms=[self.jwt_algorithm],
+                options={"verify_aud": False}  # Skip audience verification for CLI compatibility
+            )
             
             # Extract user information
             user = User(
@@ -393,33 +447,82 @@ class AuthenticationManager:
         """Revoke JWT token"""
         self.revoked_tokens.add(token)
     
-    def create_session(self, user: User, ip_address: str = None, user_agent: str = None) -> str:
-        """Create session for user"""
-        session_info = self.session_manager.create_session(
-            user_id=user.user_id,
-            username=user.username,
-            roles=user.roles,
-            ip_address=ip_address,
-            user_agent=user_agent
-        )
-        user.session_id = session_info.session_id
-        return session_info.session_id
-    
-    def revoke_session(self, session_id: str) -> bool:
-        """Revoke session"""
-        return self.session_manager.revoke_session(session_id)
-    
-    def get_session(self, session_id: str) -> Optional[SessionInfo]:
-        """Get session information"""
-        return self.session_manager.get_session(session_id)
-    
-    def list_sessions(self, user_id: str = None, admin_only: bool = False) -> List[SessionInfo]:
-        """List sessions with optional filtering"""
-        return self.session_manager.list_sessions(user_id=user_id, admin_only=admin_only)
+    def refresh_token(self, current_token: str, device_uuid: str = None) -> Optional[str]:
+        """Refresh JWT token with session rotation"""
+        try:
+            # Validate current token first
+            if self.session_service and not self.session_service.is_token_valid(current_token):
+                return None
+            
+            # Decode current token to get user info
+            payload = jwt.decode(
+                current_token, 
+                self.jwt_secret, 
+                algorithms=[self.jwt_algorithm],
+                options={"verify_aud": False}
+            )
+            
+            # Revoke current session in database
+            if self.session_service:
+                self.session_service.revoke_token(current_token)
+            else:
+                # Fallback to in-memory revocation
+                self.revoke_token(current_token)
+            
+            # Generate new token
+            new_token = self.generate_jwt_token(
+                user_id=payload["sub"],
+                username=payload.get("username"),
+                roles=payload.get("roles", ["user"]),
+                permissions=set(payload.get("permissions", [])),
+                device_uuid=device_uuid or "unknown"
+            )
+            
+            return new_token
+            
+        except Exception as e:
+            self.logger.error("Token refresh failed", extra={"error": str(e), "token_prefix": current_token[:8] + "..." if len(current_token) > 8 else current_token})
+            return None
     
     def get_session_stats(self) -> Dict[str, Any]:
         """Get session statistics"""
-        return self.session_manager.get_session_stats()
+        if self.session_service:
+            return self.session_service.get_session_stats()
+        else:
+            return {
+                "total_sessions": 0,
+                "active_sessions": 0,
+                "expired_sessions": 0,
+                "revoked_tokens": len(self.revoked_tokens)
+            }
+    
+    def cleanup_expired_sessions(self) -> int:
+        """Clean up expired sessions"""
+        if self.session_service:
+            return self.session_service.cleanup_expired_sessions()
+        return 0
+    
+    def _periodic_cleanup(self):
+        """Run periodic cleanup of old revoked sessions if needed"""
+        if not self.session_service:
+            return
+            
+        now = datetime.utcnow()
+        hours_since_cleanup = (now - self._last_cleanup).total_seconds() / 3600
+        
+        if hours_since_cleanup >= self._cleanup_interval_hours:
+            try:
+                # Clean up old revoked sessions (30+ days old)
+                cleaned = self.session_service.cleanup_old_revoked_sessions(days_old=30)
+                if cleaned > 0:
+                    self.logger.info("Periodic session cleanup completed", extra={
+                        "old_revoked_sessions_cleaned": cleaned
+                    })
+                self._last_cleanup = now
+            except Exception as e:
+                self.logger.error("Periodic session cleanup failed", extra={
+                    "error": str(e)
+                })
 
 
 class AuthorizationManager:

@@ -178,8 +178,8 @@ async def lifespan(app: FastAPI):
         
         if gateway_config.get("enabled", True):
             logger.info("Starting API Gateway...")
-            api_gateway = AICOAPIGateway(config_manager)
-            logger.info("API Gateway created, calling start()...")
+            api_gateway = AICOAPIGateway(config_manager, db_connection=shared_db_connection)
+            logger.info("API Gateway created with database connection, calling start()...")
             
             # Check for shutdown signal before the potentially blocking start() call
             if shutdown_event.is_set():

@@ -55,7 +55,7 @@ class AICOAPIGateway:
     - Admin endpoint separation
     """
     
-    def __init__(self, config_manager: Optional[ConfigurationManager] = None):
+    def __init__(self, config_manager: Optional[ConfigurationManager] = None, db_connection=None):
         # Initialize logger for this instance
         self.logger = get_logger("api_gateway", "gateway")
         
@@ -74,7 +74,7 @@ class AICOAPIGateway:
         
         # Core components
         self.message_bus_client: Optional[MessageBusClient] = None
-        self.auth_manager = AuthenticationManager(self.config)
+        self.auth_manager = AuthenticationManager(self.config_manager, db_connection=db_connection)
         self.authz_manager = AuthorizationManager(self.config.get("security", {}))
         self.adaptive_transport = AdaptiveTransport(self.config.get("transport", {}))
         self.message_router = MessageRouter(self.config.get("routing", {}))
@@ -94,7 +94,8 @@ class AICOAPIGateway:
         
         self.logger.info("API Gateway initialized", extra={
             "protocols": list(self.config.get("protocols", {}).keys()),
-            "admin_enabled": self.config.get("admin", {}).get("enabled", False)
+            "admin_enabled": self.config.get("admin", {}).get("enabled", False),
+            "session_management": db_connection is not None
         })
     
     def _get_backend_version(self) -> str:

@@ -5,7 +5,8 @@ REST API endpoints for user CRUD operations and authentication.
 """
 
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, status, Depends, Request
+from fastapi.security import HTTPBearer
 from aico.core.logging import get_logger
 from aico.data.user import UserService
 from .schemas import (
@@ -241,12 +242,13 @@ async def authenticate_user(request: AuthenticateRequest):
         
         user = result["user"]
         
-        # Generate JWT token using auth_manager
+        # Generate JWT token with user claims and session backing
         jwt_token = auth_manager.generate_jwt_token(
             user_id=user.uuid,
             username=user.full_name,
             roles=[user.user_type],
-            permissions={"conversation.*", "memory.read", "personality.read"}
+            permissions={"conversation.*", "memory.read", "personality.read"},
+            device_uuid="web-client"  # Default device for web authentication
         )
         
         logger.info("User authenticated via API", extra={
@@ -320,6 +322,87 @@ async def unlock_user(
         "user_uuid": user_uuid,
         "unlocked_by": admin_user.get("user_id") if admin_user else "unknown"
     })
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout_user(request: Request):
+    """Logout user by revoking current JWT token"""
+    # Extract token from Authorization header
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No valid token provided")
+    
+    token = auth_header.split(" ")[1]
+    
+    if not auth_manager:
+        raise HTTPException(status_code=500, detail="Authentication manager not initialized")
+    
+    # Delete the session completely on logout
+    if auth_manager.session_service:
+        success = auth_manager.session_service.delete_token(token)
+    else:
+        # Fallback to in-memory revocation
+        auth_manager.revoke_token(token)
+        success = True
+    
+    logger.info("User logged out", extra={
+        "token_prefix": token[:8] + "..." if len(token) > 8 else token,
+        "revocation_success": success
+    })
+
+
+@router.post("/refresh", response_model=AuthenticationResponse)
+async def refresh_token(request: Request):
+    """Refresh JWT token for authenticated user with session rotation"""
+    # Extract current token from Authorization header
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No valid token provided")
+    
+    token = auth_header.split(" ")[1]
+    
+    if not auth_manager:
+        raise HTTPException(status_code=500, detail="Authentication manager not initialized")
+    
+    # Use the new refresh_token method from auth_manager
+    new_token = auth_manager.refresh_token(token, device_uuid="web-client")
+    
+    if not new_token:
+        raise HTTPException(status_code=401, detail="Token refresh failed - token may be expired or revoked")
+    
+    # Extract user information from new token to get user data
+    try:
+        import jwt
+        payload = jwt.decode(
+            new_token, 
+            auth_manager.jwt_secret, 
+            algorithms=["HS256"],
+            options={"verify_aud": False}
+        )
+        user_id = payload.get("sub")
+        username = payload.get("username")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to decode new token")
+    
+    # Get user data for response
+    if not user_service:
+        raise HTTPException(status_code=500, detail="User service not initialized")
+    
+    user = await user_service.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    logger.info("Token refreshed with session rotation", extra={
+        "user_id": user_id,
+        "username": username
+    })
+    
+    return AuthenticationResponse(
+        success=True,
+        user=_user_to_response(user),
+        jwt_token=new_token,
+        last_login=None
+    )
 
 
 @router.get("/stats", response_model=UserStatsResponse)

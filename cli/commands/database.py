@@ -1053,7 +1053,16 @@ def exec(
                 console.print("[yellow]Cancelled[/yellow]")
                 return
         
-        result = conn.execute(query).fetchall()
+        cursor = conn.execute(query)
+        result = cursor.fetchall()
+        
+        # For non-SELECT queries, commit the transaction and show affected rows
+        query_upper = query.upper().strip()
+        if any(query_upper.startswith(op) for op in ["DELETE", "UPDATE", "INSERT"]):
+            conn.commit()
+            affected_rows = cursor.rowcount if hasattr(cursor, 'rowcount') else 0
+            console.print(f"[green]Query executed successfully. Affected rows: {affected_rows}[/green]")
+            return
         
         if not result:
             console.print("[yellow]Query returned no results[/yellow]")
