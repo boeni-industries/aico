@@ -104,10 +104,6 @@ class AICOLogConsumer:
             else:
                 print(f"[LOG CONSUMER] Using injected database connection")
             
-            # Initialize database schema if needed
-            self._initialize_database()
-            print(f"[LOG CONSUMER] Database schema initialized")
-            
             # Use direct ZMQ subscription for raw LogEntry messages
             import zmq
             import zmq.asyncio
