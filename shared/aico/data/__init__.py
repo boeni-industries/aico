@@ -11,7 +11,12 @@ The data layer is designed to be:
 - Cross-platform: Works across Windows, macOS, and Linux
 """
 
-__version__ = "0.1.0"
+# Import version from shared package
+try:
+    from aico.__version__ import __version__
+except ImportError:
+    # Fallback indicates version system is broken
+    __version__ = "x.x.x"
 
 # Re-export main components for convenience
 from .libsql import (

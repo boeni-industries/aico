@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-print("Starting AICO backend server v0.1.1")
 
 # Fix ZeroMQ compatibility on Windows - must be set before any ZMQ imports
 if sys.platform == "win32":
@@ -29,6 +28,7 @@ except Exception as e:
     print(f"Import error: {e}")
     sys.exit(1)
 
+# Backend version - this is the canonical source for backend version
 __version__ = "0.3.0"
 
 # Initialize configuration FIRST

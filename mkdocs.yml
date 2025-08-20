@@ -189,6 +189,7 @@ nav:
       - Personality Definition: concepts/personality/personality_definition.md
   - Developer Guide:
     - Getting Started: developer-guide/getting_started.md
+    - UV Commands Cheat Sheet: developer-guide/uv_cheatsheet.md
     - Guidelines: developer-guide/guidelines.md
     - Contributing: developer-guide/contributing.md
     - Testing: developer-guide/testing.md

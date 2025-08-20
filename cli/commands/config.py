@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 decorators_path = Path(__file__).parent.parent / "decorators"
 sys.path.insert(0, str(decorators_path))
-from sensitive import sensitive
+from cli.decorators.sensitive import sensitive
 
 # Standard Rich console - encoding is fixed at app startup
 from rich.console import Console
@@ -38,12 +38,12 @@ from aico.core.config import ConfigurationManager, ConfigurationError, Configura
 from aico.core.paths import AICOPaths
 
 # Import shared utilities using the same pattern as other CLI modules
-from utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
+from cli.utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
 
 def config_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
     if ctx.invoked_subcommand is None or help:
-        from utils.help_formatter import format_subcommand_help
+        from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
             ("get", "Get configuration value using dot notation"),
@@ -396,7 +396,7 @@ def init(
 ):
     """Initialize AICO configuration directories and setup."""
     
-    from utils.platform import get_platform_chars
+    from cli.utils.platform import get_platform_chars
     import shutil
     chars = get_platform_chars()
     

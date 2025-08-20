@@ -25,6 +25,18 @@ from pathlib import Path
 # Shared modules now installed via UV editable install
 
 from aico.core.logging import get_logger
+
+# Import version from backend main module
+try:
+    import sys
+    from pathlib import Path
+    # Add backend to path to import from main.py
+    backend_path = Path(__file__).parent.parent.parent
+    if str(backend_path) not in sys.path:
+        sys.path.insert(0, str(backend_path))
+    from main import __version__
+except ImportError:
+    __version__ = "x.x.x"
 from aico.core.bus import MessageBusClient
 from aico.core import AicoMessage, MessageMetadata
 
@@ -65,7 +77,7 @@ class RESTAdapter:
         self.app = FastAPI(
             title="AICO API Gateway",
             description="Unified API Gateway for AICO AI Companion",
-            version="1.0.0",
+            version=__version__,
             docs_url=f"{config.get('prefix', '/api/v1')}/docs",
             redoc_url=f"{config.get('prefix', '/api/v1')}/redoc"
         )
@@ -167,7 +179,7 @@ class RESTAdapter:
                 "status": "healthy",
                 "service": "aico-api-gateway",
                 "adapters": ["rest", "websocket", "zeromq"],
-                "version": "1.0.0"
+                "version": __version__
             }
         
         @self.app.get(f"{prefix}/gateway/metrics")

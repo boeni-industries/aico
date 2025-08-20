@@ -17,7 +17,7 @@ from typing import Optional
 # Import decorators
 decorators_path = Path(__file__).parent.parent / "decorators"
 sys.path.insert(0, str(decorators_path))
-from sensitive import sensitive, destructive
+from cli.decorators.sensitive import sensitive, destructive
 
 # Add shared module to path for CLI usage
 if getattr(sys, 'frozen', False):
@@ -40,13 +40,13 @@ from aico.core.logging import initialize_cli_logging, get_logger
 import aico.data.schemas.core
 
 # Import shared utilities using the same pattern as other CLI modules
-from utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
-from utils.timezone import format_timestamp_local, get_timezone_suffix
+from cli.utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
+from cli.utils.timezone import format_timestamp_local, get_timezone_suffix
 
 def database_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
     if ctx.invoked_subcommand is None or help:
-        from utils.help_formatter import format_subcommand_help
+        from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
             ("init", "Initialize a new encrypted AICO database"),

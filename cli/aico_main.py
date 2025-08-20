@@ -14,13 +14,13 @@ if platform.system() == "Windows":
     # Fix stdout encoding for PyInstaller executables on Windows CMD
     # Source: https://stackoverflow.com/questions/44780476/
     try:
-        # Check if we're in a PyInstaller bundle and stdout encoding is problematic
-        if getattr(sys, 'frozen', False) and sys.stdout.encoding != 'utf-8':
+        # Check if stdout encoding is problematic (both PyInstaller and development)
+        if sys.stdout.encoding != 'utf-8':
             # Replace stdout with UTF-8 encoded version
             sys.stdout = open(sys.stdout.fileno(), 'w', encoding='utf-8', closefd=False)
             sys.stderr = open(sys.stderr.fileno(), 'w', encoding='utf-8', closefd=False)
     except:
-        pass  # Expected failure on non-PyInstaller or already UTF-8 systems
+        pass  # Expected failure if already UTF-8 or other issues
     
     # Set console code page to UTF-8 for Windows CMD
     try:
@@ -48,14 +48,14 @@ from rich.console import Console
 # Create Rich console - no special handling needed after stdout fix
 console = Console()
 
-from commands.config import app as config_app
-from commands.version import app as version_app
-from commands.database import app as database_app
-from commands.security import app as security_app
-from commands.dev import app as dev_app
-from commands.logs import app as logs_app
-from commands.bus import app as bus_app
-from utils.platform import get_platform_chars
+from cli.commands.config import app as config_app
+from cli.commands.version import app as version_app
+from cli.commands.database import app as database_app
+from cli.commands.security import app as security_app
+from cli.commands.dev import app as dev_app
+from cli.commands.logs import app as logs_app
+from cli.commands.bus import app as bus_app
+from cli.utils.platform import get_platform_chars
 
 # Get platform-appropriate characters
 chars = get_platform_chars()
@@ -78,7 +78,7 @@ app.add_typer(bus_app, name="bus", help=f"{chars['bus']} Message bus management"
 
 # Import and register gateway commands
 try:
-    from commands import gateway
+    from cli.commands import gateway
     app.add_typer(gateway.app, name="gateway", help=f"{chars['gateway']} API Gateway management")
 except ImportError as e:
     # Gateway commands not available
@@ -95,8 +95,8 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
     # Handle both no command and --help flag with same custom formatting
     if ctx.invoked_subcommand is None or help:
         # Import here to avoid circular imports
-        from utils.help_formatter import format_command_help
-        from utils.platform import get_platform_chars
+        from cli.utils.help_formatter import format_command_help
+        from cli.utils.platform import get_platform_chars
         
         chars = get_platform_chars()
         

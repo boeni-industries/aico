@@ -523,7 +523,11 @@ class ConfigurationManager:
         # Import here to avoid circular dependency
         try:
             from .logging import AICOLogger
-            logger = AICOLogger("config")
+            logger = AICOLogger(
+                subsystem="core",
+                module="aico.core.config",
+                config_manager=self
+            )
             logger.info(
                 f"Configuration changed: {key}",
                 extra={

@@ -11,7 +11,7 @@ import json
 # Import utils
 utils_path = Path(__file__).parent.parent / "utils"
 sys.path.insert(0, str(utils_path))
-from timezone import format_timestamp_local, get_timezone_suffix
+from cli.utils.timezone import format_timestamp_local, get_timezone_suffix
 
 # Standard Rich console - encoding is fixed at app startup
 from rich.console import Console
@@ -19,7 +19,7 @@ from rich.console import Console
 def version_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
     if ctx.invoked_subcommand is None or help:
-        from utils.help_formatter import format_subcommand_help
+        from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
             ("show", "Show the version for a subsystem, or all subsystems if no subsystem is specified"),
@@ -310,65 +310,67 @@ def get_project_root():
         return Path(__file__).parent.parent.parent
 
 def update_cli_version(version: str):
-    """Update version in cli/pyproject.toml"""
-    cli_file = get_project_root() / "cli" / "pyproject.toml"
-    if not cli_file.exists():
+    """Update version in cli/__version__.py"""
+    cli_version_file = get_project_root() / "cli" / "__version__.py"
+    if not cli_version_file.exists():
         return False
     
-    content = cli_file.read_text(encoding='utf-8')
-    # Replace version = "x.x.x" with new version
+    content = cli_version_file.read_text(encoding='utf-8')
     import re
     new_content = re.sub(
-        r'version\s*=\s*["\'][^"\']*["\']',
-        f'version = "{version}"',
+        r'__version__\s*=\s*["\']([^"\']*)["\']',
+        f'__version__ = "{version}"',
         content
     )
     
     if new_content != content:
-        cli_file.write_text(new_content, encoding='utf-8')
+        cli_version_file.write_text(new_content, encoding='utf-8')
         return True
     return False
 
-# Update version in shared/setup.py
 def update_shared_version(version: str):
-    """Update version in shared/pyproject.toml"""
-    pyproject_file = get_project_root() / "shared" / "pyproject.toml"
-    if not pyproject_file.exists():
+    """Update version in shared/aico/__version__.py"""
+    shared_version_file = get_project_root() / "shared" / "aico" / "__version__.py"
+    if not shared_version_file.exists():
         return False
     
-    content = pyproject_file.read_text(encoding='utf-8')
+    content = shared_version_file.read_text(encoding='utf-8')
+    import re
+    new_content = re.sub(
+        r'__version__\s*=\s*["\']([^"\']*)["\']',
+        f'__version__ = "{version}"',
+        content
+    )
+    
+    if new_content != content:
+        shared_version_file.write_text(new_content, encoding='utf-8')
+        return True
+    return False
+
+def update_root_version(version: str):
+    """Update version in root pyproject.toml for unified versioning"""
+    root_file = get_project_root() / "pyproject.toml"
+    if not root_file.exists():
+        return False
+    
+    content = root_file.read_text(encoding='utf-8')
     # Replace version = "x.x.x" with new version
     import re
     new_content = re.sub(
-        r'version\s*=\s*["\'][^"\']*["\']',
+        r'version\s*=\s*["\'][^"\']["\']',
         f'version = "{version}"',
         content
     )
     
     if new_content != content:
-        pyproject_file.write_text(new_content, encoding='utf-8')
+        root_file.write_text(new_content, encoding='utf-8')
         return True
     return False
 
 # Update version in backend project files
 def update_backend_version(version: str):
-    """Update version in backend project files (both pyproject.toml and main.py)"""
+    """Update version in backend/main.py (no longer has pyproject.toml)"""
     backend_dir = get_project_root() / "backend"
-    updated = False
-    
-    # Update pyproject.toml
-    pyproject_file = backend_dir / "pyproject.toml"
-    if pyproject_file.exists():
-        content = pyproject_file.read_text(encoding='utf-8')
-        import re
-        new_content = re.sub(
-            r'version\s*=\s*["\'][^"\']*["\']',
-            f'version = "{version}"',
-            content
-        )
-        if new_content != content:
-            pyproject_file.write_text(new_content, encoding='utf-8')
-            updated = True
     
     # Update main.py __version__
     main_file = backend_dir / "main.py"
@@ -376,15 +378,15 @@ def update_backend_version(version: str):
         content = main_file.read_text(encoding='utf-8')
         import re
         new_content = re.sub(
-            r'__version__\s*=\s*["\'][^"\']*["\']',
+            r'__version__\s*=\s*["\']([^"\']*)["\']',
             f'__version__ = "{version}"',
             content
         )
         if new_content != content:
             main_file.write_text(new_content, encoding='utf-8')
-            updated = True
+            return True
     
-    return updated
+    return False
 
 def update_frontend_version(version: str):
     """Update version in frontend/pubspec.yaml"""
@@ -522,7 +524,7 @@ def check(
         None,
         help="Which subsystem to check (shared/cli/backend/frontend/studio/all). If omitted, checks all subsystems.",
         show_default=False
-    )
+    ),
 ):
     """
     Check that all project files match the canonical versions in the VERSIONS file.
@@ -575,25 +577,20 @@ def check(
         console.print("[bold green]All versions match![/bold green]\n")
 
 def read_cli_version():
-    cli_file = get_project_root() / "cli" / "pyproject.toml"
-    if not cli_file.exists():
+    """Read version from cli/__version__.py"""
+    cli_version_file = get_project_root() / "cli" / "__version__.py"
+    if not cli_version_file.exists():
         return None
-    content = cli_file.read_text(encoding='utf-8')
-    import re
-    match = re.search(r'version\s*=\s*["\']([^"\']*)["\']', content)
-    return match.group(1) if match else None
+    try:
+        content = cli_version_file.read_text(encoding='utf-8')
+        import re
+        match = re.search(r'__version__\s*=\s*["\']([^"\']*)["\']', content)
+        return match.group(1) if match else None
+    except Exception:
+        return None
 
 def read_backend_version():
-    # Try pyproject.toml first (canonical source)
-    backend_file = get_project_root() / "backend" / "pyproject.toml"
-    if backend_file.exists():
-        content = backend_file.read_text(encoding='utf-8')
-        import re
-        match = re.search(r'version\s*=\s*["\']([^"\']*)["\']', content)
-        if match:
-            return match.group(1)
-    
-    # Fallback to main.py
+    # Backend no longer has its own pyproject.toml, only main.py
     main_file = get_project_root() / "backend" / "main.py"
     if main_file.exists():
         content = main_file.read_text(encoding='utf-8')
@@ -614,12 +611,25 @@ def read_frontend_version():
     return match.group(1) if match else None
 
 def read_shared_version():
-    """Read version from shared/pyproject.toml by parsing the version string."""
-    pyproject_file = get_project_root() / "shared" / "pyproject.toml"
-    if not pyproject_file.exists():
+    """Read version from shared/aico/__version__.py"""
+    shared_version_file = get_project_root() / "shared" / "aico" / "__version__.py"
+    if not shared_version_file.exists():
         return None
     try:
-        content = pyproject_file.read_text(encoding='utf-8')
+        content = shared_version_file.read_text(encoding='utf-8')
+        import re
+        match = re.search(r'__version__\s*=\s*["\']([^"\']*)["\']', content)
+        return match.group(1) if match else None
+    except Exception:
+        return None
+
+def read_root_version():
+    """Read version from root pyproject.toml for unified versioning"""
+    root_file = get_project_root() / "pyproject.toml"
+    if not root_file.exists():
+        return None
+    try:
+        content = root_file.read_text(encoding='utf-8')
         import re
         match = re.search(r'version\s*=\s*["\']([^"\']*)["\']', content)
         return match.group(1) if match else None
@@ -807,17 +817,20 @@ def bump(
     subprocess.run(["git", "add", str(versions_path)], check=True)
     # For git commits, we need to add both files for backend
     if subsystem == "backend":
-        # Add both pyproject.toml and main.py for backend
-        backend_pyproject = get_project_root() / "backend" / "pyproject.toml"
+        # Backend only has main.py now (no pyproject.toml)
         backend_main = get_project_root() / "backend" / "main.py"
-        if backend_pyproject.exists():
-            subprocess.run(["git", "add", str(backend_pyproject)], check=True)
         if backend_main.exists():
             subprocess.run(["git", "add", str(backend_main)], check=True)
+    elif subsystem == "shared":
+        # For shared, add shared/aico/__version__.py
+        shared_version_file = get_project_root() / "shared" / "aico" / "__version__.py"
+        subprocess.run(["git", "add", str(shared_version_file)], check=True)
+    elif subsystem == "cli":
+        # For cli, add cli/__version__.py
+        cli_version_file = get_project_root() / "cli" / "__version__.py"
+        subprocess.run(["git", "add", str(cli_version_file)], check=True)
     else:
         project_file = {
-            "shared": get_project_root() / "shared" / "pyproject.toml",
-            "cli": get_project_root() / "cli" / "pyproject.toml",
             "frontend": get_project_root() / "frontend" / "pubspec.yaml",
             "studio": get_project_root() / "studio" / "package.json"
         }[subsystem]

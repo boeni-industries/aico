@@ -16,7 +16,7 @@ import sys
 # Import decorators
 decorators_path = Path(__file__).parent.parent / "decorators"
 sys.path.insert(0, str(decorators_path))
-from sensitive import sensitive
+from cli.decorators.sensitive import sensitive
 
 # Add shared module to path for CLI usage
 if getattr(sys, 'frozen', False):
@@ -31,12 +31,12 @@ sys.path.insert(0, str(shared_path))
 from aico.security import AICOKeyManager
 
 # Import shared utilities using the same pattern as other CLI modules
-from utils.timezone import format_timestamp_local
+from cli.utils.timezone import format_timestamp_local
 
 def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
     if ctx.invoked_subcommand is None or help:
-        from utils.help_formatter import format_subcommand_help
+        from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
             ("setup", "Set up master password for AICO (first-time setup)"),

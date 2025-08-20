@@ -21,12 +21,12 @@ from rich.text import Text
 # Import decorators
 decorators_path = Path(__file__).parent.parent / "decorators"
 sys.path.insert(0, str(decorators_path))
-from sensitive import sensitive
+from cli.decorators.sensitive import sensitive
 
 # Import utils
 utils_path = Path(__file__).parent.parent / "utils"
 sys.path.insert(0, str(utils_path))
-from timezone import format_timestamp_local, get_timezone_suffix
+from cli.utils.timezone import format_timestamp_local, get_timezone_suffix
 
 # Add shared path for imports
 shared_path = Path(__file__).parent.parent.parent / "shared"
@@ -42,7 +42,7 @@ console = Console()
 def logs_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
     if ctx.invoked_subcommand is None or help:
-        from utils.help_formatter import format_subcommand_help
+        from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
             ("ls", "List recent logs with filtering options"),
