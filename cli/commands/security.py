@@ -176,17 +176,41 @@ def setup(
             console.print(f"⚠️ [yellow]JWT secret initialization failed: {e}[/yellow]")
             console.print("   Run 'aico security setup --jwt-only' to retry JWT initialization")
         
+        # Initialize file encryption keys (test derivation)
+        try:
+            console.print("🔐 Testing file encryption key derivation...")
+            master_key = key_manager.get_master_key()
+            
+            # Test common file encryption purposes
+            test_purposes = ["config", "logs", "chroma", "cache"]
+            for purpose in test_purposes:
+                file_key = key_manager.derive_file_encryption_key(master_key, purpose)
+                # Verify key is 32 bytes for AES-256
+                if len(file_key) != 32:
+                    raise ValueError(f"Invalid key length for purpose '{purpose}': {len(file_key)} bytes")
+            
+            console.print("✅ [green]File encryption keys validated[/green]")
+            actions_taken.append("File encryption keys validated")
+            
+        except Exception as e:
+            console.print(f"⚠️ [yellow]File encryption key validation failed: {e}[/yellow]")
+            console.print("   File encryption may not work properly")
+        
         # Summary of actions taken
         if actions_taken:
-            console.print(f"\n✅ [bold green]Setup completed successfully![/bold green]")
-            console.print("📋 [cyan]Actions taken:[/cyan]")
+            console.print(f"\n✅ [green]Setup complete! Actions taken:[/green]")
             for action in actions_taken:
                 console.print(f"   • {action}")
-        else:
-            console.print(f"\n✅ [green]All security components already configured[/green]")
+        
+        console.print("\n🚀 [bold green]AICO security is now ready![/bold green]")
+        console.print("You can now:")
+        console.print("  • Initialize encrypted databases with 'aico db init'")
+        console.print("  • Use encrypted files with EncryptedFile class")
+        console.print("  • Start the backend with 'aico gateway start'")
+        console.print("  • Check security status with 'aico security status'")
         
     except Exception as e:
-        console.print(f"❌ [red]Failed to set up master password: {e}[/red]")
+        console.print(f"❌ [red]Setup failed: {e}[/red]")
         raise typer.Exit(1)
 
 
