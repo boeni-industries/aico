@@ -61,7 +61,7 @@ class AuthzResult:
 @dataclass
 class User:
     """User identity and attributes"""
-    user_id: str
+    user_uuid: str
     username: str
     roles: List[str]
     permissions: Set[str]
@@ -117,7 +117,7 @@ class AuthenticationManager:
         # Initialize default service accounts
         self._initialize_service_accounts()
     
-    def generate_jwt_token(self, user_id: str, username: str = None, roles: List[str] = None, 
+    def generate_jwt_token(self, user_uuid: str, username: str = None, roles: List[str] = None, 
                           permissions: Set[str] = None, device_uuid: str = None, expires_minutes: int = None) -> str:
         """Generate JWT token for user with session backing (zero-effort security)"""
         import time
@@ -128,8 +128,9 @@ class AuthenticationManager:
         exp_time = current_time + (expires_minutes * 60)
         
         payload = {
-            "sub": user_id,
-            "username": username or user_id,
+            "sub": user_uuid,
+            "user_uuid": user_uuid,
+            "username": username or user_uuid,
             "roles": roles or ["user"],
             "permissions": list(permissions or set()),
             "iat": current_time,
@@ -143,13 +144,13 @@ class AuthenticationManager:
         if self.session_service and device_uuid:
             try:
                 self.session_service.create_session(
-                    user_uuid=user_id,
+                    user_uuid=user_uuid,
                     device_uuid=device_uuid,
                     jwt_token=token,
                     expires_in_minutes=expires_minutes
                 )
                 self.logger.info("Session created successfully", extra={
-                    "user_id": user_id,
+                    "user_uuid": user_uuid,
                     "device_uuid": device_uuid
                 })
                 
@@ -159,7 +160,7 @@ class AuthenticationManager:
             except Exception as e:
                 self.logger.error("Failed to create session record", extra={
                     "error": str(e),
-                    "user_id": user_id,
+                    "user_uuid": user_uuid,
                     "expires_minutes": expires_minutes,
                     "error_type": type(e).__name__
                 })
@@ -170,7 +171,7 @@ class AuthenticationManager:
             "module": "api_gateway",
             "function": "generate_jwt_token",
             "topic": "auth.jwt.token_generated",
-            "user_id": user_id,
+            "user_uuid": user_uuid,
             "expires": datetime.fromtimestamp(exp_time).isoformat()
         })
         
@@ -179,11 +180,11 @@ class AuthenticationManager:
     def generate_cli_token(self) -> str:
         """Generate JWT token for CLI access (zero-effort security)"""
         return self.generate_jwt_token(
-            user_id="cli_user",
+            user_uuid="cli_user",
             username="AICO CLI",
             roles=["admin"],  # CLI gets admin access
             permissions={"*"},  # Full access for CLI
-            expires_hours=24 * 7  # 7 days for CLI convenience
+            expires_minutes=24 * 7 * 60  # 7 days for CLI convenience
         )
     
     def revoke_token(self, token: str) -> bool:
@@ -232,7 +233,7 @@ class AuthenticationManager:
         # Create default admin API key
         admin_key = secrets.token_urlsafe(32)
         admin_user = User(
-            user_id="admin",
+            user_uuid="admin",
             username="admin",
             roles=["admin"],
             permissions={"*"},  # Full access
@@ -243,7 +244,7 @@ class AuthenticationManager:
         # Create default service API key for internal services
         service_key = secrets.token_urlsafe(32)
         service_user = User(
-            user_id="system",
+            user_uuid="system",
             username="system",
             roles=["service"],
             permissions={"system.*", "admin.*"},
@@ -275,7 +276,7 @@ class AuthenticationManager:
                 result = await self._authenticate_method(method, data, client_info)
                 if result.success:
                     self.logger.debug(f"Authentication successful via {method}", extra={
-                        "user_id": result.user.user_id,
+                        "user_uuid": result.user.user_uuid,
                         "client": client_info.get("client_id", "unknown")
                     })
                     return result
@@ -352,8 +353,8 @@ class AuthenticationManager:
             
             # Extract user information
             user = User(
-                user_id=payload["sub"],
-                username=payload.get("username", payload["sub"]),
+                user_uuid=payload["user_uuid"],
+                username=payload.get("username", payload["user_uuid"]),
                 roles=payload.get("roles", ["user"]),
                 permissions=set(payload.get("permissions", [])),
                 metadata=payload.get("metadata", {})
@@ -412,7 +413,7 @@ class AuthenticationManager:
         try:
             # Local IPC connections are trusted
             user = User(
-                user_id="local_user",
+                user_uuid="local_user",
                 username="local_user",
                 roles=["user"],
                 permissions={"conversation.*", "personality.read", "memory.read"},
@@ -432,7 +433,7 @@ class AuthenticationManager:
     def create_jwt_token(self, user: User) -> str:
         """Create JWT token for user"""
         payload = {
-            "sub": user.user_id,
+            "sub": user.user_uuid,
             "username": user.username,
             "roles": user.roles,
             "permissions": list(user.permissions),
@@ -471,7 +472,7 @@ class AuthenticationManager:
             
             # Generate new token
             new_token = self.generate_jwt_token(
-                user_id=payload["sub"],
+                user_uuid=payload["user_uuid"],
                 username=payload.get("username"),
                 roles=payload.get("roles", ["user"]),
                 permissions=set(payload.get("permissions", [])),
@@ -626,14 +627,14 @@ class AuthorizationManager:
         # Example: Allow users to access their own data
         if isinstance(resource, AicoMessage):
             # Check if user is accessing their own conversation
-            if action.startswith("conversation.") and resource.metadata.source == user.user_id:
+            if action.startswith("conversation.") and resource.metadata.source == user.user_uuid:
                 return True
         
         return False
     
     def get_user_permissions(self, user: User) -> Set[str]:
         """Get all permissions for user"""
-        cache_key = f"{user.user_id}:{':'.join(user.roles)}"
+        cache_key = f"{user.user_uuid}:{':'.join(user.roles)}"
         
         if cache_key in self.permission_cache:
             return self.permission_cache[cache_key]

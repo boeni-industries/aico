@@ -491,6 +491,68 @@ For detailed architecture and configuration options, see [Data Layer Documentati
 
 ---
 
+## Protocol Buffer Compilation
+
+AICO uses Protocol Buffers for cross-component communication. After making changes to `.proto` files, you need to regenerate the language-specific code.
+
+### Prerequisites
+
+Install the Protocol Buffers compiler:
+```bash
+# macOS
+brew install protobuf
+
+# Ubuntu/Debian  
+sudo apt-get install protobuf-compiler
+
+# Windows (via chocolatey)
+choco install protoc
+```
+
+Install language-specific plugins:
+```bash
+# Python
+pip install protobuf mypy-protobuf
+
+# Dart (for Flutter frontend)
+dart pub global activate protoc_plugin
+
+# JavaScript/TypeScript (for Studio admin interface)
+npm install -g protoc-gen-js protoc-gen-grpc-web
+```
+
+### Generating Code
+
+**Note:** All commands assume you're starting from the AICO project root directory (`d:/dev/aico`).
+
+For Python, you must include both the `proto` directory and your venv's `site-packages` as `-I` (include) paths, so that Google well-known types are found.
+
+**Python (Backend & Shared):**
+
+From the **project root** (`d:/dev/aico`), run:
+
+```sh
+protoc -I=proto -I=backend/.venv/Lib/site-packages --python_out=shared/aico/proto proto/aico_core_api_gateway.proto proto/aico_core_common.proto proto/aico_core_envelope.proto proto/aico_core_logging.proto proto/aico_core_plugin_system.proto proto/aico_core_update_system.proto proto/aico_emotion.proto proto/aico_integration.proto proto/aico_personality.proto proto/aico_conversation.proto
+```
+- If your venv is in a different location, adjust the `-I` path accordingly.
+- If you get errors about missing `google/protobuf/*.proto` files, make sure your venv's `site-packages/google/protobuf/` directory contains the `.proto` files. If not, download them from the [official repo](https://github.com/protocolbuffers/protobuf/tree/main/src/google/protobuf) and copy them in.
+
+**Dart (Flutter Frontend):**
+```bash
+cd proto
+protoc -I=. --dart_out=../frontend/lib/generated ./core/*.proto ./emotion/*.proto ./conversation/*.proto ./personality/*.proto ./integration/*.proto
+```
+
+**JavaScript/TypeScript (Studio Admin Interface):**
+```bash
+cd proto
+protoc -I=. --js_out=import_style=commonjs,binary:../studio/src/generated --grpc-web_out=import_style=commonjs,mode=grpcwebtext:../studio/src/generated ./core/*.proto ./emotion/*.proto ./conversation/*.proto ./personality/*.proto ./integration/*.proto
+```
+
+For detailed protobuf development guidelines, see [Protocol Buffers & API Contracts](./protobuf.md).
+
+---
+
 ## Further Reading
 
 - [Contributing](./contributing.md)

@@ -66,8 +66,7 @@ from aico.core.bus import MessageBusClient, MessageBusBroker, create_client
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
 from aico.core.paths import AICOPaths
-from aico.proto.core import LogEntry
-from aico.proto.core.logging_pb2 import LogLevel
+from aico.proto import aico_core_logging_pb2
 from google.protobuf.timestamp_pb2 import Timestamp
 
 def _get_database_connection(db_path: str, force_fresh: bool = False) -> EncryptedLibSQLConnection:

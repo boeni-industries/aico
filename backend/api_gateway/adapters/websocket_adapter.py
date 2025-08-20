@@ -35,6 +35,9 @@ class WebSocketConnection:
     websocket: websockets.WebSocketServerProtocol
     client_id: str
     user: Optional[Any] = None
+    user_uuid: Optional[str] = None
+    device_uuid: Optional[str] = None
+    session_id: Optional[str] = None
     subscriptions: Set[str] = None
     last_heartbeat: float = 0
     authenticated: bool = False
@@ -67,6 +70,9 @@ class WebSocketAdapter:
         self.message_router = message_router
         self.rate_limiter = rate_limiter
         self.validator = validator
+        
+        # Session service for database-backed WebSocket sessions
+        self.session_service = auth_manager.session_service if auth_manager else None
         
         # Connection management
         self.connections: Dict[str, WebSocketConnection] = {}
@@ -227,6 +233,8 @@ class WebSocketAdapter:
             
             # Add auth token to headers if provided
             token = message_data.get("token")
+            device_uuid = message_data.get("device_uuid", "websocket_client")
+            
             if token:
                 client_info["headers"]["authorization"] = f"Bearer {token}"
             
@@ -235,15 +243,38 @@ class WebSocketAdapter:
             
             if auth_result.success:
                 connection.user = auth_result.user
+                connection.user_uuid = auth_result.user.user_uuid
+                connection.device_uuid = device_uuid
                 connection.authenticated = True
+                
+                # Create WebSocket session if session service available
+                if self.session_service and token:
+                    try:
+                        session_info = self.session_service.get_session_by_token(token)
+                        if session_info:
+                            connection.session_id = session_info.uuid
+                            self.logger.debug("WebSocket session linked to database session", extra={
+                                "session_id": session_info.uuid,
+                                "user_uuid": connection.user_uuid
+                            })
+                    except Exception as e:
+                        self.logger.warning("Failed to link WebSocket to database session", extra={
+                            "error": str(e),
+                            "user_uuid": connection.user_uuid
+                        })
                 
                 await self._send_message(connection, {
                     "type": "auth_success",
-                    "user_id": auth_result.user.user_id,
-                    "roles": auth_result.user.roles
+                    "user_uuid": auth_result.user.user_uuid,
+                    "roles": auth_result.user.roles,
+                    "session_id": connection.session_id
                 })
                 
-                self.logger.info(f"WebSocket authentication successful: {connection.client_id}")
+                self.logger.info("WebSocket authentication successful", extra={
+                    "client_id": connection.client_id,
+                    "user_uuid": connection.user_uuid,
+                    "session_id": connection.session_id
+                })
             else:
                 await self._send_error(connection, "Authentication failed", auth_result.error)
                 
@@ -337,7 +368,8 @@ class WebSocketAdapter:
                     source="websocket_api",
                     message_type=message_type,
                     version="1.0",
-                    
+                    user_uuid=connection.user_uuid,
+                    session_id=connection.session_id
                 ),
                 payload=payload
             )

@@ -17,6 +17,6 @@ from .bus import (
 )
 
 # Import protobuf message types
-from ..proto.core import AicoMessage, MessageMetadata
+from ..proto.aico_core_envelope_pb2 import AicoMessage, MessageMetadata
 
 __all__ = ['ConfigurationManager', 'get_logger', 'AICOLogger', 'AICOPaths', 'MessageBusClient', 'MessageBusBroker', 'AicoMessage', 'MessageMetadata', 'create_client', 'create_broker']

@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from ..proto.core import LogEntry, LogLevel
+from ..proto.aico_core_logging_pb2 import LogEntry, LogLevel
 import inspect
 from typing import TYPE_CHECKING
 
@@ -100,8 +100,8 @@ class AICOLogger:
             log_entry.file_path = file_path
         if line_number:
             log_entry.line_number = line_number
-        if kwargs.get("user_id"):
-            log_entry.user_id = kwargs["user_id"]
+        if kwargs.get("user_uuid"):
+            log_entry.user_uuid = kwargs["user_uuid"]
         if kwargs.get("session_id"):
             log_entry.session_id = kwargs["session_id"]
         if kwargs.get("trace_id"):
@@ -384,7 +384,7 @@ class LogCollector:
             self.db.execute("""
                 INSERT INTO logs (
                     timestamp, level, subsystem, module, function_name,
-                    file_path, line_number, topic, message, user_id,
+                    file_path, line_number, topic, message, user_uuid,
                     session_id, trace_id, extra
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, [
@@ -397,7 +397,7 @@ class LogCollector:
                 log_data.get("line_number"),
                 log_data.get("topic"),
                 log_data.get("message"),
-                log_data.get("user_id"),
+                log_data.get("user_uuid"),
                 log_data.get("session_id"),
                 log_data.get("trace_id"),
                 json.dumps(log_data.get("extra")) if log_data.get("extra") else None
@@ -423,7 +423,7 @@ class LogRepository:
     def store_log(self, log_entry):
         """Persist a protobuf LogEntry to the logs table"""
         import json
-        from aico.proto.core.logging_pb2 import LogLevel
+        from ..proto.aico_core_logging_pb2 import LogLevel
         try:
             timestamp_str = log_entry.timestamp.ToDatetime().isoformat() + "Z"
             level_str = LogLevel.Name(log_entry.level)
@@ -435,13 +435,13 @@ class LogRepository:
                     extra_json = json.dumps({k: str(v) for k, v in dict(log_entry.extra).items()})
             file_path = getattr(log_entry, 'file_path', None)
             line_number = getattr(log_entry, 'line_number', None)
-            user_id = getattr(log_entry, 'user_id', None)
+            user_uuid = getattr(log_entry, 'user_uuid', None)
             session_id = getattr(log_entry, 'session_id', None)
             trace_id = getattr(log_entry, 'trace_id', None)
             self.db.execute("""
                 INSERT INTO logs (
                     timestamp, level, subsystem, module, function_name, 
-                    file_path, line_number, topic, message, user_id, 
+                    file_path, line_number, topic, message, user_uuid, 
                     session_id, trace_id, extra
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
@@ -454,7 +454,7 @@ class LogRepository:
                 line_number,
                 log_entry.topic,
                 log_entry.message,
-                user_id,
+                user_uuid,
                 session_id,
                 trace_id,
                 extra_json
@@ -495,7 +495,7 @@ class LogRepository:
         
         sql = f"""
             SELECT id, timestamp, level, subsystem, module, function_name,
-                   file_path, line_number, topic, message, user_id,
+                   file_path, line_number, topic, message, user_uuid,
                    session_id, trace_id, extra
             FROM logs 
             WHERE {where_sql}
@@ -509,7 +509,7 @@ class LogRepository:
         # Convert tuples to dictionaries with proper column names
         column_names = [
             "id", "timestamp", "level", "subsystem", "module", "function_name",
-            "file_path", "line_number", "topic", "message", "user_id",
+            "file_path", "line_number", "topic", "message", "user_uuid",
             "session_id", "trace_id", "extra"
         ]
         

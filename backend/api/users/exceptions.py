@@ -10,10 +10,10 @@ from typing import Optional
 
 class UserNotFoundError(HTTPException):
     """Raised when a requested user is not found"""
-    def __init__(self, user_id: str):
+    def __init__(self, user_uuid: str):
         super().__init__(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with ID {user_id} not found"
+            detail=f"User with UUID {user_uuid} not found"
         )
 
 
@@ -37,19 +37,19 @@ class InvalidCredentialsError(HTTPException):
 
 class UserAccountLockedError(HTTPException):
     """Raised when user account is locked due to failed attempts"""
-    def __init__(self, user_id: str):
+    def __init__(self, user_uuid: str):
         super().__init__(
             status_code=status.HTTP_423_LOCKED,
-            detail=f"User account {user_id} is locked due to failed authentication attempts"
+            detail=f"User account {user_uuid} is locked due to failed authentication attempts"
         )
 
 
 class UserInactiveError(HTTPException):
     """Raised when attempting to authenticate with an inactive user"""
-    def __init__(self, user_id: str):
+    def __init__(self, user_uuid: str):
         super().__init__(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"User account {user_id} is inactive"
+            detail=f"User account {user_uuid} is inactive"
         )
 
 

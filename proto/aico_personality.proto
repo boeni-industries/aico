@@ -1,4 +1,5 @@
 syntax = "proto3";
+import "google/protobuf/descriptor.proto";
 
 package aico.personality;
 
@@ -50,12 +51,12 @@ message MoodState {
 // Matches the `user.interaction.history` message format documented in docs/architecture/personality_sim_msg.md.
 // Historical interaction patterns and relationship development data from the Memory System.
 // Fields:
-// - user_id: User identifier
+// - user_uuid: User identifier
 // - patterns: Topic preferences, interaction styles, time patterns
 // - relationship: Development stage, trust, familiarity, significant events, interaction quality
 // See personality_sim_msg.md for illustrative JSON and field semantics.
 message UserInteractionHistory {
-  string user_id = 1;
+  string user_uuid = 1;
   
   // Interaction patterns
   InteractionPatterns patterns = 2;

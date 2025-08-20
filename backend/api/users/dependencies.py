@@ -50,7 +50,7 @@ def create_user_auth_dependency(auth_manager):
                 )
             
             return {
-                "user_id": payload.get("sub"),
+                "user_uuid": payload.get("user_uuid", payload.get("sub")),
                 "username": payload.get("username"),
                 "roles": roles,
                 "permissions": permissions,

@@ -4,6 +4,7 @@ import sys
 import signal
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 
 print("Starting AICO backend server v0.1.1")
 
@@ -11,11 +12,13 @@ print("Starting AICO backend server v0.1.1")
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
+# Add shared/aico/proto to sys.path for generated proto imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "shared" / "aico" / "proto"))
+
 try:
     import uvicorn
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
-    from pathlib import Path
     print("FastAPI imports successful")
 
     # Shared modules now installed via UV editable install

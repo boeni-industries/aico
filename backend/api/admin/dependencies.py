@@ -83,8 +83,8 @@ def verify_admin_token(credentials: HTTPAuthorizationCredentials = Depends(secur
             raise HTTPException(status_code=401, detail="Token has been revoked")
         
         # Extract user information
-        user_id = payload.get("sub")
-        username = payload.get("username", user_id)
+        user_uuid = payload.get("user_uuid", payload.get("sub"))
+        username = payload.get("username", user_uuid)
         roles = payload.get("roles", [])
         
         # Verify admin role
@@ -92,7 +92,7 @@ def verify_admin_token(credentials: HTTPAuthorizationCredentials = Depends(secur
             raise HTTPException(status_code=403, detail="Admin access required")
         
         return {
-            "user_id": user_id,
+            "user_uuid": user_uuid,
             "username": username,
             "roles": roles,
             "token": token

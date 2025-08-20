@@ -144,7 +144,7 @@ async def gateway_stats(credentials: HTTPAuthorizationCredentials = Depends(HTTP
 @router.get("/auth/sessions", response_model=UserSessionsResponse)
 @handle_admin_service_exceptions
 async def list_sessions(
-    user_id: Optional[str] = None,
+    user_uuid: Optional[str] = None,
     admin_only: bool = False,
     include_stats: bool = True
 ):
@@ -152,7 +152,7 @@ async def list_sessions(
     List sessions with comprehensive information
     
     Query Parameters:
-    - user_id: Filter sessions by specific user ID
+    - user_uuid: Filter sessions by specific user UUID
     - admin_only: Show only admin sessions
     - include_stats: Include session statistics
     """
@@ -160,7 +160,7 @@ async def list_sessions(
         raise GatewayServiceError("Authentication manager not initialized")
     
     # Get sessions from auth manager
-    sessions = auth_manager.list_sessions(user_id=user_id, admin_only=admin_only)
+    sessions = auth_manager.list_sessions(user_uuid=user_uuid, admin_only=admin_only)
     
     # Convert to API response format
     session_data = []
@@ -180,7 +180,7 @@ async def list_sessions(
         response_data["stats"] = auth_manager.get_session_stats()
     
     logger.info("Sessions listed", extra={
-        "filter_user_id": user_id,
+        "filter_user_uuid": user_uuid,
         "admin_only": admin_only,
         "total_returned": len(session_data)
     })

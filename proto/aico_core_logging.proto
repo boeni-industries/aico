@@ -1,4 +1,5 @@
 syntax = "proto3";
+import "google/protobuf/descriptor.proto";
 
 package aico.core;
 
@@ -22,7 +23,7 @@ message LogEntry {
   // Optional fields for enhanced logging
   string file_path = 9;                       // Source file path
   int32 line_number = 10;                     // Line number in source
-  string user_id = 11;                        // User ID if applicable
+  string user_uuid = 11;                      // User UUID if applicable
   string session_id = 12;                     // Session ID if applicable
   string trace_id = 13;                       // Trace ID for distributed tracing
   map<string, string> extra = 14;            // Extra contextual data

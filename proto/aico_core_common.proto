@@ -1,4 +1,5 @@
 syntax = "proto3";
+import "google/protobuf/descriptor.proto";
 
 package aico.core;
 
@@ -57,7 +58,7 @@ message RoamingMode {
 
 // Security context
 message SecurityContext {
-  string user_id = 1;                  // User identifier
+  string user_uuid = 1;                // User identifier
   string session_id = 2;               // Session identifier
   AuthType auth_type = 3;              // Authentication type
   repeated string permissions = 4;     // Granted permissions

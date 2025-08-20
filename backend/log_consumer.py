@@ -13,8 +13,7 @@ from typing import Dict, Any, Optional
 from pathlib import Path
 from aico.core.bus import MessageBusClient
 from aico.core.config import ConfigurationManager
-from aico.proto.core import LogEntry
-from aico.proto.core.logging_pb2 import LogLevel
+from shared.aico.proto.aico_core_logging_pb2 import LogEntry, LogLevel
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security import AICOKeyManager
 from aico.core.paths import AICOPaths
@@ -206,7 +205,7 @@ class AICOLogConsumer:
             # Prepare all fields for schema alignment
             file_path = getattr(log_entry, 'file_path', None) or None
             line_number = getattr(log_entry, 'line_number', None) or None
-            user_id = getattr(log_entry, 'user_id', None) or None
+            user_uuid = getattr(log_entry, 'user_uuid', None) or None
             session_id = getattr(log_entry, 'session_id', None) or None
             trace_id = getattr(log_entry, 'trace_id', None) or None
             # extra_json already prepared above as JSON string
@@ -216,7 +215,7 @@ class AICOLogConsumer:
             self.db_connection.execute("""
                 INSERT INTO logs (
                     timestamp, level, subsystem, module, function_name, 
-                    file_path, line_number, topic, message, user_id, 
+                    file_path, line_number, topic, message, user_uuid, 
                     session_id, trace_id, extra
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
@@ -229,7 +228,7 @@ class AICOLogConsumer:
                 line_number,
                 log_entry.topic,
                 log_entry.message,
-                user_id,
+                user_uuid,
                 session_id,
                 trace_id,
                 extra_json

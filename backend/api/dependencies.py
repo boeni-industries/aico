@@ -27,7 +27,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         # For now, return a basic structure
         # TODO: Integrate with AuthenticationManager from main.py
         return {
-            "user_id": "placeholder",
+            "user_uuid": "placeholder",
             "username": "placeholder", 
             "roles": [],
             "permissions": set(),
@@ -69,7 +69,7 @@ def create_auth_dependency(auth_manager):
                 raise HTTPException(status_code=401, detail="Token has been revoked")
             
             return {
-                "user_id": payload.get("sub"),
+                "user_uuid": payload["user_uuid"],
                 "username": payload.get("username"),
                 "roles": payload.get("roles", []),
                 "permissions": set(payload.get("permissions", [])),

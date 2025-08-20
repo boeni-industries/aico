@@ -18,7 +18,7 @@ initialize_logging(ConfigurationManager())
 
 from aico.core.bus import MessageBusBroker, MessageBusClient
 from aico.core.logging import get_logger
-from aico.proto.core import ApiEvent
+from aico.proto.aico_core_api_gateway_pb2 import ApiEvent
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
 from aico.core.paths import AICOPaths

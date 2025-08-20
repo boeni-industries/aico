@@ -1,4 +1,5 @@
 syntax = "proto3";
+import "google/protobuf/descriptor.proto";
 
 package aico.integration;
 
@@ -19,7 +20,7 @@ import "google/protobuf/timestamp.proto";
 // - confidence: Detection confidence (0.0-1.0)
 // - crisis_type: Type of crisis detected (emotional_distress, safety_concern, etc.)
 // - detected_by: Detection information (module, method, signals)
-// - context: Crisis context (conversation_id, user_id, recent_message, etc.)
+// - context: Crisis context (conversation_id, user_uuid, recent_message, etc.)
 // - response_guidance: Guidance for module responses
 // - escalation_path: Internal/external escalation info
 // See integration_msg.md for illustrative JSON and field semantics.
@@ -74,14 +75,14 @@ message DetectionSignal {
 // Crisis context
 // Fields:
 // - conversation_id: Conversation identifier
-// - user_id: User identifier
+// - user_uuid: User identifier
 // - recent_message: Recent message that triggered detection
 // - conversation_topic: Current conversation topic
 // - relationship_phase: Current relationship phase
 // See integration_msg.md for details.
 message CrisisContext {
   string conversation_id = 1;          // Conversation identifier
-  string user_id = 2;                  // User identifier
+  string user_uuid = 2;                // User identifier
   string recent_message = 3;           // Recent message that triggered detection
   string conversation_topic = 4;       // Current conversation topic
   string relationship_phase = 5;       // Current relationship phase

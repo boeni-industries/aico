@@ -28,7 +28,7 @@ class GatewayStatsResponse(BaseModel):
 class SessionInfo(BaseModel):
     """Session information schema"""
     session_id: str = Field(..., description="Session ID")
-    user_id: str = Field(..., description="User ID")
+    user_uuid: str = Field(..., description="User UUID")
     username: str = Field(..., description="Username")
     roles: List[str] = Field(..., description="User roles")
     created_at: str = Field(..., description="Session creation time")

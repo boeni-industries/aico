@@ -1142,7 +1142,7 @@ def auth_status():
 # Admin commands
 @admin_app.command("sessions")
 def admin_list_sessions(
-    user_id: Optional[str] = typer.Option(None, "--user", help="Filter by specific user ID"),
+    user_uuid: Optional[str] = typer.Option(None, "--user", help="Filter by specific user UUID"),
     admin_only: bool = typer.Option(False, "--admin-only", help="Show only admin sessions"),
     include_stats: bool = typer.Option(True, "--stats/--no-stats", help="Include session statistics")
 ):
@@ -1150,8 +1150,8 @@ def admin_list_sessions(
     try:
         # Build query parameters
         params = {}
-        if user_id:
-            params["user_id"] = user_id
+        if user_uuid:
+            params["user_uuid"] = user_uuid
         if admin_only:
             params["admin_only"] = "true"
         if not include_stats:
@@ -1187,7 +1187,7 @@ def admin_list_sessions(
         for session in sessions:
             # Truncate session ID for display
             session_id = session.get("session_id", "")[:8] + "..."
-            user_id = session.get("user_id", "Unknown")
+            user_uuid = session.get("user_uuid", "Unknown")
             status = session.get("status", "unknown").title()
             created = session.get("created_at", "")[:19] if session.get("created_at") else "Unknown"
             last_active = session.get("last_accessed_at", "")[:19] if session.get("last_accessed_at") else "Unknown"
@@ -1199,7 +1199,7 @@ def admin_list_sessions(
             elif status.lower() == "expired":
                 status = f"[red]{status}[/red]"
             
-            table.add_row(session_id, user_id, status, created, last_active, ip_address)
+            table.add_row(session_id, user_uuid, status, created, last_active, ip_address)
         
         console.print(table)
         

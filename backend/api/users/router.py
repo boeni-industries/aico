@@ -75,7 +75,7 @@ async def create_user(
     logger.info("User created via API", extra={
         "user_uuid": user.uuid,
         "full_name": user.full_name,
-        "created_by": admin_user.get("user_id") if admin_user else "unknown"
+        "created_by": admin_user.get("user_uuid") if admin_user else "unknown"
     })
     
     return UserResponse(
@@ -151,7 +151,7 @@ async def update_user(
     logger.info("User updated via API", extra={
         "user_uuid": user_uuid,
         "updated_fields": list(updates.keys()),
-        "updated_by": admin_user.get("user_id") if admin_user else "unknown"
+        "updated_by": admin_user.get("user_uuid") if admin_user else "unknown"
     })
     
     return UserResponse(
@@ -184,7 +184,7 @@ async def delete_user(
     
     logger.info("User deleted via API", extra={
         "user_uuid": user_uuid,
-        "deleted_by": admin_user.get("user_id") if admin_user else "unknown"
+        "deleted_by": admin_user.get("user_uuid") if admin_user else "unknown"
     })
 
 
@@ -250,7 +250,7 @@ async def authenticate_user(request: AuthenticateRequest):
         
         # Generate JWT token with proper roles and permissions
         jwt_token = auth_manager.generate_jwt_token(
-            user_id=user.uuid,
+            user_uuid=user.uuid,
             username=user.full_name,
             roles=user_roles,
             permissions=user_permissions,
@@ -300,7 +300,7 @@ async def set_user_pin(
     
     logger.info("User PIN updated via API", extra={
         "user_uuid": user_uuid,
-        "updated_by": admin_user.get("user_id") if admin_user else "unknown"
+        "updated_by": admin_user.get("user_uuid") if admin_user else "unknown"
     })
 
 
@@ -326,7 +326,7 @@ async def unlock_user(
     
     logger.info("User unlocked via API", extra={
         "user_uuid": user_uuid,
-        "unlocked_by": admin_user.get("user_id") if admin_user else "unknown"
+        "unlocked_by": admin_user.get("user_uuid") if admin_user else "unknown"
     })
 
 
@@ -385,7 +385,7 @@ async def refresh_token(request: Request):
             algorithms=["HS256"],
             options={"verify_aud": False}
         )
-        user_id = payload.get("sub")
+        user_uuid = payload.get("user_uuid", payload.get("sub"))
         username = payload.get("username")
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to decode new token")
@@ -394,12 +394,12 @@ async def refresh_token(request: Request):
     if not user_service:
         raise HTTPException(status_code=500, detail="User service not initialized")
     
-    user = await user_service.get_user(user_id)
+    user = await user_service.get_user(user_uuid)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     logger.info("Token refreshed with session rotation", extra={
-        "user_id": user_id,
+        "user_uuid": user_uuid,
         "username": username
     })
     
