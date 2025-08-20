@@ -191,6 +191,7 @@ nav:
     - Getting Started: developer-guide/getting_started.md
     - Guidelines: developer-guide/guidelines.md
     - Contributing: developer-guide/contributing.md
+    - Testing: developer-guide/testing.md
     - Protocol Buffers: developer-guide/protobuf.md
     - Versioning: developer-guide/versioning.md
     - Namespaces: developer-guide/namespaces.md
