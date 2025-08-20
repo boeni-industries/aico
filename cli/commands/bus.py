@@ -66,7 +66,12 @@ from aico.core.bus import MessageBusClient, MessageBusBroker, create_client
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
 from aico.core.paths import AICOPaths
-from aico.proto import aico_core_logging_pb2
+# Optional protobuf imports to avoid chicken/egg problem with CLI
+try:
+    from aico.proto import aico_core_logging_pb2
+except ImportError:
+    # Protobuf files not generated yet - use fallback
+    aico_core_logging_pb2 = None
 from google.protobuf.timestamp_pb2 import Timestamp
 
 def _get_database_connection(db_path: str, force_fresh: bool = False) -> EncryptedLibSQLConnection:

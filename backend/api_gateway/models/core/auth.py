@@ -88,7 +88,7 @@ class AuthenticationManager:
         self.logger = get_logger("api_gateway", "auth")
         
         # Use AICO security infrastructure
-        self.key_manager = AICOKeyManager()
+        self.key_manager = AICOKeyManager(config)
         
         # JWT configuration - secrets managed by AICOKeyManager
         self.jwt_algorithm = config.get("api_gateway.security.auth.jwt.algorithm", "HS256")

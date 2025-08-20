@@ -11,8 +11,7 @@ from pathlib import Path
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-# Add shared/aico/proto to sys.path for generated proto imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "shared" / "aico" / "proto"))
+# Shared modules now available via editable install - no manual path manipulation needed
 
 try:
     import uvicorn
@@ -28,8 +27,9 @@ except Exception as e:
     print(f"Import error: {e}")
     sys.exit(1)
 
-# Backend version - this is the canonical source for backend version
-__version__ = "0.3.0"
+# Import version from VERSIONS file
+from aico.core.version import get_backend_version
+__version__ = get_backend_version()
 
 # Initialize configuration FIRST
 try:
@@ -72,8 +72,8 @@ try:
     print("Signal handlers registered")
 
     # Import API Gateway AFTER logging is initialized
-    from api_gateway import AICOAPIGateway
-    print("API Gateway imported")
+    from api_gateway.models.core.gateway import AICOAPIGateway
+    print("API Gateway imported successfully")
 
     # Import Message Bus Host
     from message_bus_host import AICOMessageBusHost
@@ -128,11 +128,11 @@ async def lifespan(app: FastAPI):
             from aico.core.paths import AICOPaths
             from aico.data.libsql.encrypted import EncryptedLibSQLConnection
             
-            key_manager = AICOKeyManager()
+            key_manager = AICOKeyManager(config_manager)
             paths = AICOPaths()
             db_path = paths.resolve_database_path("aico.db")
             
-            # Get encryption key (same logic as before)
+            # Get encryption key (handle case where no master key is set up yet)
             cached_key = key_manager._get_cached_session()
             if cached_key:
                 key_manager._extend_session()
@@ -140,8 +140,13 @@ async def lifespan(app: FastAPI):
             else:
                 import keyring
                 stored_key = keyring.get_password(key_manager.service_name, "master_key")
-                master_key = bytes.fromhex(stored_key)
-                db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+                logger.info(f"Keyring lookup: service_name='{key_manager.service_name}', stored_key={'[FOUND]' if stored_key else '[NOT FOUND]'}")
+                if stored_key:
+                    master_key = bytes.fromhex(stored_key)
+                    db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+                else:
+                    logger.error(f"No master key found in keyring for service '{key_manager.service_name}'")
+                    raise RuntimeError("Master key not found. Run 'aico security setup' to initialize.")
             
             shared_db_connection = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
             logger.info("Created shared database connection for LogConsumer and UserService")

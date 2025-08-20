@@ -69,7 +69,12 @@ class EncryptedLibSQLConnection(LibSQLConnection):
         super().__init__(db_path, **kwargs)
         
         self._encryption_key = encryption_key
-        self._key_manager = key_manager or AICOKeyManager()
+        if key_manager:
+            self._key_manager = key_manager
+        else:
+            from aico.core.config import ConfigurationManager
+            config = ConfigurationManager()
+            self._key_manager = AICOKeyManager(config)
         self._master_password = master_password
         
         _get_logger().debug(f"Initialized encrypted LibSQL connection for {self.db_path}")

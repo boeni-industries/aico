@@ -22,7 +22,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from ..proto.aico_core_logging_pb2 import LogEntry, LogLevel
+# Optional protobuf imports to avoid chicken/egg problem with CLI
+try:
+    from ..proto.aico_core_logging_pb2 import LogEntry, LogLevel
+except ImportError:
+    # Protobuf files not generated yet - use fallbacks
+    LogEntry = None
+    LogLevel = None
 import inspect
 from typing import TYPE_CHECKING
 
@@ -423,7 +429,11 @@ class LogRepository:
     def store_log(self, log_entry):
         """Persist a protobuf LogEntry to the logs table"""
         import json
-        from ..proto.aico_core_logging_pb2 import LogLevel
+        try:
+            from ..proto.aico_core_logging_pb2 import LogLevel
+        except ImportError:
+            # Fallback if protobuf not available
+            LogLevel = None
         try:
             timestamp_str = log_entry.timestamp.ToDatetime().isoformat() + "Z"
             level_str = LogLevel.Name(log_entry.level)

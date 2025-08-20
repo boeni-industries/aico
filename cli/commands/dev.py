@@ -9,6 +9,8 @@ These commands are designed for development/testing and should be used with caut
 
 import os
 import typer
+import subprocess
+import sys
 from rich.console import Console
 from pathlib import Path
 import shutil
@@ -24,7 +26,8 @@ def dev_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", 
         from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
-            ("wipe", "Wipe development data with granular control (--security, --data, --config, --all)")
+            ("wipe", "Wipe development data with granular control (--security, --data, --config, --all)"),
+            ("protoc", "Compile Protocol Buffer files to Python code")
         ]
         
         examples = [
@@ -32,7 +35,8 @@ def dev_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", 
             "aico dev wipe --data", 
             "aico dev wipe --security --data",
             "aico dev wipe --all",
-            "aico dev wipe --all --dry-run"
+            "aico dev wipe --all --dry-run",
+            "aico dev protoc"
         ]
         
         format_subcommand_help(
@@ -177,7 +181,9 @@ def wipe(
         # Wipe security
         if security:
             console.print("🔐 [yellow]Clearing security data...[/yellow]")
-            key_manager = AICOKeyManager()
+            config = ConfigurationManager()
+            config.initialize(lightweight=True)
+            key_manager = AICOKeyManager(config)
             
             # Clear all keyring entries more thoroughly
             try:
@@ -335,6 +341,154 @@ def wipe(
         
     except Exception as e:
         console.print(f"❌ [red]Wipe operation failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command(help="Compile Protocol Buffer files to Python code")
+def protoc(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed output"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show command that would be executed without running it")
+):
+    """🔧 Compile Protocol Buffer files to Python code.
+    
+    Uses the proper protoc command from the documentation to generate Python
+    bindings for all .proto files in the /proto directory.
+    
+    Examples:
+      aico dev protoc              # Compile all proto files
+      aico dev protoc --verbose    # Show detailed output
+      aico dev protoc --dry-run    # Preview command without executing
+    """
+    
+    # Get project root (where we should run the command from)
+    project_root = Path.cwd()
+    
+    # Verify we're in the right directory
+    proto_dir = project_root / "proto"
+    if not proto_dir.exists():
+        console.print("❌ [red]Proto directory not found. Run this command from the AICO project root.[/red]")
+        raise typer.Exit(1)
+    
+    # Verify output directory exists
+    output_dir = project_root / "shared" / "aico" / "proto"
+    if not output_dir.exists():
+        console.print("❌ [red]Output directory not found: shared/aico/proto[/red]")
+        raise typer.Exit(1)
+    
+    # Find venv site-packages directory for protobuf includes
+    venv_site_packages = None
+    possible_venv_paths = [
+        project_root / ".venv" / "Lib" / "site-packages",  # Windows
+        project_root / ".venv" / "lib" / "python3.11" / "site-packages",  # Linux/macOS
+        project_root / ".venv" / "lib" / "python3.12" / "site-packages",  # Linux/macOS
+        project_root / ".venv" / "lib" / "python3.13" / "site-packages",  # Linux/macOS
+    ]
+    
+    for path in possible_venv_paths:
+        if path.exists() and (path / "google" / "protobuf").exists():
+            venv_site_packages = path
+            break
+    
+    if not venv_site_packages:
+        console.print("❌ [red]Could not find venv site-packages with protobuf. Ensure your venv is activated and protobuf is installed.[/red]")
+        raise typer.Exit(1)
+    
+    # Build the protoc command from documentation
+    proto_files = [
+        "proto/aico_core_api_gateway.proto",
+        "proto/aico_core_common.proto", 
+        "proto/aico_core_envelope.proto",
+        "proto/aico_core_logging.proto",
+        "proto/aico_core_plugin_system.proto",
+        "proto/aico_core_update_system.proto",
+        "proto/aico_emotion.proto",
+        "proto/aico_integration.proto",
+        "proto/aico_personality.proto",
+        "proto/aico_conversation.proto"
+    ]
+    
+    cmd = [
+        "protoc",
+        f"-I=proto",
+        f"-I={venv_site_packages}",
+        "--python_out=shared/aico/proto"
+    ] + proto_files
+    
+    if dry_run:
+        console.print("🔍 [cyan]DRY RUN - Would execute:[/cyan]")
+        console.print(f"Working directory: {project_root}")
+        console.print(f"Command: {' '.join(cmd)}")
+        return
+    
+    console.print("🔧 [yellow]Compiling Protocol Buffer files...[/yellow]")
+    if verbose:
+        console.print(f"Working directory: {project_root}")
+        console.print(f"Command: {' '.join(cmd)}")
+        console.print(f"Include paths:")
+        console.print(f"  - proto/")
+        console.print(f"  - {venv_site_packages}")
+        console.print(f"Output directory: shared/aico/proto")
+    
+    try:
+        # Run protoc command
+        result = subprocess.run(
+            cmd,
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        if verbose and result.stdout:
+            console.print("📤 [dim]stdout:[/dim]")
+            console.print(result.stdout)
+        
+        if result.stderr:
+            console.print("⚠️ [yellow]stderr:[/yellow]")
+            console.print(result.stderr)
+        
+        # Count generated files
+        generated_files = list(output_dir.glob("*_pb2.py"))
+        
+        # Post-process generated files to fix relative imports
+        console.print("🔧 [yellow]Post-processing imports...[/yellow]")
+        for pb_file in generated_files:
+            content = pb_file.read_text(encoding='utf-8')
+            # Fix imports like "import aico_core_common_pb2" to "from . import aico_core_common_pb2"
+            import re
+            new_content = re.sub(
+                r'^import (aico_\w+_pb2) as (\w+)$',
+                r'from . import \1 as \2',
+                content,
+                flags=re.MULTILINE
+            )
+            if new_content != content:
+                pb_file.write_text(new_content, encoding='utf-8')
+                if verbose:
+                    console.print(f"  • Fixed imports in {pb_file.name}")
+        
+        console.print(f"✅ [green]Protocol Buffer compilation successful![/green]")
+        console.print(f"📁 Generated {len(generated_files)} Python files in shared/aico/proto/")
+        
+        if verbose:
+            for file in generated_files:
+                console.print(f"  • {file.name}")
+        
+    except subprocess.CalledProcessError as e:
+        console.print(f"❌ [red]protoc compilation failed with exit code {e.returncode}[/red]")
+        if e.stdout:
+            console.print("📤 [dim]stdout:[/dim]")
+            console.print(e.stdout)
+        if e.stderr:
+            console.print("📤 [dim]stderr:[/dim]")
+            console.print(e.stderr)
+        raise typer.Exit(1)
+    except FileNotFoundError:
+        console.print("❌ [red]protoc command not found. Please install Protocol Buffers compiler.[/red]")
+        console.print("💡 [dim]Install instructions:[/dim]")
+        console.print("  Windows: choco install protoc")
+        console.print("  macOS: brew install protobuf")
+        console.print("  Ubuntu/Debian: sudo apt-get install protobuf-compiler")
         raise typer.Exit(1)
 
 

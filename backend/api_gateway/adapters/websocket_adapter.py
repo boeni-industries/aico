@@ -21,17 +21,9 @@ from pathlib import Path
 
 from aico.core.logging import get_logger
 
-# Import version from backend main module
-try:
-    import sys
-    from pathlib import Path
-    # Add backend to path to import from main.py
-    backend_path = Path(__file__).parent.parent.parent
-    if str(backend_path) not in sys.path:
-        sys.path.insert(0, str(backend_path))
-    from main import __version__
-except ImportError:
-    __version__ = "x.x.x"
+# Import version from VERSIONS file
+from aico.core.version import get_backend_version
+__version__ = get_backend_version()
 from aico.core.bus import MessageBusClient
 from aico.core import AicoMessage, MessageMetadata
 from aico.security import SessionService

@@ -94,7 +94,9 @@ console = Console()
 def _get_database_connection(db_path: str, force_fresh: bool = False) -> EncryptedLibSQLConnection:
     """Helper function to get authenticated database connection with session support."""
     try:
-        key_manager = AICOKeyManager()
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        key_manager = AICOKeyManager(config)
         
         if not key_manager.has_stored_key():
             console.print("[red]Error: Master key not found. Run 'aico security setup' first.[/red]")
@@ -182,7 +184,9 @@ def init(
     # Note: We'll handle existing databases later in the flow
     
     # Check if master password is set up
-    key_manager = AICOKeyManager()
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    key_manager = AICOKeyManager(config)
     master_password_was_created = False
     
     if not key_manager.has_stored_key() and not password:
@@ -302,7 +306,9 @@ def status(
     
     try:
         # Check if database is encrypted by trying to connect with key manager
-        key_manager = AICOKeyManager()
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        key_manager = AICOKeyManager(config)
         
         if key_manager.has_stored_key():
             # Database likely encrypted, use session-based authentication
@@ -438,7 +444,9 @@ def test(
         # Use clean connection without automatic logging (to avoid transaction conflicts)
         if password:
             # If password provided, authenticate with it first
-            key_manager = AICOKeyManager()
+            config = ConfigurationManager()
+            config.initialize(lightweight=True)
+            key_manager = AICOKeyManager(config)
             key_manager.authenticate(password, interactive=False)
         
         # Create clean connection without the automatic INSERT that _get_db_connection() does
@@ -677,7 +685,7 @@ def _get_db_connection():
         config = ConfigurationManager()
         config.initialize(lightweight=True)
         
-        key_manager = AICOKeyManager()
+        key_manager = AICOKeyManager(config)
         
         # Get database path
         paths = AICOPaths()

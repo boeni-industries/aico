@@ -22,7 +22,13 @@ if platform.system() == "Windows":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from .config import ConfigurationManager
-from ..proto.aico_core_envelope_pb2 import AicoMessage, MessageMetadata
+# Optional protobuf imports to avoid chicken/egg problem with CLI
+try:
+    from ..proto.aico_core_envelope_pb2 import AicoMessage, MessageMetadata
+except ImportError:
+    # Protobuf files not generated yet - use fallbacks
+    AicoMessage = None
+    MessageMetadata = None
 try:
     from aico.core.logging import get_logger
 except ImportError:

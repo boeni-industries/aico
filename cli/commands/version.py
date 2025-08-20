@@ -72,19 +72,9 @@ SUBSYSTEMS = ["shared", "cli", "backend", "frontend", "studio"]
 
 def read_versions():
     """Read the VERSIONS file and return a dict of subsystem -> version."""
-    versions = {}
-    if not VERSIONS_PATH.exists():
-        console.print(f"[red]VERSIONS file not found at {VERSIONS_PATH}")
-        raise typer.Exit(1)
-    with open(VERSIONS_PATH) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if ":" in line:
-                subsystem, version = line.split(":", 1)
-                versions[subsystem.strip()] = version.strip()
-    return versions
+    # Use the shared version module for canonical versions
+    from aico.core.version import get_all_versions
+    return get_all_versions()
 
 @app.command(
     help="""
@@ -329,23 +319,10 @@ def update_cli_version(version: str):
     return False
 
 def update_shared_version(version: str):
-    """Update version in shared/aico/__version__.py"""
-    shared_version_file = get_project_root() / "shared" / "aico" / "__version__.py"
-    if not shared_version_file.exists():
-        return False
-    
-    content = shared_version_file.read_text(encoding='utf-8')
-    import re
-    new_content = re.sub(
-        r'__version__\s*=\s*["\']([^"\']*)["\']',
-        f'__version__ = "{version}"',
-        content
-    )
-    
-    if new_content != content:
-        shared_version_file.write_text(new_content, encoding='utf-8')
-        return True
-    return False
+    """Shared uses shared version module - no local files to update"""
+    # Shared gets version from VERSIONS file via shared/aico/core/version.py
+    # No local files need updating since it reads from VERSIONS dynamically
+    return True  # Always return True since VERSIONS file is already updated
 
 def update_root_version(version: str):
     """Update version in root pyproject.toml for unified versioning"""
@@ -369,24 +346,10 @@ def update_root_version(version: str):
 
 # Update version in backend project files
 def update_backend_version(version: str):
-    """Update version in backend/main.py (no longer has pyproject.toml)"""
-    backend_dir = get_project_root() / "backend"
-    
-    # Update main.py __version__
-    main_file = backend_dir / "main.py"
-    if main_file.exists():
-        content = main_file.read_text(encoding='utf-8')
-        import re
-        new_content = re.sub(
-            r'__version__\s*=\s*["\']([^"\']*)["\']',
-            f'__version__ = "{version}"',
-            content
-        )
-        if new_content != content:
-            main_file.write_text(new_content, encoding='utf-8')
-            return True
-    
-    return False
+    """Backend uses shared version module - no local files to update"""
+    # Backend gets version from VERSIONS file via shared/aico/core/version.py
+    # No local files need updating since it reads from VERSIONS dynamically
+    return True  # Always return True since VERSIONS file is already updated
 
 def update_frontend_version(version: str):
     """Update version in frontend/pubspec.yaml"""
@@ -590,11 +553,23 @@ def read_cli_version():
         return None
 
 def read_backend_version():
-    # Backend no longer has its own pyproject.toml, only main.py
+    # Backend now uses shared version module, check if it's properly configured
     main_file = get_project_root() / "backend" / "main.py"
     if main_file.exists():
         content = main_file.read_text(encoding='utf-8')
         import re
+        
+        # Check if it's using the new shared version system
+        if 'from aico.core.version import get_backend_version' in content and '__version__ = get_backend_version()' in content:
+            # Backend is properly configured to use shared version system
+            # Return the canonical version since it should match
+            try:
+                from aico.core.version import get_backend_version
+                return get_backend_version()
+            except Exception:
+                return None
+        
+        # Fallback: check for old hardcoded pattern
         match = re.search(r'__version__\s*=\s*["\']([^"\']*)["\']', content)
         if match:
             return match.group(1)

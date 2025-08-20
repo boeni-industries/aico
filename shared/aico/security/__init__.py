@@ -10,6 +10,7 @@ This module provides security functionality for AICO including:
 
 from .key_manager import AICOKeyManager
 from .encrypted_file import EncryptedFile, open_encrypted
+from .session_service import SessionService, SessionInfo
 from .exceptions import (
     SecurityError,
     EncryptionError,
@@ -23,6 +24,8 @@ __all__ = [
     "AICOKeyManager",
     "EncryptedFile",
     "open_encrypted",
+    "SessionService",
+    "SessionInfo",
     "SecurityError",
     "EncryptionError",
     "DecryptionError",

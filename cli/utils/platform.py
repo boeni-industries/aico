@@ -43,7 +43,16 @@ def get_platform_chars():
             "check": "✓",
             "cross": "✗",
             "arrow": "->",
-            "bullet": "*"
+            "bullet": "*",
+            "rocket": "*",
+            "warning": "!",
+            "wrench": "*",
+            "lightbulb": "*",
+            "globe": "*",
+            "hourglass": "*",
+            "stop": "*",
+            "restart": "*",
+            "prohibited": "*"
         }
     
     # Use beautiful Unicode for everything else (Git Bash, PowerShell, Mac, Linux)
@@ -60,7 +69,16 @@ def get_platform_chars():
         "check": "✅",
         "cross": "❌", 
         "arrow": "→",
-        "bullet": "•"
+        "bullet": "•",
+        "rocket": "🚀",
+        "warning": "⚠️",
+        "wrench": "🔧",
+        "lightbulb": "💡",
+        "globe": "🌍",
+        "hourglass": "⏳",
+        "stop": "🛑",
+        "restart": "🔄",
+        "prohibited": "🚫"
     }
 
 

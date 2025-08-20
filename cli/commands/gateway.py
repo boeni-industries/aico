@@ -187,7 +187,7 @@ def start(
     dev: bool = typer.Option(False, "--dev", help="Start in development mode using UV"),
     detach: bool = typer.Option(True, "--detach/--no-detach", help="Run as background service (default: True)")
 ):
-    f"""{chars['rocket']} Start the API Gateway service"""
+    """Start the API Gateway service"""
     try:
         # Load config directly inline (WORKING VERSION - DO NOT CHANGE)
         import yaml
@@ -276,13 +276,13 @@ def start(
                 import subprocess
                 subprocess.run(["uv", "--version"], capture_output=True, check=True)
                 
-                # Use UV without --active flag - let UV manage backend's own environment
-                # The key is that UV will run in backend_dir, so it uses backend's pyproject.toml/requirements.txt
+                # Use UV from root directory to access monorepo shared modules
+                # Run backend/main.py from the root directory where pyproject.toml is
                 if detach and sys.platform == "win32":
                     headless_python = "pythonw"  # UV will find pythonw.exe
                 else:
                     headless_python = "python"   # UV will find python.exe/python
-                cmd = ["uv", "run", headless_python, "main.py"]
+                cmd = ["uv", "run", headless_python, "backend/main.py"]
                 console.print("[dim]Using UV for dependency management[/dim]")
                 
             except (FileNotFoundError, subprocess.CalledProcessError):
@@ -315,7 +315,7 @@ def start(
                   AICO_DETACH_MODE="true" if detach else "false")
         
         process_kwargs = {
-            "cwd": str(backend_dir),
+            "cwd": str(current),  # Run from root directory for monorepo access
             "env": env
         }
         
@@ -396,13 +396,13 @@ def start(
                          AICO_DETACH_MODE="false")
             
             fg_process_kwargs = {
-                "cwd": str(backend_dir),
+                "cwd": str(current),  # Run from root directory for monorepo access
                 "env": fg_env
             }
             
             # Show the exact command being run
             console.print(f"[dim]Executing: {' '.join(cmd)}[/dim]")
-            console.print(f"[dim]Working directory: {backend_dir}[/dim]")
+            console.print(f"[dim]Working directory: {current}[/dim]")
             console.print()
             
             # Run in foreground (this should block and show output)
@@ -413,7 +413,7 @@ def start(
                 # This should block until the process exits
                 result = subprocess.run(
                     cmd, 
-                    cwd=str(backend_dir),
+                    cwd=str(current),
                     env=fg_env,
                     # Don't capture output - let it stream to console
                     stdout=None,
@@ -443,7 +443,7 @@ def start(
 
 @app.command("stop")
 def stop():
-    f"""{chars['stop']} Stop the API Gateway service"""
+    """Stop the API Gateway service"""
     try:
         console.print(f"[yellow]{chars['hourglass']} Stopping API Gateway...[/yellow]")
         
@@ -491,7 +491,7 @@ def stop():
 
 @app.command("restart")
 def restart():
-    f"""{chars['restart']} Restart the API Gateway service"""
+    """Restart the API Gateway service"""
     console.print(f"[yellow]{chars['restart']} Restarting API Gateway...[/yellow]")
     
     # Stop first
@@ -960,7 +960,7 @@ def enable_protocol(
 def disable_protocol(
     protocol: str = typer.Argument(..., help="Protocol to disable (rest, websocket, zeromq_ipc, grpc)")
 ):
-    f"""{chars['prohibited']} Disable a protocol adapter"""
+    """Disable a protocol adapter"""
     try:
         config_manager = ConfigurationManager()
         config_manager.initialize(lightweight=True)
@@ -1237,7 +1237,7 @@ def admin_list_sessions(
 def admin_revoke_session(
     session_id: str = typer.Argument(..., help="Session ID to revoke")
 ):
-    f"""{chars['prohibited']} Revoke a user session"""
+    """Revoke a user session"""
     try:
         # Make authenticated request to revoke session
         response = _make_authenticated_request("delete", f"/admin/auth/sessions/{session_id}")

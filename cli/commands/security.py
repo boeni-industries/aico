@@ -33,6 +33,13 @@ from aico.security import AICOKeyManager
 # Import shared utilities using the same pattern as other CLI modules
 from cli.utils.timezone import format_timestamp_local
 
+def _get_key_manager():
+    """Helper function to get configured AICOKeyManager instance."""
+    from aico.core.config import ConfigurationManager
+    config_manager = ConfigurationManager()
+    config_manager.initialize(lightweight=True)
+    return AICOKeyManager(config_manager)
+
 def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
     if ctx.invoked_subcommand is None or help:
@@ -107,7 +114,7 @@ def setup(
 ):
     """Set up master password for AICO (first-time setup)."""
     
-    key_manager = AICOKeyManager()
+    key_manager = _get_key_manager()
     
     # Check if already set up
     master_exists = key_manager.has_stored_key()
@@ -179,7 +186,7 @@ def setup(
         # Initialize file encryption keys (test derivation)
         try:
             console.print("🔐 Testing file encryption key derivation...")
-            master_key = key_manager.get_master_key()
+            master_key = key_manager.authenticate(interactive=False)
             
             # Test common file encryption purposes
             test_purposes = ["config", "logs", "chroma", "cache"]
@@ -219,7 +226,7 @@ def setup(
 def passwd():
     """Change the master password (affects all databases)."""
     
-    key_manager = AICOKeyManager()
+    key_manager = _get_key_manager()
     
     if not key_manager.has_stored_key():
         console.print("❌ [red]No master password set up.[/red]")
@@ -265,7 +272,7 @@ def status(
 ):
     """Check security health and key management status."""
     
-    key_manager = AICOKeyManager()
+    key_manager = _get_key_manager()
     health_info = key_manager.get_security_health_info()
     
     # Create structured security status with sections
@@ -427,7 +434,7 @@ def session(
 ):
     """Show CLI session status and timeout information."""
     
-    key_manager = AICOKeyManager()
+    key_manager = _get_key_manager()
     
     if not key_manager.has_stored_key():
         console.print("❌ [red]No master password set up.[/red]")
@@ -498,7 +505,7 @@ def logout():
     """Clear CLI authentication session."""
     
     try:
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         
         # Check if there's an active session
         session_info = key_manager.get_session_info()
@@ -540,7 +547,7 @@ def clear(
             raise typer.Exit()
     
     try:
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         key_manager.clear_stored_key()
         
         console.print("✅ [green]Cached master key cleared successfully[/green]")
@@ -565,7 +572,7 @@ Examples:
 def test():
     """🧪 Test security operations and benchmark key derivation performance."""
     
-    key_manager = AICOKeyManager()
+    key_manager = _get_key_manager()
     
     if not key_manager.has_stored_key():
         console.print("❌ [red]No master password set up.[/red]")
@@ -579,7 +586,7 @@ def test():
     try:
         import time
         start_time = time.time()
-        master_key = key_manager.get_master_key()
+        master_key = key_manager.authenticate(interactive=False)
         key_access_time = (time.time() - start_time) * 1000
         
         if master_key:
@@ -742,7 +749,7 @@ def user_create(
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -801,7 +808,7 @@ def role_assign(
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -854,7 +861,7 @@ def role_revoke(
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -901,7 +908,7 @@ def role_list(
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -999,7 +1006,7 @@ def role_show(
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -1094,7 +1101,7 @@ def role_check(
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -1160,7 +1167,7 @@ def role_bootstrap(
         directory_mode = db_config.get("directory_mode", "auto")
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -1231,7 +1238,7 @@ def user_list(
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -1481,7 +1488,7 @@ def user_auth(
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -1583,7 +1590,7 @@ def user_update(
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -1652,7 +1659,7 @@ def user_delete(
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -1801,7 +1808,7 @@ def user_set_pin(
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -1868,7 +1875,7 @@ def user_stats():
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
