@@ -60,11 +60,15 @@ class EncryptedFile:
         
         # Initialize components
         self.config = ConfigurationManager()
-        self.logger = AICOLogger("aico.security.encrypted_file")
+        self.logger = AICOLogger(
+            subsystem="security",
+            module="aico.security.encrypted_file", 
+            config_manager=self.config
+        )
         
         # Key manager setup
         if key_manager is None:
-            self.key_manager = AICOKeyManager()
+            self.key_manager = AICOKeyManager(self.config)
         else:
             self.key_manager = key_manager
         
@@ -96,7 +100,7 @@ class EncryptedFile:
         """Get or derive the encryption key for this file."""
         if self._encryption_key is None:
             try:
-                master_key = self.key_manager.get_master_key()
+                master_key = self.key_manager.authenticate(interactive=False)
                 self._encryption_key = self.key_manager.derive_file_encryption_key(
                     master_key, self.purpose
                 )

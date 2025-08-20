@@ -7,10 +7,10 @@ import tempfile
 import pytest
 from pathlib import Path
 
-from ..core.config import ConfigurationManager
-from .key_manager import AICOKeyManager
-from .encrypted_file import EncryptedFile, open_encrypted
-from .exceptions import (
+from aico.core.config import ConfigurationManager
+from aico.security.key_manager import AICOKeyManager
+from aico.security.encrypted_file import EncryptedFile, open_encrypted
+from aico.security.exceptions import (
     EncryptionError,
     DecryptionError,
     InvalidKeyError,
@@ -33,13 +33,26 @@ class TestEncryptedFile:
         """Create test key manager."""
         # Use test configuration
         config = ConfigurationManager()
+        # In a real app, config would be initialized properly
+        # For this test, we ensure the required value is present
+        if not config.get("security.keyring_service_name"):
+            config.set("security.keyring_service_name", "AICO_Test")
+        
         km = AICOKeyManager(config)
         
+        # Clean up any previous test keys to ensure a clean slate.
+        if km.has_stored_key():
+            km.clear_stored_key()
+
         # Set up test master key
         test_password = "test_password_123"
         km.setup_master_password(test_password)
         
-        return km
+        yield km
+
+        # Teardown: clean up the key from the keyring after the test
+        if km.has_stored_key():
+            km.clear_stored_key()
     
     def test_text_write_read(self, temp_dir, key_manager):
         """Test basic text file write and read operations."""
@@ -211,7 +224,7 @@ class TestEncryptedFile:
         
         # Corrupt the file by modifying a byte
         with open(test_file, "r+b") as f:
-            f.seek(-5)  # Go near the end (auth tag area)
+            f.seek(-5, 2)  # Go near the end (auth tag area)
             f.write(b"\xFF")  # Corrupt a byte
         
         # Try to read corrupted file - should fail
@@ -279,17 +292,17 @@ class TestEncryptedFile:
         
         with EncryptedFile(test_file, "w", key_manager=key_manager, purpose="props") as f:
             assert f.name == str(test_file)
-            assert f.writable() is True
-            assert f.readable() is False
-            assert f.seekable() is True
+            assert f.writable is True
+            assert f.readable is False
+            assert f.seekable is True
             assert f.closed is False
         
         # After closing
         assert f.closed is True
         
         with EncryptedFile(test_file, "r", key_manager=key_manager, purpose="props") as f:
-            assert f.readable() is True
-            assert f.writable() is False
+            assert f.readable is True
+            assert f.writable is False
     
     def test_invalid_modes(self, temp_dir, key_manager):
         """Test invalid file modes."""

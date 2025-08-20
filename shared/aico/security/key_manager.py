@@ -58,12 +58,12 @@ class AICOKeyManager:
     4. Salt management for databases
     """
     
-    def __init__(self, service_name: str = "AICO"):
-        self.service_name = service_name
+    def __init__(self, config: ConfigurationManager):
+        self.service_name = config.get("security.keyring_service_name", "AICO")
         self._session_cache_file = self._get_session_cache_file()
         self._session_cache = self._load_session_cache()  # Load persistent session cache
         self._keyring_bypass_count = self._session_cache.get("keyring_bypass_count", 0)
-        _get_logger().debug(f"Initialized AICOKeyManager for service: {service_name}")
+        _get_logger().debug(f"Initialized AICOKeyManager for service: {self.service_name}")
     
     def _is_sensitive_command(self, command_path: str) -> bool:
         """Check if command requires fresh authentication."""
@@ -473,7 +473,10 @@ class AICOKeyManager:
         Returns:
             File-specific encryption key
         """
-        salt = os.urandom(16)
+        # Use deterministic salt derived from purpose for consistent key derivation
+        import hashlib
+        salt = hashlib.sha256(f"aico-file-salt-{file_purpose}".encode()).digest()[:16]
+        
         argon2 = Argon2id(
             salt=salt,
             length=self._get_security_config("key_derivation.argon2id.length"),
