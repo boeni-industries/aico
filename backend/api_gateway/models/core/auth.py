@@ -110,6 +110,10 @@ class AuthenticationManager:
         # Password context for API key hashing
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         
+        # API key configuration
+        self.api_key_header = config.get("api_gateway.security.auth.api_key.header", "X-API-Key")
+        self.session_cookie = config.get("api_gateway.security.auth.session.cookie", "aico_session")
+        
         # In-memory stores for API keys and fallback token revocation
         self.api_keys: Dict[str, User] = {}
         self.revoked_tokens: Set[str] = set()  # Fallback when session service unavailable

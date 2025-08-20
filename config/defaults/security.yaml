@@ -73,6 +73,8 @@ rbac:
       - "config.*"          # Configuration management
       - "users.*"           # User management
       - "audit.*"           # Audit access
+      - "subscribe.*"       # WebSocket subscriptions
+      - "conversation.*"    # Chat and conversation access
     
     # User role - standard user permissions
     user:

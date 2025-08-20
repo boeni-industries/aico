@@ -24,6 +24,7 @@ class SessionInfo:
     expires_at: datetime
     created_at: datetime
     is_active: bool
+    session_type: str = "unified"
 
 
 class SessionService:
@@ -40,21 +41,23 @@ class SessionService:
         self.db = db_connection
     
     def create_session(
-        self, 
-        user_uuid: str, 
-        device_uuid: str, 
+        self,
+        user_uuid: str,
+        device_uuid: str,
         jwt_token: str,
-        expires_in_minutes: int = 15
+        expires_in_minutes: int = 15,
+        session_type: str = "unified"
     ) -> SessionInfo:
         """
         Create a new authentication session.
-        
+    
         Args:
             user_uuid: User identifier
             device_uuid: Device identifier
             jwt_token: JWT token to associate with session
             expires_in_minutes: Token expiration time in minutes
-            
+            session_type: Session type (e.g., 'rest', 'websocket', or 'unified')
+    
         Returns:
             SessionInfo: Created session information
         """
@@ -62,16 +65,16 @@ class SessionService:
         jwt_token_hash = self._hash_token(jwt_token)
         expires_at = datetime.utcnow() + timedelta(minutes=expires_in_minutes)
         created_at = datetime.utcnow()
-        
+    
         # Insert session into database
         self.db.execute("""
             INSERT INTO auth_sessions (
-                uuid, user_uuid, device_uuid, jwt_token_hash, 
-                expires_at, created_at, is_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                uuid, user_uuid, device_uuid, jwt_token_hash,
+                expires_at, created_at, is_active, session_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             session_uuid, user_uuid, device_uuid, jwt_token_hash,
-            expires_at.isoformat(), created_at.isoformat(), True
+            expires_at.isoformat(), created_at.isoformat(), True, session_type
         ))
         self.db.commit()
         
@@ -82,7 +85,8 @@ class SessionService:
             jwt_token_hash=jwt_token_hash,
             expires_at=expires_at,
             created_at=created_at,
-            is_active=True
+            is_active=True,
+            session_type=session_type
         )
     
     def get_session_by_token(self, jwt_token: str) -> Optional[SessionInfo]:
@@ -99,7 +103,7 @@ class SessionService:
         
         result = self.db.execute("""
             SELECT uuid, user_uuid, device_uuid, jwt_token_hash,
-                   expires_at, created_at, is_active
+                   expires_at, created_at, is_active, session_type
             FROM auth_sessions
             WHERE jwt_token_hash = ? AND is_active = 1
         """, (jwt_token_hash,)).fetchone()
@@ -114,7 +118,8 @@ class SessionService:
             jwt_token_hash=result[3],
             expires_at=datetime.fromisoformat(result[4]),
             created_at=datetime.fromisoformat(result[5]),
-            is_active=bool(result[6])
+            is_active=bool(result[6]),
+            session_type=result[7] if len(result) > 7 and result[7] is not None else "unified"
         )
     
     def is_token_valid(self, jwt_token: str) -> bool:
@@ -243,7 +248,7 @@ class SessionService:
         """
         query = """
             SELECT uuid, user_uuid, device_uuid, jwt_token_hash,
-                   expires_at, created_at, is_active
+                   expires_at, created_at, is_active, session_type
             FROM auth_sessions
             WHERE user_uuid = ?
         """
@@ -264,7 +269,8 @@ class SessionService:
                 jwt_token_hash=row[3],
                 expires_at=datetime.fromisoformat(row[4]),
                 created_at=datetime.fromisoformat(row[5]),
-                is_active=bool(row[6])
+                is_active=bool(row[6]),
+                session_type=row[7] if len(row) > 7 and row[7] is not None else "unified"
             )
             for row in results
         ]

@@ -209,6 +209,22 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "ALTER TABLE logs RENAME COLUMN user_uuid TO user_id",
             "CREATE INDEX IF NOT EXISTS idx_logs_user_timestamp ON logs(user_id, timestamp)"
         ]
+    ),
+    3: SchemaVersion(
+        version=3,
+        name="Add session_type to auth_sessions",
+        description="Add session_type TEXT column to auth_sessions table for differentiating session origin.",
+        sql_statements=[
+            "ALTER TABLE auth_sessions ADD COLUMN session_type TEXT DEFAULT 'unified'"
+        ],
+        rollback_statements=[
+            # SQLite does not support DROP COLUMN directly; so for rollback, document the steps
+            # 1. Create new table without session_type
+            # 2. Copy data
+            # 3. Drop old table
+            # 4. Rename new table
+            # For now, log a warning or leave as a no-op if not supported
+        ]
     )
 })
 

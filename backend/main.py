@@ -245,11 +245,15 @@ async def lifespan(app: FastAPI):
                     # Initialize UserService with shared database connection
                     user_service = UserService(shared_db_connection)
                     
+                    # Create proper admin dependency that checks session service
+                    from api.users.dependencies import create_user_auth_dependency
+                    admin_dependency = create_user_auth_dependency(api_gateway.auth_manager)
+                    
                     # Initialize users router with proper service
                     initialize_users_router(
                         user_service,
                         api_gateway.auth_manager,
-                        api_gateway.authz_manager
+                        admin_dependency
                     )
                     logger.info("Users router initialized with UserService")
                 except Exception as e:

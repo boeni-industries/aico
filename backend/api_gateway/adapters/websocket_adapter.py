@@ -22,6 +22,7 @@ from pathlib import Path
 from aico.core.logging import get_logger
 from aico.core.bus import MessageBusClient
 from aico.core import AicoMessage, MessageMetadata
+from aico.security import SessionService
 
 from ..models.core.auth import AuthenticationManager, AuthorizationManager
 from ..models.core.message_router import MessageRouter
@@ -72,7 +73,7 @@ class WebSocketAdapter:
         self.validator = validator
         
         # Session service for database-backed WebSocket sessions
-        self.session_service = auth_manager.session_service if auth_manager else None
+        self.session_service = auth_manager.session_service if auth_manager and hasattr(auth_manager, 'session_service') else None
         
         # Connection management
         self.connections: Dict[str, WebSocketConnection] = {}
@@ -185,7 +186,7 @@ class WebSocketAdapter:
                 await self._close_connection(self.connections[client_id], "Connection ended")
     
     async def _handle_message(self, connection: WebSocketConnection, raw_message: str):
-        """Handle incoming WebSocket message"""
+        """Handle incoming WebSocket message, validating session for authenticated messages"""
         try:
             # Parse JSON message
             try:
@@ -199,6 +200,13 @@ class WebSocketAdapter:
             if not message_type:
                 await self._send_error(connection, "Missing message type")
                 return
+            
+            # Validate session for all authenticated messages except "auth"
+            if message_type != "auth" and connection.authenticated and self.session_service and connection.session_id:
+                if hasattr(connection, 'token') and not self.session_service.is_token_valid(connection.token):
+                    await self._send_error(connection, "Session expired or revoked. Please re-authenticate.")
+                    await self._close_connection(connection, "Session invalid")
+                    return
             
             # Handle different message types
             if message_type == "auth":
@@ -245,18 +253,25 @@ class WebSocketAdapter:
                 connection.user = auth_result.user
                 connection.user_uuid = auth_result.user.user_uuid
                 connection.device_uuid = device_uuid
+                connection.token = token  # Store token for session validation
                 connection.authenticated = True
                 
-                # Create WebSocket session if session service available
+                # Create or validate WebSocket session if session service available
                 if self.session_service and token:
                     try:
                         session_info = self.session_service.get_session_by_token(token)
-                        if session_info:
-                            connection.session_id = session_info.uuid
-                            self.logger.debug("WebSocket session linked to database session", extra={
-                                "session_id": session_info.uuid,
-                                "user_uuid": connection.user_uuid
-                            })
+                        if not session_info:
+                            # Create new session for this connection
+                            session_info = self.session_service.create_session(
+                                user_uuid=connection.user_uuid,
+                                device_uuid=device_uuid,
+                                jwt_token=token
+                            )
+                        connection.session_id = session_info.uuid
+                        self.logger.debug("WebSocket session linked to database session", extra={
+                            "session_id": session_info.uuid,
+                            "user_uuid": connection.user_uuid
+                        })
                     except Exception as e:
                         self.logger.warning("Failed to link WebSocket to database session", extra={
                             "error": str(e),
@@ -439,8 +454,21 @@ class WebSocketAdapter:
         await self._send_message(connection, error_message)
     
     async def _close_connection(self, connection: WebSocketConnection, reason: str = "Unknown"):
-        """Close WebSocket connection"""
+        """Close WebSocket connection and revoke session if exists"""
         try:
+            # Revoke session if exists
+            if self.session_service and connection.session_id:
+                try:
+                    self.session_service.revoke_session(connection.session_id)
+                    self.logger.info("WebSocket session revoked on disconnect", extra={
+                        "session_id": connection.session_id,
+                        "user_uuid": connection.user_uuid
+                    })
+                except Exception as e:
+                    self.logger.warning("Failed to revoke WebSocket session on disconnect", extra={
+                        "error": str(e),
+                        "session_id": connection.session_id
+                    })
             if connection.client_id in self.connections:
                 del self.connections[connection.client_id]
             

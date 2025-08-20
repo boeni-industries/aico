@@ -6,7 +6,7 @@ REST API endpoints for user CRUD operations and authentication.
 
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, status, Depends, Request
-from fastapi.security import HTTPBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from aico.core.logging import get_logger
 from aico.data.user import UserService
 from .schemas import (
@@ -25,7 +25,7 @@ def _user_to_response(user) -> UserResponse:
         created_at=user.created_at.isoformat() if user.created_at else None,
         updated_at=user.updated_at.isoformat() if user.updated_at else None
     )
-from .dependencies import validate_uuid, validate_user_type, validate_pin
+from .dependencies import validate_uuid, validate_user_type, validate_pin, security
 from .exceptions import (
     UserNotFoundError, UserServiceError, InvalidCredentialsError,
     handle_user_service_exceptions
@@ -48,11 +48,18 @@ def initialize_router(user_svc: UserService, auth_mgr, admin_dependency):
     verify_admin_access = admin_dependency
 
 
+async def get_admin_dependency(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Wrapper for admin dependency that gets initialized later"""
+    if verify_admin_access is None:
+        raise HTTPException(status_code=500, detail="Authentication not initialized")
+    return await verify_admin_access(credentials)
+
+
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 @handle_user_service_exceptions
 async def create_user(
     request: CreateUserRequest,
-    admin_user = Depends(verify_admin_access) if verify_admin_access else None
+    admin_user = Depends(get_admin_dependency)
 ):
     """Create a new user"""
     if not user_service:
@@ -93,7 +100,7 @@ async def create_user(
 @handle_user_service_exceptions
 async def get_user(
     user_uuid: str,
-    admin_user = Depends(verify_admin_access) if verify_admin_access else None
+    admin_user = Depends(get_admin_dependency)
 ):
     """Get user by UUID"""
     if not user_service:
@@ -122,7 +129,7 @@ async def get_user(
 async def update_user(
     user_uuid: str,
     request: UpdateUserRequest,
-    admin_user = Depends(verify_admin_access) if verify_admin_access else None
+    admin_user = Depends(get_admin_dependency)
 ):
     """Update user profile"""
     if not user_service:
@@ -169,7 +176,7 @@ async def update_user(
 @handle_user_service_exceptions
 async def delete_user(
     user_uuid: str,
-    admin_user = Depends(verify_admin_access) if verify_admin_access else None
+    admin_user = Depends(get_admin_dependency)
 ):
     """Delete user (soft delete)"""
     if not user_service:
@@ -193,7 +200,7 @@ async def delete_user(
 async def list_users(
     user_type: Optional[str] = None,
     limit: int = 100,
-    admin_user = Depends(verify_admin_access) if verify_admin_access else None
+    admin_user = Depends(get_admin_dependency)
 ):
     """List users with optional filtering"""
     if not user_service:
@@ -282,7 +289,7 @@ async def authenticate_user(request: AuthenticateRequest):
 async def set_user_pin(
     user_uuid: str,
     request: SetPinRequest,
-    admin_user = Depends(verify_admin_access) if verify_admin_access else None
+    admin_user = Depends(get_admin_dependency)
 ):
     """Set or update user's PIN"""
     if not user_service:
@@ -308,7 +315,7 @@ async def set_user_pin(
 @handle_user_service_exceptions
 async def unlock_user(
     user_uuid: str,
-    admin_user = Depends(verify_admin_access) if verify_admin_access else None
+    admin_user = Depends(get_admin_dependency)
 ):
     """Unlock user account"""
     if not user_service:
@@ -413,7 +420,7 @@ async def refresh_token(request: Request):
 
 @router.get("/stats", response_model=UserStatsResponse)
 @handle_user_service_exceptions
-async def get_user_stats(admin_user: dict = Depends(lambda: verify_admin_access)):
+async def get_user_stats(admin_user = Depends(get_admin_dependency)):
     """Get user statistics"""
     if not user_service:
         raise HTTPException(status_code=500, detail="User service not initialized")
