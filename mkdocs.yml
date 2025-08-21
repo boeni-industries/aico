@@ -187,6 +187,16 @@ nav:
     - Personality:
       - Personality Simulation: concepts/personality/personality_sim.md
       - Personality Definition: concepts/personality/personality_definition.md
+  - Frontend:
+    - Architecture Overview: frontend/frontend_architecture_overview.md
+    - UI/UX Design Principles: frontend/design_principles.md
+    - State Management: frontend/state_management.md
+    - Navigation: frontend/navigation.md
+    - User Flows: frontend/user_flows.md
+    - API Integration: frontend/api_integration.md
+    - Component Library: frontend/component_library.md
+    - Performance: frontend/performance_guidelines.md
+    - Testing: frontend/testing_strategy.md
   - Developer Guide:
     - Getting Started: developer-guide/getting_started.md
     - UV Commands Cheat Sheet: developer-guide/uv_cheatsheet.md
@@ -199,7 +209,6 @@ nav:
     - CLI Handbook: developer-guide/cli_handbook.md
     - Schema Management: developer-guide/schema_management.md
     - UUID Standards: developer-guide/uuid_standards.md
-    - UI/UX: uiux/design_principles.md
     - Lessons Learned: developer-guide/lessons_learned.md
   - Roadmap:
     - Foundation: roadmap/foundation.md
