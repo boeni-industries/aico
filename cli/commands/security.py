@@ -635,7 +635,7 @@ def test():
         db_times = []
         for i in range(3):
             start_time = time.time()
-            db_key = key_manager.derive_database_key("test_db")
+            db_key = key_manager.derive_database_key(master_key, "libsql", "test_db.db")
             db_time = (time.time() - start_time) * 1000
             db_times.append(db_time)
             
