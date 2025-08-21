@@ -6,16 +6,36 @@ This document integrates all previous guidance—including your latest preferenc
 
 ## 1. Core Design Rules
 
-- **Minimalism:**  
+**Minimalism:**
+
   - Use ample whitespace; remove visual clutter and superfluous decoration.
   - Typography is kept crisp, simple, and unobtrusive.
-- **Intuitive, Zero-Barrier Start:**  
+
+**Intuitive, Zero-Barrier Start:**  
+
   - All interactions are immediately understandable; no up-front instructions.
   - Key actions are visually prominent and consistently placed.
   - Users explore and discover depth over time—never confronted with complexity up front.
-- **Responsiveness:**  
+
+**Progressive Disclosure:**
+
+  - Information hierarchy reveals complexity gradually based on user needs and expertise.
+  - Primary functions are immediately visible; advanced features discoverable through natural exploration.
+  - Context-sensitive help appears when needed, not as persistent clutter.
+
+**System Transparency:**
+
+  - Users always understand what the system is doing and why.
+  - Long-running operations show clear progress with meaningful status updates.
+  - System constraints (network, CPU, capabilities) are communicated contextually without alarm.
+  - Overall system health visible through subtle, non-intrusive indicators.
+
+**Responsiveness:**  
+
   - App loads and reacts instantly, with smooth feedback via subtle, purposeful micro-interactions.
-- **Adaptive & Embodiment-Ready:**  
+
+**Adaptive & Embodiment-Ready:**  
+
   - Design is fully responsive—from mobile to desktop to mixed/AR devices.
   - Layout and key components adapt to available space, embodiment, or modality.
 
@@ -50,15 +70,20 @@ This document integrates all previous guidance—including your latest preferenc
 
 ## 3. Shape & Gestalt Concepts
 
-- **Shape Language:**  
+**Shape Language:**  
+
   - Rounded, soft rectangles for cards, panels, buttons (`16–24px` radius).
   - Circular/elliptical zones for avatars and key emotion/status elements.
   - Avoid sharp, angular geometry.
-- **Gestalt:**  
+
+**Gestalt:**  
+
   - Clear 1–2 level groupings; do not visually nest deeply.
   - Action controls are horizontally clustered (at the bottom of cards or panels).
   - Use soft drop shadows or gentle elevation—no harsh borders.
-- **Element Consistency:**  
+
+**Element Consistency:**  
+
   - All highlight states (focus, selected, pulsing) use the **soft purple accent**.
   - Animated micro-interactions use breathing/pulse effects—never distracting.
 
@@ -119,6 +144,13 @@ This document integrates all previous guidance—including your latest preferenc
 - Mobile: bottom navigation; Desktop: vertical sidebar
 - No deep nesting; back/forward always visible and accessible
 
+### System Status & Feedback
+
+- **Progress Indicators**: Clear visual feedback for long-running operations with meaningful status text
+- **System Health**: Subtle indicators for connectivity, performance, and capability status
+- **Contextual Constraints**: Non-alarming communication of limitations (offline mode, reduced performance)
+- **Activity Transparency**: Users always know what the system is processing or waiting for
+
 ### Tooltip/Feedback
 
 - Minimal, appears on (focus|hover|repeat usage)
@@ -164,13 +196,6 @@ This document integrates all previous guidance—including your latest preferenc
 - **Voice:** Warm, friendly, direct. Never clinical.
 - **Messaging:** Helpful and actionable; errors are gentle, not alarming.
 - **Language:** Inclusive, jargon-free, clear.
-
-***
-
-## 12. Versioning
-
-- Keep tokens and component specs versioned in `/docs/design/tokens.json` and `/docs/design/components.md`
-- All changes logged in `/docs/design/CHANGELOG.md`
 
 ***
 

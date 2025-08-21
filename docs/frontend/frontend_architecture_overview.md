@@ -31,7 +31,10 @@ WCAG 2.1 AA standards implemented from the ground up, ensuring usability for use
 Flutter's single codebase provides identical functionality across desktop, mobile, and web platforms while respecting platform-specific UI conventions and capabilities.
 
 ### 📈 Progressive Disclosure
-Information and complexity are revealed gradually based on user needs. Error messages focus on user impact first, with technical details available on demand. UI complexity scales with user expertise and context.
+Information and complexity are revealed gradually based on user needs and context. Primary actions are immediately visible, while advanced features are discoverable through natural exploration. Error messages focus on user impact first, with technical details available on demand.
+
+### 🔍 System Transparency
+Users always understand what the system is doing and its current state without cognitive overload. Long-running operations show clear progress indicators, system constraints are communicated contextually, and overall system health is visible through subtle status indicators.
 
 ### 🔮 Optimistic Updates
 User actions immediately update the interface for instant feedback while operations complete in the background. Failed operations are handled gracefully with clear recovery options, maintaining user confidence and workflow continuity.
@@ -120,6 +123,68 @@ The application implements declarative routing using `go_router`, providing type
 **Deep Linking**: All screens support direct URL access, enabling bookmarking, sharing, and browser navigation patterns even in desktop and mobile contexts.
 
 **State Preservation**: Navigation maintains widget state appropriately, preserving scroll positions and form data when users navigate between screens.
+
+### API Integration
+
+The frontend communicates with the backend through a multi-protocol API Gateway using **JSON serialization** for all external communication:
+
+- **REST API**: Standard HTTP requests with JSON request/response bodies for commands and queries
+- **WebSocket**: Real-time bidirectional communication using JSON message format for events and notifications
+- **ZeroMQ IPC**: Local inter-process communication with JSON messages for high-performance scenarios
+
+**Protocol Clarification**: The frontend exclusively uses JSON for all backend communication. Protocol Buffers are used internally within the backend modules but are not exposed to the frontend layer.
+
+```dart
+// API Client example - JSON serialization
+class ApiClient {
+  final String baseUrl;
+  final Dio _dio;
+
+  ApiClient(this.baseUrl) : _dio = Dio(BaseOptions(
+    baseURL: baseUrl,
+    contentType: 'application/json',
+    responseType: ResponseType.json,
+  ));
+
+  Future<Response> post(String path, {Map<String, dynamic>? data}) {
+    // Automatic JSON serialization
+    return _dio.post(path, data: data);
+  }
+
+  Future<Response> get(String path, {Map<String, String>? queryParameters}) {
+    // JSON response deserialization
+    return _dio.get(path, queryParameters: queryParameters);
+  }
+}
+```
+
+```dart
+// WebSocket Client example - JSON message format
+class WebSocketClient {
+  IOWebSocketChannel? _channel;
+  final String url;
+  final StreamController<Map<String, dynamic>> _messageController = 
+      StreamController.broadcast();
+
+  Stream<Map<String, dynamic>> get messages => _messageController.stream;
+
+  void connect() {
+    _channel = IOWebSocketChannel.connect(url);
+    _channel!.stream.listen((data) {
+      // All WebSocket messages use JSON format
+      final message = json.decode(data) as Map<String, dynamic>;
+      _messageController.add(message);
+    });
+  }
+
+  void sendMessage(Map<String, dynamic> message) {
+    if (_channel != null) {
+      // JSON encoding for all outbound messages
+      _channel!.sink.add(json.encode(message));
+    }
+  }
+}
+```
 
 ### Data Layer Architecture
 
