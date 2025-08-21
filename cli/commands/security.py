@@ -631,11 +631,14 @@ def test():
     # Test 3: Database Key Derivation Benchmark
     console.print("\n🛢️ [yellow]Testing database key derivation...[/yellow]")
     
+    test_db_path = "test_security_benchmark.db"
+    test_salt_path = f"{test_db_path}.salt"
+    
     try:
         db_times = []
         for i in range(3):
             start_time = time.time()
-            db_key = key_manager.derive_database_key(master_key, "libsql", "test_db.db")
+            db_key = key_manager.derive_database_key(master_key, "libsql", test_db_path)
             db_time = (time.time() - start_time) * 1000
             db_times.append(db_time)
             
@@ -647,8 +650,21 @@ def test():
         avg_db_time = sum(db_times) / len(db_times)
         console.print(f"✅ [green]Database key average: {avg_db_time:.1f}ms[/green]")
         
+        # Clean up test salt file
+        import os
+        if os.path.exists(test_salt_path):
+            os.remove(test_salt_path)
+            console.print(f"🧹 [dim]Cleaned up test salt file[/dim]")
+        
     except Exception as e:
         console.print(f"❌ [red]Database key test failed: {e}[/red]")
+        # Clean up on error too
+        import os
+        if os.path.exists(test_salt_path):
+            try:
+                os.remove(test_salt_path)
+            except:
+                pass
     
     # Performance Summary
     console.print("\n📊 [bold cyan]Performance Summary[/bold cyan]")
