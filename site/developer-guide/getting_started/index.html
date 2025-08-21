@@ -18,7 +18,7 @@
         <link rel="prev" href="../../concepts/personality/personality_definition/">
       
       
-        <link rel="next" href="../guidelines/">
+        <link rel="next" href="../uv_cheatsheet/">
       
       
       <link rel="icon" href="../../assets/images/logo.png">
@@ -2341,6 +2341,8 @@
       
         
       
+        
+      
     
     
     
@@ -2527,6 +2529,29 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../uv_cheatsheet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    UV Commands Cheat Sheet
+    
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -3057,6 +3082,12 @@
 <hr />
 <h2 id="project-overview">Project Overview<a class="headerlink" href="#project-overview" title="Permanent link">&para;</a></h2>
 <p>AICO is an open-source, local-first AI companion designed to be emotionally present, embodied, and proactive. The project is modular, privacy-first, and extensible, with contributions welcome from developers, designers, researchers, and more.</p>
+<h3 id="quick-install-end-users">Quick Install (End Users)<a class="headerlink" href="#quick-install-end-users" title="Permanent link">&para;</a></h3>
+<p>For end users who just want to use the CLI:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>aico<span class="o">[</span>cli<span class="o">]</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>aico<span class="w"> </span>--help
+</span></code></pre></div>
+<p>This installs the AICO CLI with all necessary dependencies. For development setup, continue reading below.</p>
 <hr />
 <h2 id="contributing">Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h2>
 <p>See <a href="../contributing/"><code>contributing.md</code></a> for ways to get involved, contribution etiquette, and project values.</p>
@@ -3067,29 +3098,29 @@
 <hr />
 <h2 id="repository-structure">Repository Structure<a class="headerlink" href="#repository-structure" title="Permanent link">&para;</a></h2>
 <p>The AICO repository is organized as a polyglot monorepo, with each major component in its own directory:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>aico/
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>│
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── backend/           # Python FastAPI backend (TBD)
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── frontend/          # Flutter UI app (TBD)
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>├── studio/            # React-based &quot;Studio&quot; for devs, power users, admins (TBD)
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>├── cli/               # Python Typer/Rich CLI (TBD)
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>├── proto/             # Protocol Buffers and shared API schemas
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>├── docs/              # Documentation (architecture, guidelines, etc.)
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>├── site/              # Built documentation/static site output (generated)
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>├── .github/           # GitHub workflows, issue templates, etc.
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>├── .git/              # Git repo metadata
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>├── .nojekyll          # Prevents GitHub Pages processing
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>├── LICENSE
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>├── README.md
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>├── mkdocs.yml         # MkDocs config for docs
-</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>└── ... (future: scripts/, Makefile, etc.)
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aico/
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>│
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>├── backend/           # Python FastAPI backend (TBD)
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>│
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>├── frontend/          # Flutter UI app (TBD)
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>│
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>├── studio/            # React-based &quot;Studio&quot; for devs, power users, admins (TBD)
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>│
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>├── cli/               # Python Typer/Rich CLI (TBD)
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>│
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>├── proto/             # Protocol Buffers and shared API schemas
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>│
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>├── docs/              # Documentation (architecture, guidelines, etc.)
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>│
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>├── site/              # Built documentation/static site output (generated)
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>│
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>├── .github/           # GitHub workflows, issue templates, etc.
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>├── .git/              # Git repo metadata
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>├── .nojekyll          # Prevents GitHub Pages processing
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>├── LICENSE
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>├── README.md
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>├── mkdocs.yml         # MkDocs config for docs
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>└── ... (future: scripts/, Makefile, etc.)
 </span></code></pre></div>
 <p><strong>Key Points:</strong>
 - Each main component (backend, frontend, studio, cli) is isolated with its own dependencies and tooling.
@@ -3110,14 +3141,14 @@
 <p>Follow these steps to get started with AICO development:</p>
 <h3 id="1-clone-or-fork-the-repository">1. Clone or Fork the Repository<a class="headerlink" href="#1-clone-or-fork-the-repository" title="Permanent link">&para;</a></h3>
 <p><strong>Core team:</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>git<span class="w"> </span>clone<span class="w"> </span>git@github.com:boeni-industries/aico.git
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>git<span class="w"> </span>clone<span class="w"> </span>git@github.com:boeni-industries/aico.git
 </span></code></pre></div>
 <strong>Contributors:</strong></p>
 <ul>
 <li>Fork the repository on GitHub.</li>
 <li>Clone your fork</li>
 </ul>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>git<span class="w"> </span>clone<span class="w"> </span>git@github.com:&lt;your-username&gt;/aico.git
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>git<span class="w"> </span>clone<span class="w"> </span>git@github.com:&lt;your-username&gt;/aico.git
 </span></code></pre></div>
 <h3 id="2-install-python-3135">2. Install Python 3.13.5<a class="headerlink" href="#2-install-python-3135" title="Permanent link">&para;</a></h3>
 <p>AICO requires Python 3.13.5 for all Python-based components. Download and install it from the official Python website:</p>
@@ -3125,74 +3156,64 @@
 <li><a href="https://www.python.org/downloads/release/python-3135/">Python 3.13.5 downloads</a></li>
 </ul>
 <p>After installation, verify with:
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>--version
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># or</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>py<span class="w"> </span>--version
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>python<span class="w"> </span>--version
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># or</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>py<span class="w"> </span>--version
 </span></code></pre></div>
 You should see <code>Python 3.13.5</code>.</p>
 <blockquote>
 <p><strong>ℹ️ Data Encryption Approach</strong></p>
 <p>AICO uses application-level encryption with database-native features (SQLCipher, DuckDB encryption, RocksDB EncryptedEnv) rather than filesystem-level encryption. This provides better cross-platform compatibility and performance without requiring additional system dependencies.</p>
 </blockquote>
-<h3 id="3-python-dependency-management-with-modern-tools">3. Python Dependency Management with Modern Tools<a class="headerlink" href="#3-python-dependency-management-with-modern-tools" title="Permanent link">&para;</a></h3>
-<p>AICO uses modern Python packaging with <code>pyproject.toml</code> files for dependency management. Each component (CLI, backend, shared) uses <code>pyproject.toml</code> for clean, standardized dependency declarations.</p>
-<p><strong>Install UV globally (recommended):</strong></p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>pip<span class="w"> </span>install<span class="w"> </span>uv
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># or follow: https://github.com/astral-sh/uv#installation</span>
+<h3 id="3-uv-workspace-setup-single-virtual-environment">3. UV Workspace Setup (Single Virtual Environment)<a class="headerlink" href="#3-uv-workspace-setup-single-virtual-environment" title="Permanent link">&para;</a></h3>
+<p>AICO uses UV workspace management with a unified <code>pyproject.toml</code> at the root and a single shared virtual environment for all Python components.</p>
+<p><strong>Install UV globally (required):</strong></p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>pip<span class="w"> </span>install<span class="w"> </span>uv
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1"># or follow: https://github.com/astral-sh/uv#installation</span>
 </span></code></pre></div>
-<p><strong>CLI:</strong></p>
-<p><strong>Windows PowerShell</strong>
-  <div class="language-powershell highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">cd cli</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">py</span> <span class="p">-</span><span class="n">3</span><span class="p">.</span><span class="n">13</span> <span class="n">-m</span> <span class="n">venv</span> <span class="p">.</span><span class="n">venv</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="p">.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">Activate</span><span class="p">.</span><span class="n">ps1</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">uv</span> <span class="n">pip</span> <span class="n">install</span> <span class="n">-e</span> <span class="p">.</span><span class="no">[dev]</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">aico</span> <span class="p">-</span><span class="n">-help</span>
-</span></code></pre></div></p>
-<p><strong>Windows Cmd</strong>
-  <div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>cd cli
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>py -3.13 -m venv .venv
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>.venv\Scripts\activate.bat
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>uv pip install -e .[dev]
-</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>aico --help
-</span></code></pre></div></p>
-<p><strong>Git Bash/WSL/Linux/macOS:</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">cd</span><span class="w"> </span>cli
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>python3.13<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.<span class="o">[</span>dev<span class="o">]</span>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>aico<span class="w"> </span>--help
-</span></code></pre></div></p>
-<p><strong>Backend:</strong></p>
-<p><strong>Windows PowerShell</strong>
-  <div class="language-powershell highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nb">cd </span><span class="n">backend</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">py</span> <span class="p">-</span><span class="n">3</span><span class="p">.</span><span class="n">13</span> <span class="n">-m</span> <span class="n">venv</span> <span class="p">.</span><span class="n">venv</span>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="p">.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">Activate</span><span class="p">.</span><span class="n">ps1</span>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">uv</span> <span class="n">pip</span> <span class="n">install</span> <span class="n">-e</span> <span class="p">.</span>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">uvicorn</span> <span class="n">main</span><span class="p">:</span><span class="n">app</span> <span class="p">-</span><span class="n">-reload</span> <span class="p">-</span><span class="n">-port</span> <span class="n">8700</span>
-</span></code></pre></div></p>
-<p><strong>Windows Cmd</strong>
-  <div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>cd backend
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>py -3.13 -m venv .venv
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>.venv\Scripts\activate.bat
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>uv pip install -e .
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>uvicorn main:app --reload --port 8700
-</span></code></pre></div></p>
-<p><strong>Git Bash/WSL/Linux/macOS:</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">cd</span><span class="w"> </span>backend
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>python3.13<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
-</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
-</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8700</span>
-</span></code></pre></div></p>
+<p><strong>Initial Setup:</strong></p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Clone and navigate to project root</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nb">cd</span><span class="w"> </span>aico
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># Initialize UV workspace with all optional dependencies</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>cli<span class="w"> </span>--extra<span class="w"> </span>backend<span class="w"> </span>--extra<span class="w"> </span><span class="nb">test</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># Verify installation</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>uv<span class="w"> </span>run<span class="w"> </span>aico<span class="w"> </span>--help
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import fastapi; print(&#39;Backend deps ready&#39;)&quot;</span>
+</span></code></pre></div>
+<p><strong>Key Changes from Previous Setup:</strong>
+- <strong>Single <code>.venv</code></strong> at project root instead of per-component environments
+- <strong>Unified <code>pyproject.toml</code></strong> with optional dependency groups (<code>cli</code>, <code>backend</code>, <code>test</code>)
+- <strong>UV workspace commands</strong> replace manual venv activation
+- <strong>Shared dependencies</strong> automatically resolved across all components</p>
+<p><strong>Working with the Workspace:</strong></p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Run CLI commands</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>uv<span class="w"> </span>run<span class="w"> </span>aico<span class="w"> </span>gateway<span class="w"> </span>status
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>uv<span class="w"> </span>run<span class="w"> </span>aico<span class="w"> </span>db<span class="w"> </span>init
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># Run backend server</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>backend/main.py
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># or with uvicorn</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>uv<span class="w"> </span>run<span class="w"> </span>uvicorn<span class="w"> </span>backend.main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8700</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="c1"># Install additional dependencies</span>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>uv<span class="w"> </span>add<span class="w"> </span>requests<span class="w">  </span><span class="c1"># adds to core dependencies</span>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>uv<span class="w"> </span>add<span class="w"> </span>--group<span class="w"> </span>cli<span class="w"> </span>typer-cli<span class="w">  </span><span class="c1"># adds to CLI group</span>
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>uv<span class="w"> </span>add<span class="w"> </span>--group<span class="w"> </span>backend<span class="w"> </span>fastapi-users<span class="w">  </span><span class="c1"># adds to backend group</span>
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="c1"># Sync after pyproject.toml changes</span>
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>uv<span class="w"> </span>sync
+</span></code></pre></div>
 <blockquote>
-<p><strong>Tip:</strong> Each Python component uses its own <code>.venv</code> and <code>pyproject.toml</code>. Always activate the correct environment before installing or running anything. In VS Code or Windsurf, select the correct Python interpreter from <code>.venv</code> for best experience.</p>
-<p><strong>Shared Library:</strong> The <code>/shared</code> directory contains common functionality used by both CLI and backend. It's automatically included as an editable dependency when you install with <code>[dev]</code> extras for CLI or directly for backend.</p>
-<p><strong>Adding Dependencies:</strong> Edit the respective <code>pyproject.toml</code> file and run <code>uv pip install -e .</code> to update your environment.</p>
+<p><strong>Benefits of UV Workspace:</strong>
+- Single environment eliminates activation/deactivation complexity
+- Consistent dependency resolution across all components
+- Faster installs and better caching
+- Simplified IDE configuration (one Python interpreter)
+- Automatic shared library integration</p>
+<p><strong>IDE Setup:</strong> Point your IDE to the <code>.venv/Scripts/python.exe</code> (Windows) or <code>.venv/bin/python</code> (Unix) in the project root.</p>
 </blockquote>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>Only one Python virtual environment can be active per terminal session. If you need to work with both the CLI and backend at the same time, open separate terminal windows and activate the appropriate environment in each. Changing directories does not automatically switch the active environment—you must activate it explicitly.</p>
-</div>
 <hr />
 <h3 id="6-setting-up-the-flutter-frontend">6. Setting Up the Flutter Frontend<a class="headerlink" href="#6-setting-up-the-flutter-frontend" title="Permanent link">&para;</a></h3>
 <p>The flutter project scaffolding is present in <code>/frontend</code>.</p>
@@ -3200,7 +3221,7 @@ You should see <code>Python 3.13.5</code>.</p>
 <ul>
 <li>Download and install Flutter from the <a href="https://docs.flutter.dev/get-started/install">official site</a> for your platform (Windows, macOS, Linux).</li>
 <li>After installation, check your version (we recommend Flutter 3.19+):
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>flutter<span class="w"> </span>--version
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>flutter<span class="w"> </span>--version
 </span></code></pre></div></li>
 </ul>
 <p><strong>Set up platform dependencies:</strong></p>
@@ -3210,11 +3231,11 @@ You should see <code>Python 3.13.5</code>.</p>
 <li>For web/desktop: Follow <a href="https://docs.flutter.dev/get-started/web">Flutter platform setup instructions</a> as needed.</li>
 </ul>
 <p><strong>Install dependencies:</strong></p>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nb">cd</span><span class="w"> </span>frontend
-</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>flutter<span class="w"> </span>pub<span class="w"> </span>get
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span>frontend
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>flutter<span class="w"> </span>pub<span class="w"> </span>get
 </span></code></pre></div>
 <p><strong>Run the app:</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>flutter<span class="w"> </span>run
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>flutter<span class="w"> </span>run
 </span></code></pre></div>
 <strong>.gitignore:</strong> is already configured to exclude build artifacts.</p>
 <div class="admonition note">
@@ -3229,98 +3250,85 @@ You should see <code>Python 3.13.5</code>.</p>
 <li>Download and install the latest LTS version of Node.js from <a href="https://nodejs.org/">nodejs.org</a>. npm is included.</li>
 <li>After installation, check your versions (we recommend Node.js 22.x+ and npm 11.x+):</li>
 </ul>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>node<span class="w"> </span>--version
-</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>npm<span class="w"> </span>--version
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>node<span class="w"> </span>--version
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>npm<span class="w"> </span>--version
 </span></code></pre></div>
 <p><strong>Install dependencies:</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nb">cd</span><span class="w"> </span>studio
-</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>npm<span class="w"> </span>install
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nb">cd</span><span class="w"> </span>studio
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>npm<span class="w"> </span>install
 </span></code></pre></div></p>
 <p><strong>Run the app:</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>npm<span class="w"> </span>start
-</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="c1"># Visit http://localhost:3000</span>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>npm<span class="w"> </span>start
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="c1"># Visit http://localhost:3000</span>
 </span></code></pre></div></p>
 <p><strong>.gitignore:</strong> Already configured to exclude build artifacts and <code>node_modules</code>.</p>
 <blockquote>
 <p><strong>Tip:</strong>
 Use VS Code,  <strong>Windows PowerShell</strong>
-  <div class="language-powershell highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nb">cd </span><span class="n">studio</span>
-</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="n">npm</span> <span class="n">install</span>
-</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">npm</span> <span class="nb">start</span>
-</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="c"># Visit http://localhost:3000</span>
+  <div class="language-powershell highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nb">cd </span><span class="n">studio</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="n">npm</span> <span class="n">install</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="n">npm</span> <span class="nb">start</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="c"># Visit http://localhost:3000</span>
 </span></code></pre></div></p>
 </blockquote>
 <p><strong>Windows Cmd</strong>
-  <div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>cd studio
-</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>npm install
-</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>npm start
-</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>REM Visit http://localhost:3000
+  <div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>cd studio
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>npm install
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>npm start
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>REM Visit http://localhost:3000
 </span></code></pre></div></p>
 <p><strong>macOS/Linux</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="nb">cd</span><span class="w"> </span>studio
-</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>npm<span class="w"> </span>install
-</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>npm<span class="w"> </span>start
-</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="c1"># Visit http://localhost:3000</span>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nb">cd</span><span class="w"> </span>studio
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>npm<span class="w"> </span>install
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>npm<span class="w"> </span>start
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="c1"># Visit http://localhost:3000</span>
 </span></code></pre></div></p>
 <hr />
 <h2 id="building-and-running-components">Building and Running Components<a class="headerlink" href="#building-and-running-components" title="Permanent link">&para;</a></h2>
 <p>Below are the build and run commands for each major part of the system. Substitute your platform (Windows, macOS, Linux) as appropriate.</p>
 <h3 id="backend-python-fastapi">Backend (Python FastAPI)<a class="headerlink" href="#backend-python-fastapi" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Windows (PowerShell):</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nb">cd</span><span class="w"> </span>backend
-</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>.venv<span class="se">\S</span>cripts<span class="se">\A</span>ctivate.ps1
-</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
-</span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8700</span>
-</span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="c1"># Visit http://127.0.0.1:8700</span>
-</span></code></pre></div></li>
-<li><strong>Windows (Cmd):</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="nb">cd</span><span class="w"> </span>backend
-</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>.venv<span class="se">\S</span>cripts<span class="se">\a</span>ctivate.bat
-</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
-</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8700</span>
-</span></code></pre></div></li>
-<li><strong>Git Bash/WSL/Linux/macOS:</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nb">cd</span><span class="w"> </span>backend
-</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
-</span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
-</span><span id="__span-22-4"><a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8700</span>
+<li><strong>All platforms (UV workspace):</strong>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># From project root</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>backend/main.py
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="c1"># or with uvicorn</span>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>uv<span class="w"> </span>run<span class="w"> </span>uvicorn<span class="w"> </span>backend.main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8700</span>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="c1"># Visit http://127.0.0.1:8700</span>
 </span></code></pre></div></li>
 </ul>
 <h3 id="cli-python-cli">CLI (Python CLI)<a class="headerlink" href="#cli-python-cli" title="Permanent link">&para;</a></h3>
 <h4 id="run-the-cli-in-development">Run the CLI in development<a class="headerlink" href="#run-the-cli-in-development" title="Permanent link">&para;</a></h4>
 <ul>
 <li><strong>All platforms:</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="nb">cd</span><span class="w"> </span>cli
-</span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="c1"># Activate venv (see above)</span>
-</span><span id="__span-23-3"><a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.<span class="o">[</span>dev<span class="o">]</span>
-</span><span id="__span-23-4"><a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>python<span class="w"> </span>aico_main.py
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># From project root</span>
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>uv<span class="w"> </span>run<span class="w"> </span>aico<span class="w"> </span>--help
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>uv<span class="w"> </span>run<span class="w"> </span>aico<span class="w"> </span>gateway<span class="w"> </span>status
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>uv<span class="w"> </span>run<span class="w"> </span>aico<span class="w"> </span>db<span class="w"> </span>init
 </span></code></pre></div></li>
 </ul>
 <h4 id="build-the-cli-executable-pyinstaller">Build the CLI executable (PyInstaller)<a class="headerlink" href="#build-the-cli-executable-pyinstaller" title="Permanent link">&para;</a></h4>
 <ul>
 <li><strong>All platforms:</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="nb">cd</span><span class="w"> </span>cli
-</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="c1"># Activate venv (see above)</span>
-</span><span id="__span-24-3"><a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.<span class="o">[</span>dev<span class="o">]</span>
-</span><span id="__span-24-4"><a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>pyinstaller<span class="w"> </span>aico_main.py<span class="w"> </span>--onefile<span class="w"> </span>--name<span class="w"> </span>aico
-</span><span id="__span-24-5"><a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="c1"># Executable will be in dist/aico(.exe)</span>
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># From project root</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="nb">cd</span><span class="w"> </span>cli
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>uv<span class="w"> </span>run<span class="w"> </span>pyinstaller<span class="w"> </span>aico_main.py<span class="w"> </span>--onefile<span class="w"> </span>--name<span class="w"> </span>aico
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="c1"># Executable will be in cli/dist/aico(.exe)</span>
 </span></code></pre></div></li>
 </ul>
 <h4 id="run-the-built-executable">Run the built executable<a class="headerlink" href="#run-the-built-executable" title="Permanent link">&para;</a></h4>
 <ul>
 <li><strong>Windows:</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>dist<span class="se">\a</span>ico.exe
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>cli<span class="se">\d</span>ist<span class="se">\a</span>ico.exe
 </span></code></pre></div></li>
 <li><strong>Linux/macOS:</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>./dist/aico
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>./cli/dist/aico
 </span></code></pre></div></li>
 </ul>
 <h3 id="frontend-flutter">Frontend (Flutter)<a class="headerlink" href="#frontend-flutter" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>All platforms:</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="nb">cd</span><span class="w"> </span>frontend
-</span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>flutter<span class="w"> </span>run
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nb">cd</span><span class="w"> </span>frontend
+</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>flutter<span class="w"> </span>run
 </span></code></pre></div></li>
 <li>For desktop: <code>flutter run -d windows</code> (Windows), <code>-d macos</code> (macOS), <code>-d linux</code> (Linux)</li>
 <li>For web: <code>flutter run -d chrome</code></li>
@@ -3329,8 +3337,8 @@ Use VS Code,  <strong>Windows PowerShell</strong>
 <h3 id="studio-react-admin-ui">Studio (React Admin UI)<a class="headerlink" href="#studio-react-admin-ui" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>All platforms:</strong>
-  <div class="language-sh highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="nb">cd</span><span class="w"> </span>studio
-</span><span id="__span-28-2"><a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>npm<span class="w"> </span>start
+  <div class="language-sh highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="nb">cd</span><span class="w"> </span>studio
+</span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>npm<span class="w"> </span>start
 </span></code></pre></div></li>
 <li>Open <a href="http://localhost:3000">http://localhost:3000</a> in your browser if it does not open automatically.</li>
 </ul>
@@ -3342,100 +3350,100 @@ Use VS Code,  <strong>Windows PowerShell</strong>
 </div>
 <h4 id="python-dependency-management">Python Dependency Management<a class="headerlink" href="#python-dependency-management" title="Permanent link">&para;</a></h4>
 <ul>
-<li><strong>Previous approach:</strong> Each Python component (<code>cli/</code>, <code>backend/</code>) used its own <code>pyproject.toml</code> (PEP 621/Poetry) for dependencies and metadata. Poetry was used for dependency management and packaging. This was replaced due to friction, IDE integration issues, and version pinning complexity.</li>
+<li><strong>Previous approach:</strong> Each Python component (<code>cli/</code>, <code>backend/</code>) used separate <code>pyproject.toml</code> files and virtual environments. This created complexity with environment activation and dependency conflicts.</li>
 <li>
-<p><strong>Current approach:</strong> Each Python component (<code>cli/</code>, <code>backend/</code>, <code>shared/</code>) now uses modern <code>pyproject.toml</code> files for dependency management. <a href="https://github.com/astral-sh/uv">UV</a> is used for ultra-fast dependency installs. This approach follows modern Python packaging standards and is simpler for contributors.</p>
+<p><strong>Current approach:</strong> Unified UV workspace with single <code>pyproject.toml</code> at project root and shared <code>.venv</code>. <a href="https://github.com/astral-sh/uv">UV</a> provides workspace management with optional dependency groups.</p>
 </li>
 <li>
-<p>Add dependencies by editing the respective <code>pyproject.toml</code> file and running <code>uv pip install -e .</code> to update your environment.</p>
+<p>Add dependencies using <code>uv add &lt;package&gt;</code> or <code>uv add --group &lt;group&gt; &lt;package&gt;</code> for group-specific deps.</p>
 </li>
-<li>The supported Python version is pinned to <code>&gt;=3.13,&lt;3.15</code> due to PyInstaller compatibility. Update this restriction only after verifying all key dependencies support newer Python versions.</li>
-<li>Use <code>uv pip install &lt;package&gt;</code> to add dependencies and <code>uv pip freeze &gt; requirements.txt</code> to refresh lockfiles.</li>
-<li>PyInstaller is included as a CLI dependency for building distributable executables.</li>
-<li>If switching to a different dependency manager in the future, update this section and docs accordingly.</li>
+<li>The supported Python version is pinned to <code>&gt;=3.13</code> due to PyInstaller compatibility.</li>
+<li>Use <code>uv sync</code> to install/update all dependencies after <code>pyproject.toml</code> changes.</li>
+<li>Optional dependency groups: <code>cli</code>, <code>backend</code>, <code>test</code> for component-specific requirements.</li>
+<li>PyInstaller is included in the CLI group for building distributable executables.</li>
 </ul>
 <h4 id="flutter-frontend-project-creation">Flutter Frontend Project Creation<a class="headerlink" href="#flutter-frontend-project-creation" title="Permanent link">&para;</a></h4>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>flutter<span class="w"> </span>create<span class="w"> </span>frontend<span class="w"> </span>--project-name<span class="w"> </span>aico_ui<span class="w"> </span>--platforms<span class="o">=</span>windows,macos,linux,android,ios,web
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>flutter<span class="w"> </span>create<span class="w"> </span>frontend<span class="w"> </span>--project-name<span class="w"> </span>aico_ui<span class="w"> </span>--platforms<span class="o">=</span>windows,macos,linux,android,ios,web
 </span></code></pre></div>
 <h4 id="react-admin-studio-project-creation">React Admin Studio Project Creation<a class="headerlink" href="#react-admin-studio-project-creation" title="Permanent link">&para;</a></h4>
-<div class="language-sh highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>npx<span class="w"> </span>create-react-app<span class="w"> </span>studio<span class="w"> </span>--template<span class="w"> </span>typescript
-</span><span id="__span-30-2"><a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="nb">cd</span><span class="w"> </span>studio
-</span><span id="__span-30-3"><a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>npm<span class="w"> </span>install<span class="w"> </span>react-admin<span class="w"> </span>ra-data-simple-rest<span class="w"> </span>@mui/material<span class="w"> </span>@mui/icons-material<span class="w"> </span>@emotion/react<span class="w"> </span>@emotion/styled<span class="w"> </span>react-router-dom
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>npx<span class="w"> </span>create-react-app<span class="w"> </span>studio<span class="w"> </span>--template<span class="w"> </span>typescript
+</span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="nb">cd</span><span class="w"> </span>studio
+</span><span id="__span-25-3"><a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>npm<span class="w"> </span>install<span class="w"> </span>react-admin<span class="w"> </span>ra-data-simple-rest<span class="w"> </span>@mui/material<span class="w"> </span>@mui/icons-material<span class="w"> </span>@emotion/react<span class="w"> </span>@emotion/styled<span class="w"> </span>react-router-dom
 </span></code></pre></div>
 <hr />
 <h2 id="database-setup">Database Setup<a class="headerlink" href="#database-setup" title="Permanent link">&para;</a></h2>
 <p>AICO uses encrypted databases for all data storage with security by design. The setup process automatically handles directory creation, security initialization, and database configuration.</p>
 <h3 id="quick-setup-recommended">Quick Setup (Recommended)<a class="headerlink" href="#quick-setup-recommended" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="c1"># 1. Initialize AICO configuration directories</span>
-</span><span id="__span-31-2"><a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>aico<span class="w"> </span>config<span class="w"> </span>init
-</span><span id="__span-31-3"><a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>
-</span><span id="__span-31-4"><a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a><span class="c1"># 2. Initialize encrypted database (auto-setup security if needed)</span>
-</span><span id="__span-31-5"><a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a>aico<span class="w"> </span>db<span class="w"> </span>init
-</span><span id="__span-31-6"><a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a>
-</span><span id="__span-31-7"><a id="__codelineno-31-7" name="__codelineno-31-7" href="#__codelineno-31-7"></a><span class="c1"># 3. Verify complete setup</span>
-</span><span id="__span-31-8"><a id="__codelineno-31-8" name="__codelineno-31-8" href="#__codelineno-31-8"></a>aico<span class="w"> </span>config<span class="w"> </span>show
-</span><span id="__span-31-9"><a id="__codelineno-31-9" name="__codelineno-31-9" href="#__codelineno-31-9"></a>aico<span class="w"> </span>db<span class="w"> </span>show
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="c1"># 1. Initialize AICO configuration directories</span>
+</span><span id="__span-26-2"><a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>aico<span class="w"> </span>config<span class="w"> </span>init
+</span><span id="__span-26-3"><a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>
+</span><span id="__span-26-4"><a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="c1"># 2. Initialize encrypted database (auto-setup security if needed)</span>
+</span><span id="__span-26-5"><a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>aico<span class="w"> </span>db<span class="w"> </span>init
+</span><span id="__span-26-6"><a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a>
+</span><span id="__span-26-7"><a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a><span class="c1"># 3. Verify complete setup</span>
+</span><span id="__span-26-8"><a id="__codelineno-26-8" name="__codelineno-26-8" href="#__codelineno-26-8"></a>aico<span class="w"> </span>config<span class="w"> </span>show
+</span><span id="__span-26-9"><a id="__codelineno-26-9" name="__codelineno-26-9" href="#__codelineno-26-9"></a>aico<span class="w"> </span>db<span class="w"> </span>show
 </span></code></pre></div>
 <h3 id="step-by-step-process">Step-by-Step Process<a class="headerlink" href="#step-by-step-process" title="Permanent link">&para;</a></h3>
 <h4 id="1-configuration-directory-setup">1. Configuration Directory Setup<a class="headerlink" href="#1-configuration-directory-setup" title="Permanent link">&para;</a></h4>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-32-1"><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="c1"># Initialize all AICO directories (data, config, cache, logs)</span>
-</span><span id="__span-32-2"><a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>aico<span class="w"> </span>config<span class="w"> </span>init
-</span><span id="__span-32-3"><a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a>
-</span><span id="__span-32-4"><a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a><span class="c1"># Verify directory structure</span>
-</span><span id="__span-32-5"><a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a>aico<span class="w"> </span>config<span class="w"> </span>show
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="c1"># Initialize all AICO directories (data, config, cache, logs)</span>
+</span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>aico<span class="w"> </span>config<span class="w"> </span>init
+</span><span id="__span-27-3"><a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>
+</span><span id="__span-27-4"><a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a><span class="c1"># Verify directory structure</span>
+</span><span id="__span-27-5"><a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>aico<span class="w"> </span>config<span class="w"> </span>show
 </span></code></pre></div>
 <h4 id="2-database-initialization">2. Database Initialization<a class="headerlink" href="#2-database-initialization" title="Permanent link">&para;</a></h4>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-33-1"><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="c1"># Create encrypted libSQL database with automatic security setup</span>
-</span><span id="__span-33-2"><a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>aico<span class="w"> </span>db<span class="w"> </span>init
-</span><span id="__span-33-3"><a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>
-</span><span id="__span-33-4"><a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a><span class="c1"># Test database connection and encryption</span>
-</span><span id="__span-33-5"><a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a>aico<span class="w"> </span>db<span class="w"> </span><span class="nb">test</span>
-</span><span id="__span-33-6"><a id="__codelineno-33-6" name="__codelineno-33-6" href="#__codelineno-33-6"></a>
-</span><span id="__span-33-7"><a id="__codelineno-33-7" name="__codelineno-33-7" href="#__codelineno-33-7"></a><span class="c1"># View database configuration and paths</span>
-</span><span id="__span-33-8"><a id="__codelineno-33-8" name="__codelineno-33-8" href="#__codelineno-33-8"></a>aico<span class="w"> </span>db<span class="w"> </span>show
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="c1"># Create encrypted libSQL database with automatic security setup</span>
+</span><span id="__span-28-2"><a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>aico<span class="w"> </span>db<span class="w"> </span>init
+</span><span id="__span-28-3"><a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>
+</span><span id="__span-28-4"><a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="c1"># Test database connection and encryption</span>
+</span><span id="__span-28-5"><a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>aico<span class="w"> </span>db<span class="w"> </span><span class="nb">test</span>
+</span><span id="__span-28-6"><a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a>
+</span><span id="__span-28-7"><a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a><span class="c1"># View database configuration and paths</span>
+</span><span id="__span-28-8"><a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a>aico<span class="w"> </span>db<span class="w"> </span>show
 </span></code></pre></div>
 <p><strong>Note</strong>: The <code>aico db init</code> command automatically sets up master password security if not already configured, eliminating the need for separate <code>aico security setup</code> step.</p>
 <h3 id="directory-structure">Directory Structure<a class="headerlink" href="#directory-structure" title="Permanent link">&para;</a></h3>
 <p>After setup, you'll have cross-platform directories:
-<div class="language-text highlight"><pre><span></span><code><span id="__span-34-1"><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a># Windows Example: %APPDATA%/aico/
-</span><span id="__span-34-2"><a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a># macOS Example: ~/Library/Application Support/aico/
-</span><span id="__span-34-3"><a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a># Linux Example: ~/.local/share/aico/
-</span><span id="__span-34-4"><a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a>aico/
-</span><span id="__span-34-5"><a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a>├── data/
-</span><span id="__span-34-6"><a id="__codelineno-34-6" name="__codelineno-34-6" href="#__codelineno-34-6"></a>│   ├── aico.db              # Main libSQL database (encrypted)
-</span><span id="__span-34-7"><a id="__codelineno-34-7" name="__codelineno-34-7" href="#__codelineno-34-7"></a>│   ├── aico.db.salt         # Encryption salt
-</span><span id="__span-34-8"><a id="__codelineno-34-8" name="__codelineno-34-8" href="#__codelineno-34-8"></a>│   ├── analytics.duckdb     # Analytics database (encrypted)
-</span><span id="__span-34-9"><a id="__codelineno-34-9" name="__codelineno-34-9" href="#__codelineno-34-9"></a>│   └── chroma/              # Vector database directory (encrypted)
-</span><span id="__span-34-10"><a id="__codelineno-34-10" name="__codelineno-34-10" href="#__codelineno-34-10"></a>├── config/
-</span><span id="__span-34-11"><a id="__codelineno-34-11" name="__codelineno-34-11" href="#__codelineno-34-11"></a>│   ├── defaults/            # Default configuration files
-</span><span id="__span-34-12"><a id="__codelineno-34-12" name="__codelineno-34-12" href="#__codelineno-34-12"></a>│   └── environments/        # Environment-specific overrides
-</span><span id="__span-34-13"><a id="__codelineno-34-13" name="__codelineno-34-13" href="#__codelineno-34-13"></a>├── cache/                   # Application cache
-</span><span id="__span-34-14"><a id="__codelineno-34-14" name="__codelineno-34-14" href="#__codelineno-34-14"></a>└── logs/                    # Application logs
+<div class="language-text highlight"><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a># Windows Example: %APPDATA%/aico/
+</span><span id="__span-29-2"><a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a># macOS Example: ~/Library/Application Support/aico/
+</span><span id="__span-29-3"><a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a># Linux Example: ~/.local/share/aico/
+</span><span id="__span-29-4"><a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>aico/
+</span><span id="__span-29-5"><a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a>├── data/
+</span><span id="__span-29-6"><a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a>│   ├── aico.db              # Main libSQL database (encrypted)
+</span><span id="__span-29-7"><a id="__codelineno-29-7" name="__codelineno-29-7" href="#__codelineno-29-7"></a>│   ├── aico.db.salt         # Encryption salt
+</span><span id="__span-29-8"><a id="__codelineno-29-8" name="__codelineno-29-8" href="#__codelineno-29-8"></a>│   ├── analytics.duckdb     # Analytics database (encrypted)
+</span><span id="__span-29-9"><a id="__codelineno-29-9" name="__codelineno-29-9" href="#__codelineno-29-9"></a>│   └── chroma/              # Vector database directory (encrypted)
+</span><span id="__span-29-10"><a id="__codelineno-29-10" name="__codelineno-29-10" href="#__codelineno-29-10"></a>├── config/
+</span><span id="__span-29-11"><a id="__codelineno-29-11" name="__codelineno-29-11" href="#__codelineno-29-11"></a>│   ├── defaults/            # Default configuration files
+</span><span id="__span-29-12"><a id="__codelineno-29-12" name="__codelineno-29-12" href="#__codelineno-29-12"></a>│   └── environments/        # Environment-specific overrides
+</span><span id="__span-29-13"><a id="__codelineno-29-13" name="__codelineno-29-13" href="#__codelineno-29-13"></a>├── cache/                   # Application cache
+</span><span id="__span-29-14"><a id="__codelineno-29-14" name="__codelineno-29-14" href="#__codelineno-29-14"></a>└── logs/                    # Application logs
 </span></code></pre></div></p>
 <h3 id="configuration-management">Configuration Management<a class="headerlink" href="#configuration-management" title="Permanent link">&para;</a></h3>
 <p>AICO uses a hierarchical configuration system with externalized settings:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-35-1"><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="c1"># View all configuration paths and settings</span>
-</span><span id="__span-35-2"><a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>aico<span class="w"> </span>config<span class="w"> </span>show
-</span><span id="__span-35-3"><a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>
-</span><span id="__span-35-4"><a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a><span class="c1"># View database-specific configuration</span>
-</span><span id="__span-35-5"><a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a>aico<span class="w"> </span>db<span class="w"> </span>show
-</span><span id="__span-35-6"><a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a>
-</span><span id="__span-35-7"><a id="__codelineno-35-7" name="__codelineno-35-7" href="#__codelineno-35-7"></a><span class="c1"># Get specific configuration values</span>
-</span><span id="__span-35-8"><a id="__codelineno-35-8" name="__codelineno-35-8" href="#__codelineno-35-8"></a>aico<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>database.libsql.journal_mode
-</span><span id="__span-35-9"><a id="__codelineno-35-9" name="__codelineno-35-9" href="#__codelineno-35-9"></a>aico<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>system.paths.directory_mode
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="c1"># View all configuration paths and settings</span>
+</span><span id="__span-30-2"><a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>aico<span class="w"> </span>config<span class="w"> </span>show
+</span><span id="__span-30-3"><a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>
+</span><span id="__span-30-4"><a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="c1"># View database-specific configuration</span>
+</span><span id="__span-30-5"><a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a>aico<span class="w"> </span>db<span class="w"> </span>show
+</span><span id="__span-30-6"><a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a>
+</span><span id="__span-30-7"><a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a><span class="c1"># Get specific configuration values</span>
+</span><span id="__span-30-8"><a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a>aico<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>database.libsql.journal_mode
+</span><span id="__span-30-9"><a id="__codelineno-30-9" name="__codelineno-30-9" href="#__codelineno-30-9"></a>aico<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>system.paths.directory_mode
 </span></code></pre></div>
 <h3 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h3>
 <p><strong>Setup issues:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-36-1"><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>aico<span class="w"> </span>config<span class="w"> </span>show<span class="w">       </span><span class="c1"># Check directory structure</span>
-</span><span id="__span-36-2"><a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>aico<span class="w"> </span>db<span class="w"> </span>show<span class="w">          </span><span class="c1"># Check database configuration</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>aico<span class="w"> </span>config<span class="w"> </span>show<span class="w">       </span><span class="c1"># Check directory structure</span>
+</span><span id="__span-31-2"><a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>aico<span class="w"> </span>db<span class="w"> </span>show<span class="w">          </span><span class="c1"># Check database configuration</span>
 </span></code></pre></div></p>
 <p><strong>Database connection fails:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-37-1"><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>aico<span class="w"> </span>db<span class="w"> </span>status<span class="w">        </span><span class="c1"># Check database status</span>
-</span><span id="__span-37-2"><a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>aico<span class="w"> </span>db<span class="w"> </span><span class="nb">test</span><span class="w">          </span><span class="c1"># Test database connection</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-32-1"><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>aico<span class="w"> </span>db<span class="w"> </span>status<span class="w">        </span><span class="c1"># Check database status</span>
+</span><span id="__span-32-2"><a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>aico<span class="w"> </span>db<span class="w"> </span><span class="nb">test</span><span class="w">          </span><span class="c1"># Test database connection</span>
 </span></code></pre></div></p>
 <p><strong>Security/encryption issues:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-38-1"><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>aico<span class="w"> </span>security<span class="w"> </span>status<span class="w">  </span><span class="c1"># Check security setup</span>
-</span><span id="__span-38-2"><a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a>aico<span class="w"> </span>security<span class="w"> </span><span class="nb">test</span><span class="w">    </span><span class="c1"># Verify keyring access</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-33-1"><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>aico<span class="w"> </span>security<span class="w"> </span>status<span class="w">  </span><span class="c1"># Check security setup</span>
+</span><span id="__span-33-2"><a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>aico<span class="w"> </span>security<span class="w"> </span><span class="nb">test</span><span class="w">    </span><span class="c1"># Verify keyring access</span>
 </span></code></pre></div></p>
 <p>For detailed architecture and configuration options, see <a href="../../architecture/data_layer/">Data Layer Documentation</a>.</p>
 <hr />
@@ -3443,41 +3451,41 @@ Use VS Code,  <strong>Windows PowerShell</strong>
 <p>AICO uses Protocol Buffers for cross-component communication. After making changes to <code>.proto</code> files, you need to regenerate the language-specific code.</p>
 <h3 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h3>
 <p>Install the Protocol Buffers compiler:
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-39-1"><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a><span class="c1"># macOS</span>
-</span><span id="__span-39-2"><a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a>brew<span class="w"> </span>install<span class="w"> </span>protobuf
-</span><span id="__span-39-3"><a id="__codelineno-39-3" name="__codelineno-39-3" href="#__codelineno-39-3"></a>
-</span><span id="__span-39-4"><a id="__codelineno-39-4" name="__codelineno-39-4" href="#__codelineno-39-4"></a><span class="c1"># Ubuntu/Debian  </span>
-</span><span id="__span-39-5"><a id="__codelineno-39-5" name="__codelineno-39-5" href="#__codelineno-39-5"></a>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>protobuf-compiler
-</span><span id="__span-39-6"><a id="__codelineno-39-6" name="__codelineno-39-6" href="#__codelineno-39-6"></a>
-</span><span id="__span-39-7"><a id="__codelineno-39-7" name="__codelineno-39-7" href="#__codelineno-39-7"></a><span class="c1"># Windows (via chocolatey)</span>
-</span><span id="__span-39-8"><a id="__codelineno-39-8" name="__codelineno-39-8" href="#__codelineno-39-8"></a>choco<span class="w"> </span>install<span class="w"> </span>protoc
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-34-1"><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="c1"># macOS</span>
+</span><span id="__span-34-2"><a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>brew<span class="w"> </span>install<span class="w"> </span>protobuf
+</span><span id="__span-34-3"><a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>
+</span><span id="__span-34-4"><a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a><span class="c1"># Ubuntu/Debian  </span>
+</span><span id="__span-34-5"><a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>protobuf-compiler
+</span><span id="__span-34-6"><a id="__codelineno-34-6" name="__codelineno-34-6" href="#__codelineno-34-6"></a>
+</span><span id="__span-34-7"><a id="__codelineno-34-7" name="__codelineno-34-7" href="#__codelineno-34-7"></a><span class="c1"># Windows (via chocolatey)</span>
+</span><span id="__span-34-8"><a id="__codelineno-34-8" name="__codelineno-34-8" href="#__codelineno-34-8"></a>choco<span class="w"> </span>install<span class="w"> </span>protoc
 </span></code></pre></div></p>
 <p>Install language-specific plugins:
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-40-1"><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a><span class="c1"># Python</span>
-</span><span id="__span-40-2"><a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>pip<span class="w"> </span>install<span class="w"> </span>protobuf<span class="w"> </span>mypy-protobuf
-</span><span id="__span-40-3"><a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a>
-</span><span id="__span-40-4"><a id="__codelineno-40-4" name="__codelineno-40-4" href="#__codelineno-40-4"></a><span class="c1"># Dart (for Flutter frontend)</span>
-</span><span id="__span-40-5"><a id="__codelineno-40-5" name="__codelineno-40-5" href="#__codelineno-40-5"></a>dart<span class="w"> </span>pub<span class="w"> </span>global<span class="w"> </span>activate<span class="w"> </span>protoc_plugin
-</span><span id="__span-40-6"><a id="__codelineno-40-6" name="__codelineno-40-6" href="#__codelineno-40-6"></a>
-</span><span id="__span-40-7"><a id="__codelineno-40-7" name="__codelineno-40-7" href="#__codelineno-40-7"></a><span class="c1"># JavaScript/TypeScript (for Studio admin interface)</span>
-</span><span id="__span-40-8"><a id="__codelineno-40-8" name="__codelineno-40-8" href="#__codelineno-40-8"></a>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>protoc-gen-js<span class="w"> </span>protoc-gen-grpc-web
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-35-1"><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="c1"># Python</span>
+</span><span id="__span-35-2"><a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>pip<span class="w"> </span>install<span class="w"> </span>protobuf<span class="w"> </span>mypy-protobuf
+</span><span id="__span-35-3"><a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>
+</span><span id="__span-35-4"><a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a><span class="c1"># Dart (for Flutter frontend)</span>
+</span><span id="__span-35-5"><a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a>dart<span class="w"> </span>pub<span class="w"> </span>global<span class="w"> </span>activate<span class="w"> </span>protoc_plugin
+</span><span id="__span-35-6"><a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a>
+</span><span id="__span-35-7"><a id="__codelineno-35-7" name="__codelineno-35-7" href="#__codelineno-35-7"></a><span class="c1"># JavaScript/TypeScript (for Studio admin interface)</span>
+</span><span id="__span-35-8"><a id="__codelineno-35-8" name="__codelineno-35-8" href="#__codelineno-35-8"></a>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>protoc-gen-js<span class="w"> </span>protoc-gen-grpc-web
 </span></code></pre></div></p>
 <h3 id="generating-code">Generating Code<a class="headerlink" href="#generating-code" title="Permanent link">&para;</a></h3>
 <p><strong>Note:</strong> All commands assume you're starting from the AICO project root directory (<code>d:/dev/aico</code>).</p>
 <p>For Python, you must include both the <code>proto</code> directory and your venv's <code>site-packages</code> as <code>-I</code> (include) paths, so that Google well-known types are found.</p>
 <p><strong>Python (Backend &amp; Shared):</strong></p>
 <p>From the <strong>project root</strong> (<code>d:/dev/aico</code>), run:</p>
-<p><div class="language-sh highlight"><pre><span></span><code><span id="__span-41-1"><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>protoc<span class="w"> </span>-I<span class="o">=</span>proto<span class="w"> </span>-I<span class="o">=</span>backend/.venv/Lib/site-packages<span class="w"> </span>--python_out<span class="o">=</span>shared/aico/proto<span class="w"> </span>proto/aico_core_api_gateway.proto<span class="w"> </span>proto/aico_core_common.proto<span class="w"> </span>proto/aico_core_envelope.proto<span class="w"> </span>proto/aico_core_logging.proto<span class="w"> </span>proto/aico_core_plugin_system.proto<span class="w"> </span>proto/aico_core_update_system.proto<span class="w"> </span>proto/aico_emotion.proto<span class="w"> </span>proto/aico_integration.proto<span class="w"> </span>proto/aico_personality.proto<span class="w"> </span>proto/aico_conversation.proto
+<p><div class="language-sh highlight"><pre><span></span><code><span id="__span-36-1"><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>protoc<span class="w"> </span>-I<span class="o">=</span>proto<span class="w"> </span>-I<span class="o">=</span>backend/.venv/Lib/site-packages<span class="w"> </span>--python_out<span class="o">=</span>shared/aico/proto<span class="w"> </span>proto/aico_core_api_gateway.proto<span class="w"> </span>proto/aico_core_common.proto<span class="w"> </span>proto/aico_core_envelope.proto<span class="w"> </span>proto/aico_core_logging.proto<span class="w"> </span>proto/aico_core_plugin_system.proto<span class="w"> </span>proto/aico_core_update_system.proto<span class="w"> </span>proto/aico_emotion.proto<span class="w"> </span>proto/aico_integration.proto<span class="w"> </span>proto/aico_personality.proto<span class="w"> </span>proto/aico_conversation.proto
 </span></code></pre></div>
 - If your venv is in a different location, adjust the <code>-I</code> path accordingly.
 - If you get errors about missing <code>google/protobuf/*.proto</code> files, make sure your venv's <code>site-packages/google/protobuf/</code> directory contains the <code>.proto</code> files. If not, download them from the <a href="https://github.com/protocolbuffers/protobuf/tree/main/src/google/protobuf">official repo</a> and copy them in.</p>
 <p><strong>Dart (Flutter Frontend):</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-42-1"><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a><span class="nb">cd</span><span class="w"> </span>proto
-</span><span id="__span-42-2"><a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a>protoc<span class="w"> </span>-I<span class="o">=</span>.<span class="w"> </span>--dart_out<span class="o">=</span>../frontend/lib/generated<span class="w"> </span>./core/*.proto<span class="w"> </span>./emotion/*.proto<span class="w"> </span>./conversation/*.proto<span class="w"> </span>./personality/*.proto<span class="w"> </span>./integration/*.proto
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-37-1"><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="nb">cd</span><span class="w"> </span>proto
+</span><span id="__span-37-2"><a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>protoc<span class="w"> </span>-I<span class="o">=</span>.<span class="w"> </span>--dart_out<span class="o">=</span>../frontend/lib/generated<span class="w"> </span>./core/*.proto<span class="w"> </span>./emotion/*.proto<span class="w"> </span>./conversation/*.proto<span class="w"> </span>./personality/*.proto<span class="w"> </span>./integration/*.proto
 </span></code></pre></div></p>
 <p><strong>JavaScript/TypeScript (Studio Admin Interface):</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-43-1"><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a><span class="nb">cd</span><span class="w"> </span>proto
-</span><span id="__span-43-2"><a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a>protoc<span class="w"> </span>-I<span class="o">=</span>.<span class="w"> </span>--js_out<span class="o">=</span><span class="nv">import_style</span><span class="o">=</span>commonjs,binary:../studio/src/generated<span class="w"> </span>--grpc-web_out<span class="o">=</span><span class="nv">import_style</span><span class="o">=</span>commonjs,mode<span class="o">=</span>grpcwebtext:../studio/src/generated<span class="w"> </span>./core/*.proto<span class="w"> </span>./emotion/*.proto<span class="w"> </span>./conversation/*.proto<span class="w"> </span>./personality/*.proto<span class="w"> </span>./integration/*.proto
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-38-1"><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="nb">cd</span><span class="w"> </span>proto
+</span><span id="__span-38-2"><a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a>protoc<span class="w"> </span>-I<span class="o">=</span>.<span class="w"> </span>--js_out<span class="o">=</span><span class="nv">import_style</span><span class="o">=</span>commonjs,binary:../studio/src/generated<span class="w"> </span>--grpc-web_out<span class="o">=</span><span class="nv">import_style</span><span class="o">=</span>commonjs,mode<span class="o">=</span>grpcwebtext:../studio/src/generated<span class="w"> </span>./core/*.proto<span class="w"> </span>./emotion/*.proto<span class="w"> </span>./conversation/*.proto<span class="w"> </span>./personality/*.proto<span class="w"> </span>./integration/*.proto
 </span></code></pre></div></p>
 <p>For detailed protobuf development guidelines, see <a href="../protobuf/">Protocol Buffers &amp; API Contracts</a>.</p>
 <hr />
