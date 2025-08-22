@@ -83,7 +83,7 @@ def _get_log_repository() -> LogRepository:
     """Get configured log repository"""
     try:
         config_manager = ConfigurationManager()
-        key_manager = AICOKeyManager()
+        key_manager = AICOKeyManager(config_manager)
         
         # Get database path and connection
         from aico.core.paths import AICOPaths
@@ -111,7 +111,7 @@ def _get_log_repository_no_auth() -> LogRepository:
     """Get configured log repository without authentication (assumes already authenticated)"""
     try:
         config_manager = ConfigurationManager()
-        key_manager = AICOKeyManager()
+        key_manager = AICOKeyManager(config_manager)
         
         # Get database path and connection
         from aico.core.paths import AICOPaths
