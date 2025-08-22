@@ -232,6 +232,13 @@ node --version
 npm --version
 ```
 
+**Install Coverage Tools:**
+
+For generating HTML coverage reports across all subsystems:
+```sh
+npm install -g @lcov-viewer/cli
+```
+
 **Install dependencies:**
   ```sh
   cd studio
@@ -247,29 +254,7 @@ npm --version
 **.gitignore:** Already configured to exclude build artifacts and `node_modules`.
 
 > **Tip:**
-> Use VS Code,  **Windows PowerShell**
-  ```powershell
-  cd studio
-  npm install
-  npm start
-  # Visit http://localhost:3000
-  ```
-
-  **Windows Cmd**
-  ```cmd
-  cd studio
-  npm install
-  npm start
-  REM Visit http://localhost:3000
-  ```
-
-  **macOS/Linux**
-  ```sh
-  cd studio
-  npm install
-  npm start
-  # Visit http://localhost:3000
-  ```
+> Use VS Code with React/TypeScript extensions for the best development experience.
 
 ---
 

@@ -66,6 +66,52 @@ Use `mockito` for repository, WebSocket, and API client mocks. Implement builder
 ### Test Configuration
 Centralized test setup with dependency injection reset, platform overrides, and consistent test environment configuration.
 
+## Code Coverage
+
+### Coverage Generation
+Generate Flutter test coverage using the built-in coverage support:
+
+```bash
+# Generate coverage data
+flutter test --coverage
+# Output: coverage/lcov.info
+```
+
+### HTML Coverage Reports
+Convert LCOV data to interactive HTML reports for detailed analysis:
+
+```bash
+# Install cross-platform LCOV viewer (one-time setup)
+npm install -g @lcov-viewer/cli
+
+# Generate HTML coverage report
+lcov-viewer lcov coverage/lcov.info --output coverage/html
+
+# Open report in browser
+# Windows: start coverage/html/index.html
+# macOS: open coverage/html/index.html
+# Linux: xdg-open coverage/html/index.html
+```
+
+### Coverage Analysis Workflow
+1. **Run tests with coverage**: `flutter test --coverage`
+2. **Generate HTML report**: `lcov-viewer lcov coverage/lcov.info --output coverage/html`
+3. **Review coverage gaps**: Open HTML report to identify untested code
+4. **Add targeted tests**: Focus on uncovered critical paths
+5. **Iterate**: Repeat process to improve coverage
+
+### Coverage Data Storage
+Coverage data is stored in `frontend/coverage/` directory:
+```
+frontend/coverage/
+├── lcov.info          # Raw LCOV coverage data
+└── html/              # Generated HTML reports
+    ├── index.html     # Main coverage report
+    └── ...            # Supporting files
+```
+
+**Important**: The `coverage/` directory should be added to `.gitignore` as coverage data is generated locally and should not be committed.
+
 ## Continuous Integration
 
 ### Test Automation

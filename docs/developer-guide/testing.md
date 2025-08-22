@@ -269,6 +269,94 @@ The CI/CD system will manage multiple testing environments, including isolated d
 - [ ] Chaos engineering tests
 - [ ] Security penetration testing automation
 
+## Code Coverage
+
+### Coverage Strategy
+
+AICO uses a unified coverage approach across all subsystems using the LCOV format for consistency and cross-platform compatibility.
+
+### Coverage Data Storage
+
+Each subsystem stores coverage data in its own `coverage/` directory following the idiomatic approach:
+
+```
+backend/coverage/          # Python coverage data
+cli/coverage/              # CLI coverage data  
+frontend/coverage/         # Flutter coverage data
+studio/coverage/           # React coverage data
+```
+
+**Important**: All `coverage/` directories should be added to `.gitignore` as coverage data is generated locally and should not be committed to version control.
+
+### Coverage Generation by Subsystem
+
+#### Flutter (Frontend)
+```bash
+# Generate coverage data
+flutter test --coverage
+# Output: frontend/coverage/lcov.info
+```
+
+#### Python (Backend/CLI)
+```bash
+# Generate coverage with pytest-cov
+pytest --cov --cov-report=lcov
+# Output: backend/coverage/lcov.info or cli/coverage/lcov.info
+```
+
+#### React (Studio)
+```bash
+# Generate coverage with Jest
+npm test -- --coverage
+# Output: studio/coverage/lcov.info
+```
+
+### HTML Coverage Reports
+
+To generate human-readable HTML coverage reports from LCOV data:
+
+#### Prerequisites
+Install the cross-platform LCOV viewer:
+```bash
+npm install -g @lcov-viewer/cli
+```
+
+#### Generate HTML Reports
+```bash
+# From any subsystem directory
+lcov-viewer lcov coverage/lcov.info --output coverage/html
+
+# Examples:
+# Frontend
+cd frontend && lcov-viewer lcov coverage/lcov.info --output coverage/html
+
+# Backend  
+cd backend && lcov-viewer lcov coverage/lcov.info --output coverage/html
+
+# Studio
+cd studio && lcov-viewer lcov coverage/lcov.info --output coverage/html
+```
+
+#### Viewing Reports
+Open the generated HTML report in your browser:
+```bash
+# Windows
+start coverage/html/index.html
+
+# macOS
+open coverage/html/index.html
+
+# Linux
+xdg-open coverage/html/index.html
+```
+
+### Coverage Workflow
+
+1. **Run tests with coverage**: Use subsystem-specific commands to generate `lcov.info`
+2. **Generate HTML report**: Use `lcov-viewer` to convert LCOV data to HTML
+3. **Review coverage**: Open HTML report in browser to analyze coverage gaps
+4. **Iterate**: Add tests for uncovered code and repeat
+
 ## Running Tests
 
 ### Current Test Execution
@@ -295,10 +383,12 @@ pytest tests/unit/              # Unit tests only
 pytest -m auth                  # Authentication tests
 
 # Frontend
-flutter test
+flutter test                     # All tests
+flutter test --coverage          # With coverage
 
 # Studio
-npm test
+npm test                         # All tests
+npm test -- --coverage           # With coverage
 
 # All subsystems
 make test-all
