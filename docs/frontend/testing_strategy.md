@@ -100,6 +100,15 @@ lcov-viewer lcov coverage/lcov.info --output coverage/html
 4. **Add targeted tests**: Focus on uncovered critical paths
 5. **Iterate**: Repeat process to improve coverage
 
+### Known Coverage Limitations
+Flutter's coverage instrumentation has limitations with certain code patterns:
+
+- **Static factory methods**: Coverage may not be properly tracked for static methods in factory classes
+- **Stream operations**: Complex stream subscriptions during coverage collection can cause timing issues
+- **Widget constructors**: Some widget initialization code may not be tracked accurately
+
+**Workaround**: Focus on functional testing over coverage metrics for these patterns. Ensure comprehensive unit tests exist even if coverage reports show gaps.
+
 ### Coverage Data Storage
 Coverage data is stored in `frontend/coverage/` directory:
 ```

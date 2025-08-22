@@ -357,6 +357,20 @@ xdg-open coverage/html/index.html
 3. **Review coverage**: Open HTML report in browser to analyze coverage gaps
 4. **Iterate**: Add tests for uncovered code and repeat
 
+### Known Coverage Limitations
+
+Coverage instrumentation has known limitations across different platforms and frameworks:
+
+#### Flutter Coverage Limitations
+- **Static factory methods**: Coverage tracking may be incomplete for static methods in factory classes
+- **Stream operations**: Complex stream subscriptions can interfere with coverage collection timing
+- **Widget constructors**: Some widget initialization code may not be accurately tracked
+
+#### General Coverage Considerations
+- **Focus on functionality**: Prioritize comprehensive functional testing over achieving 100% coverage metrics
+- **Quality over quantity**: Well-designed tests that verify behavior are more valuable than tests written solely for coverage
+- **Known gaps**: Document and accept coverage gaps for code patterns that are difficult to instrument but well-tested functionally
+
 ## Running Tests
 
 ### Current Test Execution
