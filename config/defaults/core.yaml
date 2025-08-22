@@ -8,6 +8,7 @@ system:
     config_subdirectory: "config"  # Subdirectory within user config dir
     cache_subdirectory: "cache"  # Subdirectory within user cache dir
     logs_subdirectory: "logs"  # Subdirectory within user logs dir
+    frontend_subdirectory: "frontend"  # Frontend state persistence and cache
   log_level: "INFO"
 
 # Unified logging configuration - single source of truth for all subsystems
