@@ -310,12 +310,12 @@ AICO's core architecture is designed to maximize modularity and maintain low cou
 - **Each domain/module is a distinct code package or subsystem** with its own internal state, logic, and strict interface.
 - **All communication between backend modules is via the internal message bus (ZeroMQ) using Protocol Buffers for high-performance binary serialization. External API communication with the frontend uses JSON over HTTP/WebSocket for web-standard compatibility.**
 - **No direct function calls or shared state between modules** (except for startup/configuration)—all data exchange is through published/subscribed messages.
-- **Each module subscribes to topics and publishes outputs on its own topics**, using versioned, validated JSON schemas.
+- **Each module subscribes to topics and publishes outputs on its own topics**, using versioned, validated Protocol Buffer schemas.
 - **Modules can be developed, tested, and even replaced independently** as long as they honor the message contracts.
 
 ### Low Coupling and Contract Guarantees
 - **Loose Coupling:** Modules are only coupled by the message schemas and topic contracts—not by code dependencies or shared state.
-- **Contract Enforcement:** The message bus enforces versioned schemas, so if a publisher or subscriber changes, integration tests will catch contract violations.
+- **Contract Enforcement:** The message bus enforces versioned Protocol Buffer schemas, so if a publisher or subscriber changes, integration tests will catch contract violations.
 - **Pluggability:** Any module could, in theory, be extracted into a separate process or container in the future with minimal refactor, since all communication is already message-based.
 
 ### Client-Service Architecture

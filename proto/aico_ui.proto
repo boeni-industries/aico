@@ -1,0 +1,171 @@
+syntax = "proto3";
+import "google/protobuf/descriptor.proto";
+
+package aico.ui;
+
+option go_package = "github.com/boeni-industries/aico/proto/ui";
+option java_package = "industries.boeni.aico.proto.ui";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+
+// UI state update message
+message UIStateUpdate {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;                    // Source component (frontend, backend)
+  
+  StateType state_type = 3;             // Type of state update
+  google.protobuf.Any state_data = 4;   // State-specific data
+  
+  enum StateType {
+    UNKNOWN = 0;
+    THEME_CHANGED = 1;                  // Theme/appearance update
+    NAVIGATION_CHANGED = 2;             // Navigation state change
+    CONNECTION_STATUS = 3;              // Backend connection status
+    LOADING_STATE = 4;                  // Loading/busy indicators
+    ERROR_STATE = 5;                    // Error display state
+    MODAL_STATE = 6;                    // Modal/dialog state
+    NOTIFICATION_STATE = 7;             // Notification display
+  }
+}
+
+// UI interaction event
+message UIInteraction {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;                    // Source component
+  
+  InteractionType interaction_type = 3; // Type of interaction
+  string element_id = 4;                // UI element identifier
+  google.protobuf.Any interaction_data = 5; // Interaction-specific data
+  
+  enum InteractionType {
+    UNKNOWN = 0;
+    BUTTON_CLICK = 1;                   // Button press
+    TEXT_INPUT = 2;                     // Text field input
+    VOICE_INPUT = 3;                    // Voice input activation
+    GESTURE = 4;                        // Gesture/touch interaction
+    NAVIGATION = 5;                     // Navigation action
+    SETTINGS_CHANGE = 6;                // Settings modification
+    AVATAR_INTERACTION = 7;             // Avatar-specific interaction
+  }
+}
+
+// UI notification message
+message UINotification {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;                    // Source component
+  
+  string notification_id = 3;           // Unique notification ID
+  NotificationType type = 4;            // Notification type
+  NotificationPriority priority = 5;    // Priority level
+  string title = 6;                     // Notification title
+  string message = 7;                   // Notification content
+  map<string, string> actions = 8;      // Available actions (key=action_id, value=label)
+  int32 duration_seconds = 9;           // Auto-dismiss duration (0 = persistent)
+  
+  enum NotificationType {
+    UNKNOWN = 0;
+    INFO = 1;                           // Informational
+    SUCCESS = 2;                        // Success message
+    WARNING = 3;                        // Warning message
+    ERROR = 4;                          // Error message
+    SYSTEM = 5;                         // System notification
+    UPDATE = 6;                         // Update available
+    ACHIEVEMENT = 7;                    // Background accomplishment
+  }
+  
+  enum NotificationPriority {
+    UNKNOWN_PRIORITY = 0;
+    LOW = 1;                            // Background info
+    NORMAL = 2;                         // Standard notification
+    HIGH = 3;                           // Important notification
+    CRITICAL = 4;                       // Requires immediate attention
+  }
+}
+
+// UI command message (backend -> frontend)
+message UICommand {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;                    // Source component
+  
+  string command_id = 3;                // Unique command ID
+  CommandType command_type = 4;         // Type of command
+  google.protobuf.Any command_data = 5; // Command-specific data
+  
+  enum CommandType {
+    UNKNOWN = 0;
+    NAVIGATE_TO = 1;                    // Navigate to specific screen
+    SHOW_MODAL = 2;                     // Display modal/dialog
+    UPDATE_THEME = 3;                   // Change theme/appearance
+    PLAY_ANIMATION = 4;                 // Trigger animation
+    UPDATE_AVATAR = 5;                  // Update avatar state
+    FOCUS_ELEMENT = 6;                  // Focus specific UI element
+    SCROLL_TO = 7;                      // Scroll to element
+    REFRESH_DATA = 8;                   // Refresh specific data
+  }
+}
+
+// UI preferences message
+message UIPreferences {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;                    // Source component
+  
+  ThemePreferences theme = 3;           // Theme preferences
+  LayoutPreferences layout = 4;         // Layout preferences
+  AccessibilityPreferences accessibility = 5; // Accessibility settings
+  NotificationPreferences notifications = 6;   // Notification settings
+  AvatarPreferences avatar = 7;         // Avatar display preferences
+}
+
+// Theme preferences
+message ThemePreferences {
+  ThemeMode mode = 1;                   // Light/dark/auto
+  string primary_color = 2;             // Primary color hex
+  string accent_color = 3;              // Accent color hex
+  float font_scale = 4;                 // Font size multiplier
+  
+  enum ThemeMode {
+    UNKNOWN = 0;
+    LIGHT = 1;
+    DARK = 2;
+    AUTO = 3;                           // Follow system
+  }
+}
+
+// Layout preferences
+message LayoutPreferences {
+  bool compact_mode = 1;                // Compact UI layout
+  bool show_sidebar = 2;                // Show navigation sidebar
+  string default_screen = 3;            // Default screen on startup
+  repeated string pinned_screens = 4;   // Pinned/favorite screens
+}
+
+// Accessibility preferences
+message AccessibilityPreferences {
+  bool high_contrast = 1;               // High contrast mode
+  bool large_text = 2;                  // Large text mode
+  bool reduce_motion = 3;               // Reduce animations
+  bool screen_reader = 4;               // Screen reader support
+  float voice_speed = 5;                // Voice playback speed
+}
+
+// Notification preferences
+message NotificationPreferences {
+  bool enabled = 1;                     // Notifications enabled
+  bool sound_enabled = 2;               // Sound notifications
+  bool vibration_enabled = 3;           // Vibration (mobile)
+  repeated UINotification.NotificationType disabled_types = 4; // Disabled notification types
+  int32 quiet_hours_start = 5;          // Quiet hours start (hour 0-23)
+  int32 quiet_hours_end = 6;            // Quiet hours end (hour 0-23)
+}
+
+// Avatar preferences
+message AvatarPreferences {
+  bool enabled = 1;                     // Avatar display enabled
+  string avatar_id = 2;                 // Selected avatar ID
+  float animation_speed = 3;            // Animation speed multiplier
+  bool lip_sync_enabled = 4;            // Lip sync enabled
+  bool eye_tracking_enabled = 5;        // Eye tracking enabled
+  float avatar_scale = 6;               // Avatar size scale
+}

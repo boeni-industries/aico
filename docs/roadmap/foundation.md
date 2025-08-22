@@ -24,7 +24,7 @@ Build the foundational system infrastructure that enables all AICO functionality
 
 ### Minimal Message Bus
 - [x] **ZeroMQ Setup**: Core pub/sub message bus implementation
-- [x] **Basic Topics**: Essential topics (system.*, chat.*, ui.*)
+- [x] **Basic Topics**: Essential topics (system.*, conversation.*, ui.*)
 - [x] **Message Envelope**: Simple JSON message format
 - [x] **Message Routing**: Basic topic-based routing
 

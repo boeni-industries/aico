@@ -168,15 +168,27 @@ class AICOMessageBusHost:
             self.modules[module_name] = client
             self.logger.info(f"Registered module: {module_name}")
             
-            # Publish module registration event (must be protobuf, not dict)
-            # await self.internal_client.publish(
-            #     "system.module.registered",
-            #     {
-            #         "module_name": module_name,
-            #         "client_id": f"backend.{module_name}",
-            #         "permissions": topic_permissions or []
-            #     },
-            # )
+            # Publish module registration event
+            registration_event = ApiEvent()
+            registration_event.event_id = str(uuid.uuid4())
+            registration_event.event_type = "system.module.registered"
+            registration_event.client_id = f"backend.{module_name}"
+            registration_event.session_id = "system"
+            
+            # Set timestamp
+            now = datetime.utcnow()
+            registration_event.timestamp.seconds = int(now.timestamp())
+            registration_event.timestamp.nanos = int((now.timestamp() % 1) * 1e9)
+            
+            # Set metadata
+            registration_event.metadata["module_name"] = module_name
+            registration_event.metadata["permissions"] = ",".join(topic_permissions or [])
+            registration_event.metadata["status"] = "registered"
+            
+            await self.internal_client.publish(
+                "system.module.registered",
+                registration_event
+            )
             
             return client
             
