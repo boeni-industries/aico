@@ -25,7 +25,7 @@ Build the foundational system infrastructure that enables all AICO functionality
 ### Minimal Message Bus
 - [x] **ZeroMQ Setup**: Core pub/sub message bus implementation
 - [x] **Basic Topics**: Essential topics (system.*, conversation.*, ui.*)
-- [x] **Message Envelope**: Simple JSON message format
+- [x] **Message Envelope**: Protocol Buffer message format
 - [x] **Message Routing**: Basic topic-based routing
 
 ### Basic Data Layer
@@ -46,7 +46,7 @@ Build the foundational system infrastructure that enables all AICO functionality
 
 ### Enhanced Message Bus
 - [ ] **Topic Hierarchy**: Full topic structure (emotion.*, personality.*, agency.*)
-- [ ] **Schema Validation**: JSON Schema validation for message types
+- [ ] **Message Validation**: Business logic validation beyond basic protobuf parsing
 - [ ] **Error Handling**: Message delivery guarantees and error recovery
 
 ### Task Scheduler Component
@@ -59,10 +59,10 @@ Build the foundational system infrastructure that enables all AICO functionality
 ### Service Layer Enhancement
 - [ ] **Service Management**: Windows Service / Linux daemon / macOS LaunchAgent
 - [ ] **Graceful Shutdown**: Clean service restart without data loss
-- [ ] **WebSocket Support**: Real-time bidirectional communication
+- [x] **WebSocket Support**: Real-time bidirectional communication
 
 ### Data Layer Enhancement
-- [ ] **libSQL Encryption**: Enable built-in database encryption
+- [x] **libSQL Encryption**: Enable built-in database encryption
 - [ ] **Vector Store**: ChromaDB integration for embeddings and similarity search
 - [ ] **Analytical Engine**: DuckDB integration for complex analytical queries
 - [ ] **Full Schema**: Complete database schema for memory, personality, system data
