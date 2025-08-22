@@ -46,16 +46,20 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
           ),
         ),
       ),
-      child: Column(
-        children: [
-          _buildHeader(context, theme, accentColor),
-          _buildAvatarSection(context, theme, accentColor),
-          const SizedBox(height: 24),
-          Expanded(
-            child: _buildNavigationItems(context, theme, accentColor),
-          ),
-          _buildFooter(context, theme),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Column(
+            children: [
+              _buildHeader(context, theme, accentColor),
+              _buildAvatarSection(context, theme, accentColor),
+              const SizedBox(height: 24),
+              Expanded(
+                child: _buildNavigationItems(context, theme, accentColor),
+              ),
+              _buildFooter(context, theme),
+            ],
+          );
+        },
       ),
     );
   }
@@ -65,16 +69,19 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           if (!_isCollapsed) ...[
-            Text(
-              'AICO',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: accentColor,
+            Expanded(
+              child: Text(
+                'AICO',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: accentColor,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            const Spacer(),
           ],
           IconButton(
             onPressed: () {
@@ -96,6 +103,7 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
     return Container(
       padding: const EdgeInsets.all(16),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           // Avatar with mood ring
           Container(
@@ -136,6 +144,7 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurface.withOpacity(0.7),
               ),
+              overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 8),
             Container(
@@ -156,11 +165,14 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  Text(
-                    'Local',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: Colors.green,
-                      fontWeight: FontWeight.w500,
+                  Flexible(
+                    child: Text(
+                      'Local',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: Colors.green,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -173,76 +185,43 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
   }
 
   Widget _buildNavigationItems(BuildContext context, ThemeData theme, Color accentColor) {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      children: [
-        _buildNavItem(
-          context,
-          theme,
-          accentColor,
-          icon: Icons.home_outlined,
-          activeIcon: Icons.home,
-          label: 'Home',
-          route: RouteNames.home,
-          isActive: RouteNames.isHomeRoute(widget.currentRoute),
-        ),
-        _buildNavItem(
-          context,
-          theme,
-          accentColor,
-          icon: Icons.chat_bubble_outline,
-          activeIcon: Icons.chat_bubble,
-          label: 'Conversation',
-          route: RouteNames.conversation,
-          isActive: RouteNames.isConversationRoute(widget.currentRoute),
-        ),
-        _buildNavItem(
-          context,
-          theme,
-          accentColor,
-          icon: Icons.people_outline,
-          activeIcon: Icons.people,
-          label: 'People',
-          route: RouteNames.people,
-          isActive: RouteNames.isPeopleRoute(widget.currentRoute),
-        ),
-        
-        if (!_isCollapsed) ...[
-          const SizedBox(height: 24),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              'More',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.5),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(horizontal: _isCollapsed ? 4 : 12),
+      child: Column(
+        children: [
+          _buildNavItem(
+            context,
+            theme,
+            accentColor,
+            icon: Icons.home_outlined,
+            activeIcon: Icons.home,
+            label: 'Home',
+            route: RouteNames.home,
+            isActive: RouteNames.isHomeRoute(widget.currentRoute),
           ),
-          const SizedBox(height: 12),
+          
+          _buildNavItem(
+            context,
+            theme,
+            accentColor,
+            icon: Icons.auto_stories_outlined,
+            activeIcon: Icons.auto_stories,
+            label: _isCollapsed ? 'Memory' : 'Memory & Timeline',
+            route: RouteNames.memory,
+            isActive: widget.currentRoute.startsWith(RouteNames.memory),
+          ),
+          _buildNavItem(
+            context,
+            theme,
+            accentColor,
+            icon: Icons.admin_panel_settings_outlined,
+            activeIcon: Icons.admin_panel_settings,
+            label: 'Admin',
+            route: RouteNames.admin,
+            isActive: widget.currentRoute.startsWith(RouteNames.admin),
+          ),
         ],
-        
-        _buildNavItem(
-          context,
-          theme,
-          accentColor,
-          icon: Icons.auto_stories_outlined,
-          activeIcon: Icons.auto_stories,
-          label: _isCollapsed ? 'Memory' : 'Memory & Timeline',
-          route: RouteNames.memory,
-          isActive: widget.currentRoute.startsWith(RouteNames.memory),
-        ),
-        _buildNavItem(
-          context,
-          theme,
-          accentColor,
-          icon: Icons.admin_panel_settings_outlined,
-          activeIcon: Icons.admin_panel_settings,
-          label: 'Admin',
-          route: RouteNames.admin,
-          isActive: widget.currentRoute.startsWith(RouteNames.admin),
-        ),
-      ],
+      ),
     );
   }
 
@@ -265,32 +244,41 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
           borderRadius: BorderRadius.circular(12),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: EdgeInsets.symmetric(
+              horizontal: _isCollapsed ? 8 : 16, 
+              vertical: 12
+            ),
             decoration: BoxDecoration(
               color: isActive ? accentColor.withOpacity(0.1) : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Row(
-              children: [
-                Icon(
-                  isActive ? activeIcon : icon,
-                  size: 20,
-                  color: isActive ? accentColor : theme.colorScheme.onSurface.withOpacity(0.7),
-                ),
-                if (!_isCollapsed) ...[
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: isActive ? accentColor : theme.colorScheme.onSurface.withOpacity(0.8),
-                        fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+            child: _isCollapsed
+                ? Icon(
+                    isActive ? activeIcon : icon,
+                    size: 20,
+                    color: isActive ? accentColor : theme.colorScheme.onSurface.withOpacity(0.7),
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isActive ? activeIcon : icon,
+                        size: 20,
+                        color: isActive ? accentColor : theme.colorScheme.onSurface.withOpacity(0.7),
                       ),
-                    ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: isActive ? accentColor : theme.colorScheme.onSurface.withOpacity(0.8),
+                            fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ],
-            ),
           ),
         ),
       ),
@@ -298,13 +286,12 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
   }
 
   Widget _buildFooter(BuildContext context, ThemeData theme) {
-    if (_isCollapsed) return const SizedBox.shrink();
-    
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(_isCollapsed ? 8 : 16),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Settings at bottom following UX best practices
+          // Settings at bottom following UX best practices - always visible
           _buildNavItem(
             context,
             theme,
@@ -314,32 +301,6 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
             label: 'Settings',
             route: RouteNames.settings,
             isActive: widget.currentRoute.startsWith(RouteNames.settings),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.shield_outlined,
-                  size: 16,
-                  color: theme.colorScheme.onSurface.withOpacity(0.6),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Local & Secure',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),

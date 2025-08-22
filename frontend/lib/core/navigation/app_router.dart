@@ -3,11 +3,6 @@ import 'package:go_router/go_router.dart';
 import '../constants/route_names.dart';
 import '../../presentation/widgets/navigation/main_layout.dart';
 import '../../presentation/screens/home/home_screen.dart';
-import '../../presentation/screens/conversation/conversation_screen.dart';
-import '../../presentation/screens/conversation/conversation_history_screen.dart';
-import '../../presentation/screens/conversation/conversation_detail_screen.dart';
-import '../../presentation/screens/people/people_screen.dart';
-import '../../presentation/screens/people/person_detail_screen.dart';
 import '../../presentation/screens/more/more_screen.dart';
 import '../../presentation/screens/more/memory/memory_screen.dart';
 import '../../presentation/screens/more/memory/memory_search_screen.dart';
@@ -34,44 +29,6 @@ class AppRouter {
             builder: (context, state) => const HomeScreen(),
           ),
 
-          // Conversation - Active Conversations
-          GoRoute(
-            path: RouteNames.conversation,
-            name: 'conversation',
-            builder: (context, state) => const ConversationScreen(),
-            routes: [
-              GoRoute(
-                path: '/history',
-                name: 'conversation-history',
-                builder: (context, state) => const ConversationHistoryScreen(),
-              ),
-              GoRoute(
-                path: '/:conversationId',
-                name: RouteNames.conversationDetail,
-                builder: (context, state) {
-                  final conversationId = state.pathParameters['conversationId']!;
-                  return ConversationDetailScreen(conversationId: conversationId);
-                },
-              ),
-            ],
-          ),
-
-          // People - Relationships
-          GoRoute(
-            path: RouteNames.people,
-            name: 'people',
-            builder: (context, state) => const PeopleScreen(),
-            routes: [
-              GoRoute(
-                path: '/:personId',
-                name: RouteNames.personDetail,
-                builder: (context, state) {
-                  final personId = state.pathParameters['personId']!;
-                  return PersonDetailScreen(personId: personId);
-                },
-              ),
-            ],
-          ),
 
           // More - Progressive Disclosure Hub
           GoRoute(
