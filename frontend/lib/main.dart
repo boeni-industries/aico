@@ -1,13 +1,14 @@
+import 'package:aico_frontend/core/di/service_locator.dart';
+import 'package:aico_frontend/core/theme/aico_theme.dart';
+import 'package:aico_frontend/features/auth/bloc/auth_bloc.dart';
+import 'package:aico_frontend/features/auth/widgets/auth_gate.dart';
+import 'package:aico_frontend/features/connection/bloc/connection_bloc.dart';
+import 'package:aico_frontend/features/settings/bloc/settings_bloc.dart';
+import 'package:aico_frontend/features/settings/models/settings_event.dart';
+import 'package:aico_frontend/networking/repositories/user_repository.dart';
+import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'core/di/service_locator.dart';
-import 'core/theme/theme_manager.dart';
-import 'core/theme/theme_animated_switcher.dart';
-import 'core/navigation/app_router.dart';
-import 'features/settings/bloc/settings_bloc.dart';
-import 'features/settings/models/settings_event.dart';
-import 'features/connection/bloc/connection_bloc.dart';
-import 'presentation/blocs/navigation/navigation_bloc.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,30 +32,20 @@ class AicoApp extends StatelessWidget {
         BlocProvider<ConnectionBloc>(
           create: (context) => ServiceLocator.get<ConnectionBloc>(),
         ),
-        BlocProvider<NavigationBloc>(
-          create: (context) => NavigationBloc(),
+        BlocProvider<AuthBloc>(
+          create: (context) => AuthBloc(
+            userRepository: ServiceLocator.get<UserRepository>(),
+            tokenManager: ServiceLocator.get<TokenManager>(),
+          )..add(const AuthStatusChecked()),
         ),
       ],
-      child: StreamBuilder<ThemeMode>(
-        stream: ServiceLocator.get<ThemeManager>().themeChanges,
-        builder: (context, snapshot) {
-          final themeManager = ServiceLocator.get<ThemeManager>();
-          
-          return ThemeAnimatedSwitcher(
-            child: MaterialApp.router(
-              title: 'AICO',
-              debugShowCheckedModeBanner: false,
-              theme: themeManager.isHighContrastEnabled 
-                  ? themeManager.generateHighContrastLightTheme()
-                  : themeManager.generateLightTheme(),
-              darkTheme: themeManager.isHighContrastEnabled
-                  ? themeManager.generateHighContrastDarkTheme()
-                  : themeManager.generateDarkTheme(),
-              themeMode: themeManager.currentThemeMode,
-              routerConfig: AppRouter.router,
-            ),
-          );
-        },
+      child: MaterialApp(
+        title: 'AICO',
+        debugShowCheckedModeBanner: false,
+        theme: AicoTheme.light(),
+        darkTheme: AicoTheme.dark(),
+        themeMode: ThemeMode.system,
+        home: const AuthGate(),
       ),
     );
   }

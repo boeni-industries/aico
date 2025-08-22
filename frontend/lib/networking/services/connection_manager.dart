@@ -1,7 +1,8 @@
 import 'dart:async';
+
+import 'package:aico_frontend/networking/clients/websocket_client.dart';
+import 'package:aico_frontend/networking/models/error_models.dart';
 import 'package:flutter/foundation.dart';
-import '../clients/websocket_client.dart';
-import '../models/error_models.dart';
 
 enum ConnectionMode {
   http,

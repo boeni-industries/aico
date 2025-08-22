@@ -1,8 +1,9 @@
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:yaml/yaml.dart';
-import 'package:path/path.dart' as path;
 
 /// Unified path resolver that reads from AICO's core.yaml configuration
 /// Provides consistent cross-platform path resolution for frontend persistence

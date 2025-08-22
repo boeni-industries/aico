@@ -1,7 +1,7 @@
+import 'package:aico_frontend/features/connection/models/connection_event.dart';
+import 'package:aico_frontend/features/connection/models/connection_state.dart';
+import 'package:aico_frontend/features/connection/repositories/connection_repository.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
-import '../models/connection_event.dart';
-import '../models/connection_state.dart';
-import '../repositories/connection_repository.dart';
 
 /// BLoC for managing connection state with automatic persistence
 /// Handles all connection-related business logic and state transitions

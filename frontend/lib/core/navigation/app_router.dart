@@ -1,15 +1,15 @@
+import 'package:aico_frontend/core/constants/route_names.dart';
+import 'package:aico_frontend/presentation/screens/home/home_screen.dart';
+import 'package:aico_frontend/presentation/screens/more/admin/admin_screen.dart';
+import 'package:aico_frontend/presentation/screens/more/admin/logs_screen.dart';
+import 'package:aico_frontend/presentation/screens/more/memory/memory_screen.dart';
+import 'package:aico_frontend/presentation/screens/more/memory/memory_search_screen.dart';
+import 'package:aico_frontend/presentation/screens/more/more_screen.dart';
+import 'package:aico_frontend/presentation/screens/more/settings/privacy_settings_screen.dart';
+import 'package:aico_frontend/presentation/screens/more/settings/settings_screen.dart';
+import 'package:aico_frontend/presentation/widgets/navigation/main_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../constants/route_names.dart';
-import '../../presentation/widgets/navigation/main_layout.dart';
-import '../../presentation/screens/home/home_screen.dart';
-import '../../presentation/screens/more/more_screen.dart';
-import '../../presentation/screens/more/memory/memory_screen.dart';
-import '../../presentation/screens/more/memory/memory_search_screen.dart';
-import '../../presentation/screens/more/settings/settings_screen.dart';
-import '../../presentation/screens/more/settings/privacy_settings_screen.dart';
-import '../../presentation/screens/more/admin/admin_screen.dart';
-import '../../presentation/screens/more/admin/logs_screen.dart';
 
 /// AICO's declarative router configuration implementing hub-and-spoke navigation
 /// with progressive disclosure and cross-platform deep linking support.

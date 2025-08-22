@@ -1,6 +1,6 @@
+import 'package:aico_frontend/core/constants/route_names.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/constants/route_names.dart';
 
 /// Adaptive sidebar navigation for desktop and tablet landscape layouts.
 /// Features persistent avatar area with collapsible sections and soft purple accents.

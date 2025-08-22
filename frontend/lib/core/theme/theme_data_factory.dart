@@ -1,5 +1,5 @@
+import 'package:aico_frontend/core/theme/design_tokens.dart';
 import 'package:flutter/material.dart';
-import 'design_tokens.dart';
 
 /// Factory for creating Material 3 ThemeData with AICO branding
 /// Generates consistent, accessible themes following design tokens

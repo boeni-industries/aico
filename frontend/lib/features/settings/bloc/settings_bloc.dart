@@ -1,7 +1,7 @@
+import 'package:aico_frontend/features/settings/models/settings_event.dart';
+import 'package:aico_frontend/features/settings/models/settings_state.dart';
+import 'package:aico_frontend/features/settings/repositories/settings_repository.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
-import '../models/settings_event.dart';
-import '../models/settings_state.dart';
-import '../repositories/settings_repository.dart';
 
 /// BLoC for managing app settings with automatic persistence
 /// Handles all settings-related business logic and state transitions

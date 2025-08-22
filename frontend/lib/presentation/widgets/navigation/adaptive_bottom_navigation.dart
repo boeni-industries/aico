@@ -1,6 +1,6 @@
+import 'package:aico_frontend/core/constants/route_names.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/constants/route_names.dart';
 
 /// Adaptive bottom navigation bar implementing AICO's hub-and-spoke navigation.
 /// Features 4 primary sections with soft purple accent for active states.

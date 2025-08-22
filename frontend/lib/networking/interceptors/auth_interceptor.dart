@@ -1,6 +1,6 @@
+import 'package:aico_frontend/networking/models/error_models.dart';
+import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:dio/dio.dart';
-import '../models/error_models.dart';
-import '../services/token_manager.dart';
 
 class AuthInterceptor extends Interceptor {
   final TokenManager _tokenManager;

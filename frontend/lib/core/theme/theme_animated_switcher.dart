@@ -1,5 +1,5 @@
+import 'package:aico_frontend/core/theme/design_tokens.dart';
 import 'package:flutter/material.dart';
-import 'design_tokens.dart';
 
 /// Animated theme switcher widget for smooth theme transitions
 /// Provides elegant animations when switching between light/dark themes

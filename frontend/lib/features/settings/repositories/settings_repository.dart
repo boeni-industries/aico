@@ -1,6 +1,6 @@
-import '../../../core/services/local_storage.dart';
-import '../../../core/utils/repository_factory.dart';
-import '../models/settings_state.dart';
+import 'package:aico_frontend/core/services/local_storage.dart';
+import 'package:aico_frontend/core/utils/repository_factory.dart';
+import 'package:aico_frontend/features/settings/models/settings_state.dart';
 
 /// Repository for managing app settings persistence
 /// Handles local storage of user preferences and configuration

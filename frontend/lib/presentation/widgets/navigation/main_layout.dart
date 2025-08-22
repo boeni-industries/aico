@@ -1,8 +1,8 @@
+import 'package:aico_frontend/presentation/widgets/navigation/adaptive_bottom_navigation.dart';
+import 'package:aico_frontend/presentation/widgets/navigation/adaptive_sidebar_navigation.dart';
+import 'package:aico_frontend/presentation/widgets/navigation/floating_voice_button.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'adaptive_bottom_navigation.dart';
-import 'adaptive_sidebar_navigation.dart';
-import 'floating_voice_button.dart';
 
 /// Main layout wrapper that provides adaptive navigation structure.
 /// Implements hub-and-spoke navigation with platform-specific patterns:

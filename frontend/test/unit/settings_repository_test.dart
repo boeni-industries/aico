@@ -1,7 +1,7 @@
-import 'package:flutter_test/flutter_test.dart';
-import 'package:aico_frontend/features/settings/repositories/settings_repository.dart';
-import 'package:aico_frontend/features/settings/models/settings_state.dart';
 import 'package:aico_frontend/core/services/local_storage.dart';
+import 'package:aico_frontend/features/settings/models/settings_state.dart';
+import 'package:aico_frontend/features/settings/repositories/settings_repository.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 class FakeLocalStorage extends LocalStorage {
   final Map<String, Map<String, dynamic>> _storage = {};

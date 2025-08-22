@@ -1,5 +1,5 @@
-import 'package:hydrated_bloc/hydrated_bloc.dart';
 import 'package:get_it/get_it.dart';
+import 'package:hydrated_bloc/hydrated_bloc.dart';
 
 /// Factory for creating BLoCs with consistent setup and error handling
 /// Provides DRY patterns for BLoC instantiation across the app

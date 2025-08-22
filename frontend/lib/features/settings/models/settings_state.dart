@@ -1,5 +1,5 @@
+import 'package:aico_frontend/core/utils/json_serializable.dart';
 import 'package:equatable/equatable.dart';
-import '../../../core/utils/json_serializable.dart';
 
 /// Settings state for the AICO app
 /// Tracks user preferences and app configuration

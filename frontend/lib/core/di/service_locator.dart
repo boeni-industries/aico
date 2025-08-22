@@ -1,16 +1,16 @@
+import 'package:aico_frontend/core/services/api_client.dart';
+import 'package:aico_frontend/core/services/local_storage.dart';
+import 'package:aico_frontend/core/theme/aico_theme_manager.dart';
+import 'package:aico_frontend/core/theme/theme_manager.dart';
+import 'package:aico_frontend/core/utils/aico_paths.dart';
+import 'package:aico_frontend/features/connection/bloc/connection_bloc.dart';
+import 'package:aico_frontend/features/connection/repositories/connection_repository.dart';
+import 'package:aico_frontend/features/settings/bloc/settings_bloc.dart';
+import 'package:aico_frontend/features/settings/repositories/settings_repository.dart';
+import 'package:aico_frontend/networking/network_module.dart';
 import 'package:get_it/get_it.dart';
-import 'package:hydrated_bloc/hydrated_bloc.dart';
-import '../services/api_client.dart';
-import '../services/local_storage.dart';
-import '../utils/aico_paths.dart';
-import '../theme/theme_manager.dart';
-import '../theme/aico_theme_manager.dart';
-import '../../features/connection/bloc/connection_bloc.dart';
-import '../../features/settings/bloc/settings_bloc.dart';
-import '../../features/connection/repositories/connection_repository.dart';
-import '../../features/settings/repositories/settings_repository.dart';
-import '../../networking/network_module.dart';
 import 'package:http/http.dart' as http;
+import 'package:hydrated_bloc/hydrated_bloc.dart';
 
 /// Centralized dependency injection setup for the AICO app
 /// Configures all services, repositories, and BLoCs with proper lifecycle management

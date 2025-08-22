@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+
+import 'package:aico_frontend/core/utils/aico_paths.dart';
 import 'package:path/path.dart' as path;
-import '../utils/aico_paths.dart';
 
 /// Local file-based storage service for frontend persistence
 /// Provides consistent local data storage patterns across the app

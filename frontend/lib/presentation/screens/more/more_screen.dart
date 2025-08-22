@@ -1,6 +1,6 @@
+import 'package:aico_frontend/core/constants/route_names.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/constants/route_names.dart';
 
 /// More screen implementing progressive disclosure hub.
 /// Organizes memory, settings, and admin features by usage frequency.

@@ -1,5 +1,5 @@
+import 'package:aico_frontend/networking/models/error_models.dart';
 import 'package:dio/dio.dart';
-import '../models/error_models.dart';
 
 class RetryInterceptor extends Interceptor {
   final int maxRetries;

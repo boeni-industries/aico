@@ -1,7 +1,7 @@
+import 'package:aico_frontend/core/di/service_locator.dart';
+import 'package:aico_frontend/core/theme/design_tokens.dart';
+import 'package:aico_frontend/core/theme/theme_manager.dart';
 import 'package:flutter/material.dart';
-import 'design_tokens.dart';
-import 'theme_manager.dart';
-import '../di/service_locator.dart';
 
 /// BuildContext extensions for convenient theme access
 extension AicoThemeExtensions on BuildContext {

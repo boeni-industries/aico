@@ -1,7 +1,7 @@
+import 'package:aico_frontend/core/services/api_client.dart';
+import 'package:aico_frontend/core/services/local_storage.dart';
 import 'package:get_it/get_it.dart';
 import 'package:http/http.dart' as http;
-import '../services/api_client.dart';
-import '../services/local_storage.dart';
 
 /// Factory for creating repositories with unified error handling and dependency injection
 /// Provides consistent patterns for data layer instantiation

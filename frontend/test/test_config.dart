@@ -1,8 +1,9 @@
 import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
-import 'dart:io';
 
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   setUpAll(() async {

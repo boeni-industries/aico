@@ -1,6 +1,6 @@
-import '../../../core/services/api_client.dart';
-import '../../../core/services/local_storage.dart';
-import '../../../core/utils/repository_factory.dart';
+import 'package:aico_frontend/core/services/api_client.dart';
+import 'package:aico_frontend/core/services/local_storage.dart';
+import 'package:aico_frontend/core/utils/repository_factory.dart';
 
 /// Repository for managing backend connection operations
 /// Handles API communication and local connection state persistence

@@ -1,6 +1,6 @@
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:aico_frontend/core/constants/route_names.dart';
 import 'package:equatable/equatable.dart';
-import '../../../core/constants/route_names.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 /// Navigation BLoC for managing navigation state and deep link handling.
 /// Implements state persistence and cross-platform navigation coordination.

@@ -1,16 +1,16 @@
+import 'package:aico_frontend/networking/clients/api_client.dart';
+import 'package:aico_frontend/networking/clients/websocket_client.dart';
+import 'package:aico_frontend/networking/interceptors/auth_interceptor.dart';
+import 'package:aico_frontend/networking/interceptors/logging_interceptor.dart';
+import 'package:aico_frontend/networking/interceptors/retry_interceptor.dart';
+import 'package:aico_frontend/networking/repositories/admin_repository.dart';
+import 'package:aico_frontend/networking/repositories/health_repository.dart';
+import 'package:aico_frontend/networking/repositories/user_repository.dart';
+import 'package:aico_frontend/networking/services/connection_manager.dart';
+import 'package:aico_frontend/networking/services/offline_queue.dart';
+import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
-import 'clients/api_client.dart';
-import 'clients/websocket_client.dart';
-import 'interceptors/auth_interceptor.dart';
-import 'interceptors/retry_interceptor.dart';
-import 'interceptors/logging_interceptor.dart';
-import 'services/token_manager.dart';
-import 'services/connection_manager.dart';
-import 'services/offline_queue.dart';
-import 'repositories/user_repository.dart';
-import 'repositories/admin_repository.dart';
-import 'repositories/health_repository.dart';
 
 class NetworkModule {
   static void registerDependencies() {

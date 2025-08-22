@@ -1,6 +1,6 @@
+import 'package:aico_frontend/core/di/service_locator.dart';
+import 'package:aico_frontend/core/theme/theme_manager.dart';
 import 'package:flutter/material.dart';
-import '../../../core/di/service_locator.dart';
-import '../../../core/theme/theme_manager.dart';
 
 /// Home screen featuring avatar-centric hub with integrated conversation interface.
 /// Serves as the primary interaction point with AICO, including conversation history

@@ -1,8 +1,8 @@
+import 'package:aico_frontend/networking/models/admin_models.dart';
+import 'package:aico_frontend/networking/models/health_models.dart';
+import 'package:aico_frontend/networking/models/user_models.dart';
 import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
-import '../models/user_models.dart';
-import '../models/admin_models.dart';
-import '../models/health_models.dart';
 
 part 'api_client.g.dart';
 

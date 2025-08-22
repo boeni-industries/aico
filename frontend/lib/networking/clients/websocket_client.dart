@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+
+import 'package:aico_frontend/networking/models/error_models.dart';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
-import '../models/error_models.dart';
 
 enum WebSocketConnectionState {
   disconnected,

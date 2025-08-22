@@ -1,5 +1,5 @@
+import 'package:aico_frontend/core/utils/json_serializable.dart';
 import 'package:equatable/equatable.dart';
-import '../../../core/utils/json_serializable.dart';
 
 /// Connection state for the AICO backend
 /// Tracks connection status, server info, and error states

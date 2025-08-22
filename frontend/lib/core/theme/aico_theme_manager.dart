@@ -1,12 +1,13 @@
 import 'dart:async';
+
+import 'package:aico_frontend/core/di/service_locator.dart';
+import 'package:aico_frontend/core/theme/theme_data_factory.dart';
+import 'package:aico_frontend/core/theme/theme_manager.dart';
+import 'package:aico_frontend/features/settings/bloc/settings_bloc.dart';
+import 'package:aico_frontend/features/settings/models/settings_event.dart';
+import 'package:aico_frontend/features/settings/models/settings_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'theme_manager.dart';
-import 'theme_data_factory.dart';
-import '../di/service_locator.dart';
-import '../../features/settings/bloc/settings_bloc.dart';
-import '../../features/settings/models/settings_event.dart';
-import '../../features/settings/models/settings_state.dart';
 
 /// Concrete implementation of ThemeManager for AICO
 /// Integrates with SettingsBloc for theme persistence and state management

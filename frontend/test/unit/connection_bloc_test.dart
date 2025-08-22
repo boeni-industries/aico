@@ -1,11 +1,12 @@
-import 'package:flutter_test/flutter_test.dart';
-import 'package:bloc_test/bloc_test.dart';
+import 'dart:io';
+
 import 'package:aico_frontend/features/connection/bloc/connection_bloc.dart';
 import 'package:aico_frontend/features/connection/models/connection_event.dart';
 import 'package:aico_frontend/features/connection/models/connection_state.dart';
 import 'package:aico_frontend/features/connection/repositories/connection_repository.dart';
+import 'package:bloc_test/bloc_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
-import 'dart:io';
 
 class FakeConnectionRepository implements ConnectionRepository {
   final bool shouldThrowOnConnect;

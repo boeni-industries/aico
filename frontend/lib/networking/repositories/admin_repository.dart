@@ -1,6 +1,6 @@
-import '../clients/api_client.dart';
-import '../models/admin_models.dart';
-import '../models/error_models.dart';
+import 'package:aico_frontend/networking/clients/api_client.dart';
+import 'package:aico_frontend/networking/models/admin_models.dart';
+import 'package:aico_frontend/networking/models/error_models.dart';
 
 abstract class AdminRepository {
   Future<AdminHealthResponse> getAdminHealth();

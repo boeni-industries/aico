@@ -1,7 +1,7 @@
-import '../clients/api_client.dart';
-import '../models/user_models.dart';
-import '../models/error_models.dart';
-import '../services/offline_queue.dart';
+import 'package:aico_frontend/networking/clients/api_client.dart';
+import 'package:aico_frontend/networking/models/error_models.dart';
+import 'package:aico_frontend/networking/models/user_models.dart';
+import 'package:aico_frontend/networking/services/offline_queue.dart';
 
 abstract class UserRepository {
   Future<List<User>> getUsers({String? userType, int limit = 100});

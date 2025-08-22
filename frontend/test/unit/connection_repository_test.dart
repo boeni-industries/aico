@@ -1,7 +1,7 @@
-import 'package:flutter_test/flutter_test.dart';
-import 'package:aico_frontend/features/connection/repositories/connection_repository.dart';
 import 'package:aico_frontend/core/services/api_client.dart';
 import 'package:aico_frontend/core/services/local_storage.dart';
+import 'package:aico_frontend/features/connection/repositories/connection_repository.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 class FakeApiClient implements ApiClient {
   final bool shouldThrow;
