@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:aico_frontend/features/connection/bloc/connection_bloc.dart';
+import 'package:aico_frontend/presentation/blocs/connection/connection_bloc.dart';
 import 'package:aico_frontend/features/connection/models/connection_event.dart';
 import 'package:aico_frontend/features/connection/models/connection_state.dart';
 import 'package:aico_frontend/features/connection/repositories/connection_repository.dart';

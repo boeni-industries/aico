@@ -3,9 +3,7 @@ import 'dart:async';
 import 'package:aico_frontend/core/di/service_locator.dart';
 import 'package:aico_frontend/core/theme/theme_data_factory.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
-import 'package:aico_frontend/features/settings/bloc/settings_bloc.dart';
-import 'package:aico_frontend/features/settings/models/settings_event.dart';
-import 'package:aico_frontend/features/settings/models/settings_state.dart';
+import 'package:aico_frontend/presentation/blocs/settings/settings_bloc.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -100,7 +98,7 @@ class AicoThemeManager implements ThemeManager {
     _currentMode = mode;
     
     // Update settings bloc
-    _settingsBloc.add(SettingsUpdateTheme(_themeModeToString(mode)));
+    _settingsBloc.add(SettingsThemeChanged(_themeModeToString(mode)));
 
     // Update system UI overlay style
     await _updateSystemUIOverlay();
@@ -133,7 +131,8 @@ class AicoThemeManager implements ThemeManager {
     _clearThemeCache();
     
     // Update settings bloc with custom setting
-    _settingsBloc.add(SettingsUpdateCustom('highContrast', enabled));
+    // TODO: Add high contrast support to new SettingsBloc
+    // _settingsBloc.add(SettingsHighContrastChanged(enabled));
 
     // Notify listeners
     _themeController.add(_currentMode);
@@ -146,8 +145,9 @@ class AicoThemeManager implements ThemeManager {
     _clearThemeCache();
     
     // Reset in settings
-    _settingsBloc.add(SettingsUpdateTheme('system'));
-    _settingsBloc.add(SettingsUpdateCustom('highContrast', false));
+    _settingsBloc.add(SettingsThemeChanged('system'));
+    // TODO: Add high contrast reset to new SettingsBloc
+    // _settingsBloc.add(SettingsHighContrastChanged(false));
     
     await _updateSystemUIOverlay();
     _themeController.add(_currentMode);
@@ -158,10 +158,10 @@ class AicoThemeManager implements ThemeManager {
     final state = _settingsBloc.state;
     if (state is SettingsLoaded) {
       // Load theme mode
-      _currentMode = _stringToThemeMode(state.settings.theme);
+      _currentMode = _stringToThemeMode(state.theme);
       
-      // Load high contrast setting
-      _isHighContrast = state.settings.customSettings['highContrast'] as bool? ?? false;
+      // Load high contrast setting - TODO: Add to new SettingsBloc
+      _isHighContrast = false; // state.highContrastEnabled ?? false;
       
       // Update system UI overlay
       _updateSystemUIOverlay();
@@ -177,14 +177,14 @@ class AicoThemeManager implements ThemeManager {
         bool hasChanges = false;
         
         // Check theme mode changes
-        final newThemeMode = _stringToThemeMode(state.settings.theme);
+        final newThemeMode = _stringToThemeMode(state.theme);
         if (_currentMode != newThemeMode) {
           _currentMode = newThemeMode;
           hasChanges = true;
         }
         
-        // Check high contrast changes
-        final newHighContrast = state.settings.customSettings['highContrast'] as bool? ?? false;
+        // Check high contrast changes - TODO: Add to new SettingsBloc
+        final newHighContrast = false; // state.highContrastEnabled ?? false;
         if (_isHighContrast != newHighContrast) {
           _isHighContrast = newHighContrast;
           _clearThemeCache();

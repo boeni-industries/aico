@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   
   # State management
+  bloc: ^9.0.0
   flutter_bloc: ^9.1.1
   hydrated_bloc: ^10.1.1
   equatable: ^2.0.5
@@ -58,11 +59,17 @@ dependencies:
   # JSON serialization
   json_annotation: ^4.8.1
   
+  # JWT handling
+  dart_jsonwebtoken: ^2.14.0
+  
   # YAML parsing
   yaml: ^3.1.2
   
   # Navigation
   go_router: ^16.2.0
+  
+  # Window management
+  window_manager: ^0.4.2
 
 dev_dependencies:
   flutter_test:

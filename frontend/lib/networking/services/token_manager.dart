@@ -1,10 +1,6 @@
 import 'package:flutter/foundation.dart';
 
 class TokenManager {
-  // static const String _tokenKey = 'auth_token';
-  // static const String _refreshTokenKey = 'refresh_token';
-  // static const String _tokenExpiryKey = 'token_expiry';
-
   String? _cachedToken;
   String? _cachedRefreshToken;
   DateTime? _tokenExpiry;
@@ -54,7 +50,7 @@ class TokenManager {
     }
   }
 
-  /// Store new tokens after successful authentication
+  /// Store access and refresh tokens with expiry
   Future<void> storeTokens({
     required String accessToken,
     String? refreshToken,
@@ -63,8 +59,17 @@ class TokenManager {
     _cachedToken = accessToken;
     _cachedRefreshToken = refreshToken;
     _tokenExpiry = expiresAt;
+  }
 
-    await _saveTokensToStorage();
+  /// Alias for storeTokens for backward compatibility
+  Future<void> saveToken({
+    required String token,
+    required DateTime expiresAt,
+  }) async {
+    await storeTokens(
+      accessToken: token,
+      expiresAt: expiresAt,
+    );
   }
 
   /// Clear all stored tokens
@@ -72,8 +77,6 @@ class TokenManager {
     _cachedToken = null;
     _cachedRefreshToken = null;
     _tokenExpiry = null;
-
-    await _clearTokensFromStorage();
   }
 
   /// Check if current token is valid (not expired)
@@ -85,46 +88,12 @@ class TokenManager {
   /// Load tokens from secure storage
   Future<void> _loadTokensFromStorage() async {
     try {
-      // TODO: Replace with actual secure storage implementation
-      // For now, using a placeholder that doesn't persist
-      // In production, use flutter_secure_storage or similar
-      
-      // Placeholder implementation
+      // Placeholder - tokens only persist in memory for now
       _cachedToken = null;
       _cachedRefreshToken = null;
       _tokenExpiry = null;
     } catch (e) {
       debugPrint('Failed to load tokens from storage: $e');
-    }
-  }
-
-  /// Save tokens to secure storage
-  Future<void> _saveTokensToStorage() async {
-    try {
-      // TODO: Replace with actual secure storage implementation
-      // For now, this is a placeholder
-      
-      // In production implementation:
-      // await _secureStorage.write(key: _tokenKey, value: _cachedToken);
-      // await _secureStorage.write(key: _refreshTokenKey, value: _cachedRefreshToken);
-      // await _secureStorage.write(key: _tokenExpiryKey, value: _tokenExpiry?.toIso8601String());
-    } catch (e) {
-      debugPrint('Failed to save tokens to storage: $e');
-    }
-  }
-
-  /// Clear tokens from secure storage
-  Future<void> _clearTokensFromStorage() async {
-    try {
-      // TODO: Replace with actual secure storage implementation
-      // For now, this is a placeholder
-      
-      // In production implementation:
-      // await _secureStorage.delete(key: _tokenKey);
-      // await _secureStorage.delete(key: _refreshTokenKey);
-      // await _secureStorage.delete(key: _tokenExpiryKey);
-    } catch (e) {
-      debugPrint('Failed to clear tokens from storage: $e');
     }
   }
 }

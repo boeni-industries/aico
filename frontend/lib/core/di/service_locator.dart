@@ -1,15 +1,17 @@
-import 'package:aico_frontend/core/services/api_client.dart';
 import 'package:aico_frontend/core/services/local_storage.dart';
 import 'package:aico_frontend/core/theme/aico_theme_manager.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
 import 'package:aico_frontend/core/utils/aico_paths.dart';
-import 'package:aico_frontend/features/connection/bloc/connection_bloc.dart';
-import 'package:aico_frontend/features/connection/repositories/connection_repository.dart';
-import 'package:aico_frontend/features/settings/bloc/settings_bloc.dart';
-import 'package:aico_frontend/features/settings/repositories/settings_repository.dart';
-import 'package:aico_frontend/networking/network_module.dart';
+import 'package:aico_frontend/presentation/blocs/auth/auth_bloc.dart';
+import 'package:aico_frontend/presentation/blocs/connection/connection_bloc.dart';
+import 'package:aico_frontend/presentation/blocs/navigation/navigation_bloc.dart';
+import 'package:aico_frontend/presentation/blocs/settings/settings_bloc.dart';
+import 'package:aico_frontend/networking/clients/api_client.dart';
+import 'package:aico_frontend/networking/repositories/user_repository.dart';
+import 'package:aico_frontend/networking/services/offline_queue.dart';
+import 'package:aico_frontend/networking/services/token_manager.dart';
+import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
-import 'package:http/http.dart' as http;
 import 'package:hydrated_bloc/hydrated_bloc.dart';
 
 /// Centralized dependency injection setup for the AICO app
@@ -29,9 +31,6 @@ class ServiceLocator {
       // Initialize AICO paths
       await AICOPaths.initialize();
 
-      // Register networking module
-      NetworkModule.registerDependencies();
-
       // Register core services
       await _registerCoreServices();
 
@@ -40,9 +39,6 @@ class ServiceLocator {
 
       // Register BLoCs
       await _registerBlocs();
-
-      // Initialize networking
-      await NetworkModule.initialize();
 
       _isInitialized = true;
     } catch (e) {
@@ -62,16 +58,19 @@ class ServiceLocator {
 
   /// Register core services
   static Future<void> _registerCoreServices() async {
-    // HTTP client
-    _getIt.registerLazySingleton<http.Client>(() => http.Client());
+    // Dio client
+    _getIt.registerLazySingleton<Dio>(() => Dio());
 
     // API client
-    _getIt.registerLazySingleton<ApiClient>(
-      () => ApiClient(
-        httpClient: _getIt<http.Client>(),
-        baseUrl: 'http://localhost:8000', // TODO: Make configurable
+    _getIt.registerLazySingleton<AicoApiClient>(
+      () => AicoApiClient(
+        _getIt<Dio>(),
+        baseUrl: 'http://localhost:8771/api/v1', // TODO: Make configurable
       ),
     );
+
+    // Offline queue
+    _getIt.registerLazySingleton<OfflineQueue>(() => OfflineQueue());
 
     // Local storage
     _getIt.registerLazySingleton<LocalStorage>(() => LocalStorage());
@@ -79,36 +78,43 @@ class ServiceLocator {
 
   /// Register repositories
   static Future<void> _registerRepositories() async {
-    // Connection repository
-    _getIt.registerLazySingleton<ConnectionRepository>(
-      () => ConnectionRepository(
-        apiClient: _getIt<ApiClient>(),
-        localStorage: _getIt<LocalStorage>(),
+    // User repository
+    _getIt.registerLazySingleton<UserRepository>(
+      () => ApiUserRepository(
+        _getIt<AicoApiClient>(),
+        _getIt<OfflineQueue>(),
       ),
     );
 
-    // Settings repository
-    _getIt.registerLazySingleton<SettingsRepository>(
-      () => SettingsRepository(
-        localStorage: _getIt<LocalStorage>(),
-      ),
+    // Token manager
+    _getIt.registerLazySingleton<TokenManager>(
+      () => TokenManager(),
     );
   }
 
   /// Register BLoCs
   static Future<void> _registerBlocs() async {
-    // Connection BLoC (HydratedBloc for persistence)
-    _getIt.registerLazySingleton<ConnectionBloc>(
-      () => ConnectionBloc(
-        repository: _getIt<ConnectionRepository>(),
+    // Auth BLoC
+    _getIt.registerLazySingleton<AuthBloc>(
+      () => AuthBloc(
+        userRepository: _getIt<UserRepository>(),
+        tokenManager: _getIt<TokenManager>(),
       ),
     );
 
-    // Settings BLoC (HydratedBloc for persistence)
+    // Connection BLoC (simplified constructor)
+    _getIt.registerLazySingleton<ConnectionBloc>(
+      () => ConnectionBloc(),
+    );
+
+    // Navigation BLoC (simplified constructor)
+    _getIt.registerLazySingleton<NavigationBloc>(
+      () => NavigationBloc(),
+    );
+
+    // Settings BLoC (simplified constructor)
     _getIt.registerLazySingleton<SettingsBloc>(
-      () => SettingsBloc(
-        repository: _getIt<SettingsRepository>(),
-      ),
+      () => SettingsBloc(),
     );
 
     // Theme Manager
@@ -140,22 +146,20 @@ class ServiceLocator {
 
   /// Dispose all services
   static Future<void> dispose() async {
-    // Dispose networking module
-    NetworkModule.dispose();
-
-    // Close HTTP client
-    if (_getIt.isRegistered<http.Client>()) {
-      _getIt<http.Client>().close();
-    }
-
-    // Close API client
-    if (_getIt.isRegistered<ApiClient>()) {
-      _getIt<ApiClient>().dispose();
+    // Dispose offline queue
+    if (_getIt.isRegistered<OfflineQueue>()) {
+      _getIt<OfflineQueue>().dispose();
     }
 
     // Close BLoCs
+    if (_getIt.isRegistered<AuthBloc>()) {
+      await _getIt<AuthBloc>().close();
+    }
     if (_getIt.isRegistered<ConnectionBloc>()) {
       await _getIt<ConnectionBloc>().close();
+    }
+    if (_getIt.isRegistered<NavigationBloc>()) {
+      await _getIt<NavigationBloc>().close();
     }
     if (_getIt.isRegistered<SettingsBloc>()) {
       await _getIt<SettingsBloc>().close();

@@ -8,22 +8,24 @@ part of 'user_models.dart';
 
 User _$UserFromJson(Map<String, dynamic> json) => User(
   uuid: json['uuid'] as String,
-  fullName: json['fullName'] as String,
+  fullName: json['full_name'] as String,
   nickname: json['nickname'] as String,
-  userType: json['userType'] as String,
-  pin: json['pin'] as String,
-  createdAt: DateTime.parse(json['createdAt'] as String),
-  updatedAt: DateTime.parse(json['updatedAt'] as String),
+  userType: json['user_type'] as String,
+  pin: json['pin'] as String?,
+  isActive: json['is_active'] as bool?,
+  createdAt: DateTime.parse(json['created_at'] as String),
+  updatedAt: DateTime.parse(json['updated_at'] as String),
 );
 
 Map<String, dynamic> _$UserToJson(User instance) => <String, dynamic>{
   'uuid': instance.uuid,
-  'fullName': instance.fullName,
+  'full_name': instance.fullName,
   'nickname': instance.nickname,
-  'userType': instance.userType,
+  'user_type': instance.userType,
   'pin': instance.pin,
-  'createdAt': instance.createdAt.toIso8601String(),
-  'updatedAt': instance.updatedAt.toIso8601String(),
+  'is_active': instance.isActive,
+  'created_at': instance.createdAt.toIso8601String(),
+  'updated_at': instance.updatedAt.toIso8601String(),
 };
 
 CreateUserRequest _$CreateUserRequestFromJson(Map<String, dynamic> json) =>
@@ -60,32 +62,36 @@ Map<String, dynamic> _$UpdateUserRequestToJson(UpdateUserRequest instance) =>
 
 AuthenticateRequest _$AuthenticateRequestFromJson(Map<String, dynamic> json) =>
     AuthenticateRequest(
-      uuid: json['uuid'] as String,
+      uuid: json['user_uuid'] as String,
       pin: json['pin'] as String,
     );
 
 Map<String, dynamic> _$AuthenticateRequestToJson(
   AuthenticateRequest instance,
-) => <String, dynamic>{'uuid': instance.uuid, 'pin': instance.pin};
+) => <String, dynamic>{'user_uuid': instance.uuid, 'pin': instance.pin};
 
 AuthenticationResponse _$AuthenticationResponseFromJson(
   Map<String, dynamic> json,
 ) => AuthenticationResponse(
   success: json['success'] as bool,
-  token: json['token'] as String?,
+  token: json['jwt_token'] as String?,
   user: json['user'] == null
       ? null
       : User.fromJson(json['user'] as Map<String, dynamic>),
   error: json['error'] as String?,
+  lastLogin: json['last_login'] == null
+      ? null
+      : DateTime.parse(json['last_login'] as String),
 );
 
 Map<String, dynamic> _$AuthenticationResponseToJson(
   AuthenticationResponse instance,
 ) => <String, dynamic>{
   'success': instance.success,
-  'token': instance.token,
+  'jwt_token': instance.token,
   'user': instance.user,
   'error': instance.error,
+  'last_login': instance.lastLogin?.toIso8601String(),
 };
 
 UserListResponse _$UserListResponseFromJson(Map<String, dynamic> json) =>

@@ -1,6 +1,11 @@
 import 'package:aico_frontend/core/di/service_locator.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
+import 'package:aico_frontend/presentation/blocs/auth/auth_bloc.dart';
+import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
+import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
+import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 /// Home screen featuring avatar-centric hub with integrated conversation interface.
 /// Serves as the primary interaction point with AICO, including conversation history
@@ -14,6 +19,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _isRightDrawerOpen = false;
+  bool _isLeftDrawerOpen = false;
   ThemeManager? _themeManager;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _conversationController = ScrollController();
@@ -29,6 +35,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _themeManager = ServiceLocator.get<ThemeManager>();
+    // Listen to theme changes
+    _themeManager?.themeChanges.listen((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   @override
@@ -39,11 +51,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final isDesktop = screenWidth > 800;
     
     return Scaffold(
+      drawer: _buildLeftDrawer(context, theme, accentColor),
       body: Row(
         children: [
+          // Left drawer for navigation (desktop)
+          if (_isLeftDrawerOpen && isDesktop)
+            _buildLeftDrawer(context, theme, accentColor),
+          
           // Main conversation area
           Expanded(
-            flex: _isRightDrawerOpen && isDesktop ? 2 : 3,
+            flex: (_isRightDrawerOpen && isDesktop) ? 2 : 3,
             child: SafeArea(
               child: Column(
                 children: [
@@ -85,24 +102,34 @@ class _HomeScreenState extends State<HomeScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  onPressed: () {
-                    _themeManager?.toggleTheme();
+                  onPressed: () async {
+                    await _themeManager?.toggleTheme();
                   },
                   icon: Icon(_themeManager?.currentBrightness == Brightness.light ? Icons.wb_sunny : Icons.nightlight_round),
-                  tooltip: _themeManager?.currentBrightness == Brightness.light ? 'Switch to dark mode' : 'Switch to light mode',
+                  tooltip: 'Toggle theme',
+                  style: IconButton.styleFrom(
+                    foregroundColor: theme.colorScheme.onSurface,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () async {
+                    await _themeManager?.setHighContrastEnabled(!(_themeManager?.isHighContrastEnabled ?? false));
+                  },
+                  icon: Icon(
+                    Icons.contrast,
+                    color: (_themeManager?.isHighContrastEnabled ?? false) ? Colors.orange : theme.colorScheme.onSurface,
+                  ),
+                  tooltip: 'Toggle high contrast',
                   style: IconButton.styleFrom(
                     foregroundColor: theme.colorScheme.onSurface,
                   ),
                 ),
                 IconButton(
                   onPressed: () {
-                    _themeManager?.setHighContrastEnabled(!(_themeManager?.isHighContrastEnabled ?? false));
+                    context.read<AuthBloc>().add(AuthLogoutRequested());
                   },
-                  icon: Icon(
-                    Icons.contrast,
-                    color: (_themeManager?.isHighContrastEnabled ?? false) ? Colors.orange : theme.colorScheme.onSurface,
-                  ),
-                  tooltip: (_themeManager?.isHighContrastEnabled ?? false) ? 'Disable high contrast' : 'Enable high contrast',
+                  icon: const Icon(Icons.logout),
+                  tooltip: 'Logout',
                   style: IconButton.styleFrom(
                     foregroundColor: theme.colorScheme.onSurface,
                   ),
@@ -113,7 +140,30 @@ class _HomeScreenState extends State<HomeScreen> {
           
           const SizedBox(height: 8),
           
-          // Persistent drawer toggle
+          // Left drawer toggle (on left side)
+          if (isDesktop)
+            Positioned(
+              left: 16,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: theme.dividerColor.withValues(alpha: 0.2),
+                  ),
+                ),
+                child: IconButton(
+                  onPressed: () => setState(() => _isLeftDrawerOpen = !_isLeftDrawerOpen),
+                  icon: Icon(_isLeftDrawerOpen ? Icons.menu_open : Icons.menu),
+                  tooltip: _isLeftDrawerOpen ? 'Hide menu' : 'Show menu',
+                  style: IconButton.styleFrom(
+                    foregroundColor: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            ),
+          
+          // Right drawer toggle (on right side)
           if (isDesktop)
             Container(
               decoration: BoxDecoration(
@@ -542,6 +592,91 @@ class _HomeScreenState extends State<HomeScreen> {
     if (diff.inMinutes < 60) return '${diff.inMinutes} minutes ago';
     if (diff.inHours < 24) return '${diff.inHours} hours ago';
     return '${diff.inDays} days ago';
+  }
+
+  Widget _buildLeftDrawer(BuildContext context, ThemeData theme, Color accentColor) {
+    return Container(
+      width: 280,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(
+          right: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1)),
+        ),
+      ),
+      child: SafeArea(
+        child: Column(
+          children: [
+            // Drawer header
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(Icons.psychology_outlined, color: accentColor),
+                  const SizedBox(width: 12),
+                  Text(
+                    'AICO',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: accentColor,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (MediaQuery.of(context).size.width <= 800)
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close, size: 20),
+                    ),
+                ],
+              ),
+            ),
+            
+            // Navigation items
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  _buildNavItem(context, theme, accentColor, Icons.home, 'Home', true, () => {}),
+                  const Divider(),
+                  _buildNavItem(context, theme, accentColor, Icons.auto_stories, 'Memory', false, () => _navigateToScreen(context, const MemoryScreen())),
+                  _buildNavItem(context, theme, accentColor, Icons.admin_panel_settings, 'Admin', false, () => _navigateToScreen(context, const AdminScreen())),
+                  _buildNavItem(context, theme, accentColor, Icons.settings, 'Settings', false, () => _navigateToScreen(context, const SettingsScreen())),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(BuildContext context, ThemeData theme, Color accentColor, IconData icon, String title, bool isActive, VoidCallback onTap) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      child: ListTile(
+        leading: Icon(
+          icon,
+          color: isActive ? accentColor : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+        ),
+        title: Text(
+          title,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: isActive ? accentColor : theme.colorScheme.onSurface,
+            fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+        onTap: onTap,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        tileColor: isActive ? accentColor.withValues(alpha: 0.1) : null,
+      ),
+    );
+  }
+
+  void _navigateToScreen(BuildContext context, Widget screen) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => screen),
+    );
   }
 
   @override

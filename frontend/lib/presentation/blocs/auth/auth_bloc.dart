@@ -1,8 +1,10 @@
+import 'package:bloc/bloc.dart';
+import 'package:equatable/equatable.dart';
+
 import 'package:aico_frontend/networking/models/user_models.dart';
 import 'package:aico_frontend/networking/repositories/user_repository.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
-import 'package:equatable/equatable.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:aico_frontend/networking/services/jwt_decoder.dart';
 
 // Events
 abstract class AuthEvent extends Equatable {
@@ -120,16 +122,20 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final response = await _userRepository.authenticate(request);
 
       if (response.success && response.user != null && response.token != null) {
-        // Store token with remember me preference
+        // Decode JWT expiry time
+        final expiryTime = JWTDecoder.getExpiryTime(response.token!) ?? 
+            DateTime.now().add(const Duration(minutes: 15));
+        
+        // Store token with real expiry
         await _tokenManager.storeTokens(
           accessToken: response.token!,
-          expiresAt: DateTime.now().add(const Duration(hours: 24)),
+          expiresAt: expiryTime,
         );
 
         emit(AuthAuthenticated(
           user: response.user!,
           token: response.token!,
-          lastLogin: DateTime.now(),
+          lastLogin: response.lastLogin ?? DateTime.now(),
         ));
       } else {
         emit(AuthFailure(

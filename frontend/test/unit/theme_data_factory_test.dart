@@ -1,7 +1,7 @@
+import 'package:aico_frontend/core/theme/design_tokens.dart';
+import 'package:aico_frontend/core/theme/theme_data_factory.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aico_frontend/core/theme/theme_data_factory.dart';
-import 'package:aico_frontend/core/theme/design_tokens.dart';
 
 void main() {
   group('AicoThemeDataFactory', () {

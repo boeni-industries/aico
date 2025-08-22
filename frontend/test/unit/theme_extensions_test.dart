@@ -1,17 +1,18 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:aico_frontend/core/theme/theme_extensions.dart';
-import 'package:aico_frontend/core/theme/theme_data_factory.dart';
-import 'package:aico_frontend/core/theme/design_tokens.dart';
+import 'dart:io';
+
 import 'package:aico_frontend/core/di/service_locator.dart';
+import 'package:aico_frontend/core/services/local_storage.dart';
+import 'package:aico_frontend/core/theme/design_tokens.dart';
+import 'package:aico_frontend/core/theme/theme_data_factory.dart';
+import 'package:aico_frontend/core/theme/theme_extensions.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
+import 'package:aico_frontend/core/utils/aico_paths.dart';
 import 'package:aico_frontend/features/settings/bloc/settings_bloc.dart';
 import 'package:aico_frontend/features/settings/repositories/settings_repository.dart';
-import 'package:aico_frontend/core/services/local_storage.dart';
-import 'package:aico_frontend/core/utils/aico_paths.dart';
-import 'package:hydrated_bloc/hydrated_bloc.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
-import 'dart:io';
+import 'package:hydrated_bloc/hydrated_bloc.dart';
 
 // Mock implementations for testing
 class MockThemeManager implements ThemeManager {
