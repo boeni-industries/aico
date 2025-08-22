@@ -6,14 +6,20 @@ title: Navigation Architecture
 
 ## Overview
 
-AICO's navigation architecture implements a flat, intuitive structure that prioritizes immediate access to core functionality while supporting deep linking and cross-platform consistency. The design follows the **progressive disclosure** paradigm, revealing complexity only when needed.
+AICO's navigation architecture implements an **adaptive hub-and-spoke** design that prioritizes emotional presence and zero-barrier interaction. The system uses progressive disclosure to reveal complexity gradually while maintaining avatar-centric design and cross-platform consistency.
 
 ## Navigation Principles
 
-### 🎯 Flat Information Architecture
-- Maximum 4-5 root-level sections to prevent cognitive overload
-- No deep nesting - all major functions accessible within 2 taps/clicks
-- Clear visual hierarchy with consistent navigation patterns
+### 🎯 Avatar-Centric Design
+- Central avatar serves as primary visual anchor and interaction point
+- Navigation supports rather than competes with avatar presence
+- Emotional state and system transparency integrated into navigation
+
+### 🌊 Progressive Disclosure
+- 4 core sections prevent cognitive overload
+- Advanced features accessible through "More" section
+- Admin functions behind additional authentication layer
+- Context-sensitive navigation appears when needed
 
 ### 🔗 Universal Deep Linking
 - Every screen accessible via direct URL for bookmarking and sharing
@@ -21,30 +27,42 @@ AICO's navigation architecture implements a flat, intuitive structure that prior
 - State preservation through navigation parameters
 
 ### 📱 Platform-Adaptive Patterns
-- **Mobile**: Bottom tab navigation for thumb-friendly access
-- **Desktop**: Vertical sidebar with collapsible sections
-- **Web**: Browser-friendly URLs with back/forward support
+- **Mobile**: Bottom tab navigation with floating voice action
+- **Desktop**: Collapsible sidebar with persistent avatar area
+- **Web**: Hybrid approach supporting both interaction patterns
 
-## Information Architecture
+## Core Navigation Architecture
 
-### Primary Navigation Structure
+### Primary Navigation Structure (Hub-and-Spoke)
 
 ```
-Home (Avatar Central)
-├── Chat
-│   ├── Active Conversation
-│   ├── Conversation History
-│   └── Voice/Text Input
-├── Relationships
-│   ├── Family Members
-│   ├── Interaction History
-│   └── Privacy Settings
-├── Memory
+🏠 Home (Avatar Central Hub)
+├── Avatar Display (96px with mood ring)
+├── Persistent Voice/Text Input
+├── Proactive Suggestions (dismissible cards)
+├── System Status (subtle indicators)
+└── Quick Actions (contextual)
+
+💬 Chat (Active Conversations)
+├── Current Conversation
+├── Conversation History (swipe/slide access)
+├── Voice/Text Input Integration
+└── Conversation Context
+
+👥 People (Relationships)
+├── Family Member Overview
+├── Individual Relationship Details
+├── Interaction History
+├── Privacy Settings per Person
+└── Recognition Management
+
+⚙️ More (Organized by Usage Frequency)
+├── Memory & Timeline
 │   ├── Personal Timeline
 │   ├── Shared Experiences
 │   └── Memory Search
 ├── Settings
-│   ├── Preferences
+│   ├── Appearance & Theme
 │   ├── Privacy Controls
 │   ├── System Configuration
 │   └── About/Updates
@@ -59,46 +77,54 @@ Home (Avatar Central)
 
 **Web/Desktop URL Patterns:**
 ```
-/                           # Home (Avatar Central)
-/chat                       # Active conversation
-/chat/history              # Conversation history
-/chat/[conversation-id]    # Specific conversation
-/relationships             # Relationship overview
-/relationships/[person-id] # Individual relationship
-/memory                    # Memory timeline
-/memory/search            # Memory search
-/settings                 # User preferences
-/settings/privacy         # Privacy controls
-/admin                    # Admin dashboard
-/admin/logs              # System logs
+/                           # Home (Avatar Central Hub)
+/conversation                       # Active conversation
+/conversation/history              # Conversation history  
+/conversation/[conversation-id]    # Specific conversation
+/people                    # Relationships overview
+/people/[person-id]        # Individual relationship
+/more                      # More section hub
+/more/memory               # Memory timeline
+/more/memory/search        # Memory search
+/more/settings             # User preferences
+/more/settings/privacy     # Privacy controls
+/more/admin                # Admin dashboard
+/more/admin/logs           # System logs
 ```
 
 **Mobile Deep Link Patterns:**
 ```
 aico://home
-aico://chat
-aico://chat/[conversation-id]
-aico://relationships/[person-id]
-aico://memory/search?q=[query]
-aico://settings/privacy
+aico://conversation
+aico://conversation/[conversation-id]
+aico://people/[person-id]
+aico://more/memory/search?q=[query]
+aico://more/settings/privacy
+aico://more/admin
 ```
 
 ## Navigation Components
 
-### Primary Navigation
+### Primary Navigation Sections
 
-#### Mobile Bottom Tab Bar
-- **Home**: Avatar and quick actions
-- **Chat**: Active conversation access
-- **People**: Relationship management
-- **Memory**: Personal timeline
-- **More**: Settings and additional features
+### 1. Home (Avatar Central Hub)
+- **Route**: `/`
+- **Purpose**: Avatar-centric emotional presence and system status
+- **Features**: Mood ring, proactive suggestions, quick actions
+
+### 2. Conversation (Active Conversations)
+- **Route**: `/conversation`
+- **Purpose**: Active conversation interface with AICO
+- **Sub-routes**:
+  - `/conversation/history` - Conversation history
+  - `/conversation/:id` - Specific conversation threads
+- **Floating Voice Button**: Overlays center for immediate voice input
 
 #### Desktop Sidebar
-- **Collapsible sections** with clear visual grouping
-- **Quick access icons** for frequently used functions
-- **Contextual sub-navigation** that appears based on current section
-- **Search integration** within navigation for large data sets
+- **Avatar Area**: Persistent 96px avatar with mood indicators
+- **Collapsible sections** with soft purple accent for active states
+- **Contextual sub-navigation** slides in based on current section
+- **Search integration** for memory and conversation history
 
 ### Secondary Navigation
 
@@ -152,19 +178,19 @@ GoRouter(
           builder: (context, state) => HomeScreen(),
         ),
         GoRoute(
-          path: '/chat',
-          name: 'chat',
-          builder: (context, state) => ChatScreen(),
+          path: '/conversation',
+          name: 'conversation',
+          builder: (context, state) => ConversationScreen(),
           routes: [
             GoRoute(
               path: '/history',
-              name: 'chat-history',
-              builder: (context, state) => ChatHistoryScreen(),
+              name: 'conversation-history',
+              builder: (context, state) => ConversationHistoryScreen(),
             ),
             GoRoute(
               path: '/:conversationId',
-              name: 'conversation',
-              builder: (context, state) => ConversationScreen(
+              name: 'conversation-detail',
+              builder: (context, state) => ConversationDetailScreen(
                 conversationId: state.pathParameters['conversationId']!,
               ),
             ),

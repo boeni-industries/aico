@@ -52,6 +52,9 @@ dependencies:
   
   # YAML parsing
   yaml: ^3.1.2
+  
+  # Navigation
+  go_router: ^14.2.7
 
 dev_dependencies:
   flutter_test:
