@@ -1,6 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
-import 'package:go_router/go_router.dart';
 import '../../../core/constants/route_names.dart';
 
 /// Navigation BLoC for managing navigation state and deep link handling.

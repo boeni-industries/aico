@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
 import 'dart:io';
-import 'dart:async';
-import '../../../lib/core/theme/aico_theme_manager.dart';
-import '../../../lib/features/settings/bloc/settings_bloc.dart';
-import '../../../lib/features/settings/models/settings_state.dart';
-import '../../../lib/features/settings/repositories/settings_repository.dart';
-import '../../../lib/core/services/local_storage.dart';
+import 'package:aico_frontend/core/theme/aico_theme_manager.dart';
+import 'package:aico_frontend/features/settings/bloc/settings_bloc.dart';
+import 'package:aico_frontend/features/settings/models/settings_state.dart';
+import 'package:aico_frontend/features/settings/repositories/settings_repository.dart';
+import 'package:aico_frontend/core/services/local_storage.dart';
 
 // Simple fake for testing without complex mocking
 class FakeSettingsBloc extends SettingsBloc {

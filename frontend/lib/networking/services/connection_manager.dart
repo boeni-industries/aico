@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import '../clients/api_client.dart';
 import '../clients/websocket_client.dart';
 import '../models/error_models.dart';
 
@@ -11,16 +10,15 @@ enum ConnectionMode {
 }
 
 class ConnectionManager {
-  final AicoApiClient _apiClient;
+  // final AicoApiClient _apiClient;
   final WebSocketClient _wsClient;
   
   ConnectionMode _currentMode = ConnectionMode.http;
   bool _isInitialized = false;
   
-  static const String _defaultHttpUrl = 'http://localhost:8771';
   static const String _defaultWsUrl = 'ws://localhost:8772';
 
-  ConnectionManager(this._apiClient, this._wsClient);
+  ConnectionManager(this._wsClient);
 
   ConnectionMode get currentMode => _currentMode;
   bool get isInitialized => _isInitialized;

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aico_ui/core/di/service_locator.dart';
-import 'package:aico_ui/core/utils/aico_paths.dart';
+import 'package:aico_frontend/core/di/service_locator.dart';
+import 'package:aico_frontend/core/utils/aico_paths.dart';
 
 import 'package:hydrated_bloc/hydrated_bloc.dart';
 import 'dart:io';

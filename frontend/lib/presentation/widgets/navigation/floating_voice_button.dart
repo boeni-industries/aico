@@ -65,7 +65,7 @@ class _FloatingVoiceButtonState extends State<FloatingVoiceButton>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    // final theme = Theme.of(context);
     final accentColor = const Color(0xFFB8A1EA); // Soft purple accent
 
     return AnimatedBuilder(
@@ -81,7 +81,7 @@ class _FloatingVoiceButtonState extends State<FloatingVoiceButton>
                 height: 80 * (1 + _pulseAnimation.value * 0.3),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: accentColor.withOpacity(0.2 * (1 - _pulseAnimation.value)),
+                  color: accentColor.withValues(alpha: 0.2 * (1 - _pulseAnimation.value)),
                 ),
               ),
             
@@ -99,16 +99,16 @@ class _FloatingVoiceButtonState extends State<FloatingVoiceButton>
                     colors: _isListening
                         ? [
                             accentColor,
-                            accentColor.withOpacity(0.8),
+                            accentColor.withValues(alpha: 0.8),
                           ]
                         : [
-                            accentColor.withOpacity(0.9),
+                            accentColor.withValues(alpha: 0.9),
                             accentColor,
                           ],
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: accentColor.withOpacity(0.3),
+                      color: accentColor.withValues(alpha: 0.3),
                       blurRadius: _isListening ? 12 : 8,
                       offset: const Offset(0, 4),
                     ),

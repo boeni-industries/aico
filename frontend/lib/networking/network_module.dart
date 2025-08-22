@@ -46,7 +46,6 @@ class NetworkModule {
     
     getIt.registerLazySingleton<ConnectionManager>(
       () => ConnectionManager(
-        getIt<AicoApiClient>(),
         getIt<WebSocketClient>(),
       ),
     );

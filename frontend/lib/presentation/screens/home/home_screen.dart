@@ -78,7 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
               color: theme.colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: theme.dividerColor.withOpacity(0.2),
+                color: theme.dividerColor.withValues(alpha: 0.2),
               ),
             ),
             child: Row(
@@ -120,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: theme.colorScheme.surface,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: theme.dividerColor.withOpacity(0.2),
+                  color: theme.dividerColor.withValues(alpha: 0.2),
                 ),
               ),
               child: IconButton(
@@ -144,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         children: [
           // Avatar with mood ring
-          Container(
+          SizedBox(
             width: 96,
             child: Container(
               decoration: BoxDecoration(
@@ -182,7 +182,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
+              color: Colors.green.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -232,7 +232,7 @@ class _HomeScreenState extends State<HomeScreen> {
           if (message.isFromAico) ...[
             CircleAvatar(
               radius: 16,
-              backgroundColor: accentColor.withOpacity(0.1),
+              backgroundColor: accentColor.withValues(alpha: 0.1),
               child: Icon(Icons.face, size: 16, color: accentColor),
             ),
             const SizedBox(width: 12),
@@ -243,10 +243,10 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: BoxDecoration(
                 color: message.isFromAico 
                     ? theme.colorScheme.surface
-                    : accentColor.withOpacity(0.1),
+                    : accentColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(16),
                 border: message.isFromAico 
-                    ? Border.all(color: theme.dividerColor.withOpacity(0.1))
+                    ? Border.all(color: theme.dividerColor.withValues(alpha: 0.1))
                     : null,
               ),
               child: Column(
@@ -260,7 +260,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     _formatTimestamp(message.timestamp),
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                   ),
                 ],
@@ -281,7 +281,7 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: theme.dividerColor.withOpacity(0.1)),
+          border: Border.all(color: theme.dividerColor.withValues(alpha: 0.1)),
         ),
         child: Row(
           children: [
@@ -292,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   hintText: 'Share what\'s on your mind...',
                   border: InputBorder.none,
                   hintStyle: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
                 onSubmitted: _sendMessage,
@@ -305,7 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: () {},
                   icon: const Icon(Icons.mic),
                   style: IconButton.styleFrom(
-                    backgroundColor: accentColor.withOpacity(0.1),
+                    backgroundColor: accentColor.withValues(alpha: 0.1),
                     foregroundColor: accentColor,
                   ),
                 ),
@@ -332,7 +332,7 @@ class _HomeScreenState extends State<HomeScreen> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(
-          left: BorderSide(color: theme.dividerColor.withOpacity(0.1)),
+          left: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1)),
         ),
       ),
       child: SafeArea(
@@ -427,9 +427,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: accentColor.withOpacity(0.05),
+        color: accentColor.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: accentColor.withOpacity(0.2)),
+        border: Border.all(color: accentColor.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -446,7 +446,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const Spacer(),
-              Icon(Icons.close, size: 14, color: theme.colorScheme.onSurface.withOpacity(0.4)),
+              Icon(Icons.close, size: 14, color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
             ],
           ),
           const SizedBox(height: 8),
@@ -469,7 +469,7 @@ class _HomeScreenState extends State<HomeScreen> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: theme.dividerColor.withOpacity(0.1)),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -484,7 +484,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             time,
             style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.6),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
             ),
           ),
         ],

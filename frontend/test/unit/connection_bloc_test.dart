@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bloc_test/bloc_test.dart';
-import 'package:aico_ui/features/connection/bloc/connection_bloc.dart';
-import 'package:aico_ui/features/connection/models/connection_event.dart';
-import 'package:aico_ui/features/connection/models/connection_state.dart';
-import 'package:aico_ui/features/connection/repositories/connection_repository.dart';
+import 'package:aico_frontend/features/connection/bloc/connection_bloc.dart';
+import 'package:aico_frontend/features/connection/models/connection_event.dart';
+import 'package:aico_frontend/features/connection/models/connection_state.dart';
+import 'package:aico_frontend/features/connection/repositories/connection_repository.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
 import 'dart:io';
 

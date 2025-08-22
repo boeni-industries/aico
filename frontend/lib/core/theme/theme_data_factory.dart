@@ -12,7 +12,6 @@ class AicoThemeDataFactory {
       seedColor: AicoDesignTokens.softLavender,
       brightness: Brightness.light,
       surface: AicoDesignTokens.pureWhite,
-      background: AicoDesignTokens.neutralWhite,
     );
 
     return _createBaseTheme(colorScheme);
@@ -24,7 +23,6 @@ class AicoThemeDataFactory {
       seedColor: AicoDesignTokens.darkAccent,
       brightness: Brightness.dark,
       surface: AicoDesignTokens.darkSurface,
-      background: AicoDesignTokens.darkBackground,
     );
 
     return _createBaseTheme(colorScheme);
@@ -44,9 +42,7 @@ class AicoThemeDataFactory {
       onError: Colors.white,
       surface: Colors.white,
       onSurface: Colors.black,
-      background: Colors.white,
-      onBackground: Colors.black,
-      surfaceVariant: Color(0xFFF5F5F5),
+      surfaceContainerHighest: Color(0xFFF5F5F5),
       onSurfaceVariant: Colors.black,
       outline: Colors.black,
       outlineVariant: Color(0xFF757575),
@@ -75,9 +71,7 @@ class AicoThemeDataFactory {
       onError: Colors.black,
       surface: Colors.black,
       onSurface: Colors.white,
-      background: Colors.black,
-      onBackground: Colors.white,
-      surfaceVariant: Color(0xFF1A1A1A),
+      surfaceContainerHighest: Color(0xFF1A1A1A),
       onSurfaceVariant: Colors.white,
       outline: Colors.white,
       outlineVariant: Color(0xFF9E9E9E),
@@ -98,7 +92,6 @@ class AicoThemeDataFactory {
       seedColor: AicoDesignTokens.darkAccent,
       brightness: Brightness.dark,
       surface: Colors.black,
-      background: Colors.black,
       primary: Colors.white,
       onPrimary: Colors.black,
       secondary: Colors.white70,
@@ -204,7 +197,7 @@ class AicoThemeDataFactory {
         fontSize: AicoDesignTokens.fontSizeCaption,
         fontWeight: AicoDesignTokens.fontWeightCaption,
         height: AicoDesignTokens.lineHeightMultiplier,
-        color: colorScheme.onSurface.withOpacity(0.7),
+        color: colorScheme.onSurface.withValues(alpha: 0.7),
       ),
       
       // Labels
@@ -339,11 +332,11 @@ class AicoThemeDataFactory {
       contentPadding: const EdgeInsets.all(AicoDesignTokens.spaceMd),
       labelStyle: TextStyle(
         fontFamily: AicoDesignTokens.fontFamily,
-        color: colorScheme.onSurface.withOpacity(0.7),
+        color: colorScheme.onSurface.withValues(alpha: 0.7),
       ),
       hintStyle: TextStyle(
         fontFamily: AicoDesignTokens.fontFamily,
-        color: colorScheme.onSurface.withOpacity(0.5),
+        color: colorScheme.onSurface.withValues(alpha: 0.5),
       ),
     );
   }
@@ -365,7 +358,7 @@ class AicoThemeDataFactory {
     return BottomNavigationBarThemeData(
       backgroundColor: colorScheme.surface,
       selectedItemColor: colorScheme.primary,
-      unselectedItemColor: colorScheme.onSurface.withOpacity(0.6),
+      unselectedItemColor: colorScheme.onSurface.withValues(alpha: 0.6),
       type: BottomNavigationBarType.fixed,
       elevation: AicoDesignTokens.elevationLevel2,
     );
@@ -375,9 +368,9 @@ class AicoThemeDataFactory {
   static NavigationBarThemeData _createNavigationBarTheme(ColorScheme colorScheme) {
     return NavigationBarThemeData(
       backgroundColor: colorScheme.surface,
-      indicatorColor: colorScheme.primary.withOpacity(0.12),
-      labelTextStyle: MaterialStateProperty.resolveWith((states) {
-        if (states.contains(MaterialState.selected)) {
+      indicatorColor: colorScheme.primary.withValues(alpha: 0.12),
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
           return TextStyle(
             fontFamily: AicoDesignTokens.fontFamily,
             fontSize: AicoDesignTokens.fontSizeCaption,
@@ -388,7 +381,7 @@ class AicoThemeDataFactory {
         return TextStyle(
           fontFamily: AicoDesignTokens.fontFamily,
           fontSize: AicoDesignTokens.fontSizeCaption,
-          color: colorScheme.onSurface.withOpacity(0.6),
+          color: colorScheme.onSurface.withValues(alpha: 0.6),
         );
       }),
     );

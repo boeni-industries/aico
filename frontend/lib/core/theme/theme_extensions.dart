@@ -74,12 +74,12 @@ class AicoSemanticColors {
   // Surface colors
   Color get surface => _colorScheme.surface;
   Color get onSurface => _colorScheme.onSurface;
-  Color get surfaceVariant => _colorScheme.surfaceVariant;
+  Color get surfaceVariant => _colorScheme.surfaceContainerHighest;
   Color get onSurfaceVariant => _colorScheme.onSurfaceVariant;
   
   // Background colors
-  Color get background => _colorScheme.background;
-  Color get onBackground => _colorScheme.onBackground;
+  Color get background => _colorScheme.surface;
+  Color get onBackground => _colorScheme.onSurface;
   
   // State colors
   Color get error => _colorScheme.error;
@@ -251,7 +251,7 @@ class AicoAccessibility {
   bool get isReduceMotionEnabled => _mediaQuery.disableAnimations;
   
   /// Get text scale factor
-  double get textScaleFactor => _mediaQuery.textScaleFactor;
+  double get textScaleFactor => _mediaQuery.textScaler.scale(1.0);
   
   /// Check if text is scaled up significantly
   bool get isLargeText => textScaleFactor > 1.3;
@@ -266,7 +266,7 @@ class AicoAccessibility {
   double get contrastRatio => _context.isHighContrast ? 7.0 : 4.5;
   
   /// Get focus color for keyboard navigation
-  Color get focusColor => _context.colorScheme.primary.withOpacity(0.12);
+  Color get focusColor => _context.colorScheme.primary.withValues(alpha: 0.12);
   
   /// Get high contrast border width
   double get highContrastBorderWidth => _context.isHighContrast ? 2.0 : 1.0;
@@ -280,7 +280,7 @@ class AicoAccessibility {
     return ElevatedButton(
       onPressed: onPressed,
       style: style?.copyWith(
-        minimumSize: MaterialStateProperty.all(
+        minimumSize: WidgetStateProperty.all(
           Size(minTouchTarget, minTouchTarget),
         ),
       ) ?? ElevatedButton.styleFrom(

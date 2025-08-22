@@ -22,7 +22,7 @@ class AdaptiveBottomNavigation extends StatelessWidget {
         color: theme.colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: theme.shadowColor.withOpacity(0.1),
+            color: theme.shadowColor.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0, -2),
           ),
@@ -106,20 +106,20 @@ class AdaptiveBottomNavigation extends StatelessWidget {
                 curve: Curves.easeOut,
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: isActive ? accentColor.withOpacity(0.1) : Colors.transparent,
+                  color: isActive ? accentColor.withValues(alpha: 0.1) : Colors.transparent,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   isActive ? activeIcon : icon,
                   size: 24,
-                  color: isActive ? accentColor : theme.colorScheme.onSurface.withOpacity(0.6),
+                  color: isActive ? accentColor : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                 ),
               ),
               const SizedBox(height: 4),
               AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 200),
                 style: theme.textTheme.labelSmall!.copyWith(
-                  color: isActive ? accentColor : theme.colorScheme.onSurface.withOpacity(0.6),
+                  color: isActive ? accentColor : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
                 ),
                 child: Text(label),

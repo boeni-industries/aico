@@ -16,37 +16,33 @@ abstract class NetworkException implements Exception {
 
 /// Connection-related errors
 class ConnectionException extends NetworkException {
-  const ConnectionException(String message, {dynamic originalError})
-      : super(message, originalError: originalError);
+  const ConnectionException(super.message, {super.originalError});
 }
 
 /// HTTP-specific errors
 class HttpException extends NetworkException {
-  const HttpException(String message, int statusCode, {dynamic originalError})
-      : super(message, statusCode: statusCode, originalError: originalError);
+  const HttpException(super.message, int statusCode, {super.originalError})
+      : super(statusCode: statusCode);
 }
 
 /// Authentication/authorization errors
 class AuthException extends NetworkException {
-  const AuthException(String message, {int? statusCode, dynamic originalError})
-      : super(message, statusCode: statusCode, originalError: originalError);
+  const AuthException(super.message, {super.statusCode, super.originalError});
 }
 
 /// Server-side errors
 class ServerException extends NetworkException {
-  const ServerException(String message, {int? statusCode, dynamic originalError})
-      : super(message, statusCode: statusCode, originalError: originalError);
+  const ServerException(super.message, {super.statusCode, super.originalError});
 }
 
 /// WebSocket-specific errors
 class WebSocketException extends NetworkException {
-  const WebSocketException(String message, {dynamic originalError})
-      : super(message, originalError: originalError);
+  const WebSocketException(super.message, {super.originalError});
 }
 
 /// Offline/connectivity errors
 class OfflineException extends NetworkException {
-  const OfflineException(String message) : super(message);
+  const OfflineException(super.message);
 }
 
 /// API error response model

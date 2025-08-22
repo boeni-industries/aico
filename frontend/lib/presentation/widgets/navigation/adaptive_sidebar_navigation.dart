@@ -24,6 +24,7 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation>
   late AnimationController _animationController;
   late Animation<double> _widthAnimation;
 
+  @override
   void initState() {
     super.initState();
     _isCollapsed = widget.isCollapsed;
@@ -95,7 +96,7 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation>
             color: theme.colorScheme.surface,
             border: Border(
               right: BorderSide(
-                color: theme.dividerColor.withOpacity(0.1),
+                color: theme.dividerColor.withValues(alpha: 0.1),
                 width: 1,
               ),
             ),
@@ -143,7 +144,7 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation>
             onPressed: _toggleCollapse,
             icon: Icon(
               _isCollapsed ? Icons.menu : Icons.menu_open,
-              color: theme.colorScheme.onSurface.withOpacity(0.7),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
             ),
           ),
         ],
@@ -164,7 +165,7 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: accentColor.withOpacity(0.3),
+                color: accentColor.withValues(alpha: 0.3),
                 width: 2,
               ),
             ),
@@ -176,8 +177,8 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation>
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    accentColor.withOpacity(0.1),
-                    accentColor.withOpacity(0.05),
+                    accentColor.withValues(alpha: 0.1),
+                    accentColor.withValues(alpha: 0.05),
                   ],
                 ),
               ),
@@ -194,7 +195,7 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation>
             Text(
               'Feeling thoughtful',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.7),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
               ),
               overflow: TextOverflow.ellipsis,
             ),
@@ -202,7 +203,7 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
+                color: Colors.green.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -301,7 +302,7 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation>
               vertical: 12
             ),
             decoration: BoxDecoration(
-              color: isActive ? accentColor.withOpacity(0.1) : Colors.transparent,
+              color: isActive ? accentColor.withValues(alpha: 0.1) : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
             ),
             child: _isCollapsed
@@ -309,7 +310,7 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation>
                     child: Icon(
                       isActive ? activeIcon : icon,
                       size: 20,
-                      color: isActive ? accentColor : theme.colorScheme.onSurface.withOpacity(0.7),
+                      color: isActive ? accentColor : theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     ),
                   )
                 : Row(
@@ -317,14 +318,14 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation>
                       Icon(
                         isActive ? activeIcon : icon,
                         size: 20,
-                        color: isActive ? accentColor : theme.colorScheme.onSurface.withOpacity(0.7),
+                        color: isActive ? accentColor : theme.colorScheme.onSurface.withValues(alpha: 0.7),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Text(
                           label,
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: isActive ? accentColor : theme.colorScheme.onSurface.withOpacity(0.8),
+                            color: isActive ? accentColor : theme.colorScheme.onSurface.withValues(alpha: 0.8),
                             fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
                           ),
                           overflow: TextOverflow.ellipsis,

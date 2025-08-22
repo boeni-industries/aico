@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bloc_test/bloc_test.dart';
-import 'package:aico_ui/features/settings/bloc/settings_bloc.dart';
-import 'package:aico_ui/features/settings/models/settings_event.dart';
-import 'package:aico_ui/features/settings/models/settings_state.dart';
-import 'package:aico_ui/features/settings/repositories/settings_repository.dart';
+import 'package:aico_frontend/features/settings/bloc/settings_bloc.dart';
+import 'package:aico_frontend/features/settings/models/settings_event.dart';
+import 'package:aico_frontend/features/settings/models/settings_state.dart';
+import 'package:aico_frontend/features/settings/repositories/settings_repository.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
 import 'dart:io';
 

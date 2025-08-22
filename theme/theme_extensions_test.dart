@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import '../../../lib/core/theme/theme_extensions.dart';
-import '../../../lib/core/theme/theme_data_factory.dart';
-import '../../../lib/core/theme/design_tokens.dart';
-import '../../../lib/core/di/service_locator.dart';
-import '../../../lib/core/theme/theme_manager.dart';
-import '../../../lib/features/settings/bloc/settings_bloc.dart';
-import '../../../lib/features/settings/repositories/settings_repository.dart';
-import '../../../lib/core/services/local_storage.dart';
-import '../../../lib/core/utils/aico_paths.dart';
+import 'package:aico_frontend/core/theme/theme_extensions.dart';
+import 'package:aico_frontend/core/theme/theme_data_factory.dart';
+import 'package:aico_frontend/core/theme/design_tokens.dart';
+import 'package:aico_frontend/core/di/service_locator.dart';
+import 'package:aico_frontend/core/theme/theme_manager.dart';
+import 'package:aico_frontend/features/settings/bloc/settings_bloc.dart';
+import 'package:aico_frontend/features/settings/repositories/settings_repository.dart';
+import 'package:aico_frontend/core/services/local_storage.dart';
+import 'package:aico_frontend/core/utils/aico_paths.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'dart:io';
@@ -267,16 +267,16 @@ void main() {
         final semanticColors = testContext.semanticColors;
         
         // Success should be green-ish
-        expect(semanticColors.success.green, greaterThan(semanticColors.success.red));
-        expect(semanticColors.success.green, greaterThan(semanticColors.success.blue));
+        expect((semanticColors.success.g * 255.0).round() & 0xff, greaterThan((semanticColors.success.r * 255.0).round() & 0xff));
+        expect((semanticColors.success.g * 255.0).round() & 0xff, greaterThan((semanticColors.success.b * 255.0).round() & 0xff));
         
         // Error should be red-ish
-        expect(semanticColors.error.red, greaterThan(semanticColors.error.green));
-        expect(semanticColors.error.red, greaterThan(semanticColors.error.blue));
+        expect((semanticColors.error.r * 255.0).round() & 0xff, greaterThan((semanticColors.error.g * 255.0).round() & 0xff));
+        expect((semanticColors.error.r * 255.0).round() & 0xff, greaterThan((semanticColors.error.b * 255.0).round() & 0xff));
         
         // Warning should be yellow/orange-ish
-        expect(semanticColors.warning.red + semanticColors.warning.green, 
-               greaterThan(semanticColors.warning.blue * 2));
+        expect((semanticColors.warning.r * 255.0).round() & 0xff + (semanticColors.warning.g * 255.0).round() & 0xff, 
+               greaterThan(((semanticColors.warning.b * 255.0).round() & 0xff) * 2));
       });
     });
 

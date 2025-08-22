@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import '../../../lib/core/theme/theme_data_factory.dart';
-import '../../../lib/core/theme/design_tokens.dart';
+import 'package:aico_frontend/core/theme/theme_data_factory.dart';
+import 'package:aico_frontend/core/theme/design_tokens.dart';
 
 void main() {
   group('AicoThemeDataFactory', () {
@@ -29,7 +29,7 @@ void main() {
 
       test('should have proper surface colors', () {
         expect(lightTheme.colorScheme.surface, isNotNull);
-        expect(lightTheme.colorScheme.background, isNotNull);
+        expect(lightTheme.colorScheme.surface, isNotNull);
       });
 
       test('should have complete color scheme', () {
@@ -78,7 +78,7 @@ void main() {
 
       test('should have proper dark surface colors', () {
         expect(darkTheme.colorScheme.surface, isNotNull);
-        expect(darkTheme.colorScheme.background, isNotNull);
+        expect(darkTheme.colorScheme.surface, isNotNull);
       });
 
       test('should have complete color scheme', () {
@@ -119,8 +119,8 @@ void main() {
         expect(colorScheme.onPrimary, Colors.white);
         expect(colorScheme.surface, Colors.white);
         expect(colorScheme.onSurface, Colors.black);
-        expect(colorScheme.background, Colors.white);
-        expect(colorScheme.onBackground, Colors.black);
+        expect(colorScheme.surface, Colors.white);
+        expect(colorScheme.onSurface, Colors.black);
       });
 
       test('should have accessibility-compliant contrast ratios', () {
@@ -164,8 +164,8 @@ void main() {
         expect(colorScheme.onPrimary, Colors.black);
         expect(colorScheme.surface, Colors.black);
         expect(colorScheme.onSurface, Colors.white);
-        expect(colorScheme.background, Colors.black);
-        expect(colorScheme.onBackground, Colors.white);
+        expect(colorScheme.surface, Colors.black);
+        expect(colorScheme.onSurface, Colors.white);
       });
 
       test('should have accessibility-compliant contrast ratios', () {
@@ -297,7 +297,7 @@ void main() {
           expect(colorScheme.secondary, isNotNull);
           expect(colorScheme.tertiary, isNotNull);
           expect(colorScheme.surface, isNotNull);
-          expect(colorScheme.surfaceVariant, isNotNull);
+          expect(colorScheme.surfaceContainerHighest, isNotNull);
           expect(colorScheme.outline, isNotNull);
         }
       });

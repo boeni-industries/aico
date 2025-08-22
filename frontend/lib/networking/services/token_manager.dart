@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
 
 class TokenManager {
-  static const String _tokenKey = 'aico_auth_token';
-  static const String _refreshTokenKey = 'aico_refresh_token';
-  static const String _tokenExpiryKey = 'aico_token_expiry';
+  // static const String _tokenKey = 'auth_token';
+  // static const String _refreshTokenKey = 'refresh_token';
+  // static const String _tokenExpiryKey = 'token_expiry';
 
   String? _cachedToken;
   String? _cachedRefreshToken;
