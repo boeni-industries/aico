@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:meta/meta.dart';
 import 'package:yaml/yaml.dart';
@@ -22,6 +23,13 @@ class AICOPaths {
     if (_config != null) return; // Already initialized
 
     try {
+      // Web platform doesn't support file system paths
+      if (kIsWeb) {
+        _baseDataDir = '/aico'; // Virtual path for web
+        _config = _getDefaultConfig();
+        return;
+      }
+
       // Get platform-appropriate data directory
       final appDataDir = await getApplicationSupportDirectory();
       _baseDataDir = path.join(appDataDir.path, 'boeni-industries', 'aico');
@@ -77,6 +85,12 @@ class AICOPaths {
 
   /// Ensure directory exists, create if needed
   static Future<Directory> ensureDirectory(String dirPath) async {
+    // Web platform doesn't support file system operations
+    if (kIsWeb) {
+      // Return a mock directory for web
+      return Directory(dirPath);
+    }
+    
     final directory = Directory(dirPath);
     if (!await directory.exists()) {
       await directory.create(recursive: true);

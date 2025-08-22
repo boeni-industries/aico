@@ -3,6 +3,8 @@ import 'package:hydrated_bloc/hydrated_bloc.dart';
 import '../services/api_client.dart';
 import '../services/local_storage.dart';
 import '../utils/aico_paths.dart';
+import '../theme/theme_manager.dart';
+import '../theme/aico_theme_manager.dart';
 import '../../features/connection/bloc/connection_bloc.dart';
 import '../../features/settings/bloc/settings_bloc.dart';
 import '../../features/connection/repositories/connection_repository.dart';
@@ -99,6 +101,13 @@ class ServiceLocator {
     _getIt.registerLazySingleton<SettingsBloc>(
       () => SettingsBloc(
         repository: _getIt<SettingsRepository>(),
+      ),
+    );
+
+    // Theme Manager
+    _getIt.registerLazySingleton<ThemeManager>(
+      () => AicoThemeManager(
+        settingsBloc: _getIt<SettingsBloc>(),
       ),
     );
   }
