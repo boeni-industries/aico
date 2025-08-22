@@ -3327,8 +3327,8 @@
 <h3 id="minimal-message-bus">Minimal Message Bus<a class="headerlink" href="#minimal-message-bus" title="Permanent link">&para;</a></h3>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>ZeroMQ Setup</strong>: Core pub/sub message bus implementation</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Basic Topics</strong>: Essential topics (system.<em>, chat.</em>, ui.*)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Message Envelope</strong>: Simple JSON message format</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Basic Topics</strong>: Essential topics (system.<em>, conversation.</em>, ui.*)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Message Envelope</strong>: Protocol Buffer message format</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Message Routing</strong>: Basic topic-based routing</li>
 </ul>
 <h3 id="basic-data-layer">Basic Data Layer<a class="headerlink" href="#basic-data-layer" title="Permanent link">&para;</a></h3>
@@ -3351,7 +3351,7 @@
 <h3 id="enhanced-message-bus">Enhanced Message Bus<a class="headerlink" href="#enhanced-message-bus" title="Permanent link">&para;</a></h3>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Topic Hierarchy</strong>: Full topic structure (emotion.<em>, personality.</em>, agency.*)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Schema Validation</strong>: JSON Schema validation for message types</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Message Validation</strong>: Business logic validation beyond basic protobuf parsing</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Error Handling</strong>: Message delivery guarantees and error recovery</li>
 </ul>
 <h3 id="task-scheduler-component">Task Scheduler Component<a class="headerlink" href="#task-scheduler-component" title="Permanent link">&para;</a></h3>
@@ -3366,11 +3366,11 @@
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Service Management</strong>: Windows Service / Linux daemon / macOS LaunchAgent</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Graceful Shutdown</strong>: Clean service restart without data loss</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>WebSocket Support</strong>: Real-time bidirectional communication</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>WebSocket Support</strong>: Real-time bidirectional communication</li>
 </ul>
 <h3 id="data-layer-enhancement">Data Layer Enhancement<a class="headerlink" href="#data-layer-enhancement" title="Permanent link">&para;</a></h3>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>libSQL Encryption</strong>: Enable built-in database encryption</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>libSQL Encryption</strong>: Enable built-in database encryption</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Vector Store</strong>: ChromaDB integration for embeddings and similarity search</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Analytical Engine</strong>: DuckDB integration for complex analytical queries</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Full Schema</strong>: Complete database schema for memory, personality, system data</li>

@@ -3484,7 +3484,17 @@
 </li>
 <li><code>llm.conversation.events</code> - Conversation events from LLM</li>
 <li><code>llm.prompt.conditioning.request</code> - Requests for prompt conditioning</li>
-<li><code>llm.prompt.conditioning.response</code> - Prompt conditioning parameters</li>
+<li>
+<p><code>llm.prompt.conditioning.response</code> - Prompt conditioning parameters</p>
+</li>
+<li>
+<p><strong>ui.*</strong> - User Interface related messages</p>
+</li>
+<li><code>ui.state.update</code> - UI state changes (theme, navigation, connection status)</li>
+<li><code>ui.interaction</code> - User interactions (clicks, input, gestures)</li>
+<li><code>ui.notification</code> - Display notifications and alerts</li>
+<li><code>ui.command</code> - Backend commands to frontend (navigate, show modal, etc.)</li>
+<li><code>ui.preferences</code> - UI preferences and settings updates</li>
 </ul>
 <h3 id="cross-cutting-concerns">Cross-Cutting Concerns<a class="headerlink" href="#cross-cutting-concerns" title="Permanent link">&para;</a></h3>
 <ul>
@@ -3679,6 +3689,7 @@
 <li>Conversation messages: <code>/proto/conversation/conversation.proto</code></li>
 <li>Personality messages: <code>/proto/personality/personality.proto</code></li>
 <li>Integration messages: <code>/proto/integration/integration.proto</code></li>
+<li>UI messages: <code>/proto/ui/ui.proto</code></li>
 </ul>
 <h3 id="code-generation-pipeline">Code Generation Pipeline<a class="headerlink" href="#code-generation-pipeline" title="Permanent link">&para;</a></h3>
 <p>The build process automatically generates language-specific code from these definitions:</p>

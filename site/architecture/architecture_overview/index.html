@@ -3619,15 +3619,15 @@ The CLI is a Python application that provides a command-line interface for inter
 <h3 id="modular-message-driven-design">Modular Message-Driven Design<a class="headerlink" href="#modular-message-driven-design" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Each domain/module is a distinct code package or subsystem</strong> with its own internal state, logic, and strict interface.</li>
-<li><strong>All communication between modules is via the internal message bus</strong> (ZeroMQ), within the backend service.</li>
+<li><strong>All communication between backend modules is via the internal message bus (ZeroMQ) using Protocol Buffers for high-performance binary serialization. External API communication with the frontend uses JSON over HTTP/WebSocket for web-standard compatibility.</strong></li>
 <li><strong>No direct function calls or shared state between modules</strong> (except for startup/configuration)—all data exchange is through published/subscribed messages.</li>
-<li><strong>Each module subscribes to topics and publishes outputs on its own topics</strong>, using versioned, validated JSON schemas.</li>
+<li><strong>Each module subscribes to topics and publishes outputs on its own topics</strong>, using versioned, validated Protocol Buffer schemas.</li>
 <li><strong>Modules can be developed, tested, and even replaced independently</strong> as long as they honor the message contracts.</li>
 </ul>
 <h3 id="low-coupling-and-contract-guarantees">Low Coupling and Contract Guarantees<a class="headerlink" href="#low-coupling-and-contract-guarantees" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Loose Coupling:</strong> Modules are only coupled by the message schemas and topic contracts—not by code dependencies or shared state.</li>
-<li><strong>Contract Enforcement:</strong> The message bus enforces versioned schemas, so if a publisher or subscriber changes, integration tests will catch contract violations.</li>
+<li><strong>Contract Enforcement:</strong> The message bus enforces versioned Protocol Buffer schemas, so if a publisher or subscriber changes, integration tests will catch contract violations.</li>
 <li><strong>Pluggability:</strong> Any module could, in theory, be extracted into a separate process or container in the future with minimal refactor, since all communication is already message-based.</li>
 </ul>
 <h3 id="client-service-architecture">Client-Service Architecture<a class="headerlink" href="#client-service-architecture" title="Permanent link">&para;</a></h3>
