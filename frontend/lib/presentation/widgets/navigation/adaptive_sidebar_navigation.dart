@@ -186,7 +186,7 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
 
   Widget _buildNavigationItems(BuildContext context, ThemeData theme, Color accentColor) {
     return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: _isCollapsed ? 4 : 12),
+      padding: EdgeInsets.symmetric(horizontal: _isCollapsed ? 2 : 12),
       child: Column(
         children: [
           _buildNavItem(
@@ -245,7 +245,7 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             padding: EdgeInsets.symmetric(
-              horizontal: _isCollapsed ? 8 : 16, 
+              horizontal: _isCollapsed ? 4 : 16, 
               vertical: 12
             ),
             decoration: BoxDecoration(
@@ -253,13 +253,14 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: _isCollapsed
-                ? Icon(
-                    isActive ? activeIcon : icon,
-                    size: 20,
-                    color: isActive ? accentColor : theme.colorScheme.onSurface.withOpacity(0.7),
+                ? Center(
+                    child: Icon(
+                      isActive ? activeIcon : icon,
+                      size: 20,
+                      color: isActive ? accentColor : theme.colorScheme.onSurface.withOpacity(0.7),
+                    ),
                   )
                 : Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
                         isActive ? activeIcon : icon,
@@ -287,7 +288,7 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
 
   Widget _buildFooter(BuildContext context, ThemeData theme) {
     return Container(
-      padding: EdgeInsets.all(_isCollapsed ? 8 : 16),
+      padding: EdgeInsets.all(_isCollapsed ? 4 : 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
