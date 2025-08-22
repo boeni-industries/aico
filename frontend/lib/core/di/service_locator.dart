@@ -1,6 +1,5 @@
 import 'package:get_it/get_it.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
-import 'package:path_provider/path_provider.dart';
 import '../services/api_client.dart';
 import '../services/local_storage.dart';
 import '../utils/aico_paths.dart';

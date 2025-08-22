@@ -1,11 +1,19 @@
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:meta/meta.dart';
 import 'package:yaml/yaml.dart';
 import 'package:path/path.dart' as path;
 
 /// Unified path resolver that reads from AICO's core.yaml configuration
 /// Provides consistent cross-platform path resolution for frontend persistence
 class AICOPaths {
+  /// TESTING ONLY: Expose internal state for test setup/teardown
+  @visibleForTesting
+  static void setTestConfig({required String baseDataDir, required Map<String, dynamic> config}) {
+    _baseDataDir = baseDataDir;
+    _config = config;
+  }
+
   static Map<String, dynamic>? _config;
   static String? _baseDataDir;
 
