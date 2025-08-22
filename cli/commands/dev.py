@@ -393,19 +393,17 @@ def protoc(
         console.print("❌ [red]Could not find venv site-packages with protobuf. Ensure your venv is activated and protobuf is installed.[/red]")
         raise typer.Exit(1)
     
-    # Build the protoc command from documentation
-    proto_files = [
-        "proto/aico_core_api_gateway.proto",
-        "proto/aico_core_common.proto", 
-        "proto/aico_core_envelope.proto",
-        "proto/aico_core_logging.proto",
-        "proto/aico_core_plugin_system.proto",
-        "proto/aico_core_update_system.proto",
-        "proto/aico_emotion.proto",
-        "proto/aico_integration.proto",
-        "proto/aico_personality.proto",
-        "proto/aico_conversation.proto"
-    ]
+    # Automatically discover all .proto files in the proto directory
+    proto_files = []
+    for proto_file in proto_dir.glob("*.proto"):
+        proto_files.append(f"proto/{proto_file.name}")
+    
+    # Sort for consistent output
+    proto_files.sort()
+    
+    if not proto_files:
+        console.print("❌ [red]No .proto files found in proto/ directory[/red]")
+        raise typer.Exit(1)
     
     cmd = [
         "protoc",
