@@ -115,6 +115,7 @@ class AicoThemeDataFactory {
   }) {
     return ThemeData(
       useMaterial3: true,
+      brightness: colorScheme.brightness, // Explicitly set brightness
       colorScheme: colorScheme,
       
       // Typography following AICO design principles

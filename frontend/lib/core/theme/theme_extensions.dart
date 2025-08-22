@@ -38,8 +38,8 @@ extension AicoThemeExtensions on BuildContext {
   /// Get elevation values
   AicoElevation get elevation => const AicoElevation();
   
-  /// Get breakpoints for responsive design
-  AicoBreakpoints get breakpoints => const AicoBreakpoints();
+  /// Get breakpoints helper
+  AicoBreakpoints get breakpoints => AicoBreakpoints.of(this);
   
   /// Get accessibility helpers
   AicoAccessibility get accessibility => AicoAccessibility.of(this);
@@ -180,6 +180,7 @@ class AicoAnimations {
   const AicoAnimations();
   
   Duration get fast => AicoDesignTokens.durationFast;
+  Duration get medium => AicoDesignTokens.durationNormal;
   Duration get normal => AicoDesignTokens.durationNormal;
   Duration get slow => AicoDesignTokens.durationSlow;
   Duration get buttonPress => AicoDesignTokens.durationButtonPress;
@@ -206,12 +207,28 @@ class AicoElevation {
 
 /// Breakpoints helper class
 class AicoBreakpoints {
-  const AicoBreakpoints();
+  final BuildContext _context;
+  
+  const AicoBreakpoints._(this._context);
+  
+  factory AicoBreakpoints.of(BuildContext context) {
+    return AicoBreakpoints._(context);
+  }
   
   double get mobile => AicoDesignTokens.breakpointMobile;
   double get tablet => AicoDesignTokens.breakpointTablet;
   double get desktop => AicoDesignTokens.breakpointDesktop;
+  double get largeDesktop => AicoDesignTokens.breakpointLargeDesktop;
   double get wide => AicoDesignTokens.breakpointWide;
+  
+  // Dynamic breakpoint detection using MediaQuery
+  double get _screenWidth => MediaQuery.of(_context).size.width;
+  
+  bool get isMobile => _screenWidth < mobile;
+  bool get isTablet => _screenWidth >= mobile && _screenWidth < desktop;
+  bool get isDesktop => _screenWidth >= desktop;
+  bool get isLargeDesktop => _screenWidth >= largeDesktop;
+  bool get isWide => _screenWidth >= wide;
 }
 
 /// Accessibility helper class
@@ -231,12 +248,19 @@ class AicoAccessibility {
   
   /// Check if user prefers reduced motion
   bool get prefersReducedMotion => _mediaQuery.disableAnimations;
+  bool get isReduceMotionEnabled => _mediaQuery.disableAnimations;
   
   /// Get text scale factor
   double get textScaleFactor => _mediaQuery.textScaleFactor;
   
   /// Check if text is scaled up significantly
   bool get isLargeText => textScaleFactor > 1.3;
+  
+  /// Check if high contrast is enabled
+  bool get isHighContrastEnabled => _context.isHighContrast;
+  
+  /// Get minimum touch target size
+  double get minTouchTargetSize => AicoDesignTokens.minTouchTarget;
   
   /// Get accessible color contrast ratio
   double get contrastRatio => _context.isHighContrast ? 7.0 : 4.5;

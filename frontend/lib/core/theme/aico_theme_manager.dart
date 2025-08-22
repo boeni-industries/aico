@@ -13,6 +13,7 @@ import '../../features/settings/models/settings_state.dart';
 class AicoThemeManager implements ThemeManager {
   final SettingsBloc _settingsBloc;
   final StreamController<ThemeMode> _themeController = StreamController<ThemeMode>.broadcast();
+  StreamSubscription<SettingsState>? _settingsSubscription;
   
   ThemeMode _currentMode = ThemeMode.system;
   bool _isHighContrast = false;
@@ -20,6 +21,7 @@ class AicoThemeManager implements ThemeManager {
   ThemeData? _cachedDarkTheme;
   ThemeData? _cachedHighContrastLightTheme;
   ThemeData? _cachedHighContrastDarkTheme;
+  bool _disposed = false;
 
   AicoThemeManager({required SettingsBloc settingsBloc}) : _settingsBloc = settingsBloc {
     _initializeFromSettings();
@@ -82,10 +84,12 @@ class AicoThemeManager implements ThemeManager {
     final brightness = currentBrightness;
     if (_isHighContrast) {
       return brightness == Brightness.light 
-          ? generateHighContrastLightTheme() 
+          ? generateHighContrastLightTheme()
           : generateHighContrastDarkTheme();
     }
-    return brightness == Brightness.light ? generateLightTheme() : generateDarkTheme();
+    return brightness == Brightness.light 
+        ? generateLightTheme()
+        : generateDarkTheme();
   }
 
   @override
@@ -165,7 +169,9 @@ class AicoThemeManager implements ThemeManager {
 
   /// Listen to settings changes and update theme accordingly
   void _listenToSettingsChanges() {
-    _settingsBloc.stream.listen((state) {
+    _settingsSubscription = _settingsBloc.stream.listen((state) {
+      if (_disposed) return;
+      
       if (state is SettingsLoaded) {
         bool hasChanges = false;
         
@@ -184,9 +190,11 @@ class AicoThemeManager implements ThemeManager {
           hasChanges = true;
         }
         
-        if (hasChanges) {
+        if (hasChanges && !_disposed) {
           _updateSystemUIOverlay();
-          _themeController.add(_currentMode);
+          if (!_themeController.isClosed) {
+            _themeController.add(_currentMode);
+          }
         }
       }
     });
@@ -247,6 +255,11 @@ class AicoThemeManager implements ThemeManager {
 
   /// Dispose resources
   void dispose() {
-    _themeController.close();
+    _disposed = true;
+    _settingsSubscription?.cancel();
+    _settingsSubscription = null;
+    if (!_themeController.isClosed) {
+      _themeController.close();
+    }
   }
 }

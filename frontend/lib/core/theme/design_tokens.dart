@@ -114,10 +114,14 @@ class AicoDesignTokens {
 
   /// Animation durations
   static const Duration durationFast = Duration(milliseconds: 150);
+  static const Duration durationMedium = Duration(milliseconds: 250);
   static const Duration durationNormal = Duration(milliseconds: 250);
   static const Duration durationSlow = Duration(milliseconds: 400);
 
   /// Animation curves
+  static const Curve curveEaseIn = Curves.easeIn;
+  static const Curve curveEaseOut = Curves.easeOut;
+  static const Curve curveEaseInOut = Curves.easeInOut;
   static const Curve easeInOut = Curves.easeInOut;
   static const Curve easeOut = Curves.easeOut;
   static const Curve easeIn = Curves.easeIn;
@@ -150,6 +154,7 @@ class AicoDesignTokens {
   static const double breakpointMobile = 600.0;
   static const double breakpointTablet = 900.0;
   static const double breakpointDesktop = 1200.0;
+  static const double breakpointLargeDesktop = 1600.0;
   static const double breakpointWide = 1600.0;
 
   /// Container max widths
