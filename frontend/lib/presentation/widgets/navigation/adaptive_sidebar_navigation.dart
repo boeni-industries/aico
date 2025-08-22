@@ -18,49 +18,105 @@ class AdaptiveSidebarNavigation extends StatefulWidget {
   State<AdaptiveSidebarNavigation> createState() => _AdaptiveSidebarNavigationState();
 }
 
-class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
+class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation>
+    with TickerProviderStateMixin {
   late bool _isCollapsed;
+  late AnimationController _animationController;
+  late Animation<double> _widthAnimation;
 
-  @override
   void initState() {
     super.initState();
     _isCollapsed = widget.isCollapsed;
+    
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    
+    _widthAnimation = Tween<double>(
+      begin: _isCollapsed ? 80.0 : 280.0,
+      end: _isCollapsed ? 80.0 : 280.0,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+    
+    // Start with animation at the end position
+    _animationController.value = 1.0;
+  }
+
+  void _toggleCollapse() async {
+    final currentWidth = _isCollapsed ? 80.0 : 280.0;
+    final targetWidth = _isCollapsed ? 280.0 : 80.0;
+    
+    _widthAnimation = Tween<double>(
+      begin: currentWidth,
+      end: targetWidth,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+    
+    // Start the width animation
+    _animationController.forward(from: 0.0);
+    
+    // For collapsing (280 -> 80), delay content change to prevent popping
+    // For expanding (80 -> 280), change content immediately for smoother appearance
+    final delayDuration = _isCollapsed ? 0 : 180;
+    
+    if (delayDuration > 0) {
+      await Future.delayed(Duration(milliseconds: delayDuration));
+    }
+    
+    if (mounted) {
+      setState(() {
+        _isCollapsed = !_isCollapsed;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final accentColor = const Color(0xFFB8A1EA); // Soft purple accent
-    final sidebarWidth = _isCollapsed ? 80.0 : 280.0;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-      width: sidebarWidth,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          right: BorderSide(
-            color: theme.dividerColor.withOpacity(0.1),
-            width: 1,
-          ),
-        ),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return Column(
-            children: [
-              _buildHeader(context, theme, accentColor),
-              _buildAvatarSection(context, theme, accentColor),
-              const SizedBox(height: 24),
-              Expanded(
-                child: _buildNavigationItems(context, theme, accentColor),
+    return AnimatedBuilder(
+      animation: _widthAnimation,
+      builder: (context, child) {
+        return Container(
+          width: _widthAnimation.value,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            border: Border(
+              right: BorderSide(
+                color: theme.dividerColor.withOpacity(0.1),
+                width: 1,
               ),
-              _buildFooter(context, theme),
-            ],
-          );
-        },
-      ),
+            ),
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return Column(
+                children: [
+                  _buildHeader(context, theme, accentColor),
+                  _buildAvatarSection(context, theme, accentColor),
+                  const SizedBox(height: 24),
+                  Expanded(
+                    child: _buildNavigationItems(context, theme, accentColor),
+                  ),
+                  _buildFooter(context, theme),
+                ],
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -84,11 +140,7 @@ class _AdaptiveSidebarNavigationState extends State<AdaptiveSidebarNavigation> {
             ),
           ],
           IconButton(
-            onPressed: () {
-              setState(() {
-                _isCollapsed = !_isCollapsed;
-              });
-            },
+            onPressed: _toggleCollapse,
             icon: Icon(
               _isCollapsed ? Icons.menu : Icons.menu_open,
               color: theme.colorScheme.onSurface.withOpacity(0.7),
