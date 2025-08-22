@@ -42,6 +42,8 @@ ios/Flutter/Generated.xcconfig
 ios/Flutter/ephemeral/
 macos/Flutter/ephemeral/
 pubspec.lock
+# Allow lib/ directory for Flutter source code
+!frontend/lib/
 
 # Node/JS/TS
 node_modules/
