@@ -193,6 +193,7 @@ nav:
     - State Management: frontend/state_management.md
     - Navigation: frontend/navigation.md
     - User Flows: frontend/user_flows.md
+    - Networking: frontend/networking.md
     - API Integration: frontend/api_integration.md
     - Component Library: frontend/component_library.md
     - Performance: frontend/performance_guidelines.md

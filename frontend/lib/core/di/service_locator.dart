@@ -9,6 +9,7 @@ import '../../features/connection/bloc/connection_bloc.dart';
 import '../../features/settings/bloc/settings_bloc.dart';
 import '../../features/connection/repositories/connection_repository.dart';
 import '../../features/settings/repositories/settings_repository.dart';
+import '../../networking/network_module.dart';
 import 'package:http/http.dart' as http;
 
 /// Centralized dependency injection setup for the AICO app
@@ -28,6 +29,9 @@ class ServiceLocator {
       // Initialize AICO paths
       await AICOPaths.initialize();
 
+      // Register networking module
+      NetworkModule.registerDependencies();
+
       // Register core services
       await _registerCoreServices();
 
@@ -36,6 +40,9 @@ class ServiceLocator {
 
       // Register BLoCs
       await _registerBlocs();
+
+      // Initialize networking
+      await NetworkModule.initialize();
 
       _isInitialized = true;
     } catch (e) {
@@ -133,6 +140,9 @@ class ServiceLocator {
 
   /// Dispose all services
   static Future<void> dispose() async {
+    // Dispose networking module
+    NetworkModule.dispose();
+
     // Close HTTP client
     if (_getIt.isRegistered<http.Client>()) {
       _getIt<http.Client>().close();
