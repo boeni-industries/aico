@@ -81,8 +81,8 @@ class ServiceLocator {
     // User repository
     _getIt.registerLazySingleton<UserRepository>(
       () => ApiUserRepository(
-        _getIt<AicoApiClient>(),
-        _getIt<OfflineQueue>(),
+        apiClient: _getIt<AicoApiClient>(),
+        tokenManager: _getIt<TokenManager>(),
       ),
     );
 

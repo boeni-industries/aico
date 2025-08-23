@@ -1,8 +1,7 @@
 import 'package:aico_frontend/networking/clients/api_client.dart';
+import 'package:aico_frontend/networking/clients/dio_client.dart';
 import 'package:aico_frontend/networking/clients/websocket_client.dart';
-import 'package:aico_frontend/networking/interceptors/auth_interceptor.dart';
-import 'package:aico_frontend/networking/interceptors/logging_interceptor.dart';
-import 'package:aico_frontend/networking/interceptors/retry_interceptor.dart';
+import 'package:aico_frontend/networking/interceptors/token_refresh_interceptor.dart';
 import 'package:aico_frontend/networking/repositories/admin_repository.dart';
 import 'package:aico_frontend/networking/repositories/health_repository.dart';
 import 'package:aico_frontend/networking/repositories/user_repository.dart';
@@ -20,21 +19,11 @@ class NetworkModule {
     getIt.registerLazySingleton<TokenManager>(() => TokenManager());
     getIt.registerLazySingleton<OfflineQueue>(() => OfflineQueue());
     
-    // HTTP client with interceptors
+    // Basic HTTP client without token refresh (to avoid circular dependency)
     getIt.registerLazySingleton<Dio>(() {
-      final dio = Dio();
-      
-      // Add interceptors in order
-      dio.interceptors.add(LoggingInterceptor());
-      dio.interceptors.add(AuthInterceptor(getIt<TokenManager>()));
-      dio.interceptors.add(RetryInterceptor());
-      
-      // Configure default options
-      dio.options.connectTimeout = const Duration(seconds: 10);
-      dio.options.receiveTimeout = const Duration(seconds: 30);
-      dio.options.sendTimeout = const Duration(seconds: 30);
-      
-      return dio;
+      return DioClient.createDio(
+        baseUrl: "http://localhost:8771/api/v1",
+      );
     });
 
     // API clients
@@ -53,8 +42,8 @@ class NetworkModule {
     // Repositories
     getIt.registerLazySingleton<UserRepository>(
       () => ApiUserRepository(
-        getIt<AicoApiClient>(),
-        getIt<OfflineQueue>(),
+        apiClient: getIt<AicoApiClient>(),
+        tokenManager: getIt<TokenManager>(),
       ),
     );
     
@@ -75,6 +64,23 @@ class NetworkModule {
     
     // Initialize connection manager
     await getIt<ConnectionManager>().initialize();
+    
+    // Add token refresh interceptor after all dependencies are available
+    _configureTokenRefreshInterceptor();
+  }
+
+  static void _configureTokenRefreshInterceptor() {
+    final getIt = GetIt.instance;
+    final dio = getIt<Dio>();
+    final tokenManager = getIt<TokenManager>();
+    final userRepository = getIt<UserRepository>() as ApiUserRepository;
+    
+    // Add token refresh interceptor
+    dio.interceptors.add(TokenRefreshInterceptor(
+      tokenManager: tokenManager,
+      userRepository: userRepository,
+      dio: dio,
+    ));
   }
 
   static void dispose() {

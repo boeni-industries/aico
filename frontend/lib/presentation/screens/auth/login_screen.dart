@@ -42,17 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final theme = Theme.of(context);
     final aicoTheme = theme.extension<AicoThemeExtension>()!;
 
-    return BlocConsumer<AuthBloc, AuthState>(
-      listener: (context, state) {
-        if (state is AuthFailure) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: aicoTheme.colors.error,
-            ),
-          );
-        }
-      },
+    return BlocBuilder<AuthBloc, AuthState>(
       builder: (context, state) {
         return Padding(
           padding: const EdgeInsets.all(24.0),
@@ -150,38 +140,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       isLoading: state is AuthLoading,
                       child: const Text('Sign In'),
                     ),
-                    const SizedBox(height: 16),
-
-                    // Error Message
-                    if (state is AuthFailure)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: aicoTheme.colors.error.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: aicoTheme.colors.error.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              color: aicoTheme.colors.error,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                state.message,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: aicoTheme.colors.error,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
               ],
                 ),
               ),

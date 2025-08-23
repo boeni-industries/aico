@@ -1,7 +1,9 @@
-import 'package:aico_frontend/networking/clients/api_client.dart';
-import 'package:aico_frontend/networking/models/error_models.dart';
-import 'package:aico_frontend/networking/models/user_models.dart';
-import 'package:aico_frontend/networking/services/offline_queue.dart';
+import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
+import '../models/user_models.dart';
+import '../clients/api_client.dart';
+import '../services/token_manager.dart';
+import '../services/secure_credential_manager.dart';
 
 abstract class UserRepository {
   Future<List<User>> getUsers({String? userType, int limit = 100});
@@ -14,9 +16,15 @@ abstract class UserRepository {
 
 class ApiUserRepository implements UserRepository {
   final AicoApiClient _apiClient;
-  final OfflineQueue _offlineQueue;
+  final TokenManager _tokenManager;
+  final SecureCredentialManager _credentialManager;
 
-  ApiUserRepository(this._apiClient, this._offlineQueue);
+  ApiUserRepository({
+    required AicoApiClient apiClient,
+    required TokenManager tokenManager,
+  })  : _apiClient = apiClient,
+        _tokenManager = tokenManager,
+        _credentialManager = SecureCredentialManager();
 
   @override
   Future<List<User>> getUsers({String? userType, int limit = 100}) async {
@@ -27,12 +35,10 @@ class ApiUserRepository implements UserRepository {
       );
       return response.users;
     } catch (e) {
-      if (e is NetworkException) {
-        // For read operations, we could return cached data if available
-        // For now, just rethrow the error
-        rethrow;
+      if (e is DioException) {
+        throw Exception('Network error: ${e.message}');
       }
-      throw ConnectionException('Failed to get users: $e');
+      throw Exception('Failed to fetch users: $e');
     }
   }
 
@@ -41,27 +47,10 @@ class ApiUserRepository implements UserRepository {
     try {
       return await _apiClient.createUser(request);
     } catch (e) {
-      if (e is NetworkException) {
-        // Queue for offline execution and return optimistic result
-        final operation = CreateUserOperation(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          data: request.toJson(),
-          createdAt: DateTime.now(),
-        );
-        _offlineQueue.add(operation);
-        
-        // Return optimistic user object
-        return User(
-          uuid: 'pending-${operation.id}',
-          fullName: request.fullName,
-          nickname: request.nickname,
-          userType: request.userType,
-          pin: request.pin,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        );
+      if (e is DioException) {
+        throw Exception('Network error: ${e.message}');
       }
-      throw ConnectionException('Failed to create user: $e');
+      throw Exception('Failed to create user: $e');
     }
   }
 
@@ -70,10 +59,10 @@ class ApiUserRepository implements UserRepository {
     try {
       return await _apiClient.getUser(uuid);
     } catch (e) {
-      if (e is NetworkException) {
-        rethrow;
+      if (e is DioException) {
+        throw Exception('Network error: ${e.message}');
       }
-      throw ConnectionException('Failed to get user: $e');
+      throw Exception('Failed to fetch user: $e');
     }
   }
 
@@ -82,11 +71,10 @@ class ApiUserRepository implements UserRepository {
     try {
       return await _apiClient.updateUser(uuid, request);
     } catch (e) {
-      if (e is NetworkException) {
-        // TODO: Implement offline update operation
-        rethrow;
+      if (e is DioException) {
+        throw Exception('Network error: ${e.message}');
       }
-      throw ConnectionException('Failed to update user: $e');
+      throw Exception('Failed to update user: $e');
     }
   }
 
@@ -95,24 +83,151 @@ class ApiUserRepository implements UserRepository {
     try {
       await _apiClient.deleteUser(uuid);
     } catch (e) {
-      if (e is NetworkException) {
-        // TODO: Implement offline delete operation
-        rethrow;
+      if (e is DioException) {
+        throw Exception('Network error: ${e.message}');
       }
-      throw ConnectionException('Failed to delete user: $e');
+      throw Exception('Failed to delete user: $e');
+    }
+  }
+
+  /// Attempts auto-login using stored credentials
+  Future<AuthenticationResponse?> attemptAutoLogin() async {
+    try {
+      // First, check if we have a valid token
+      final validToken = await _tokenManager.getValidToken();
+      if (validToken != null) {
+        debugPrint('UserRepository: Found valid token, attempting token-based auto-login');
+        // TODO: Get user info from token or make a lightweight API call
+        // For now, we need credentials for full user data
+      }
+      
+      // Try to re-authenticate with stored credentials
+      final credentials = await _credentialManager.getStoredCredentials();
+      if (credentials != null) {
+        final userUuid = credentials['userUuid'];
+        final pin = credentials['pin'];
+        
+        if (userUuid != null && pin != null) {
+          debugPrint('UserRepository: Auto-login using stored credentials for user: $userUuid');
+          
+          final request = AuthenticateRequest(
+            uuid: userUuid,
+            pin: pin,
+          );
+          
+          final response = await authenticate(request);
+          
+          // Store the new token with proper expiry
+          if (response.token != null) {
+            final expiryTime = DateTime.now().add(const Duration(minutes: 15));
+            await _tokenManager.storeTokens(
+              accessToken: response.token!,
+              expiresAt: expiryTime,
+            );
+          }
+          
+          return response;
+        }
+      }
+
+      return null; // No stored credentials available
+    } catch (e) {
+      debugPrint('UserRepository: Auto-login failed: $e');
+      // Clear invalid credentials on authentication failure
+      await clearStoredCredentials();
+      return null;
+    }
+  }
+
+  /// Stores credentials securely after successful authentication
+  Future<void> storeCredentials(String userUuid, String pin, String token) async {
+    await _credentialManager.storeCredentials(userUuid, pin);
+    final expiryTime = DateTime.now().add(const Duration(minutes: 15));
+    await _tokenManager.storeTokens(
+      accessToken: token,
+      expiresAt: expiryTime,
+    );
+  }
+
+  /// Clears stored credentials and tokens
+  Future<void> clearStoredCredentials() async {
+    await _credentialManager.clearCredentials();
+    await _tokenManager.clearTokens();
+  }
+
+  /// Refreshes the current token using stored credentials
+  Future<String?> refreshToken() async {
+    try {
+      final credentials = await _credentialManager.getStoredCredentials();
+      if (credentials == null) return null;
+
+      final userUuid = credentials['userUuid'];
+      final pin = credentials['pin'];
+      
+      if (userUuid != null && pin != null) {
+        final request = AuthenticateRequest(
+          uuid: userUuid,
+          pin: pin,
+        );
+        
+        final response = await authenticate(request);
+        if (response.token != null) {
+          final expiryTime = DateTime.now().add(const Duration(minutes: 15));
+          await _tokenManager.storeTokens(
+            accessToken: response.token!,
+            expiresAt: expiryTime,
+          );
+          return response.token;
+        }
+      }
+      
+      return null;
+    } catch (e) {
+      await clearStoredCredentials();
+      return null;
     }
   }
 
   @override
   Future<AuthenticationResponse> authenticate(AuthenticateRequest request) async {
+    debugPrint('UserRepository: Starting authentication for user UUID: ${request.uuid}');
+    debugPrint('UserRepository: Authentication request - PIN provided: ${request.pin.isNotEmpty}');
+    
     try {
-      return await _apiClient.authenticate(request);
-    } catch (e) {
-      if (e is NetworkException) {
-        // Authentication cannot be done offline
-        rethrow;
+      debugPrint('UserRepository: Calling API client authenticate method');
+      final response = await _apiClient.authenticate(request);
+      
+      debugPrint('UserRepository: Authentication API call successful');
+      debugPrint('UserRepository: Response success: ${response.success}');
+      debugPrint('UserRepository: Response error: ${response.error ?? "none"}');
+      debugPrint('UserRepository: JWT token provided: ${response.token?.isNotEmpty ?? false}');
+      debugPrint('UserRepository: User data provided: ${response.user != null}');
+      debugPrint('UserRepository: Last login: ${response.lastLogin?.toString() ?? "not provided"}');
+      
+      if (response.user != null) {
+        debugPrint('UserRepository: Authenticated user - UUID: ${response.user!.uuid}, Name: ${response.user!.fullName}');
       }
-      throw ConnectionException('Failed to authenticate: $e');
+      
+      return response;
+    } catch (e) {
+      debugPrint('UserRepository: Authentication failed with exception: $e');
+      debugPrint('UserRepository: Exception type: ${e.runtimeType}');
+      
+      if (e is DioException) {
+        // Handle specific HTTP status codes
+        if (e.response?.statusCode == 401) {
+          throw Exception('Invalid credentials');
+        } else if (e.response?.statusCode == 403) {
+          throw Exception('Access denied');
+        } else if (e.response?.statusCode == 429) {
+          throw Exception('Too many attempts');
+        } else if (e.response?.statusCode == 500) {
+          throw Exception('Server error');
+        } else {
+          throw Exception('Network error: ${e.message}');
+        }
+      }
+      throw Exception('Authentication failed: $e');
     }
   }
 }
