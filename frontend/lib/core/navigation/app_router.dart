@@ -1,12 +1,11 @@
 import 'package:aico_frontend/core/constants/route_names.dart';
 import 'package:aico_frontend/presentation/screens/home/home_screen.dart';
-import 'package:aico_frontend/presentation/screens/more/admin/admin_screen.dart';
-import 'package:aico_frontend/presentation/screens/more/admin/logs_screen.dart';
-import 'package:aico_frontend/presentation/screens/more/memory/memory_screen.dart';
-import 'package:aico_frontend/presentation/screens/more/memory/memory_search_screen.dart';
-import 'package:aico_frontend/presentation/screens/more/more_screen.dart';
-import 'package:aico_frontend/presentation/screens/more/settings/privacy_settings_screen.dart';
-import 'package:aico_frontend/presentation/screens/more/settings/settings_screen.dart';
+import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
+import 'package:aico_frontend/presentation/screens/admin/logs_screen.dart';
+import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
+import 'package:aico_frontend/presentation/screens/memory/memory_search_screen.dart';
+import 'package:aico_frontend/presentation/screens/settings/privacy_settings_screen.dart';
+import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
 import 'package:aico_frontend/presentation/widgets/navigation/main_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -30,55 +29,45 @@ class AppRouter {
           ),
 
 
-          // More - Progressive Disclosure Hub
+          // Direct routes to main sections
           GoRoute(
-            path: RouteNames.more,
-            name: 'more',
-            builder: (context, state) => const MoreScreen(),
+            path: '/memory',
+            name: 'memory',
+            builder: (context, state) => const MemoryScreen(),
             routes: [
-              // Memory & Timeline
               GoRoute(
-                path: '/memory',
-                name: 'memory',
-                builder: (context, state) => const MemoryScreen(),
-                routes: [
-                  GoRoute(
-                    path: '/search',
-                    name: 'memory-search',
-                    builder: (context, state) {
-                      final query = state.uri.queryParameters['q'];
-                      return MemorySearchScreen(initialQuery: query);
-                    },
-                  ),
-                ],
+                path: '/search',
+                name: 'memory-search',
+                builder: (context, state) {
+                  final query = state.uri.queryParameters['q'];
+                  return MemorySearchScreen(initialQuery: query);
+                },
               ),
+            ],
+          ),
 
-              // Settings
+          GoRoute(
+            path: '/settings',
+            name: 'settings',
+            builder: (context, state) => const SettingsScreen(),
+            routes: [
               GoRoute(
-                path: '/settings',
-                name: 'settings',
-                builder: (context, state) => const SettingsScreen(),
-                routes: [
-                  GoRoute(
-                    path: '/privacy',
-                    name: 'privacy-settings',
-                    builder: (context, state) => const PrivacySettingsScreen(),
-                  ),
-                ],
+                path: '/privacy',
+                name: 'privacy-settings',
+                builder: (context, state) => const PrivacySettingsScreen(),
               ),
+            ],
+          ),
 
-              // Admin (Developer/Advanced)
+          GoRoute(
+            path: '/admin',
+            name: 'admin',
+            builder: (context, state) => const AdminScreen(),
+            routes: [
               GoRoute(
-                path: '/admin',
-                name: 'admin',
-                builder: (context, state) => const AdminScreen(),
-                routes: [
-                  GoRoute(
-                    path: '/logs',
-                    name: 'admin-logs',
-                    builder: (context, state) => const LogsScreen(),
-                  ),
-                ],
+                path: '/logs',
+                name: 'admin-logs',
+                builder: (context, state) => const LogsScreen(),
               ),
             ],
           ),
@@ -121,9 +110,9 @@ class AppRouter {
     redirect: (context, state) {
       // Add authentication checks here if needed
       // For admin routes, could check permissions
-      if (state.matchedLocation.startsWith('/more/admin')) {
+      if (state.matchedLocation.startsWith('/admin')) {
         // TODO: Add admin authentication check
-        // if (!isAdminAuthenticated) return '/more/settings';
+        // if (!isAdminAuthenticated) return '/settings';
       }
       
       return null; // No redirect needed

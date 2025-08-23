@@ -58,13 +58,14 @@ class _LoginScreenState extends State<LoginScreen> {
           padding: const EdgeInsets.all(24.0),
           child: Form(
             key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
                     // Logo/Title
                     Icon(
-                      Icons.psychology_outlined,
+                      Icons.person,
                       size: 80,
                       color: aicoTheme.colors.primary,
                     ),
@@ -182,9 +183,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
               ],
+                ),
+              ),
             ),
-          ),
-        );
+          );
       },
     );
   }

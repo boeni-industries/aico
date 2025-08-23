@@ -19,7 +19,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _isRightDrawerOpen = false;
-  bool _isLeftDrawerOpen = false;
+  bool _isLeftDrawerExpanded = true; // true = expanded with text, false = collapsed to icons only
   ThemeManager? _themeManager;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _conversationController = ScrollController();
@@ -35,10 +35,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _themeManager = ServiceLocator.get<ThemeManager>();
-    // Listen to theme changes
+    // Listen to theme changes and rebuild UI
     _themeManager?.themeChanges.listen((_) {
       if (mounted) {
-        setState(() {});
+        setState(() {
+          print('Theme changed via stream listener');
+        });
       }
     });
   }
@@ -51,12 +53,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final isDesktop = screenWidth > 800;
     
     return Scaffold(
-      drawer: _buildLeftDrawer(context, theme, accentColor),
-      body: Row(
+      body: Stack(
         children: [
-          // Left drawer for navigation (desktop)
-          if (_isLeftDrawerOpen && isDesktop)
-            _buildLeftDrawer(context, theme, accentColor),
+          Row(
+            children: [
+              // Left drawer for navigation - always visible on desktop, toggles between expanded/collapsed
+              if (isDesktop)
+                _buildLeftDrawer(context, theme, accentColor),
           
           // Main conversation area
           Expanded(
@@ -79,106 +82,117 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           
-          // Right drawer for thoughts and memory
-          if (_isRightDrawerOpen && isDesktop)
-            _buildRightDrawer(context, theme, accentColor),
+              // Right drawer for thoughts and memory
+              if (_isRightDrawerOpen && isDesktop)
+                _buildRightDrawer(context, theme, accentColor),
+            ],
+          ),
         ],
       ),
-      // Theme/contrast toolbar and drawer toggle
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
+      // Theme/contrast toolbar and drawer toggles
+      floatingActionButton: Stack(
         children: [
-          // Minimal theme toolbar
-          Container(
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: theme.dividerColor.withValues(alpha: 0.2),
-              ),
-            ),
-            child: Row(
+          
+          // Right side controls (theme/logout buttons)
+          Positioned(
+            right: 16,
+            top: 16,
+            child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                IconButton(
-                  onPressed: () async {
-                    await _themeManager?.toggleTheme();
-                  },
-                  icon: Icon(_themeManager?.currentBrightness == Brightness.light ? Icons.wb_sunny : Icons.nightlight_round),
-                  tooltip: 'Toggle theme',
-                  style: IconButton.styleFrom(
-                    foregroundColor: theme.colorScheme.onSurface,
+                // Minimal theme toolbar
+                Container(
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: theme.dividerColor.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: () async {
+                          print('Theme toggle pressed');
+                          await _themeManager?.toggleTheme();
+                          if (mounted) {
+                            setState(() {
+                              print('Theme state updated');
+                            });
+                          }
+                        },
+                        icon: Icon(_themeManager?.currentBrightness == Brightness.light ? Icons.wb_sunny : Icons.nightlight_round),
+                        tooltip: 'Toggle theme',
+                        style: IconButton.styleFrom(
+                          foregroundColor: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () async {
+                          print('Contrast toggle pressed');
+                          await _themeManager?.setHighContrastEnabled(!(_themeManager?.isHighContrastEnabled ?? false));
+                          if (mounted) {
+                            setState(() {
+                              print('Contrast state updated');
+                            });
+                          }
+                        },
+                        icon: Icon(
+                          Icons.contrast,
+                          color: (_themeManager?.isHighContrastEnabled ?? false) ? Colors.orange : theme.colorScheme.onSurface,
+                        ),
+                        tooltip: 'Toggle high contrast',
+                        style: IconButton.styleFrom(
+                          foregroundColor: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          context.read<AuthBloc>().add(AuthLogoutRequested());
+                        },
+                        icon: const Icon(Icons.logout),
+                        tooltip: 'Logout',
+                        style: IconButton.styleFrom(
+                          foregroundColor: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                IconButton(
-                  onPressed: () async {
-                    await _themeManager?.setHighContrastEnabled(!(_themeManager?.isHighContrastEnabled ?? false));
-                  },
-                  icon: Icon(
-                    Icons.contrast,
-                    color: (_themeManager?.isHighContrastEnabled ?? false) ? Colors.orange : theme.colorScheme.onSurface,
-                  ),
-                  tooltip: 'Toggle high contrast',
-                  style: IconButton.styleFrom(
-                    foregroundColor: theme.colorScheme.onSurface,
-                  ),
-                ),
-                IconButton(
-                  onPressed: () {
-                    context.read<AuthBloc>().add(AuthLogoutRequested());
-                  },
-                  icon: const Icon(Icons.logout),
-                  tooltip: 'Logout',
-                  style: IconButton.styleFrom(
-                    foregroundColor: theme.colorScheme.onSurface,
-                  ),
-                ),
+                
+                const SizedBox(height: 8),
+                
               ],
             ),
           ),
           
-          const SizedBox(height: 8),
-          
-          // Left drawer toggle (on left side)
+          // Right drawer toggle - always positioned vertically centered
           if (isDesktop)
             Positioned(
-              left: 16,
+              right: _isRightDrawerOpen ? 300 : 16, // Move with drawer state
+              top: MediaQuery.of(context).size.height / 2 - 24, // Always vertically centered
               child: Container(
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surface,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: _isRightDrawerOpen 
+                    ? const BorderRadius.only(
+                        topLeft: Radius.circular(12),
+                        bottomLeft: Radius.circular(12),
+                      )
+                    : BorderRadius.circular(20),
                   border: Border.all(
                     color: theme.dividerColor.withValues(alpha: 0.2),
                   ),
                 ),
                 child: IconButton(
-                  onPressed: () => setState(() => _isLeftDrawerOpen = !_isLeftDrawerOpen),
-                  icon: Icon(_isLeftDrawerOpen ? Icons.menu_open : Icons.menu),
-                  tooltip: _isLeftDrawerOpen ? 'Hide menu' : 'Show menu',
+                  onPressed: () => setState(() => _isRightDrawerOpen = !_isRightDrawerOpen),
+                  icon: Icon(_isRightDrawerOpen ? Icons.chevron_right : Icons.chevron_left),
+                  tooltip: _isRightDrawerOpen ? 'Hide AICO\'s thoughts' : 'Show AICO\'s thoughts',
                   style: IconButton.styleFrom(
                     foregroundColor: theme.colorScheme.onSurface,
                   ),
-                ),
-              ),
-            ),
-          
-          // Right drawer toggle (on right side)
-          if (isDesktop)
-            Container(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: theme.dividerColor.withValues(alpha: 0.2),
-                ),
-              ),
-              child: IconButton(
-                onPressed: () => setState(() => _isRightDrawerOpen = !_isRightDrawerOpen),
-                icon: Icon(_isRightDrawerOpen ? Icons.chevron_right : Icons.chevron_left),
-                tooltip: _isRightDrawerOpen ? 'Hide AICO\'s thoughts' : 'Show AICO\'s thoughts',
-                style: IconButton.styleFrom(
-                  foregroundColor: theme.colorScheme.onSurface,
                 ),
               ),
             ),
@@ -596,7 +610,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildLeftDrawer(BuildContext context, ThemeData theme, Color accentColor) {
     return Container(
-      width: 280,
+      width: _isLeftDrawerExpanded ? 280 : 72,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(
@@ -606,37 +620,16 @@ class _HomeScreenState extends State<HomeScreen> {
       child: SafeArea(
         child: Column(
           children: [
-            // Drawer header
-            Container(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Icon(Icons.psychology_outlined, color: accentColor),
-                  const SizedBox(width: 12),
-                  Text(
-                    'AICO',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: accentColor,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (MediaQuery.of(context).size.width <= 800)
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close, size: 20),
-                    ),
-                ],
-              ),
-            ),
-            
-            // Navigation items
+            // Navigation items with toggle as first item
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
                 children: [
+                  // Toggle button as first nav item
+                  _buildToggleItem(context, theme),
+                  const SizedBox(height: 8),
                   _buildNavItem(context, theme, accentColor, Icons.home, 'Home', true, () => {}),
-                  const Divider(),
+                  const SizedBox(height: 8),
                   _buildNavItem(context, theme, accentColor, Icons.auto_stories, 'Memory', false, () => _navigateToScreen(context, const MemoryScreen())),
                   _buildNavItem(context, theme, accentColor, Icons.admin_panel_settings, 'Admin', false, () => _navigateToScreen(context, const AdminScreen())),
                   _buildNavItem(context, theme, accentColor, Icons.settings, 'Settings', false, () => _navigateToScreen(context, const SettingsScreen())),
@@ -649,7 +642,80 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildToggleItem(BuildContext context, ThemeData theme) {
+    if (!_isLeftDrawerExpanded) {
+      // Collapsed mode - just the burger icon
+      return Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: Tooltip(
+          message: 'Expand menu',
+          child: InkWell(
+            onTap: () => setState(() => _isLeftDrawerExpanded = true),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.menu,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    
+    // Expanded mode - full width toggle
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      child: ListTile(
+        leading: Icon(
+          Icons.menu_open,
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+        ),
+        title: Text(
+          'Collapse',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        onTap: () => setState(() => _isLeftDrawerExpanded = false),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+    );
+  }
+
   Widget _buildNavItem(BuildContext context, ThemeData theme, Color accentColor, IconData icon, String title, bool isActive, VoidCallback onTap) {
+    if (!_isLeftDrawerExpanded) {
+      // Collapsed mode - icon only
+      return Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: Tooltip(
+          message: title,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: isActive ? accentColor.withValues(alpha: 0.1) : null,
+              ),
+              child: Icon(
+                icon,
+                color: isActive ? accentColor : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    
+    // Expanded mode - icon with text
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       child: ListTile(
