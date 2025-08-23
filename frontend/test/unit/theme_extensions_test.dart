@@ -1,14 +1,12 @@
 import 'dart:io';
 
 import 'package:aico_frontend/core/di/service_locator.dart';
-import 'package:aico_frontend/core/services/local_storage.dart';
 import 'package:aico_frontend/core/theme/design_tokens.dart';
 import 'package:aico_frontend/core/theme/theme_data_factory.dart';
 import 'package:aico_frontend/core/theme/theme_extensions.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
 import 'package:aico_frontend/core/utils/aico_paths.dart';
-import 'package:aico_frontend/features/settings/bloc/settings_bloc.dart';
-import 'package:aico_frontend/features/settings/repositories/settings_repository.dart';
+import 'package:aico_frontend/presentation/blocs/settings/settings_bloc.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
@@ -24,28 +22,28 @@ class MockThemeManager implements ThemeManager {
   ThemeMode get currentThemeMode => _currentMode;
   
   @override
-  bool get isHighContrastEnabled => _isHighContrast;
+  Brightness get currentBrightness => _currentMode == ThemeMode.dark ? Brightness.dark : Brightness.light;
   
   @override
   bool get isSystemThemeEnabled => _isSystemThemeEnabled;
   
   @override
-  Brightness get currentBrightness => _currentMode == ThemeMode.dark ? Brightness.dark : Brightness.light;
+  bool get isHighContrastEnabled => _isHighContrast;
+  
+  @override
+  ThemeData generateLightTheme() => AicoThemeDataFactory.generateLightTheme();
+  
+  @override
+  ThemeData generateDarkTheme() => AicoThemeDataFactory.generateDarkTheme();
+  
+  @override
+  ThemeData generateHighContrastLightTheme() => AicoThemeDataFactory.generateHighContrastLightTheme();
+  
+  @override
+  ThemeData generateHighContrastDarkTheme() => AicoThemeDataFactory.generateHighContrastDarkTheme();
   
   @override
   Stream<ThemeMode> get themeChanges => Stream.value(_currentMode);
-  
-  @override
-  ThemeData generateLightTheme() => ThemeData.light();
-  
-  @override
-  ThemeData generateDarkTheme() => ThemeData.dark();
-  
-  @override
-  ThemeData generateHighContrastLightTheme() => ThemeData.light();
-  
-  @override
-  ThemeData generateHighContrastDarkTheme() => ThemeData.dark();
   
   @override
   Future<void> setThemeMode(ThemeMode mode) async {
@@ -74,6 +72,7 @@ class MockThemeManager implements ThemeManager {
     _isSystemThemeEnabled = false;
   }
   
+  // Test helper methods
   void setHighContrast(bool enabled) {
     _isHighContrast = enabled;
   }
@@ -84,19 +83,7 @@ class MockThemeManager implements ThemeManager {
 }
 
 class MockSettingsBloc extends SettingsBloc {
-  MockSettingsBloc() : super(repository: MockSettingsRepository());
-}
-
-class MockSettingsRepository extends SettingsRepository {
-  MockSettingsRepository() : super(localStorage: MockLocalStorage());
-}
-
-class MockLocalStorage extends LocalStorage {
-  @override
-  Future<Map<String, dynamic>?> loadState(String key) async => null;
-  
-  @override
-  Future<void> saveState(String key, Map<String, dynamic> data) async {}
+  MockSettingsBloc() : super();
 }
 
 void main() {

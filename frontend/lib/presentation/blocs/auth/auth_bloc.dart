@@ -350,6 +350,8 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
           final message = json['message'] as String? ?? 'Unknown error';
           final errorCode = json['errorCode'] as String?;
           return AuthFailure(message: message, errorCode: errorCode);
+        default:
+          return null;
       }
     } catch (e) {
       // Return null to use initial state
@@ -371,6 +373,8 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
         };
       case AuthUnauthenticated:
         return {'type': 'unauthenticated'};
+      case AuthLoading:
+        return null;
       case AuthFailure:
         final failureState = state as AuthFailure;
         return {

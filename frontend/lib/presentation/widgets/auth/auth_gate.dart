@@ -37,7 +37,7 @@ class LoginOverlay extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: (messageColor ?? theme.colorScheme.primary).withOpacity(0.1),
+                  color: (messageColor ?? theme.colorScheme.primary).withValues(alpha: 0.1),
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(12),
                     topRight: Radius.circular(12),

@@ -1,7 +1,6 @@
 import 'package:aico_frontend/core/di/service_locator.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
 import 'package:aico_frontend/presentation/blocs/auth/auth_bloc.dart';
-import 'package:aico_frontend/presentation/blocs/settings/settings_bloc.dart';
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -50,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _themeManager?.themeChanges.listen((_) {
       if (mounted) {
         setState(() {
-          print('Theme changed via stream listener');
+          debugPrint('Theme changed via stream listener');
         });
       }
     });
@@ -115,9 +114,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       IconButton(
                         onPressed: () async {
-                          print('Theme toggle pressed');
+                          debugPrint('Theme toggle pressed');
                           await _themeManager?.toggleTheme();
-                          print('Theme toggled to: ${_themeManager?.currentThemeMode}');
+                          debugPrint('Theme toggled to: ${_themeManager?.currentThemeMode}');
                         },
                         icon: Icon(_themeManager?.currentBrightness == Brightness.light ? Icons.wb_sunny : Icons.nightlight_round),
                         tooltip: 'Toggle theme',
@@ -127,9 +126,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       IconButton(
                         onPressed: () async {
-                          print('Contrast toggle pressed');
+                          debugPrint('Contrast toggle pressed');
                           await _themeManager?.setHighContrastEnabled(!(_themeManager?.isHighContrastEnabled ?? false));
-                          print('Contrast toggled to: ${_themeManager?.isHighContrastEnabled}');
+                          debugPrint('Contrast toggled to: ${_themeManager?.isHighContrastEnabled}');
                         },
                         icon: Icon(
                           Icons.contrast,

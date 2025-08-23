@@ -4,8 +4,6 @@ import 'package:hydrated_bloc/hydrated_bloc.dart';
 import 'dart:io';
 import 'package:aico_frontend/core/theme/aico_theme_manager.dart';
 import 'package:aico_frontend/presentation/blocs/settings/settings_bloc.dart';
-import 'package:aico_frontend/features/settings/models/settings_state.dart';
-import 'package:aico_frontend/features/settings/repositories/settings_repository.dart';
 import 'package:aico_frontend/core/services/local_storage.dart';
 
 // Simple fake for testing without complex mocking
@@ -13,14 +11,16 @@ class FakeSettingsBloc extends SettingsBloc {
   FakeSettingsBloc() : super();
 }
 
-class FakeSettingsRepository extends SettingsRepository {
-  FakeSettingsRepository() : super(localStorage: FakeLocalStorage());
+class FakeSettingsRepository {
+  FakeSettingsRepository();
 
-  @override
-  Future<AppSettings> loadSettings() async {
-    return const AppSettings(
-      theme: 'system',
-      customSettings: {'highContrast': false},
+  Future<SettingsLoaded> loadSettings() async {
+    return const SettingsLoaded(
+      theme: 'light',
+      locale: 'en',
+      notificationsEnabled: true,
+      voiceEnabled: true,
+      privacySettings: {},
     );
   }
 }
