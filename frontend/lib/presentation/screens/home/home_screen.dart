@@ -94,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
           // Right side controls (theme/logout buttons) - positioned relative to right drawer
           Positioned(
             right: _isRightDrawerOpen 
-                ? (_isRightDrawerExpanded ? 316 : 88) // 16px spacing from drawer edge
+                ? (_isRightDrawerExpanded ? 300 : 72) // Equal spacing from drawer edge
                 : 16, // 16px from screen edge when drawer is closed
             top: 16,
             child: Column(
