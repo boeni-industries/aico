@@ -10,7 +10,7 @@ AICO implements application-level transport security using libsodium for all int
 
 ### Design Principles
 
-**Application-Level Encryption**: Uses libsodium instead of TLS for direct cryptographic control and simplified certificate management.
+**Application-Level Encryption**: Uses libsodium instead of TLS for direct cryptographic control and simplified (no) certificate management.
 
 **Zero-Configuration Security**: Automatic key exchange and session establishment without manual certificate setup.
 
@@ -34,6 +34,7 @@ flowchart LR
     Frontend -.->|libsodium| Backend
     CLI -.->|libsodium| Backend  
     CLI -.->|libsodium| Studio
+    Studio -.->|libsodium| Backend
     
     classDef secure fill:#663399,stroke:#9370DB,color:#fff
     class Frontend,Backend,CLI,Studio secure

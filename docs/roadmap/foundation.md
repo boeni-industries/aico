@@ -18,9 +18,9 @@ Build the foundational system infrastructure that enables all AICO functionality
 ### Basic Flutter Foundation
 - [x] **Project Structure**: Standard Flutter project with basic folder organization
 - [x] **State Management**: Simple Provider setup for app-wide state
-- [ ] **Navigation**: Basic navigation (can upgrade to Go Router later)
-- [ ] **Theme System**: Basic Material 3 theme with dark/light mode
-- [ ] **API Client**: Simple HTTP client with error handling
+- [x] **Navigation**: Basic navigation (can upgrade to Go Router later)
+- [x] **Theme System**: Basic Material 3 theme with dark/light mode
+- [x] **API Client**: Simple HTTP client with error handling
 
 ### Minimal Message Bus
 - [x] **ZeroMQ Setup**: Core pub/sub message bus implementation
