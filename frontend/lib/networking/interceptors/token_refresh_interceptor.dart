@@ -1,6 +1,6 @@
+import 'package:aico_frontend/networking/repositories/user_repository.dart';
+import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:dio/dio.dart';
-import '../services/token_manager.dart';
-import '../repositories/user_repository.dart';
 
 /// Interceptor that automatically refreshes tokens when they expire
 class TokenRefreshInterceptor extends Interceptor {

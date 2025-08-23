@@ -1,7 +1,7 @@
 import 'package:aico_frontend/core/constants/route_names.dart';
-import 'package:aico_frontend/presentation/screens/home/home_screen.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
 import 'package:aico_frontend/presentation/screens/admin/logs_screen.dart';
+import 'package:aico_frontend/presentation/screens/home/home_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_search_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/privacy_settings_screen.dart';

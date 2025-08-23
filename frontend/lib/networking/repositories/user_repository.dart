@@ -1,9 +1,9 @@
-import 'package:flutter/foundation.dart';
+import 'package:aico_frontend/networking/clients/api_client.dart';
+import 'package:aico_frontend/networking/models/user_models.dart';
+import 'package:aico_frontend/networking/services/secure_credential_manager.dart';
+import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:dio/dio.dart';
-import '../models/user_models.dart';
-import '../clients/api_client.dart';
-import '../services/token_manager.dart';
-import '../services/secure_credential_manager.dart';
+import 'package:flutter/foundation.dart';
 
 abstract class UserRepository {
   Future<List<User>> getUsers({String? userType, int limit = 100});

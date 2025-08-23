@@ -1,7 +1,7 @@
+import 'package:aico_frontend/networking/interceptors/token_refresh_interceptor.dart';
+import 'package:aico_frontend/networking/repositories/user_repository.dart';
+import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:dio/dio.dart';
-import '../interceptors/token_refresh_interceptor.dart';
-import '../services/token_manager.dart';
-import '../repositories/user_repository.dart';
 
 /// Factory class for creating configured Dio instances
 class DioClient {

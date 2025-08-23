@@ -1,11 +1,10 @@
-import 'package:flutter/foundation.dart';
-import 'package:aico_frontend/networking/models/user_models.dart';
+import 'package:aico_frontend/core/utils/platform_utils.dart';
 import 'package:aico_frontend/networking/models/error_models.dart';
+import 'package:aico_frontend/networking/models/user_models.dart';
 import 'package:aico_frontend/networking/repositories/user_repository.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
-import 'package:aico_frontend/core/utils/platform_utils.dart';
-import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
 
 // Events
@@ -363,7 +362,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
   @override
   Map<String, dynamic>? toJson(AuthState state) {
     switch (state.runtimeType) {
-      case AuthAuthenticated:
+      case AuthAuthenticated _:
         final authState = state as AuthAuthenticated;
         return {
           'type': 'authenticated',
@@ -371,11 +370,11 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
           'token': authState.token,
           'lastLogin': authState.lastLogin?.toIso8601String(),
         };
-      case AuthUnauthenticated:
+      case AuthUnauthenticated _:
         return {'type': 'unauthenticated'};
-      case AuthLoading:
+      case AuthLoading _:
         return null;
-      case AuthFailure:
+      case AuthFailure _:
         final failureState = state as AuthFailure;
         return {
           'type': 'failure',
