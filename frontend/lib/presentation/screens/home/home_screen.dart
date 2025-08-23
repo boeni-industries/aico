@@ -19,10 +19,18 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+enum NavigationPage {
+  home,
+  memory,
+  admin,
+  settings,
+}
+
 class _HomeScreenState extends State<HomeScreen> {
   bool _isRightDrawerOpen = true;
   bool _isRightDrawerExpanded = false; // true = expanded, false = collapsed to icons
   bool _isLeftDrawerExpanded = true; // true = expanded with text, false = collapsed to icons only
+  NavigationPage _currentPage = NavigationPage.home;
   ThemeManager? _themeManager;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _conversationController = ScrollController();
@@ -64,24 +72,11 @@ class _HomeScreenState extends State<HomeScreen> {
               if (isDesktop)
                 _buildLeftDrawer(context, theme, accentColor),
           
-          // Main conversation area
+          // Main content area - switches based on selected page
           Expanded(
             flex: (_isRightDrawerOpen && isDesktop) ? 2 : 3,
             child: SafeArea(
-              child: Column(
-                children: [
-                  // Avatar and status header
-                  _buildAvatarHeader(context, theme, accentColor),
-                  
-                  // Conversation area
-                  Expanded(
-                    child: _buildConversationArea(context, theme, accentColor),
-                  ),
-                  
-                  // Input area
-                  _buildInputArea(context, theme, accentColor),
-                ],
-              ),
+              child: _buildMainContent(context, theme, accentColor),
             ),
           ),
           
@@ -96,9 +91,11 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: Stack(
         children: [
           
-          // Right side controls (theme/logout buttons)
+          // Right side controls (theme/logout buttons) - positioned relative to right drawer
           Positioned(
-            right: 16,
+            right: _isRightDrawerOpen 
+                ? (_isRightDrawerExpanded ? 316 : 88) // 16px spacing from drawer edge
+                : 16, // 16px from screen edge when drawer is closed
             top: 16,
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -644,11 +641,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   // Toggle button as first nav item
                   _buildToggleItem(context, theme),
                   const SizedBox(height: 8),
-                  _buildNavItem(context, theme, accentColor, Icons.home, 'Home', true, () => {}),
+                  _buildNavItem(context, theme, accentColor, Icons.home, 'Home', _currentPage == NavigationPage.home, () => _switchToPage(NavigationPage.home)),
                   const SizedBox(height: 8),
-                  _buildNavItem(context, theme, accentColor, Icons.auto_stories, 'Memory', false, () => _navigateToScreen(context, const MemoryScreen())),
-                  _buildNavItem(context, theme, accentColor, Icons.admin_panel_settings, 'Admin', false, () => _navigateToScreen(context, const AdminScreen())),
-                  _buildNavItem(context, theme, accentColor, Icons.settings, 'Settings', false, () => _navigateToScreen(context, const SettingsScreen())),
+                  _buildNavItem(context, theme, accentColor, Icons.auto_stories, 'Memory', _currentPage == NavigationPage.memory, () => _switchToPage(NavigationPage.memory)),
+                  _buildNavItem(context, theme, accentColor, Icons.admin_panel_settings, 'Admin', _currentPage == NavigationPage.admin, () => _switchToPage(NavigationPage.admin)),
+                  _buildNavItem(context, theme, accentColor, Icons.settings, 'Settings', _currentPage == NavigationPage.settings, () => _switchToPage(NavigationPage.settings)),
                 ],
               ),
             ),
@@ -754,9 +751,39 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _navigateToScreen(BuildContext context, Widget screen) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => screen),
+  void _switchToPage(NavigationPage page) {
+    setState(() {
+      _currentPage = page;
+    });
+  }
+
+  Widget _buildMainContent(BuildContext context, ThemeData theme, Color accentColor) {
+    switch (_currentPage) {
+      case NavigationPage.home:
+        return _buildHomeContent(context, theme, accentColor);
+      case NavigationPage.memory:
+        return const MemoryScreen();
+      case NavigationPage.admin:
+        return const AdminScreen();
+      case NavigationPage.settings:
+        return const SettingsScreen();
+    }
+  }
+
+  Widget _buildHomeContent(BuildContext context, ThemeData theme, Color accentColor) {
+    return Column(
+      children: [
+        // Avatar and status header
+        _buildAvatarHeader(context, theme, accentColor),
+        
+        // Conversation area
+        Expanded(
+          child: _buildConversationArea(context, theme, accentColor),
+        ),
+        
+        // Input area
+        _buildInputArea(context, theme, accentColor),
+      ],
     );
   }
 
