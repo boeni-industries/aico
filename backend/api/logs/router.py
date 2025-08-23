@@ -174,13 +174,14 @@ async def process_log_entry(log_data: dict):
     Process a single log entry by forwarding to AICO logging infrastructure
     
     This function integrates with the existing AICO logging system
-    to ensure frontend logs are properly stored and processed.
+    to ensure logs from any subsystem are properly stored and processed.
     """
     try:
-        # Get the AICO logger for the specified module
-        module_logger = get_logger(log_data.get('subsystem', 'frontend'), log_data.get('module', 'unknown'))
+        # Create logger for the specified subsystem (frontend, mobile, cli, etc.)
+        # This ensures logs are properly attributed to the originating system
+        subsystem_logger = get_logger(log_data.get('subsystem', 'frontend'), log_data.get('module', 'unknown'))
         
-        # Map frontend log levels to Python logging levels
+        # Map log levels to Python logging levels
         level_mapping = {
             'DEBUG': 'debug',
             'INFO': 'info', 
@@ -189,11 +190,10 @@ async def process_log_entry(log_data: dict):
         }
         
         log_level = log_data.get('level', 'INFO')
-        log_method = getattr(module_logger, level_mapping.get(log_level, 'info'))
+        log_method = getattr(subsystem_logger, level_mapping.get(log_level, 'info'))
         
         # Create extra context for structured logging with correct field names for database
         extra_context = {
-            'subsystem': log_data.get('subsystem', 'frontend'),
             'topic': log_data.get('topic'),
             'function_name': log_data.get('function'),  # Database expects function_name
             'user_uuid': log_data.get('user_id'),       # Database expects user_uuid
@@ -203,12 +203,10 @@ async def process_log_entry(log_data: dict):
             'source': log_data.get('source'),
             'severity': log_data.get('severity'),
             'environment': log_data.get('environment'),
-            'origin': log_data.get('origin', 'frontend'),
-            'file_path': log_data.get('file'),          # Database expects file_path
-            'line_number': log_data.get('line')         # Database expects line_number
+            'origin': log_data.get('origin')
         }
         
-        # Add any extra data from frontend
+        # Add extra fields if present
         if log_data.get('extra'):
             extra_context.update(log_data['extra'])
         
@@ -220,12 +218,16 @@ async def process_log_entry(log_data: dict):
         extra_context = {k: v for k, v in extra_context.items() if v is not None}
         
         # Log the message using AICO logging infrastructure
-        print(f"[DEBUG] About to call {log_method.__name__} with message: {log_data.get('message', 'No message')}")
+        print(f"[DEBUG] About to call {log_method.__name__} with subsystem: {log_data.get('subsystem', 'frontend')}, module: {log_data.get('module', 'unknown')}")
         print(f"[DEBUG] Extra context: {extra_context}")
-        
-        log_method(log_data.get('message', 'No message'), extra=extra_context)
-        
-        print(f"[DEBUG] Successfully called AICO logger method")
+        try:
+            log_method(log_data.get('message', 'No message'), extra=extra_context)
+            print(f"[DEBUG] Successfully called AICO logger method")
+        except Exception as e:
+            print(f"[DEBUG] Error calling AICO logger: {e}")
+            import traceback
+            print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+            raise
         
     except Exception as e:
         # Fallback logging if something goes wrong

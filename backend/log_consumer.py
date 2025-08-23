@@ -13,7 +13,7 @@ from typing import Dict, Any, Optional
 from pathlib import Path
 from aico.core.bus import MessageBusClient
 from aico.core.config import ConfigurationManager
-from shared.aico.proto.aico_core_logging_pb2 import LogEntry, LogLevel
+from aico.proto.aico_core_logging_pb2 import LogEntry, LogLevel
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security import AICOKeyManager
 from aico.core.paths import AICOPaths
@@ -160,6 +160,8 @@ class AICOLogConsumer:
                 # Deserialize protobuf LogEntry
                 log_entry = LogEntry()
                 log_entry.ParseFromString(message_data)
+                
+                print(f"[LOG CONSUMER DEBUG] Received message - Topic: {topic_str}, Subsystem: {log_entry.subsystem}, Module: {log_entry.module}, Message: {log_entry.message}")
                 
                 # Handle the protobuf LogEntry message
                 await self._handle_log_message(log_entry)

@@ -321,17 +321,22 @@ class ZMQLogTransport:
     def send_log(self, log_entry: LogEntry):
         """Send log entry to message bus as protobuf LogEntry"""
         if not self._socket:
+            print(f"[ZMQ TRANSPORT DEBUG] No socket available - cannot send log")
             return
             
         try:
             topic = self.config.get("logging.transport.zmq_topic", "logs")
             full_topic = f"{topic}.{log_entry.subsystem}.{log_entry.module}"
             
+            print(f"[ZMQ TRANSPORT DEBUG] Sending log - Topic: {full_topic}, Subsystem: {log_entry.subsystem}, Module: {log_entry.module}, Message: {log_entry.message}")
+            
             # Send protobuf LogEntry (binary serialization)
             self._socket.send_multipart([
                 full_topic.encode('utf-8'),
                 log_entry.SerializeToString()
             ], zmq.NOBLOCK)
+            
+            print(f"[ZMQ TRANSPORT DEBUG] Log sent successfully")
             
         except Exception as e:
             # Log transport failure but don't crash - logging must be resilient
