@@ -152,6 +152,7 @@ nav:
   - Privacy & Security:
     - Overview: security/security_overview.md
     - Data Security: security/data_security.md
+    - Transport Security: security/transit_security.md
     - Access Control: security/access_control.md
     - Consent Manager: security/consent.md
     - Audit System: security/audit.md  
