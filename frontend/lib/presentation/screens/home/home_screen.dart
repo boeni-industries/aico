@@ -21,7 +21,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _isRightDrawerOpen = true;
-  bool _isRightDrawerExpanded = true; // true = expanded, false = collapsed to icons
+  bool _isRightDrawerExpanded = false; // true = expanded, false = collapsed to icons
   bool _isLeftDrawerExpanded = true; // true = expanded with text, false = collapsed to icons only
   ThemeManager? _themeManager;
   final TextEditingController _messageController = TextEditingController();
