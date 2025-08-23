@@ -1,11 +1,13 @@
 import 'package:aico_frontend/core/di/service_locator.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
 import 'package:aico_frontend/presentation/blocs/auth/auth_bloc.dart';
+import 'package:aico_frontend/presentation/blocs/settings/settings_bloc.dart';
+import 'package:aico_frontend/presentation/models/conversation_message.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 
 /// Home screen featuring avatar-centric hub with integrated conversation interface.
 /// Serves as the primary interaction point with AICO, including conversation history
@@ -18,7 +20,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  bool _isRightDrawerOpen = false;
+  bool _isRightDrawerOpen = true;
+  bool _isRightDrawerExpanded = true; // true = expanded, false = collapsed to icons
   bool _isLeftDrawerExpanded = true; // true = expanded with text, false = collapsed to icons only
   ThemeManager? _themeManager;
   final TextEditingController _messageController = TextEditingController();
@@ -82,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           
-              // Right drawer for thoughts and memory
+              // Right drawer for thoughts and memory - always visible on desktop, toggles between expanded/collapsed
               if (_isRightDrawerOpen && isDesktop)
                 _buildRightDrawer(context, theme, accentColor),
             ],
@@ -117,11 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         onPressed: () async {
                           print('Theme toggle pressed');
                           await _themeManager?.toggleTheme();
-                          if (mounted) {
-                            setState(() {
-                              print('Theme state updated');
-                            });
-                          }
+                          print('Theme toggled to: ${_themeManager?.currentThemeMode}');
                         },
                         icon: Icon(_themeManager?.currentBrightness == Brightness.light ? Icons.wb_sunny : Icons.nightlight_round),
                         tooltip: 'Toggle theme',
@@ -133,11 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         onPressed: () async {
                           print('Contrast toggle pressed');
                           await _themeManager?.setHighContrastEnabled(!(_themeManager?.isHighContrastEnabled ?? false));
-                          if (mounted) {
-                            setState(() {
-                              print('Contrast state updated');
-                            });
-                          }
+                          print('Contrast toggled to: ${_themeManager?.isHighContrastEnabled}');
                         },
                         icon: Icon(
                           Icons.contrast,
@@ -168,28 +163,50 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           
-          // Right drawer toggle - always positioned vertically centered
-          if (isDesktop)
+          // Right drawer toggle - always positioned on drawer edge, vertically centered
+          if (isDesktop && _isRightDrawerOpen)
             Positioned(
-              right: _isRightDrawerOpen ? 300 : 16, // Move with drawer state
+              right: _isRightDrawerExpanded ? 284 : 56, // Stick to drawer edge with proper offset
               top: MediaQuery.of(context).size.height / 2 - 24, // Always vertically centered
               child: Container(
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surface,
-                  borderRadius: _isRightDrawerOpen 
-                    ? const BorderRadius.only(
-                        topLeft: Radius.circular(12),
-                        bottomLeft: Radius.circular(12),
-                      )
-                    : BorderRadius.circular(20),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    bottomLeft: Radius.circular(12),
+                  ),
                   border: Border.all(
                     color: theme.dividerColor.withValues(alpha: 0.2),
                   ),
                 ),
                 child: IconButton(
-                  onPressed: () => setState(() => _isRightDrawerOpen = !_isRightDrawerOpen),
-                  icon: Icon(_isRightDrawerOpen ? Icons.chevron_right : Icons.chevron_left),
-                  tooltip: _isRightDrawerOpen ? 'Hide AICO\'s thoughts' : 'Show AICO\'s thoughts',
+                  onPressed: () => setState(() => _isRightDrawerExpanded = !_isRightDrawerExpanded),
+                  icon: Icon(_isRightDrawerExpanded ? Icons.chevron_right : Icons.chevron_left),
+                  tooltip: _isRightDrawerExpanded ? 'Collapse thoughts' : 'Expand thoughts',
+                  style: IconButton.styleFrom(
+                    foregroundColor: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            ),
+          
+          // Show right drawer button when drawer is hidden
+          if (isDesktop && !_isRightDrawerOpen)
+            Positioned(
+              right: 16,
+              top: MediaQuery.of(context).size.height / 2 - 24,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: theme.dividerColor.withValues(alpha: 0.2),
+                  ),
+                ),
+                child: IconButton(
+                  onPressed: () => setState(() => _isRightDrawerOpen = true),
+                  icon: const Icon(Icons.chevron_left),
+                  tooltip: 'Show AICO\'s thoughts',
                   style: IconButton.styleFrom(
                     foregroundColor: theme.colorScheme.onSurface,
                   ),
@@ -392,7 +409,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildRightDrawer(BuildContext context, ThemeData theme, Color accentColor) {
     return Container(
-      width: 320,
+      width: _isRightDrawerExpanded ? 300 : 72,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(
@@ -403,74 +420,73 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             // Drawer header
-            Container(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Text(
-                    'AICO\'s Thoughts',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
+            if (_isRightDrawerExpanded)
+              Container(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Text(
+                      'AICO\'s Thoughts',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => setState(() => _isRightDrawerOpen = false),
-                    icon: const Icon(Icons.close, size: 20),
-                  ),
-                ],
+                    const Spacer(),
+                  ],
+                ),
               ),
-            ),
             
             // Thoughts section
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  _buildThoughtCard(context, theme, accentColor,
-                    type: 'Suggestion',
-                    message: 'Maybe we could try that meditation exercise you mentioned last week?',
-                  ),
-                  const SizedBox(height: 12),
-                  _buildThoughtCard(context, theme, accentColor,
-                    type: 'Reminder',
-                    message: 'Your sister\'s birthday is coming up next week. Want to plan something special?',
-                  ),
-                  const SizedBox(height: 12),
-                  _buildThoughtCard(context, theme, accentColor,
-                    type: 'Memory',
-                    message: 'Remember when we talked about your dream trip to Japan? I found some interesting places you might like.',
-                  ),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Memory timeline section
-                  Text(
-                    'Our Journey',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  
-                  _buildMemoryItem(context, theme, accentColor,
-                    title: 'Deep conversation about career goals',
-                    time: 'Yesterday, 8:30 PM',
-                  ),
-                  _buildMemoryItem(context, theme, accentColor,
-                    title: 'Shared funny story about weekend',
-                    time: '2 days ago',
-                  ),
-                  _buildMemoryItem(context, theme, accentColor,
-                    title: 'Helped plan family dinner',
-                    time: '1 week ago',
-                  ),
-                  _buildMemoryItem(context, theme, accentColor,
-                    title: 'First conversation together',
-                    time: '2 weeks ago',
-                  ),
-                ],
-              ),
+              child: _isRightDrawerExpanded
+                  ? ListView(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      children: [
+                        _buildThoughtCard(context, theme, accentColor,
+                          type: 'Suggestion',
+                          message: 'Maybe we could try that meditation exercise you mentioned last week?',
+                        ),
+                        const SizedBox(height: 12),
+                        _buildThoughtCard(context, theme, accentColor,
+                          type: 'Reminder',
+                          message: 'Your sister\'s birthday is coming up next week. Want to plan something special?',
+                        ),
+                        const SizedBox(height: 12),
+                        _buildThoughtCard(context, theme, accentColor,
+                          type: 'Memory',
+                          message: 'Remember when we talked about your dream trip to Japan? I found some interesting places you might like.',
+                        ),
+                        
+                        const SizedBox(height: 24),
+                        
+                        // Memory timeline section
+                        Text(
+                          'Our Journey',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        
+                        _buildMemoryItem(context, theme, accentColor,
+                          title: 'Deep conversation about career goals',
+                          time: 'Yesterday, 8:30 PM',
+                        ),
+                        _buildMemoryItem(context, theme, accentColor,
+                          title: 'Shared funny story about weekend',
+                          time: '2 days ago',
+                        ),
+                        _buildMemoryItem(context, theme, accentColor,
+                          title: 'Helped plan family dinner',
+                          time: '1 week ago',
+                        ),
+                        _buildMemoryItem(context, theme, accentColor,
+                          title: 'First conversation together',
+                          time: '2 weeks ago',
+                        ),
+                      ],
+                    )
+                  : const SizedBox.shrink(),
             ),
           ],
         ),
@@ -610,7 +626,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildLeftDrawer(BuildContext context, ThemeData theme, Color accentColor) {
     return Container(
-      width: _isLeftDrawerExpanded ? 280 : 72,
+      width: _isLeftDrawerExpanded ? 240 : 72,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(
@@ -647,44 +663,42 @@ class _HomeScreenState extends State<HomeScreen> {
       // Collapsed mode - just the burger icon
       return Container(
         margin: const EdgeInsets.only(bottom: 8),
-        child: Tooltip(
-          message: 'Expand menu',
-          child: InkWell(
-            onTap: () => setState(() => _isLeftDrawerExpanded = true),
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                Icons.menu,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-              ),
+        child: IconButton(
+          onPressed: () => setState(() => _isLeftDrawerExpanded = true),
+          icon: Icon(
+            Icons.menu,
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+          ),
+          tooltip: 'Expand menu',
+          style: IconButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
             ),
           ),
         ),
       );
     }
     
-    // Expanded mode - full width toggle
+    // Expanded mode - right-aligned toggle
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
-      child: ListTile(
-        leading: Icon(
-          Icons.menu_open,
-          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-        ),
-        title: Text(
-          'Collapse',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurface,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          IconButton(
+            onPressed: () => setState(() => _isLeftDrawerExpanded = false),
+            icon: Icon(
+              Icons.menu_open,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
+            tooltip: 'Collapse menu',
+            style: IconButton.styleFrom(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
           ),
-        ),
-        onTap: () => setState(() => _isLeftDrawerExpanded = false),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        ],
       ),
     );
   }
@@ -735,6 +749,7 @@ class _HomeScreenState extends State<HomeScreen> {
           borderRadius: BorderRadius.circular(8),
         ),
         tileColor: isActive ? accentColor.withValues(alpha: 0.1) : null,
+        hoverColor: accentColor.withValues(alpha: 0.05),
       ),
     );
   }
@@ -753,14 +768,3 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class ConversationMessage {
-  final bool isFromAico;
-  final String message;
-  final DateTime timestamp;
-
-  ConversationMessage({
-    required this.isFromAico,
-    required this.message,
-    required this.timestamp,
-  });
-}

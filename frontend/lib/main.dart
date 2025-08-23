@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:aico_frontend/core/di/service_locator.dart';
 import 'package:aico_frontend/core/theme/aico_theme.dart';
+import 'package:aico_frontend/core/theme/theme_manager.dart';
 import 'package:aico_frontend/presentation/blocs/auth/auth_bloc.dart';
 import 'package:aico_frontend/presentation/widgets/auth/auth_gate.dart';
 import 'package:aico_frontend/presentation/blocs/connection/connection_bloc.dart';
@@ -41,8 +42,32 @@ void main() async {
   runApp(const AicoApp());
 }
 
-class AicoApp extends StatelessWidget {
+class AicoApp extends StatefulWidget {
   const AicoApp({super.key});
+
+  @override
+  State<AicoApp> createState() => _AicoAppState();
+}
+
+class _AicoAppState extends State<AicoApp> {
+  late ThemeManager _themeManager;
+  ThemeMode _currentThemeMode = ThemeMode.system;
+
+  @override
+  void initState() {
+    super.initState();
+    _themeManager = ServiceLocator.get<ThemeManager>();
+    _currentThemeMode = _themeManager.currentThemeMode;
+    
+    // Listen to theme changes
+    _themeManager.themeChanges.listen((themeMode) {
+      if (mounted) {
+        setState(() {
+          _currentThemeMode = themeMode;
+        });
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,9 +89,13 @@ class AicoApp extends StatelessWidget {
       child: MaterialApp(
         title: 'AICO',
         debugShowCheckedModeBanner: false,
-        theme: AicoTheme.light(),
-        darkTheme: AicoTheme.dark(),
-        themeMode: ThemeMode.system,
+        theme: _themeManager.isHighContrastEnabled 
+            ? _themeManager.generateHighContrastLightTheme()
+            : AicoTheme.light(),
+        darkTheme: _themeManager.isHighContrastEnabled 
+            ? _themeManager.generateHighContrastDarkTheme()
+            : AicoTheme.dark(),
+        themeMode: _currentThemeMode,
         home: const AuthGate(),
       ),
     );
