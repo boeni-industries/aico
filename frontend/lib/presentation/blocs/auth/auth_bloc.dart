@@ -99,6 +99,7 @@ class AuthFailure extends AuthState {
 class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
   final UserRepository _userRepository;
   final TokenManager _tokenManager;
+  bool _isAuthenticating = false;
 
   AuthBloc({
     required UserRepository userRepository,
@@ -118,15 +119,22 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
     AuthLoginRequested event,
     Emitter<AuthState> emit,
   ) async {
+    // Prevent concurrent authentication attempts
+    if (_isAuthenticating) {
+      await Log.w('auth', 'login_concurrent', 'Login attempt blocked - authentication already in progress');
+      return;
+    }
+
+    _isAuthenticating = true;
     emit(const AuthLoading());
 
-    // Log authentication attempt
-    await Log.i('auth', 'login_attempt', 'User login attempt started', extra: {
-      'user_uuid': event.userUuid,
-      'remember_me': event.rememberMe,
-    });
-
     try {
+      // Log authentication attempt
+      await Log.i('auth', 'login_attempt', 'User login attempt started', extra: {
+        'user_uuid': event.userUuid,
+        'remember_me': event.rememberMe,
+      });
+
       final request = AuthenticateRequest(
         uuid: event.userUuid,
         pin: event.pin,
@@ -219,6 +227,8 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
         message: message,
         errorCode: errorCode,
       ));
+    } finally {
+      _isAuthenticating = false;
     }
   }
 
@@ -294,6 +304,13 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
     AuthAutoLoginRequested event,
     Emitter<AuthState> emit,
   ) async {
+    // Prevent concurrent authentication attempts
+    if (_isAuthenticating) {
+      await Log.w('auth', 'auto_login_concurrent', 'Auto-login attempt blocked - authentication already in progress');
+      return;
+    }
+
+    _isAuthenticating = true;
     debugPrint('🔐 AuthBloc: Starting auto-login process');
     emit(const AuthLoading());
 
@@ -389,6 +406,8 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
         message: message,
         errorCode: errorCode,
       ));
+    } finally {
+      _isAuthenticating = false;
     }
   }
 

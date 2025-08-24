@@ -264,10 +264,6 @@ async def authenticate_user(request: AuthenticateRequest):
             device_uuid="web-client"  # Default device for web authentication
         )
         
-        logger.info("User authenticated via API", extra={
-            "user_uuid": user.uuid,
-            "full_name": user.full_name
-        })
         
         return AuthenticationResponse(
             success=True,

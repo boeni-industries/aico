@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:aico_frontend/core/logging/models/log_entry.dart';
 import 'package:aico_frontend/core/logging/repositories/log_repository.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:aico_frontend/core/utils/aico_paths.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Configuration for logging service behavior
@@ -316,8 +316,9 @@ class LoggingService {
     if (!_config.enableLocalFallback) return;
 
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/aico_logs_fallback.jsonl');
+      final logsPath = await AICOPaths.getLogsPath();
+      final directory = await AICOPaths.ensureDirectory(logsPath);
+      final file = File('${directory.path}/frontend_fallback.jsonl');
       
       final jsonLine = '${logEntry.toJson()}\n';
       await file.writeAsString(jsonLine, mode: FileMode.append);
