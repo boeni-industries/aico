@@ -1,3 +1,4 @@
+import 'package:aico_frontend/core/logging/logging_module.dart';
 import 'package:aico_frontend/core/services/local_storage.dart';
 import 'package:aico_frontend/core/theme/aico_theme_manager.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
@@ -33,6 +34,9 @@ class ServiceLocator {
 
       // Register core services
       await _registerCoreServices();
+
+      // Register logging module
+      await LoggingModule.register(_getIt);
 
       // Register repositories
       await _registerRepositories();
@@ -146,6 +150,9 @@ class ServiceLocator {
 
   /// Dispose all services
   static Future<void> dispose() async {
+    // Dispose logging module
+    await LoggingModule.dispose(_getIt);
+
     // Dispose offline queue
     if (_getIt.isRegistered<OfflineQueue>()) {
       _getIt<OfflineQueue>().dispose();

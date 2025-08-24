@@ -91,7 +91,7 @@ class AICOLogConsumer:
     
     async def _handle_debug_message(self, topic: str, payload):
         """Debug handler to see all messages"""
-        print(f"[LOG CONSUMER DEBUG] Received ANY message - Topic: {topic}, Type: {type(payload)}")
+        # print(f"[LOG CONSUMER DEBUG] Received ANY message - Topic: {topic}, Type: {type(payload)}")
     
     async def start(self):
         """Start the log consumer"""
@@ -161,7 +161,7 @@ class AICOLogConsumer:
                 log_entry = LogEntry()
                 log_entry.ParseFromString(message_data)
                 
-                print(f"[LOG CONSUMER DEBUG] Received message - Topic: {topic_str}, Subsystem: {log_entry.subsystem}, Module: {log_entry.module}, Message: {log_entry.message}")
+                # print(f"[LOG CONSUMER DEBUG] Received message - Topic: {topic_str}, Subsystem: {log_entry.subsystem}, Module: {log_entry.module}, Message: {log_entry.message}")
                 
                 # Handle the protobuf LogEntry message
                 await self._handle_log_message(log_entry)

@@ -65,25 +65,9 @@ async def submit_log(
             log_data['subsystem'] = 'frontend'
         
         # Process log entry in background to avoid blocking response
-        print(f"[DEBUG ENDPOINT] About to add background task for log processing")
+        # print(f"[DEBUG ENDPOINT] About to add background task for log processing")
         background_tasks.add_task(process_log_entry, log_data)
-        print(f"[DEBUG ENDPOINT] Background task added successfully")
-        
-        # TEMPORARY: Also call synchronously for debugging
-        print(f"[DEBUG ENDPOINT] Calling process_log_entry synchronously for debugging")
-        await process_log_entry(log_data)
-        print(f"[DEBUG ENDPOINT] Synchronous call completed")
-        
-        logger.info(
-            "Log entry received from frontend",
-            extra={
-                "module": log_entry.module,
-                "level": log_entry.level,
-                "topic": log_entry.topic,
-                "user_id": log_entry.user_id,
-                "session_id": log_entry.session_id
-            }
-        )
+        # print(f"[DEBUG ENDPOINT] Background task added successfully")
         
         return LogSubmissionResponse(
             success=True,
@@ -143,14 +127,6 @@ async def submit_log_batch(
         if accepted_logs:
             background_tasks.add_task(process_log_batch, accepted_logs)
         
-        logger.info(
-            "Log batch received from frontend",
-            extra={
-                "total_entries": len(log_batch.logs),
-                "accepted_count": len(accepted_logs),
-                "rejected_count": len(rejected_logs)
-            }
-        )
         
         return LogSubmissionResponse(
             success=len(accepted_logs) > 0,
@@ -179,7 +155,17 @@ async def process_log_entry(log_data: dict):
     try:
         # Create logger for the specified subsystem (frontend, mobile, cli, etc.)
         # This ensures logs are properly attributed to the originating system
-        subsystem_logger = get_logger(log_data.get('subsystem', 'frontend'), log_data.get('module', 'unknown'))
+        # Use 'origin' field as the subsystem as per schema definition
+        subsystem = log_data.get('origin', 'frontend')
+        module = log_data.get('module', 'unknown')
+        
+        # Parse module to extract the actual module name (e.g., 'mobile.auth' -> 'auth')
+        if '.' in module:
+            module_parts = module.split('.')
+            if len(module_parts) >= 2:
+                module = module_parts[1]  # Use the second part as the module name
+        
+        subsystem_logger = get_logger(subsystem, module)
         
         # Map log levels to Python logging levels
         level_mapping = {
@@ -203,7 +189,9 @@ async def process_log_entry(log_data: dict):
             'source': log_data.get('source'),
             'severity': log_data.get('severity'),
             'environment': log_data.get('environment'),
-            'origin': log_data.get('origin')
+            'origin': log_data.get('origin'),
+            'file': log_data.get('file'),
+            'line': log_data.get('line')
         }
         
         # Add extra fields if present
@@ -218,16 +206,7 @@ async def process_log_entry(log_data: dict):
         extra_context = {k: v for k, v in extra_context.items() if v is not None}
         
         # Log the message using AICO logging infrastructure
-        print(f"[DEBUG] About to call {log_method.__name__} with subsystem: {log_data.get('subsystem', 'frontend')}, module: {log_data.get('module', 'unknown')}")
-        print(f"[DEBUG] Extra context: {extra_context}")
-        try:
-            log_method(log_data.get('message', 'No message'), extra=extra_context)
-            print(f"[DEBUG] Successfully called AICO logger method")
-        except Exception as e:
-            print(f"[DEBUG] Error calling AICO logger: {e}")
-            import traceback
-            print(f"[DEBUG] Traceback: {traceback.format_exc()}")
-            raise
+        log_method(log_data.get('message', 'No message'), extra=extra_context)
         
     except Exception as e:
         # Fallback logging if something goes wrong

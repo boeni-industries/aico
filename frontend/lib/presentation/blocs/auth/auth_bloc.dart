@@ -1,3 +1,4 @@
+import 'package:aico_frontend/core/logging/logging_module.dart';
 import 'package:aico_frontend/core/utils/platform_utils.dart';
 import 'package:aico_frontend/networking/models/error_models.dart';
 import 'package:aico_frontend/networking/models/user_models.dart';
@@ -119,6 +120,12 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
   ) async {
     emit(const AuthLoading());
 
+    // Log authentication attempt
+    await Log.i('auth', 'login_attempt', 'User login attempt started', extra: {
+      'user_uuid': event.userUuid,
+      'remember_me': event.rememberMe,
+    });
+
     try {
       final request = AuthenticateRequest(
         uuid: event.userUuid,
@@ -152,12 +159,28 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
           debugPrint('🔐 AuthBloc: Remember me not enabled, skipping credential storage');
         }
 
+        // Log successful authentication
+        await Log.i('auth', 'login_success', 'User authentication successful', extra: {
+          'user_uuid': event.userUuid,
+          'user_name': response.user!.fullName,
+          'nickname': response.user!.nickname,
+          'remember_me': event.rememberMe,
+          'token_expiry': expiryTime.toIso8601String(),
+        });
+
         emit(AuthAuthenticated(
           user: response.user!,
           token: response.token!,
           lastLogin: response.lastLogin ?? DateTime.now(),
         ));
       } else {
+        // Log authentication failure
+        await Log.w('auth', 'login_failure', 'User authentication failed', extra: {
+          'user_uuid': event.userUuid,
+          'error': response.error ?? 'Authentication failed',
+          'error_code': 'AUTH_FAILED',
+        });
+
         emit(AuthFailure(
           message: response.error ?? 'Authentication failed',
           errorCode: 'AUTH_FAILED',
@@ -181,6 +204,16 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
         message = PlatformUtils.getNetworkErrorMessage();
         errorCode = 'NETWORK_ERROR';
       }
+
+      // Log authentication error
+      await Log.e('auth', 'login_error', 'Authentication error occurred', 
+        error: e, 
+        extra: {
+          'user_uuid': event.userUuid,
+          'error_code': errorCode,
+          'error_message': message,
+        }
+      );
       
       emit(AuthFailure(
         message: message,
@@ -195,6 +228,9 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
   ) async {
     emit(const AuthLoading());
 
+    // Log logout attempt
+    await Log.i('auth', 'logout_attempt', 'User logout requested');
+
     try {
       // Clear stored tokens and credentials
       await _tokenManager.clearTokens();
@@ -204,8 +240,17 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
       // TODO: Call logout API endpoint to revoke token on server
       // await _userRepository.logout();
 
+      // Log successful logout
+      await Log.i('auth', 'logout_success', 'User logged out successfully');
+
       emit(const AuthUnauthenticated());
     } catch (e) {
+      // Log logout error
+      await Log.e('auth', 'logout_error', 'Error during logout, forcing local cleanup', 
+        error: e,
+        extra: {'forced_cleanup': true}
+      );
+
       // Even if logout fails, clear local tokens and credentials
       await _tokenManager.clearTokens();
       final userRepository = _userRepository as ApiUserRepository;
@@ -252,6 +297,9 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
     debugPrint('🔐 AuthBloc: Starting auto-login process');
     emit(const AuthLoading());
 
+    // Log auto-login attempt
+    await Log.i('auth', 'auto_login_attempt', 'Attempting automatic login with stored credentials');
+
     try {
       // Attempt auto-login using stored credentials
       final userRepository = _userRepository as ApiUserRepository;
@@ -259,6 +307,14 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
       
       if (authResponse != null && authResponse.user != null) {
         debugPrint('🔐 AuthBloc: Auto-login successful');
+        
+        // Log successful auto-login
+        await Log.i('auth', 'auto_login_success', 'Automatic login successful', extra: {
+          'user_uuid': authResponse.user!.uuid,
+          'user_name': authResponse.user!.fullName,
+          'nickname': authResponse.user!.nickname,
+        });
+
         emit(AuthAuthenticated(
           user: authResponse.user!,
           token: authResponse.token ?? '',
@@ -266,6 +322,10 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
         ));
       } else {
         debugPrint('🔐 AuthBloc: No stored credentials found');
+        
+        // Log no stored credentials
+        await Log.i('auth', 'auto_login_no_credentials', 'No stored credentials found for auto-login');
+        
         emit(const AuthUnauthenticated());
       }
     } catch (e, stackTrace) {
@@ -314,6 +374,16 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
         errorCode = 'AUTO_LOGIN_FAILED';
         debugPrint('🔐 AuthBloc: General auto-login failure');
       }
+
+      // Log auto-login failure
+      await Log.e('auth', 'auto_login_failure', 'Automatic login failed', 
+        error: e,
+        stackTrace: stackTrace,
+        extra: {
+          'error_code': errorCode,
+          'error_message': message,
+        }
+      );
       
       emit(AuthFailure(
         message: message,
