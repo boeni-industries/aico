@@ -10,6 +10,7 @@ import requests
 import os
 import sys
 import time
+import yaml
 from pathlib import Path
 from typing import Optional
 from rich.console import Console

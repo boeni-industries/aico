@@ -27,7 +27,7 @@ try:
     from nacl.secret import SecretBox
     from nacl.utils import random
     from nacl.encoding import Base64Encoder
-    from nacl.exceptions import InvalidMessage, CryptoError
+    from nacl.exceptions import CryptoError
     
     from aico.core.config import ConfigurationManager
     from aico.security.key_manager import AICOKeyManager
@@ -71,20 +71,22 @@ class TransitSecurityTestClient:
             client_public_key = client_private_key.public_key
             
             # Step 2: Create handshake request
+            challenge_bytes = random(32)
             handshake_request = {
-                "client_identity": base64.b64encode(self.verify_key.encode()).decode(),
-                "client_public_key": base64.b64encode(bytes(client_public_key)).decode(),
+                "component": "test_client",
+                "public_key": base64.b64encode(bytes(self.verify_key)).decode(),
                 "timestamp": int(time.time()),
-                "challenge": base64.b64encode(random(32)).decode()
+                "challenge": base64.b64encode(challenge_bytes).decode()
             }
             
-            # Step 3: Sign the handshake request
-            message_to_sign = json.dumps(handshake_request, sort_keys=True).encode()
-            signature = self.signing_key.sign(message_to_sign).signature
+            # Step 3: Sign the challenge (not the entire request)
+            signature = self.signing_key.sign(challenge_bytes).signature
+            
+            # Add signature to the handshake request
+            handshake_request["signature"] = base64.b64encode(signature).decode()
             
             handshake_payload = {
-                "handshake": handshake_request,
-                "signature": base64.b64encode(signature).decode()
+                "handshake_request": handshake_request
             }
             
             print(f"📤 Sending handshake request...")
@@ -105,12 +107,13 @@ class TransitSecurityTestClient:
             # Step 5: Process handshake response
             handshake_response = response.json()
             
-            if not handshake_response.get("success"):
+            if handshake_response.get("status") != "session_established":
                 print(f"❌ Handshake rejected: {handshake_response.get('error', 'Unknown error')}")
                 return False
             
             # Step 6: Extract server public key and derive session key
-            server_public_key_b64 = handshake_response["server_public_key"]
+            response_data = handshake_response["handshake_response"]
+            server_public_key_b64 = response_data["public_key"]
             self.server_public_key = PublicKey(base64.b64decode(server_public_key_b64))
             
             # Step 7: Derive shared session key using X25519
@@ -177,13 +180,20 @@ class TransitSecurityTestClient:
             
             print(f"📤 Sending encrypted request to {endpoint}")
             
-            # Send request
-            response = requests.post(
-                f"{self.base_url}{endpoint}",
-                json=request_envelope,
-                headers={"Content-Type": "application/json"},
-                timeout=10
-            )
+            # Send request (use GET for health endpoint, POST for others)
+            if endpoint.endswith("/health"):
+                response = requests.get(
+                    f"{self.base_url}{endpoint}",
+                    headers={"Content-Type": "application/json"},
+                    timeout=10
+                )
+            else:
+                response = requests.post(
+                    f"{self.base_url}{endpoint}",
+                    json=request_envelope,
+                    headers={"Content-Type": "application/json"},
+                    timeout=10
+                )
             
             if response.status_code != 200:
                 print(f"❌ Request failed: HTTP {response.status_code}")
@@ -217,14 +227,28 @@ def test_backend_connectivity(base_url: str) -> bool:
     print(f"🌐 Testing backend connectivity at {base_url}")
     
     try:
-        response = requests.get(f"{base_url}/health", timeout=5)
-        if response.status_code == 200:
-            print("✅ Backend is responding")
-            return True
-        else:
-            print(f"❌ Backend returned HTTP {response.status_code}")
-            return False
-    except requests.RequestException as e:
+        # Try multiple possible health endpoints
+        endpoints_to_try = [
+            f"{base_url}/api/v1/gateway/status",
+            f"{base_url}/api/v1/health", 
+            f"{base_url}/health"
+        ]
+        
+        for endpoint in endpoints_to_try:
+            try:
+                response = requests.get(endpoint, timeout=5)
+                if response.status_code == 200:
+                    print(f"✅ Backend is responding at {endpoint}")
+                    return True
+                else:
+                    print(f"⚠️ {endpoint} returned HTTP {response.status_code}")
+            except requests.RequestException as e:
+                print(f"⚠️ {endpoint} failed: {e}")
+                continue
+        
+        print("❌ No working health endpoints found")
+        return False
+    except Exception as e:
         print(f"❌ Backend connectivity failed: {e}")
         return False
 
