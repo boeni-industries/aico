@@ -253,15 +253,15 @@ async def run_server_async(app: FastAPI, config_manager, detach: bool = True, re
     port = rest_config.get('port', 8771)
     
     # Use REST adapter app if passed directly as parameter
-    print(f"DEBUG: About to check for REST adapter app replacement")
+    # print(f"DEBUG: About to check for REST adapter app replacement")
     if rest_app is not None:
-        print(f"DEBUG: REST adapter app passed as parameter: {rest_app}")
-        print(f"DEBUG: Type: {type(rest_app)}")
-        print("DEBUG: Using REST adapter app instead of main app for server")
+        # print(f"DEBUG: REST adapter app passed as parameter: {rest_app}")
+        # print(f"DEBUG: Type: {type(rest_app)}")
+        # print("DEBUG: Using REST adapter app instead of main app for server")
         logger.info("Using REST adapter app instead of main app for server")
         app = rest_app
     else:
-        print("DEBUG: No REST adapter app passed, using main app")
+        # print("DEBUG: No REST adapter app passed, using main app")
         logger.warning("REST adapter app not provided, using main app")
     
     try:

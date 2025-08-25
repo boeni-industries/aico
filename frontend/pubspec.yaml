@@ -63,10 +63,8 @@ dependencies:
   json_annotation: ^4.8.1
   
   # JWT handling
-  dart_jsonwebtoken: ^2.14.0
+  dart_jsonwebtoken: ^3.2.0
   
-  # libsodium bindings for transport encryption
-  sodium: ^3.1.0
   
   # YAML parsing
   yaml: ^3.1.2
@@ -75,7 +73,9 @@ dependencies:
   go_router: ^16.2.0
   
   # Window management
-  window_manager: ^0.4.2
+  window_manager: ^0.5.1
+  sodium: ^3.4.6
+  sodium_libs: ^3.4.6+1
 
 dev_dependencies:
   flutter_test:

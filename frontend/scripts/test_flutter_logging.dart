@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 
 
@@ -9,7 +10,7 @@ void main() async {
   final dio = Dio();
   final baseUrl = 'http://localhost:8771/api/v1';
   
-  print('🧪 Testing Flutter logging integration...');
+  debugPrint('🧪 Testing Flutter logging integration...');
   
   // Test 1: App startup log
   await testLog(dio, baseUrl, {
@@ -104,14 +105,14 @@ void main() async {
     'extra': {}
   }, 'User Logout');
   
-  print('\n✅ All Flutter logging tests completed!');
-  print('📋 Check logs with: aico logs tail');
-  print('🔍 Filter frontend logs with: aico logs tail --subsystem frontend');
+  debugPrint('\n✅ All Flutter logging tests completed!');
+  debugPrint('📋 Check logs with: aico logs tail');
+  debugPrint('🔍 Filter frontend logs with: aico logs tail --subsystem frontend');
 }
 
 Future<void> testLog(Dio dio, String baseUrl, Map<String, dynamic> logData, String testName) async {
   try {
-    print('\n🧪 Testing: $testName');
+    debugPrint('\n🧪 Testing: $testName');
     
     final response = await dio.post(
       '$baseUrl/logs/',
@@ -124,14 +125,14 @@ Future<void> testLog(Dio dio, String baseUrl, Map<String, dynamic> logData, Stri
     );
     
     if (response.statusCode == 200) {
-      print('✅ $testName: SUCCESS (${response.statusCode})');
+      debugPrint('✅ $testName: SUCCESS (${response.statusCode})');
     } else {
-      print('❌ $testName: FAILED (${response.statusCode})');
+      debugPrint('❌ $testName: FAILED (${response.statusCode})');
     }
   } catch (e) {
-    print('❌ $testName: ERROR - $e');
+    debugPrint('❌ $testName: ERROR - $e');
     if (e is DioException && e.response != null) {
-      print('   Response body: ${e.response?.data}');
+      debugPrint('   Response body: ${e.response?.data}');
     }
   }
   

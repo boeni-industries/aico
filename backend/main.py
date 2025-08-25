@@ -315,9 +315,9 @@ async def lifespan(app: FastAPI):
                 # Store reference to REST adapter app for server.py to use
                 global rest_adapter_app
                 rest_adapter_app = rest_adapter.app
-                print(f"DEBUG: Set rest_adapter_app to: {rest_adapter_app}")
-                print(f"DEBUG: Type: {type(rest_adapter_app)}")
-                print(f"DEBUG: App routes: {[route.path for route in rest_adapter_app.routes]}")
+                # print(f"DEBUG: Set rest_adapter_app to: {rest_adapter_app}")
+                # print(f"DEBUG: Type: {type(rest_adapter_app)}")
+                # print(f"DEBUG: App routes: {[route.path for route in rest_adapter_app.routes]}")
                 logger.info("REST adapter app stored for server replacement")
                 
                 # Log available endpoints dynamically
@@ -329,7 +329,7 @@ async def lifespan(app: FastAPI):
                 logger.info(f"Available API endpoints: {sorted(set(endpoint_paths))}")
                 
                 # Start the server with the REST adapter app
-                print(f"DEBUG: Starting server with REST adapter app: {rest_adapter_app}")
+                # print(f"DEBUG: Starting server with REST adapter app: {rest_adapter_app}")
                 from server import run_server_async
                 await run_server_async(app, config_manager, detach=detach_mode, rest_app=rest_adapter_app)
                 
