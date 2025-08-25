@@ -1,5 +1,8 @@
-import 'package:aico_frontend/core/services/api_client.dart';
+import 'package:aico_frontend/core/di/service_locator.dart';
+import 'package:aico_frontend/core/services/encryption_service.dart';
 import 'package:aico_frontend/core/services/local_storage.dart';
+import 'package:aico_frontend/core/services/unified_api_client.dart';
+import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 import 'package:http/http.dart' as http;
 
@@ -10,14 +13,14 @@ class RepositoryFactory {
 
   /// Create repository with API client and local storage dependencies
   static T create<T extends Object>({
-    required T Function(ApiClient apiClient, LocalStorage localStorage) factory,
-    ApiClient? apiClient,
+    required T Function(UnifiedApiClient apiClient, LocalStorage localStorage) factory,
+    UnifiedApiClient? apiClient,
     LocalStorage? localStorage,
     bool registerSingleton = true,
   }) {
     try {
       // Get or create dependencies
-      final client = apiClient ?? _getOrCreateApiClient();
+      final client = apiClient ?? _getOrCreateUnifiedApiClient();
       final storage = localStorage ?? _getOrCreateLocalStorage();
       
       // Create repository instance
@@ -36,12 +39,12 @@ class RepositoryFactory {
 
   /// Create repository with only API client dependency
   static T createApiOnly<T extends Object>({
-    required T Function(ApiClient apiClient) factory,
-    ApiClient? apiClient,
+    required T Function(UnifiedApiClient apiClient) factory,
+    UnifiedApiClient? apiClient,
     bool registerSingleton = true,
   }) {
     try {
-      final client = apiClient ?? _getOrCreateApiClient();
+      final client = apiClient ?? _getOrCreateUnifiedApiClient();
       final repository = factory(client);
       
       if (registerSingleton && !_getIt.isRegistered<T>()) {
@@ -89,16 +92,17 @@ class RepositoryFactory {
   }
 
   /// Get or create API client
-  static ApiClient _getOrCreateApiClient() {
-    if (_getIt.isRegistered<ApiClient>()) {
-      return _getIt.get<ApiClient>();
+  static UnifiedApiClient _getOrCreateUnifiedApiClient() {
+    if (_getIt.isRegistered<UnifiedApiClient>()) {
+      return _getIt.get<UnifiedApiClient>();
     }
-    
-    final client = ApiClient(
+    final client = UnifiedApiClient(
+      dio: ServiceLocator.get<Dio>(),
       httpClient: http.Client(),
-      baseUrl: 'http://localhost:8000', // Default backend URL
+      encryptionService: ServiceLocator.get<EncryptionService>(),
+      baseUrl: 'http://localhost:8771/api/v1',
     );
-    _getIt.registerSingleton<ApiClient>(client);
+    _getIt.registerSingleton<UnifiedApiClient>(client);
     return client;
   }
 

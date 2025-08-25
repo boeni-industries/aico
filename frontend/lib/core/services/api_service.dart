@@ -1,15 +1,14 @@
-import 'package:aico_frontend/core/services/smart_api_client.dart';
+import 'package:aico_frontend/core/services/unified_api_client.dart';
 import 'package:aico_frontend/networking/models/admin_models.dart';
 import 'package:aico_frontend/networking/models/health_models.dart';
 import 'package:aico_frontend/networking/models/user_models.dart';
-import 'package:dio/dio.dart';
 
 /// High-level API service that provides typed methods using SmartApiClient
 /// Automatically handles encryption/unencryption based on endpoint requirements
 class ApiService {
-  final SmartApiClient _client;
+  final UnifiedApiClient _client;
 
-  ApiService(Dio dio) : _client = SmartApiClient(dio);
+  ApiService(UnifiedApiClient client) : _client = client;
 
   /// Initialize encryption (call once at app start)
   Future<void> initialize() async {
@@ -36,8 +35,9 @@ class ApiService {
   Future<User> updateUser(String uuid, UpdateUserRequest request) =>
     _client.put('/users/$uuid', request.toJson(), fromJson: User.fromJson);
 
-  Future<void> deleteUser(String uuid) =>
-    _client.delete('/users/$uuid');
+  Future<void> deleteUser(String uuid) async {
+    await _client.delete<Map<String, dynamic>>('/users/$uuid');
+  }
 
   Future<AuthenticationResponse> authenticate(AuthenticateRequest request) =>
     _client.post('/users/authenticate', request.toJson(), fromJson: AuthenticationResponse.fromJson);
@@ -72,7 +72,6 @@ class ApiService {
     _client.post('/echo', {'message': message});
 
   /// Access to underlying smart client for advanced usage
-  SmartApiClient get client => _client;
   
   /// Encryption status
   bool get isEncryptionActive => _client.isEncryptionActive;

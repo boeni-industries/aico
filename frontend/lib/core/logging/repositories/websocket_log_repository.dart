@@ -90,35 +90,6 @@ class WebSocketLogRepository implements LogRepository {
     _pendingLogs.clear();
   }
 
-  @override
-  Future<void> sendLog(LogEntry logEntry) async {
-    await _ensureConnection();
-    
-    _statusController.add(logEntry.withStatus(LogStatus.sending));
-
-    try {
-      final messageId = DateTime.now().millisecondsSinceEpoch.toString();
-      final message = {
-        'type': 'log',
-        'message_id': messageId,
-        'data': logEntry.toBackendJson(),
-      };
-
-      _pendingLogs[messageId] = logEntry;
-      _channel!.sink.add(json.encode(message));
-
-      // Set timeout for response
-      Timer(const Duration(seconds: 10), () {
-        final pendingLog = _pendingLogs.remove(messageId);
-        if (pendingLog != null) {
-          _statusController.add(pendingLog.withStatus(LogStatus.failed));
-        }
-      });
-    } catch (e) {
-      _statusController.add(logEntry.withStatus(LogStatus.failed));
-      rethrow;
-    }
-  }
 
   @override
   Future<void> sendLogs(List<LogEntry> logEntries) async {

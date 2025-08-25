@@ -2,18 +2,19 @@ import 'dart:async';
 
 import 'package:aico_frontend/core/logging/models/log_entry.dart';
 import 'package:aico_frontend/core/logging/repositories/log_repository.dart';
-import 'package:dio/dio.dart';
+import 'package:aico_frontend/core/services/unified_api_client.dart';
 
 /// HTTP-based log repository implementation
 class HttpLogRepository implements LogRepository {
-  final Dio _dio;
+  final UnifiedApiClient _apiClient;
   final String _logEndpoint;
   final StreamController<LogEntry> _statusController = StreamController.broadcast();
+  bool _isSending = false;
 
   HttpLogRepository({
-    required Dio dio,
-    String logEndpoint = '/api/v1/logs',
-  })  : _dio = dio,
+    required UnifiedApiClient apiClient,
+    String logEndpoint = '/admin/logs',
+  })  : _apiClient = apiClient,
         _logEndpoint = logEndpoint;
 
   @override
@@ -22,84 +23,40 @@ class HttpLogRepository implements LogRepository {
   @override
   Future<bool> get isAvailable async {
     try {
-      final response = await _dio.get('/api/v1/health');
-      return response.statusCode == 200;
+      final response = await _apiClient.get('/health');
+      return response.isSuccess;
     } catch (e) {
       return false;
     }
   }
 
   @override
-  Future<void> sendLog(LogEntry logEntry) async {
-    _statusController.add(logEntry.withStatus(LogStatus.sending));
-
-    try {
-      final response = await _dio.post(
-        _logEndpoint,
-        data: logEntry.toBackendJson(),
-        options: Options(
-          headers: {'Content-Type': 'application/json'},
-          sendTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 10),
-        ),
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 204) {
-        _statusController.add(logEntry.withStatus(LogStatus.sent));
-      } else {
-        throw DioException(
-          requestOptions: response.requestOptions,
-          response: response,
-          message: 'Unexpected status code: ${response.statusCode}',
-        );
-      }
-    } catch (_) {
-      // Log failed - emit status update
-      _statusController.add(logEntry.withStatus(LogStatus.failed));
-    }
-  }
-
-  @override
   Future<void> sendLogs(List<LogEntry> logEntries) async {
-    if (logEntries.isEmpty) return;
+    if (logEntries.isEmpty || _isSending) return;
 
-    // Update all to sending status
-    for (final entry in logEntries) {
-      _statusController.add(entry.withStatus(LogStatus.sending));
-    }
+    _isSending = true;
 
     try {
+      for (final entry in logEntries) {
+        _statusController.add(entry.withStatus(LogStatus.sending));
+      }
+
       final batchData = {
         'logs': logEntries.map((e) => e.toBackendJson()).toList(),
       };
 
-      final response = await _dio.post(
-        '$_logEndpoint/batch',
-        data: batchData,
-        options: Options(
-          headers: {'Content-Type': 'application/json'},
-          sendTimeout: const Duration(seconds: 30),
-          receiveTimeout: const Duration(seconds: 30),
-        ),
-      );
+      await _apiClient.post<Map<String, dynamic>>(_logEndpoint, batchData);
 
-      if (response.statusCode == 200 || response.statusCode == 204) {
-        // Mark all as sent
-        for (final entry in logEntries) {
-          _statusController.add(entry.withStatus(LogStatus.sent));
-        }
-      } else {
-        throw DioException(
-          requestOptions: response.requestOptions,
-          response: response,
-          message: 'Unexpected status code: ${response.statusCode}',
-        );
+      // If we reach here, the request was successful
+      for (final entry in logEntries) {
+        _statusController.add(entry.withStatus(LogStatus.sent));
       }
     } catch (_) {
-      // Batch failed - emit status updates for all entries
       for (final entry in logEntries) {
         _statusController.add(entry.withStatus(LogStatus.failed));
       }
+    } finally {
+      _isSending = false;
     }
   }
 

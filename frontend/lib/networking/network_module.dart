@@ -1,4 +1,3 @@
-import 'package:aico_frontend/networking/clients/api_client.dart';
 import 'package:aico_frontend/networking/clients/dio_client.dart';
 import 'package:aico_frontend/networking/clients/websocket_client.dart';
 import 'package:aico_frontend/networking/interceptors/token_refresh_interceptor.dart';
@@ -8,6 +7,7 @@ import 'package:aico_frontend/networking/repositories/user_repository.dart';
 import 'package:aico_frontend/networking/services/connection_manager.dart';
 import 'package:aico_frontend/networking/services/offline_queue.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
+import 'package:aico_frontend/core/services/api_service.dart';
 import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 
@@ -26,10 +26,10 @@ class NetworkModule {
       );
     });
 
-    // API clients
-    getIt.registerLazySingleton<AicoApiClient>(
-      () => AicoApiClient(getIt<Dio>()),
-    );
+    // API service (unified) - Note: This is legacy, main registration is in ServiceLocator
+    // getIt.registerLazySingleton<ApiService>(
+    //   () => ApiService(getIt<Dio>()),
+    // );
     
     getIt.registerLazySingleton<WebSocketClient>(() => WebSocketClient());
     
@@ -42,17 +42,17 @@ class NetworkModule {
     // Repositories
     getIt.registerLazySingleton<UserRepository>(
       () => ApiUserRepository(
-        apiClient: getIt<AicoApiClient>(),
+        apiService: getIt<ApiService>(),
         tokenManager: getIt<TokenManager>(),
       ),
     );
     
     getIt.registerLazySingleton<AdminRepository>(
-      () => ApiAdminRepository(getIt<AicoApiClient>()),
+      () => ApiAdminRepository(getIt<ApiService>()),
     );
     
     getIt.registerLazySingleton<HealthRepository>(
-      () => ApiHealthRepository(getIt<AicoApiClient>()),
+      () => ApiHealthRepository(getIt<ApiService>()),
     );
   }
 

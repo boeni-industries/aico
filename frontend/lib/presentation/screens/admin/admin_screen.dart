@@ -1,3 +1,4 @@
+import 'package:aico_frontend/presentation/screens/admin/encryption_test_screen.dart';
 import 'package:flutter/material.dart';
 
 /// Admin screen for system administration and developer tools.
@@ -6,15 +7,24 @@ class AdminScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Admin & Developer Tools'),
+      ),
+      body: ListView(
         children: [
-          Icon(Icons.admin_panel_settings, size: 64, color: Colors.grey),
-          SizedBox(height: 16),
-          Text('Admin Dashboard', 
-               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          Text('System administration coming soon'),
+          ListTile(
+            leading: const Icon(Icons.security),
+            title: const Text('Transport Encryption Test'),
+            subtitle: const Text('Verify client-server end-to-end encryption'),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const EncryptionTestScreen()),
+              );
+            },
+          ),
+          const Divider(),
         ],
       ),
     );

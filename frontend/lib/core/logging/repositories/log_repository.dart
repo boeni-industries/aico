@@ -2,9 +2,6 @@ import 'package:aico_frontend/core/logging/models/log_entry.dart';
 
 /// Abstract repository for log operations
 abstract class LogRepository {
-  /// Send log entry to backend
-  Future<void> sendLog(LogEntry logEntry);
-
   /// Send multiple log entries in batch
   Future<void> sendLogs(List<LogEntry> logEntries);
 

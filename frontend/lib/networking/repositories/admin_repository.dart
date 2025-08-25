@@ -1,5 +1,5 @@
-import 'package:aico_frontend/networking/clients/api_client.dart';
 import 'package:aico_frontend/networking/models/admin_models.dart';
+import 'package:aico_frontend/core/services/api_service.dart';
 import 'package:aico_frontend/networking/models/error_models.dart';
 
 abstract class AdminRepository {
@@ -14,14 +14,14 @@ abstract class AdminRepository {
 }
 
 class ApiAdminRepository implements AdminRepository {
-  final AicoApiClient _apiClient;
+  final ApiService _apiService;
 
-  ApiAdminRepository(this._apiClient);
+  ApiAdminRepository(this._apiService);
 
   @override
   Future<AdminHealthResponse> getAdminHealth() async {
     try {
-      return await _apiClient.getAdminHealth();
+      return await _apiService.getAdminHealth();
     } catch (e) {
       if (e is NetworkException) {
         rethrow;
@@ -33,7 +33,7 @@ class ApiAdminRepository implements AdminRepository {
   @override
   Future<GatewayStatusResponse> getGatewayStatus() async {
     try {
-      return await _apiClient.getGatewayStatus();
+      return await _apiService.getGatewayStatus();
     } catch (e) {
       if (e is NetworkException) {
         rethrow;
@@ -50,7 +50,7 @@ class ApiAdminRepository implements AdminRepository {
     String? subsystem,
   }) async {
     try {
-      return await _apiClient.getLogs(
+      return await _apiService.getLogs(
         limit: limit,
         offset: offset,
         level: level,

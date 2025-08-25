@@ -2,7 +2,7 @@ import 'package:aico_frontend/core/logging/models/log_entry.dart';
 import 'package:aico_frontend/core/logging/repositories/http_log_repository.dart';
 import 'package:aico_frontend/core/logging/repositories/log_repository.dart';
 import 'package:aico_frontend/core/logging/services/logging_service.dart';
-import 'package:dio/dio.dart';
+import 'package:aico_frontend/core/services/unified_api_client.dart';
 import 'package:get_it/get_it.dart';
 // import 'package:aico_frontend/core/logging/repositories/websocket_log_repository.dart'; // Available for future use
 
@@ -11,10 +11,10 @@ class LoggingModule {
   static Future<void> register(GetIt getIt) async {
     // Register repository based on configuration
     getIt.registerLazySingleton<LogRepository>(() {
-      final dio = getIt<Dio>();
+      final apiClient = getIt<UnifiedApiClient>();
       
       // Primary: HTTP repository with fallback capability
-      return HttpLogRepository(dio: dio);
+      return HttpLogRepository(apiClient: apiClient);
       
       // Alternative: WebSocket repository
       // return WebSocketLogRepository(wsUrl: 'ws://localhost:8772/ws/logs');

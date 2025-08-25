@@ -6,7 +6,7 @@ import 'package:retrofit/retrofit.dart';
 
 part 'api_client.g.dart';
 
-@RestApi(baseUrl: "http://localhost:8771/api/v1")
+@RestApi()
 abstract class AicoApiClient {
   factory AicoApiClient(Dio dio, {String baseUrl}) = _AicoApiClient;
 
@@ -32,7 +32,7 @@ abstract class AicoApiClient {
   @DELETE("/users/{uuid}")
   Future<void> deleteUser(@Path("uuid") String uuid);
 
-  @POST("/users/authenticate")
+  @POST("/users/authenticate/")
   Future<AuthenticationResponse> authenticate(@Body() AuthenticateRequest request);
 
   // Admin API endpoints

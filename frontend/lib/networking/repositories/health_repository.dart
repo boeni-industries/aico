@@ -1,6 +1,6 @@
-import 'package:aico_frontend/networking/clients/api_client.dart';
 import 'package:aico_frontend/networking/models/error_models.dart';
 import 'package:aico_frontend/networking/models/health_models.dart';
+import 'package:aico_frontend/core/services/api_service.dart';
 
 abstract class HealthRepository {
   Future<HealthResponse> getHealth();
@@ -8,14 +8,14 @@ abstract class HealthRepository {
 }
 
 class ApiHealthRepository implements HealthRepository {
-  final AicoApiClient _apiClient;
+  final ApiService _apiService;
 
-  ApiHealthRepository(this._apiClient);
+  ApiHealthRepository(this._apiService);
 
   @override
   Future<HealthResponse> getHealth() async {
     try {
-      return await _apiClient.getHealth();
+      return await _apiService.getHealth();
     } catch (e) {
       if (e is NetworkException) {
         rethrow;
@@ -27,7 +27,7 @@ class ApiHealthRepository implements HealthRepository {
   @override
   Future<DetailedHealthResponse> getDetailedHealth() async {
     try {
-      return await _apiClient.getDetailedHealth();
+      return await _apiService.getDetailedHealth();
     } catch (e) {
       if (e is NetworkException) {
         rethrow;

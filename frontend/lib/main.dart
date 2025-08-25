@@ -43,8 +43,9 @@ void main() async {
     debugPrint('Window manager not available: $e');
   }
   
-  // Initialize dependency injection
+  // Initialize dependency injection and wait for all services to be ready
   await ServiceLocator.initialize();
+  await ServiceLocator.allReady();
   
   // Log application startup
   await Log.i('app', 'startup', 'AICO Flutter application starting', extra: {

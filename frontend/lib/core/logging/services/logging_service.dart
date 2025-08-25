@@ -197,17 +197,22 @@ class LoggingService {
     Object? error,
     StackTrace? stackTrace,
     Map<String, dynamic>? extra,
-  }) => log(
-    level: LogLevel.error,
-    module: module,
-    topic: topic,
-    message: message,
-    function: function,
-    error: error,
-    stackTrace: stackTrace,
-    extra: extra,
-    severity: LogSeverity.high,
-  );
+    bool isRecursive = false, // Add flag to prevent recursive logging
+  }) {
+    if (isRecursive) return Future.value();
+
+    return log(
+      level: LogLevel.error,
+      module: module,
+      topic: topic,
+      message: message,
+      function: function,
+      error: error,
+      stackTrace: stackTrace,
+      extra: extra,
+      severity: LogSeverity.high,
+    );
+  }
 
   bool _shouldLog(LogLevel level) {
     const levelOrder = [LogLevel.debug, LogLevel.info, LogLevel.warning, LogLevel.error];
@@ -263,15 +268,14 @@ class LoggingService {
     if (batch.isEmpty) return;
 
     try {
-      if (batch.length == 1) {
-        await _repository.sendLog(batch.first);
-      } else {
-        await _repository.sendLogs(batch);
-      }
-    } catch (e) {
+      await _repository.sendLogs(batch);
+    } catch (e, s) {
       // Add failed logs back to failed queue for retry
       _failedLogs.addAll(batch.map((log) => log.withStatus(LogStatus.failed)));
-      
+
+      // Log the batch processing error itself, marking it as recursive
+      error('logging_service', 'batch_error', 'Failed to send log batch', error: e, stackTrace: s, isRecursive: true);
+
       // Write to local file as fallback
       if (_config.enableLocalFallback) {
         for (final log in batch) {
@@ -305,7 +309,7 @@ class LoggingService {
     // Retry logs
     for (final log in toRetry) {
       try {
-        await _repository.sendLog(log);
+        await _repository.sendLogs([log]);
       } catch (e) {
         // Will be handled by status stream
       }

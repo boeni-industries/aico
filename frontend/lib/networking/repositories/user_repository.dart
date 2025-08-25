@@ -1,5 +1,5 @@
-import 'package:aico_frontend/networking/clients/api_client.dart';
 import 'package:aico_frontend/networking/models/user_models.dart';
+import 'package:aico_frontend/core/services/api_service.dart';
 import 'package:aico_frontend/networking/services/secure_credential_manager.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:dio/dio.dart';
@@ -15,24 +15,21 @@ abstract class UserRepository {
 }
 
 class ApiUserRepository implements UserRepository {
-  final AicoApiClient _apiClient;
+  final ApiService _apiService;
   final TokenManager _tokenManager;
   final SecureCredentialManager _credentialManager;
 
   ApiUserRepository({
-    required AicoApiClient apiClient,
+    required ApiService apiService,
     required TokenManager tokenManager,
-  })  : _apiClient = apiClient,
+  })  : _apiService = apiService,
         _tokenManager = tokenManager,
         _credentialManager = SecureCredentialManager();
 
   @override
   Future<List<User>> getUsers({String? userType, int limit = 100}) async {
     try {
-      final response = await _apiClient.getUsers(
-        userType: userType,
-        limit: limit,
-      );
+      final response = await _apiService.getUsers(userType: userType, limit: limit);
       return response.users;
     } catch (e) {
       if (e is DioException) {
@@ -45,7 +42,7 @@ class ApiUserRepository implements UserRepository {
   @override
   Future<User> createUser(CreateUserRequest request) async {
     try {
-      return await _apiClient.createUser(request);
+      return await _apiService.createUser(request);
     } catch (e) {
       if (e is DioException) {
         throw Exception('Network error: ${e.message}');
@@ -57,7 +54,7 @@ class ApiUserRepository implements UserRepository {
   @override
   Future<User> getUser(String uuid) async {
     try {
-      return await _apiClient.getUser(uuid);
+      return await _apiService.getUser(uuid);
     } catch (e) {
       if (e is DioException) {
         throw Exception('Network error: ${e.message}');
@@ -69,7 +66,7 @@ class ApiUserRepository implements UserRepository {
   @override
   Future<User> updateUser(String uuid, UpdateUserRequest request) async {
     try {
-      return await _apiClient.updateUser(uuid, request);
+      return await _apiService.updateUser(uuid, request);
     } catch (e) {
       if (e is DioException) {
         throw Exception('Network error: ${e.message}');
@@ -81,7 +78,7 @@ class ApiUserRepository implements UserRepository {
   @override
   Future<void> deleteUser(String uuid) async {
     try {
-      await _apiClient.deleteUser(uuid);
+      await _apiService.deleteUser(uuid);
     } catch (e) {
       if (e is DioException) {
         throw Exception('Network error: ${e.message}');
@@ -195,7 +192,7 @@ class ApiUserRepository implements UserRepository {
     
     try {
       debugPrint('UserRepository: Calling API client authenticate method');
-      final response = await _apiClient.authenticate(request);
+      final response = await _apiService.authenticate(request);
       
       debugPrint('UserRepository: Authentication API call successful');
       debugPrint('UserRepository: Response success: ${response.success}');
