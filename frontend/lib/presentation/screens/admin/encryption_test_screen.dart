@@ -49,9 +49,9 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
     setState(() => _isLoading = true);
     _log('Sending encrypted echo request...');
     try {
-      final response = await _apiService.post('/echo', {'message': 'Hello from the AICO app!'});
+      final response = await _apiService.post('/echo/', {'message': 'Hello from the AICO app!'});
       _log('✅ Echo successful!');
-      _log('Server response: $response');
+      _log('Server response: ${response.toString()}');
     } catch (e) {
       _log('❌ Echo failed: $e');
     } finally {

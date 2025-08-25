@@ -13,7 +13,7 @@ class HttpLogRepository implements LogRepository {
 
   HttpLogRepository({
     required UnifiedApiClient apiClient,
-    String logEndpoint = '/admin/logs',
+    String logEndpoint = '/logs/batch',
   })  : _apiClient = apiClient,
         _logEndpoint = logEndpoint;
 
@@ -35,6 +35,7 @@ class HttpLogRepository implements LogRepository {
     if (logEntries.isEmpty || _isSending) return;
 
     _isSending = true;
+    print('📤 HttpLogRepository: Sending ${logEntries.length} log entries to $_logEndpoint');
 
     try {
       for (final entry in logEntries) {
@@ -45,13 +46,17 @@ class HttpLogRepository implements LogRepository {
         'logs': logEntries.map((e) => e.toBackendJson()).toList(),
       };
 
+      print('📤 HttpLogRepository: Batch data prepared, making API call...');
       await _apiClient.post<Map<String, dynamic>>(_logEndpoint, batchData);
 
       // If we reach here, the request was successful
+      print('✅ HttpLogRepository: Successfully sent ${logEntries.length} log entries');
       for (final entry in logEntries) {
         _statusController.add(entry.withStatus(LogStatus.sent));
       }
-    } catch (_) {
+    } catch (e) {
+      print('❌ HttpLogRepository: Failed to send logs: $e');
+      print('❌ HttpLogRepository: Error type: ${e.runtimeType}');
       for (final entry in logEntries) {
         _statusController.add(entry.withStatus(LogStatus.failed));
       }

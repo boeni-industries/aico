@@ -269,6 +269,12 @@ class EncryptionMiddleware:
                     "peer_component": handshake_data["handshake_request"].get("component")
                 })
                 
+                self.logger.info("Handshake completed successfully", extra={
+                    "client_id": client_id,
+                    "peer_component": handshake_data["handshake_request"].get("component"),
+                    "session_status": "established"
+                })
+                
                 return JSONResponse({
                     "handshake_response": response_data,
                     "status": "session_established"

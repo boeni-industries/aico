@@ -35,14 +35,26 @@ async def echo_message(request: EchoRequest):
     Echo back the received message with server timestamp.
     Useful for testing encrypted communication.
     """
-    logger.info(f"Echo request received: {request.message}")
+    logger.info("Echo request received", extra={
+        "message": request.message,
+        "test_data_keys": list(request.test_data.keys()) if request.test_data else [],
+        "endpoint": "/echo"
+    })
     
-    return EchoResponse(
+    response = EchoResponse(
         echo=request.message,
         received_data=request.test_data,
         server_timestamp=int(time.time()),
         status="success"
     )
+    
+    logger.info("Echo response sent", extra={
+        "message": request.message,
+        "server_timestamp": response.server_timestamp,
+        "status": response.status
+    })
+    
+    return response
 
 
 @router.get("/ping")
