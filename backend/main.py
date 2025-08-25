@@ -87,6 +87,7 @@ except Exception as e:
 # Global instances (config_manager already initialized above)
 message_bus_host = None
 api_gateway = None
+rest_adapter_app = None
 shutdown_event = asyncio.Event()
 
 @asynccontextmanager
@@ -306,25 +307,50 @@ async def lifespan(app: FastAPI):
                     import traceback
                     traceback.print_exc()
                 
-                # Now import and mount the unified API router
+                # Now import and mount the unified API router to the REST adapter
                 from api import api_router
-                app.include_router(api_router, prefix="/api/v1")
+                rest_adapter.mount_router(api_router, prefix="/api/v1")
                 logger.info("Domain-based API routers mounted at /api/v1")
                 
-                # Log available endpoints
-                logger.info("Available API endpoints:", extra={
-                    "users": "/api/v1/users/*",
-                    "admin": "/api/v1/admin/*", 
-                    "health": "/api/v1/health/*"
-                })
+                # Store reference to REST adapter app for server.py to use
+                global rest_adapter_app
+                rest_adapter_app = rest_adapter.app
+                print(f"DEBUG: Set rest_adapter_app to: {rest_adapter_app}")
+                print(f"DEBUG: Type: {type(rest_adapter_app)}")
+                print(f"DEBUG: App routes: {[route.path for route in rest_adapter_app.routes]}")
+                logger.info("REST adapter app stored for server replacement")
+                
+                # Log available endpoints dynamically
+                endpoint_paths = []
+                for route in app.routes:
+                    if hasattr(route, 'path'):
+                        endpoint_paths.append(route.path)
+                
+                logger.info(f"Available API endpoints: {sorted(set(endpoint_paths))}")
+                
+                # Start the server with the REST adapter app
+                print(f"DEBUG: Starting server with REST adapter app: {rest_adapter_app}")
+                from server import run_server_async
+                await run_server_async(app, config_manager, detach=detach_mode, rest_app=rest_adapter_app)
                 
             except Exception as e:
-                logger.error(f"Failed to initialize API routers: {e}")
+                logger.error(f"Failed to start API Gateway: {e}")
                 import traceback
                 traceback.print_exc()
-                logger.info("Falling back to basic health endpoint only")
-        else:
-            logger.info("API Gateway disabled in configuration")
+                raise
+        
+        yield
+        
+        # Shutdown
+        if api_gateway:
+            logger.info("Shutting down API Gateway...")
+            await api_gateway.stop()
+            logger.info("API Gateway shutdown complete")
+        
+        if message_bus_host:
+            logger.info("Shutting down Message Bus Host...")
+            await message_bus_host.stop()
+            logger.info("Message Bus Host shutdown complete")
         
         logger.info("AICO backend fully initialized")
         
@@ -336,7 +362,8 @@ async def lifespan(app: FastAPI):
         shutdown_task = asyncio.create_task(shutdown_monitor())
         
         try:
-            yield  # This is where the application runs
+            # This is where the application runs - wait for shutdown signal
+            await shutdown_task
         finally:
             # Cancel the shutdown monitor
             shutdown_task.cancel()
@@ -419,8 +446,26 @@ async def main():
         print("Signal handlers installed for SIGTERM and SIGINT")
         print(f"Main process PID: {os.getpid()}")
     
-    # Use our custom server wrapper
-    await run_server_async(app, config_manager, detach=detach_mode)
+    # Start the FastAPI app with lifespan - server startup happens in lifespan function
+    import uvicorn
+    
+    # Get host and port from configuration
+    core_config = config_manager.config_cache.get('core', {})
+    api_gateway_config = core_config.get('api_gateway', {})
+    rest_config = api_gateway_config.get('rest', {})
+    
+    host = rest_config.get('host', '127.0.0.1')
+    port = rest_config.get('port', 8771)
+    
+    # Run uvicorn with the main app - lifespan function will handle server startup
+    await uvicorn.Server(
+        uvicorn.Config(
+            app=app,
+            host=host,
+            port=port,
+            log_level="info" if not detach_mode else "warning"
+        )
+    ).serve()
 
 
 if __name__ == "__main__":

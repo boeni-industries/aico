@@ -114,10 +114,8 @@ class RESTAdapter:
         """Setup middleware stack"""
         
         # Add encryption middleware (first in chain for request processing)
-        self.app.add_middleware(
-            BaseHTTPMiddleware,
-            dispatch=self.encryption_middleware.dispatch
-        )
+        # Using pure ASGI middleware to avoid Content-Length calculation bugs
+        self.app.add_middleware(self.encryption_middleware.__class__, key_manager=self.key_manager)
         
         # Add security middleware
         self.app.add_middleware(

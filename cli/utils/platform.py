@@ -52,7 +52,10 @@ def get_platform_chars():
             "hourglass": "*",
             "stop": "*",
             "restart": "*",
-            "prohibited": "*"
+            "prohibited": "*",
+            "shield": "*",
+            "key": "*",
+            "chart": "*"
         }
     
     # Use beautiful Unicode for everything else (Git Bash, PowerShell, Mac, Linux)
@@ -78,7 +81,10 @@ def get_platform_chars():
         "hourglass": "⏳",
         "stop": "🛑",
         "restart": "🔄",
-        "prohibited": "🚫"
+        "prohibited": "🚫",
+        "shield": "🛡️",
+        "key": "🔑",
+        "chart": "📊"
     }
 
 

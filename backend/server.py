@@ -235,12 +235,12 @@ class AICOServer:
         }
 
 
-async def run_server_async(app: FastAPI, config_manager: ConfigurationManager, detach: bool = True):
+async def run_server_async(app: FastAPI, config_manager, detach: bool = True, rest_app: FastAPI = None):
     """
-    Async entry point for running the server
+    Asynchronous server runner with proper lifecycle management
     
     Args:
-        app: FastAPI application instance
+        app: FastAPI application instance (may be replaced by REST adapter app)
         config_manager: Configuration manager
         detach: Whether to run in background mode
     """
@@ -252,9 +252,21 @@ async def run_server_async(app: FastAPI, config_manager: ConfigurationManager, d
     host = rest_config.get('host', '127.0.0.1')
     port = rest_config.get('port', 8771)
     
-    server = AICOServer(app, host, port)
+    # Use REST adapter app if passed directly as parameter
+    print(f"DEBUG: About to check for REST adapter app replacement")
+    if rest_app is not None:
+        print(f"DEBUG: REST adapter app passed as parameter: {rest_app}")
+        print(f"DEBUG: Type: {type(rest_app)}")
+        print("DEBUG: Using REST adapter app instead of main app for server")
+        logger.info("Using REST adapter app instead of main app for server")
+        app = rest_app
+    else:
+        print("DEBUG: No REST adapter app passed, using main app")
+        logger.warning("REST adapter app not provided, using main app")
     
     try:
+        # Create and start server
+        server = AICOServer(app, host, port)
         success = await server.start(detach=detach)
         if not success:
             logger.error("Failed to start server")
