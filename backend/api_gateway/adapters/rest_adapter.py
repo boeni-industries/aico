@@ -221,3 +221,41 @@ class RESTAdapter:
     def get_app(self) -> FastAPI:
         """Get FastAPI app instance"""
         return self.app
+
+
+def create_rest_adapter(config_manager) -> FastAPI:
+    """Create and configure REST adapter app"""
+    from aico.core.bus import MessageBusBroker
+    from aico.security.key_manager import AICOKeyManager
+    from ..models.core.auth import AuthenticationManager, AuthorizationManager
+    from ..models.core.message_router import MessageRouter
+    from ..middleware.rate_limiter import RateLimiter
+    from ..middleware.validator import MessageValidator
+    from ..middleware.security import SecurityMiddleware
+    
+    # Get configuration
+    config = config_manager.config_cache.get('core', {})
+    api_gateway_config = config.get('api_gateway', {})
+    
+    # Create required components
+    key_manager = AICOKeyManager(config_manager)
+    auth_manager = AuthenticationManager(config_manager)
+    authz_manager = AuthorizationManager(config_manager)
+    message_router = MessageRouter(api_gateway_config)
+    rate_limiter = RateLimiter(config_manager)
+    validator = MessageValidator()
+    security_middleware = SecurityMiddleware(config_manager)
+    
+    # Create REST adapter with all dependencies
+    rest_adapter = RESTAdapter(
+        config=api_gateway_config,
+        auth_manager=auth_manager,
+        authz_manager=authz_manager,
+        message_router=message_router,
+        rate_limiter=rate_limiter,
+        validator=validator,
+        security_middleware=security_middleware,
+        key_manager=key_manager
+    )
+    
+    return rest_adapter.get_app()

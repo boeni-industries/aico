@@ -57,19 +57,23 @@ class ComponentIdentity:
 class HandshakeMessage:
     """Handshake message format"""
     component: str
-    public_key: str  # Base64 encoded
+    public_key: str  # Base64 encoded - X25519 for key exchange
     timestamp: float
     challenge: str  # Base64 encoded
     signature: Optional[str] = None  # Base64 encoded
+    identity_key: Optional[str] = None  # Base64 encoded Ed25519 for signatures
     
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "component": self.component,
             "public_key": self.public_key,
             "timestamp": self.timestamp,
             "challenge": self.challenge,
             "signature": self.signature
         }
+        if self.identity_key:
+            result["identity_key"] = self.identity_key
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'HandshakeMessage':
@@ -131,8 +135,13 @@ class SecureTransportChannel:
             if abs(time.time() - request.timestamp) > self.handshake_timeout:
                 raise EncryptionError("Handshake timestamp too old")
             
-            # Verify signature
-            peer_verify_key = VerifyKey(base64.b64decode(request.public_key))
+            # Verify signature using identity key (Ed25519)
+            if hasattr(request, 'identity_key') and request.identity_key:
+                peer_verify_key = VerifyKey(base64.b64decode(request.identity_key))
+            else:
+                # Fallback for old format
+                peer_verify_key = VerifyKey(base64.b64decode(request.public_key))
+            
             challenge = base64.b64decode(request.challenge)
             signature = base64.b64decode(request.signature)
             
@@ -141,27 +150,42 @@ class SecureTransportChannel:
             except Exception:
                 raise EncryptionError("Invalid handshake signature")
             
-            # Create peer identity
+            # Store peer's X25519 public key for session establishment
+            if hasattr(request, 'identity_key') and request.identity_key:
+                # New format: separate identity and session keys
+                peer_session_key = base64.b64decode(request.public_key)
+            else:
+                # Old format: use same key for both (fallback)
+                peer_session_key = base64.b64decode(request.public_key)
+            
+            # Create peer identity with Ed25519 key for verification
             self.peer_identity = ComponentIdentity(
                 component_name=request.component,
                 signing_key=None,  # We don't have their private key
                 verify_key=peer_verify_key
             )
             
-            # Create response
+            # Store peer's X25519 session key separately
+            self.peer_session_key = peer_session_key
+            
+            # Generate ephemeral X25519 keypair for session
+            self.session_private_key = PrivateKey.generate()
+            session_public_key = self.session_private_key.public_key
+            
+            # Create response with X25519 public key for session
             response_challenge = random(32)
             response = HandshakeMessage(
                 component=self.identity.component_name,
-                public_key=base64.b64encode(self.identity.public_key_bytes()).decode(),
+                public_key=base64.b64encode(bytes(session_public_key)).decode(),
                 timestamp=time.time(),
                 challenge=base64.b64encode(response_challenge).decode()
             )
             
-            # Sign response challenge
+            # Sign response challenge with Ed25519 identity key
             response_signature = self.identity.sign(response_challenge)
             response.signature = base64.b64encode(response_signature).decode()
             
-            # Establish session keys
+            # Establish session keys using the generated keypair
             self._establish_session_keys()
             
             self.logger.info("Handshake request processed", extra={
@@ -221,15 +245,19 @@ class SecureTransportChannel:
             raise EncryptionError("No peer identity for session establishment")
         
         try:
-            # Generate ephemeral X25519 keypair for this session
-            private_key = PrivateKey.generate()
+            # Use the session private key generated during handshake
+            if not hasattr(self, 'session_private_key'):
+                raise EncryptionError("No session private key - handshake not completed")
             
-            # Convert Ed25519 keys to X25519 for key exchange
-            # Note: This is a simplified approach - in production, separate X25519 keys should be used
-            peer_public_key = PublicKey(self.peer_identity.public_key_bytes())
+            # Get peer's X25519 public key from handshake request
+            if hasattr(self, 'peer_session_key'):
+                peer_public_key = PublicKey(self.peer_session_key)
+            else:
+                # Fallback for old format
+                peer_public_key = PublicKey(self.peer_identity.public_key_bytes())
             
-            # Create Box for encryption
-            self.session_box = Box(private_key, peer_public_key)
+            # Create Box for encryption using the consistent keypair
+            self.session_box = Box(self.session_private_key, peer_public_key)
             self.session_established = True
             self.session_timestamp = time.time()
             

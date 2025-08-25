@@ -77,68 +77,118 @@ class EncryptionMiddleware:
             await self.app(scope, receive, send)
             return
         
+        # Skip encryption if disabled
+        if not self.enabled:
+            await self.app(scope, receive, send)
+            return
+        
         # Create request object for processing
         request = Request(scope, receive)
         
-        # Process the request through our middleware logic
-        response = await self._process_request(request)
-        
-        if response:
-            # We handled the request, send our response
-            await response(scope, receive, send)
-        else:
-            # Pass through to the next middleware/app
-            await self.app(scope, receive, send)
-    
-    async def _process_request(self, request: Request) -> Optional[Response]:
-        """Process request with encryption/decryption"""
-        
-        # Skip encryption if disabled
-        if not self.enabled:
-            return None
-        
         # Skip encryption for health checks and handshake endpoint
         if self._should_skip_encryption(request):
-            return None
+            await self.app(scope, receive, send)
+            return
         
+        # Handle handshake requests
+        if request.url.path == self.handshake_path:
+            response = await self._handle_handshake(request)
+            await response(scope, receive, send)
+            return
+        
+        # Handle encrypted requests
+        await self._handle_encrypted_request(scope, receive, send)
+    
+    async def _handle_encrypted_request(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Handle encrypted request by decrypting and forwarding"""
         try:
-            # Handle handshake requests
-            if request.url.path == self.handshake_path:
-                return await self._handle_handshake(request)
-            
             # Get client channel
+            request = Request(scope, receive)
             client_id = self._get_client_id(request)
             channel = self.channels.get(client_id)
             
             if not channel or not channel.is_session_valid():
                 if self.require_encryption:
-                    return JSONResponse(
+                    response = JSONResponse(
                         status_code=401,
                         content={
                             "error": "Encryption required",
                             "message": "Perform handshake at /api/v1/handshake first"
                         }
                     )
+                    await response(scope, receive, send)
+                    return
                 else:
                     # Allow unencrypted requests - pass through
-                    return None
+                    await self.app(scope, receive, send)
+                    return
             
-            # For encrypted requests, we would process them here
-            # For now, just pass through
-            return None
+            # Read and check if request is encrypted
+            body = await request.body()
+            if body:
+                try:
+                    request_data = json.loads(body)
+                    if request_data.get("encrypted") and "payload" in request_data:
+                        # Use client_id from request if provided, otherwise generate one
+                        if "client_id" in request_data:
+                            client_id = request_data["client_id"]
+                            self.logger.debug(f"Looking for client_id: {client_id}")
+                            self.logger.debug(f"Available channels: {list(self.channels.keys())}")
+                            channel = self.channels.get(client_id)
+                            if not channel or not channel.is_session_valid():
+                                self.logger.error(f"Invalid session for client_id: {client_id}, available: {list(self.channels.keys())}")
+                                raise DecryptionError("Invalid or expired session for provided client_id")
+                        
+                        # Decrypt the payload
+                        encrypted_payload = request_data["payload"]
+                        self.logger.info(f"Attempting to decrypt payload for client_id: {client_id}")
+                        self.logger.info(f"Channel session valid: {channel.is_session_valid()}")
+                        self.logger.info(f"Encrypted payload length: {len(encrypted_payload)}")
+                        
+                        try:
+                            decrypted_data = channel.decrypt_json_payload(encrypted_payload)
+                            self.logger.info(f"Successfully decrypted payload: {decrypted_data}")
+                        except Exception as e:
+                            self.logger.error(f"Decryption failed with error: {e}")
+                            # Let's also check if the channel has the right session info
+                            self.logger.error(f"Channel session_established: {getattr(channel, 'session_established', 'N/A')}")
+                            self.logger.error(f"Channel session_box exists: {hasattr(channel, 'session_box') and channel.session_box is not None}")
+                            raise
+                        
+                        # Create new receive callable with decrypted data
+                        decrypted_body = json.dumps(decrypted_data).encode()
+                        
+                        async def new_receive():
+                            return {
+                                "type": "http.request",
+                                "body": decrypted_body,
+                                "more_body": False
+                            }
+                        
+                        # Forward to app with decrypted body
+                        await self.app(scope, new_receive, send)
+                        return
+                except json.JSONDecodeError:
+                    # Not JSON, pass through
+                    pass
+            
+            # Pass through unencrypted requests
+            await self.app(scope, receive, send)
             
         except (EncryptionError, DecryptionError) as e:
             self.logger.error(f"Encryption middleware error: {e}")
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=400,
                 content={"error": "Encryption error", "detail": str(e)}
             )
+            await response(scope, receive, send)
         except Exception as e:
             self.logger.error(f"Middleware error: {e}")
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=500,
                 content={"error": "Internal server error"}
             )
+            await response(scope, receive, send)
     
     def _should_skip_encryption(self, request: Request) -> bool:
         """Check if request should skip encryption"""
@@ -184,8 +234,35 @@ class EncryptionMiddleware:
                     handshake_data["handshake_request"]
                 )
                 
-                # Store channel
+                # Store channel with both server-generated and client-provided IDs
                 self.channels[client_id] = channel
+                
+                # Also store with client identity for encrypted requests
+                handshake_request = handshake_data["handshake_request"]
+                
+                # Store with identity_key (Ed25519) if provided - this is what client uses for client_id
+                if "identity_key" in handshake_request:
+                    import base64
+                    identity_key_b64 = handshake_request["identity_key"]
+                    identity_key_bytes = base64.b64decode(identity_key_b64)
+                    client_verify_key_id = identity_key_bytes.hex()[:16]
+                    self.channels[client_verify_key_id] = channel
+                    self.logger.info(f"Stored channel with client_verify_key_id: {client_verify_key_id}")
+                
+                # Fallback: store with public_key if no identity_key (for backward compatibility)
+                elif "public_key" in handshake_request:
+                    import base64
+                    public_key_b64 = handshake_request["public_key"]
+                    public_key_bytes = base64.b64decode(public_key_b64)
+                    client_verify_key_id = public_key_bytes.hex()[:16]
+                    self.channels[client_verify_key_id] = channel
+                    self.logger.info(f"Stored channel with client_verify_key_id (fallback): {client_verify_key_id}")
+                
+                # Also store with component name as fallback
+                if "component" in handshake_request:
+                    component_id = handshake_request.get("component", "unknown")
+                    self.channels[component_id] = channel
+                    self.logger.info(f"Stored channel with component_id: {component_id}")
                 
                 self.logger.info("Handshake initiated", extra={
                     "client_id": client_id,

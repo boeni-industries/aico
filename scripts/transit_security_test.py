@@ -70,11 +70,12 @@ class TransitSecurityTestClient:
             client_private_key = PrivateKey.generate()
             client_public_key = client_private_key.public_key
             
-            # Step 2: Create handshake request
+            # Step 2: Create handshake request with both keys
             challenge_bytes = random(32)
             handshake_request = {
                 "component": "test_client",
-                "public_key": base64.b64encode(bytes(self.verify_key)).decode(),
+                "identity_key": base64.b64encode(bytes(self.verify_key)).decode(),  # Ed25519 for signatures
+                "public_key": base64.b64encode(bytes(client_public_key)).decode(),   # X25519 for key exchange
                 "timestamp": int(time.time()),
                 "challenge": base64.b64encode(challenge_bytes).decode()
             }
@@ -341,22 +342,36 @@ def run_full_test():
         }
     })
     
+    echo_success = False
     if echo_response:
         print("✅ Encrypted echo successful")
         print(f"Echo response: {json.dumps(echo_response, indent=2)}")
+        echo_success = True
     else:
-        print("⚠️ Encrypted echo endpoint not available (expected)")
+        print("❌ Encrypted echo test failed")
     
     print("\n" + "=" * 50)
-    print("🎉 Transit Security Test COMPLETED SUCCESSFULLY!")
-    print("\n✅ All tests passed:")
-    print("  • Backend connectivity")
-    print("  • Transport encryption configuration")
-    print("  • Encrypted handshake protocol")
-    print("  • End-to-end encrypted communication")
-    print("\n🔐 Frontend-backend encryption is working correctly!")
     
-    return True
+    if echo_success:
+        print("🎉 Transit Security Test COMPLETED SUCCESSFULLY!")
+        print("\n✅ All tests passed:")
+        print("  • Backend connectivity")
+        print("  • Transport encryption configuration")
+        print("  • Encrypted handshake protocol")
+        print("  • End-to-end encrypted communication")
+        print("\n🔐 Frontend-backend encryption is working correctly!")
+        return True
+    else:
+        print("⚠️ Transit Security Test PARTIALLY COMPLETED")
+        print("\n✅ Core tests passed:")
+        print("  • Backend connectivity")
+        print("  • Transport encryption configuration")
+        print("  • Encrypted handshake protocol")
+        print("  • Basic encrypted communication (health check)")
+        print("\n❌ Failed tests:")
+        print("  • Encrypted echo endpoint")
+        print("\n🔧 Handshake and basic encryption working, but full payload decryption needs fixing")
+        return False
 
 
 if __name__ == "__main__":
