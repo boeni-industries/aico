@@ -638,6 +638,37 @@ def status():
             console.print(table)
             console.print()
         
+        # Transport Encryption Status
+        try:
+            # Load security configuration for transport encryption
+            security_config_path = config_dir / "defaults" / "security.yaml"
+            transport_config = {}
+            
+            if security_config_path.exists():
+                with open(security_config_path, 'r', encoding='utf-8') as f:
+                    security_yaml = yaml.safe_load(f)
+                transport_config = security_yaml.get("transport_encryption", {})
+            
+            transport_enabled = transport_config.get("enabled", True)
+            algorithm = transport_config.get("algorithm", "XChaCha20-Poly1305")
+            
+            if transport_enabled:
+                console.print(f"{chars['shield']} [bold green]Transport Encryption: ENABLED[/bold green]")
+                console.print(f"   [dim]{algorithm} • Ed25519 identity • X25519 sessions[/dim]")
+                
+                # Session timeout info
+                session_timeout = transport_config.get("session", {}).get("timeout_seconds", 3600)
+                console.print(f"   [dim]Session timeout: {session_timeout//60}m • Handshake: /api/v1/handshake[/dim]")
+            else:
+                console.print(f"{chars['shield']} [bold yellow]Transport Encryption: DISABLED[/bold yellow]")
+                console.print("   [dim]Using TLS only • No end-to-end encryption[/dim]")
+                
+        except Exception as e:
+            console.print(f"{chars['shield']} [bold red]Transport Encryption: ERROR[/bold red]")
+            console.print(f"   [dim]Failed to load config: {e}[/dim]")
+        
+        console.print()
+        
         # Authentication status - clear and actionable
         token = _get_jwt_token()
         if token:

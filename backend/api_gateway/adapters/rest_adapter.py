@@ -18,6 +18,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends, APIRoute
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 import sys
 from pathlib import Path
@@ -31,12 +32,14 @@ from aico.core.version import get_backend_version
 __version__ = get_backend_version()
 from aico.core.bus import MessageBusClient
 from aico.core import AicoMessage, MessageMetadata
+from aico.security.key_manager import AICOKeyManager
 
 from ..models.core.auth import AuthenticationManager, AuthorizationManager
 from ..models.core.message_router import MessageRouter
 from ..middleware.rate_limiter import RateLimiter
 from ..middleware.validator import MessageValidator
 from ..middleware.security import SecurityMiddleware
+from ..middleware.encryption import EncryptionMiddleware
 
 
 class RESTAdapter:
@@ -54,7 +57,7 @@ class RESTAdapter:
     def __init__(self, config: Dict[str, Any], auth_manager: AuthenticationManager,
                  authz_manager: AuthorizationManager, message_router: MessageRouter,
                  rate_limiter: RateLimiter, validator: MessageValidator,
-                 security_middleware: SecurityMiddleware):
+                 security_middleware: SecurityMiddleware, key_manager: AICOKeyManager):
         
         self.logger = get_logger("api_gateway", "rest")
         self.config = config
@@ -64,6 +67,10 @@ class RESTAdapter:
         self.rate_limiter = rate_limiter
         self.validator = validator
         self.security_middleware = security_middleware
+        self.key_manager = key_manager
+        
+        # Initialize encryption middleware
+        self.encryption_middleware = EncryptionMiddleware(None, key_manager)
         
         # FastAPI app
         self.app = FastAPI(
@@ -80,7 +87,7 @@ class RESTAdapter:
         # Setup routes
         self._setup_routes()
         
-        # Setup middleware
+        # Setup middleware (including encryption)
         self._setup_middleware()
         
         # Server instance
@@ -104,35 +111,25 @@ class RESTAdapter:
         )
     
     def _setup_middleware(self):
-        """Setup custom middleware"""
+        """Setup middleware stack"""
         
-        @self.app.middleware("http")
-        async def security_middleware(request: Request, call_next):
-            """Security middleware for all requests"""
-            try:
-                # Extract client info
-                client_info = {
-                    "client_id": request.client.host,
-                    "protocol": "rest",
-                    "headers": dict(request.headers),
-                    "cookies": dict(request.cookies),
-                    "user_agent": request.headers.get("user-agent", ""),
-                    "remote_addr": request.client.host
-                }
-                
-                # Apply security middleware
-                await self.security_middleware.process_request(request, client_info)
-                
-                # Continue with request
-                response = await call_next(request)
-                return response
-                
-            except Exception as e:
-                self.logger.error(f"Security middleware error: {e}")
-                return JSONResponse(
-                    status_code=403,
-                    content={"error": "Security check failed", "detail": str(e)}
-                )
+        # Add encryption middleware (first in chain for request processing)
+        self.app.add_middleware(
+            BaseHTTPMiddleware,
+            dispatch=self.encryption_middleware.dispatch
+        )
+        
+        # Add security middleware
+        self.app.add_middleware(
+            BaseHTTPMiddleware,
+            dispatch=self.security_middleware.dispatch
+        )
+        
+        # Add rate limiting middleware
+        self.app.add_middleware(
+            BaseHTTPMiddleware,
+            dispatch=self.rate_limiter.dispatch
+        )
         
         @self.app.middleware("http")
         async def logging_middleware(request: Request, call_next):

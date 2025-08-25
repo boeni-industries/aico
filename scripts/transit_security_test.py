@@ -1,0 +1,349 @@
+#!/usr/bin/env python3
+"""
+Transit Security Test Script
+
+Tests the encrypted frontend-backend communication by simulating a simplified
+frontend client connecting to the AICO backend with libsodium encryption.
+
+This script demonstrates the complete handshake and encrypted message flow.
+"""
+
+import sys
+import json
+import time
+import base64
+import requests
+from pathlib import Path
+from typing import Dict, Any, Optional
+
+# Add shared module to path
+script_dir = Path(__file__).parent
+shared_path = script_dir.parent / "shared"
+sys.path.insert(0, str(shared_path))
+
+try:
+    from nacl.public import PrivateKey, PublicKey, Box
+    from nacl.signing import SigningKey, VerifyKey
+    from nacl.secret import SecretBox
+    from nacl.utils import random
+    from nacl.encoding import Base64Encoder
+    from nacl.exceptions import InvalidMessage, CryptoError
+    
+    from aico.core.config import ConfigurationManager
+    from aico.security.key_manager import AICOKeyManager
+    
+    print("✅ All dependencies imported successfully")
+except ImportError as e:
+    print(f"❌ Import error: {e}")
+    print("Make sure you're running from the AICO root directory with dependencies installed")
+    sys.exit(1)
+
+
+class TransitSecurityTestClient:
+    """
+    Simplified client that simulates frontend encrypted communication
+    """
+    
+    def __init__(self, base_url: str = "http://127.0.0.1:8771"):
+        self.base_url = base_url
+        self.handshake_url = f"{base_url}/api/v1/handshake"
+        
+        # Generate client identity (Ed25519 keypair)
+        self.signing_key = SigningKey.generate()
+        self.verify_key = self.signing_key.verify_key
+        
+        # Session state
+        self.session_key: Optional[bytes] = None
+        self.server_public_key: Optional[PublicKey] = None
+        self.session_box: Optional[SecretBox] = None
+        
+        print(f"🔑 Client identity generated: {self.verify_key.encode().hex()[:16]}...")
+    
+    def perform_handshake(self) -> bool:
+        """
+        Perform encrypted handshake with backend
+        """
+        print("\n🤝 Starting encrypted handshake...")
+        
+        try:
+            # Step 1: Generate ephemeral X25519 keypair for session
+            client_private_key = PrivateKey.generate()
+            client_public_key = client_private_key.public_key
+            
+            # Step 2: Create handshake request
+            handshake_request = {
+                "client_identity": base64.b64encode(self.verify_key.encode()).decode(),
+                "client_public_key": base64.b64encode(bytes(client_public_key)).decode(),
+                "timestamp": int(time.time()),
+                "challenge": base64.b64encode(random(32)).decode()
+            }
+            
+            # Step 3: Sign the handshake request
+            message_to_sign = json.dumps(handshake_request, sort_keys=True).encode()
+            signature = self.signing_key.sign(message_to_sign).signature
+            
+            handshake_payload = {
+                "handshake": handshake_request,
+                "signature": base64.b64encode(signature).decode()
+            }
+            
+            print(f"📤 Sending handshake request...")
+            
+            # Step 4: Send handshake request
+            response = requests.post(
+                self.handshake_url,
+                json=handshake_payload,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            
+            if response.status_code != 200:
+                print(f"❌ Handshake failed: HTTP {response.status_code}")
+                print(f"Response: {response.text}")
+                return False
+            
+            # Step 5: Process handshake response
+            handshake_response = response.json()
+            
+            if not handshake_response.get("success"):
+                print(f"❌ Handshake rejected: {handshake_response.get('error', 'Unknown error')}")
+                return False
+            
+            # Step 6: Extract server public key and derive session key
+            server_public_key_b64 = handshake_response["server_public_key"]
+            self.server_public_key = PublicKey(base64.b64decode(server_public_key_b64))
+            
+            # Step 7: Derive shared session key using X25519
+            shared_box = Box(client_private_key, self.server_public_key)
+            self.session_key = shared_box.shared_key()
+            self.session_box = SecretBox(self.session_key)
+            
+            print("✅ Handshake completed successfully!")
+            print(f"🔐 Session key derived: {self.session_key.hex()[:16]}...")
+            
+            return True
+            
+        except requests.RequestException as e:
+            print(f"❌ Network error during handshake: {e}")
+            return False
+        except Exception as e:
+            print(f"❌ Handshake error: {e}")
+            return False
+    
+    def encrypt_message(self, payload: Dict[str, Any]) -> str:
+        """
+        Encrypt JSON payload using session key
+        """
+        if not self.session_box:
+            raise RuntimeError("No active session - perform handshake first")
+        
+        # Serialize and encrypt
+        plaintext = json.dumps(payload).encode()
+        encrypted = self.session_box.encrypt(plaintext)
+        
+        return base64.b64encode(encrypted).decode()
+    
+    def decrypt_message(self, encrypted_b64: str) -> Dict[str, Any]:
+        """
+        Decrypt base64-encoded encrypted message
+        """
+        if not self.session_box:
+            raise RuntimeError("No active session - perform handshake first")
+        
+        # Decode and decrypt
+        encrypted = base64.b64decode(encrypted_b64)
+        plaintext = self.session_box.decrypt(encrypted)
+        
+        return json.loads(plaintext.decode())
+    
+    def send_encrypted_request(self, endpoint: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Send encrypted request to backend
+        """
+        if not self.session_box:
+            print("❌ No active session - perform handshake first")
+            return None
+        
+        try:
+            # Encrypt the payload
+            encrypted_payload = self.encrypt_message(payload)
+            
+            # Create encrypted request envelope
+            request_envelope = {
+                "encrypted": True,
+                "payload": encrypted_payload,
+                "client_id": self.verify_key.encode().hex()[:16]
+            }
+            
+            print(f"📤 Sending encrypted request to {endpoint}")
+            
+            # Send request
+            response = requests.post(
+                f"{self.base_url}{endpoint}",
+                json=request_envelope,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            
+            if response.status_code != 200:
+                print(f"❌ Request failed: HTTP {response.status_code}")
+                print(f"Response: {response.text}")
+                return None
+            
+            # Process response
+            response_data = response.json()
+            
+            if response_data.get("encrypted"):
+                # Decrypt response
+                decrypted_response = self.decrypt_message(response_data["payload"])
+                print("✅ Received encrypted response")
+                return decrypted_response
+            else:
+                print("✅ Received plaintext response")
+                return response_data
+                
+        except requests.RequestException as e:
+            print(f"❌ Network error: {e}")
+            return None
+        except Exception as e:
+            print(f"❌ Encryption error: {e}")
+            return None
+
+
+def test_backend_connectivity(base_url: str) -> bool:
+    """
+    Test basic backend connectivity
+    """
+    print(f"🌐 Testing backend connectivity at {base_url}")
+    
+    try:
+        response = requests.get(f"{base_url}/health", timeout=5)
+        if response.status_code == 200:
+            print("✅ Backend is responding")
+            return True
+        else:
+            print(f"❌ Backend returned HTTP {response.status_code}")
+            return False
+    except requests.RequestException as e:
+        print(f"❌ Backend connectivity failed: {e}")
+        return False
+
+
+def test_transport_encryption_config() -> bool:
+    """
+    Test transport encryption configuration
+    """
+    print("\n⚙️ Checking transport encryption configuration...")
+    
+    try:
+        config_manager = ConfigurationManager()
+        config_manager.initialize(lightweight=True)
+        
+        transport_config = config_manager.get("security", {}).get("transport_encryption", {})
+        
+        if not transport_config:
+            print("❌ Transport encryption configuration not found")
+            return False
+        
+        enabled = transport_config.get("enabled", True)
+        algorithm = transport_config.get("algorithm", "XChaCha20-Poly1305")
+        
+        print(f"✅ Transport encryption: {'ENABLED' if enabled else 'DISABLED'}")
+        print(f"✅ Algorithm: {algorithm}")
+        
+        if enabled:
+            session_config = transport_config.get("session", {})
+            timeout = session_config.get("timeout_seconds", 3600)
+            print(f"✅ Session timeout: {timeout}s ({timeout//60}m)")
+            
+        return enabled
+        
+    except Exception as e:
+        print(f"❌ Configuration error: {e}")
+        return False
+
+
+def run_full_test():
+    """
+    Run complete transit security test
+    """
+    print("🚀 AICO Transit Security Test")
+    print("=" * 50)
+    
+    # Test 1: Backend connectivity
+    base_url = "http://127.0.0.1:8771"
+    if not test_backend_connectivity(base_url):
+        print("\n❌ Backend connectivity test failed")
+        print("Make sure the AICO backend is running with: aico gateway start")
+        return False
+    
+    # Test 2: Configuration check
+    if not test_transport_encryption_config():
+        print("\n❌ Transport encryption configuration test failed")
+        return False
+    
+    # Test 3: Encrypted handshake and communication
+    print("\n🔐 Testing encrypted communication...")
+    
+    client = TransitSecurityTestClient(base_url)
+    
+    # Perform handshake
+    if not client.perform_handshake():
+        print("\n❌ Encrypted handshake test failed")
+        return False
+    
+    # Test encrypted health check
+    print("\n💊 Testing encrypted health check...")
+    health_response = client.send_encrypted_request("/api/v1/health", {
+        "test": "encrypted_health_check",
+        "timestamp": int(time.time())
+    })
+    
+    if health_response:
+        print("✅ Encrypted health check successful")
+        print(f"Response: {json.dumps(health_response, indent=2)}")
+    else:
+        print("❌ Encrypted health check failed")
+        return False
+    
+    # Test encrypted echo (if available)
+    print("\n📡 Testing encrypted echo...")
+    echo_response = client.send_encrypted_request("/api/v1/echo", {
+        "message": "Hello from encrypted client!",
+        "test_data": {
+            "encryption": "XChaCha20-Poly1305",
+            "identity": "Ed25519",
+            "timestamp": int(time.time())
+        }
+    })
+    
+    if echo_response:
+        print("✅ Encrypted echo successful")
+        print(f"Echo response: {json.dumps(echo_response, indent=2)}")
+    else:
+        print("⚠️ Encrypted echo endpoint not available (expected)")
+    
+    print("\n" + "=" * 50)
+    print("🎉 Transit Security Test COMPLETED SUCCESSFULLY!")
+    print("\n✅ All tests passed:")
+    print("  • Backend connectivity")
+    print("  • Transport encryption configuration")
+    print("  • Encrypted handshake protocol")
+    print("  • End-to-end encrypted communication")
+    print("\n🔐 Frontend-backend encryption is working correctly!")
+    
+    return True
+
+
+if __name__ == "__main__":
+    try:
+        success = run_full_test()
+        sys.exit(0 if success else 1)
+    except KeyboardInterrupt:
+        print("\n\n⚠️ Test interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n❌ Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

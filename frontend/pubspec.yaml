@@ -65,6 +65,9 @@ dependencies:
   # JWT handling
   dart_jsonwebtoken: ^2.14.0
   
+  # libsodium bindings for transport encryption
+  sodium: ^3.1.0
+  
   # YAML parsing
   yaml: ^3.1.2
   

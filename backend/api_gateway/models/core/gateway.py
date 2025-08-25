@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
 from aico.core.bus import MessageBusBroker, MessageBusClient
+from aico.security.key_manager import AICOKeyManager
 
 # Logger will be initialized in __init__
 
@@ -64,6 +65,9 @@ class AICOAPIGateway:
         self.config_manager.initialize(lightweight=False)
         self.config = self.config_manager.config_cache.get('core', {}).get('api_gateway', {})
         
+        # Initialize key manager for transport encryption
+        self.key_manager = AICOKeyManager(self.config_manager)
+        
         
         # Check if API Gateway is enabled
         if not self.config.get("enabled", True):
@@ -96,7 +100,8 @@ class AICOAPIGateway:
         self.logger.info("API Gateway initialized", extra={
             "protocols": list(self.config.get("protocols", {}).keys()),
             "admin_enabled": self.config.get("admin", {}).get("enabled", False),
-            "session_management": db_connection is not None
+            "session_management": db_connection is not None,
+            "transport_encryption": True
         })
     
     def _get_backend_version(self) -> str:
@@ -120,6 +125,24 @@ class AICOAPIGateway:
         except Exception as e:
             self.logger.warning(f"Failed to read version from VERSIONS file: {e}")
             return "0.2.0"
+    
+    def create_rest_adapter(self) -> RESTAdapter:
+        """Create REST adapter with encryption middleware"""
+        rest_config = self.config.get("protocols", {}).get("rest", {
+            "port": 8771,
+            "prefix": "/api/v1"
+        })
+        
+        return RESTAdapter(
+            config=rest_config,
+            auth_manager=self.auth_manager,
+            authz_manager=self.authz_manager,
+            message_router=self.message_router,
+            rate_limiter=self.rate_limiter,
+            validator=self.validator,
+            security_middleware=self.security_middleware,
+            key_manager=self.key_manager
+        )
     
     def _load_config(self) -> GatewayConfig:
         """Load and validate gateway configuration"""

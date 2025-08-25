@@ -40,6 +40,40 @@ file_encryption:
   tag_size: 16             # 128-bit auth tag
   header_magic: "AICO"     # File format identifier
 
+# Transport encryption settings (libsodium-based)
+transport_encryption:
+  enabled: true
+  algorithm: "XChaCha20-Poly1305"  # Authenticated encryption
+  
+  # Component identity settings
+  identity:
+    key_type: "Ed25519"            # Signing keys for component identity
+    session_key_type: "X25519"     # Key exchange for session keys
+    
+  # Session management
+  session:
+    timeout_seconds: 3600          # 1 hour session timeout
+    handshake_timeout_seconds: 30  # Handshake must complete within 30s
+    max_sessions_per_client: 5     # Maximum concurrent sessions per client
+    
+  # Handshake protocol settings
+  handshake:
+    challenge_size: 32             # 256-bit challenge
+    nonce_size: 24                 # 192-bit nonce for XChaCha20
+    signature_algorithm: "Ed25519" # Digital signatures
+    
+  # Message encryption
+  message:
+    max_payload_size: 1048576      # 1MB maximum payload
+    compression_enabled: true      # Compress before encryption
+    compression_threshold: 1024    # Compress payloads > 1KB
+    
+  # Client identification
+  client_identification:
+    use_ip_address: true           # Include IP in client fingerprint
+    use_user_agent: true           # Include User-Agent in fingerprint
+    session_binding: true          # Bind sessions to client fingerprint
+
 password_policy:
   min_length: 12
   require_complexity: true

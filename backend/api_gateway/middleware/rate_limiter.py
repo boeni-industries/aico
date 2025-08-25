@@ -10,11 +10,12 @@ Implements token bucket algorithm for request throttling with:
 
 import asyncio
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable
 from dataclasses import dataclass
 import sys
 from pathlib import Path
 
+from fastapi import Request, Response
 # Shared modules now installed via UV editable install
 
 from aico.core.logging import get_logger
@@ -81,6 +82,33 @@ class RateLimiter:
             "requests_per_second": self.requests_per_second,
             "burst_size": self.burst_size
         })
+    
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """FastAPI middleware dispatch method"""
+        try:
+            # Get client IP as identifier
+            client_ip = request.client.host if request.client else "unknown"
+            
+            # Check rate limit
+            await self.check_rate_limit(client_ip)
+            
+            # Call the next middleware/endpoint
+            response = await call_next(request)
+            
+            return response
+            
+        except RateLimitExceeded as e:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=429, detail=str(e))
+        except Exception as e:
+            self.logger.error(f"Rate limiter middleware error: {e}", extra={
+                "module": "api_gateway",
+                "function": "dispatch",
+                "topic": "rate_limiter.middleware_error",
+                "error": str(e)
+            })
+            # Continue processing on unexpected errors
+            return await call_next(request)
     
     def _start_cleanup_task(self):
         """Start background cleanup task"""

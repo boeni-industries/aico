@@ -393,6 +393,64 @@ def status(
             border_style="green" if jwt_status.startswith("Ready") else "red"
         )
         console.print(jwt_panel)
+        
+        # Transport Encryption Section
+        transport_table = Table(
+            title="🚀 Transport Encryption (Frontend-Backend)",
+            title_justify="left",
+            show_header=True,
+            header_style="bold yellow",
+            border_style="bright_blue",
+            box=box.SIMPLE_HEAD
+        )
+        transport_table.add_column("Component", style="bold white", justify="left")
+        transport_table.add_column("Status", style="cyan", justify="left")
+        transport_table.add_column("Details", style="dim", justify="left")
+        
+        try:
+            # Check transport encryption configuration
+            transport_config = key_manager.config_manager.get("security", {}).get("transport_encryption", {})
+            transport_enabled = transport_config.get("enabled", True)
+            algorithm = transport_config.get("algorithm", "XChaCha20-Poly1305")
+            
+            if transport_enabled:
+                transport_table.add_row("Encryption", "Enabled", f"{algorithm} authenticated encryption")
+                transport_table.add_row("Identity Keys", "Ed25519", "Component signing keys")
+                transport_table.add_row("Session Keys", "X25519", "Ephemeral key exchange")
+                
+                # Session settings
+                session_config = transport_config.get("session", {})
+                timeout = session_config.get("timeout_seconds", 3600)
+                transport_table.add_row("Session Timeout", f"{timeout}s", f"{timeout//60} minutes")
+                
+                # Handshake settings
+                handshake_config = transport_config.get("handshake", {})
+                challenge_size = handshake_config.get("challenge_size", 32)
+                transport_table.add_row("Challenge Size", f"{challenge_size * 8}-bit", "Handshake security")
+                
+            else:
+                transport_table.add_row("Encryption", "Disabled", "Transport not encrypted")
+                transport_table.add_row("Security Level", "Basic HTTPS", "TLS only")
+                
+        except Exception as e:
+            transport_table.add_row("Configuration", "Error", f"Failed to load: {e}")
+        
+        console.print(transport_table)
+        
+        # Transport Status Summary
+        if transport_enabled:
+            transport_status = "Zero-effort end-to-end encryption active"
+            transport_border = "green"
+        else:
+            transport_status = "Transport encryption disabled - using TLS only"
+            transport_border = "yellow"
+            
+        transport_panel = Panel(
+            transport_status,
+            title="🔐 Transport Security",
+            border_style=transport_border
+        )
+        console.print(transport_panel)
     
     # Show recommendations
     if not health_info["has_master_key"]:

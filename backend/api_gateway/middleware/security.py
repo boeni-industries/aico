@@ -7,9 +7,10 @@ Integrates with existing AICO security infrastructure.
 
 import re
 import ipaddress
-from typing import Dict, List, Optional, Set, Any
+from typing import Dict, List, Optional, Set, Any, Callable
 from dataclasses import dataclass
 
+from fastapi import Request, Response
 from aico.core.logging import get_logger
 
 # Logger will be initialized in classes
@@ -39,6 +40,7 @@ class SecurityMiddleware:
     
     def __init__(self, config: dict):
         self.config = config
+        self.logger = get_logger("api_gateway", "security")
         
         # Compile IP networks for efficient checking
         self.allowed_networks = []
@@ -50,7 +52,7 @@ class SecurityMiddleware:
                 try:
                     self.allowed_networks.append(ipaddress.ip_network(ip, strict=False))
                 except ValueError as e:
-                    logger.warning(f"Invalid allowed IP pattern: {ip}", extra={
+                    self.logger.warning(f"Invalid allowed IP pattern: {ip}", extra={
                         "module": "api_gateway",
                         "function": "__init__",
                         "topic": "security.ip_config_error",
@@ -63,7 +65,7 @@ class SecurityMiddleware:
                 try:
                     self.blocked_networks.append(ipaddress.ip_network(ip, strict=False))
                 except ValueError as e:
-                    logger.warning(f"Invalid blocked IP pattern: {ip}", extra={
+                    self.logger.warning(f"Invalid blocked IP pattern: {ip}", extra={
                         "module": "api_gateway", 
                         "function": "__init__",
                         "topic": "security.ip_config_error",
@@ -82,6 +84,36 @@ class SecurityMiddleware:
             re.compile(r'\.\./.*\.\./'),  # Path traversal
             re.compile(r'%2e%2e%2f', re.IGNORECASE),  # URL encoded path traversal
         ]
+    
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """FastAPI middleware dispatch method"""
+        try:
+            # Get client IP
+            client_ip = request.client.host if request.client else "unknown"
+            
+            # Check IP restrictions
+            self._check_ip_restrictions(client_ip)
+            
+            # For now, skip request body processing in dispatch
+            # This would require reading the request body which can only be done once
+            
+            # Call the next middleware/endpoint
+            response = await call_next(request)
+            
+            return response
+            
+        except SecurityError as e:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=403, detail=str(e))
+        except Exception as e:
+            self.logger.error(f"Security middleware error: {e}", extra={
+                "module": "api_gateway",
+                "function": "dispatch",
+                "topic": "security.middleware_error",
+                "error": str(e)
+            })
+            # Continue processing on unexpected errors
+            return await call_next(request)
     
     async def process_request(self, request_data: Dict[str, Any], client_ip: str) -> Dict[str, Any]:
         """
@@ -111,7 +143,7 @@ class SecurityMiddleware:
         if self.config.get("block_suspicious_patterns", True):
             self._check_suspicious_patterns(request_data)
         
-        logger.debug("Request passed security checks", extra={
+        self.logger.debug("Request passed security checks", extra={
             "module": "api_gateway",
             "function": "process_request", 
             "topic": "security.request_processed",
@@ -125,7 +157,7 @@ class SecurityMiddleware:
         try:
             client_addr = ipaddress.ip_address(client_ip)
         except ValueError:
-            logger.warning(f"Invalid client IP address: {client_ip}", extra={
+            self.logger.warning(f"Invalid client IP address: {client_ip}", extra={
                 "module": "api_gateway",
                 "function": "_check_ip_restrictions",
                 "topic": "security.invalid_ip"
@@ -135,7 +167,7 @@ class SecurityMiddleware:
         # Check blocked IPs first
         for network in self.blocked_networks:
             if client_addr in network:
-                logger.warning(f"Blocked IP attempted access: {client_ip}", extra={
+                self.logger.warning(f"Blocked IP attempted access: {client_ip}", extra={
                     "module": "api_gateway",
                     "function": "_check_ip_restrictions", 
                     "topic": "security.ip_blocked",
@@ -147,7 +179,7 @@ class SecurityMiddleware:
         if self.allowed_networks:
             allowed = any(client_addr in network for network in self.allowed_networks)
             if not allowed:
-                logger.warning(f"Non-allowed IP attempted access: {client_ip}", extra={
+                self.logger.warning(f"Non-allowed IP attempted access: {client_ip}", extra={
                     "module": "api_gateway",
                     "function": "_check_ip_restrictions",
                     "topic": "security.ip_not_allowed", 
@@ -162,7 +194,7 @@ class SecurityMiddleware:
         try:
             request_size = len(json.dumps(request_data).encode('utf-8'))
             if request_size > self.config.get("max_request_size", 10485760):
-                logger.warning(f"Request size exceeded limit: {request_size} bytes", extra={
+                self.logger.warning(f"Request size exceeded limit: {request_size} bytes", extra={
                     "module": "api_gateway",
                     "function": "_check_request_size",
                     "topic": "security.request_too_large",
@@ -171,7 +203,7 @@ class SecurityMiddleware:
                 })
                 raise SecurityError(f"Request too large: {request_size} bytes")
         except Exception as e:
-            logger.error(f"Error checking request size: {e}", extra={
+            self.logger.error(f"Error checking request size: {e}", extra={
                 "module": "api_gateway", 
                 "function": "_check_request_size",
                 "topic": "security.size_check_error",
@@ -209,7 +241,7 @@ class SecurityMiddleware:
         
         for pattern in self.suspicious_patterns:
             if pattern.search(request_str):
-                logger.warning("Suspicious pattern detected in request", extra={
+                self.logger.warning("Suspicious pattern detected in request", extra={
                     "module": "api_gateway",
                     "function": "_check_suspicious_patterns",
                     "topic": "security.suspicious_pattern",

@@ -188,7 +188,7 @@ async def lifespan(app: FastAPI):
         if gateway_config.get("enabled", True):
             logger.info("Starting API Gateway...")
             api_gateway = AICOAPIGateway(config_manager, db_connection=shared_db_connection)
-            logger.info("API Gateway created with database connection")
+            logger.info("API Gateway created with database connection and transport encryption")
             
             # Check for shutdown signal before the potentially blocking start() call
             if shutdown_event.is_set():
@@ -198,6 +198,36 @@ async def lifespan(app: FastAPI):
             try:
                 await api_gateway.start()
                 logger.info("API Gateway started successfully")
+                
+                # Create and configure REST adapter with encryption middleware
+                rest_adapter = api_gateway.create_rest_adapter()
+                logger.info("REST adapter created with encryption middleware")
+                
+                # Log transport encryption status for --no-detach mode visibility
+                transport_config = config_manager.get("security", {}).get("transport_encryption", {})
+                encryption_enabled = transport_config.get("enabled", True)
+                
+                # Read detach_mode from environment variable
+                detach_mode = os.environ.get("AICO_DETACH_MODE", "true").lower() == "true"
+                if not detach_mode:
+                    if encryption_enabled:
+                        print("INFO:     🔐 Transport encryption: ENABLED (XChaCha20-Poly1305)")
+                        print("INFO:     🔑 Component identity: Ed25519 signing keys")
+                        print("INFO:     🤝 Handshake endpoint: /api/v1/handshake")
+                        print("INFO:     ⚡ Session timeout: {}s".format(transport_config.get("session", {}).get("timeout_seconds", 3600)))
+                    else:
+                        print("INFO:     ⚠️  Transport encryption: DISABLED")
+                
+                logger.info("Transport encryption status", extra={
+                    "enabled": encryption_enabled,
+                    "algorithm": transport_config.get("algorithm", "XChaCha20-Poly1305"),
+                    "session_timeout": transport_config.get("session", {}).get("timeout_seconds", 3600)
+                })
+                
+                # Mount the encrypted REST adapter's FastAPI app
+                app.mount("/api/v1", rest_adapter.app)
+                logger.info("Encrypted REST adapter mounted at /api/v1")
+                
             except Exception as e:
                 logger.error(f"Failed to start API Gateway: {e}")
                 import traceback
