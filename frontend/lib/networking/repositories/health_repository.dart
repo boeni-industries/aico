@@ -1,6 +1,6 @@
+import 'package:aico_frontend/core/services/api_service.dart';
 import 'package:aico_frontend/networking/models/error_models.dart';
 import 'package:aico_frontend/networking/models/health_models.dart';
-import 'package:aico_frontend/core/services/api_service.dart';
 
 abstract class HealthRepository {
   Future<HealthResponse> getHealth();

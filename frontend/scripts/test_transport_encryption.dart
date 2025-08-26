@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sodium/sodium.dart';
 import 'package:sodium_libs/sodium_libs.dart' as sodium_libs;
@@ -11,7 +11,7 @@ void main() {
 }
 
 class EncryptionTestApp extends StatelessWidget {
-  const EncryptionTestApp({Key? key}) : super(key: key);
+  const EncryptionTestApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +26,7 @@ class EncryptionTestApp extends StatelessWidget {
 }
 
 class EncryptionTestScreen extends StatefulWidget {
-  const EncryptionTestScreen({Key? key}) : super(key: key);
+  const EncryptionTestScreen({super.key});
 
   @override
   _EncryptionTestScreenState createState() => _EncryptionTestScreenState();
@@ -45,7 +45,7 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
 
   void _log(String message) {
     // ignore: avoid_print
-    print(message);
+    debugPrint(message);
     if (!mounted) return;
     setState(() {
       _logOutput += '$message\n';
@@ -97,28 +97,28 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
 }
 
 /// Main test runner
-Future<bool> runFullTest(Sodium sodium, void Function(String) _log) async {
+Future<bool> runFullTest(Sodium sodium, void Function(String) log) async {
   // Test 1: Backend connectivity
   const baseUrl = 'http://127.0.0.1:8771';
-  if (!await testBackendConnectivity(baseUrl, _log)) {
-    _log('\n❌ Backend connectivity test failed');
-    _log('Make sure the AICO backend is running with: aico gateway start');
+  if (!await testBackendConnectivity(baseUrl, log)) {
+    log('\n❌ Backend connectivity test failed');
+    log('Make sure the AICO backend is running with: aico gateway start');
     return false;
   }
 
   // Test 2: Encrypted handshake and communication
-  _log('\n🔐 Testing encrypted communication with libsodium...');
+  log('\n🔐 Testing encrypted communication with libsodium...');
 
-  final client = TransportEncryptionTestClient(baseUrl, sodium, _log);
+  final client = TransportEncryptionTestClient(baseUrl, sodium, log);
 
   // Perform handshake
   if (!await client.performHandshake()) {
-    _log('\n❌ Encrypted handshake test failed');
+    log('\n❌ Encrypted handshake test failed');
     return false;
   }
 
   // Test encrypted echo
-  _log('\n📡 Testing encrypted echo...');
+  log('\n📡 Testing encrypted echo...');
   final echoResponse = await client.sendEncryptedRequest('/api/v1/echo/', {
     'message': 'Hello from encrypted Dart client!',
     'test_data': {
@@ -130,38 +130,38 @@ Future<bool> runFullTest(Sodium sodium, void Function(String) _log) async {
 
   bool echoSuccess = false;
   if (echoResponse != null) {
-    _log('✅ Encrypted echo successful');
-    _log('Echo response: ${jsonEncode(echoResponse)}');
+    log('✅ Encrypted echo successful');
+    log('Echo response: ${jsonEncode(echoResponse)}');
     echoSuccess = true;
   } else {
-    _log('❌ Encrypted echo test failed');
+    log('❌ Encrypted echo test failed');
   }
 
-  _log('\n${'=' * 50}');
+  log('\n${'=' * 50}');
 
   if (echoSuccess) {
-    _log('🎉 Transport Encryption Test COMPLETED SUCCESSFULLY!');
-    _log('\n✅ All tests passed:');
-    _log('  • Backend connectivity');
-    _log('  • Encrypted handshake protocol');
-    _log('  • Encrypted echo test');
-    _log('\n🔐 Dart-backend encryption is working correctly!');
+    log('🎉 Transport Encryption Test COMPLETED SUCCESSFULLY!');
+    log('\n✅ All tests passed:');
+    log('  • Backend connectivity');
+    log('  • Encrypted handshake protocol');
+    log('  • Encrypted echo test');
+    log('\n🔐 Dart-backend encryption is working correctly!');
     return true;
   } else {
-    _log('⚠️ Transport Encryption Test FAILED');
-    _log('\n✅ Passed tests:');
-    _log('  • Backend connectivity');
-    _log('  • Encrypted handshake protocol');
-    _log('\n❌ Failed tests:');
-    _log('  • Encrypted echo endpoint');
-    _log('\n🔧 The handshake succeeded, but the encrypted echo test failed.');
+    log('⚠️ Transport Encryption Test FAILED');
+    log('\n✅ Passed tests:');
+    log('  • Backend connectivity');
+    log('  • Encrypted handshake protocol');
+    log('\n❌ Failed tests:');
+    log('  • Encrypted echo endpoint');
+    log('\n🔧 The handshake succeeded, but the encrypted echo test failed.');
     return false;
   }
 }
 
 /// Test basic backend connectivity
-Future<bool> testBackendConnectivity(String baseUrl, void Function(String) _log) async {
-  _log('🌐 Testing backend connectivity at $baseUrl');
+Future<bool> testBackendConnectivity(String baseUrl, void Function(String) log) async {
+  log('🌐 Testing backend connectivity at $baseUrl');
 
   final dio = Dio();
 
@@ -183,18 +183,18 @@ Future<bool> testBackendConnectivity(String baseUrl, void Function(String) _log)
       );
 
       if (response.statusCode == 200) {
-        _log('✅ Backend is responding at $endpoint');
+        log('✅ Backend is responding at $endpoint');
         return true;
       } else {
-        _log('⚠️ $endpoint returned HTTP ${response.statusCode}');
+        log('⚠️ $endpoint returned HTTP ${response.statusCode}');
       }
     } catch (e) {
-      _log('⚠️ $endpoint failed: $e');
+      log('⚠️ $endpoint failed: $e');
       continue;
     }
   }
 
-  _log('❌ No working health endpoints found');
+  log('❌ No working health endpoints found');
   return false;
 }
 

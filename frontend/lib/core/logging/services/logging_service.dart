@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:aico_frontend/core/logging/models/log_entry.dart';
 import 'package:aico_frontend/core/logging/repositories/log_repository.dart';
 import 'package:aico_frontend/core/utils/aico_paths.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Configuration for logging service behavior
@@ -245,7 +246,7 @@ class LoggingService {
 
   Future<void> _addToBuffer(LogEntry logEntry) async {
     _buffer.add(logEntry);
-    print('📝 LoggingService: Added log to buffer (${_buffer.length}/${_config.maxBufferSize}): ${logEntry.message}');
+    debugPrint('📝 LoggingService: Added log to buffer (${_buffer.length}/${_config.maxBufferSize}): ${logEntry.message}');
     
     // Enforce buffer size limit
     while (_buffer.length > _config.maxBufferSize) {
@@ -268,12 +269,12 @@ class LoggingService {
 
     if (batch.isEmpty) return;
 
-    print('📦 LoggingService: Processing batch of ${batch.length} log entries');
+    debugPrint('📦 LoggingService: Processing batch of ${batch.length} log entries');
     try {
       await _repository.sendLogs(batch);
-      print('✅ LoggingService: Batch processed successfully');
+      debugPrint('✅ LoggingService: Batch processed successfully');
     } catch (e, s) {
-      print('❌ LoggingService: Batch processing failed: $e');
+      debugPrint('❌ LoggingService: Batch processing failed: $e');
       // Add failed logs back to failed queue for retry
       _failedLogs.addAll(batch.map((log) => log.withStatus(LogStatus.failed)));
 

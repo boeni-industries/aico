@@ -90,7 +90,7 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
             const Divider(),
             Expanded(
               child: Container(
-                color: Theme.of(context).colorScheme.surfaceVariant,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 padding: const EdgeInsets.all(8.0),
                 child: ListView.builder(
                   itemCount: _logs.length,

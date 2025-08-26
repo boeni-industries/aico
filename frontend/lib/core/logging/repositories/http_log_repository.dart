@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:aico_frontend/core/logging/models/log_entry.dart';
 import 'package:aico_frontend/core/logging/repositories/log_repository.dart';
 import 'package:aico_frontend/core/services/unified_api_client.dart';
+import 'package:flutter/foundation.dart';
 
 /// HTTP-based log repository implementation
 class HttpLogRepository implements LogRepository {
@@ -35,7 +36,7 @@ class HttpLogRepository implements LogRepository {
     if (logEntries.isEmpty || _isSending) return;
 
     _isSending = true;
-    print('📤 HttpLogRepository: Sending ${logEntries.length} log entries to $_logEndpoint');
+    debugPrint('📤 HttpLogRepository: Sending ${logEntries.length} log entries to $_logEndpoint');
 
     try {
       for (final entry in logEntries) {
@@ -46,17 +47,17 @@ class HttpLogRepository implements LogRepository {
         'logs': logEntries.map((e) => e.toBackendJson()).toList(),
       };
 
-      print('📤 HttpLogRepository: Batch data prepared, making API call...');
+      debugPrint('📤 HttpLogRepository: Batch data prepared, making API call...');
       await _apiClient.post<Map<String, dynamic>>(_logEndpoint, batchData);
 
       // If we reach here, the request was successful
-      print('✅ HttpLogRepository: Successfully sent ${logEntries.length} log entries');
+      debugPrint('✅ HttpLogRepository: Successfully sent ${logEntries.length} log entries');
       for (final entry in logEntries) {
         _statusController.add(entry.withStatus(LogStatus.sent));
       }
     } catch (e) {
-      print('❌ HttpLogRepository: Failed to send logs: $e');
-      print('❌ HttpLogRepository: Error type: ${e.runtimeType}');
+      debugPrint('❌ HttpLogRepository: Failed to send logs: $e');
+      debugPrint('❌ HttpLogRepository: Error type: ${e.runtimeType}');
       for (final entry in logEntries) {
         _statusController.add(entry.withStatus(LogStatus.failed));
       }

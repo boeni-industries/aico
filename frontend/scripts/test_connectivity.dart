@@ -1,6 +1,7 @@
-import 'package:aico_frontend/core/services/unified_api_client.dart';
 import 'package:aico_frontend/core/services/encryption_service.dart';
+import 'package:aico_frontend/core/services/unified_api_client.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 Future<void> main() async {
@@ -17,16 +18,16 @@ Future<void> main() async {
 
   try {
     final health = await unifiedClient.get('/health', fromJson: (json) => json['status']);
-    print('UNIFIED /health: SUCCESS: $health');
+    debugPrint('UNIFIED /health: SUCCESS: $health');
   } catch (e) {
-    print('UNIFIED /health: ERROR: $e');
+    debugPrint('UNIFIED /health: ERROR: $e');
   }
 
   try {
     await unifiedClient.initializeEncryption();
     final echo = await unifiedClient.post('/echo', {'message': 'hello'}, fromJson: (json) => json['message']);
-    print('UNIFIED /echo: SUCCESS: $echo');
+    debugPrint('UNIFIED /echo: SUCCESS: $echo');
   } catch (e) {
-    print('UNIFIED /echo: ERROR: $e');
+    debugPrint('UNIFIED /echo: ERROR: $e');
   }
 }

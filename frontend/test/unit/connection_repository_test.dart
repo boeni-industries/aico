@@ -1,8 +1,8 @@
 import 'package:aico_frontend/core/services/unified_api_client.dart';
 import 'package:aico_frontend/networking/models/error_models.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:dio/dio.dart';
 
 // Mock HTTP client for testing
 class MockHttpClient extends http.BaseClient {
@@ -16,7 +16,8 @@ class MockHttpClient extends http.BaseClient {
     this.responseBody = '{"status": "ok"}',
   });
   
-    Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
     if (shouldThrow) {
       throw Exception('Network error');
     }

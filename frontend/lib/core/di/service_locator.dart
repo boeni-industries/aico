@@ -1,5 +1,8 @@
 import 'package:aico_frontend/core/logging/logging_module.dart';
+import 'package:aico_frontend/core/services/api_service.dart';
+import 'package:aico_frontend/core/services/encryption_service.dart';
 import 'package:aico_frontend/core/services/local_storage.dart';
+import 'package:aico_frontend/core/services/unified_api_client.dart';
 import 'package:aico_frontend/core/theme/aico_theme_manager.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
 import 'package:aico_frontend/core/utils/aico_paths.dart';
@@ -10,13 +13,11 @@ import 'package:aico_frontend/presentation/blocs/auth/auth_bloc.dart';
 import 'package:aico_frontend/presentation/blocs/connection/connection_bloc.dart';
 import 'package:aico_frontend/presentation/blocs/navigation/navigation_bloc.dart';
 import 'package:aico_frontend/presentation/blocs/settings/settings_bloc.dart';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
-import 'package:aico_frontend/core/services/api_service.dart';
-import 'package:aico_frontend/core/services/encryption_service.dart';
-import 'package:aico_frontend/core/services/unified_api_client.dart';
 import 'package:get_it/get_it.dart';
-import 'package:hydrated_bloc/hydrated_bloc.dart';
 import 'package:http/http.dart' as http;
+import 'package:hydrated_bloc/hydrated_bloc.dart';
 
 /// Centralized dependency injection setup for the AICO app
 /// Configures all services, repositories, and BLoCs with proper lifecycle management
@@ -99,9 +100,9 @@ class ServiceLocator {
       );
       try {
         await client.initializeEncryption();
-        print('✅ UnifiedApiClient: Encryption initialized successfully');
+        debugPrint('✅ UnifiedApiClient: Encryption initialized successfully');
       } catch (e) {
-        print('❌ UnifiedApiClient: Encryption initialization failed: $e');
+        debugPrint('❌ UnifiedApiClient: Encryption initialization failed: $e');
         // Don't throw here - let the client work in unencrypted mode for health checks
         // but log the error for debugging
       }

@@ -1,9 +1,10 @@
 import 'dart:convert';
-import 'package:dio/dio.dart';
-import 'package:http/http.dart' as http;
+
 import 'package:aico_frontend/core/services/encryption_service.dart';
 import 'package:aico_frontend/networking/models/handshake_models.dart';
-
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 /// Unified API client that transparently routes requests to encrypted or plain endpoints.
 /// Handles handshake, encryption, error handling, and smart endpoint detection.
 class UnifiedApiClient {
@@ -46,28 +47,28 @@ class UnifiedApiClient {
   /// Initialize handshake for encrypted endpoints
   Future<void> initializeEncryption() async {
     try {
-      print('🔐 UnifiedApiClient: Starting encryption initialization...');
+      debugPrint('🔐 UnifiedApiClient: Starting encryption initialization...');
       _encryptionStatus = 'Establishing handshake...';
       
-      print('🔐 UnifiedApiClient: Creating handshake request...');
+      debugPrint('🔐 UnifiedApiClient: Creating handshake request...');
       final handshakeData = await _encryptionService.createHandshakeRequest();
       final request = HandshakeRequest(handshakeRequest: handshakeData['handshake_request']);
       
-      print('🔐 UnifiedApiClient: Sending handshake to $_baseUrl/handshake');
+      debugPrint('🔐 UnifiedApiClient: Sending handshake to $_baseUrl/handshake');
       final response = await _dio.post('/handshake', data: request.toJson());
-      print('🔐 UnifiedApiClient: Handshake response received: ${response.statusCode}');
+      debugPrint('🔐 UnifiedApiClient: Handshake response received: ${response.statusCode}');
       
-      print('🔐 UnifiedApiClient: Processing handshake response...');
+      debugPrint('🔐 UnifiedApiClient: Processing handshake response...');
       await _encryptionService.processHandshakeResponse(response.data);
       
       _handshakeCompleted = true;
       _encryptionStatus = 'Encrypted (Active)';
-      print('✅ UnifiedApiClient: Encryption session established successfully');
+      debugPrint('✅ UnifiedApiClient: Encryption session established successfully');
     } catch (e) {
       _handshakeCompleted = false;
       _encryptionStatus = 'Encryption Failed: ${e.toString()}';
-      print('❌ UnifiedApiClient: Encryption initialization failed: $e');
-      print('❌ UnifiedApiClient: Error type: ${e.runtimeType}');
+      debugPrint('❌ UnifiedApiClient: Encryption initialization failed: $e');
+      debugPrint('❌ UnifiedApiClient: Error type: ${e.runtimeType}');
       throw EncryptionConnectionException('Failed to establish encrypted session: $e');
     }
   }
