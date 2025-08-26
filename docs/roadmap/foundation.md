@@ -73,7 +73,7 @@ Build the foundational system infrastructure that enables all AICO functionality
 - [ ] **Go Router**: Upgrade to declarative routing and deep linking
 - [ ] **Responsive Design**: Adaptive layouts for desktop, tablet, mobile
 - [ ] **Platform Integration**: Windows/macOS/Linux specific integrations
-- [ ] **WebSocket Client**: Real-time communication with backend
+- [x] **WebSocket Client**: Real-time communication with backend
 - [ ] **Request/Response Models**: Typed data models for API communication
 - [ ] **Error Handling**: Standardized error handling and user feedback
 - [ ] **Caching**: Local caching for offline functionality
