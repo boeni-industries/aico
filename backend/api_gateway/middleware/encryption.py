@@ -193,15 +193,22 @@ class EncryptionMiddleware:
     def _should_skip_encryption(self, request: Request) -> bool:
         """Check if request should skip encryption"""
         skip_paths = [
-            "/api/v1/health",
-            "/api/v1/gateway/status",
-            "/api/v1/gateway/metrics",
+            "/health",
+            "/gateway/status",
+            "/gateway/metrics",
             "/docs",
             "/redoc",
             "/openapi.json"
         ]
         
-        return any(request.url.path.startswith(path) for path in skip_paths)
+        # Check if path matches any unencrypted endpoint
+        path = request.url.path
+        
+        # Remove /api/v1 prefix if present for comparison
+        if path.startswith("/api/v1"):
+            path = path[7:]  # Remove "/api/v1"
+        
+        return any(path.startswith(skip_path) for skip_path in skip_paths)
     
     def _get_client_id(self, request: Request) -> str:
         """Get unique client identifier"""
