@@ -8,6 +8,45 @@ title: Task Scheduler Module Architecture
 
 The AICO Task Scheduler Module provides zero-maintenance background task execution with cron-like scheduling, plugin system integration, and high-performance message bus communication. It handles periodic maintenance tasks (log cleanup, key rotation, health checks), autonomous agency operations, and user-defined scheduled tasks while maintaining AICO's local-first, privacy-first principles.
 
+## Process Architecture
+
+**Single-Process Integration**
+The scheduler runs as a **module within the existing backend service process**, not as a separate process or service. This design aligns with AICO's core principles:
+
+- **KISS principle**: Eliminates process management complexity and inter-process communication
+- **Local-first**: No additional services to configure, monitor, or troubleshoot
+- **Resource efficiency**: Shares memory, database connections, and message bus with backend
+- **Operational simplicity**: Single service to start, stop, monitor, and backup
+
+**No Worker Processes**
+Tasks execute as coroutines within the shared asyncio event loop, eliminating the need for worker processes or thread pools. This approach provides:
+- Direct access to shared backend resources and state
+- Efficient memory usage and reduced overhead
+- Unified error handling and logging across all components
+- Simplified debugging and monitoring
+
+**Performance Impact Safeguards**
+To prevent scheduled tasks from degrading backend performance, the scheduler implements multiple protection layers:
+- **Resource monitoring**: Real-time CPU and memory usage checking before task execution
+- **Execution limits**: Configurable concurrent task limits and per-task timeouts
+- **Cooperative multitasking**: Tasks designed as proper asyncio coroutines that yield control
+- **Emergency controls**: Circuit breakers and automatic task suspension during high load
+
+## Technology Stack
+
+**Core Implementation**
+- **Pure asyncio**: Leverages the existing backend event loop for task scheduling and execution
+- **Custom cron parser**: Lightweight regex-based parsing for standard cron expressions
+- **Native Python datetime**: Schedule calculations and timing without external dependencies
+- **Existing AICO infrastructure**: Reuses message bus, database, logging, and configuration systems
+
+**Why Not External Libraries?**
+Instead of APScheduler, Celery, or RQ, the custom implementation provides:
+- **Zero additional dependencies**: Reduces attack surface and maintenance burden
+- **Perfect integration**: Native compatibility with AICO's architecture and patterns
+- **Full control**: Complete customization of scheduling logic and resource management
+- **Performance optimization**: Tailored specifically for AICO's 1000+ msg/sec requirements
+
 ## Design Principles
 
 **KISS (Keep It Simple, Stupid)**
@@ -154,6 +193,11 @@ The scheduler includes several essential maintenance tasks that run automaticall
 - Reclaims unused space and updates query statistics
 - Runs during low-activity periods to minimize impact
 
+**Vector Index Optimization** (`maintenance.vector_optimization`)
+- Optimizes ChromaDB vector indexes for semantic memory retrieval
+- Rebuilds indexes when fragmentation exceeds thresholds
+- Runs weekly during low-activity periods to maintain search performance
+
 ### Agency Tasks
 
 AICO's autonomous agency capabilities are supported through intelligent background tasks:
@@ -161,17 +205,30 @@ AICO's autonomous agency capabilities are supported through intelligent backgrou
 **Background Learning Task** (`agency.background_learning`)
 - Runs every 30 minutes during system idle periods
 - Processes accumulated data for pattern recognition and learning
-- Respects system resource constraints and user activity
+- **CPU-intensive**: Uses thread pool for ML model training and vector computations
 - Only executes when CPU usage is below 20% and user is inactive
 - Contributes to AICO's autonomous decision-making capabilities
 
 **Memory Consolidation Task** (`agency.memory_consolidation`)
 - Performs periodic consolidation of conversation and interaction data
+- **Vector processing**: ChromaDB embedding updates and semantic clustering
 - Identifies important patterns and relationships for long-term storage
 - Optimizes memory structures for faster retrieval and reasoning
 - Runs during extended idle periods to avoid impacting user experience
 
-These tasks enable AICO to continuously improve its understanding and responses while maintaining excellent user experience through intelligent resource management.
+**Emotion Model Training** (`agency.emotion_training`)
+- Refines emotion recognition models based on interaction feedback
+- **GPU-accelerated**: Uses process pool for neural network training when GPU available
+- Processes facial expression, voice tone, and text sentiment data
+- Runs weekly during low-activity periods with automatic resource scaling
+
+**Personality Adaptation** (`agency.personality_evolution`)
+- Gradually adapts personality traits based on long-term interaction patterns
+- **CPU-intensive**: Complex trait vector calculations and behavioral modeling
+- Maintains personality consistency while enabling natural growth
+- Executes monthly with comprehensive backup before personality updates
+
+These tasks enable AICO to continuously improve its understanding and responses while maintaining excellent user experience through intelligent resource management and hybrid execution models.
 
 ## Performance Optimization
 
@@ -200,6 +257,96 @@ The scheduler implements multi-level caching to optimize performance:
 
 **Batching and Concurrency**
 Tasks are executed in optimized batches with configurable concurrency limits. The scheduler maintains precise timing through efficient sleep calculations while supporting parallel execution of independent tasks.
+
+### Performance Impact Mitigation
+
+**Resource-Aware Execution**
+The scheduler implements comprehensive safeguards to prevent performance degradation:
+
+- **CPU monitoring**: Tasks are deferred when CPU usage exceeds configurable thresholds (default 80%)
+- **Memory constraints**: Execution blocked if system memory usage is too high
+- **Concurrent task limits**: Maximum concurrent tasks configurable (default 10)
+- **Timeout enforcement**: Per-task timeouts prevent runaway processes (default 5 minutes)
+
+**Asyncio Task Isolation**
+Long-running tasks use asyncio best practices to maintain system responsiveness:
+- Tasks run as shielded coroutines that yield control during I/O operations
+- Event loop remains responsive for API requests and message bus operations
+- Chunked processing breaks large operations into small, interruptible segments
+- Progress tracking enables monitoring and graceful cancellation
+
+**How Work is Actually Executed**
+No threads are created. All task execution happens within the single asyncio event loop:
+
+1. **Task Scheduling**: The scheduler's main loop runs `await asyncio.sleep(1.0)` every second
+2. **Task Triggering**: When a task is ready, `asyncio.create_task()` creates a coroutine
+3. **Cooperative Execution**: The task coroutine runs until it hits an `await` statement
+4. **Control Yielding**: At each `await`, control returns to the event loop
+5. **Interleaved Processing**: Event loop handles API requests, message bus, and other tasks
+6. **Task Resumption**: Task continues from where it left off when scheduled again
+
+**Example Task Execution Pattern**:
+```python
+async def log_cleanup_task():
+    # This runs immediately
+    log_count = await db.execute("SELECT COUNT(*) FROM logs")
+    
+    # Control yields here - API requests can be processed
+    batch_size = 1000
+    for offset in range(0, log_count, batch_size):
+        # Process batch
+        await db.execute("DELETE FROM logs WHERE ... LIMIT 1000")
+        
+        # Yield control every batch - critical for responsiveness
+        await asyncio.sleep(0)  # Allows other coroutines to run
+```
+
+This ensures the backend remains fully responsive while background tasks execute incrementally.
+
+### Design Resilience and Safety Mechanisms
+
+**Addressing Developer Dependency Concerns**
+
+The cooperative multitasking approach includes multiple safety nets to prevent poorly written tasks from blocking the system:
+
+**1. Mandatory Task Timeouts**
+- Every task has a hard timeout (default 5 minutes, configurable per task)
+- `asyncio.wait_for()` wraps all task execution with timeout enforcement
+- Timeout violations automatically cancel the task and log the incident
+- No task can block indefinitely regardless of developer mistakes
+
+**2. Task Template and Base Classes**
+- All tasks inherit from `BaseTask` with built-in yield patterns
+- Template methods enforce proper async structure and yield points
+- Code review process validates task implementations before deployment
+- Linting rules detect missing `await` statements in loops and heavy operations
+
+**3. Runtime Monitoring and Circuit Breakers**
+- Event loop lag detection monitors responsiveness in real-time
+- If event loop becomes unresponsive (>100ms), all scheduled tasks are suspended
+- Automatic task disabling for tasks that repeatedly cause performance issues
+- Health monitoring alerts when task execution patterns become problematic
+
+**4. Hybrid Execution Model for Compute-Intensive Tasks**
+- **Thread pool for CPU-bound operations**: ML model training, vector computations, emotion processing
+- **Process pool for GPU workloads**: Avatar rendering, voice synthesis, facial recognition
+- `asyncio.run_in_executor()` with configurable ThreadPoolExecutor and ProcessPoolExecutor
+- **Intelligent task routing**: Automatic detection of task type and execution environment selection
+- **Resource-aware scaling**: Thread/process pool sizes adjust based on system capabilities
+
+**5. Task Sandboxing**
+- Resource limits enforced at task level (CPU time, memory allocation)
+- Database query timeouts prevent runaway queries
+- File I/O operations wrapped with async equivalents
+- Network operations use async HTTP clients with timeouts
+
+This multi-layered approach ensures system stability even with imperfect task implementations while maintaining the performance benefits of cooperative multitasking.
+
+**Intelligent Scheduling**
+- **Idle period detection**: Heavy tasks only execute during low system activity
+- **User activity awareness**: Background processing pauses when user is active  
+- **Priority-based execution**: Critical maintenance tasks get priority over agency tasks
+- **Emergency circuit breaker**: Automatic task disabling if performance impact detected
 
 ## Integration with AICO Systems
 
@@ -421,31 +568,70 @@ The scheduler continuously evaluates its health status:
 
 Health status is reported through AICO's logging system and available via CLI and message bus queries.
 
-## Implementation Roadmap
+## Implementation Guide
 
-### Phase 1: Core Infrastructure (Week 1-2)
-- [ ] Basic TaskScheduler class with asyncio loop
-- [ ] TaskRegistry with plugin discovery
-- [ ] Simple cron parser and schedule evaluation
-- [ ] Database schema and TaskStore implementation
-- [ ] Basic task execution with error handling
+### Integration with Existing Backend
 
-### Phase 2: Integration (Week 3)
-- [ ] Message bus integration for remote control
-- [ ] CLI commands for task management
-- [ ] Configuration system integration
-- [ ] Built-in maintenance tasks (log cleanup, health checks)
+**Current Architecture Compatibility**
+The scheduler integrates perfectly with AICO's existing backend architecture:
+- Uses established FastAPI lifespan pattern in `backend/main.py`
+- Leverages existing shared resources (message bus, database, configuration)
+- Follows domain-based API organization for management endpoints
 
-### Phase 3: Performance & Reliability (Week 4)
-- [ ] High-performance optimizations (caching, batching)
-- [ ] Retry logic and failure recovery
-- [ ] Resource monitoring and constraints
-- [ ] Comprehensive error handling
+**Integration Point**
+Add scheduler to existing `backend/main.py` lifespan after API Gateway initialization:
 
-### Phase 4: Advanced Features (Week 5-6)
-- [ ] Agency task integration
-- [ ] Advanced scheduling patterns
-- [ ] Monitoring and metrics collection
-- [ ] Security hardening and task isolation
+```python
+# In lifespan() function, after API Gateway startup:
+if config_manager.get("scheduler", {}).get("enabled", True):
+    from scheduler.core import TaskScheduler
+    task_scheduler = TaskScheduler(config_manager, message_bus_host, shared_db_connection)
+    await task_scheduler.start()
+    logger.info("Task scheduler started successfully")
+```
+
+### Implementation Phases
+
+**Phase 1: Core Scheduler (Day 1-2)**
+- `backend/scheduler/core.py` - TaskScheduler, TaskRegistry, TaskExecutor classes
+- `backend/scheduler/tasks/base.py` - BaseTask abstract class
+- `backend/scheduler/storage.py` - TaskStore with libSQL integration
+- Database schema addition to core schema
+
+**Phase 2: Built-in Tasks (Day 3)**
+- `backend/scheduler/tasks/maintenance.py` - Log cleanup, key rotation, health checks
+- `backend/scheduler/tasks/agency.py` - Background learning, memory consolidation
+- Task auto-discovery and registration
+
+**Phase 3: API & CLI (Day 4)**
+- `backend/api/scheduler/router.py` - REST endpoints for task management
+- `cli/commands/scheduler.py` - CLI commands using message bus
+- Integration with existing `aico gateway start` command
+
+**Phase 4: Monitoring & Polish (Day 5)**
+- Performance metrics and health monitoring
+- Error handling and retry logic refinement
+- Documentation and testing
+
+### File Structure
+
+```
+backend/
+├── scheduler/
+│   ├── __init__.py
+│   ├── core.py              # TaskScheduler, TaskRegistry, TaskExecutor
+│   ├── storage.py           # TaskStore with encrypted database
+│   ├── cron.py              # Cron expression parser
+│   └── tasks/
+│       ├── __init__.py
+│       ├── base.py          # BaseTask abstract class
+│       ├── maintenance.py   # System maintenance tasks
+│       └── agency.py        # Autonomous agency tasks
+├── api/
+│   └── scheduler/
+│       ├── __init__.py
+│       ├── router.py        # FastAPI endpoints
+│       └── schemas.py       # Pydantic models
+```
 
 This architecture provides AICO with a robust, high-performance task scheduling system that integrates seamlessly with existing infrastructure while maintaining the project's core principles of simplicity, security, and local-first operation.
