@@ -121,7 +121,10 @@ def destructive(reason: str = "dangerous operation"):
             console.print("   [dim]Authentication required for security[/dim]")
             
             # Authenticate for destructive commands (respects session cache)
-            key_manager = AICOKeyManager()
+            from aico.core.config import ConfigurationManager
+            config = ConfigurationManager()
+            config.initialize(lightweight=True)
+            key_manager = AICOKeyManager(config)
             
             # Try cached session first, then interactive auth if needed
             try:
