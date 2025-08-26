@@ -172,13 +172,12 @@ class ServiceLocator {
 
   /// Register encryption services
   static Future<void> _registerEncryptionServices() async {
-    // Encryption Service (still registered for SmartApiClient internal use)
     _getIt.registerSingletonAsync<EncryptionService>(() async {
       final service = EncryptionService();
       await service.initialize();
+      debugPrint('✅ EncryptionService: Initialized successfully');
       return service;
     });
-    // No need to register EncryptedApiClient or EncryptedApiService globally
   }
 
   /// Get service instance

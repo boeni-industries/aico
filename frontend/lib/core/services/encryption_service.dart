@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sodium/sodium.dart';
 import 'package:sodium_libs/sodium_libs.dart' as sodium_libs;
@@ -42,14 +43,10 @@ class EncryptionService {
   
   /// Initialize encryption service with libsodium
   Future<void> initialize() async {
-    try {
-      // Initialize sodium with platform binaries
-      _sodium = await sodium_libs.SodiumInit.init();
-      
-      await _loadOrGenerateIdentityKeys();
-    } catch (e) {
-      throw EncryptionException('Failed to initialize encryption service: $e');
-    }
+    // Initialize sodium with platform binaries
+    _sodium = await sodium_libs.SodiumInit.init();
+    
+    await _loadOrGenerateIdentityKeys();
   }
   
   /// Load existing identity keys or generate new ones
