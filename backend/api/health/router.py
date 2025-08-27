@@ -15,8 +15,9 @@ from .schemas import (
     DatabaseHealth, MessageBusHealth
 )
 
+logger = get_logger("aico.api.health", "router")
+
 router = APIRouter()
-logger = get_logger("api", "health_router")
 
 # These will be injected during app initialization
 gateway = None
@@ -34,6 +35,7 @@ def initialize_router(gw, msg_bus):
 @router.get("/", response_model=HealthResponse)
 async def health_check():
     """Basic health check endpoint"""
+    logger.info("Health check endpoint called")
     return HealthResponse(
         status="healthy",
         version="0.2.0",

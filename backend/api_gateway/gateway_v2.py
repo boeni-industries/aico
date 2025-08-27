@@ -64,10 +64,17 @@ class AICOAPIGatewayV2:
     
     def setup_fastapi_integration(self, app: FastAPI) -> None:
         """Setup FastAPI integration with REST adapter"""
+        print("[DEBUG] setup_fastapi_integration() called")
         rest_adapter = self.gateway_core.protocol_manager.get_adapter('rest')
+        print(f"[DEBUG] REST adapter found: {rest_adapter}")
+        print(f"[DEBUG] REST adapter type: {type(rest_adapter)}")
+        print(f"[DEBUG] Has setup_routes: {hasattr(rest_adapter, 'setup_routes') if rest_adapter else 'No adapter'}")
+        
         if rest_adapter and hasattr(rest_adapter, 'setup_routes'):
             # Instead of mounting, let the REST adapter setup routes on the main app
+            print("[DEBUG] About to call rest_adapter.setup_routes()")
             rest_adapter.setup_routes(app)
+            print("[DEBUG] rest_adapter.setup_routes() completed")
             self.logger.info("FastAPI integration setup complete")
         else:
             self.logger.warning("REST adapter not available for FastAPI integration")

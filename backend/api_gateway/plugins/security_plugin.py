@@ -42,11 +42,13 @@ class SecurityPlugin(PluginInterface):
         """Initialize security managers"""
         try:
             config_manager = dependencies.get('config')
+            db_connection = dependencies.get('db_connection')
+            
             if not config_manager:
                 raise ValueError("ConfigurationManager dependency required")
             
-            # Initialize authentication manager
-            self.auth_manager = AuthenticationManager(config_manager)
+            # Initialize authentication manager with database connection
+            self.auth_manager = AuthenticationManager(config_manager, db_connection)
             
             # Initialize authorization manager
             authz_config = config_manager.get("api_gateway.security.authorization", {})
@@ -57,6 +59,10 @@ class SecurityPlugin(PluginInterface):
         except Exception as e:
             self.logger.error(f"Failed to initialize security plugin: {e}")
             raise
+    
+    async def start(self) -> None:
+        """Start the security plugin"""
+        self.logger.info("Security plugin started")
     
     async def process_request(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Process request through security pipeline"""
@@ -114,17 +120,15 @@ class SecurityPlugin(PluginInterface):
             }
             return context
     
-    def configure_fastapi_middleware(self, app):
+    def configure_middleware(self, app) -> None:
         """Configure security middleware on FastAPI app"""
         if not self.enabled:
             return
         
-        from ..middleware.security import SecurityMiddleware
-        from starlette.middleware.base import BaseHTTPMiddleware
-        
-        security_middleware = SecurityMiddleware(self.config)
-        app.add_middleware(BaseHTTPMiddleware, dispatch=security_middleware.dispatch)
-        self.logger.info("Security middleware configured on FastAPI app")
+        # NOTE: Security middleware disabled to prevent bypassing ASGI encryption middleware
+        # The FastAPI HTTP middleware intercepts requests before ASGI middleware can process them
+        # Security features should be implemented at the ASGI level if needed
+        self.logger.info("Security middleware skipped - would bypass ASGI encryption middleware")
     
     async def shutdown(self) -> None:
         """Cleanup security plugin resources"""

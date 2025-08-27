@@ -141,6 +141,12 @@ class AICOLogger:
             
         log_entry = self._create_log_entry(level, message, **kwargs)
         
+        # Add comprehensive tracing for echo endpoint logs
+        if "ECHO TRACE" in message or "THIS_IS_A_TEST_LOG_FOR_TRACING" in str(kwargs.get("extra", {})):
+            trace_id = kwargs.get("extra", {}).get("trace_id", "unknown")
+            print(f"[LOGGER TRACE {trace_id}] STEP 4: AICOLogger._log() called - Level: {level}, Message: {message}")
+            print(f"[LOGGER TRACE {trace_id}] STEP 5: DB ready: {self._db_ready}, Transport: {self.transport}")
+        
         if not self._db_ready:
             # Buffer logs during bootstrap
             self._bootstrap_buffer.append(log_entry)
@@ -184,9 +190,25 @@ class AICOLogger:
     
     def _send_to_database(self, log_entry: LogEntry):
         """Send log entry to database via transport or fallback logging"""
+        # Add comprehensive tracing for echo endpoint logs
+        if "ECHO TRACE" in log_entry.message or "THIS_IS_A_TEST_LOG_FOR_TRACING" in str(log_entry.extra):
+            trace_id = log_entry.extra.get("trace_id", "unknown")
+            print(f"[LOGGER TRACE {trace_id}] STEP 6: _send_to_database() called - Transport: {type(self.transport) if self.transport else None}")
+        
         if self.transport:
             try:
+                # Add tracing before transport call
+                if "ECHO TRACE" in log_entry.message or "THIS_IS_A_TEST_LOG_FOR_TRACING" in str(log_entry.extra):
+                    trace_id = log_entry.extra.get("trace_id", "unknown")
+                    print(f"[LOGGER TRACE {trace_id}] STEP 7: Calling transport.send_log()")
+                
                 self.transport.send_log(log_entry)
+                
+                # Add tracing after transport call
+                if "ECHO TRACE" in log_entry.message or "THIS_IS_A_TEST_LOG_FOR_TRACING" in str(log_entry.extra):
+                    trace_id = log_entry.extra.get("trace_id", "unknown")
+                    print(f"[LOGGER TRACE {trace_id}] STEP 8: transport.send_log() completed successfully")
+                    
             except Exception as e:
                 # Print error and fallback, never log recursively
                 print(f"[AICO LOGGING] Failed to send log to transport: {e}", file=sys.stderr)
@@ -194,6 +216,10 @@ class AICOLogger:
                 print(traceback.format_exc(), file=sys.stderr)
                 self._try_fallback_logging(log_entry)
         else:
+            # Add tracing for no transport case
+            if "ECHO TRACE" in log_entry.message or "THIS_IS_A_TEST_LOG_FOR_TRACING" in str(log_entry.extra):
+                trace_id = log_entry.extra.get("trace_id", "unknown")
+                print(f"[LOGGER TRACE {trace_id}] STEP 7: NO TRANSPORT - falling back to console logging")
             self._try_fallback_logging(log_entry)
     
     def mark_database_ready(self):
@@ -231,13 +257,21 @@ class AICOLogger:
 
 class AICOLoggerFactory:
     """Factory for creating configured logger instances"""
-    
+
     def __init__(self, config_manager):
         self.config = config_manager
         self._transport = None
-        self._loggers = []  # Track created loggers
+        self._loggers: Dict[str, AICOLogger] = {}  # Track created loggers
         self._db_ready = False  # Track global database ready state
-    
+        self._zmq_context = None
+
+    def get_zmq_context(self):
+        """Get or create the shared ZMQ asyncio context."""
+        if self._zmq_context is None and ZMQ_AVAILABLE:
+            import zmq.asyncio
+            self._zmq_context = zmq.asyncio.Context()
+        return self._zmq_context
+
     def create_logger(self, subsystem: str, module: str) -> AICOLogger:
         """Create a logger instance for the specified subsystem and module"""
         transport = self._get_transport()
@@ -251,20 +285,37 @@ class AICOLoggerFactory:
         if self._db_ready:
             logger._db_ready = True
         
-        self._loggers.append(logger)  # Track logger
+        logger_key = f"{subsystem}:{module}"
+        self._loggers[logger_key] = logger  # Track logger
         return logger
-    
+
     def _get_transport(self):
         """Get or create transport for this logger factory"""
         if not self._transport and ZMQ_AVAILABLE:
-            self._transport = ZMQLogTransport(self.config)
-            self._transport.initialize()
+            context = self.get_zmq_context()
+            if context:
+                self._transport = ZMQLogTransport(self.config, context)
+                self._transport.initialize()
         return self._transport
     
+    def reinitialize_loggers(self):
+        """Re-initialize all existing loggers with the current transports."""
+        print("[LOGGING] Re-initializing all existing loggers with ZMQ transport...")
+        transport = self._get_transport()
+        if not transport:
+            print("[LOGGING] Re-initialization skipped: ZMQ transport not available.")
+            return
+
+        for logger_name, logger in self._loggers.items():
+            if not logger.transport:
+                print(f"[LOGGING] Updating transport for logger: {logger_name}")
+                logger.transport = transport
+
     def mark_all_databases_ready(self):
         """Mark database ready for all created loggers"""
         self._db_ready = True  
-        for logger in self._loggers:
+        # Iterate over logger instances, not keys, to propagate readiness
+        for logger in self._loggers.values():
             logger.mark_database_ready()
 
 
@@ -287,21 +338,18 @@ class DirectDatabaseTransport:
 
 class ZMQLogTransport:
     """ZeroMQ-based log transport for sending logs to message bus"""
-    
-    def __init__(self, config):
+
+    def __init__(self, config, zmq_context):
         self.config = config
         self._socket = None
-        self._context = None
-        
+        self._context = zmq_context  # Use shared context
+
     def initialize(self):
         """Initialize the ZMQ transport"""
-        if not ZMQ_AVAILABLE:
+        if not ZMQ_AVAILABLE or not self._context:
             return
-            
+
         try:
-            import zmq
-            
-            self._context = zmq.Context()
             self._socket = self._context.socket(zmq.PUB)
             
             # Get message bus configuration - connect to broker frontend port
@@ -309,6 +357,7 @@ class ZMQLogTransport:
             publisher_port = self.config.get("message_bus.pub_port", 5555)
             address = f"tcp://{host}:{publisher_port}"
             
+            print(f"[ZMQ TRANSPORT] Using asyncio context, connecting to {address}")
             self._socket.connect(address)
         except Exception as e:
             # Debug: Print ZMQ transport initialization failure
@@ -319,26 +368,48 @@ class ZMQLogTransport:
             self._context = None
     
     def send_log(self, log_entry: LogEntry):
-        """Send log entry to message bus as protobuf LogEntry"""
+        """Send log entry via ZMQ transport"""
         if not self._socket:
-            print(f"[ZMQ TRANSPORT DEBUG] No socket available - cannot send log")
             return
             
         try:
-            topic = self.config.get("logging.transport.zmq_topic", "logs")
-            full_topic = f"{topic}.{log_entry.subsystem}.{log_entry.module}"
+            import uuid
+            import zmq
+            trace_id = str(uuid.uuid4())[:8]
             
-            # print(f"[ZMQ TRANSPORT DEBUG] Sending log - Topic: {full_topic}, Subsystem: {log_entry.subsystem}, Module: {log_entry.module}, Message: {log_entry.message}")
+            # Create topic from subsystem and module
+            topic_parts = []
+            if log_entry.subsystem:
+                topic_parts.append(log_entry.subsystem)
+            if log_entry.module:
+                topic_parts.append(log_entry.module)
             
-            # Send protobuf LogEntry (binary serialization)
+            topic = ".".join(topic_parts) if topic_parts else "general"
+            full_topic = f"logs.{topic}"
+            
+            print(f"[ZMQ TRACE {trace_id}] STEP 1: Preparing to send - Topic: {full_topic}, Message: {log_entry.message}")
+            
+            # Serialize the protobuf message
+            serialized_data = log_entry.SerializeToString()
+            print(f"[ZMQ TRACE {trace_id}] STEP 2: Serialized protobuf - {len(serialized_data)} bytes")
+            
+            # Send via ZMQ socket (use sync send even with async context)
             self._socket.send_multipart([
                 full_topic.encode('utf-8'),
-                log_entry.SerializeToString()
+                serialized_data
             ], zmq.NOBLOCK)
             
-            # print(f"[ZMQ TRANSPORT DEBUG] Log sent successfully")
+            print(f"[ZMQ TRACE {trace_id}] STEP 3: Sent via ZMQ socket - Topic: {full_topic}")
+            
+            # CRITICAL: Yield control to allow the ZMQ I/O thread to send the message
+            # before the calling context (e.g., a short-lived request thread) terminates.
+            time.sleep(0.001)
             
         except Exception as e:
+            # Fallback: print error but don't crash
+            print(f"[ZMQ TRANSPORT ERROR] Failed to send log: {e}")
+            import traceback
+            print(f"[ZMQ TRANSPORT ERROR] Traceback: {traceback.format_exc()}")
             # Log transport failure but don't crash - logging must be resilient
             # This is acceptable because logging failures shouldn't break the application
             import sys
@@ -658,9 +729,18 @@ _logger_factory: Optional[AICOLoggerFactory] = None
 
 
 def initialize_logging(config_manager) -> AICOLoggerFactory:
-    """Initialize the global logging factory"""
+    """Initialize the global logging factory (idempotent)"""
     global _logger_factory
-    _logger_factory = AICOLoggerFactory(config_manager)
+    if _logger_factory is None:
+        _logger_factory = AICOLoggerFactory(config_manager)
+        print(f"[LOGGING] Initialized new AICOLoggerFactory")
+    else:
+        print(f"[LOGGING] Using existing AICOLoggerFactory")
+    return _logger_factory
+
+
+def get_logger_factory() -> Optional[AICOLoggerFactory]:
+    """Get the global logger factory instance."""
     return _logger_factory
 
 

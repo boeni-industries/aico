@@ -75,19 +75,27 @@ class MessageBusPlugin(PluginInterface):
     
     async def start(self) -> None:
         """Start the message bus broker"""
+        print(f"[MESSAGE BUS PLUGIN] start() called - enabled: {self.enabled}, host: {self.message_bus_host is not None}")
+        
         if not self.enabled or not self.message_bus_host:
             self.logger.info("Message bus plugin disabled or not initialized")
+            print(f"[MESSAGE BUS PLUGIN] Not starting - enabled: {self.enabled}, host initialized: {self.message_bus_host is not None}")
             return
         
         try:
+            print(f"[MESSAGE BUS PLUGIN] Starting message bus host on {self.bind_address}")
             # Start message bus host with database connection
             await self.message_bus_host.start(db_connection=self.db_connection)
+            print(f"[MESSAGE BUS PLUGIN] Message bus host started successfully")
             self.logger.info("Message bus plugin started - broker active", extra={
                 "bind_address": self.bind_address,
                 "persistence": "enabled" if self.db_connection else "disabled"
             })
             
         except Exception as e:
+            print(f"[MESSAGE BUS PLUGIN] Failed to start message bus plugin: {e}")
+            import traceback
+            print(f"[MESSAGE BUS PLUGIN] Traceback: {traceback.format_exc()}")
             self.logger.error(f"Failed to start message bus plugin: {e}")
             raise
     

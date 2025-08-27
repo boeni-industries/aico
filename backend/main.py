@@ -9,21 +9,27 @@ This implements the proper architecture:
 """
 
 import asyncio
-import os
-import signal
 import sys
-from contextlib import asynccontextmanager
+import signal
+import uvicorn
 from pathlib import Path
-
-# Add shared modules to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
-
 from fastapi import FastAPI
-from aico.core.config import ConfigurationManager
-from aico.core.logging import initialize_logging, get_logger
-from aico.core.version import get_backend_version
+from fastapi.middleware.cors import CORSMiddleware
 
-__version__ = get_backend_version()
+# Fix Windows asyncio event loop compatibility with ZMQ
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+# Add the backend directory to the Python path
+backend_dir = Path(__file__).parent
+sys.path.insert(0, str(backend_dir))
+
+# Import AICO modules
+from aico.core.config import ConfigurationManager
+from aico.core.logging import get_logger, initialize_logging
+from api_gateway.gateway_v2 import AICOAPIGatewayV2
+
+__version__ = "0.5.0"
 
 # Global components
 config_manager = None
@@ -86,13 +92,10 @@ async def setup_backend_components():
     await api_gateway.start()
     logger.info("API Gateway initialized")
     
-    # Start log consumer after API Gateway (which starts the message bus)
-    from log_consumer import AICOLogConsumer
-    log_consumer = AICOLogConsumer(config_manager, db_connection=shared_db_connection)
-    await log_consumer.start()
-    logger.info("Log consumer started")
+    # Log consumer is already started by the API Gateway plugin system
+    # No need to start it separately here
     
-    return api_gateway, log_consumer, shared_db_connection
+    return api_gateway, None, shared_db_connection
 
 
 async def main():
@@ -102,16 +105,79 @@ async def main():
     # Setup backend components
     api_gateway, log_consumer, shared_db_connection = await setup_backend_components()
     
-    # Create FastAPI app
+    # Create FastAPI app with lifespan
+    from contextlib import asynccontextmanager
+    
+    @asynccontextmanager
+    async def app_lifespan(app: FastAPI):
+        # Startup - gateway already integrated in main()
+        print("[LIFESPAN] App startup - gateway already integrated")
+
+        # Synchronous heartbeat log to immediately test logging
+        hb_logger = get_logger("backend", "heartbeat")
+        hb_logger.info(
+            "[HEARTBEAT TEST] Synchronous emit at startup",
+            extra={
+                "event_type": "heartbeat_test",
+                "sequence": 0,
+                "source": "backend.main",
+            },
+        )
+
+        # Heartbeat: emit 3 prominent log messages through normal logging paths (ZMQ -> DB)
+        async def _emit_heartbeat_logs():
+            try:
+                hb_logger = get_logger("backend", "heartbeat")
+                for i in range(1, 4):
+                    hb_logger.info(
+                        f"[HEARTBEAT TEST] Emitting heartbeat log {i}/3",
+                        extra={
+                            "event_type": "heartbeat_test",
+                            "sequence": i,
+                            "source": "backend.main",
+                        },
+                    )
+                    await asyncio.sleep(1.0)
+            except Exception as e:
+                # Ensure any issues are visible on console
+                print(f"[HEARTBEAT TEST] Error emitting heartbeat logs: {e}")
+
+        # Schedule the heartbeat on the running server loop so it survives return from main()
+        app.state.heartbeat_task = asyncio.create_task(_emit_heartbeat_logs())
+        yield
+        # Shutdown
+        print("[LIFESPAN] App shutdown - stopping gateway")
+        if hasattr(app.state, 'gateway'):
+            await app.state.gateway.stop()
+    
     app = FastAPI(
         title="AICO Backend API",
         version=__version__,
-        description="AICO Backend REST API with plugin-based middleware"
+        description="AICO Backend REST API with plugin-based middleware",
+        lifespan=app_lifespan
     )
     
+    # NOTE: Request logging middleware intentionally disabled.
+    # Function-based HTTP middleware can intercept before ASGI middleware
+    # and may interfere with encryption enforcement/logging. The REST
+    # adapter and unified logging already provide sufficient visibility.
+    
     # Setup FastAPI integration with API Gateway (REFACTOR_SUMMARY.md pattern)
-    api_gateway.setup_fastapi_integration(app)
-    logger.info("FastAPI integration setup complete")
+    print("[DEBUG MAIN] About to call api_gateway.setup_fastapi_integration()")
+    print(f"[DEBUG MAIN] api_gateway object: {api_gateway}")
+    print(f"[DEBUG MAIN] api_gateway type: {type(api_gateway)}")
+    try:
+        api_gateway.setup_fastapi_integration(app)
+        print("[DEBUG MAIN] setup_fastapi_integration() completed successfully")
+        logger.info("FastAPI integration setup complete")
+    except Exception as e:
+        print(f"[DEBUG MAIN] ERROR in setup_fastapi_integration(): {e}")
+        logger.error(f"FastAPI integration setup failed: {e}")
+        raise
+    
+    # Store gateway in app state for lifespan management
+    app.state.gateway = api_gateway
+    print("[DEBUG MAIN] Stored gateway in app.state")
     
     # Add basic health endpoint
     @app.get("/api/v1/health")
@@ -121,42 +187,6 @@ async def main():
     return app
 
 
-async def lifespan(app: FastAPI):
-    """FastAPI lifespan event handler"""
-    # Startup
-    try:
-        print("[MAIN] Starting lifespan startup...")
-        # Initialize and start API Gateway
-        print("[MAIN] Creating APIGateway instance...")
-        gateway = APIGateway()
-        print("[MAIN] Starting gateway...")
-        await gateway.start()
-        
-        # Store gateway reference for shutdown
-        app.state.gateway = gateway
-        
-        print("[MAIN] Backend startup complete")
-        logger.info("Backend startup complete")
-        yield
-        
-    except Exception as e:
-        print(f"[MAIN] Failed to start backend: {e}")
-        import traceback
-        print(f"[MAIN] Traceback: {traceback.format_exc()}")
-        logger.error(f"Failed to start backend: {e}")
-        raise
-    
-    # Shutdown
-    try:
-        print("[MAIN] Starting shutdown...")
-        if hasattr(app.state, 'gateway'):
-            await app.state.gateway.stop()
-        print("[MAIN] Backend shutdown complete")
-        logger.info("Backend shutdown complete")
-    except Exception as e:
-        print(f"[MAIN] Error during shutdown: {e}")
-        logger.error(f"Error during shutdown: {e}")
-        sys.exit(1)
 
 
 if __name__ == "__main__":

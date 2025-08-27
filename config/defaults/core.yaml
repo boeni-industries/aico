@@ -23,7 +23,7 @@ logging:
       studio: "INFO"
     modules:
       # Fine-grained control per module if needed
-      security: "WARNING"  # Security logs are important
+      security: "INFO"  # Security logs are important
       database: "INFO"
       
   # Retention and cleanup

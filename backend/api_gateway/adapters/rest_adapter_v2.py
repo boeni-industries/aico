@@ -74,14 +74,38 @@ class RESTAdapterV2(BaseProtocolAdapter):
     
     def _setup_middleware_on_app(self, app: FastAPI) -> None:
         """Setup FastAPI middleware including encryption on the main app"""
+        print("[DEBUG] _setup_middleware_on_app() called")
+        self.logger.info("MIDDLEWARE_SETUP: _setup_middleware_on_app() called")
+        
+        # NOTE: Request logging middleware disabled to prevent bypassing ASGI encryption middleware
+        # FastAPI HTTP middleware intercepts requests before ASGI middleware can process them
+        print(f"[REST ADAPTER] Skipped request logging middleware - would bypass ASGI encryption middleware")
+        self.logger.info("Request logging middleware skipped - would bypass ASGI encryption middleware")
+        
         # Setup encryption middleware if available
+        self.logger.info("MIDDLEWARE_SETUP: About to call _setup_encryption_middleware()")
         encryption_middleware = self._setup_encryption_middleware()
         if encryption_middleware:
             from ..middleware.encryption import EncryptionMiddleware
             app.add_middleware(EncryptionMiddleware, 
                      key_manager=self.gateway.key_manager)
             print(f"[REST ADAPTER] Added encryption middleware to main app")
+            self.logger.info("MIDDLEWARE_SETUP: Successfully added encryption middleware to main app")
+        else:
+            self.logger.warning("MIDDLEWARE_SETUP: Encryption middleware not added - _setup_encryption_middleware() returned None")
             self.logger.info("Added encryption middleware to main app")
+        
+        # Log middleware stack after setup
+        self.logger.info(f"MIDDLEWARE_SETUP: Middleware stack after setup: {len(app.user_middleware)} middlewares")
+        for i, middleware in enumerate(app.user_middleware):
+            middleware_class = middleware.cls.__name__ if hasattr(middleware, 'cls') else str(type(middleware))
+            self.logger.info(f"MIDDLEWARE_SETUP: [{i}] {middleware_class}")
+        
+        # Also print to console to ensure visibility
+        print(f"[REST ADAPTER] Middleware stack: {len(app.user_middleware)} middlewares")
+        for i, middleware in enumerate(app.user_middleware):
+            middleware_class = middleware.cls.__name__ if hasattr(middleware, 'cls') else str(type(middleware))
+            print(f"[REST ADAPTER] [{i}] {middleware_class}")
         
         # Log current middleware stack for debugging
         middleware_stack = []
@@ -104,14 +128,12 @@ class RESTAdapterV2(BaseProtocolAdapter):
             print(f"[REST ADAPTER] Encryption middleware type: {type(encryption_middleware).__name__}")
             self.logger.info(f"Encryption middleware type: {type(encryption_middleware).__name__}")
         
-        # Add CORS middleware
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+        # NOTE: CORS middleware disabled to prevent bypassing ASGI encryption middleware
+        # FastAPI HTTP middleware intercepts requests before ASGI middleware can process them
+        # CORS should be handled at the ASGI level if needed
+        print(f"[REST ADAPTER] Skipped CORS middleware - would bypass ASGI encryption middleware")
+        self.logger.info("CORS middleware skipped - would bypass ASGI encryption middleware")
+        
     
     def _setup_routes_on_app(self, app: FastAPI) -> None:
         """Setup REST routes on the main app"""
@@ -122,11 +144,13 @@ class RESTAdapterV2(BaseProtocolAdapter):
     
     def _mount_api_routers(self, app: FastAPI) -> None:
         """Mount all domain API routers with proper prefixes"""
-        routers_to_mount = [
+        # Mount API routers
+        api_routers = [
             ("api.users.router", "router", "/api/v1/users", ["users"]),
             ("api.health.router", "router", "/api/v1/health", ["health"]),
             ("api.logs.router", "router", "/api/v1/logs", ["logs"]),
-            ("api.echo.router", "router", "/api/v1/echo", ["echo"])
+            ("api.echo.router", "router", "/api/v1/echo", ["echo"]),
+            ("api.handshake.router", "router", "/api/v1/handshake", ["handshake"])
         ]
         
         # Mount admin routers separately (has two routers: health_router and router)
@@ -146,7 +170,7 @@ class RESTAdapterV2(BaseProtocolAdapter):
             """API Gateway health check endpoint"""
             return await self.gateway.health_check()
         
-        for module_path, router_name, prefix, tags in routers_to_mount:
+        for module_path, router_name, prefix, tags in api_routers:
             try:
                 module = __import__(module_path, fromlist=[router_name])
                 router = getattr(module, router_name)
@@ -159,70 +183,24 @@ class RESTAdapterV2(BaseProtocolAdapter):
     
     def setup_routes(self, app: FastAPI) -> None:
         """Setup REST routes on the FastAPI app"""
+        print("[DEBUG] setup_routes() called")
+        self.logger.info("SETUP_ROUTES: Method called - setting up middleware and routes")
         self.app = app
         
         # Add middleware
+        print("[DEBUG] About to call _setup_middleware_on_app()")
+        self.logger.info("SETUP_ROUTES: About to call _setup_middleware_on_app()")
         self._setup_middleware_on_app(app)
+        self.logger.info("SETUP_ROUTES: _setup_middleware_on_app() completed")
         
         # Add routes
+        self.logger.info("SETUP_ROUTES: About to call _setup_routes_on_app()")
         self._setup_routes_on_app(app)
+        self.logger.info("SETUP_ROUTES: setup_routes() method completed")
     
     def mount_router(self, router, prefix: str = "", **kwargs):
         """Mount a FastAPI router to the REST adapter app"""
         self.app.include_router(router, prefix=prefix, **kwargs)
-        
-        @self.app.middleware("http")
-        async def gateway_middleware(request: Request, call_next):
-            """REST gateway middleware for plugin processing"""
-            try:
-                # Skip middleware for certain paths
-                if request.url.path.startswith('/docs') or request.url.path.startswith('/openapi'):
-                    return await call_next(request)
-                
-                # Extract client info
-                client_info = self.get_client_info(request)
-                
-                # Get request body for processing
-                body = await request.body()
-                request_data = {
-                    'method': request.method,
-                    'path': str(request.url.path),
-                    'headers': dict(request.headers),
-                    'body': body,
-                    'query_params': dict(request.query_params)
-                }
-                
-                # Process through plugins if this is an API request
-                if request.url.path.startswith('/api/'):
-                    try:
-                        result = await self.handle_request(request_data, client_info)
-                        
-                        # Check for errors from plugin processing
-                        if isinstance(result, dict) and result.get('error'):
-                            error = result['error']
-                            return JSONResponse(
-                                status_code=error.get('status_code', 500),
-                                content={
-                                    'error': error.get('message', 'Internal error'),
-                                    'detail': error.get('detail')
-                                }
-                            )
-                    except Exception as e:
-                        self.logger.error(f"REST middleware error: {e}")
-                        return JSONResponse(
-                            status_code=500,
-                            content={'error': 'Internal server error'}
-                        )
-                
-                # Continue with normal processing
-                return await call_next(request)
-                
-            except Exception as e:
-                self.logger.error(f"REST middleware error: {e}")
-                return JSONResponse(
-                    status_code=500,
-                    content={'error': 'Internal server error'}
-                )
     
     def _extract_client_info(self, request: Request) -> Dict[str, Any]:
         """Extract client information from FastAPI request"""
@@ -240,16 +218,26 @@ class RESTAdapterV2(BaseProtocolAdapter):
     
     def _setup_encryption_middleware(self):
         """Setup encryption middleware"""
+        # Debug: Check what's in the gateway config
+        print(f"[DEBUG] Gateway config keys: {list(self.gateway.config.keys()) if hasattr(self.gateway.config, 'keys') else 'No keys method'}")
+        print(f"[DEBUG] Gateway config type: {type(self.gateway.config)}")
+        
         # Check if encryption is enabled in config
         security_config = self.gateway.config.get("security", {})
+        print(f"[DEBUG] Security config: {security_config}")
+        
         transport_encryption = security_config.get("transport_encryption", {})
+        print(f"[DEBUG] Transport encryption config: {transport_encryption}")
         
         if transport_encryption.get("enabled", False):
+            print("[DEBUG] Transport encryption is enabled, creating middleware")
             from ..middleware.encryption import EncryptionMiddleware
             return EncryptionMiddleware(
                 app=None,  # Will be set by FastAPI
                 key_manager=self.gateway.key_manager
             )
+        else:
+            print("[DEBUG] Transport encryption is NOT enabled")
         return None
 
     async def health_check(self) -> Dict[str, Any]:

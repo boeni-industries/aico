@@ -10,7 +10,7 @@ import time
 from typing import Dict, List, Optional, Any, Type
 from dataclasses import dataclass
 
-from aico.core.logging import get_logger
+from aico.core.logging import get_logger, get_logger_factory
 from aico.core.config import ConfigurationManager
 from aico.core.bus import MessageBusClient
 from aico.security.key_manager import AICOKeyManager
@@ -58,6 +58,7 @@ class GatewayCore:
         
         # Plugin system
         self.plugin_registry = PluginRegistry(config, self.logger)
+        self.plugin_registry.db_connection = self.db_connection
         self.loaded_plugins: Dict[str, PluginInterface] = {}
         
         # Protocol management
@@ -93,6 +94,14 @@ class GatewayCore:
             
             # 2. Load and initialize plugins
             await self._load_plugins()
+
+            # 2.5. Re-initialize loggers to ensure ZMQ transport is attached
+            # This is necessary because some loggers may be created before the ZMQ context is ready.
+            logger_factory = get_logger_factory()
+            if logger_factory:
+                logger_factory.reinitialize_loggers()
+                # Ensure all loggers mark DB ready and flush any bootstrap buffers
+                logger_factory.mark_all_databases_ready()
             
             # 3. Initialize protocol adapters
             await self._initialize_protocols()
@@ -138,6 +147,8 @@ class GatewayCore:
         try:
             self.message_bus = MessageBusClient("api_gateway")
             await self.message_bus.connect()
+            # Set message bus on plugin registry for dependency injection
+            self.plugin_registry.message_bus = self.message_bus
             self.logger.info("Connected to message bus")
         except Exception as e:
             self.logger.error(f"Failed to connect to message bus: {e}")
@@ -168,6 +179,7 @@ class GatewayCore:
         # Register built-in plugins
         from ..plugins.log_consumer_plugin import LogConsumerPlugin
         from ..plugins.message_bus_plugin import MessageBusPlugin
+        from ..plugins.encryption_plugin import EncryptionPlugin
         from ..plugins.security_plugin import SecurityPlugin
         from ..plugins.rate_limiting_plugin import RateLimitingPlugin
         from ..plugins.validation_plugin import ValidationPlugin
@@ -175,9 +187,11 @@ class GatewayCore:
         
         print(f"[GATEWAY CORE] Importing plugins...")
         
+        # Order matters: MessageBus must start before LogConsumer
         plugin_classes = [
-            LogConsumerPlugin, 
-            MessageBusPlugin,
+            MessageBusPlugin,      # Start broker first
+            LogConsumerPlugin,     # Then connect log consumer
+            EncryptionPlugin,      # Infrastructure level
             SecurityPlugin,
             RateLimitingPlugin,
             ValidationPlugin,
@@ -232,7 +246,27 @@ class GatewayCore:
                     print(f"[GATEWAY CORE] Registering plugin: {plugin_name}")
                     self.plugin_registry.register_plugin(plugin_name, plugin_instance)
                     print(f"[GATEWAY CORE] Registered plugin: {plugin_name}")
-                    self.logger.info(f"Registered plugin: {plugin_name}")
+                    
+                    # Initialize plugin with dependencies
+                    # Get message bus from loaded plugins if available
+                    message_bus_plugin = self.loaded_plugins.get('message_bus')
+                    message_bus = getattr(message_bus_plugin, 'message_bus', None) if message_bus_plugin else self.message_bus
+                    
+                    dependencies = {
+                        'config': self.config,
+                        'db_connection': getattr(self, 'db_connection', None),
+                        'message_bus': message_bus
+                    }
+                    print(f"[GATEWAY CORE] Initializing plugin: {plugin_name}")
+                    print(f"[GATEWAY CORE] DB connection for {plugin_name}: {self.db_connection is not None}")
+                    await plugin_instance.initialize(dependencies)
+                    print(f"[GATEWAY CORE] Starting plugin: {plugin_name}")
+                    await plugin_instance.start()
+                    print(f"[GATEWAY CORE] Plugin {plugin_name} started successfully")
+                    
+                    # Add to loaded plugins
+                    self.loaded_plugins[plugin_name] = plugin_instance
+                    self.logger.info(f"Registered and started plugin: {plugin_name}")
                     
                     # Log registered plugins
                     try:
@@ -257,6 +291,10 @@ class GatewayCore:
         """Initialize protocol adapters with dependency injection"""
         try:
             # Prepare dependencies for protocol adapters
+            # Get log consumer from loaded plugins
+            log_consumer_plugin = self.loaded_plugins.get('log_consumer')
+            log_consumer = getattr(log_consumer_plugin, 'log_consumer', None) if log_consumer_plugin else None
+            
             dependencies = {
                 'config': self.config,
                 'logger': self.logger,
@@ -265,7 +303,7 @@ class GatewayCore:
                 'auth_manager': self.auth_manager,
                 'authz_manager': self.authz_manager,
                 'message_router': self.message_router,
-                'log_consumer': getattr(self, 'log_consumer', None),  # ZMQ log consumer
+                'log_consumer': log_consumer,  # ZMQ log consumer from plugin
                 'db_connection': getattr(self, 'db_connection', None)  # Database connection
             }
             
@@ -349,15 +387,11 @@ class GatewayCore:
         config = self.config.config_cache.get('core', {})
         api_gateway_config = config.get('api_gateway', {})
         
-        # Configure CORS middleware
-        cors_origins = api_gateway_config.get("cors_origins", ["http://localhost:3000", "http://127.0.0.1:3000"])
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=cors_origins,
-            allow_credentials=True,
-            allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            allow_headers=["*"]
-        )
+        # NOTE: CORS middleware disabled to prevent bypassing ASGI encryption middleware
+        # FastAPI HTTP middleware intercepts requests before ASGI middleware can process them
+        # CORS should be handled at the ASGI level if needed
+        print(f"[GATEWAY CORE] Skipped CORS middleware - would bypass ASGI encryption middleware")
+        self.logger.info("CORS middleware skipped - would bypass ASGI encryption middleware")
         
         # Let plugins configure their middleware
         for plugin_name, plugin in self.loaded_plugins.items():

@@ -59,10 +59,20 @@ class LogConsumerPlugin(PluginInterface):
             
             # Import and initialize log consumer
             from backend.log_consumer import AICOLogConsumer
-            
+            from aico.core.logging import initialize_logging
+
+            # Get the shared ZMQ context from the global logger factory
+            logger_factory = initialize_logging(config_manager)
+            zmq_context = logger_factory.get_zmq_context()
+
+            if not zmq_context:
+                self.logger.error("Failed to get ZMQ context for LogConsumerPlugin")
+                return
+
             self.log_consumer = AICOLogConsumer(
-                config_manager, 
-                db_connection=self.db_connection
+                config_manager=config_manager,
+                db_connection=self.db_connection,
+                zmq_context=zmq_context
             )
             
             self.logger.info("Log consumer plugin initialized", extra={

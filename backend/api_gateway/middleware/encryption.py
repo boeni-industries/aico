@@ -87,29 +87,34 @@ class EncryptionMiddleware:
         # Create request object for processing
         request = Request(scope, receive)
         path = request.url.path
-        print(f"[ENCRYPTION MIDDLEWARE] Processing request: {request.method} {path}")
+        client_ip = request.client.host if request.client else "unknown"
+        
+        # Log all requests that reach encryption middleware
+        print(f"[ENCRYPTION MIDDLEWARE] Processing {request.method} {path} from {client_ip}")
         self.logger.debug(f"Processing request: {request.method} {path}")
+        self.logger.info(f"ENCRYPTION MIDDLEWARE: {request.method} {path} from {client_ip}", extra={
+            "event_type": "encryption_middleware_entry",
+            "method": request.method,
+            "path": path,
+            "client_ip": client_ip
+        })
         
         # Handle handshake endpoint directly
         if path == self.handshake_path:
-            print(f"[ENCRYPTION MIDDLEWARE] Handling handshake endpoint: {path}")
-            self.logger.debug(f"Handling handshake endpoint: {path}")
+            self.logger.info(f"Handling handshake endpoint: {path}")
             response = await self._handle_handshake(request)
             await response(scope, receive, send)
             return
         
         # Skip encryption for health checks only
         if self._should_skip_encryption(request):
-            print(f"[ENCRYPTION MIDDLEWARE] Skipping encryption for path: {path}")
             self.logger.debug(f"Skipping encryption for path: {path}")
             await self.app(scope, receive, send)
             return
         
-        print(f"[ENCRYPTION MIDDLEWARE] Enforcing encryption for protected endpoint: {path}")
         self.logger.info(f"Enforcing encryption for protected endpoint: {path}")
         
         # Handle encrypted requests
-        print(f"[ENCRYPTION MIDDLEWARE] Processing encrypted request for: {path}")
         self.logger.info(f"Processing encrypted request for: {path}")
         await self._handle_encrypted_request(scope, receive, send)
     
@@ -141,12 +146,25 @@ class EncryptionMiddleware:
                 self.logger.debug(f"Using generated client_id: {client_id}")
             
             self.logger.debug(f"Available channels: {list(self.channels.keys())}")
-            print(f"[ENCRYPTION MIDDLEWARE] Client ID: {client_id}")
-            print(f"[ENCRYPTION MIDDLEWARE] Channel found: {channel is not None}")
-            print(f"[ENCRYPTION MIDDLEWARE] Available channels: {list(self.channels.keys())}")
+            self.logger.debug(f"Client ID: {client_id}")
+            self.logger.debug(f"Channel found: {channel is not None}")
+            self.logger.debug(f"Available channels: {list(self.channels.keys())}")
             
             if not channel or not channel.is_session_valid():
                 if self.require_encryption:
+                    # Log the rejected request since it won't reach RequestLoggingMiddleware
+                    client_ip = request.client.host if request.client else "unknown"
+                    self.logger.info(
+                        f"ENCRYPTION REJECTED: {request.method} {request.url.path} from {client_ip} - No valid session",
+                        extra={
+                            "event_type": "encryption_rejected",
+                            "method": request.method,
+                            "path": request.url.path,
+                            "client_ip": client_ip,
+                            "reason": "no_valid_session",
+                            "status_code": 401
+                        }
+                    )
                     response = JSONResponse(
                         status_code=401,
                         content={
@@ -287,7 +305,6 @@ class EncryptionMiddleware:
                     identity_key_bytes = base64.b64decode(identity_key_b64)
                     client_verify_key_id = identity_key_bytes.hex()[:16]
                     self.channels[client_verify_key_id] = channel
-                    print(f"[ENCRYPTION MIDDLEWARE] Stored channel with client_id: {client_verify_key_id}")
                     self.logger.info(f"Stored channel with client_verify_key_id: {client_verify_key_id}")
                 
                 # Return handshake response in transit security test format

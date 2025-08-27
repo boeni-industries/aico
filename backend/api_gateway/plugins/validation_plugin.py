@@ -26,7 +26,7 @@ class ValidationPlugin(PluginInterface):
             name="validation",
             version="1.0.0",
             description="Message validation and conversion plugin",
-            priority=PluginPriority.NORMAL,  # Validation runs after rate limiting
+            priority=PluginPriority.MEDIUM,  # Validation runs after rate limiting
             dependencies=["security", "rate_limiting"],
             config_schema={
                 "enabled": {"type": "boolean", "default": True},
@@ -43,6 +43,10 @@ class ValidationPlugin(PluginInterface):
         except Exception as e:
             self.logger.error(f"Failed to initialize validation plugin: {e}")
             raise
+    
+    async def start(self) -> None:
+        """Start the validation plugin"""
+        self.logger.info("Validation plugin started")
     
     async def process_request(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Process request through validation"""

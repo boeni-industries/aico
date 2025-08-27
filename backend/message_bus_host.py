@@ -13,9 +13,6 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.any_pb2 import Any as ProtoAny
 
 from aico.core.config import ConfigurationManager
-from aico.core.logging import initialize_logging
-initialize_logging(ConfigurationManager())
-
 from aico.core.bus import MessageBusBroker, MessageBusClient
 from aico.core.logging import get_logger
 from aico.proto.aico_core_api_gateway_pb2 import ApiEvent

@@ -49,6 +49,10 @@ class RateLimitingPlugin(PluginInterface):
             self.logger.error(f"Failed to initialize rate limiting plugin: {e}")
             raise
     
+    async def start(self) -> None:
+        """Start the rate limiting plugin"""
+        self.logger.info("Rate limiting plugin started")
+    
     async def process_request(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Process request through rate limiting"""
         if not self.enabled:

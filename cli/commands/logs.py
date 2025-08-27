@@ -196,7 +196,7 @@ def ls(
     if format == "json":
         console.print(json.dumps(logs, indent=2, default=str))
     elif format == "oneline" or oneline:
-        for log in logs:
+        for log in reversed(logs):  # Unix style: latest entries at bottom
             console.print(f"[dim]{format_timestamp_local(log['timestamp'], show_utc=utc)}[/dim] "
                          f"[bold {_get_level_color(log['level'])}]{log['level']}[/bold {_get_level_color(log['level'])}] "
                          f"[cyan]{log['subsystem']}.{log['module']}[/cyan] {log['message']}")
@@ -219,7 +219,7 @@ def ls(
         table.add_column("Source", style="cyan")
         table.add_column("Message", style="white")
         
-        for log in logs:
+        for log in reversed(logs):  # Unix style: latest entries at bottom
             # Truncate message for table display
             message = log['message']
             if len(message) > 60:
@@ -433,11 +433,15 @@ def tail(
     level: Optional[str] = typer.Option(None, "--level", help="Filter by log level"),
     subsystem: Optional[str] = typer.Option(None, "--subsystem", help="Filter by subsystem"),
     lines: int = typer.Option(20, "--lines", "-n", help="Number of lines to show"),
+    limit: Optional[int] = typer.Option(None, "--limit", help="Number of entries to show (alias for --lines)"),
     utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Show recent logs (like tail -f)"""
     
     repo = _get_log_repository()
+    
+    # Determine number of entries to show (--limit takes precedence over --lines)
+    num_entries = limit if limit is not None else lines
     
     # Build filters
     filters = {}
@@ -447,7 +451,7 @@ def tail(
         filters["subsystem"] = subsystem
     
     # Get recent logs
-    logs = repo.get_logs(limit=lines, **filters)
+    logs = repo.get_logs(limit=num_entries, **filters)
     
     # Display logs
     for log in reversed(logs):  # Show oldest first

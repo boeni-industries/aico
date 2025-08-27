@@ -134,9 +134,8 @@ class PluginRegistry:
                 self.logger.error(f"Plugin not registered: {name}")
                 return None
             
-            # Create plugin instance
-            plugin_class = self.registered_plugins[name]
-            plugin = plugin_class(config, self.logger)
+            # Get already registered plugin instance (not a class)
+            plugin = self.registered_plugins[name]
             
             # Store configuration
             self.plugin_configs[name] = config
@@ -146,17 +145,19 @@ class PluginRegistry:
                 self.logger.info(f"Plugin {name} is disabled, skipping load")
                 return None
             
-            # Initialize plugin
-            dependencies = self._get_plugin_dependencies(name)
-            await plugin.initialize(dependencies)
+            # Initialize plugin (if not already initialized)
+            if name not in self.loaded_plugins:
+                dependencies = self._get_plugin_dependencies(name)
+                await plugin.initialize(dependencies)
+                
+                # Store loaded plugin
+                self.loaded_plugins[name] = plugin
+                
+                # Update dependency graph
+                self._update_dependency_graph(name, plugin.metadata.dependencies)
+                
+                self.logger.info(f"Loaded plugin: {name} v{plugin.metadata.version}")
             
-            # Store loaded plugin
-            self.loaded_plugins[name] = plugin
-            
-            # Update dependency graph
-            self._update_dependency_graph(name, plugin.metadata.dependencies)
-            
-            self.logger.info(f"Loaded plugin: {name} v{plugin.metadata.version}")
             return plugin
             
         except Exception as e:
@@ -205,6 +206,14 @@ class PluginRegistry:
             'logger': self.logger,
             'registry': self
         }
+        
+        # Add database connection if available
+        if hasattr(self, 'db_connection') and self.db_connection is not None:
+            dependencies['db_connection'] = self.db_connection
+        
+        # Add message bus if available
+        if hasattr(self, 'message_bus') and self.message_bus is not None:
+            dependencies['message_bus'] = self.message_bus
         
         # Add other loaded plugins as dependencies
         for plugin_name, plugin in self.loaded_plugins.items():

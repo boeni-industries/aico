@@ -37,13 +37,22 @@ class RoutingPlugin(PluginInterface):
     async def initialize(self, dependencies: Dict[str, Any]) -> None:
         """Initialize message router"""
         try:
-            config_manager = dependencies.get('config')
-            message_bus = dependencies.get('message_bus')
+            config = dependencies.get('config')
             
-            if not config_manager or not message_bus:
-                raise ValueError("ConfigurationManager and message_bus dependencies required")
+            if not config:
+                raise ValueError("config dependency required")
             
-            self.message_router = MessageRouter(config_manager, message_bus)
+            # Get routing config from the config object
+            core_config = config.get('core', {})
+            api_gateway_config = core_config.get('api_gateway', {})
+            router_config = api_gateway_config.get('routing', {})
+            
+            # Create router without message bus (will be set in start())
+            self.message_router = MessageRouter(router_config)
+            
+            # Store message bus for later use in start()
+            self.message_bus = dependencies.get('message_bus')
+            
             self.logger.info("Routing plugin initialized")
             
         except Exception as e:
@@ -74,8 +83,21 @@ class RoutingPlugin(PluginInterface):
             }
             return context
     
+    async def start(self) -> None:
+        """Start the routing plugin"""
+        try:
+            # Set up message bus connection if available
+            if self.message_bus and self.message_router:
+                await self.message_router.set_message_bus(self.message_bus)
+                self.logger.info("Routing plugin started with message bus")
+            else:
+                self.logger.warning("Routing plugin started without message bus")
+        except Exception as e:
+            self.logger.error(f"Failed to start routing plugin: {e}")
+            raise
+    
     async def shutdown(self) -> None:
         """Cleanup routing plugin resources"""
         if self.message_router:
-            await self.message_router.shutdown()
+            await self.message_router.cleanup()
         self.logger.info("Routing plugin shutdown")
