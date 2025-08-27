@@ -14,6 +14,7 @@ def main():
 
         # Resolve database path (matches backend/main.py logic)
         db_path = AICOPaths.resolve_database_path("aico.db")
+        print(f"[Verifier] Using database: {db_path}")
 
         # Get/derive encryption key
         cached_key = key_manager._get_cached_session()
@@ -64,6 +65,21 @@ def main():
             print("No recent health logs found.")
         for row in health_logs:
             print(f"[{row['timestamp']}] {row['subsystem']}.{row['module']} {row['level']}: {row['message']}")
+
+        # Diagnostic: show the most recent 20 logs regardless of subsystem/module
+        print("\n--- Recent logs (most recent 20) ---")
+        recent_logs = db_connection.fetch_all(
+            """
+            SELECT id, timestamp, subsystem, module, level, message
+            FROM logs
+            ORDER BY id DESC
+            LIMIT 20
+            """
+        )
+        if not recent_logs:
+            print("No logs found in database.")
+        for row in recent_logs:
+            print(f"#{row['id']} [{row['timestamp']}] {row['subsystem']}.{row['module']} {row['level']}: {row['message']}")
 
     except Exception as e:
         print(f"An error occurred: {e}")

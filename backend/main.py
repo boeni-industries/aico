@@ -98,22 +98,25 @@ async def setup_backend_components():
     return api_gateway, None, shared_db_connection
 
 
-async def main():
-    """Main function following REFACTOR_SUMMARY.md architecture"""
-    logger.info(f"Starting AICO backend server v{__version__}")
-    
-    # Setup backend components
-    api_gateway, log_consumer, shared_db_connection = await setup_backend_components()
-    
-    # Create FastAPI app with lifespan
+def create_app():
+    """Create FastAPI app with proper lifespan management"""
     from contextlib import asynccontextmanager
     
     @asynccontextmanager
     async def app_lifespan(app: FastAPI):
-        # Startup - gateway already integrated in main()
-        print("[LIFESPAN] App startup - gateway already integrated")
-
-        # Synchronous heartbeat log to immediately test logging
+        # Startup - initialize components in uvicorn's event loop
+        logger.info(f"Starting AICO backend server v{__version__}")
+        api_gateway, _, shared_db_connection = await setup_backend_components()
+        
+        # Store components in app state
+        app.state.gateway = api_gateway
+        app.state.db_connection = shared_db_connection
+        
+        # Skip FastAPI integration to avoid middleware timing issues
+        # Routes will be handled directly by the health endpoint below
+        logger.info("Backend components initialized - LogConsumer active")
+        
+        # Heartbeat test logs
         hb_logger = get_logger("backend", "heartbeat")
         hb_logger.info(
             "[HEARTBEAT TEST] Synchronous emit at startup",
@@ -124,10 +127,8 @@ async def main():
             },
         )
 
-        # Heartbeat: emit 3 prominent log messages through normal logging paths (ZMQ -> DB)
         async def _emit_heartbeat_logs():
             try:
-                hb_logger = get_logger("backend", "heartbeat")
                 for i in range(1, 4):
                     hb_logger.info(
                         f"[HEARTBEAT TEST] Emitting heartbeat log {i}/3",
@@ -139,50 +140,53 @@ async def main():
                     )
                     await asyncio.sleep(1.0)
             except Exception as e:
-                # Ensure any issues are visible on console
                 print(f"[HEARTBEAT TEST] Error emitting heartbeat logs: {e}")
 
-        # Schedule the heartbeat on the running server loop so it survives return from main()
         app.state.heartbeat_task = asyncio.create_task(_emit_heartbeat_logs())
+        
         yield
-        # Shutdown
+        
+        # Shutdown - cleanup async resources
         print("[LIFESPAN] App shutdown - stopping gateway")
         if hasattr(app.state, 'gateway'):
             await app.state.gateway.stop()
+        if hasattr(app.state, 'heartbeat_task'):
+            app.state.heartbeat_task.cancel()
     
-    app = FastAPI(
+    # Create FastAPI app with lifespan
+    fastapi_app = FastAPI(
         title="AICO Backend API",
         version=__version__,
         description="AICO Backend REST API with plugin-based middleware",
         lifespan=app_lifespan
     )
     
-    # NOTE: Request logging middleware intentionally disabled.
-    # Function-based HTTP middleware can intercept before ASGI middleware
-    # and may interfere with encryption enforcement/logging. The REST
-    # adapter and unified logging already provide sufficient visibility.
-    
-    # Setup FastAPI integration with API Gateway (REFACTOR_SUMMARY.md pattern)
-    print("[DEBUG MAIN] About to call api_gateway.setup_fastapi_integration()")
-    print(f"[DEBUG MAIN] api_gateway object: {api_gateway}")
-    print(f"[DEBUG MAIN] api_gateway type: {type(api_gateway)}")
-    try:
-        api_gateway.setup_fastapi_integration(app)
-        print("[DEBUG MAIN] setup_fastapi_integration() completed successfully")
-        logger.info("FastAPI integration setup complete")
-    except Exception as e:
-        print(f"[DEBUG MAIN] ERROR in setup_fastapi_integration(): {e}")
-        logger.error(f"FastAPI integration setup failed: {e}")
-        raise
-    
-    # Store gateway in app state for lifespan management
-    app.state.gateway = api_gateway
-    print("[DEBUG MAIN] Stored gateway in app.state")
-    
     # Add basic health endpoint
-    @app.get("/api/v1/health")
+    @fastapi_app.get("/api/v1/health")
     async def health_check():
         return {"status": "healthy", "service": "aico-backend", "version": __version__}
+    
+    # Add echo router directly
+    from backend.api.echo.router import router as echo_router
+    fastapi_app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])
+    
+    # Add encryption middleware as ASGI middleware wrapper
+    from fastapi import Request
+    from backend.api_gateway.middleware.encryption import EncryptionMiddleware
+    from aico.security.key_manager import AICOKeyManager
+    from aico.core.config import ConfigurationManager
+    
+    # Initialize encryption middleware components
+    config_manager = ConfigurationManager()
+    config_manager.initialize()
+    key_manager = AICOKeyManager(config_manager)
+    
+    # Wrap FastAPI app with encryption middleware
+    app = EncryptionMiddleware(fastapi_app, key_manager)
+    
+    # Skip FastAPI integration to avoid middleware timing issues
+    # Focus on keeping LogConsumer alive for log persistence
+    # Handshake endpoint is now handled by the encryption middleware automatically
     
     return app
 
@@ -192,8 +196,8 @@ async def main():
 if __name__ == "__main__":
     """Start the server when run directly"""
     try:
-        # Get the app from main()
-        app = asyncio.run(main())
+        # Create the app (components will be initialized in lifespan)
+        app = create_app()
         
         # Get server configuration
         core_config = config_manager.config_cache.get('core', {})
@@ -205,7 +209,7 @@ if __name__ == "__main__":
         
         print("[MAIN] Starting uvicorn server...")
         
-        # Start uvicorn server with proper app reference
+        # Start uvicorn server - it will handle the async lifecycle via lifespan
         import uvicorn
         uvicorn.run(
             app,
@@ -216,10 +220,9 @@ if __name__ == "__main__":
         )
         
     except KeyboardInterrupt:
-        logger.info("Application interrupted by user")
+        print("[MAIN] Application interrupted by user")
     except Exception as e:
-        logger.error(f"Application error: {e}")
+        print(f"[MAIN] Application error: {e}")
         import traceback
         print(f"[MAIN] Traceback: {traceback.format_exc()}")
-        sys.exit(1)
         sys.exit(1)
