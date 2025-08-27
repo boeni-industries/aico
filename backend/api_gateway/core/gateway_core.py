@@ -166,7 +166,6 @@ class GatewayCore:
     async def _register_builtin_plugins(self) -> None:
         """Register built-in plugins"""
         # Register built-in plugins
-        from ..plugins.encryption_plugin import EncryptionPlugin
         from ..plugins.log_consumer_plugin import LogConsumerPlugin
         from ..plugins.message_bus_plugin import MessageBusPlugin
         from ..plugins.security_plugin import SecurityPlugin
@@ -177,7 +176,6 @@ class GatewayCore:
         print(f"[GATEWAY CORE] Importing plugins...")
         
         plugin_classes = [
-            EncryptionPlugin,
             LogConsumerPlugin, 
             MessageBusPlugin,
             SecurityPlugin,

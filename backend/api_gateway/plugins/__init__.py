@@ -4,7 +4,6 @@ Plugin package for AICO API Gateway
 Provides built-in plugins for the modular API Gateway architecture.
 """
 
-from .encryption_plugin import EncryptionPlugin
 from .log_consumer_plugin import LogConsumerPlugin
 from .message_bus_plugin import MessageBusPlugin
 from .security_plugin import SecurityPlugin
@@ -13,7 +12,6 @@ from .validation_plugin import ValidationPlugin
 from .routing_plugin import RoutingPlugin
 
 __all__ = [
-    'EncryptionPlugin',
     'LogConsumerPlugin',
     'MessageBusPlugin',
     'SecurityPlugin',

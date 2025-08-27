@@ -74,67 +74,14 @@ class RESTAdapterV2(BaseProtocolAdapter):
     
     def _setup_middleware_on_app(self, app: FastAPI) -> None:
         """Setup FastAPI middleware including encryption on the main app"""
-        # Get encryption plugin and add its middleware first (highest priority)
-        encryption_plugin = self.gateway.plugin_registry.get_plugin("encryption")
-        print(f"[REST ADAPTER] Encryption plugin found: {encryption_plugin is not None}")
-        self.logger.info(f"Encryption plugin found: {encryption_plugin is not None}")
-        if encryption_plugin:
-            print(f"[REST ADAPTER] Encryption plugin enabled: {encryption_plugin.enabled}")
-            self.logger.info(f"Encryption plugin enabled: {encryption_plugin.enabled}")
-            if encryption_plugin.enabled:
-                # Initialize the plugin with dependencies first (sync version)
-                dependencies = {
-                    'config': self.gateway.config,
-                    'key_manager': self.gateway.key_manager
-                }
-                print(f"[REST ADAPTER] Initializing encryption plugin with dependencies")
-                
-                # Run the async initialization synchronously
-                import asyncio
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # Create a new thread to run the async code
-                        import concurrent.futures
-                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                            future = executor.submit(asyncio.run, encryption_plugin.initialize(dependencies))
-                            future.result()
-                    else:
-                        loop.run_until_complete(encryption_plugin.initialize(dependencies))
-                except Exception as e:
-                    print(f"[REST ADAPTER] Error initializing encryption plugin: {e}")
-                    import traceback
-                    print(f"[REST ADAPTER] Traceback: {traceback.format_exc()}")
-                
-                encryption_middleware = encryption_plugin.get_encryption_middleware()
-                print(f"[REST ADAPTER] Encryption middleware instance: {encryption_middleware is not None}")
-                self.logger.info(f"Encryption middleware instance: {encryption_middleware is not None}")
-                if encryption_middleware:
-                    # Add the encryption middleware class with proper parameters
-                    from aico.security.key_manager import AICOKeyManager
-                    from aico.core.config import ConfigurationManager
-                    
-                    config_manager = ConfigurationManager()
-                    config_manager.initialize()
-                    security_config = config_manager.get("security", {})
-                    
-                    key_manager = AICOKeyManager(security_config)
-                    
-                    app.add_middleware(
-                        type(encryption_middleware),
-                        key_manager=key_manager
-                    )
-                    print(f"[REST ADAPTER] Added encryption middleware to main app")
-                    self.logger.info("Added encryption middleware to main app")
-                    print(f"[REST ADAPTER] Encryption middleware type: {type(encryption_middleware).__name__}")
-                    self.logger.info(f"Encryption middleware type: {type(encryption_middleware).__name__}")
-                else:
-                    print(f"[REST ADAPTER] Encryption middleware instance is None - plugin may need initialization")
-                    self.logger.warning("Encryption middleware instance is None")
-            else:
-                self.logger.warning("Encryption plugin is disabled")
-        else:
-            self.logger.error("Encryption plugin not found in registry")
+        # Setup encryption middleware if available
+        encryption_middleware = self._setup_encryption_middleware()
+        if encryption_middleware:
+            from ..middleware.encryption import EncryptionMiddleware
+            app.add_middleware(EncryptionMiddleware, 
+                     key_manager=self.gateway.key_manager)
+            print(f"[REST ADAPTER] Added encryption middleware to main app")
+            self.logger.info("Added encryption middleware to main app")
         
         # Log current middleware stack for debugging
         middleware_stack = []
@@ -153,7 +100,7 @@ class RESTAdapterV2(BaseProtocolAdapter):
         self.logger.info(f"Current middleware stack: {middleware_stack}")
         
         # Also log what encryption middleware we actually added
-        if encryption_plugin and encryption_plugin.enabled and encryption_middleware:
+        if encryption_middleware:
             print(f"[REST ADAPTER] Encryption middleware type: {type(encryption_middleware).__name__}")
             self.logger.info(f"Encryption middleware type: {type(encryption_middleware).__name__}")
         
@@ -167,66 +114,8 @@ class RESTAdapterV2(BaseProtocolAdapter):
         )
     
     def _setup_routes_on_app(self, app: FastAPI) -> None:
-        """Setup REST routes including handshake endpoint on the main app"""
-        # Add handshake endpoint for encryption
-        @app.post("/api/v1/handshake")
-        async def handshake_endpoint(request: Request):
-            """Handle encryption handshake requests"""
-            print(f"[REST ADAPTER] Handshake endpoint called")
-            try:
-                # Get encryption plugin
-                encryption_plugin = self.gateway.plugin_registry.get_plugin("encryption")
-                print(f"[REST ADAPTER] Encryption plugin found: {encryption_plugin is not None}")
-                if not encryption_plugin or not encryption_plugin.enabled:
-                    print(f"[REST ADAPTER] Encryption not available - plugin: {encryption_plugin}, enabled: {encryption_plugin.enabled if encryption_plugin else 'N/A'}")
-                    return {"error": "Encryption not available"}
-                
-                # Extract request data
-                body = await request.body()
-                client_info = self._extract_client_info(request)
-                
-                # Create context for plugin processing
-                context = {
-                    'protocol': 'rest',
-                    'request_data': {
-                        'path': '/api/v1/handshake',
-                        'method': 'POST',
-                        'body': body
-                    },
-                    'client_info': client_info
-                }
-                
-                # Process through encryption plugin
-                result_context = await encryption_plugin.process_request(context)
-                
-                if 'error' in result_context:
-                    return {"error": result_context['error']['message']}
-                
-                # Check if we have a successful response (no error)
-                if 'response' in result_context:
-                    # Format response for transit security test compatibility
-                    return {
-                        "status": "session_established", 
-                        "handshake_response": result_context['response']
-                    }
-                else:
-                    # If no 'response' key but no error, assume the whole context is the response
-                    # This handles cases where the response is returned directly
-                    response_keys = ['component', 'public_key', 'timestamp', 'challenge', 'signature']
-                    if any(key in result_context for key in response_keys):
-                        return {
-                            "status": "session_established",
-                            "handshake_response": result_context
-                        }
-                    return {"error": "Handshake failed"}
-                
-            except Exception as e:
-                import traceback
-                print(f"[REST ADAPTER] Handshake endpoint error: {e}")
-                print(f"[REST ADAPTER] Handshake traceback: {traceback.format_exc()}")
-                self.logger.error(f"Handshake endpoint error: {e}")
-                self.logger.error(f"Handshake traceback: {traceback.format_exc()}")
-                return {"error": "Handshake processing failed", "detail": str(e)}
+        """Setup REST routes on the main app"""
+        # Handshake endpoint is now handled by encryption middleware
         
         # Mount all API routers
         self._mount_api_routers(app)
@@ -349,6 +238,20 @@ class RESTAdapterV2(BaseProtocolAdapter):
         """Handle REST request through plugin pipeline"""
         return await self.process_through_plugins(request_data, client_info)
     
+    def _setup_encryption_middleware(self):
+        """Setup encryption middleware"""
+        # Check if encryption is enabled in config
+        security_config = self.gateway.config.get("security", {})
+        transport_encryption = security_config.get("transport_encryption", {})
+        
+        if transport_encryption.get("enabled", False):
+            from ..middleware.encryption import EncryptionMiddleware
+            return EncryptionMiddleware(
+                app=None,  # Will be set by FastAPI
+                key_manager=self.gateway.key_manager
+            )
+        return None
+
     async def health_check(self) -> Dict[str, Any]:
         """REST adapter health check"""
         base_health = await super().health_check()
