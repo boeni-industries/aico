@@ -110,34 +110,32 @@ class AICOServer:
             
             if detach:
                 # Background mode - start server task and return immediately
-                self.server_task = asyncio.create_task(self._run_server())
+                self.server_task = asyncio.create_task(self.server.serve())
                 
                 # Give it a moment to start
                 await asyncio.sleep(1)
                 
-                if self.running:
+                if not self.server_task.done():
                     logger.info("Server started successfully in background")
+                    self.running = True
                     return True
                 else:
                     logger.error("Failed to start server in background")
                     return False
             else:
-                # Foreground mode - block until shutdown
-                await self._run_server()
+                # Foreground mode - block until shutdown with monitoring
+                await self._run_server_with_monitoring()
                 return True
                 
         except Exception as e:
             logger.error(f"Failed to start server: {e}")
             return False
     
-    async def _run_server(self):
-        """Internal server runner with simple shutdown monitoring"""
+    async def _run_server_with_monitoring(self):
+        """Foreground server runner with shutdown monitoring"""
         try:
             # Use ServiceContext for PID file management
             with ServiceContext("gateway"):
-                # Start the server in a task
-                server_task = asyncio.create_task(self.server.serve())
-                
                 # Start shutdown file monitoring
                 shutdown_monitor = asyncio.create_task(self._check_shutdown_file())
                 
@@ -146,7 +144,7 @@ class AICOServer:
                 
                 # Wait for shutdown signal or server completion
                 done, pending = await asyncio.wait(
-                    [server_task, shutdown_monitor, asyncio.create_task(self.shutdown_event.wait())],
+                    [asyncio.create_task(self.server.serve()), shutdown_monitor, asyncio.create_task(self.shutdown_event.wait())],
                     return_when=asyncio.FIRST_COMPLETED
                 )
                 
@@ -235,12 +233,12 @@ class AICOServer:
         }
 
 
-async def run_server_async(app: FastAPI, config_manager, detach: bool = True, rest_app: FastAPI = None):
+async def run_server_async(app: FastAPI, config_manager, detach: bool = True):
     """
-    Asynchronous server runner with proper lifecycle management
+    Asynchronous server runner with simplified single app architecture
     
     Args:
-        app: FastAPI application instance (may be replaced by REST adapter app)
+        app: FastAPI application instance (configured with API Gateway middleware)
         config_manager: Configuration manager
         detach: Whether to run in background mode
     """
@@ -252,17 +250,7 @@ async def run_server_async(app: FastAPI, config_manager, detach: bool = True, re
     host = rest_config.get('host', '127.0.0.1')
     port = rest_config.get('port', 8771)
     
-    # Use REST adapter app if passed directly as parameter
-    # print(f"DEBUG: About to check for REST adapter app replacement")
-    if rest_app is not None:
-        # print(f"DEBUG: REST adapter app passed as parameter: {rest_app}")
-        # print(f"DEBUG: Type: {type(rest_app)}")
-        # print("DEBUG: Using REST adapter app instead of main app for server")
-        logger.info("Using REST adapter app instead of main app for server")
-        app = rest_app
-    else:
-        # print("DEBUG: No REST adapter app passed, using main app")
-        logger.warning("REST adapter app not provided, using main app")
+    logger.info("Using simplified single FastAPI app architecture")
     
     try:
         # Create and start server

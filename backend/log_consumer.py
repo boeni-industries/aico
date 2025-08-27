@@ -113,21 +113,21 @@ class AICOLogConsumer:
             sub_port = self.config_manager.get("message_bus.sub_port", 5556)
             host = self.config_manager.get("message_bus.host", "localhost")
             
-            # print(f"[LOG CONSUMER] Connecting to SUBSCRIBER port tcp://{host}:{sub_port}")
+            print(f"[LOG CONSUMER] Connecting to SUBSCRIBER port tcp://{host}:{sub_port}")
             self.context = zmq.asyncio.Context()
             self.subscriber = self.context.socket(zmq.SUB)
             self.subscriber.connect(f"tcp://{host}:{sub_port}")
-            # print(f"[LOG CONSUMER] Connected SUB socket to tcp://{host}:{sub_port}")
+            print(f"[LOG CONSUMER] Connected SUB socket to tcp://{host}:{sub_port}")
             
             # Subscribe to logs.* topics only
             self.subscriber.setsockopt(zmq.SUBSCRIBE, b"logs.")
-            # print(f"[LOG CONSUMER] SUBSCRIBED to topic prefix: b'logs.'")
+            print(f"[LOG CONSUMER] SUBSCRIBED to topic prefix: b'logs.'")
             
             self.running = True
             
             # Start message processing loop
             asyncio.create_task(self._zmq_message_loop())
-            # print("[LOG CONSUMER] Started successfully with direct ZMQ subscription")
+            print("[LOG CONSUMER] Started successfully with direct ZMQ subscription")
             
         except Exception as e:
             print(f"[LOG CONSUMER ERROR] Failed to start: {e}")
@@ -161,7 +161,7 @@ class AICOLogConsumer:
                 log_entry = LogEntry()
                 log_entry.ParseFromString(message_data)
                 
-                # print(f"[LOG CONSUMER DEBUG] Received message - Topic: {topic_str}, Subsystem: {log_entry.subsystem}, Module: {log_entry.module}, Message: {log_entry.message}")
+                print(f"[LOG CONSUMER DEBUG] Received message - Topic: {topic_str}, Subsystem: {log_entry.subsystem}, Module: {log_entry.module}, Message: {log_entry.message}")
                 
                 # Handle the protobuf LogEntry message
                 await self._handle_log_message(log_entry)

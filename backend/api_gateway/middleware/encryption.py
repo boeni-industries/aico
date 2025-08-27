@@ -79,24 +79,30 @@ class EncryptionMiddleware:
         
         # Skip encryption if disabled
         if not self.enabled:
+            print(f"[ENCRYPTION MIDDLEWARE] Encryption middleware disabled, passing through")
+            self.logger.debug("Encryption middleware disabled, passing through")
             await self.app(scope, receive, send)
             return
         
         # Create request object for processing
         request = Request(scope, receive)
+        path = request.url.path
+        print(f"[ENCRYPTION MIDDLEWARE] Processing request: {request.method} {path}")
+        self.logger.debug(f"Processing request: {request.method} {path}")
         
         # Skip encryption for health checks and handshake endpoint
         if self._should_skip_encryption(request):
+            print(f"[ENCRYPTION MIDDLEWARE] Skipping encryption for path: {path}")
+            self.logger.debug(f"Skipping encryption for path: {path}")
             await self.app(scope, receive, send)
             return
         
-        # Handle handshake requests
-        if request.url.path == self.handshake_path:
-            response = await self._handle_handshake(request)
-            await response(scope, receive, send)
-            return
+        print(f"[ENCRYPTION MIDDLEWARE] Enforcing encryption for protected endpoint: {path}")
+        self.logger.info(f"Enforcing encryption for protected endpoint: {path}")
         
         # Handle encrypted requests
+        print(f"[ENCRYPTION MIDDLEWARE] Processing encrypted request for: {path}")
+        self.logger.info(f"Processing encrypted request for: {path}")
         await self._handle_encrypted_request(scope, receive, send)
     
     async def _handle_encrypted_request(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -192,23 +198,31 @@ class EncryptionMiddleware:
     
     def _should_skip_encryption(self, request: Request) -> bool:
         """Check if request should skip encryption"""
-        skip_paths = [
-            "/health",
-            "/gateway/status",
-            "/gateway/metrics",
-            "/docs",
-            "/redoc",
-            "/openapi.json"
-        ]
-        
-        # Check if path matches any unencrypted endpoint
         path = request.url.path
         
-        # Remove /api/v1 prefix if present for comparison
-        if path.startswith("/api/v1"):
-            path = path[7:]  # Remove "/api/v1"
+        # Always skip encryption for these public endpoints
+        public_endpoints = [
+            "/docs",
+            "/redoc", 
+            "/openapi.json",
+            "/api/v1/handshake",  # Handshake endpoint must be unencrypted
+            "/api/v1/health"      # Public gateway health check only
+        ]
         
-        return any(path.startswith(skip_path) for skip_path in skip_paths)
+        # Check exact matches for public endpoints
+        if path in public_endpoints:
+            return True
+        
+        # NEVER skip encryption for admin endpoints - they contain sensitive data
+        if path.startswith("/api/v1/admin/"):
+            return False
+            
+        # All other /api/v1/ endpoints require encryption by default
+        if path.startswith("/api/v1/"):
+            return False
+            
+        # Non-API paths can skip encryption (static files, etc.)
+        return True
     
     def _get_client_id(self, request: Request) -> str:
         """Get unique client identifier"""

@@ -121,6 +121,23 @@ api_gateway:
     timeout_seconds: 30
     retry_attempts: 3
     correlation_cleanup_minutes: 60
+  
+  # Plugin configuration
+  plugins:
+    message_bus:
+      enabled: true
+    log_consumer:
+      enabled: true
+    encryption:
+      enabled: true
+    security:
+      enabled: true
+    rate_limiting:
+      enabled: true
+    validation:
+      enabled: true
+    routing:
+      enabled: true
 
 # User profile configuration
 user_profiles:

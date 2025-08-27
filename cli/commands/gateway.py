@@ -89,7 +89,7 @@ def _is_gateway_running() -> bool:
             port = config.get('protocols', {}).get('rest', {}).get('port', 8771)
             
             try:
-                response = requests.get(f"http://{host}:{port}/health", timeout=2)
+                response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=2)
                 return response.status_code == 200
             except requests.exceptions.RequestException:
                 # Process running but not responding - might be starting up
@@ -104,7 +104,7 @@ def _is_gateway_running() -> bool:
             host = config.get('host', '127.0.0.1')
             port = config.get('protocols', {}).get('rest', {}).get('port', 8771)
             
-            response = requests.get(f"http://{host}:{port}/health", timeout=2)
+            response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=2)
             return response.status_code == 200
         except requests.exceptions.RequestException:
             return False
@@ -365,7 +365,7 @@ def start(
                     rest_port = protocols.get('rest', {}).get('port', 8771)
                     prefix = protocols.get('rest', {}).get('prefix', '/api/v1')
                     console.print(f"  • REST API: [cyan]http://{host}:{rest_port}{prefix}[/cyan]")
-                    console.print(f"  • Health Check: [cyan]http://{host}:{rest_port}/health[/cyan]")
+                    console.print(f"  • Health Check: [cyan]http://{host}:{rest_port}/api/v1/health[/cyan]")
                 
                 if protocols.get('websocket', {}).get('enabled', False):
                     ws_port = protocols.get('websocket', {}).get('port', 8772)

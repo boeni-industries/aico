@@ -187,36 +187,22 @@ class RESTAdapter:
         })
     
     async def start(self, host: str):
-        """Start REST server"""
+        """Initialize REST adapter (no separate server - uses main FastAPI app)"""
         try:
             port = self.config.get("port", 8771)
             
-            # Configure uvicorn
-            config = uvicorn.Config(
-                self.app,
-                host=host,
-                port=port,
-                log_level="info",
-                access_log=False  # We handle logging in middleware
-            )
-            
-            self.server = uvicorn.Server(config)
-            
-            # Start server in background
-            await self.server.serve()
-            
-            self.logger.info(f"REST adapter started on {host}:{port}")
+            # REST adapter now integrates with main FastAPI app - no separate server needed
+            # The main FastAPI server handles all REST endpoints
+            self.logger.info(f"REST adapter initialized for {host}:{port} (using main FastAPI app)")
             
         except Exception as e:
-            self.logger.error(f"Failed to start REST adapter: {e}")
+            self.logger.error(f"Failed to initialize REST adapter: {e}")
             raise
     
     async def stop(self):
-        """Stop REST server"""
-        if self.server:
-            self.server.should_exit = True
-            await self.server.shutdown()
-            self.logger.info("REST adapter stopped")
+        """Stop REST adapter (no separate server to stop)"""
+        # REST adapter now integrates with main FastAPI app - no separate server to stop
+        self.logger.info("REST adapter stopped")
     
     def get_app(self) -> FastAPI:
         """Get FastAPI app instance"""
