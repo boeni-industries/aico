@@ -1,11 +1,10 @@
-import asyncio
 from aico.core.config import ConfigurationManager
 from aico.core.paths import AICOPaths
 from aico.security.key_manager import AICOKeyManager
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 
 
-async def main():
+def main():
     db_connection = None
     try:
         # Initialize config and key manager
@@ -31,16 +30,12 @@ async def main():
                 print("ERROR: Master key not found. Run 'aico security setup' or authenticate first.")
                 return
 
-        # Open encrypted DB connection
+        # Open encrypted DB connection (synchronous API)
         db_connection = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-        await db_connection.connect()
-
-        if not db_connection.is_connected():
-            print("Failed to connect to the database.")
-            return
+        db_connection.connect()
 
         print("--- Echo logs (most recent 5) ---")
-        echo_logs = await db_connection.fetchall(
+        echo_logs = db_connection.fetch_all(
             """
             SELECT timestamp, subsystem, module, level, message
             FROM logs
@@ -52,10 +47,11 @@ async def main():
         if not echo_logs:
             print("No recent echo logs found.")
         for row in echo_logs:
-            print(f"[{row[0]}] {row[1]}.{row[2]} {row[3]}: {row[4]}")
+            # fetch_all returns dicts with column names
+            print(f"[{row['timestamp']}] {row['subsystem']}.{row['module']} {row['level']}: {row['message']}")
 
         print("\n--- Health logs (most recent 5) ---")
-        health_logs = await db_connection.fetchall(
+        health_logs = db_connection.fetch_all(
             """
             SELECT timestamp, subsystem, module, level, message
             FROM logs
@@ -67,14 +63,14 @@ async def main():
         if not health_logs:
             print("No recent health logs found.")
         for row in health_logs:
-            print(f"[{row[0]}] {row[1]}.{row[2]} {row[3]}: {row[4]}")
+            print(f"[{row['timestamp']}] {row['subsystem']}.{row['module']} {row['level']}: {row['message']}")
 
     except Exception as e:
         print(f"An error occurred: {e}")
     finally:
-        if db_connection and db_connection.is_connected():
-            await db_connection.disconnect()
+        if db_connection:
+            db_connection.disconnect()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
