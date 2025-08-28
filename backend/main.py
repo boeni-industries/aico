@@ -51,21 +51,6 @@ try:
     process_manager = ProcessManager("gateway")
     process_manager.write_pid(os.getpid())
     
-    # Setup global signal handlers (will coordinate all shutdown)
-    def signal_handler(signum, frame):
-        logger.info(f"Received signal {signum}, initiating graceful shutdown")
-        shutdown_event.set()
-        # Cancel all background tasks
-        for task in background_tasks:
-            if not task.done():
-                logger.info(f"Cancelling background task: {task.get_name()}")
-                task.cancel()
-        # Clean up PID file
-        if process_manager:
-            process_manager.cleanup_pid_files()
-    
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
     
     # Import API Gateway after logging is initialized
     from api_gateway.gateway_v2 import AICOAPIGatewayV2
@@ -127,6 +112,12 @@ def create_app():
     @asynccontextmanager
     async def app_lifespan(app: FastAPI):
         # Startup
+        from aico.core.paths import AICOPaths
+        paths = AICOPaths()
+        shutdown_file = paths.get_runtime_path() / "gateway.shutdown"
+        if shutdown_file.exists():
+            shutdown_file.unlink()
+
         # Initialize logging
         logger = get_logger("backend", "service")
         logger.info("Starting AICO Backend Server...")
@@ -179,33 +170,83 @@ def create_app():
         heartbeat_task.set_name("heartbeat_logs")
         background_tasks.add(heartbeat_task)
         app.state.heartbeat_task = heartbeat_task
+
+        async def watch_for_shutdown_file():
+            """On Windows, watch for a shutdown file to trigger graceful exit."""
+            from aico.core.paths import AICOPaths
+            paths = AICOPaths()
+            shutdown_file = paths.get_runtime_path() / "gateway.shutdown"
+            while True:
+                if shutdown_file.exists():
+                    logger.info("Shutdown file detected, initiating graceful shutdown.")
+                    try:
+                        shutdown_file.unlink()
+                    except OSError:
+                        pass
+                    # Set server.should_exit = True. Uvicorn's main loop checks this flag
+                    # and initiates a graceful shutdown. This is the simplest and most reliable
+                    # way to programmatically stop the server without signals or deadlocks.
+                    if hasattr(app.state, 'server'):
+                        app.state.server.should_exit = True
+                        logger.info("server.should_exit set to True. Uvicorn will now shut down.")
+                    else:
+                        logger.error("Server instance not found in app.state. Cannot initiate shutdown.")
+                    break
+                await asyncio.sleep(1)
+
+        # On Windows, use a file watcher for reliable shutdown from 'aico gateway stop'
+        # This should only run in detached mode to avoid affecting foreground sessions.
+        is_detached = os.getenv('AICO_DETACH_MODE', 'false') == 'true'
+        if sys.platform == "win32":
+            logger.info("Starting shutdown file watcher for detached mode on Windows.")
+            shutdown_watcher_task = asyncio.create_task(watch_for_shutdown_file())
+            shutdown_watcher_task.set_name("shutdown_watcher")
+            app.state.shutdown_watcher_task = shutdown_watcher_task
         
         yield
         
         # Shutdown - cleanup async resources
-        print("[LIFESPAN] App shutdown - stopping gateway")
+        logger.info("Initiating graceful shutdown of backend components...")
         
         # Cancel all background tasks first
+        logger.info("Cancelling background tasks...")
         for task in list(background_tasks):
             if not task.done():
-                print(f"[LIFESPAN] Cancelling task: {task.get_name()}")
+                logger.info(f"Cancelling task: {task.get_name()}")
                 task.cancel()
                 try:
+                    # Give tasks a moment to cancel, but don't wait forever.
                     await asyncio.wait_for(task, timeout=2.0)
-                except (asyncio.CancelledError, asyncio.TimeoutError):
-                    pass
+                    logger.info(f"Task {task.get_name()} cancelled successfully.")
+                except asyncio.CancelledError:
+                    logger.info(f"Task {task.get_name()} was already cancelled.")
+                except asyncio.TimeoutError:
+                    logger.warning(f"Task {task.get_name()} did not cancel within 2 seconds.")
         background_tasks.clear()
+        logger.info("All background tasks processed.")
         
         # Stop scheduler first
         if hasattr(app.state, 'task_scheduler'):
-            print("[LIFESPAN] Stopping task scheduler...")
+            logger.info("Stopping task scheduler...")
             await app.state.task_scheduler.stop()
+            logger.info("Task scheduler stopped.")
         
         # Stop gateway components
         if hasattr(app.state, 'gateway'):
+            logger.info("Stopping API Gateway...")
             await app.state.gateway.stop()
+            logger.info("API Gateway stopped.")
+
+        # Finally, cancel the shutdown watcher if it exists
+        if hasattr(app.state, 'shutdown_watcher_task') and not app.state.shutdown_watcher_task.done():
+            logger.info("Cancelling shutdown watcher task...")
+            app.state.shutdown_watcher_task.cancel()
+            try:
+                await app.state.shutdown_watcher_task
+            except asyncio.CancelledError:
+                logger.info("Shutdown watcher task cancelled successfully.")
         
-        print("[LIFESPAN] All components stopped gracefully")
+        logger.info("All components stopped gracefully.")
     
     # Create FastAPI app with lifespan
     fastapi_app = FastAPI(
@@ -246,51 +287,63 @@ def create_app():
     # Focus on keeping LogConsumer alive for log persistence
     # Handshake endpoint is now handled by the encryption middleware automatically
     
-    return app
+    return fastapi_app, app
 
 
 
+
+async def main():
+    """Run the application with robust signal handling."""
+    # Create the app (components will be initialized in lifespan)
+    fastapi_app, asgi_app = create_app()
+    
+    # Get server configuration
+    core_config = config_manager.config_cache.get('core', {})
+    api_gateway_config = core_config.get('api_gateway', {})
+    rest_config = api_gateway_config.get('rest', {})
+    
+    host = rest_config.get('host', '127.0.0.1')
+    port = rest_config.get('port', 8771)
+    
+    config = uvicorn.Config(
+        asgi_app,
+        host=host,
+        port=port,
+        log_level="info",
+        lifespan="on",
+        access_log=False
+    )
+    server = uvicorn.Server(config)
+
+    # This is the key for cross-platform graceful shutdown.
+    # We manually install signal handlers to tell the server to exit.
+    # This works reliably on both Windows and Unix.
+    def handle_exit(sig, frame):
+        logger.warning(f"Received signal {sig}, shutting down.")
+        shutdown_event.set()  # Trigger our application's shutdown logic
+        server.handle_exit(sig, frame)  # Trigger uvicorn's shutdown
+
+    signal.signal(signal.SIGINT, handle_exit)
+    signal.signal(signal.SIGTERM, handle_exit)
+
+    # Store server instance in app state to allow programmatic shutdown
+    fastapi_app.state.server = server
+
+    print("[MAIN] Starting uvicorn server...")
+    try:
+        await server.serve()
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        logger.info("Server operation was cancelled.")
+    finally:
+        if process_manager:
+            process_manager.cleanup_pid_files()
+        logger.info("Shutdown complete.")
 
 if __name__ == "__main__":
-    """Start the server when run directly"""
     try:
-        # Create the app (components will be initialized in lifespan)
-        app = create_app()
-        
-        # Get server configuration
-        core_config = config_manager.config_cache.get('core', {})
-        api_gateway_config = core_config.get('api_gateway', {})
-        rest_config = api_gateway_config.get('rest', {})
-        
-        host = rest_config.get('host', '127.0.0.1')
-        port = rest_config.get('port', 8771)
-        
-        print("[MAIN] Starting uvicorn server...")
-        
-        # Start uvicorn server - it will handle the async lifecycle via lifespan
-        import uvicorn
-        uvicorn.run(
-            app,
-            host=host,
-            port=port,
-            reload=False,
-            log_level="info"
-        )
-        
-    except KeyboardInterrupt:
-        print("[MAIN] Application interrupted by user")
-        # Graceful shutdown is handled by signal handlers and lifespan
-        print("[MAIN] Graceful shutdown completed")
+        asyncio.run(main())
     except Exception as e:
         print(f"[MAIN] Application error: {e}")
         import traceback
         print(f"[MAIN] Traceback: {traceback.format_exc()}")
-        # Cancel any remaining background tasks before exit
-        for task in background_tasks:
-            if not task.done():
-                task.cancel()
         sys.exit(1)
-    finally:
-        # Always clean up PID file on exit
-        if process_manager:
-            process_manager.cleanup_pid_files()

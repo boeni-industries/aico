@@ -423,7 +423,9 @@ def start(
                 
                 console.print(f"[yellow]Backend process exited with code {result.returncode}[/yellow]")
                 
-                if result.returncode != 0:
+                # On Windows, exit code 15 is SIGTERM, which is a graceful shutdown.
+                # We should not treat it as an error.
+                if result.returncode != 0 and result.returncode != 15:
                     console.print(f"[red]{chars['cross']} Gateway exited with code {result.returncode}[/red]")
                     raise typer.Exit(result.returncode)
                 else:
