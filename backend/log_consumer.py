@@ -21,6 +21,7 @@ from aico.security import AICOKeyManager
 from aico.core.paths import AICOPaths
 import sys
 import os
+import contextlib
 
 # Fix Windows asyncio event loop compatibility with ZMQ
 if sys.platform == "win32":
@@ -92,26 +93,31 @@ class AICOLogConsumer:
             def message_loop():
                 # Only print message loop start in foreground mode
                 debugPrint("[LOG CONSUMER] Starting message loop (threaded)")
-                while self.running:
-                    try:
-                        if self.subscriber.poll(timeout=100):
-                            topic_bytes, data = self.subscriber.recv_multipart(zmq.NOBLOCK)
-                            topic = topic_bytes.decode('utf-8')
-                            # For deep debugging only; comment out by default
-                            # debugPrint(f"[LOG CONSUMER] Received message on topic: {topic}")
-                            try:
-                                log_entry = LogEntry()
-                                log_entry.ParseFromString(data)
-                                self._insert_log_to_database(log_entry)
-                            except Exception as e:
-                                self.logger.warning(f"Failed to process message: {e}")
-                        else:
-                            time.sleep(0.01)
-                    except zmq.Again:
-                        continue
-                    except Exception as e:
-                        self.logger.error(f"Error in message loop: {e}")
-                        time.sleep(1)
+                try:
+                    while self.running:
+                        try:
+                            if self.subscriber.poll(timeout=100):
+                                topic_bytes, data = self.subscriber.recv_multipart(zmq.NOBLOCK)
+                                topic = topic_bytes.decode('utf-8')
+                                # For deep debugging only; comment out by default
+                                # debugPrint(f"[LOG CONSUMER] Received message on topic: {topic}")
+                                try:
+                                    log_entry = LogEntry()
+                                    log_entry.ParseFromString(data)
+                                    self._insert_log_to_database(log_entry)
+                                except Exception as e:
+                                    self.logger.warning(f"Failed to process message: {e}")
+                            else:
+                                time.sleep(0.01)
+                        except zmq.Again:
+                            continue
+                        except Exception as e:
+                            self.logger.error(f"Error in message loop: {e}")
+                            time.sleep(1)
+                except Exception as e:
+                    # Normal exception handling for message loop errors
+                    self.logger.error(f"Unhandled error in message loop: {e}")
+                    return
                 # Only print message loop exit in foreground mode
                 debugPrint("[LOG CONSUMER] Message loop exiting")
 
@@ -126,15 +132,16 @@ class AICOLogConsumer:
     def stop(self):
         """Stop the log consumer service"""
         self.logger.info("Stopping log consumer service")
+        
+        # Close ZMQ subscriber first to stop new messages
+        if hasattr(self, 'subscriber') and self.subscriber:
+            self.subscriber.close()
+        
         self.running = False
 
         # Wait for message thread to exit
         if hasattr(self, 'message_thread') and self.message_thread:
             self.message_thread.join(timeout=3.0)
-
-        # Close ZMQ subscriber
-        if hasattr(self, 'subscriber') and self.subscriber:
-            self.subscriber.close()
 
         # Close database connection
         if self.db_connection:
@@ -142,6 +149,7 @@ class AICOLogConsumer:
                 self.db_connection.disconnect()
             except Exception as e:
                 self.logger.warning(f"Database cleanup failed during shutdown: {e}")
+            self.db_connection = None
 
         self.logger.info("Log consumer stopped")
 
@@ -263,11 +271,18 @@ class AICOLogConsumer:
             # Commit the transaction
             self.db_connection.commit()
             
-        except Exception as e:
+        except BaseException as e:
+            # Check if this is a shutdown-related error (connection closed)
+            error_str = str(e)
+            if "Option::unwrap()" in error_str or "None value" in error_str or "PanicException" in str(type(e)):
+                # This is the shutdown race condition - just return silently
+                return
+            
             self.logger.error(f"Database insertion failed: {e}")
             debugPrint(f"[LOG CONSUMER] Failed to insert: {log_entry.subsystem}.{log_entry.module} - {log_entry.message}")
             try:
-                self.db_connection.rollback()
+                if self.db_connection:
+                    self.db_connection.rollback()
             except Exception as rollback_error:
                 self.logger.error(f"Rollback also failed: {rollback_error}")
             raise
