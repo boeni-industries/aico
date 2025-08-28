@@ -38,50 +38,21 @@ from aico.security.key_manager import AICOKeyManager
 
 console = Console()
 
-def scheduler_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
-    """Show help when no subcommand is given or --help is used."""
-    if ctx.invoked_subcommand is None or help:
-        from cli.utils.help_formatter import format_subcommand_help
-        
-        subcommands = [
-            ("ls", "List scheduled tasks"),
-            ("show", "Show detailed task information"),
-            ("create", "Create a new scheduled task"),
-            ("update", "Update task configuration"),
-            ("enable", "Enable a task"),
-            ("disable", "Disable a task"),
-            ("delete", "Delete a task"),
-            ("trigger", "Manually trigger task execution"),
-            ("history", "Show task execution history"),
-            ("status", "Show scheduler status")
-        ]
-        
-        examples = [
-            "aico scheduler ls",
-            "aico scheduler status",
-            "aico scheduler show maintenance.log_cleanup",
-            "aico scheduler create my_task MyTaskClass '0 2 * * *'"
-        ]
-        
-        format_subcommand_help(
-            console=console,
-            command_name="scheduler",
-            description="Scheduled task management and scheduler status monitoring",
-            subcommands=subcommands,
-            examples=examples
-        )
-        raise typer.Exit()
-
 app = typer.Typer(
     help="Scheduled task management and scheduler status monitoring.",
-    callback=scheduler_callback,
-    invoke_without_command=True,
-    context_settings={"help_option_names": []}
+    invoke_without_command=True
 )
+
+@app.callback(invoke_without_command=True)
+def callback(ctx: typer.Context):
+    """Scheduler command group."""
+    if ctx.invoked_subcommand is None:
+        console.print("[bold red]Error:[/] Please specify a scheduler command.")
+        console.print(f"Run [cyan]aico scheduler --help[/] for a list of commands.")
+        raise typer.Exit(1)
 
 
 @app.command("ls")
-@sensitive
 def list_tasks(
     enabled_only: bool = typer.Option(False, "--enabled", "-e", help="Show only enabled tasks"),
     format_output: str = typer.Option("table", "--format", "-f", help="Output format: table, json")
@@ -535,7 +506,6 @@ def task_history(
 
 
 @app.command("status")
-@sensitive
 def scheduler_status():
     """Show scheduler status and statistics"""
     try:

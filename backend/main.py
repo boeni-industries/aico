@@ -110,8 +110,7 @@ async def setup_backend_components():
     
     # Initialize Task Scheduler
     from backend.scheduler import TaskScheduler, TaskStore
-    task_store = TaskStore(shared_db_connection)
-    task_scheduler = TaskScheduler(config_manager, task_store)
+    task_scheduler = TaskScheduler(config_manager, shared_db_connection)
     await task_scheduler.start()
     logger.info("Task Scheduler initialized and started")
     

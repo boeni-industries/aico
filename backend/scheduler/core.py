@@ -116,7 +116,7 @@ class TaskRegistry:
         """Load user-defined tasks from database and filesystem"""
         try:
             # Get user tasks from database
-            db_tasks = await self.task_store.list_tasks()
+            db_tasks = self.task_store.list_tasks()
             user_tasks = [task for task in db_tasks if task['task_id'].startswith('user.')]
             
             if not user_tasks:
@@ -178,7 +178,7 @@ class TaskRegistry:
                 enabled = default_config.get('enabled', True)
                 
                 # Upsert task in database
-                await self.task_store.upsert_task(
+                self.task_store.upsert_task(
                     task_id=task_id,
                     task_class=task_class.__name__,
                     schedule=schedule,
@@ -210,7 +210,7 @@ class TaskExecutor:
             return TaskResult(success=False, message="Task already running", skipped=True)
         
         # Acquire execution lock
-        lock_acquired = await self.task_store.acquire_lock(task_id, execution_id)
+        lock_acquired = self.task_store.acquire_lock(task_id, execution_id)
         if not lock_acquired:
             self.logger.warning(f"Could not acquire lock for task {task_id}")
             return TaskResult(success=False, message="Could not acquire execution lock", skipped=True)
@@ -220,7 +220,7 @@ class TaskExecutor:
         
         try:
             # Record execution start
-            await self.task_store.record_execution_start(task_id, execution_id)
+            self.task_store.record_execution_start(task_id, execution_id)
             
             # Create task instance and context
             task_instance = task_class()
@@ -277,7 +277,7 @@ class TaskExecutor:
                     self.logger.warning(f"Task cleanup failed for {task_id}: {e}")
             
             # Release lock
-            await self.task_store.release_lock(task_id, execution_id)
+            self.task_store.release_lock(task_id, execution_id)
             
             # Remove from running tasks
             if task_id in self.running_tasks:
@@ -305,7 +305,7 @@ class TaskExecutor:
             end_time = datetime.now()
             result.duration_seconds = (end_time - start_time).total_seconds()
             
-            await self.task_store.record_execution_result(task_id, execution_id, result, status)
+            self.task_store.record_execution_result(task_id, execution_id, result, status)
             
         except Exception as e:
             self.logger.error(f"Failed to record completion for {task_id}: {e}")
@@ -343,8 +343,8 @@ class TaskScheduler:
         self.logger.info("Starting AICO Task Scheduler")
         
         try:
-            # Initialize database tables
-            await self.task_store.create_tables()
+            # Verify database tables exist
+            self.task_store.verify_tables_exist()
             
             # Discover and register tasks
             await self.task_registry.discover_tasks()
@@ -359,7 +359,9 @@ class TaskScheduler:
             self.running = True
             self.scheduler_task = asyncio.create_task(self._scheduler_loop())
             
-            self.logger.info("Task scheduler started successfully")
+            log_message = "AICO Task Scheduler started successfully"
+            self.logger.info(log_message)
+            print(f"[SCHEDULER] {log_message}")
             
         except Exception as e:
             self.logger.error(f"Failed to start scheduler: {e}")
@@ -417,7 +419,7 @@ class TaskScheduler:
             # Get task configurations from database
             for task_id in tasks_to_run:
                 try:
-                    task_config = await self.task_store.get_task(task_id)
+                    task_config = self.task_store.get_task(task_id)
                     if not task_config or not task_config.get('enabled', True):
                         continue
                     
@@ -447,7 +449,7 @@ class TaskScheduler:
     async def _calculate_next_run_times(self):
         """Calculate next run times for all enabled tasks"""
         try:
-            tasks = await self.task_store.list_tasks(enabled_only=True)
+            tasks = self.task_store.list_tasks(enabled_only=True)
             now = datetime.now()
             
             for task in tasks:
@@ -469,7 +471,7 @@ class TaskScheduler:
     async def trigger_task(self, task_id: str) -> TaskResult:
         """Manually trigger a task execution"""
         try:
-            task_config = await self.task_store.get_task(task_id)
+            task_config = self.task_store.get_task(task_id)
             if not task_config:
                 return TaskResult(success=False, error=f"Task not found: {task_id}")
             

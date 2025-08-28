@@ -5,6 +5,7 @@ Subscribes to log messages from the message bus and persists them to the databas
 This bridges the gap between ZMQ log transport and database storage.
 """
 
+import asyncio
 import threading
 import time
 import json
