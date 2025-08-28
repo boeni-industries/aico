@@ -722,6 +722,8 @@
       
         
       
+        
+      
     
     
     
@@ -1001,6 +1003,29 @@
   
   <span class="md-ellipsis">
     Logging
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../log_consumer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Log Consumer
     
   </span>
   
@@ -2800,6 +2825,8 @@
       
         
       
+        
+      
     
     
     
@@ -2895,6 +2922,29 @@
   
   <span class="md-ellipsis">
     Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/backend_patterns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Backend Patterns
     
   </span>
   
@@ -3657,7 +3707,7 @@
 - Admin UI
 - CLI</p>
 <p><strong>Backend Service</strong>
-The backend service is a Python application that provides the core functionality of AICO. It is built using FastAPI and ZeroMQ, and it is responsible for managing the state of the system, handling user input, and coordinating the work of the various domains.</p>
+The backend service is a Python application that provides the core functionality of AICO. It uses a plugin-based architecture with FastAPI, ZeroMQ message bus, and encrypted data storage. The service runs continuously as a system daemon, coordinating autonomous agency, AI processing, and real-time communication through a modular plugin system.</p>
 <p><strong>Frontend App</strong></p>
 <p>The frontend app is a Flutter application that provides a user interface for interacting with AICO. It is built using the Flutter framework and the Dart programming language and provides a responsive and intuitive interface for users to interact with AICO.</p>
 <p><strong>Admin UI</strong>
@@ -3784,9 +3834,11 @@ The CLI is a Python application that provides a command-line interface for inter
 <p>The AICO backend runs as a persistent system service, handling all AI processing, data management, and autonomous agency tasks. This design enables continuous operation and proactive behavior even when the UI is closed.</p>
 <h3 id="service-architecture">Service Architecture<a class="headerlink" href="#service-architecture" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>System Service:</strong> Backend runs as a system/background service (Windows Service, Linux daemon, macOS LaunchAgent).</li>
-<li><strong>Continuous Operation:</strong> Backend continues agency tasks (learning, research, reminders) even when UI is closed or minimized.</li>
-<li><strong>Resource-Aware Processing:</strong> All heavy AI processing occurs in the backend with intelligent resource management.</li>
+<li><strong>System Service:</strong> Backend runs as a persistent service with PID file management and graceful shutdown</li>
+<li><strong>Plugin-Based Core:</strong> Modular architecture using <code>GatewayCore</code>, <code>PluginRegistry</code>, and <code>ProtocolAdapterManager</code></li>
+<li><strong>Continuous Operation:</strong> Background tasks and autonomous agency continue when UI is closed</li>
+<li><strong>Resource-Aware Processing:</strong> Intelligent resource management with configurable policies</li>
+<li><strong>Process Management:</strong> Signal-based shutdown coordination and background task management</li>
 </ul>
 <h3 id="local-llm-integration">Local LLM Integration<a class="headerlink" href="#local-llm-integration" title="Permanent link">&para;</a></h3>
 <p>AICO uses an <strong>integrated service pattern</strong> for local LLM deployment:</p>
@@ -3799,12 +3851,14 @@ The CLI is a Python application that provides a command-line interface for inter
 </ul>
 <p>This approach maintains architectural consistency, simplifies deployment, and enables tight integration with AICO's personality and emotion systems while preserving privacy through local-only processing.</p>
 <h3 id="core-backend-components">Core Backend Components<a class="headerlink" href="#core-backend-components" title="Permanent link">&para;</a></h3>
-<h4 id="single-multi-protocol-api-gateway">Single Multi-Protocol API Gateway<a class="headerlink" href="#single-multi-protocol-api-gateway" title="Permanent link">&para;</a></h4>
-<p>The API gateway is the single and multi-protocol entrypoint for the backend services. It acts as the counterpart for the Flutter UI, other UIs, embodiment adapters and other external services.</p>
+<h4 id="plugin-based-api-gateway">Plugin-Based API Gateway<a class="headerlink" href="#plugin-based-api-gateway" title="Permanent link">&para;</a></h4>
+<p>The API Gateway (<code>AICOAPIGatewayV2</code>) provides a unified, encrypted entry point using a modular plugin architecture:</p>
 <ul>
-<li><strong>REST API:</strong> Standard HTTP API for commands, queries, and configuration.</li>
-<li><strong>WebSocket API:</strong> Real-time, bidirectional communication for events and notifications.</li>
-<li><strong>(optional) gRPC:</strong> High-performance, binary-protocol API for internal services.</li>
+<li><strong>Single Port Design:</strong> All endpoints served on port 8771 with unified FastAPI application</li>
+<li><strong>ASGI Encryption Middleware:</strong> Transparent encryption wrapping the entire application</li>
+<li><strong>Domain-Based Routing:</strong> Organized endpoints (<code>/api/v1/users/</code>, <code>/api/v1/admin/</code>, <code>/api/v1/logs/</code>)</li>
+<li><strong>Plugin System:</strong> Extensible middleware stack for authentication, rate limiting, and logging</li>
+<li><strong>Protocol Adapters:</strong> REST, WebSocket, and ZeroMQ adapters managed as plugins</li>
 </ul>
 <h4 id="job-scheduler-task-queue">Job Scheduler &amp; Task Queue<a class="headerlink" href="#job-scheduler-task-queue" title="Permanent link">&para;</a></h4>
 <ul>
@@ -3824,11 +3878,13 @@ The CLI is a Python application that provides a command-line interface for inter
 <li><strong>Background Learning:</strong> Performs learning, research, skill updates during spare time.</li>
 <li><strong>User-Configurable Limits:</strong> Users control which activities are allowed and resource limits.</li>
 </ul>
-<h4 id="message-bus">Message Bus<a class="headerlink" href="#message-bus" title="Permanent link">&para;</a></h4>
+<h4 id="message-bus-log-consumer">Message Bus &amp; Log Consumer<a class="headerlink" href="#message-bus-log-consumer" title="Permanent link">&para;</a></h4>
 <ul>
-<li><strong>Topic Management:</strong> Manages publish/subscribe topics for inter-module communication.</li>
-<li><strong>Message Routing:</strong> Routes messages between modules based on topic subscriptions.</li>
-<li><strong>Plugin Integration:</strong> Enables third-party plugins to communicate via the message bus.</li>
+<li><strong>ZeroMQ Broker:</strong> High-performance message routing with Protocol Buffers serialization</li>
+<li><strong>Topic-Based Routing:</strong> Structured topics (<code>logs.*</code>, <code>events.*</code>) for module communication</li>
+<li><strong>Log Consumer Service:</strong> Dedicated service for persisting logs from ZMQ transport to encrypted database</li>
+<li><strong>Protobuf Pipeline:</strong> Binary message serialization for performance and type safety</li>
+<li><strong>Plugin Integration:</strong> Plugins communicate via standardized message bus topics</li>
 </ul>
 <h4 id="plugin-manager">Plugin Manager<a class="headerlink" href="#plugin-manager" title="Permanent link">&para;</a></h4>
 <ul>
@@ -3978,46 +4034,74 @@ The CLI is a Python application that provides a command-line interface for inter
 <h3 id="design-philosophy">Design Philosophy<a class="headerlink" href="#design-philosophy" title="Permanent link">&para;</a></h3>
 <p><strong>Problem</strong>: Core functionality (security, data models, utilities) needed across multiple subsystems (CLI, backend, frontend) with different development timelines.</p>
 <p><strong>Solution</strong>: Standalone shared libraries that can be imported by any subsystem, following the <code>aico.*</code> namespace hierarchy.</p>
-<h3 id="library-structure">Library Structure<a class="headerlink" href="#library-structure" title="Permanent link">&para;</a></h3>
+<h3 id="current-library-structure">Current Library Structure<a class="headerlink" href="#current-library-structure" title="Permanent link">&para;</a></h3>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aico/
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>├── shared/                     # Shared libraries directory
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>│   ├── aico-security/          # Security &amp; encryption
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>│   │   ├── setup.py
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>│   │   └── aico/
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>│   │       └── security/
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>│   │           ├── __init__.py
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>│   │           ├── key_manager.py
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>│   │           ├── filesystem.py
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>│   │           └── crypto.py
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>│   ├── aico-data/              # Data models &amp; schemas
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>│   │   ├── setup.py
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>│   │   └── aico/
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>│   │       └── data/
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>│   │           ├── models.py
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>│   │           ├── schemas.py
-</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>│   │           └── repositories.py
-</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>│   ├── aico-core/              # Core utilities
-</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>│   │   ├── setup.py
-</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>│   │   └── aico/
-</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>│   │       └── core/
-</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>│   │           ├── config.py
-</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>│   │           ├── logging.py
-</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>│   │           └── bus.py
-</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>│   └── aico-common/            # Common utilities
-</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>│       ├── setup.py
-</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>│       └── aico/
-</span><span id="__span-1-28"><a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>│           └── common/
-</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>│               ├── utils.py
-</span><span id="__span-1-30"><a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>│               └── constants.py
-</span><span id="__span-1-31"><a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>├── backend/                    # Python backend service
-</span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>│   ├── pyproject.toml          # includes aico-shared dependency
-</span><span id="__span-1-33"><a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a>│   └── main.py
-</span><span id="__span-1-34"><a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a>├── cli/                        # Development CLI
-</span><span id="__span-1-35"><a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a>│   ├── pyproject.toml          # includes aico-shared dependency
-</span><span id="__span-1-36"><a id="__codelineno-1-36" name="__codelineno-1-36" href="#__codelineno-1-36"></a>│   └── aico_main.py
-</span><span id="__span-1-37"><a id="__codelineno-1-37" name="__codelineno-1-37" href="#__codelineno-1-37"></a>└── frontend/                   # Flutter frontend
-</span><span id="__span-1-38"><a id="__codelineno-1-38" name="__codelineno-1-38" href="#__codelineno-1-38"></a>    └── pubspec.yaml            # May reference shared schemas
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>├── shared/                     # Unified shared library
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>│   ├── pyproject.toml          # Namespace package configuration
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>│   └── aico/
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>│       ├── __init__.py         # Namespace package declaration
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>│       ├── core/               # Core utilities
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>│       │   ├── config.py       # Configuration management
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>│       │   ├── logging.py      # Structured logging with ZMQ transport
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>│       │   ├── bus.py          # Message bus client
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>│       │   ├── paths.py        # Cross-platform path management
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>│       │   └── process.py      # Process and PID management
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>│       ├── security/           # Security &amp; encryption
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>│       │   ├── key_manager.py  # Key derivation and session management
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>│       │   └── __init__.py
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>│       ├── data/               # Data layer
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>│       │   └── libsql/
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>│       │       └── encrypted.py # Encrypted database connections
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>│       └── proto/              # Protocol Buffers
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>│           ├── aico_core_logging_pb2.py
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>│           └── aico_core_common_pb2.py
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>├── backend/                    # Backend service
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>│   ├── pyproject.toml          # Dependencies: -e ../shared/
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>│   ├── main.py                 # Service entry point
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>│   ├── log_consumer.py         # Log persistence service
+</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>│   └── api_gateway/            # Plugin-based gateway
+</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>├── cli/                        # CLI application
+</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>│   ├── requirements.txt        # Dependencies: -e ../shared/
+</span><span id="__span-1-28"><a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>│   └── commands/               # CLI command modules
+</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>├── cli/                        # Development CLI
+</span><span id="__span-1-30"><a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>│   ├── pyproject.toml          # includes aico-shared dependency
+</span><span id="__span-1-31"><a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>│   └── aico_main.py
+</span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>└── frontend/                   # Flutter frontend
+</span><span id="__span-1-33"><a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a>    └── pubspec.yaml            # May reference shared schemas
 </span></code></pre></div>
+<h3 id="startup-sequence">Startup Sequence<a class="headerlink" href="#startup-sequence" title="Permanent link">&para;</a></h3>
+<p>The current backend follows this initialization sequence:</p>
+<ol>
+<li><strong>Main Process</strong> (<code>main.py</code>):</li>
+<li>Initialize configuration and logging</li>
+<li>Setup PID file management and signal handlers</li>
+<li>
+<p>Create shared encrypted database connection</p>
+</li>
+<li>
+<p><strong>API Gateway</strong> (<code>AICOAPIGatewayV2</code>):</p>
+</li>
+<li>Initialize <code>GatewayCore</code> with plugin system</li>
+<li>Load and start plugins (message bus, log consumer, adapters)</li>
+<li>
+<p>Setup FastAPI integration with domain routing</p>
+</li>
+<li>
+<p><strong>Plugin Lifecycle</strong>:</p>
+</li>
+<li>Message bus broker starts on ports 5555/5556</li>
+<li>Log consumer service begins ZMQ subscription</li>
+<li>Protocol adapters register endpoints</li>
+<li>
+<p>Middleware plugins configure security stack</p>
+</li>
+<li>
+<p><strong>Service Ready</strong>:</p>
+</li>
+<li>Health endpoints available</li>
+<li>Background tasks running</li>
+<li>Graceful shutdown handlers active</li>
+</ol>
 <h3 id="implementation-patterns">Implementation Patterns<a class="headerlink" href="#implementation-patterns" title="Permanent link">&para;</a></h3>
 <h4 id="namespace-packages">Namespace Packages<a class="headerlink" href="#namespace-packages" title="Permanent link">&para;</a></h4>
 <p>All shared libraries use Python namespace packages:</p>
@@ -4032,19 +4116,19 @@ The CLI is a Python application that provides a command-line interface for inter
 <p>Subsystems install shared libraries in development mode:</p>
 <div class="language-toml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># In backend/pyproject.toml or cli/pyproject.toml</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">[tool.uv.sources]</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">aico-shared</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">path</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">&quot;../shared&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">editable</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">aico-shared</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;../shared&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">editable</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">true</span><span class="w"> </span><span class="p">}</span>
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
 </span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># Dependencies section includes:</span>
 </span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">dependencies</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="s2">&quot;aico-shared&quot;</span><span class="p">,</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="s">&quot;aico-shared&quot;</span><span class="p">,</span>
 </span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="c1"># ... other dependencies</span>
 </span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="p">]</span>
 </span></code></pre></div>
 <h4 id="usage-examples">Usage Examples<a class="headerlink" href="#usage-examples" title="Permanent link">&para;</a></h4>
 <p><strong>CLI Usage</strong> (Early Development):
 <div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># CLI can use security features before backend exists</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.security</span><span class="w"> </span><span class="kn">import</span> <span class="n">AICOKeyManager</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.security.filesystem</span><span class="w"> </span><span class="kn">import</span> <span class="n">SecureFilesystem</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span> <span class="nn">aico.security</span> <span class="kn">import</span> <span class="n">AICOKeyManager</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span> <span class="nn">aico.security.filesystem</span> <span class="kn">import</span> <span class="n">SecureFilesystem</span>
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
 </span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">key_manager</span> <span class="o">=</span> <span class="n">AICOKeyManager</span><span class="p">()</span>
 </span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">fs</span> <span class="o">=</span> <span class="n">SecureFilesystem</span><span class="p">(</span><span class="n">key_manager</span><span class="p">)</span>
@@ -4052,9 +4136,9 @@ The CLI is a Python application that provides a command-line interface for inter
 </span></code></pre></div></p>
 <p><strong>Backend Usage</strong> (Production):
 <div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Backend imports same libraries</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.security</span><span class="w"> </span><span class="kn">import</span> <span class="n">AICOKeyManager</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.data.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversation</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.core.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">Config</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">from</span> <span class="nn">aico.security</span> <span class="kn">import</span> <span class="n">AICOKeyManager</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kn">from</span> <span class="nn">aico.data.models</span> <span class="kn">import</span> <span class="n">Conversation</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="kn">from</span> <span class="nn">aico.core.config</span> <span class="kn">import</span> <span class="n">Config</span>
 </span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
 </span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1"># Identical API, different context</span>
 </span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">key_manager</span> <span class="o">=</span> <span class="n">AICOKeyManager</span><span class="p">()</span>

@@ -590,6 +590,8 @@
       
         
       
+        
+      
     
     
     
@@ -983,6 +985,29 @@
   
   <span class="md-ellipsis">
     Logging
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../log_consumer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Log Consumer
     
   </span>
   
@@ -2782,6 +2807,8 @@
       
         
       
+        
+      
     
     
     
@@ -2877,6 +2904,29 @@
   
   <span class="md-ellipsis">
     Guidelines
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/backend_patterns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Backend Patterns
     
   </span>
   
@@ -3385,39 +3435,37 @@
 <li><strong>Selective Sync</strong>: Facilitate different synchronization policies for various data types</li>
 </ul>
 <h2 id="architecture-components">Architecture Components<a class="headerlink" href="#architecture-components" title="Permanent link">&para;</a></h2>
-<h3 id="1-protocol-adapters">1. Protocol Adapters<a class="headerlink" href="#1-protocol-adapters" title="Permanent link">&para;</a></h3>
-<p>The API Gateway implements multiple protocol adapters to support various client communication patterns:</p>
+<h3 id="1-plugin-based-architecture">1. Plugin-Based Architecture<a class="headerlink" href="#1-plugin-based-architecture" title="Permanent link">&para;</a></h3>
+<p>The API Gateway uses a modular plugin-based architecture centered around the <code>GatewayCore</code> orchestrator:</p>
 <ul>
-<li><strong>REST Adapter</strong>: HTTP/JSON interface for standard request-response interactions</li>
-<li>Supports standard CRUD operations</li>
-<li>Uses OpenAPI 3.1 for documentation and validation</li>
+<li><strong>GatewayCore</strong>: Central orchestrator managing plugin lifecycle, protocol adapters, and configuration</li>
+<li><strong>PluginRegistry</strong>: Discovers, loads, and manages plugins with dependency injection</li>
+<li><strong>ProtocolAdapterManager</strong>: Manages protocol adapters as specialized plugins</li>
+<li><strong>Plugin System</strong>: Extensible architecture allowing custom middleware, adapters, and services</li>
+</ul>
+<h3 id="2-protocol-adapters-plugin-based">2. Protocol Adapters (Plugin-Based)<a class="headerlink" href="#2-protocol-adapters-plugin-based" title="Permanent link">&para;</a></h3>
+<p>Protocol adapters are implemented as plugins managed by the ProtocolAdapterManager:</p>
+<ul>
+<li><strong>REST Adapter</strong>: HTTP/JSON interface integrated with FastAPI</li>
+<li>Domain-based routing (<code>/api/v1/users/</code>, <code>/api/v1/admin/</code>, <code>/api/v1/logs/</code>)</li>
+<li>OpenAPI 3.1 documentation and validation</li>
 <li>
-<p>Handles request/response transformation</p>
+<p>Unified port design (single port 8771)</p>
 </li>
 <li>
-<p><strong>WebSocket Adapter</strong>: Bidirectional communication for real-time interactions</p>
+<p><strong>WebSocket Adapter</strong>: Real-time bidirectional communication</p>
 </li>
-<li>Supports persistent connections for UI updates</li>
-<li>Handles connection lifecycle management</li>
+<li>Persistent connections for UI updates</li>
+<li>Connection lifecycle management via plugin system</li>
 <li>
-<p>Provides message framing and serialization</p>
-</li>
-<li>
-<p><strong>ZeroMQ IPC Adapter</strong>: Cross-platform local inter-process communication</p>
-</li>
-<li>Uses ZeroMQ's native IPC transport (Unix sockets on Unix/Linux/macOS, named pipes on Windows)</li>
-<li>Provides high-performance, low-latency local communication</li>
-<li>Maintains consistent API across all platforms</li>
-<li>Supports various messaging patterns (request-reply, pub-sub, push-pull)</li>
-<li>
-<p>Automatically falls back to localhost TCP when IPC is unavailable</p>
+<p>Message framing and serialization</p>
 </li>
 <li>
-<p><strong>gRPC Adapter</strong> (Optional): High-performance binary protocol</p>
+<p><strong>ZeroMQ Adapter</strong>: High-performance local communication</p>
 </li>
-<li>Supports streaming communication patterns</li>
-<li>Provides efficient binary serialization</li>
-<li>Enables strong typing through Protocol Buffers</li>
+<li>Cross-platform IPC transport with TCP fallback</li>
+<li>Message bus integration for internal communication</li>
+<li>Protocol Buffers for binary serialization</li>
 </ul>
 <h3 id="2-domain-based-api-organization">2. Domain-Based API Organization<a class="headerlink" href="#2-domain-based-api-organization" title="Permanent link">&para;</a></h3>
 <p>The API Gateway organizes endpoints using a <strong>domain-based module-functionality</strong> pattern for improved maintainability and scalability:</p>
@@ -3447,59 +3495,68 @@
 - <strong>Maintainability</strong>: Related functionality grouped together
 - <strong>Team Collaboration</strong>: Clear ownership boundaries
 - <strong>Professional Standards</strong>: Follows established FastAPI patterns</p>
-<h3 id="3-core-gateway-services">3. Core Gateway Services<a class="headerlink" href="#3-core-gateway-services" title="Permanent link">&para;</a></h3>
+<h3 id="3-middleware-stack-plugin-based">3. Middleware Stack (Plugin-Based)<a class="headerlink" href="#3-middleware-stack-plugin-based" title="Permanent link">&para;</a></h3>
+<p>The gateway implements a comprehensive middleware stack as plugins:</p>
 <ul>
-<li><strong>Request Router</strong>: Maps external endpoints to internal message bus topics</li>
-<li>Handles URL routing for REST requests</li>
-<li>Maps WebSocket events to appropriate handlers</li>
+<li><strong>Encryption Middleware</strong>: ASGI-level encryption wrapping the entire FastAPI app</li>
+<li>Transparent encryption/decryption for all endpoints</li>
+<li>Key management integration with <code>AICOKeyManager</code></li>
 <li>
-<p>Translates gRPC service methods to internal commands</p>
+<p>Unencrypted endpoint handling for health checks and handshake</p>
 </li>
 <li>
-<p><strong>Message Normalizer</strong>: Standardizes all messages to a unified format</p>
+<p><strong>Authentication Plugin</strong>: JWT token validation and session management</p>
 </li>
-<li>Uses a common message schema across all protocols</li>
-<li>Minimal transformation between external and internal formats</li>
+<li>Integration with backend authentication manager</li>
+<li>Admin role enforcement for privileged endpoints</li>
 <li>
-<p>Leverages Protocol Buffers as the canonical message definition</p>
-</li>
-<li>
-<p><strong>Response Aggregator</strong>: Combines results from multiple backend services when needed</p>
-</li>
-<li>Supports request fan-out and response aggregation</li>
-<li>Handles timeouts and partial responses</li>
-<li>Manages response transformation back to client format</li>
-</ul>
-<h3 id="4-security-layer">4. Security Layer<a class="headerlink" href="#4-security-layer" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Authentication Handler</strong>: Verifies client identity</li>
-<li>JWT token validation for REST and WebSocket</li>
-<li>Certificate validation for mutual TLS</li>
-<li>
-<p>Device pairing validation for trusted devices</p>
+<p>Device pairing and trust establishment</p>
 </li>
 <li>
-<p><strong>Authorization Enforcer</strong>: Enforces access control policies</p>
+<p><strong>Rate Limiting Plugin</strong>: Traffic management and abuse prevention</p>
 </li>
-<li>Role-based access control for API endpoints</li>
-<li>Capability-based security for sensitive operations</li>
-<li>
-<p>Context-aware authorization decisions</p>
-</li>
-<li>
-<p><strong>Request Validator</strong>: Ensures requests meet schema and security requirements</p>
-</li>
-<li>Schema validation for all incoming requests</li>
-<li>Input sanitization and normalization</li>
-<li>
-<p>Protection against common attack vectors</p>
-</li>
-<li>
-<p><strong>Rate Limiter</strong>: Prevents abuse through traffic management</p>
-</li>
-<li>Per-client rate limiting</li>
+<li>Per-client rate limiting with configurable policies</li>
 <li>Graduated response to excessive requests</li>
-<li>Configurable limits based on endpoint sensitivity</li>
+<li>
+<p>Integration with security monitoring</p>
+</li>
+<li>
+<p><strong>Request Logging Plugin</strong>: Comprehensive request/response logging</p>
+</li>
+<li>Structured logging via Protocol Buffers</li>
+<li>ZMQ transport to log consumer service</li>
+<li>Performance metrics and audit trails</li>
+</ul>
+<h3 id="4-core-services-integration">4. Core Services Integration<a class="headerlink" href="#4-core-services-integration" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Message Bus Integration</strong>: ZeroMQ-based internal communication</li>
+<li>Protocol Buffers for high-performance binary serialization</li>
+<li>Topic-based pub/sub for module communication</li>
+<li>
+<p>Log transport pipeline to database persistence</p>
+</li>
+<li>
+<p><strong>Database Connection Sharing</strong>: Unified database access</p>
+</li>
+<li>Shared <code>EncryptedLibSQLConnection</code> across all plugins</li>
+<li>Connection pooling and lifecycle management</li>
+<li>
+<p>Encrypted storage with key derivation</p>
+</li>
+<li>
+<p><strong>Configuration Management</strong>: Centralized configuration system</p>
+</li>
+<li>YAML-based configuration with schema validation</li>
+<li>Plugin-specific configuration sections</li>
+<li>
+<p>Runtime configuration updates</p>
+</li>
+<li>
+<p><strong>Process Management</strong>: Service lifecycle coordination</p>
+</li>
+<li>PID file management for CLI integration</li>
+<li>Graceful shutdown with signal handling</li>
+<li>Background task coordination</li>
 </ul>
 <h3 id="5-roaming-and-federation-support">5. Roaming and Federation Support<a class="headerlink" href="#5-roaming-and-federation-support" title="Permanent link">&para;</a></h3>
 <ul>
@@ -3588,48 +3645,61 @@
 </span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>               └─────────────────┘                                   └────────────┘
 </span></code></pre></div>
 <h2 id="implementation-details">Implementation Details<a class="headerlink" href="#implementation-details" title="Permanent link">&para;</a></h2>
-<h3 id="technology-stack">Technology Stack<a class="headerlink" href="#technology-stack" title="Permanent link">&para;</a></h3>
+<h3 id="current-technology-stack">Current Technology Stack<a class="headerlink" href="#current-technology-stack" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Core Framework</strong>: Python with FastAPI for REST and WebSocket support</li>
-<li><strong>gRPC Support</strong>: gRPC Python with gRPC API Gateway for protocol translation</li>
-<li><strong>Security</strong>: PyJWT for token handling, Python-TLS for mutual TLS</li>
-<li><strong>Message Bus Integration</strong>: ZeroMQ with CurveZMQ for secure messaging</li>
-<li><strong>P2P Communication</strong>: libp2p for peer-to-peer networking and DHT</li>
-<li><strong>Local Discovery</strong>: mDNS/Bonjour for same-network device discovery</li>
-<li><strong>Data Synchronization</strong>: Merkle tree-based change detection and CRDTs</li>
-<li><strong>Cross-Platform Communication</strong>: Adaptive transport layer</li>
-<li>Primary: ZeroMQ's native IPC transport for optimal performance</li>
-<li>Fallback: Localhost HTTP/WebSocket for restricted environments</li>
-<li>Automatic transport negotiation at connection time</li>
-<li>Consistent API regardless of underlying transport</li>
-<li>Supports secure communication with CurveZMQ or TLS</li>
-<li><strong>Unified Message Schema</strong>: Protocol Buffers for consistent message definitions</li>
-<li>Single source of truth for all message types</li>
-<li>Automatic code generation for multiple languages</li>
-<li>Versioning support for backward compatibility</li>
+<li><strong>Core Framework</strong>: FastAPI with ASGI middleware architecture</li>
+<li><strong>Plugin System</strong>: Custom plugin registry with dependency injection</li>
+<li><strong>Security</strong>: </li>
+<li><code>AICOKeyManager</code> for key derivation and session management</li>
+<li>ASGI-level encryption middleware</li>
+<li>JWT authentication with admin role enforcement</li>
+<li><strong>Message Bus</strong>: ZeroMQ with Protocol Buffers</li>
+<li>Binary serialization for performance</li>
+<li>Topic-based routing (<code>logs.*</code>, <code>events.*</code>)</li>
+<li>Log consumer service for database persistence</li>
+<li><strong>Database</strong>: Encrypted libSQL with shared connection pooling</li>
+<li><strong>Process Management</strong>: </li>
+<li>Signal-based graceful shutdown</li>
+<li>PID file management</li>
+<li>Background task coordination</li>
+<li><strong>Configuration</strong>: YAML-based with schema validation</li>
+<li><strong>Logging</strong>: Structured logging with ZMQ transport pipeline</li>
 </ul>
 <h3 id="request-flow">Request Flow<a class="headerlink" href="#request-flow" title="Permanent link">&para;</a></h3>
-<h4 id="unified-message-approach">Unified Message Approach<a class="headerlink" href="#unified-message-approach" title="Permanent link">&para;</a></h4>
-<p>To simplify message handling and reduce translation overhead, we use a unified message schema approach:</p>
+<h4 id="plugin-based-request-processing">Plugin-Based Request Processing<a class="headerlink" href="#plugin-based-request-processing" title="Permanent link">&para;</a></h4>
+<p>The current implementation uses a plugin-based middleware stack:</p>
 <ol>
-<li>All messages (external and internal) share a common schema defined in Protocol Buffers</li>
-<li>Frontend libraries provide native language bindings that match the schema</li>
-<li>Protocol adapters handle only transport concerns, not message transformation</li>
-<li>Message structure remains consistent throughout the system</li>
-</ol>
-<h4 id="external-client-flow-restwebsocketgrpc">External Client Flow (REST/WebSocket/gRPC)<a class="headerlink" href="#external-client-flow-restwebsocketgrpc" title="Permanent link">&para;</a></h4>
-<ol>
-<li>Client sends request through external protocol (REST/WebSocket/gRPC)</li>
-<li>Protocol adapter extracts the message payload (minimal transformation)</li>
-<li>Authentication handler verifies client identity</li>
-<li>Authorization enforcer checks access permissions</li>
-<li>Request validator ensures request meets schema requirements</li>
-<li>Rate limiter checks for request quota</li>
-<li>Request router maps to appropriate internal message topic</li>
-<li>Request is published directly to the message bus (no format conversion)</li>
-<li>Response is received from message bus</li>
-<li>Response is wrapped in appropriate protocol envelope (minimal transformation)</li>
-<li>Response is sent back to client</li>
+<li><strong>ASGI Encryption Middleware</strong>: Wraps entire FastAPI app</li>
+<li>Handles encryption/decryption transparently</li>
+<li>Manages unencrypted endpoints (health, handshake)</li>
+<li>
+<p>Key derivation and session management</p>
+</li>
+<li>
+<p><strong>FastAPI Application</strong>: Domain-based routing</p>
+</li>
+<li><code>/api/v1/users/</code> - User management endpoints</li>
+<li><code>/api/v1/admin/</code> - Administrative endpoints  </li>
+<li><code>/api/v1/logs/</code> - Log management endpoints</li>
+<li>
+<p><code>/api/v1/health</code> - System health checks</p>
+</li>
+<li>
+<p><strong>Plugin Middleware Stack</strong>: Applied via plugin system</p>
+</li>
+<li>Authentication validation (JWT tokens)</li>
+<li>Rate limiting and abuse prevention</li>
+<li>Request logging and metrics</li>
+<li>
+<p>Authorization enforcement</p>
+</li>
+<li>
+<p><strong>Backend Integration</strong>: Via shared services</p>
+</li>
+<li>Database connection sharing</li>
+<li>Message bus communication</li>
+<li>Configuration management</li>
+<li>Process lifecycle coordination</li>
 </ol>
 <h4 id="local-client-flow-adaptive-transport">Local Client Flow (Adaptive Transport)<a class="headerlink" href="#local-client-flow-adaptive-transport" title="Permanent link">&para;</a></h4>
 <ol>

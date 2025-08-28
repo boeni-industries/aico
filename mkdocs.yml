@@ -143,6 +143,7 @@ nav:
     - Data Federation: architecture/data_federation.md
     - Instrumentation: instrumentation/instrumentation.md
     - Logging: instrumentation/instrumentation_logging.md
+    - Log Consumer: architecture/log_consumer.md
     - Telemetry: instrumentation/telemetry.md
   - Administration:
     - Overview: admin/admin_overview.md
@@ -203,6 +204,7 @@ nav:
     - Getting Started: developer-guide/getting_started.md
     - UV Commands Cheat Sheet: developer-guide/uv_cheatsheet.md
     - Guidelines: developer-guide/guidelines.md
+    - Backend Patterns: developer-guide/backend_patterns.md
     - Contributing: developer-guide/contributing.md
     - Testing: developer-guide/testing.md
     - Protocol Buffers: developer-guide/protobuf.md
