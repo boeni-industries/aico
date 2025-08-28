@@ -54,6 +54,7 @@ def scheduler_callback(ctx: typer.Context, help: bool = typer.Option(False, "--h
             ("delete", "Delete a task"),
             ("trigger", "Manually trigger task execution"),
             ("history", "Show task execution history"),
+            ("execution", "Show details for a specific execution"),
             ("status", "Show scheduler status")
         ]
         
@@ -61,7 +62,8 @@ def scheduler_callback(ctx: typer.Context, help: bool = typer.Option(False, "--h
             "aico scheduler ls",
             "aico scheduler status",
             "aico scheduler show maintenance.log_cleanup",
-            "aico scheduler create my_task MyTaskClass '0 2 * * *'"
+            "aico scheduler history maintenance.health_check",
+            "aico scheduler execution <execution_id>"
         ]
         
         format_subcommand_help(
@@ -434,6 +436,87 @@ def delete_task(
         raise typer.Exit(1)
 
 
+@app.command("execution")
+@sensitive
+def show_execution(
+    execution_id: Optional[str] = typer.Argument(None, help="Execution ID to show. Use 'aico scheduler history <task_id>' to find execution IDs."),
+    format_output: str = typer.Option("table", "--format", "-f", help="Output format: table, json")
+):
+    """Show details for a specific task execution"""
+    if not execution_id:
+        console.print("[red]Error: Missing argument 'EXECUTION_ID'.[/red]")
+        console.print("\nUsage: aico scheduler execution <execution_id>")
+        console.print("\n[bold]How to find an execution ID:[/] Use the 'history' command for a specific task.")
+        console.print("Example: [cyan]aico scheduler history maintenance.health_check[/cyan]")
+        raise typer.Exit(1)
+
+    try:
+        with _get_database_connection() as db:
+            cursor = db.execute("""
+                SELECT execution_id, task_id, status, started_at, completed_at, result, error_message, duration_seconds
+                FROM task_executions 
+                WHERE execution_id = ?
+            """, (execution_id,))
+            
+            execution = cursor.fetchone()
+            
+            if not execution:
+                console.print(f"[red]Execution not found: {execution_id}[/red]")
+                raise typer.Exit(1)
+
+            if format_output == "json":
+                exec_data = {
+                    "execution_id": execution[0],
+                    "task_id": execution[1],
+                    "status": execution[2],
+                    "started_at": execution[3],
+                    "completed_at": execution[4],
+                    "result": json.loads(execution[5]) if execution[5] else None,
+                    "error_message": execution[6],
+                    "duration_seconds": execution[7]
+                }
+                console.print(json.dumps(exec_data, indent=2))
+            else:
+                table = Table(
+                    title=f"✨ [bold cyan]Execution Details: {execution[0]}[/bold cyan]",
+                    title_justify="left",
+                    border_style="bright_blue",
+                    header_style="bold yellow",
+                    box=box.SIMPLE_HEAD,
+                    padding=(0, 1)
+                )
+                table.add_column("Property", style="cyan")
+                table.add_column("Value", style="green")
+
+                table.add_row("Execution ID", execution[0])
+                table.add_row("Task ID", execution[1])
+                table.add_row("Status", execution[2].title())
+                table.add_row("Started", format_timestamp_local(execution[3]) if execution[3] else "N/A")
+                table.add_row("Completed", format_timestamp_local(execution[4]) if execution[4] else "N/A")
+                table.add_row("Duration", f"{execution[7]:.2f}s" if execution[7] is not None else "N/A")
+
+                console.print()
+                console.print(table)
+
+                if execution[5]:
+                    console.print("\n[bold cyan]Result:[/bold cyan]")
+                    try:
+                        result_json = json.loads(execution[5])
+                        console.print(json.dumps(result_json, indent=2))
+                    except json.JSONDecodeError:
+                        console.print(f"[yellow]{execution[5]}[/yellow]")
+                
+                if execution[6]:
+                    console.print("\n[bold red]Error:[/bold red]")
+                    console.print(f"[yellow]{execution[6]}[/yellow]")
+                
+                console.print()
+
+    except Exception as e:
+        console.print(f"[red]Error getting execution details: {e}[/red]")
+        raise typer.Exit(1)
+
+
 @app.command("history")
 @sensitive
 def task_history(
@@ -525,7 +608,7 @@ def task_history(
                         result = exec_data[5] or ""
                     
                     table.add_row(
-                        exec_data[0][:8] + "...",  # Truncated execution ID
+                        exec_data[0],  # Full execution ID
                         status,
                         format_timestamp_local(exec_data[2]) if exec_data[2] else "Unknown",
                         duration,
