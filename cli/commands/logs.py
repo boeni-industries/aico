@@ -21,12 +21,12 @@ from rich.text import Text
 # Import decorators
 decorators_path = Path(__file__).parent.parent / "decorators"
 sys.path.insert(0, str(decorators_path))
-from sensitive import sensitive
+from cli.decorators.sensitive import sensitive
 
 # Import utils
 utils_path = Path(__file__).parent.parent / "utils"
 sys.path.insert(0, str(utils_path))
-from timezone import format_timestamp_local, get_timezone_suffix
+from cli.utils.timezone import format_timestamp_local, get_timezone_suffix
 
 # Add shared path for imports
 shared_path = Path(__file__).parent.parent.parent / "shared"
@@ -42,7 +42,7 @@ console = Console()
 def logs_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
     if ctx.invoked_subcommand is None or help:
-        from utils.help_formatter import format_subcommand_help
+        from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
             ("ls", "List recent logs with filtering options"),
@@ -83,7 +83,7 @@ def _get_log_repository() -> LogRepository:
     """Get configured log repository"""
     try:
         config_manager = ConfigurationManager()
-        key_manager = AICOKeyManager()
+        key_manager = AICOKeyManager(config_manager)
         
         # Get database path and connection
         from aico.core.paths import AICOPaths
@@ -111,7 +111,7 @@ def _get_log_repository_no_auth() -> LogRepository:
     """Get configured log repository without authentication (assumes already authenticated)"""
     try:
         config_manager = ConfigurationManager()
-        key_manager = AICOKeyManager()
+        key_manager = AICOKeyManager(config_manager)
         
         # Get database path and connection
         from aico.core.paths import AICOPaths
@@ -196,7 +196,7 @@ def ls(
     if format == "json":
         console.print(json.dumps(logs, indent=2, default=str))
     elif format == "oneline" or oneline:
-        for log in logs:
+        for log in reversed(logs):  # Unix style: latest entries at bottom
             console.print(f"[dim]{format_timestamp_local(log['timestamp'], show_utc=utc)}[/dim] "
                          f"[bold {_get_level_color(log['level'])}]{log['level']}[/bold {_get_level_color(log['level'])}] "
                          f"[cyan]{log['subsystem']}.{log['module']}[/cyan] {log['message']}")
@@ -219,7 +219,7 @@ def ls(
         table.add_column("Source", style="cyan")
         table.add_column("Message", style="white")
         
-        for log in logs:
+        for log in reversed(logs):  # Unix style: latest entries at bottom
             # Truncate message for table display
             message = log['message']
             if len(message) > 60:
@@ -282,8 +282,8 @@ def cat(
         console.print("[yellow]No logs found matching criteria[/yellow]")
         return
     
-    # Display logs
-    for i, log in enumerate(logs):
+    # Display logs (newest first - closest to user)
+    for i, log in enumerate(reversed(logs)):
         if format == "json":
             console.print(json.dumps(dict(log), indent=2, default=str))
         else:
@@ -433,11 +433,15 @@ def tail(
     level: Optional[str] = typer.Option(None, "--level", help="Filter by log level"),
     subsystem: Optional[str] = typer.Option(None, "--subsystem", help="Filter by subsystem"),
     lines: int = typer.Option(20, "--lines", "-n", help="Number of lines to show"),
+    limit: Optional[int] = typer.Option(None, "--limit", help="Number of entries to show (alias for --lines)"),
     utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Show recent logs (like tail -f)"""
     
     repo = _get_log_repository()
+    
+    # Determine number of entries to show (--limit takes precedence over --lines)
+    num_entries = limit if limit is not None else lines
     
     # Build filters
     filters = {}
@@ -447,14 +451,45 @@ def tail(
         filters["subsystem"] = subsystem
     
     # Get recent logs
-    logs = repo.get_logs(limit=lines, **filters)
+    logs = repo.get_logs(limit=num_entries, **filters)
     
     # Display logs
     for log in reversed(logs):  # Show oldest first
         level_color = _get_level_color(log['level'])
+        
+        # Main log line
         console.print(f"[dim]{format_timestamp_local(log['timestamp'], show_utc=utc)}[/dim] "
                      f"[bold {level_color}]{log['level']}[/bold {level_color}] "
                      f"[cyan]{log['subsystem']}.{log['module']}[/cyan] {log['message']}")
+        
+        # Show all extra data as indented sub-lines
+        if log['extra']:
+            try:
+                extra_data = json.loads(log['extra']) if isinstance(log['extra'], str) else log['extra']
+                if isinstance(extra_data, dict) and extra_data:
+                    # Show all fields in a clean format
+                    all_fields = []
+                    for field, value in extra_data.items():
+                        # Truncate very long values for readability
+                        if len(str(value)) > 80:
+                            value = str(value)[:77] + "..."
+                        all_fields.append(f"[yellow]{field}[/yellow]=[green]{value}[/green]")
+                    
+                    # Display fields in rows of 3 for better readability
+                    for i in range(0, len(all_fields), 3):
+                        row_fields = all_fields[i:i+3]
+                        if i == len(all_fields) - len(row_fields) and len(all_fields) > 3:
+                            # Last row
+                            console.print(f"    [dim]└─[/dim] {' [dim]│[/dim] '.join(row_fields)}")
+                        else:
+                            # Not last row or single row
+                            console.print(f"    [dim]├─[/dim] {' [dim]│[/dim] '.join(row_fields)}")
+            except:
+                # Fallback for non-JSON extra data
+                extra_str = str(log['extra'])
+                if len(extra_str) > 100:
+                    extra_str = extra_str[:97] + "..."
+                console.print(f"    [dim]└─[/dim] [yellow]extra:[/yellow] [green]{extra_str}[/green]")
     
     if follow:
         console.print("[yellow]Real-time following not implemented yet[/yellow]")

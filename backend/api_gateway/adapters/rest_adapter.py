@@ -18,6 +18,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends, APIRoute
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 import sys
 from pathlib import Path
@@ -25,14 +26,20 @@ from pathlib import Path
 # Shared modules now installed via UV editable install
 
 from aico.core.logging import get_logger
+
+# Import version from VERSIONS file
+from aico.core.version import get_backend_version
+__version__ = get_backend_version()
 from aico.core.bus import MessageBusClient
 from aico.core import AicoMessage, MessageMetadata
+from aico.security.key_manager import AICOKeyManager
 
 from ..models.core.auth import AuthenticationManager, AuthorizationManager
 from ..models.core.message_router import MessageRouter
 from ..middleware.rate_limiter import RateLimiter
 from ..middleware.validator import MessageValidator
 from ..middleware.security import SecurityMiddleware
+from ..middleware.encryption import EncryptionMiddleware
 
 
 class RESTAdapter:
@@ -50,7 +57,7 @@ class RESTAdapter:
     def __init__(self, config: Dict[str, Any], auth_manager: AuthenticationManager,
                  authz_manager: AuthorizationManager, message_router: MessageRouter,
                  rate_limiter: RateLimiter, validator: MessageValidator,
-                 security_middleware: SecurityMiddleware):
+                 security_middleware: SecurityMiddleware, key_manager: AICOKeyManager):
         
         self.logger = get_logger("api_gateway", "rest")
         self.config = config
@@ -60,12 +67,16 @@ class RESTAdapter:
         self.rate_limiter = rate_limiter
         self.validator = validator
         self.security_middleware = security_middleware
+        self.key_manager = key_manager
+        
+        # Initialize encryption middleware
+        self.encryption_middleware = EncryptionMiddleware(None, key_manager)
         
         # FastAPI app
         self.app = FastAPI(
             title="AICO API Gateway",
             description="Unified API Gateway for AICO AI Companion",
-            version="1.0.0",
+            version=__version__,
             docs_url=f"{config.get('prefix', '/api/v1')}/docs",
             redoc_url=f"{config.get('prefix', '/api/v1')}/redoc"
         )
@@ -76,7 +87,7 @@ class RESTAdapter:
         # Setup routes
         self._setup_routes()
         
-        # Setup middleware
+        # Setup middleware (including encryption)
         self._setup_middleware()
         
         # Server instance
@@ -100,35 +111,23 @@ class RESTAdapter:
         )
     
     def _setup_middleware(self):
-        """Setup custom middleware"""
+        """Setup middleware stack"""
         
-        @self.app.middleware("http")
-        async def security_middleware(request: Request, call_next):
-            """Security middleware for all requests"""
-            try:
-                # Extract client info
-                client_info = {
-                    "client_id": request.client.host,
-                    "protocol": "rest",
-                    "headers": dict(request.headers),
-                    "cookies": dict(request.cookies),
-                    "user_agent": request.headers.get("user-agent", ""),
-                    "remote_addr": request.client.host
-                }
-                
-                # Apply security middleware
-                await self.security_middleware.process_request(request, client_info)
-                
-                # Continue with request
-                response = await call_next(request)
-                return response
-                
-            except Exception as e:
-                self.logger.error(f"Security middleware error: {e}")
-                return JSONResponse(
-                    status_code=403,
-                    content={"error": "Security check failed", "detail": str(e)}
-                )
+        # Add encryption middleware (first in chain for request processing)
+        # Using pure ASGI middleware to avoid Content-Length calculation bugs
+        self.app.add_middleware(self.encryption_middleware.__class__, key_manager=self.key_manager)
+        
+        # Add security middleware
+        self.app.add_middleware(
+            BaseHTTPMiddleware,
+            dispatch=self.security_middleware.dispatch
+        )
+        
+        # Add rate limiting middleware
+        self.app.add_middleware(
+            BaseHTTPMiddleware,
+            dispatch=self.rate_limiter.dispatch
+        )
         
         @self.app.middleware("http")
         async def logging_middleware(request: Request, call_next):
@@ -167,7 +166,7 @@ class RESTAdapter:
                 "status": "healthy",
                 "service": "aico-api-gateway",
                 "adapters": ["rest", "websocket", "zeromq"],
-                "version": "1.0.0"
+                "version": __version__
             }
         
         @self.app.get(f"{prefix}/gateway/metrics")
@@ -188,37 +187,61 @@ class RESTAdapter:
         })
     
     async def start(self, host: str):
-        """Start REST server"""
+        """Initialize REST adapter (no separate server - uses main FastAPI app)"""
         try:
             port = self.config.get("port", 8771)
             
-            # Configure uvicorn
-            config = uvicorn.Config(
-                self.app,
-                host=host,
-                port=port,
-                log_level="info",
-                access_log=False  # We handle logging in middleware
-            )
-            
-            self.server = uvicorn.Server(config)
-            
-            # Start server in background
-            await self.server.serve()
-            
-            self.logger.info(f"REST adapter started on {host}:{port}")
+            # REST adapter now integrates with main FastAPI app - no separate server needed
+            # The main FastAPI server handles all REST endpoints
+            self.logger.info(f"REST adapter initialized for {host}:{port} (using main FastAPI app)")
             
         except Exception as e:
-            self.logger.error(f"Failed to start REST adapter: {e}")
+            self.logger.error(f"Failed to initialize REST adapter: {e}")
             raise
     
     async def stop(self):
-        """Stop REST server"""
-        if self.server:
-            self.server.should_exit = True
-            await self.server.shutdown()
-            self.logger.info("REST adapter stopped")
+        """Stop REST adapter (no separate server to stop)"""
+        # REST adapter now integrates with main FastAPI app - no separate server to stop
+        self.logger.info("REST adapter stopped")
     
     def get_app(self) -> FastAPI:
         """Get FastAPI app instance"""
         return self.app
+
+
+def create_rest_adapter(config_manager) -> FastAPI:
+    """Create and configure REST adapter app"""
+    from aico.core.bus import MessageBusBroker
+    from aico.security.key_manager import AICOKeyManager
+    from ..models.core.auth import AuthenticationManager, AuthorizationManager
+    from ..models.core.message_router import MessageRouter
+    from ..middleware.rate_limiter import RateLimiter
+    from ..middleware.validator import MessageValidator
+    from ..middleware.security import SecurityMiddleware
+    
+    # Get configuration
+    config = config_manager.config_cache.get('core', {})
+    api_gateway_config = config.get('api_gateway', {})
+    
+    # Create required components
+    key_manager = AICOKeyManager(config_manager)
+    auth_manager = AuthenticationManager(config_manager)
+    authz_manager = AuthorizationManager(config_manager)
+    message_router = MessageRouter(api_gateway_config)
+    rate_limiter = RateLimiter(config_manager)
+    validator = MessageValidator()
+    security_middleware = SecurityMiddleware(config_manager)
+    
+    # Create REST adapter with all dependencies
+    rest_adapter = RESTAdapter(
+        config=api_gateway_config,
+        auth_manager=auth_manager,
+        authz_manager=authz_manager,
+        message_router=message_router,
+        rate_limiter=rate_limiter,
+        validator=validator,
+        security_middleware=security_middleware,
+        key_manager=key_manager
+    )
+    
+    return rest_adapter.get_app()

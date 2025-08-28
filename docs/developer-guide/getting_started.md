@@ -10,6 +10,17 @@ Here you'll find everything you need to set up your development environment, und
 
 AICO is an open-source, local-first AI companion designed to be emotionally present, embodied, and proactive. The project is modular, privacy-first, and extensible, with contributions welcome from developers, designers, researchers, and more.
 
+### Quick Install (End Users)
+
+For end users who just want to use the CLI:
+
+```bash
+pip install aico[cli]
+aico --help
+```
+
+This installs the AICO CLI with all necessary dependencies. For development setup, continue reading below.
+
 ---
 
 ## Contributing
@@ -109,82 +120,65 @@ You should see `Python 3.13.5`.
 > 
 > AICO uses application-level encryption with database-native features (SQLCipher, DuckDB encryption, RocksDB EncryptedEnv) rather than filesystem-level encryption. This provides better cross-platform compatibility and performance without requiring additional system dependencies.
 
-### 3. Python Dependency Management with Modern Tools
-AICO uses modern Python packaging with `pyproject.toml` files for dependency management. Each component (CLI, backend, shared) uses `pyproject.toml` for clean, standardized dependency declarations.
+### 3. UV Workspace Setup (Single Virtual Environment)
+AICO uses UV workspace management with a unified `pyproject.toml` at the root and a single shared virtual environment for all Python components.
 
-**Install UV globally (recommended):**
+**Install UV globally (required):**
 
   ```sh
   pip install uv
   # or follow: https://github.com/astral-sh/uv#installation
   ```
 
-**CLI:**
+**Initial Setup:**
 
-  **Windows PowerShell**
-  ```powershell
-  cd cli
-  py -3.13 -m venv .venv
-  .venv\Scripts\Activate.ps1
-  uv pip install -e .[dev]
-  aico --help
-  ```
-
-  **Windows Cmd**
-  ```cmd
-  cd cli
-  py -3.13 -m venv .venv
-  .venv\Scripts\activate.bat
-  uv pip install -e .[dev]
-  aico --help
-  ```
-
-  **Git Bash/WSL/Linux/macOS:**
   ```sh
-  cd cli
-  python3.13 -m venv .venv
-  source .venv/bin/activate
-  uv pip install -e .[dev]
-  aico --help
+  # Clone and navigate to project root
+  cd aico
+
+  # Initialize UV workspace with all optional dependencies
+  uv sync --extra cli --extra backend --extra test
+
+  # Verify installation
+  uv run aico --help
+  uv run python -c "import fastapi; print('Backend deps ready')"
   ```
 
-**Backend:**
+**Key Changes from Previous Setup:**
+- **Single `.venv`** at project root instead of per-component environments
+- **Unified `pyproject.toml`** with optional dependency groups (`cli`, `backend`, `test`)
+- **UV workspace commands** replace manual venv activation
+- **Shared dependencies** automatically resolved across all components
 
-  **Windows PowerShell**
-  ```powershell
-  cd backend
-  py -3.13 -m venv .venv
-  .venv\Scripts\Activate.ps1
-  uv pip install -e .
-  uvicorn main:app --reload --port 8700
-  ```
+**Working with the Workspace:**
 
-  **Windows Cmd**
-  ```cmd
-  cd backend
-  py -3.13 -m venv .venv
-  .venv\Scripts\activate.bat
-  uv pip install -e .
-  uvicorn main:app --reload --port 8700
-  ```
-
-  **Git Bash/WSL/Linux/macOS:**
   ```sh
-  cd backend
-  python3.13 -m venv .venv
-  source .venv/bin/activate
-  uv pip install -e .
-  uvicorn main:app --reload --port 8700
+  # Run CLI commands
+  uv run aico gateway status
+  uv run aico db init
+
+  # Run backend server
+  uv run python backend/main.py
+  # or with uvicorn
+  uv run uvicorn backend.main:app --reload --port 8700
+
+  # Install additional dependencies
+  uv add requests  # adds to core dependencies
+  uv add --group cli typer-cli  # adds to CLI group
+  uv add --group backend fastapi-users  # adds to backend group
+
+  # Sync after pyproject.toml changes
+  uv sync
   ```
 
-> **Tip:** Each Python component uses its own `.venv` and `pyproject.toml`. Always activate the correct environment before installing or running anything. In VS Code or Windsurf, select the correct Python interpreter from `.venv` for best experience.
-> 
-> **Shared Library:** The `/shared` directory contains common functionality used by both CLI and backend. It's automatically included as an editable dependency when you install with `[dev]` extras for CLI or directly for backend.
-> 
-> **Adding Dependencies:** Edit the respective `pyproject.toml` file and run `uv pip install -e .` to update your environment.
+> **Benefits of UV Workspace:**
+> - Single environment eliminates activation/deactivation complexity
+> - Consistent dependency resolution across all components
+> - Faster installs and better caching
+> - Simplified IDE configuration (one Python interpreter)
+> - Automatic shared library integration
 
-!!! warning
-    Only one Python virtual environment can be active per terminal session. If you need to work with both the CLI and backend at the same time, open separate terminal windows and activate the appropriate environment in each. Changing directories does not automatically switch the active environment—you must activate it explicitly.
+> **IDE Setup:** Point your IDE to the `.venv/Scripts/python.exe` (Windows) or `.venv/bin/python` (Unix) in the project root.
 
 ---
 
@@ -238,6 +232,13 @@ node --version
 npm --version
 ```
 
+**Install Coverage Tools:**
+
+For generating HTML coverage reports across all subsystems:
+```sh
+npm install -g @lcov-viewer/cli
+```
+
 **Install dependencies:**
   ```sh
   cd studio
@@ -253,29 +254,7 @@ npm --version
 **.gitignore:** Already configured to exclude build artifacts and `node_modules`.
 
 > **Tip:**
-> Use VS Code,  **Windows PowerShell**
-  ```powershell
-  cd studio
-  npm install
-  npm start
-  # Visit http://localhost:3000
-  ```
-
-  **Windows Cmd**
-  ```cmd
-  cd studio
-  npm install
-  npm start
-  REM Visit http://localhost:3000
-  ```
-
-  **macOS/Linux**
-  ```sh
-  cd studio
-  npm install
-  npm start
-  # Visit http://localhost:3000
-  ```
+> Use VS Code with React/TypeScript extensions for the best development experience.
 
 ---
 
@@ -285,27 +264,13 @@ Below are the build and run commands for each major part of the system. Substitu
 
 ### Backend (Python FastAPI)
 
-- **Windows (PowerShell):**
+- **All platforms (UV workspace):**
   ```sh
-  cd backend
-  .venv\Scripts\Activate.ps1
-  uv pip install -e .
-  uvicorn main:app --reload --port 8700
+  # From project root
+  uv run python backend/main.py
+  # or with uvicorn
+  uv run uvicorn backend.main:app --reload --port 8700
   # Visit http://127.0.0.1:8700
-  ```
-- **Windows (Cmd):**
-  ```sh
-  cd backend
-  .venv\Scripts\activate.bat
-  uv pip install -e .
-  uvicorn main:app --reload --port 8700
-  ```
-- **Git Bash/WSL/Linux/macOS:**
-  ```sh
-  cd backend
-  source .venv/bin/activate
-  uv pip install -e .
-  uvicorn main:app --reload --port 8700
   ```
 
 ### CLI (Python CLI)
@@ -313,30 +278,29 @@ Below are the build and run commands for each major part of the system. Substitu
 #### Run the CLI in development
 - **All platforms:**
   ```sh
-  cd cli
-  # Activate venv (see above)
-  uv pip install -e .[dev]
-  python aico_main.py
+  # From project root
+  uv run aico --help
+  uv run aico gateway status
+  uv run aico db init
   ```
 
 #### Build the CLI executable (PyInstaller)
 - **All platforms:**
   ```sh
+  # From project root
   cd cli
-  # Activate venv (see above)
-  uv pip install -e .[dev]
-  pyinstaller aico_main.py --onefile --name aico
-  # Executable will be in dist/aico(.exe)
+  uv run pyinstaller aico_main.py --onefile --name aico
+  # Executable will be in cli/dist/aico(.exe)
   ```
 
 #### Run the built executable
 - **Windows:**
   ```sh
-  dist\aico.exe
+  cli\dist\aico.exe
   ```
 - **Linux/macOS:**
   ```sh
-  ./dist/aico
+  ./cli/dist/aico
   ```
 
 ### Frontend (Flutter)
@@ -367,14 +331,14 @@ Below are the build and run commands for each major part of the system. Substitu
     This section is for maintainers only. Regular contributors do NOT need to run these commands. The following steps were performed during initial project setup and are preserved for reference.
 
 #### Python Dependency Management
-- **Previous approach:** Each Python component (`cli/`, `backend/`) used its own `pyproject.toml` (PEP 621/Poetry) for dependencies and metadata. Poetry was used for dependency management and packaging. This was replaced due to friction, IDE integration issues, and version pinning complexity.
-- **Current approach:** Each Python component (`cli/`, `backend/`, `shared/`) now uses modern `pyproject.toml` files for dependency management. [UV](https://github.com/astral-sh/uv) is used for ultra-fast dependency installs. This approach follows modern Python packaging standards and is simpler for contributors.
+- **Previous approach:** Each Python component (`cli/`, `backend/`) used separate `pyproject.toml` files and virtual environments. This created complexity with environment activation and dependency conflicts.
+- **Current approach:** Unified UV workspace with single `pyproject.toml` at project root and shared `.venv`. [UV](https://github.com/astral-sh/uv) provides workspace management with optional dependency groups.
 
-- Add dependencies by editing the respective `pyproject.toml` file and running `uv pip install -e .` to update your environment.
-- The supported Python version is pinned to `>=3.13,<3.15` due to PyInstaller compatibility. Update this restriction only after verifying all key dependencies support newer Python versions.
-- Use `uv pip install <package>` to add dependencies and `uv pip freeze > requirements.txt` to refresh lockfiles.
-- PyInstaller is included as a CLI dependency for building distributable executables.
-- If switching to a different dependency manager in the future, update this section and docs accordingly.
+- Add dependencies using `uv add <package>` or `uv add --group <group> <package>` for group-specific deps.
+- The supported Python version is pinned to `>=3.13` due to PyInstaller compatibility.
+- Use `uv sync` to install/update all dependencies after `pyproject.toml` changes.
+- Optional dependency groups: `cli`, `backend`, `test` for component-specific requirements.
+- PyInstaller is included in the CLI group for building distributable executables.
 
 #### Flutter Frontend Project Creation
 ```sh
@@ -488,6 +452,68 @@ aico security test    # Verify keyring access
 ```
 
 For detailed architecture and configuration options, see [Data Layer Documentation](../architecture/data_layer.md).
+
+---
+
+## Protocol Buffer Compilation
+
+AICO uses Protocol Buffers for cross-component communication. After making changes to `.proto` files, you need to regenerate the language-specific code.
+
+### Prerequisites
+
+Install the Protocol Buffers compiler:
+```bash
+# macOS
+brew install protobuf
+
+# Ubuntu/Debian  
+sudo apt-get install protobuf-compiler
+
+# Windows (via chocolatey)
+choco install protoc
+```
+
+Install language-specific plugins:
+```bash
+# Python
+pip install protobuf mypy-protobuf
+
+# Dart (for Flutter frontend)
+dart pub global activate protoc_plugin
+
+# JavaScript/TypeScript (for Studio admin interface)
+npm install -g protoc-gen-js protoc-gen-grpc-web
+```
+
+### Generating Code
+
+**Note:** All commands assume you're starting from the AICO project root directory (`d:/dev/aico`).
+
+For Python, you must include both the `proto` directory and your venv's `site-packages` as `-I` (include) paths, so that Google well-known types are found.
+
+**Python (Backend & Shared):**
+
+From the **project root** (`d:/dev/aico`), run:
+
+```sh
+protoc -I=proto -I=backend/.venv/Lib/site-packages --python_out=shared/aico/proto proto/aico_core_api_gateway.proto proto/aico_core_common.proto proto/aico_core_envelope.proto proto/aico_core_logging.proto proto/aico_core_plugin_system.proto proto/aico_core_update_system.proto proto/aico_emotion.proto proto/aico_integration.proto proto/aico_personality.proto proto/aico_conversation.proto
+```
+- If your venv is in a different location, adjust the `-I` path accordingly.
+- If you get errors about missing `google/protobuf/*.proto` files, make sure your venv's `site-packages/google/protobuf/` directory contains the `.proto` files. If not, download them from the [official repo](https://github.com/protocolbuffers/protobuf/tree/main/src/google/protobuf) and copy them in.
+
+**Dart (Flutter Frontend):**
+```bash
+cd proto
+protoc -I=. --dart_out=../frontend/lib/generated ./core/*.proto ./emotion/*.proto ./conversation/*.proto ./personality/*.proto ./integration/*.proto
+```
+
+**JavaScript/TypeScript (Studio Admin Interface):**
+```bash
+cd proto
+protoc -I=. --js_out=import_style=commonjs,binary:../studio/src/generated --grpc-web_out=import_style=commonjs,mode=grpcwebtext:../studio/src/generated ./core/*.proto ./emotion/*.proto ./conversation/*.proto ./personality/*.proto ./integration/*.proto
+```
+
+For detailed protobuf development guidelines, see [Protocol Buffers & API Contracts](./protobuf.md).
 
 ---
 

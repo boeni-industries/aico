@@ -14,12 +14,12 @@ from typing import Optional
 # Import decorators
 decorators_path = Path(__file__).parent.parent / "decorators"
 sys.path.insert(0, str(decorators_path))
-from sensitive import sensitive, destructive
+from cli.decorators.sensitive import sensitive, destructive
 
 def bus_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
     if ctx.invoked_subcommand is None or help:
-        from utils.help_formatter import format_subcommand_help
+        from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
             ("test", "Test message bus connection and basic pub/sub functionality"),
@@ -66,8 +66,12 @@ from aico.core.bus import MessageBusClient, MessageBusBroker, create_client
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
 from aico.core.paths import AICOPaths
-from aico.proto.core import LogEntry
-from aico.proto.core.logging_pb2 import LogLevel
+# Optional protobuf imports to avoid chicken/egg problem with CLI
+try:
+    from aico.proto import aico_core_logging_pb2
+except ImportError:
+    # Protobuf files not generated yet - use fallback
+    aico_core_logging_pb2 = None
 from google.protobuf.timestamp_pb2 import Timestamp
 
 def _get_database_connection(db_path: str, force_fresh: bool = False) -> EncryptedLibSQLConnection:

@@ -1,0 +1,142 @@
+syntax = "proto3";
+import "google/protobuf/descriptor.proto";
+
+package aico.emotion;
+
+option go_package = "github.com/boeni-industries/aico/proto/emotion";
+option java_package = "industries.boeni.aico.proto.emotion";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+
+// Detected user emotion from various modalities
+// Matches the `user.emotion.detected` message format documented in docs/architecture/emotion_sim_msg.md.
+// Emotional state information detected from user inputs across multiple modalities.
+// Fields:
+// - timestamp: When the emotion was detected
+// - source: Source module (e.g., emotion_recognition)
+// - emotion: Primary, secondary, confidence, valence, arousal, dominance
+// - modalities: Indicators from different detection channels (facial, voice, text)
+// See docs/architecture/emotion_sim_msg.md for illustrative JSON and field semantics.
+message UserEmotionDetected {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;
+  
+  EmotionState emotion = 3;
+  ModalityIndicators modalities = 4;
+}
+
+// Emotional state representation
+// Fields:
+// - primary: Primary detected emotion (string)
+// - confidence: Detection confidence level (0.0-1.0)
+// - secondary: Additional detected emotions (array of strings)
+// - valence: Pleasure/displeasure dimension (-1.0 to 1.0)
+// - arousal: Activation/energy level (0.0-1.0)
+// - dominance: Control/power dimension (0.0-1.0)
+// See emotion_sim_msg.md for further details.
+message EmotionState {
+  string primary = 1;                // Primary detected emotion
+  float confidence = 2;              // Detection confidence level (0.0-1.0)
+  repeated string secondary = 3;     // Additional detected emotions
+  float valence = 4;                 // Pleasure/displeasure dimension (-1.0 to 1.0)
+  float arousal = 5;                 // Activation/energy level (0.0-1.0)
+  float dominance = 6;               // Control/power dimension (0.0-1.0)
+}
+
+// Indicators from different detection modalities
+// Fields:
+// - facial: e.g., "furrowed_brow", "tight_lips"
+// - voice: e.g., "elevated_pitch", "faster_speech"
+// - text: e.g., "negative_sentiment", "complaint_indicators"
+// See emotion_sim_msg.md for further details.
+message ModalityIndicators {
+  repeated string facial = 1;        // Facial expression indicators
+  repeated string voice = 2;         // Voice analysis indicators
+  repeated string text = 3;          // Text sentiment indicators
+}
+
+// Simulated emotion response
+message EmotionResponse {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;
+  
+  // Appraisal results
+  AppraisalResults appraisal = 3;
+  
+  // Resulting emotion
+  EmotionState emotion = 4;
+  
+  // Expression parameters
+  ExpressionParameters expression = 5;
+}
+
+// Appraisal results from the Component Process Model
+message AppraisalResults {
+  // Relevance stage
+  float novelty = 1;                 // How novel/unexpected is the stimulus (0.0-1.0)
+  float intrinsic_pleasantness = 2;  // Inherent pleasantness of stimulus (-1.0 to 1.0)
+  float goal_relevance = 3;          // Relevance to current goals (0.0-1.0)
+  
+  // Implication stage
+  float goal_congruence = 4;         // Alignment with goals (-1.0 to 1.0)
+  float certainty = 5;               // Certainty about implications (0.0-1.0)
+  float agency = 6;                  // Causal attribution (self/other/circumstance)
+  
+  // Coping stage
+  float control = 7;                 // Perceived control over situation (0.0-1.0)
+  float power = 8;                   // Perceived power to address situation (0.0-1.0)
+  float adjustment = 9;              // Ability to adjust to consequences (0.0-1.0)
+  
+  // Normative stage
+  float internal_standards = 10;     // Compatibility with internal standards (-1.0 to 1.0)
+  float external_standards = 11;     // Compatibility with external norms (-1.0 to 1.0)
+}
+
+// Parameters for emotional expression across modalities
+message ExpressionParameters {
+  // Facial expression
+  FacialExpression facial = 1;
+  
+  // Voice modulation
+  VoiceModulation voice = 2;
+  
+  // Text/language expression
+  TextExpression text = 3;
+}
+
+// Facial expression parameters
+message FacialExpression {
+  repeated string expressions = 1;   // Named expressions (e.g., "smile", "furrowed_brow")
+  float intensity = 2;               // Overall intensity (0.0-1.0)
+  map<string, float> blendshapes = 3; // Specific blendshape values
+}
+
+// Voice modulation parameters
+message VoiceModulation {
+  float pitch_shift = 1;             // Pitch modification (-1.0 to 1.0)
+  float speed = 2;                   // Speaking rate modifier (1.0 = normal)
+  float volume = 3;                  // Volume level (0.0-1.0)
+  string prosody = 4;                // Prosody style
+}
+
+// Text expression parameters
+message TextExpression {
+  string style = 1;                  // Language style
+  float emotionality = 2;            // Emotional content level (0.0-1.0)
+  repeated string markers = 3;       // Emotional markers to include
+}
+
+// Emotional experience for storage in memory
+message EmotionalExperience {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;
+  
+  string context_id = 3;             // Context identifier (conversation, situation)
+  string trigger = 4;                // What triggered the emotion
+  EmotionState emotion = 5;          // The emotional state
+  AppraisalResults appraisal = 6;    // Appraisal that led to the emotion
+  float intensity = 7;               // Overall intensity (0.0-1.0)
+  int32 duration_seconds = 8;        // Duration of the emotional episode
+  string resolution = 9;             // How the emotional episode was resolved
+}

@@ -27,7 +27,7 @@ class SessionStatus(Enum):
 class SessionInfo:
     """Comprehensive session information"""
     session_id: str
-    user_id: str
+    user_uuid: str
     username: str
     roles: List[str]
     created_at: datetime
@@ -96,7 +96,7 @@ class SessionManager:
     
     def create_session(
         self, 
-        user_id: str, 
+        user_uuid: str, 
         username: str, 
         roles: List[str],
         ip_address: Optional[str] = None,
@@ -117,7 +117,7 @@ class SessionManager:
         now = datetime.now(timezone.utc)
         session_info = SessionInfo(
             session_id=session_id,
-            user_id=user_id,
+            user_uuid=user_uuid,
             username=username,
             roles=roles,
             created_at=now,
@@ -130,14 +130,14 @@ class SessionManager:
         )
         
         # Clean up old sessions for this user
-        self._cleanup_user_sessions(user_id)
+        self._cleanup_user_sessions(user_uuid)
         
         # Store session
         self.sessions[session_id] = session_info
         
         self.logger.info("Session created", extra={
             "session_id": session_id,
-            "user_id": user_id,
+            "user_uuid": user_uuid,
             "username": username,
             "is_admin": is_admin,
             "expires_at": session_info.expires_at.isoformat(),
@@ -159,7 +159,7 @@ class SessionManager:
     
     def list_sessions(
         self, 
-        user_id: Optional[str] = None,
+        user_uuid: Optional[str] = None,
         include_expired: bool = False,
         admin_only: bool = False
     ) -> List[SessionInfo]:
@@ -168,7 +168,7 @@ class SessionManager:
         
         for session in self.sessions.values():
             # Filter by user if specified
-            if user_id and session.user_id != user_id:
+            if user_uuid and session.user_uuid != user_uuid:
                 continue
             
             # Filter by admin status if specified
@@ -192,18 +192,18 @@ class SessionManager:
             session.status = SessionStatus.REVOKED
             self.logger.info("Session revoked", extra={
                 "session_id": session_id,
-                "user_id": session.user_id,
+                "user_uuid": session.user_uuid,
                 "username": session.username
             })
             return True
         return False
     
-    def revoke_user_sessions(self, user_id: str, except_session: Optional[str] = None) -> int:
+    def revoke_user_sessions(self, user_uuid: str, except_session: Optional[str] = None) -> int:
         """Revoke all sessions for a user (except optionally one)"""
         revoked_count = 0
         
         for session in self.sessions.values():
-            if (session.user_id == user_id and 
+            if (session.user_uuid == user_uuid and 
                 session.session_id != except_session and 
                 session.status == SessionStatus.ACTIVE):
                 
@@ -212,7 +212,7 @@ class SessionManager:
         
         if revoked_count > 0:
             self.logger.info("User sessions revoked", extra={
-                "user_id": user_id,
+                "user_uuid": user_uuid,
                 "revoked_count": revoked_count,
                 "except_session": except_session
             })
@@ -252,11 +252,11 @@ class SessionManager:
             "revoked_sessions": len([s for s in self.sessions.values() if s.status == SessionStatus.REVOKED])
         }
     
-    def _cleanup_user_sessions(self, user_id: str):
+    def _cleanup_user_sessions(self, user_uuid: str):
         """Clean up old sessions for user to enforce max limit"""
         user_sessions = [
             s for s in self.sessions.values() 
-            if s.user_id == user_id and s.is_active()
+            if s.user_uuid == user_uuid and s.is_active()
         ]
         
         if len(user_sessions) >= self.max_sessions_per_user:
@@ -268,6 +268,6 @@ class SessionManager:
                 session.status = SessionStatus.REVOKED
                 self.logger.info("Old session revoked due to limit", extra={
                     "session_id": session.session_id,
-                    "user_id": user_id,
+                    "user_uuid": user_uuid,
                     "max_sessions": self.max_sessions_per_user
                 })

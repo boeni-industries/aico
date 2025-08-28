@@ -1,0 +1,67 @@
+import 'package:json_annotation/json_annotation.dart';
+
+part 'error_models.g.dart';
+
+/// Base class for all network-related exceptions
+abstract class NetworkException implements Exception {
+  final String message;
+  final int? statusCode;
+  final dynamic originalError;
+
+  const NetworkException(this.message, {this.statusCode, this.originalError});
+
+  @override
+  String toString() => 'NetworkException: $message';
+}
+
+/// Connection-related errors
+class ConnectionException extends NetworkException {
+  const ConnectionException(super.message, {super.originalError});
+}
+
+/// HTTP-specific errors
+class HttpException extends NetworkException {
+  const HttpException(super.message, int statusCode, {super.originalError})
+      : super(statusCode: statusCode);
+}
+
+/// Authentication/authorization errors
+class AuthException extends NetworkException {
+  const AuthException(super.message, {super.statusCode, super.originalError});
+}
+
+/// Server-side errors
+class ServerException extends NetworkException {
+  const ServerException(super.message, {super.statusCode, super.originalError});
+}
+
+/// WebSocket-specific errors
+class WebSocketException extends NetworkException {
+  const WebSocketException(super.message, {super.originalError});
+}
+
+/// Offline/connectivity errors
+class OfflineException extends NetworkException {
+  const OfflineException(super.message);
+}
+
+/// API error response model
+@JsonSerializable()
+class ApiError {
+  final String code;
+  final String message;
+  final String? details;
+  final Map<String, dynamic>? metadata;
+
+  const ApiError({
+    required this.code,
+    required this.message,
+    this.details,
+    this.metadata,
+  });
+
+  factory ApiError.fromJson(Map<String, dynamic> json) =>
+      _$ApiErrorFromJson(json);
+
+  Map<String, dynamic> toJson() => _$ApiErrorToJson(this);
+}

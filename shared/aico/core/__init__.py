@@ -16,7 +16,12 @@ from .bus import (
     create_broker
 )
 
-# Import protobuf message types
-from ..proto.core import AicoMessage, MessageMetadata
+# Optional protobuf imports to avoid chicken/egg problem with CLI
+try:
+    from ..proto.aico_core_envelope_pb2 import AicoMessage, MessageMetadata
+except ImportError:
+    # Protobuf files not generated yet - use fallbacks
+    AicoMessage = None
+    MessageMetadata = None
 
 __all__ = ['ConfigurationManager', 'get_logger', 'AICOLogger', 'AICOPaths', 'MessageBusClient', 'MessageBusBroker', 'AicoMessage', 'MessageMetadata', 'create_client', 'create_broker']

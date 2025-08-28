@@ -1,362 +1,280 @@
+#!/usr/bin/env python3
+"""
+AICO Backend Server - Clean Implementation Following REFACTOR_SUMMARY.md
+
+This implements the proper architecture:
+- Main FastAPI Backend (port 8771): Handles ALL REST API endpoints
+- API Gateway provides FastAPI integration via setup_fastapi_integration()
+- WebSocket and ZeroMQ adapters run on separate ports
+"""
+
 import asyncio
+import os
 import sys
 import signal
-from datetime import datetime
+import uvicorn
+from pathlib import Path
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-print("Starting AICO backend server v0.1.1")
-
-# Fix ZeroMQ compatibility on Windows - must be set before any ZMQ imports
+# Fix Windows asyncio event loop compatibility with ZMQ
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-try:
-    from fastapi import FastAPI
-    from pathlib import Path
-    from contextlib import asynccontextmanager
-    print("FastAPI imports successful")
+# Add the backend directory to the Python path
+backend_dir = Path(__file__).parent
+sys.path.insert(0, str(backend_dir))
 
-    # Shared modules now installed via UV editable install
-    from aico.core.logging import initialize_logging, get_logger
-    from aico.core.config import ConfigurationManager
-    print("AICO core imports successful")
-except Exception as e:
-    print(f"Import error: {e}")
-    sys.exit(1)
+# Import AICO modules
+from aico.core.config import ConfigurationManager
+from aico.core.logging import get_logger, initialize_logging
+from api_gateway.gateway_v2 import AICOAPIGatewayV2
 
-__version__ = "0.2.0"
+__version__ = "0.5.0"
 
-# Initialize configuration FIRST
-try:
-    config_manager = ConfigurationManager()
-    config_manager.initialize(lightweight=True)
-    print("Configuration manager initialized")
-
-    # Initialize logging system - will use bootstrap buffering until message bus is ready
-    initialize_logging(config_manager)
-    print("Logging system initialized")
-except Exception as e:
-    print(f"Configuration/logging error: {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-
-# Now we can safely get loggers
-try:
-    logger = get_logger("backend", "main")
-    print("Logger initialized")
-
-    # Register signal handlers EARLY - before any blocking operations
-    def signal_handler(signum, frame):
-        """Handle shutdown signals gracefully"""
-        print(f"Signal handler called with signal {signum}")
-        logger.info(f"Received signal {signum}, initiating graceful shutdown...")
-        shutdown_event.set()
-
-    # Register signal handlers immediately
-    if sys.platform != "win32":
-        # Unix-like systems
-        signal.signal(signal.SIGTERM, signal_handler)
-        signal.signal(signal.SIGINT, signal_handler)
-    else:
-        # Windows
-        signal.signal(signal.SIGTERM, signal_handler)
-        signal.signal(signal.SIGINT, signal_handler)
-
-    logger.info("Signal handlers registered for graceful shutdown")
-    print("Signal handlers registered")
-
-    # Import API Gateway AFTER logging is initialized
-    from api_gateway import AICOAPIGateway
-    print("API Gateway imported")
-
-    # Import Message Bus Host
-    from message_bus_host import AICOMessageBusHost
-    print("Message Bus Host imported")
-except Exception as e:
-    print(f"Logger/import error: {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-
-# Global instances (config_manager already initialized above)
-message_bus_host = None
-api_gateway = None
+# Global components
+config_manager = None
+logger = None
+process_manager = None
 shutdown_event = asyncio.Event()
+background_tasks = set()  # Track all background tasks for cleanup
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Modern FastAPI lifespan event handler"""
-    global config_manager, message_bus_host, api_gateway
+try:
+    # Initialize configuration and logging
+    config_manager = ConfigurationManager()
+    config_manager.initialize(lightweight=False)
+    initialize_logging(config_manager)
+    logger = get_logger("backend", "main")
     
-    print("Lifespan startup called")
+    # Initialize process manager AFTER logging is set up
+    from aico.core.process import ProcessManager
+    process_manager = ProcessManager("gateway")
+    process_manager.write_pid(os.getpid())
     
-    # Startup
-    try:
-        logger.info("Starting AICO backend server in gateway mode")
-        
-        logger.info("AICO backend server starting up", extra={
-            "version": __version__,
-            "component": "fastapi_server"
-        })
-        
-        # Initialize configuration
-        config_manager = ConfigurationManager()
-        config_manager.initialize(lightweight=False)
-        logger.info("Configuration system initialized")
-        
-        # Update logger factory with full configuration
-        from aico.core.logging import _logger_factory
-        if _logger_factory:
-            _logger_factory.config = config_manager
-        
-        # Start message bus host (now non-blocking with threaded proxy)
-        logger.info("Starting message bus host...")
-        message_bus_host = AICOMessageBusHost()
-        logger.info("Message bus host created, calling start()...")
-        await message_bus_host.start()
-        logger.info("Message bus host started")
-        
-        # Create shared database connection for both LogConsumer and UserService
-        shared_db_connection = None
-        try:
-            # Create single encrypted database connection
-            from aico.security import AICOKeyManager
-            from aico.core.paths import AICOPaths
-            from aico.data.libsql.encrypted import EncryptedLibSQLConnection
-            
-            key_manager = AICOKeyManager()
-            paths = AICOPaths()
-            db_path = paths.resolve_database_path("aico.db")
-            
-            # Get encryption key (same logic as before)
-            cached_key = key_manager._get_cached_session()
-            if cached_key:
-                key_manager._extend_session()
-                db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
-            else:
-                import keyring
-                stored_key = keyring.get_password(key_manager.service_name, "master_key")
-                master_key = bytes.fromhex(stored_key)
-                db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
-            
-            shared_db_connection = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
-            logger.info("Created shared database connection for LogConsumer and UserService")
-            
-        except Exception as e:
-            logger.error(f"Failed to create shared database connection: {e}")
-            raise
-        
-        # Start log consumer with injected shared connection
-        try:
-            from log_consumer import AICOLogConsumer
-            log_consumer = AICOLogConsumer(config_manager, db_connection=shared_db_connection)
-            logger.info("Log consumer created with shared connection, starting...")
-            await log_consumer.start()
-            logger.info("Log consumer started - backend logs will now be persisted")
-            
-            # Activate proper logging now that log consumer is running
-            from aico.core.logging import _logger_factory
-            if _logger_factory:
-                _logger_factory.mark_all_databases_ready()
-                logger._db_ready = True
-                logger.info("Logging system activated - bootstrap buffer flushed")
-            else:
-                logger.warning("Logger factory not available for activation")
-                
-        except Exception as e:
-            logger.error(f"Failed to start log consumer: {e}")
-        
-        # Check for shutdown signal before starting API Gateway
-        if shutdown_event.is_set():
-            logger.info("Shutdown requested during startup, aborting...")
-            return
-        
-        # Start API Gateway if enabled (after log consumer is running)
-        logger.info("Checking API Gateway configuration...")
-        gateway_config = config_manager.get("api_gateway", {})
-        logger.info(f"Gateway config loaded: enabled={gateway_config.get('enabled', True)}")
-        
-        if gateway_config.get("enabled", True):
-            logger.info("Starting API Gateway...")
-            api_gateway = AICOAPIGateway(config_manager)
-            logger.info("API Gateway created, calling start()...")
-            
-            # Check for shutdown signal before the potentially blocking start() call
-            if shutdown_event.is_set():
-                logger.info("Shutdown requested before API Gateway start, aborting...")
-                return
-                
-            await api_gateway.start()
-            logger.info("API Gateway started")
-            
-            # Mount domain-based API routers
-            try:
-                # Initialize admin router with dependencies
-                try:
-                    from api.admin.router import initialize_router
-                    
-                    # Initialize admin router with all dependencies
-                    initialize_router(
-                        api_gateway.auth_manager, 
-                        api_gateway.authz_manager, 
-                        api_gateway.message_router, 
-                        api_gateway
-                    )
-                    logger.info("Admin router initialized with dependencies")
-                except Exception as e:
-                    logger.error(f"Failed to initialize admin router: {e}")
-                    import traceback
-                    traceback.print_exc()
-                
-                # Initialize users router with existing UserService
-                try:
-                    from api.users.router import initialize_router as initialize_users_router
-                    from aico.data.user import UserService
-                    from aico.data import LibSQLConnection
-                    
-                    # Initialize UserService with shared database connection
-                    user_service = UserService(shared_db_connection)
-                    
-                    # Initialize users router with proper service
-                    initialize_users_router(
-                        user_service,
-                        api_gateway.auth_manager,
-                        api_gateway.authz_manager
-                    )
-                    logger.info("Users router initialized with UserService")
-                except Exception as e:
-                    logger.error(f"Failed to initialize users router: {e}")
-                    import traceback
-                    traceback.print_exc()
-                
-                # Now import and mount the unified API router
-                from api import api_router
-                app.include_router(api_router, prefix="/api/v1")
-                logger.info("Domain-based API routers mounted at /api/v1")
-                
-                # Log available endpoints
-                logger.info("Available API endpoints:", extra={
-                    "users": "/api/v1/users/*",
-                    "admin": "/api/v1/admin/*", 
-                    "health": "/api/v1/health/*"
-                })
-                
-            except Exception as e:
-                logger.error(f"Failed to initialize API routers: {e}")
-                import traceback
-                traceback.print_exc()
-                logger.info("Falling back to basic health endpoint only")
-        else:
-            logger.info("API Gateway disabled in configuration")
-        
-        logger.info("AICO backend fully initialized")
-        
-        # Create a task to monitor shutdown signal during app runtime
-        async def shutdown_monitor():
-            await shutdown_event.wait()
-            logger.info("Shutdown signal received during runtime")
-        
-        shutdown_task = asyncio.create_task(shutdown_monitor())
-        
-        try:
-            yield  # This is where the application runs
-        finally:
-            # Cancel the shutdown monitor
-            shutdown_task.cancel()
-            try:
-                await shutdown_task
-            except asyncio.CancelledError:
-                pass
-        
-    except Exception as e:
-        logger.error(f"Failed to start backend services: {e}")
-        raise
-    finally:
-        # Shutdown
-        logger.info("AICO backend server shutting down")
-        
-        if api_gateway:
-            await api_gateway.stop()
-            logger.info("API Gateway stopped")
-        
-        if message_bus_host:
-            await message_bus_host.stop()
-            logger.info("Message bus host stopped")
-        
-        logger.info("AICO backend shutdown complete")
-
-
-app = FastAPI(
-    title="AICO Backend API",
-    description="AICO AI Companion Backend Services",
-    version=__version__,
-    lifespan=lifespan
-)
-
-
-async def main():
-    """Main async function with proper signal handling"""
-    import os
-    from server import run_server_async
-    
-    print("Main function called")
-    
-    # Initialize config_manager before accessing it
-    global config_manager
-    if config_manager is None:
-        config_manager = ConfigurationManager()
-        config_manager.initialize(lightweight=False)
-    
-    print("Config manager ready")
-    
-    # Check if we're in gateway service mode
-    service_mode = os.environ.get("AICO_SERVICE_MODE", "backend")
-    detach_mode = os.environ.get("AICO_DETACH_MODE", "true").lower() == "true"
-    
-    # Add console output for --no-detach mode
-    if not detach_mode:
-        print(f"Starting AICO backend server v{__version__}")
-        print(f"Service mode: {service_mode}")
-        print(f"Detach mode: {detach_mode}")
-    
-    logger.info(f"Starting AICO backend server in {service_mode} mode", extra={
-        "detach": detach_mode,
-        "version": __version__
-    })
-    
-    # Set up proper signal handling for graceful shutdown
+    # Setup global signal handlers (will coordinate all shutdown)
     def signal_handler(signum, frame):
-        print(f"\nSIGNAL HANDLER: Received signal {signum}")
-        print("SIGNAL HANDLER: Initiating shutdown...")
-        if not detach_mode:
-            print(f"Received signal {signum}, shutting down gracefully...")
-        logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+        logger.info(f"Received signal {signum}, initiating graceful shutdown")
         shutdown_event.set()
-        print("SIGNAL HANDLER: Shutdown event set")
+        # Cancel all background tasks
+        for task in background_tasks:
+            if not task.done():
+                logger.info(f"Cancelling background task: {task.get_name()}")
+                task.cancel()
+        # Clean up PID file
+        if process_manager:
+            process_manager.cleanup_pid_files()
     
-    # Install signal handlers in main() - these will be the final handlers
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
     
-    if not detach_mode:
-        print("Signal handlers installed for SIGTERM and SIGINT")
-        print(f"Main process PID: {os.getpid()}")
+    # Import API Gateway after logging is initialized
+    from api_gateway.gateway_v2 import AICOAPIGatewayV2
     
-    # Use our custom server wrapper
-    await run_server_async(app, config_manager, detach=detach_mode)
+except Exception as e:
+    print(f"Initialization error: {e}")
+    sys.exit(1)
+
+
+async def setup_backend_components():
+    """Setup backend components following proper architecture"""
+    # Create shared database connection
+    from aico.security import AICOKeyManager
+    from aico.core.paths import AICOPaths
+    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    
+    key_manager = AICOKeyManager(config_manager)
+    paths = AICOPaths()
+    db_path = paths.resolve_database_path("aico.db")
+    
+    # Get encryption key
+    cached_key = key_manager._get_cached_session()
+    if cached_key:
+        key_manager._extend_session()
+        db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
+    else:
+        import keyring
+        stored_key = keyring.get_password(key_manager.service_name, "master_key")
+        if stored_key:
+            master_key = bytes.fromhex(stored_key)
+            db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+        else:
+            raise RuntimeError("Master key not found. Run 'aico security setup' to initialize.")
+    
+    shared_db_connection = EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+    logger.info("Created shared database connection")
+    
+    # Create and initialize API Gateway first (starts message bus)
+    api_gateway = AICOAPIGatewayV2(config_manager, db_connection=shared_db_connection)
+    await api_gateway.start()
+    logger.info("API Gateway initialized")
+    
+    # Log consumer is already started by the API Gateway plugin system
+    # No need to start it separately here
+    
+    return api_gateway, None, shared_db_connection
+
+
+def create_app():
+    """Create FastAPI app with proper lifespan management"""
+    from contextlib import asynccontextmanager
+    
+    @asynccontextmanager
+    async def app_lifespan(app: FastAPI):
+        # Startup
+        # Initialize logging
+        logger = get_logger("backend", "service")
+        logger.info("Starting AICO Backend Server...")
+        
+        # Set debug print mode based on detach setting
+        from backend.log_consumer import set_foreground_mode
+        is_foreground = os.getenv('AICO_DETACH_MODE') == 'false'
+        set_foreground_mode(is_foreground)
+        if is_foreground:
+            logger.info("Running in foreground mode - debug output enabled")
+        logger.info(f"Starting AICO backend server v{__version__}")
+        api_gateway, _, shared_db_connection = await setup_backend_components()
+        
+        # Store components in app state
+        app.state.gateway = api_gateway
+        app.state.db_connection = shared_db_connection
+        
+        # Skip FastAPI integration to avoid middleware timing issues
+        # Routes will be handled directly by the health endpoint below
+        logger.info("Backend components initialized - LogConsumer active")
+        
+        # Heartbeat test logs
+        hb_logger = get_logger("backend", "heartbeat")
+        hb_logger.info(
+            "[HEARTBEAT TEST] Synchronous emit at startup",
+            extra={
+                "event_type": "heartbeat_test",
+                "sequence": 0,
+                "source": "backend.main",
+            },
+        )
+
+        async def _emit_heartbeat_logs():
+            try:
+                for i in range(1, 4):
+                    hb_logger.info(
+                        f"[HEARTBEAT TEST] Emitting heartbeat log {i}/3",
+                        extra={
+                            "event_type": "heartbeat_test",
+                            "sequence": i,
+                            "source": "backend.main",
+                        },
+                    )
+                    await asyncio.sleep(1.0)
+            except Exception as e:
+                print(f"[HEARTBEAT TEST] Error emitting heartbeat logs: {e}")
+
+        heartbeat_task = asyncio.create_task(_emit_heartbeat_logs())
+        heartbeat_task.set_name("heartbeat_logs")
+        background_tasks.add(heartbeat_task)
+        app.state.heartbeat_task = heartbeat_task
+        
+        yield
+        
+        # Shutdown - cleanup async resources
+        print("[LIFESPAN] App shutdown - stopping gateway")
+        
+        # Cancel all background tasks first
+        for task in list(background_tasks):
+            if not task.done():
+                print(f"[LIFESPAN] Cancelling task: {task.get_name()}")
+                task.cancel()
+                try:
+                    await asyncio.wait_for(task, timeout=2.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+        background_tasks.clear()
+        
+        # Stop gateway components
+        if hasattr(app.state, 'gateway'):
+            await app.state.gateway.stop()
+        
+        print("[LIFESPAN] All components stopped gracefully")
+    
+    # Create FastAPI app with lifespan
+    fastapi_app = FastAPI(
+        title="AICO Backend API",
+        version=__version__,
+        description="AICO Backend REST API with plugin-based middleware",
+        lifespan=app_lifespan
+    )
+    
+    # Add basic health endpoint
+    @fastapi_app.get("/api/v1/health")
+    async def health_check():
+        return {"status": "healthy", "service": "aico-backend", "version": __version__}
+    
+    # Add echo router directly
+    from backend.api.echo import router as echo_router
+    fastapi_app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])
+    
+    # Add encryption middleware as ASGI middleware wrapper
+    from fastapi import Request
+    from backend.api_gateway.middleware.encryption import EncryptionMiddleware
+    from aico.security.key_manager import AICOKeyManager
+    from aico.core.config import ConfigurationManager
+    
+    # Initialize encryption middleware components
+    config_manager = ConfigurationManager()
+    config_manager.initialize()
+    key_manager = AICOKeyManager(config_manager)
+    
+    # Wrap FastAPI app with encryption middleware
+    app = EncryptionMiddleware(fastapi_app, key_manager)
+    
+    # Skip FastAPI integration to avoid middleware timing issues
+    # Focus on keeping LogConsumer alive for log persistence
+    # Handshake endpoint is now handled by the encryption middleware automatically
+    
+    return app
+
+
 
 
 if __name__ == "__main__":
     """Start the server when run directly"""
     try:
-        print("Starting asyncio.run(main())")
-        asyncio.run(main())
+        # Create the app (components will be initialized in lifespan)
+        app = create_app()
+        
+        # Get server configuration
+        core_config = config_manager.config_cache.get('core', {})
+        api_gateway_config = core_config.get('api_gateway', {})
+        rest_config = api_gateway_config.get('rest', {})
+        
+        host = rest_config.get('host', '127.0.0.1')
+        port = rest_config.get('port', 8771)
+        
+        print("[MAIN] Starting uvicorn server...")
+        
+        # Start uvicorn server - it will handle the async lifecycle via lifespan
+        import uvicorn
+        uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            reload=False,
+            log_level="info"
+        )
+        
     except KeyboardInterrupt:
-        print("Application interrupted by user")
-        logger.info("Application interrupted by user")
+        print("[MAIN] Application interrupted by user")
+        # Graceful shutdown is handled by signal handlers and lifespan
+        print("[MAIN] Graceful shutdown completed")
     except Exception as e:
-        print(f"Application failed: {e}")
+        print(f"[MAIN] Application error: {e}")
         import traceback
-        traceback.print_exc()
-        logger.error(f"Application failed: {e}")
+        print(f"[MAIN] Traceback: {traceback.format_exc()}")
+        # Cancel any remaining background tasks before exit
+        for task in background_tasks:
+            if not task.done():
+                task.cancel()
         sys.exit(1)
+    finally:
+        # Always clean up PID file on exit
+        if process_manager:
+            process_manager.cleanup_pid_files()

@@ -61,7 +61,7 @@ class UserService:
         Args:
             full_name: User's full name
             nickname: Optional nickname
-            user_type: User type (parent, child, etc.)
+            user_type: User type (person)
             pin: Optional PIN for authentication
             
         Returns:

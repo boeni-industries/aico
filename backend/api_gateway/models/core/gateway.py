@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
 from aico.core.bus import MessageBusBroker, MessageBusClient
+from aico.security.key_manager import AICOKeyManager
 
 # Logger will be initialized in __init__
 
@@ -55,14 +56,18 @@ class AICOAPIGateway:
     - Admin endpoint separation
     """
     
-    def __init__(self, config_manager: Optional[ConfigurationManager] = None):
+    def __init__(self, config_manager: Optional[ConfigurationManager] = None, db_connection=None):
         # Initialize logger for this instance
         self.logger = get_logger("api_gateway", "gateway")
         
         # Configuration
         self.config_manager = config_manager or ConfigurationManager()
         self.config_manager.initialize(lightweight=False)
-        self.config = self.config_manager.get("api_gateway", {})
+        self.config = self.config_manager.config_cache.get('core', {}).get('api_gateway', {})
+        
+        # Initialize key manager for transport encryption
+        self.key_manager = AICOKeyManager(self.config_manager)
+        
         
         # Check if API Gateway is enabled
         if not self.config.get("enabled", True):
@@ -74,7 +79,7 @@ class AICOAPIGateway:
         
         # Core components
         self.message_bus_client: Optional[MessageBusClient] = None
-        self.auth_manager = AuthenticationManager(self.config)
+        self.auth_manager = AuthenticationManager(self.config_manager, db_connection=db_connection)
         self.authz_manager = AuthorizationManager(self.config.get("security", {}))
         self.adaptive_transport = AdaptiveTransport(self.config.get("transport", {}))
         self.message_router = MessageRouter(self.config.get("routing", {}))
@@ -94,7 +99,9 @@ class AICOAPIGateway:
         
         self.logger.info("API Gateway initialized", extra={
             "protocols": list(self.config.get("protocols", {}).keys()),
-            "admin_enabled": self.config.get("admin", {}).get("enabled", False)
+            "admin_enabled": self.config.get("admin", {}).get("enabled", False),
+            "session_management": db_connection is not None,
+            "transport_encryption": True
         })
     
     def _get_backend_version(self) -> str:
@@ -118,6 +125,24 @@ class AICOAPIGateway:
         except Exception as e:
             self.logger.warning(f"Failed to read version from VERSIONS file: {e}")
             return "0.2.0"
+    
+    def create_rest_adapter(self) -> RESTAdapter:
+        """Create REST adapter with encryption middleware"""
+        rest_config = self.config.get("protocols", {}).get("rest", {
+            "port": 8771,
+            "prefix": "/api/v1"
+        })
+        
+        return RESTAdapter(
+            config=rest_config,
+            auth_manager=self.auth_manager,
+            authz_manager=self.authz_manager,
+            message_router=self.message_router,
+            rate_limiter=self.rate_limiter,
+            validator=self.validator,
+            security_middleware=self.security_middleware,
+            key_manager=self.key_manager
+        )
     
     def _load_config(self) -> GatewayConfig:
         """Load and validate gateway configuration"""
@@ -159,35 +184,43 @@ class AICOAPIGateway:
         
         try:
             # Connect to message bus with timeout
-            self.logger.info(f"Connecting API Gateway to message bus at {message_bus_address}")
+            self.logger.info(f"[GATEWAY] Starting API Gateway connection to message bus at {message_bus_address}")
             
             try:
+                self.logger.info(f"[GATEWAY] Creating MessageBusClient...")
                 self.message_bus_client = MessageBusClient(
                     "api_gateway", 
                     message_bus_address
                 )
-                self.logger.info(f"MessageBusClient created: {self.message_bus_client}")
+                self.logger.info(f"[GATEWAY] MessageBusClient created successfully")
             except Exception as e:
-                self.logger.error(f"Failed to create MessageBusClient: {e}")
+                self.logger.error(f"[GATEWAY] Failed to create MessageBusClient: {e}")
                 raise
             
             # Add timeout to prevent hanging
             import asyncio
             try:
+                self.logger.info(f"[GATEWAY] Attempting to connect to message bus with 5s timeout...")
                 await asyncio.wait_for(self.message_bus_client.connect(), timeout=5.0)
-                self.logger.info(f"Connected to message bus at {message_bus_address}")
+                self.logger.info(f"[GATEWAY] Connected to message bus successfully")
             except asyncio.TimeoutError:
-                self.logger.error("Timeout connecting to message bus")
+                self.logger.error("[GATEWAY] Timeout connecting to message bus")
+                raise
+            except Exception as e:
+                self.logger.error(f"[GATEWAY] Error connecting to message bus: {e}")
                 raise
             
             # Initialize message router with bus client
-            self.logger.info("Setting up message router...")
+            self.logger.info("[GATEWAY] Setting up message router...")
             if self.message_bus_client is None:
                 raise RuntimeError("MessageBusClient is None - cannot set up message router")
             await self.message_router.set_message_bus(self.message_bus_client)
+            self.logger.info("[GATEWAY] Message router setup complete")
             
             # Start protocol adapters
+            self.logger.info("[GATEWAY] Starting protocol adapters...")
             await self._start_adapters()
+            self.logger.info("[GATEWAY] Protocol adapters started successfully")
             
             # Admin endpoints are now served on the main REST port
             self.running = True
@@ -227,20 +260,7 @@ class AICOAPIGateway:
         """Start enabled protocol adapters"""
         protocols = self.config.get("protocols", {})
         
-        # REST Adapter
-        if protocols.get("rest", {}).get("enabled", False):
-            rest_adapter = RESTAdapter(
-                config=protocols["rest"],
-                auth_manager=self.auth_manager,
-                authz_manager=self.authz_manager,
-                message_router=self.message_router,
-                rate_limiter=self.rate_limiter,
-                validator=self.validator,
-                security_middleware=self.security_middleware
-            )
-            await rest_adapter.start(self.config.get("host", "127.0.0.1"))
-            self.adapters["rest"] = rest_adapter
-            self.logger.info(f"REST adapter started on {self.config.get('host', '127.0.0.1')}:{protocols['rest']['port']}")
+        # REST endpoints handled by main FastAPI backend - no separate adapter needed
         
         # WebSocket Adapter
         if protocols.get("websocket", {}).get("enabled", False):

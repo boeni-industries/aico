@@ -10,6 +10,7 @@ import requests
 import os
 import sys
 import time
+import yaml
 from pathlib import Path
 from typing import Optional
 from rich.console import Console
@@ -30,19 +31,19 @@ sys.path.insert(0, str(shared_path))
 # Import decorators AFTER shared path is set
 decorators_path = Path(__file__).parent.parent / "decorators"
 sys.path.insert(0, str(decorators_path))
-from sensitive import sensitive, destructive
+from cli.decorators.sensitive import sensitive, destructive
 
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.security.key_manager import AICOKeyManager
 
-# Windows CMD Unicode handling - must be after imports
-if sys.platform == "win32":
-    import codecs
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
-    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+# Import platform-aware characters
+from cli.utils.platform import get_platform_chars
 
 console = Console()
+
+# Get platform-appropriate characters
+chars = get_platform_chars()
 
 def _get_jwt_token() -> Optional[str]:
     """Get stored JWT token for CLI authentication from secure keyring"""
@@ -88,7 +89,7 @@ def _is_gateway_running() -> bool:
             port = config.get('protocols', {}).get('rest', {}).get('port', 8771)
             
             try:
-                response = requests.get(f"http://{host}:{port}/health", timeout=2)
+                response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=2)
                 return response.status_code == 200
             except requests.exceptions.RequestException:
                 # Process running but not responding - might be starting up
@@ -103,7 +104,7 @@ def _is_gateway_running() -> bool:
             host = config.get('host', '127.0.0.1')
             port = config.get('protocols', {}).get('rest', {}).get('port', 8771)
             
-            response = requests.get(f"http://{host}:{port}/health", timeout=2)
+            response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=2)
             return response.status_code == 200
         except requests.exceptions.RequestException:
             return False
@@ -131,7 +132,7 @@ def _make_authenticated_request(method: str, endpoint: str, **kwargs) -> request
 def gateway_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
     if ctx.invoked_subcommand is None or help:
-        from utils.help_formatter import format_subcommand_help
+        from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
             ("start", "Start the API Gateway service"),
@@ -178,7 +179,7 @@ def _get_gateway_config() -> dict:
         config_manager.initialize(lightweight=True)
         return config_manager.get("api_gateway", {})
     except Exception as e:
-        console.print(f"[red]✗ Failed to load gateway configuration: {e}[/red]")
+        console.print(f"[red]{chars['cross']} Failed to load gateway configuration: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -187,7 +188,7 @@ def start(
     dev: bool = typer.Option(False, "--dev", help="Start in development mode using UV"),
     detach: bool = typer.Option(True, "--detach/--no-detach", help="Run as background service (default: True)")
 ):
-    """🚀 Start the API Gateway service"""
+    """Start the API Gateway service"""
     try:
         # Load config directly inline (WORKING VERSION - DO NOT CHANGE)
         import yaml
@@ -208,7 +209,7 @@ def start(
         
         # Check if already running
         if _is_gateway_running():
-            console.print("[yellow]⚠ API Gateway is already running[/yellow]")
+            console.print(f"[yellow]{chars['warning']} API Gateway is already running[/yellow]")
             console.print("[dim]Use 'aico gateway status' to check or 'aico gateway restart' to restart[/dim]")
             return
         
@@ -221,7 +222,7 @@ def start(
         backend_main = backend_dir / "main.py"
         
         if not backend_main.exists():
-            console.print(f"[red]✗ Backend service not found at: {backend_main}[/red]")
+            console.print(f"[red]{chars['cross']} Backend service not found at: {backend_main}[/red]")
             raise typer.Exit(1)
         
         # Get cross-platform Python executable for headless execution
@@ -263,31 +264,31 @@ def start(
                     else:
                         headless_python = "python"   # UV will find python.exe/python
                     cmd = ["uv", "run", headless_python, str(backend_main)]
-                    console.print("[yellow]🔧 Starting in development mode (UV)[/yellow]")
+                    console.print(f"[yellow]{chars['wrench']} Starting in development mode (UV)[/yellow]")
                 except FileNotFoundError:
-                    console.print("[red]✗ UV not found. Install UV or use production mode[/red]")
+                    console.print(f"[red]{chars['cross']} UV not found. Install UV or use production mode[/red]")
                     raise typer.Exit(1)
         else:
             # Production mode: Try UV first, fallback to pip install
-            console.print("[blue]🚀 Starting in production mode[/blue]")
+            console.print(f"[blue]{chars['rocket']} Starting in production mode[/blue]")
             
             # Check if UV is available for production use
             try:
                 import subprocess
                 subprocess.run(["uv", "--version"], capture_output=True, check=True)
                 
-                # Use UV without --active flag - let UV manage backend's own environment
-                # The key is that UV will run in backend_dir, so it uses backend's pyproject.toml/requirements.txt
+                # Use UV from root directory to access monorepo shared modules
+                # Run backend/main.py from the root directory where pyproject.toml is
                 if detach and sys.platform == "win32":
                     headless_python = "pythonw"  # UV will find pythonw.exe
                 else:
                     headless_python = "python"   # UV will find python.exe/python
-                cmd = ["uv", "run", headless_python, "main.py"]
+                cmd = ["uv", "run", headless_python, "backend/main.py"]
                 console.print("[dim]Using UV for dependency management[/dim]")
                 
             except (FileNotFoundError, subprocess.CalledProcessError):
                 # Fallback: Install dependencies and use system Python
-                console.print("[yellow]⚠ UV not available, installing dependencies with pip[/yellow]")
+                console.print(f"[yellow]{chars['warning']} UV not available, installing dependencies with pip[/yellow]")
                 
                 # Install backend dependencies
                 try:
@@ -296,13 +297,13 @@ def start(
                     ], cwd=str(backend_dir), capture_output=True, text=True)
                     
                     if install_result.returncode != 0:
-                        console.print(f"[red]✗ Failed to install dependencies: {install_result.stderr}[/red]")
+                        console.print(f"[red]{chars['cross']} Failed to install dependencies: {install_result.stderr}[/red]")
                         raise typer.Exit(1)
                     
-                    console.print("[green]✓ Dependencies installed[/green]")
+                    console.print(f"[green]{chars['check']} Dependencies installed[/green]")
                 except Exception as e:
-                    console.print(f"[red]✗ Failed to install dependencies: {e}[/red]")
-                    console.print("[yellow]💡 Try: 'aico gateway start --dev' or install UV[/yellow]")
+                    console.print(f"[red]{chars['cross']} Failed to install dependencies: {e}[/red]")
+                    console.print(f"[yellow]{chars['lightbulb']} Try: 'aico gateway start --dev' or install UV[/yellow]")
                     raise typer.Exit(1)
                 
                 # Use appropriate Python executable (respects detach mode)
@@ -315,7 +316,7 @@ def start(
                   AICO_DETACH_MODE="true" if detach else "false")
         
         process_kwargs = {
-            "cwd": str(backend_dir),
+            "cwd": str(current),  # Run from root directory for monorepo access
             "env": env
         }
         
@@ -354,17 +355,17 @@ def start(
                 host = config.get('host', '127.0.0.1')
                 protocols = config.get('protocols', {})
                 
-                console.print("[green]✓ API Gateway started as background service[/green]")
+                console.print(f"[green]{chars['check']} API Gateway started as background service[/green]")
                 console.print()
                 
                 # Show all enabled protocol endpoints
-                console.print("[bold blue]🌐 Available Endpoints:[/bold blue]")
+                console.print(f"[bold blue]{chars['globe']} Available Endpoints:[/bold blue]")
                 
                 if protocols.get('rest', {}).get('enabled', True):
                     rest_port = protocols.get('rest', {}).get('port', 8771)
                     prefix = protocols.get('rest', {}).get('prefix', '/api/v1')
                     console.print(f"  • REST API: [cyan]http://{host}:{rest_port}{prefix}[/cyan]")
-                    console.print(f"  • Health Check: [cyan]http://{host}:{rest_port}/health[/cyan]")
+                    console.print(f"  • Health Check: [cyan]http://{host}:{rest_port}/api/v1/health[/cyan]")
                 
                 if protocols.get('websocket', {}).get('enabled', False):
                     ws_port = protocols.get('websocket', {}).get('port', 8772)
@@ -379,14 +380,14 @@ def start(
                     console.print(f"  • ZeroMQ IPC: [cyan]Platform-specific socket[/cyan]")
                 
                 console.print()
-                console.print("[dim]💡 Test connection: 'aico gateway test' or 'aico gateway status'[/dim]")
+                console.print(f"[dim]{chars['lightbulb']} Test connection: 'aico gateway test' or 'aico gateway status'[/dim]")
             else:
-                console.print("[red]✗ Failed to start API Gateway service[/red]")
+                console.print(f"[red]{chars['cross']} Failed to start API Gateway service[/red]")
                 console.print("[dim]Check logs with 'aico logs cat' for details[/dim]")
                 raise typer.Exit(1)
         else:
             # Foreground mode (blocking) - for debugging
-            console.print("[yellow]⚠ Running in foreground mode (blocking)[/yellow]")
+            console.print(f"[yellow]{chars['warning']} Running in foreground mode (blocking)[/yellow]")
             console.print("[dim]Press Ctrl+C to stop[/dim]")
             console.print()
             
@@ -396,13 +397,13 @@ def start(
                          AICO_DETACH_MODE="false")
             
             fg_process_kwargs = {
-                "cwd": str(backend_dir),
+                "cwd": str(current),  # Run from root directory for monorepo access
                 "env": fg_env
             }
             
             # Show the exact command being run
             console.print(f"[dim]Executing: {' '.join(cmd)}[/dim]")
-            console.print(f"[dim]Working directory: {backend_dir}[/dim]")
+            console.print(f"[dim]Working directory: {current}[/dim]")
             console.print()
             
             # Run in foreground (this should block and show output)
@@ -413,7 +414,7 @@ def start(
                 # This should block until the process exits
                 result = subprocess.run(
                     cmd, 
-                    cwd=str(backend_dir),
+                    cwd=str(current),
                     env=fg_env,
                     # Don't capture output - let it stream to console
                     stdout=None,
@@ -423,29 +424,32 @@ def start(
                 console.print(f"[yellow]Backend process exited with code {result.returncode}[/yellow]")
                 
                 if result.returncode != 0:
-                    console.print(f"[red]✗ Gateway exited with code {result.returncode}[/red]")
+                    console.print(f"[red]{chars['cross']} Gateway exited with code {result.returncode}[/red]")
                     raise typer.Exit(result.returncode)
+                else:
+                    console.print(f"[green]{chars['check']} Gateway stopped gracefully[/green]")
                     
             except FileNotFoundError as e:
-                console.print(f"[red]✗ Command not found: {e}[/red]")
-                console.print(f"[yellow]💡 Check if UV is properly installed and backend dependencies are available[/yellow]")
+                console.print(f"[red]{chars['cross']} Command not found: {e}[/red]")
+                console.print(f"[yellow]{chars['lightbulb']} Check if UV is properly installed and backend dependencies are available[/yellow]")
                 raise typer.Exit(1)
             except KeyboardInterrupt:
-                console.print("\n[yellow]⚠ Backend process interrupted by user[/yellow]")
-                raise typer.Exit(0)
+                console.print(f"\n[yellow]Backend process exited with code 0[/yellow]")
+                console.print(f"[green]{chars['check']} Gateway stopped gracefully[/green]")
+                return  # Exit cleanly without raising exception
             
     except KeyboardInterrupt:
-        console.print("\n[yellow]⚠ Gateway startup interrupted[/yellow]")
+        console.print(f"\n[yellow]{chars['warning']} Gateway startup interrupted[/yellow]")
     except Exception as e:
-        console.print(f"[red]✗ Failed to start gateway: {e}[/red]")
+        console.print(f"[red]{chars['cross']} Failed to start gateway: {e}[/red]")
         raise typer.Exit(1)
 
 
 @app.command("stop")
 def stop():
-    """🛑 Stop the API Gateway service"""
+    """Stop the API Gateway service"""
     try:
-        console.print("[yellow]⏳ Stopping API Gateway...[/yellow]")
+        console.print(f"[yellow]{chars['hourglass']} Stopping API Gateway...[/yellow]")
         
         # Use our ProcessManager for proper shutdown
         from pathlib import Path
@@ -466,9 +470,9 @@ def stop():
         success = process_manager.stop_service(timeout=30)
         
         if success:
-            console.print("[green]✓ API Gateway stopped gracefully[/green]")
+            console.print(f"[green]{chars['check']} API Gateway stopped gracefully[/green]")
         else:
-            console.print("[yellow]⚠ Graceful shutdown failed, trying process cleanup...[/yellow]")
+            console.print(f"[yellow]{chars['warning']} Graceful shutdown failed, trying process cleanup...[/yellow]")
             
             # Fallback: Find and terminate gateway processes
             try:
@@ -476,23 +480,23 @@ def stop():
                 stopped_count = process_manager.cleanup_stale_processes()
                 
                 if stopped_count > 0:
-                    console.print(f"[green]✓ Stopped {stopped_count} stale process(es)[/green]")
+                    console.print(f"[green]{chars['check']} Stopped {stopped_count} stale process(es)[/green]")
                 else:
-                    console.print("[yellow]⚠ No running API Gateway processes found[/yellow]")
+                    console.print(f"[yellow]{chars['warning']} No running API Gateway processes found[/yellow]")
                     
             except ImportError:
-                console.print("[red]✗ psutil not available. Cannot stop processes automatically.[/red]")
+                console.print(f"[red]{chars['cross']} psutil not available. Cannot stop processes automatically.[/red]")
                 console.print("[yellow]Please stop the gateway process manually[/yellow]")
             
     except Exception as e:
-        console.print(f"[red]✗ Failed to stop gateway: {e}[/red]")
+        console.print(f"[red]{chars['cross']} Failed to stop gateway: {e}[/red]")
         raise typer.Exit(1)
 
 
 @app.command("restart")
 def restart():
-    """🔄 Restart the API Gateway service"""
-    console.print("[yellow]🔄 Restarting API Gateway...[/yellow]")
+    """Restart the API Gateway service"""
+    console.print(f"[yellow]{chars['restart']} Restarting API Gateway...[/yellow]")
     
     # Stop first
     try:
@@ -529,12 +533,12 @@ def status():
         
         # Get live status first for primary display
         host = config.get('host', '127.0.0.1')
-        rest_port = config.get('protocols', {}).get('rest', {}).get('port', 8771)
+        rest_port = config.get('rest', {}).get('port', 8771)
         is_running = False
         health_data = {}
         
         try:
-            health_response = requests.get(f"http://{host}:{rest_port}/health", timeout=3)
+            health_response = requests.get(f"http://{host}:{rest_port}/api/v1/health", timeout=3)
             if health_response.status_code == 200:
                 is_running = True
                 health_data = health_response.json()
@@ -561,7 +565,7 @@ def status():
         
         # Primary status header with enhanced process info
         if is_running:
-            console.print("🌐 [bold green]API Gateway Status: RUNNING[/bold green]")
+            console.print(f"{chars['globe']} [bold green]API Gateway Status: RUNNING[/bold green]")
             if process_status.get("process_info"):
                 proc_info = process_status["process_info"]
                 uptime = time.time() - proc_info.get("create_time", time.time())
@@ -572,19 +576,29 @@ def status():
         else:
             enabled = config.get("enabled", False)
             if process_status.get("stale_pid"):
-                console.print("🌐 [bold yellow]API Gateway Status: STALE PROCESS[/bold yellow]")
+                console.print(f"{chars['globe']} [bold yellow]API Gateway Status: STALE PROCESS[/bold yellow]")
                 console.print(f"   [dim]PID file exists but process not running • {host}:{rest_port}[/dim]")
             elif enabled:
-                console.print("🌐 [bold yellow]API Gateway Status: OFFLINE[/bold yellow]")
+                console.print(f"{chars['globe']} [bold yellow]API Gateway Status: OFFLINE[/bold yellow]")
                 console.print(f"   [dim]Configured but not responding • {host}:{rest_port}[/dim]")
             else:
-                console.print("🌐 [bold red]API Gateway Status: DISABLED[/bold red]")
+                console.print(f"{chars['globe']} [bold red]API Gateway Status: DISABLED[/bold red]")
                 console.print(f"   [dim]Not enabled in configuration • {host}:{rest_port}[/dim]")
         
         console.print()
         
         # Protocol endpoints table - clean and focused
         protocols = config.get("protocols", {})
+        
+        # Add REST protocol from separate config section (put first)
+        if config.get("rest", {}).get("port"):
+            rest_config = {
+                "enabled": True,  # REST is always enabled if configured
+                "port": config.get("rest", {}).get("port", 8771)
+            }
+            # Put REST first by creating new ordered dict
+            protocols = {"rest": rest_config, **protocols}
+        
         if protocols:
             table = Table(title="Protocol Endpoints", show_header=True, header_style="bold blue")
             table.add_column("Protocol", style="cyan", no_wrap=True)
@@ -595,7 +609,7 @@ def status():
                 proto_enabled = proto_config.get("enabled", False)
                 
                 if proto_enabled and is_running:
-                    status_icon = "✓"
+                    status_icon = chars['check']
                     status_text = "Running"
                     status_color = "green"
                 elif proto_enabled:
@@ -603,7 +617,7 @@ def status():
                     status_text = "Stopped"
                     status_color = "blue"
                 else:
-                    status_icon = "✗"
+                    status_icon = chars['cross']
                     status_text = "Disabled"
                     status_color = "dim"
                 
@@ -627,6 +641,37 @@ def status():
             
             console.print(table)
             console.print()
+        
+        # Transport Encryption Status
+        try:
+            # Load security configuration for transport encryption
+            security_config_path = config_dir / "defaults" / "security.yaml"
+            transport_config = {}
+            
+            if security_config_path.exists():
+                with open(security_config_path, 'r', encoding='utf-8') as f:
+                    security_yaml = yaml.safe_load(f)
+                transport_config = security_yaml.get("transport_encryption", {})
+            
+            transport_enabled = transport_config.get("enabled", True)
+            algorithm = transport_config.get("algorithm", "XChaCha20-Poly1305")
+            
+            if transport_enabled:
+                console.print(f"{chars['shield']} [bold green]Transport Encryption: ENABLED[/bold green]")
+                console.print(f"   [dim]{algorithm} • Ed25519 identity • X25519 sessions[/dim]")
+                
+                # Session timeout info
+                session_timeout = transport_config.get("session", {}).get("timeout_seconds", 3600)
+                console.print(f"   [dim]Session timeout: {session_timeout//60}m • Handshake: /api/v1/handshake[/dim]")
+            else:
+                console.print(f"{chars['shield']} [bold yellow]Transport Encryption: DISABLED[/bold yellow]")
+                console.print("   [dim]Using TLS only • No end-to-end encryption[/dim]")
+                
+        except Exception as e:
+            console.print(f"{chars['shield']} [bold red]Transport Encryption: ERROR[/bold red]")
+            console.print(f"   [dim]Failed to load config: {e}[/dim]")
+        
+        console.print()
         
         # Authentication status - clear and actionable
         token = _get_jwt_token()
@@ -656,22 +701,22 @@ def status():
                 token_valid = False
             
             if token_valid:
-                console.print("🔐 [bold green]CLI Authentication: AUTHENTICATED[/bold green]")
+                console.print(f"{chars['key']} [bold green]CLI Authentication: AUTHENTICATED[/bold green]")
                 console.print("   [dim]Token is valid and working[/dim]")
             elif is_running:
-                console.print("🔐 [bold yellow]CLI Authentication: TOKEN EXPIRED[/bold yellow]")
+                console.print(f"{chars['key']} [bold yellow]CLI Authentication: TOKEN EXPIRED[/bold yellow]")
                 console.print("   [dim]Run [cyan]aico gateway auth login[/cyan] to refresh[/dim]")
             else:
-                console.print("🔐 [bold blue]CLI Authentication: READY[/bold blue]")
+                console.print(f"{chars['key']} [bold blue]CLI Authentication: READY[/bold blue]")
                 console.print("   [dim]Token stored (gateway offline for verification)[/dim]")
         else:
-            console.print("🔐 [bold red]CLI Authentication: NOT AUTHENTICATED[/bold red]")
+            console.print(f"{chars['key']} [bold red]CLI Authentication: NOT AUTHENTICATED[/bold red]")
             console.print("   [dim]Run [cyan]aico gateway auth login[/cyan] to authenticate[/dim]")
         
         # Process details section
         if process_status.get("metadata") or process_status.get("process_info"):
             console.print()
-            console.print("📊 [bold blue]Process Information:[/bold blue]")
+            console.print(f"{chars['chart']} [bold blue]Process Information:[/bold blue]")
             
             if process_status.get("process_info"):
                 proc_info = process_status["process_info"]
@@ -738,7 +783,7 @@ def show_config(
                     border_style="blue"
                 ))
             else:
-                console.print(f"[red]✗ Configuration section '{section}' not found[/red]")
+                console.print(f"[red]{chars['cross']} Configuration section '{section}' not found[/red]")
                 available_sections = list(config.keys())
                 console.print(f"Available sections: {', '.join(available_sections)}")
                 raise typer.Exit(1)
@@ -750,7 +795,7 @@ def show_config(
             ))
     
     except Exception as e:
-        console.print(f"[red]✗ Failed to show configuration: {e}[/red]")
+        console.print(f"[red]{chars['cross']} Failed to show configuration: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -832,7 +877,7 @@ def list_protocols():
         console.print(table)
         
     except Exception as e:
-        console.print(f"[red]✗ Failed to list protocols: {e}[/red]")
+        console.print(f"[red]{chars['cross']} Failed to list protocols: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -854,11 +899,11 @@ def test_gateway():
         
         # Test if gateway is running
         if not _is_gateway_running():
-            console.print("[red]✗ API Gateway is not running[/red]")
+            console.print(f"[red]{chars['cross']} API Gateway is not running[/red]")
             console.print("[dim]Start it with: 'aico gateway start'[/dim]")
             raise typer.Exit(1)
         
-        console.print("[green]✓ API Gateway is running[/green]")
+        console.print(f"[green]{chars['check']} API Gateway is running[/green]")
         
         # Test REST API endpoints
         if protocols.get('rest', {}).get('enabled', True):
@@ -869,53 +914,53 @@ def test_gateway():
                 # Test health endpoint
                 health_response = requests.get(f"http://{host}:{rest_port}/health", timeout=5)
                 if health_response.status_code == 200:
-                    console.print(f"[green]✓ Health endpoint responding: http://{host}:{rest_port}/health[/green]")
+                    console.print(f"[green]{chars['check']} Health endpoint responding: http://{host}:{rest_port}/health[/green]")
                 else:
-                    console.print(f"[yellow]⚠ Health endpoint returned {health_response.status_code}[/yellow]")
+                    console.print(f"[yellow]{chars['warning']} Health endpoint returned {health_response.status_code}[/yellow]")
                 
                 # Test API root
                 api_response = requests.get(f"http://{host}:{rest_port}{prefix}", timeout=5)
                 if api_response.status_code in [200, 404]:  # 404 is OK for root API endpoint
-                    console.print(f"[green]✓ REST API responding: http://{host}:{rest_port}{prefix}[/green]")
+                    console.print(f"[green]{chars['check']} REST API responding: http://{host}:{rest_port}{prefix}[/green]")
                 else:
-                    console.print(f"[yellow]⚠ REST API returned {api_response.status_code}[/yellow]")
+                    console.print(f"[yellow]{chars['warning']} REST API returned {api_response.status_code}[/yellow]")
                     
             except requests.RequestException as e:
-                console.print(f"[red]✗ REST API connection failed: {e}[/red]")
+                console.print(f"[red]{chars['cross']} REST API connection failed: {e}[/red]")
         
         # Test authentication if configured
         auth_config = config.get('auth', {})
         if auth_config:
-            console.print(f"[green]✓ Authentication configured[/green]")
+            console.print(f"[green]{chars['check']} Authentication configured[/green]")
             
             # Check if we have a stored token
             token = _get_jwt_token()
             if token:
-                console.print("[green]✓ CLI authentication token found[/green]")
+                console.print(f"[green]{chars['check']} CLI authentication token found[/green]")
                 
                 # Test authenticated endpoint
                 try:
                     response = _make_authenticated_request("GET", "/api/v1/system/status")
                     if response.status_code == 200:
-                        console.print("[green]✓ Authenticated API access working[/green]")
+                        console.print(f"[green]{chars['check']} Authenticated API access working[/green]")
                     else:
-                        console.print(f"[yellow]⚠ Authenticated API returned {response.status_code}[/yellow]")
+                        console.print(f"[yellow]{chars['warning']} Authenticated API returned {response.status_code}[/yellow]")
                 except:
-                    console.print("[yellow]⚠ Authenticated API test failed (token may be expired)[/yellow]")
+                    console.print(f"[yellow]{chars['warning']} Authenticated API test failed (token may be expired)[/yellow]")
             else:
-                console.print("[yellow]⚠ No CLI authentication token found[/yellow]")
+                console.print(f"[yellow]{chars['warning']} No CLI authentication token found[/yellow]")
                 console.print("[dim]Run 'aico gateway auth login' to authenticate[/dim]")
         
         # Show enabled protocols summary
         enabled_protocols = [name.upper() for name, cfg in protocols.items() if cfg.get("enabled", name == "rest")]
         if enabled_protocols:
-            console.print(f"[green]✓ Enabled protocols: {', '.join(enabled_protocols)}[/green]")
+            console.print(f"[green]{chars['check']} Enabled protocols: {', '.join(enabled_protocols)}[/green]")
         
         console.print()
-        console.print("[green]🎉 API Gateway connectivity test completed![/green]")
+        console.print(f"[green]{chars['party']} API Gateway connectivity test completed![/green]")
         
     except Exception as e:
-        console.print(f"[red]✗ Gateway test failed: {e}[/red]")
+        console.print(f"[red]{chars['cross']} Gateway test failed: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -931,18 +976,18 @@ def enable_protocol(
         # Check if protocol exists
         protocols = config_manager.get("api_gateway.protocols", {})
         if protocol not in protocols:
-            console.print(f"[red]✗ Unknown protocol: {protocol}[/red]")
+            console.print(f"[red]{chars['cross']} Unknown protocol: {protocol}[/red]")
             available = list(protocols.keys())
             console.print(f"Available protocols: {', '.join(available)}")
             raise typer.Exit(1)
         
         # Enable the protocol
         config_manager.set(f"api_gateway.protocols.{protocol}.enabled", True)
-        console.print(f"[green]✓ {protocol.upper()} protocol enabled[/green]")
+        console.print(f"[green]{chars['check']} {protocol.upper()} protocol enabled[/green]")
         console.print("[yellow]Note: Restart the backend service to apply changes[/yellow]")
         
     except Exception as e:
-        console.print(f"[red]✗ Failed to enable protocol: {e}[/red]")
+        console.print(f"[red]{chars['cross']} Failed to enable protocol: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -950,7 +995,7 @@ def enable_protocol(
 def disable_protocol(
     protocol: str = typer.Argument(..., help="Protocol to disable (rest, websocket, zeromq_ipc, grpc)")
 ):
-    """🚫 Disable a protocol adapter"""
+    """Disable a protocol adapter"""
     try:
         config_manager = ConfigurationManager()
         config_manager.initialize(lightweight=True)
@@ -958,18 +1003,18 @@ def disable_protocol(
         # Check if protocol exists
         protocols = config_manager.get("api_gateway.protocols", {})
         if protocol not in protocols:
-            console.print(f"[red]✗ Unknown protocol: {protocol}[/red]")
+            console.print(f"[red]{chars['cross']} Unknown protocol: {protocol}[/red]")
             available = list(protocols.keys())
             console.print(f"Available protocols: {', '.join(available)}")
             raise typer.Exit(1)
         
         # Disable the protocol
         config_manager.set(f"api_gateway.protocols.{protocol}.enabled", False)
-        console.print(f"[yellow]✓ Protocol '{protocol}' disabled[/yellow]")
+        console.print(f"[yellow]{chars['check']} Protocol '{protocol}' disabled[/yellow]")
         console.print("[yellow]Note: Restart the backend service to apply changes[/yellow]")
         
     except Exception as e:
-        console.print(f"[red]✗ Failed to disable protocol: {e}[/red]")
+        console.print(f"[red]{chars['cross']} Failed to disable protocol: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -980,7 +1025,7 @@ app.add_typer(auth_app, name="auth")
 def admin_callback(ctx: typer.Context):
     """Show help when no admin subcommand is given instead of showing an error."""
     if ctx.invoked_subcommand is None:
-        from utils.help_formatter import format_subcommand_help
+        from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
             ("sessions", "List active user sessions"),
@@ -1034,6 +1079,10 @@ def auth_login():
         # Get or generate JWT secret using key manager
         jwt_secret = key_manager.get_jwt_secret("api_gateway")
         
+        # Get CLI roles from configuration - CLI gets admin access by default
+        # This is intentional: CLI operations require admin privileges for system management
+        cli_roles = ["cli", "admin"]  # CLI role includes admin privileges
+        
         # Create CLI token payload (matching backend admin endpoint expectations)
         now = datetime.utcnow()
         payload = {
@@ -1043,7 +1092,7 @@ def auth_login():
             "aud": "aico-api",  # Audience: AICO API
             "iat": int(now.timestamp()),  # Issued at
             "exp": int((now + timedelta(days=7)).timestamp()),  # Expires in 7 days
-            "roles": ["admin"],  # Admin role array expected by backend
+            "roles": cli_roles,  # CLI gets admin access for system operations
             "type": "cli_token"  # Token type
         }
         
@@ -1128,7 +1177,7 @@ def auth_status():
 # Admin commands
 @admin_app.command("sessions")
 def admin_list_sessions(
-    user_id: Optional[str] = typer.Option(None, "--user", help="Filter by specific user ID"),
+    user_uuid: Optional[str] = typer.Option(None, "--user", help="Filter by specific user UUID"),
     admin_only: bool = typer.Option(False, "--admin-only", help="Show only admin sessions"),
     include_stats: bool = typer.Option(True, "--stats/--no-stats", help="Include session statistics")
 ):
@@ -1136,8 +1185,8 @@ def admin_list_sessions(
     try:
         # Build query parameters
         params = {}
-        if user_id:
-            params["user_id"] = user_id
+        if user_uuid:
+            params["user_uuid"] = user_uuid
         if admin_only:
             params["admin_only"] = "true"
         if not include_stats:
@@ -1173,7 +1222,7 @@ def admin_list_sessions(
         for session in sessions:
             # Truncate session ID for display
             session_id = session.get("session_id", "")[:8] + "..."
-            user_id = session.get("user_id", "Unknown")
+            user_uuid = session.get("user_uuid", "Unknown")
             status = session.get("status", "unknown").title()
             created = session.get("created_at", "")[:19] if session.get("created_at") else "Unknown"
             last_active = session.get("last_accessed_at", "")[:19] if session.get("last_accessed_at") else "Unknown"
@@ -1185,14 +1234,14 @@ def admin_list_sessions(
             elif status.lower() == "expired":
                 status = f"[red]{status}[/red]"
             
-            table.add_row(session_id, user_id, status, created, last_active, ip_address)
+            table.add_row(session_id, user_uuid, status, created, last_active, ip_address)
         
         console.print(table)
         
         # Display statistics if included
         if include_stats and "stats" in data:
             stats = data["stats"]
-            console.print("\n📊 [bold cyan]Session Statistics[/bold cyan]")
+            console.print(f"\n{chars['chart']} [bold cyan]Session Statistics[/bold cyan]")
             
             stats_table = Table(show_header=False, border_style="dim")
             stats_table.add_column("Metric", style="bold white")
@@ -1223,7 +1272,7 @@ def admin_list_sessions(
 def admin_revoke_session(
     session_id: str = typer.Argument(..., help="Session ID to revoke")
 ):
-    """🚫 Revoke a user session"""
+    """Revoke a user session"""
     try:
         # Make authenticated request to revoke session
         response = _make_authenticated_request("delete", f"/admin/auth/sessions/{session_id}")

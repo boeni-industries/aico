@@ -32,31 +32,33 @@ The API Gateway serves as the unified entry point for all external communication
 
 ## Architecture Components
 
-### 1. Protocol Adapters
+### 1. Plugin-Based Architecture
 
-The API Gateway implements multiple protocol adapters to support various client communication patterns:
+The API Gateway uses a modular plugin-based architecture centered around the `GatewayCore` orchestrator:
 
-- **REST Adapter**: HTTP/JSON interface for standard request-response interactions
-  - Supports standard CRUD operations
-  - Uses OpenAPI 3.1 for documentation and validation
-  - Handles request/response transformation
+- **GatewayCore**: Central orchestrator managing plugin lifecycle, protocol adapters, and configuration
+- **PluginRegistry**: Discovers, loads, and manages plugins with dependency injection
+- **ProtocolAdapterManager**: Manages protocol adapters as specialized plugins
+- **Plugin System**: Extensible architecture allowing custom middleware, adapters, and services
 
-- **WebSocket Adapter**: Bidirectional communication for real-time interactions
-  - Supports persistent connections for UI updates
-  - Handles connection lifecycle management
-  - Provides message framing and serialization
+### 2. Protocol Adapters (Plugin-Based)
 
-- **ZeroMQ IPC Adapter**: Cross-platform local inter-process communication
-  - Uses ZeroMQ's native IPC transport (Unix sockets on Unix/Linux/macOS, named pipes on Windows)
-  - Provides high-performance, low-latency local communication
-  - Maintains consistent API across all platforms
-  - Supports various messaging patterns (request-reply, pub-sub, push-pull)
-  - Automatically falls back to localhost TCP when IPC is unavailable
+Protocol adapters are implemented as plugins managed by the ProtocolAdapterManager:
 
-- **gRPC Adapter** (Optional): High-performance binary protocol
-  - Supports streaming communication patterns
-  - Provides efficient binary serialization
-  - Enables strong typing through Protocol Buffers
+- **REST Adapter**: HTTP/JSON interface integrated with FastAPI
+  - Domain-based routing (`/api/v1/users/`, `/api/v1/admin/`, `/api/v1/logs/`)
+  - OpenAPI 3.1 documentation and validation
+  - Unified port design (single port 8771)
+
+- **WebSocket Adapter**: Real-time bidirectional communication
+  - Persistent connections for UI updates
+  - Connection lifecycle management via plugin system
+  - Message framing and serialization
+
+- **ZeroMQ Adapter**: High-performance local communication
+  - Cross-platform IPC transport with TCP fallback
+  - Message bus integration for internal communication
+  - Protocol Buffers for binary serialization
 
 ### 2. Domain-Based API Organization
 
@@ -90,44 +92,51 @@ This organization provides:
 - **Team Collaboration**: Clear ownership boundaries
 - **Professional Standards**: Follows established FastAPI patterns
 
-### 3. Core Gateway Services
+### 3. Middleware Stack (Plugin-Based)
 
-- **Request Router**: Maps external endpoints to internal message bus topics
-  - Handles URL routing for REST requests
-  - Maps WebSocket events to appropriate handlers
-  - Translates gRPC service methods to internal commands
+The gateway implements a comprehensive middleware stack as plugins:
 
-- **Message Normalizer**: Standardizes all messages to a unified format
-  - Uses a common message schema across all protocols
-  - Minimal transformation between external and internal formats
-  - Leverages Protocol Buffers as the canonical message definition
+- **Encryption Middleware**: ASGI-level encryption wrapping the entire FastAPI app
+  - Transparent encryption/decryption for all endpoints
+  - Key management integration with `AICOKeyManager`
+  - Unencrypted endpoint handling for health checks and handshake
 
-- **Response Aggregator**: Combines results from multiple backend services when needed
-  - Supports request fan-out and response aggregation
-  - Handles timeouts and partial responses
-  - Manages response transformation back to client format
+- **Authentication Plugin**: JWT token validation and session management
+  - Integration with backend authentication manager
+  - Admin role enforcement for privileged endpoints
+  - Device pairing and trust establishment
 
-### 4. Security Layer
-
-- **Authentication Handler**: Verifies client identity
-  - JWT token validation for REST and WebSocket
-  - Certificate validation for mutual TLS
-  - Device pairing validation for trusted devices
-
-- **Authorization Enforcer**: Enforces access control policies
-  - Role-based access control for API endpoints
-  - Capability-based security for sensitive operations
-  - Context-aware authorization decisions
-
-- **Request Validator**: Ensures requests meet schema and security requirements
-  - Schema validation for all incoming requests
-  - Input sanitization and normalization
-  - Protection against common attack vectors
-
-- **Rate Limiter**: Prevents abuse through traffic management
-  - Per-client rate limiting
+- **Rate Limiting Plugin**: Traffic management and abuse prevention
+  - Per-client rate limiting with configurable policies
   - Graduated response to excessive requests
-  - Configurable limits based on endpoint sensitivity
+  - Integration with security monitoring
+
+- **Request Logging Plugin**: Comprehensive request/response logging
+  - Structured logging via Protocol Buffers
+  - ZMQ transport to log consumer service
+  - Performance metrics and audit trails
+
+### 4. Core Services Integration
+
+- **Message Bus Integration**: ZeroMQ-based internal communication
+  - Protocol Buffers for high-performance binary serialization
+  - Topic-based pub/sub for module communication
+  - Log transport pipeline to database persistence
+
+- **Database Connection Sharing**: Unified database access
+  - Shared `EncryptedLibSQLConnection` across all plugins
+  - Connection pooling and lifecycle management
+  - Encrypted storage with key derivation
+
+- **Configuration Management**: Centralized configuration system
+  - YAML-based configuration with schema validation
+  - Plugin-specific configuration sections
+  - Runtime configuration updates
+
+- **Process Management**: Service lifecycle coordination
+  - PID file management for CLI integration
+  - Graceful shutdown with signal handling
+  - Background task coordination
 
 ### 5. Roaming and Federation Support
 
@@ -218,50 +227,54 @@ In federated mode, where multiple devices synchronize data across the network:
 
 ## Implementation Details
 
-### Technology Stack
+### Current Technology Stack
 
-- **Core Framework**: Python with FastAPI for REST and WebSocket support
-- **gRPC Support**: gRPC Python with gRPC API Gateway for protocol translation
-- **Security**: PyJWT for token handling, Python-TLS for mutual TLS
-- **Message Bus Integration**: ZeroMQ with CurveZMQ for secure messaging
-- **P2P Communication**: libp2p for peer-to-peer networking and DHT
-- **Local Discovery**: mDNS/Bonjour for same-network device discovery
-- **Data Synchronization**: Merkle tree-based change detection and CRDTs
-- **Cross-Platform Communication**: Adaptive transport layer
-  - Primary: ZeroMQ's native IPC transport for optimal performance
-  - Fallback: Localhost HTTP/WebSocket for restricted environments
-  - Automatic transport negotiation at connection time
-  - Consistent API regardless of underlying transport
-  - Supports secure communication with CurveZMQ or TLS
-- **Unified Message Schema**: Protocol Buffers for consistent message definitions
-  - Single source of truth for all message types
-  - Automatic code generation for multiple languages
-  - Versioning support for backward compatibility
+- **Core Framework**: FastAPI with ASGI middleware architecture
+- **Plugin System**: Custom plugin registry with dependency injection
+- **Security**: 
+  - `AICOKeyManager` for key derivation and session management
+  - ASGI-level encryption middleware
+  - JWT authentication with admin role enforcement
+- **Message Bus**: ZeroMQ with Protocol Buffers
+  - Binary serialization for performance
+  - Topic-based routing (`logs.*`, `events.*`)
+  - Log consumer service for database persistence
+- **Database**: Encrypted libSQL with shared connection pooling
+- **Process Management**: 
+  - Signal-based graceful shutdown
+  - PID file management
+  - Background task coordination
+- **Configuration**: YAML-based with schema validation
+- **Logging**: Structured logging with ZMQ transport pipeline
 
 ### Request Flow
 
-#### Unified Message Approach
+#### Plugin-Based Request Processing
 
-To simplify message handling and reduce translation overhead, we use a unified message schema approach:
+The current implementation uses a plugin-based middleware stack:
 
-1. All messages (external and internal) share a common schema defined in Protocol Buffers
-2. Frontend libraries provide native language bindings that match the schema
-3. Protocol adapters handle only transport concerns, not message transformation
-4. Message structure remains consistent throughout the system
+1. **ASGI Encryption Middleware**: Wraps entire FastAPI app
+   - Handles encryption/decryption transparently
+   - Manages unencrypted endpoints (health, handshake)
+   - Key derivation and session management
 
-#### External Client Flow (REST/WebSocket/gRPC)
+2. **FastAPI Application**: Domain-based routing
+   - `/api/v1/users/` - User management endpoints
+   - `/api/v1/admin/` - Administrative endpoints  
+   - `/api/v1/logs/` - Log management endpoints
+   - `/api/v1/health` - System health checks
 
-1. Client sends request through external protocol (REST/WebSocket/gRPC)
-2. Protocol adapter extracts the message payload (minimal transformation)
-3. Authentication handler verifies client identity
-4. Authorization enforcer checks access permissions
-5. Request validator ensures request meets schema requirements
-6. Rate limiter checks for request quota
-7. Request router maps to appropriate internal message topic
-8. Request is published directly to the message bus (no format conversion)
-9. Response is received from message bus
-10. Response is wrapped in appropriate protocol envelope (minimal transformation)
-11. Response is sent back to client
+3. **Plugin Middleware Stack**: Applied via plugin system
+   - Authentication validation (JWT tokens)
+   - Rate limiting and abuse prevention
+   - Request logging and metrics
+   - Authorization enforcement
+
+4. **Backend Integration**: Via shared services
+   - Database connection sharing
+   - Message bus communication
+   - Configuration management
+   - Process lifecycle coordination
 
 #### Local Client Flow (Adaptive Transport)
 

@@ -35,9 +35,15 @@ def create_user_auth_dependency(auth_manager):
                 options={"verify_aud": False}
             )
             
-            # Check if token is revoked
+            # Check if token is revoked (both in-memory and database)
             if token in auth_manager.revoked_tokens:
                 raise HTTPException(status_code=401, detail="Token has been revoked")
+            
+            # Check database session status if session service is available
+            if auth_manager.session_service:
+                session_info = auth_manager.session_service.get_session_by_token(token)
+                if not session_info or not session_info.is_active:
+                    raise HTTPException(status_code=401, detail="Session has been revoked")
             
             # Check if user has admin permissions for user management
             roles = payload.get("roles", [])
@@ -50,7 +56,7 @@ def create_user_auth_dependency(auth_manager):
                 )
             
             return {
-                "user_id": payload.get("sub"),
+                "user_uuid": payload.get("user_uuid", payload.get("sub")),
                 "username": payload.get("username"),
                 "roles": roles,
                 "permissions": permissions,

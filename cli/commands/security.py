@@ -16,7 +16,7 @@ import sys
 # Import decorators
 decorators_path = Path(__file__).parent.parent / "decorators"
 sys.path.insert(0, str(decorators_path))
-from sensitive import sensitive
+from cli.decorators.sensitive import sensitive
 
 # Add shared module to path for CLI usage
 if getattr(sys, 'frozen', False):
@@ -31,12 +31,19 @@ sys.path.insert(0, str(shared_path))
 from aico.security import AICOKeyManager
 
 # Import shared utilities using the same pattern as other CLI modules
-from utils.timezone import format_timestamp_local
+from cli.utils.timezone import format_timestamp_local
+
+def _get_key_manager():
+    """Helper function to get configured AICOKeyManager instance."""
+    from aico.core.config import ConfigurationManager
+    config_manager = ConfigurationManager()
+    config_manager.initialize(lightweight=True)
+    return AICOKeyManager(config_manager)
 
 def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
     if ctx.invoked_subcommand is None or help:
-        from utils.help_formatter import format_subcommand_help
+        from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
             ("setup", "Set up master password for AICO (first-time setup)"),
@@ -51,7 +58,13 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             ("user-delete", "Delete user (soft delete by default, --hard for permanent)"),
             ("user-auth", "Authenticate user with PIN"),
             ("user-set-pin", "Set or update user PIN"),
-            ("user-stats", "Show user statistics and authentication info")
+            ("user-stats", "Show user statistics and authentication info"),
+            ("role-assign", "Assign role to user (admin, user, service, cli)"),
+            ("role-revoke", "Revoke role from user"),
+            ("role-list", "List user roles and permissions"),
+            ("role-show", "Show available roles and their permissions"),
+            ("role-check", "Check if user has specific permission"),
+            ("role-bootstrap", "Bootstrap admin role for initial setup")
         ]
         
         examples = [
@@ -59,7 +72,10 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             "aico security status",
             "aico security session",
             "aico security test",
-            "aico security passwd"
+            "aico security passwd",
+            "aico security role-bootstrap <user-uuid>",
+            "aico security role-assign <user-uuid> admin",
+            "aico security role-list <user-uuid>"
         ]
         
         format_subcommand_help(
@@ -98,7 +114,7 @@ def setup(
 ):
     """Set up master password for AICO (first-time setup)."""
     
-    key_manager = AICOKeyManager()
+    key_manager = _get_key_manager()
     
     # Check if already set up
     master_exists = key_manager.has_stored_key()
@@ -167,17 +183,41 @@ def setup(
             console.print(f"⚠️ [yellow]JWT secret initialization failed: {e}[/yellow]")
             console.print("   Run 'aico security setup --jwt-only' to retry JWT initialization")
         
+        # Initialize file encryption keys (test derivation)
+        try:
+            console.print("🔐 Testing file encryption key derivation...")
+            master_key = key_manager.authenticate(interactive=False)
+            
+            # Test common file encryption purposes
+            test_purposes = ["config", "logs", "chroma", "cache"]
+            for purpose in test_purposes:
+                file_key = key_manager.derive_file_encryption_key(master_key, purpose)
+                # Verify key is 32 bytes for AES-256
+                if len(file_key) != 32:
+                    raise ValueError(f"Invalid key length for purpose '{purpose}': {len(file_key)} bytes")
+            
+            console.print("✅ [green]File encryption keys validated[/green]")
+            actions_taken.append("File encryption keys validated")
+            
+        except Exception as e:
+            console.print(f"⚠️ [yellow]File encryption key validation failed: {e}[/yellow]")
+            console.print("   File encryption may not work properly")
+        
         # Summary of actions taken
         if actions_taken:
-            console.print(f"\n✅ [bold green]Setup completed successfully![/bold green]")
-            console.print("📋 [cyan]Actions taken:[/cyan]")
+            console.print(f"\n✅ [green]Setup complete! Actions taken:[/green]")
             for action in actions_taken:
                 console.print(f"   • {action}")
-        else:
-            console.print(f"\n✅ [green]All security components already configured[/green]")
+        
+        console.print("\n🚀 [bold green]AICO security is now ready![/bold green]")
+        console.print("You can now:")
+        console.print("  • Initialize encrypted databases with 'aico db init'")
+        console.print("  • Use encrypted files with EncryptedFile class")
+        console.print("  • Start the backend with 'aico gateway start'")
+        console.print("  • Check security status with 'aico security status'")
         
     except Exception as e:
-        console.print(f"❌ [red]Failed to set up master password: {e}[/red]")
+        console.print(f"❌ [red]Setup failed: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -186,7 +226,7 @@ def setup(
 def passwd():
     """Change the master password (affects all databases)."""
     
-    key_manager = AICOKeyManager()
+    key_manager = _get_key_manager()
     
     if not key_manager.has_stored_key():
         console.print("❌ [red]No master password set up.[/red]")
@@ -232,7 +272,7 @@ def status(
 ):
     """Check security health and key management status."""
     
-    key_manager = AICOKeyManager()
+    key_manager = _get_key_manager()
     health_info = key_manager.get_security_health_info()
     
     # Create structured security status with sections
@@ -353,6 +393,64 @@ def status(
             border_style="green" if jwt_status.startswith("Ready") else "red"
         )
         console.print(jwt_panel)
+        
+        # Transport Encryption Section
+        transport_table = Table(
+            title="🚀 Transport Encryption (Frontend-Backend)",
+            title_justify="left",
+            show_header=True,
+            header_style="bold yellow",
+            border_style="bright_blue",
+            box=box.SIMPLE_HEAD
+        )
+        transport_table.add_column("Component", style="bold white", justify="left")
+        transport_table.add_column("Status", style="cyan", justify="left")
+        transport_table.add_column("Details", style="dim", justify="left")
+        
+        try:
+            # Check transport encryption configuration
+            transport_config = key_manager.config_manager.get("security", {}).get("transport_encryption", {})
+            transport_enabled = transport_config.get("enabled", True)
+            algorithm = transport_config.get("algorithm", "XChaCha20-Poly1305")
+            
+            if transport_enabled:
+                transport_table.add_row("Encryption", "Enabled", f"{algorithm} authenticated encryption")
+                transport_table.add_row("Identity Keys", "Ed25519", "Component signing keys")
+                transport_table.add_row("Session Keys", "X25519", "Ephemeral key exchange")
+                
+                # Session settings
+                session_config = transport_config.get("session", {})
+                timeout = session_config.get("timeout_seconds", 3600)
+                transport_table.add_row("Session Timeout", f"{timeout}s", f"{timeout//60} minutes")
+                
+                # Handshake settings
+                handshake_config = transport_config.get("handshake", {})
+                challenge_size = handshake_config.get("challenge_size", 32)
+                transport_table.add_row("Challenge Size", f"{challenge_size * 8}-bit", "Handshake security")
+                
+            else:
+                transport_table.add_row("Encryption", "Disabled", "Transport not encrypted")
+                transport_table.add_row("Security Level", "Basic HTTPS", "TLS only")
+                
+        except Exception as e:
+            transport_table.add_row("Configuration", "Error", f"Failed to load: {e}")
+        
+        console.print(transport_table)
+        
+        # Transport Status Summary
+        if transport_enabled:
+            transport_status = "Zero-effort end-to-end encryption active"
+            transport_border = "green"
+        else:
+            transport_status = "Transport encryption disabled - using TLS only"
+            transport_border = "yellow"
+            
+        transport_panel = Panel(
+            transport_status,
+            title="🔐 Transport Security",
+            border_style=transport_border
+        )
+        console.print(transport_panel)
     
     # Show recommendations
     if not health_info["has_master_key"]:
@@ -394,7 +492,7 @@ def session(
 ):
     """Show CLI session status and timeout information."""
     
-    key_manager = AICOKeyManager()
+    key_manager = _get_key_manager()
     
     if not key_manager.has_stored_key():
         console.print("❌ [red]No master password set up.[/red]")
@@ -465,7 +563,7 @@ def logout():
     """Clear CLI authentication session."""
     
     try:
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         
         # Check if there's an active session
         session_info = key_manager.get_session_info()
@@ -507,7 +605,7 @@ def clear(
             raise typer.Exit()
     
     try:
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         key_manager.clear_stored_key()
         
         console.print("✅ [green]Cached master key cleared successfully[/green]")
@@ -532,7 +630,7 @@ Examples:
 def test():
     """🧪 Test security operations and benchmark key derivation performance."""
     
-    key_manager = AICOKeyManager()
+    key_manager = _get_key_manager()
     
     if not key_manager.has_stored_key():
         console.print("❌ [red]No master password set up.[/red]")
@@ -546,7 +644,7 @@ def test():
     try:
         import time
         start_time = time.time()
-        master_key = key_manager.get_master_key()
+        master_key = key_manager.authenticate(interactive=False)
         key_access_time = (time.time() - start_time) * 1000
         
         if master_key:
@@ -591,11 +689,14 @@ def test():
     # Test 3: Database Key Derivation Benchmark
     console.print("\n🛢️ [yellow]Testing database key derivation...[/yellow]")
     
+    test_db_path = "test_security_benchmark.db"
+    test_salt_path = f"{test_db_path}.salt"
+    
     try:
         db_times = []
         for i in range(3):
             start_time = time.time()
-            db_key = key_manager.derive_database_key("test_db")
+            db_key = key_manager.derive_database_key(master_key, "libsql", test_db_path)
             db_time = (time.time() - start_time) * 1000
             db_times.append(db_time)
             
@@ -607,8 +708,21 @@ def test():
         avg_db_time = sum(db_times) / len(db_times)
         console.print(f"✅ [green]Database key average: {avg_db_time:.1f}ms[/green]")
         
+        # Clean up test salt file
+        import os
+        if os.path.exists(test_salt_path):
+            os.remove(test_salt_path)
+            console.print(f"🧹 [dim]Cleaned up test salt file[/dim]")
+        
     except Exception as e:
         console.print(f"❌ [red]Database key test failed: {e}[/red]")
+        # Clean up on error too
+        import os
+        if os.path.exists(test_salt_path):
+            try:
+                os.remove(test_salt_path)
+            except:
+                pass
     
     # Performance Summary
     console.print("\n📊 [bold cyan]Performance Summary[/bold cyan]")
@@ -668,7 +782,7 @@ def test():
 def user_create(
     full_name: str = typer.Argument(None, help="User's full name"),
     nickname: str = typer.Option(None, "--nickname", "-n", help="Optional nickname"),
-    user_type: str = typer.Option("person", "--type", "-t", help="User type (person, child, admin)"),
+    user_type: str = typer.Option("person", "--type", "-t", help="User type (person)"),
     pin: str = typer.Option(None, "--pin", "-p", help="Optional PIN for authentication"),
     ctx: typer.Context = typer.Context
 ):
@@ -680,12 +794,12 @@ def user_create(
         console.print("  aico security user-create [OPTIONS] FULL_NAME\n")
         console.print("[bold yellow]Examples:[/bold yellow]")
         console.print('  aico security user-create "John Doe"')
-        console.print('  aico security user-create "Jane Smith" --nickname "Janie" --type child')
+        console.print('  aico security user-create "Jane Smith" --nickname "Janie" --type person')
         console.print('  aico security user-create "Bob Wilson" --pin 1234 --type person')
         console.print('  aico security user-create "Alice Cooper" --nickname "Al" --type admin --pin 5678')
         console.print("\n[bold yellow]Options:[/bold yellow]")
         console.print("  --nickname, -n    Optional nickname for the user")
-        console.print("  --type, -t        User type: person, child, admin (default: person)")
+        console.print("  --type, -t        User type: person (default: person)")
         console.print("  --pin, -p         Optional PIN for authentication")
         console.print("\n[dim]Use 'aico security user-list' to see existing users[/dim]")
         raise typer.Exit(1)
@@ -709,7 +823,7 @@ def user_create(
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -741,6 +855,420 @@ def user_create(
         
     except Exception as e:
         console.print(f"❌ [red]Failed to create user: {e}[/red]")
+        raise typer.Exit(1)
+
+
+# Role Management Commands
+
+@app.command("role-assign")
+def role_assign(
+    user_uuid: str = typer.Argument(..., help="User UUID to assign role to"),
+    role: str = typer.Argument(..., help="Role name (admin, user, service, cli)"),
+    granted_by: str = typer.Option("cli", "--granted-by", "-g", help="Who granted the role")
+):
+    """Assign role to user"""
+    
+    try:
+        # Initialize database connection
+        from aico.core.config import ConfigurationManager
+        from aico.core.paths import AICOPaths
+        from aico.security.key_manager import AICOKeyManager
+        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.core.authorization import AuthorizationService
+        
+        config_manager = ConfigurationManager()
+        db_config = config_manager.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
+        
+        key_manager = _get_key_manager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        authz_service = AuthorizationService(db_conn)
+        
+        # Validate role exists
+        available_roles = authz_service.list_all_roles()
+        if role not in available_roles:
+            console.print(f"❌ [red]Unknown role: {role}[/red]")
+            console.print(f"Available roles: {', '.join(available_roles.keys())}")
+            raise typer.Exit(1)
+        
+        # Assign role
+        success = authz_service.assign_role(user_uuid, role, granted_by)
+        
+        if success:
+            console.print(f"✅ [green]Successfully assigned role '{role}' to user {user_uuid}[/green]")
+            
+            # Show updated roles
+            user_roles = authz_service.get_user_roles(user_uuid)
+            console.print(f"User roles: {', '.join(user_roles)}")
+        else:
+            console.print(f"❌ [red]Failed to assign role '{role}' to user {user_uuid}[/red]")
+            raise typer.Exit(1)
+            
+    except Exception as e:
+        console.print(f"❌ [red]Role assignment failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("role-revoke")
+def role_revoke(
+    user_uuid: str = typer.Argument(..., help="User UUID to revoke role from"),
+    role: str = typer.Argument(..., help="Role name to revoke")
+):
+    """Revoke role from user"""
+    
+    try:
+        # Initialize database connection
+        from aico.core.config import ConfigurationManager
+        from aico.core.paths import AICOPaths
+        from aico.security.key_manager import AICOKeyManager
+        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.core.authorization import AuthorizationService
+        
+        config_manager = ConfigurationManager()
+        db_config = config_manager.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
+        
+        key_manager = _get_key_manager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        authz_service = AuthorizationService(db_conn)
+        
+        # Revoke role
+        success = authz_service.revoke_role(user_uuid, role)
+        
+        if success:
+            console.print(f"✅ [green]Successfully revoked role '{role}' from user {user_uuid}[/green]")
+            
+            # Show updated roles
+            user_roles = authz_service.get_user_roles(user_uuid)
+            console.print(f"Remaining roles: {', '.join(user_roles)}")
+        else:
+            console.print(f"❌ [red]Failed to revoke role '{role}' from user {user_uuid}[/red]")
+            console.print("Role may not be assigned to this user")
+            raise typer.Exit(1)
+            
+    except Exception as e:
+        console.print(f"❌ [red]Role revocation failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("role-list")
+def role_list(
+    user_uuid: str = typer.Argument(None, help="User UUID to show roles for (optional)"),
+    show_permissions: bool = typer.Option(False, "--show-permissions", "-p", help="Show detailed permissions")
+):
+    """List user roles and permissions"""
+    
+    try:
+        # Initialize database connection
+        from aico.core.config import ConfigurationManager
+        from aico.core.paths import AICOPaths
+        from aico.security.key_manager import AICOKeyManager
+        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.core.authorization import AuthorizationService
+        
+        config_manager = ConfigurationManager()
+        db_config = config_manager.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
+        
+        key_manager = _get_key_manager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        authz_service = AuthorizationService(db_conn)
+        
+        if user_uuid:
+            # Show specific user's roles
+            console.print(f"\n✨ [bold cyan]Roles for User {user_uuid}[/bold cyan]\n")
+            
+            user_roles = authz_service.get_user_roles(user_uuid)
+            
+            if not user_roles:
+                console.print("❌ [red]No roles assigned to this user[/red]")
+                return
+            
+            # Create roles table
+            roles_table = Table(
+                title="User Roles",
+                title_justify="left",
+                show_header=True,
+                header_style="bold yellow",
+                border_style="bright_blue",
+                box=box.SIMPLE_HEAD
+            )
+            roles_table.add_column("Role", style="bold white", justify="left")
+            if show_permissions:
+                roles_table.add_column("Permissions", style="cyan", justify="left")
+            
+            all_roles_config = authz_service.list_all_roles()
+            for role in user_roles:
+                if show_permissions:
+                    permissions = all_roles_config.get(role, [])
+                    perms_display = ", ".join(permissions[:3])
+                    if len(permissions) > 3:
+                        perms_display += f" (+{len(permissions)-3} more)"
+                    roles_table.add_row(role, perms_display)
+                else:
+                    roles_table.add_row(role)
+            
+            console.print(roles_table)
+            
+            if show_permissions:
+                # Show all permissions summary
+                user_permissions = authz_service.get_user_permissions(user_uuid)
+                console.print(f"\n📋 [cyan]Total permissions: {len(user_permissions)}[/cyan]")
+        else:
+            # Show all available roles
+            console.print("\n✨ [bold cyan]Available Roles[/bold cyan]\n")
+            
+            all_roles = authz_service.list_all_roles()
+            
+            roles_table = Table(
+                title="Role Definitions",
+                title_justify="left",
+                show_header=True,
+                header_style="bold yellow",
+                border_style="bright_blue",
+                box=box.SIMPLE_HEAD
+            )
+            roles_table.add_column("Role", style="bold white", justify="left")
+            roles_table.add_column("Permissions", style="cyan", justify="left")
+            
+            for role, permissions in all_roles.items():
+                perms_display = ", ".join(permissions[:3])
+                if len(permissions) > 3:
+                    perms_display += f" (+{len(permissions)-3} more)"
+                roles_table.add_row(role, perms_display)
+            
+            console.print(roles_table)
+            console.print("\n[dim]Use 'aico security role-list <user-uuid>' to see user-specific roles[/dim]")
+            
+    except Exception as e:
+        console.print(f"❌ [red]Failed to list roles: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("role-show")
+def role_show(
+    role_name: str = typer.Argument(None, help="Specific role to show details for")
+):
+    """Show available roles and their permissions"""
+    
+    try:
+        # Initialize database connection
+        from aico.core.config import ConfigurationManager
+        from aico.core.paths import AICOPaths
+        from aico.security.key_manager import AICOKeyManager
+        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.core.authorization import AuthorizationService
+        
+        config_manager = ConfigurationManager()
+        db_config = config_manager.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
+        
+        key_manager = _get_key_manager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        authz_service = AuthorizationService(db_conn)
+        
+        all_roles = authz_service.list_all_roles()
+        
+        if role_name:
+            # Show specific role details
+            if role_name not in all_roles:
+                console.print(f"❌ [red]Unknown role: {role_name}[/red]")
+                console.print(f"Available roles: {', '.join(all_roles.keys())}")
+                raise typer.Exit(1)
+            
+            console.print(f"\n✨ [bold cyan]Role: {role_name}[/bold cyan]\n")
+            
+            permissions = all_roles[role_name]
+            
+            # Create permissions table
+            perms_table = Table(
+                title=f"Permissions for '{role_name}' Role",
+                title_justify="left",
+                show_header=True,
+                header_style="bold yellow",
+                border_style="bright_blue",
+                box=box.SIMPLE_HEAD
+            )
+            perms_table.add_column("Permission", style="bold white", justify="left")
+            perms_table.add_column("Description", style="cyan", justify="left")
+            
+            # Add permission descriptions
+            perm_descriptions = {
+                "admin.*": "Full administrative access",
+                "system.*": "System management operations",
+                "logs.*": "Log management and access",
+                "config.*": "Configuration management",
+                "users.*": "User management operations",
+                "audit.*": "Audit log access",
+                "conversation.*": "Chat and conversation access",
+                "memory.read": "Read memory data",
+                "personality.read": "Read personality data",
+                "profile.*": "Profile management",
+                "system.health": "Health check access",
+                "logs.write": "Write log entries",
+                "events.*": "Event handling",
+                "debug.*": "Debug operations"
+            }
+            
+            for perm in permissions:
+                desc = perm_descriptions.get(perm, "Custom permission")
+                perms_table.add_row(perm, desc)
+            
+            console.print(perms_table)
+        else:
+            # Show all roles summary
+            console.print("\n✨ [bold cyan]All Available Roles[/bold cyan]\n")
+            
+            for role, permissions in all_roles.items():
+                console.print(f"🔐 [bold white]{role}[/bold white]")
+                console.print(f"   Permissions: {len(permissions)}")
+                console.print(f"   Examples: {', '.join(permissions[:3])}")
+                if len(permissions) > 3:
+                    console.print(f"   (+{len(permissions)-3} more)")
+                console.print()
+            
+            console.print("[dim]Use 'aico security role-show <role-name>' for detailed permissions[/dim]")
+            
+    except Exception as e:
+        console.print(f"❌ [red]Failed to show roles: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("role-check")
+def role_check(
+    user_uuid: str = typer.Argument(..., help="User UUID to check"),
+    permission: str = typer.Argument(..., help="Permission to check (e.g., 'admin.logs', 'config.read')")
+):
+    """Check if user has specific permission"""
+    
+    try:
+        # Initialize database connection
+        from aico.core.config import ConfigurationManager
+        from aico.core.paths import AICOPaths
+        from aico.security.key_manager import AICOKeyManager
+        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.core.authorization import AuthorizationService
+        
+        config_manager = ConfigurationManager()
+        db_config = config_manager.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
+        
+        key_manager = _get_key_manager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        authz_service = AuthorizationService(db_conn)
+        
+        # Check permission
+        has_permission = authz_service.has_permission(user_uuid, permission)
+        
+        console.print(f"\n🔍 [bold cyan]Permission Check[/bold cyan]\n")
+        console.print(f"User: {user_uuid}")
+        console.print(f"Permission: {permission}")
+        
+        if has_permission:
+            console.print(f"Result: ✅ [green]GRANTED[/green]")
+            
+            # Show which roles grant this permission
+            user_roles = authz_service.get_user_roles(user_uuid)
+            all_roles = authz_service.list_all_roles()
+            
+            granting_roles = []
+            for role in user_roles:
+                role_permissions = all_roles.get(role, [])
+                for perm in role_permissions:
+                    if perm == "*" or permission == perm:
+                        granting_roles.append(role)
+                        break
+                    elif perm.endswith("*") and permission.startswith(perm[:-1]):
+                        granting_roles.append(role)
+                        break
+            
+            if granting_roles:
+                console.print(f"Granted by roles: {', '.join(granting_roles)}")
+        else:
+            console.print(f"Result: ❌ [red]DENIED[/red]")
+            
+            # Show user's current roles
+            user_roles = authz_service.get_user_roles(user_uuid)
+            console.print(f"User roles: {', '.join(user_roles)}")
+            
+    except Exception as e:
+        console.print(f"❌ [red]Permission check failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("role-bootstrap")
+def role_bootstrap(
+    user_uuid: str = typer.Argument(..., help="User UUID to bootstrap as admin")
+):
+    """Bootstrap admin role for initial setup"""
+    
+    try:
+        # Initialize database connection
+        from aico.core.config import ConfigurationManager
+        from aico.core.paths import AICOPaths
+        from aico.security.key_manager import AICOKeyManager
+        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.core.authorization import AuthorizationService
+        
+        config_manager = ConfigurationManager()
+        db_config = config_manager.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
+        
+        key_manager = _get_key_manager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        authz_service = AuthorizationService(db_conn)
+        
+        # Bootstrap admin role
+        success = authz_service.bootstrap_admin_user(user_uuid)
+        
+        if success:
+            console.print(f"✅ [green]Successfully bootstrapped admin role for user {user_uuid}[/green]")
+            console.print("🔐 User now has full administrative access")
+            
+            # Show user's roles
+            user_roles = authz_service.get_user_roles(user_uuid)
+            user_permissions = authz_service.get_user_permissions(user_uuid)
+            
+            console.print(f"Roles: {', '.join(user_roles)}")
+            console.print(f"Permissions: {len(user_permissions)} total")
+            
+            console.print("\n💡 [dim]User can now access admin endpoints and manage the system[/dim]")
+        else:
+            console.print(f"❌ [red]Failed to bootstrap admin role for user {user_uuid}[/red]")
+            raise typer.Exit(1)
+            
+    except Exception as e:
+        console.print(f"❌ [red]Admin bootstrap failed: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -784,7 +1312,7 @@ def user_list(
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -1034,7 +1562,7 @@ def user_auth(
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -1074,7 +1602,7 @@ def user_update(
     user_uuid: str = typer.Argument(None, help="User UUID to update"),
     full_name: str = typer.Option(None, "--name", "-n", help="Update full name"),
     nickname: str = typer.Option(None, "--nickname", help="Update nickname"),
-    user_type: str = typer.Option(None, "--type", "-t", help="Update user type (person, child, admin)"),
+    user_type: str = typer.Option(None, "--type", "-t", help="Update user type)"),
 ):
     """Update user profile information"""
     
@@ -1136,7 +1664,7 @@ def user_update(
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -1205,7 +1733,7 @@ def user_delete(
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -1354,7 +1882,7 @@ def user_set_pin(
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         
@@ -1421,7 +1949,7 @@ def user_stats():
         db_path = AICOPaths.resolve_database_path(filename, directory_mode)
         
         # Initialize key manager and get database key
-        key_manager = AICOKeyManager()
+        key_manager = _get_key_manager()
         master_key = key_manager.authenticate()
         db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
         

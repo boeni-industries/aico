@@ -32,6 +32,48 @@ encryption:
       
       length: 32                      # 256-bit output
 
+# File encryption settings
+file_encryption:
+  chunk_size: 65536        # 64KB chunks for streaming
+  buffer_size: 1048576     # 1MB read buffer
+  nonce_size: 12           # 96-bit nonce for GCM
+  tag_size: 16             # 128-bit auth tag
+  header_magic: "AICO"     # File format identifier
+
+# Transport encryption settings (libsodium-based)
+transport_encryption:
+  enabled: true
+  algorithm: "XChaCha20-Poly1305"  # Authenticated encryption
+  
+  # Component identity settings
+  identity:
+    key_type: "Ed25519"            # Signing keys for component identity
+    session_key_type: "X25519"     # Key exchange for session keys
+    
+  # Session management
+  session:
+    timeout_seconds: 3600          # 1 hour session timeout
+    handshake_timeout_seconds: 30  # Handshake must complete within 30s
+    max_sessions_per_client: 5     # Maximum concurrent sessions per client
+    
+  # Handshake protocol settings
+  handshake:
+    challenge_size: 32             # 256-bit challenge
+    nonce_size: 24                 # 192-bit nonce for XChaCha20
+    signature_algorithm: "Ed25519" # Digital signatures
+    
+  # Message encryption
+  message:
+    max_payload_size: 1048576      # 1MB maximum payload
+    compression_enabled: true      # Compress before encryption
+    compression_threshold: 1024    # Compress payloads > 1KB
+    
+  # Client identification
+  client_identification:
+    use_ip_address: true           # Include IP in client fingerprint
+    use_user_agent: true           # Include User-Agent in fingerprint
+    session_binding: true          # Bind sessions to client fingerprint
+
 password_policy:
   min_length: 12
   require_complexity: true
@@ -57,4 +99,61 @@ audit:
   enabled: true
   retention_days: 90
   log_level: "standard"
+
+# Role-Based Access Control (RBAC) Configuration
+rbac:
+  enabled: true
+  default_policy: "deny"  # Deny by default, explicit grants required
+  
+  # Role definitions with permissions
+  roles:
+    # Admin role - full system access
+    admin:
+      - "admin.*"           # All admin operations
+      - "system.*"          # System management
+      - "logs.*"            # Log management
+      - "config.*"          # Configuration management
+      - "users.*"           # User management
+      - "audit.*"           # Audit access
+      - "subscribe.*"       # WebSocket subscriptions
+      - "conversation.*"    # Chat and conversation access
+    
+    # User role - standard user permissions
+    user:
+      - "conversation.*"    # Chat and conversation
+      - "memory.read"       # Read memory
+      - "personality.read"  # Read personality
+      - "profile.*"         # Own profile management
+    
+    # Service role - for internal services
+    service:
+      - "system.health"     # Health checks
+      - "logs.write"        # Write logs
+      - "events.*"          # Event handling
+    
+    # CLI role - for CLI operations
+    cli:
+      - "admin.*"           # CLI gets admin access
+      - "system.*"          # Full system access for CLI
+      - "debug.*"           # Debug operations
+
+# Authorization policies for specific resources
+authorization:
+  # Resource-based permissions
+  resources:
+    logs:
+      read: ["admin", "service"]
+      write: ["admin", "service"] 
+      delete: ["admin"]
+    
+    config:
+      read: ["admin", "service"]
+      write: ["admin"]
+      reload: ["admin"]
+    
+    users:
+      read: ["admin"]
+      write: ["admin"]
+      create: ["admin"]
+      delete: ["admin"]
 

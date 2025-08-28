@@ -5,19 +5,29 @@ Unified multi-protocol API Gateway providing REST, WebSocket, ZeroMQ IPC, and gR
 interfaces to the AICO message bus with adaptive transport and zero-trust security.
 """
 
-from .models.core.gateway import AICOAPIGateway
+# New Architecture - Plugin-based API Gateway V2
+from .gateway_v2 import AICOAPIGatewayV2, AICOAPIGateway
+from .core.gateway_core import GatewayCore
+from .core.plugin_registry import PluginRegistry, PluginInterface, PluginMetadata, PluginPriority
+from .core.protocol_manager import ProtocolAdapterManager
+
+# Legacy compatibility (deprecated - use AICOAPIGatewayV2)
 from .models.core.auth import AuthenticationManager, AuthorizationManager
 from .models.core.transport import AdaptiveTransport
-from .adapters.rest_adapter import RESTAdapter
-from .adapters.websocket_adapter import WebSocketAdapter
-from .adapters.zeromq_adapter import ZeroMQAdapter
 
 __all__ = [
-    "AICOAPIGateway",
+    # New Architecture (Recommended)
+    "AICOAPIGatewayV2",
+    "AICOAPIGateway",  # Alias for V2
+    "GatewayCore",
+    "PluginRegistry",
+    "PluginInterface", 
+    "PluginMetadata",
+    "PluginPriority",
+    "ProtocolAdapterManager",
+    
+    # Legacy compatibility (deprecated)
     "AuthenticationManager", 
     "AuthorizationManager",
-    "AdaptiveTransport",
-    "RESTAdapter",
-    "WebSocketAdapter", 
-    "ZeroMQAdapter"
+    "AdaptiveTransport"
 ]

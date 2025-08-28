@@ -151,6 +151,13 @@ The message bus uses a hierarchical topic structure that organizes messages by f
   - `llm.prompt.conditioning.request` - Requests for prompt conditioning
   - `llm.prompt.conditioning.response` - Prompt conditioning parameters
 
+- **ui.*** - User Interface related messages
+  - `ui.state.update` - UI state changes (theme, navigation, connection status)
+  - `ui.interaction` - User interactions (clicks, input, gestures)
+  - `ui.notification` - Display notifications and alerts
+  - `ui.command` - Backend commands to frontend (navigate, show modal, etc.)
+  - `ui.preferences` - UI preferences and settings updates
+
 ### Cross-Cutting Concerns
 
 - **crisis.*** - Crisis detection and handling
@@ -326,6 +333,7 @@ All message definitions are maintained as Protocol Buffer (`.proto`) files in th
 - Conversation messages: `/proto/conversation/conversation.proto`
 - Personality messages: `/proto/personality/personality.proto`
 - Integration messages: `/proto/integration/integration.proto`
+- UI messages: `/proto/ui/ui.proto`
 
 ### Code Generation Pipeline
 

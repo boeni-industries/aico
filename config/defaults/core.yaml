@@ -8,6 +8,7 @@ system:
     config_subdirectory: "config"  # Subdirectory within user config dir
     cache_subdirectory: "cache"  # Subdirectory within user cache dir
     logs_subdirectory: "logs"  # Subdirectory within user logs dir
+    frontend_subdirectory: "frontend"  # Frontend state persistence and cache
   log_level: "INFO"
 
 # Unified logging configuration - single source of truth for all subsystems
@@ -22,7 +23,7 @@ logging:
       studio: "INFO"
     modules:
       # Fine-grained control per module if needed
-      security: "WARNING"  # Security logs are important
+      security: "INFO"  # Security logs are important
       database: "INFO"
       
   # Retention and cleanup
@@ -55,15 +56,17 @@ api_gateway:
   enabled: true
   host: "127.0.0.1"
   
+  # Main REST API configuration (handled by FastAPI backend)
+  rest:
+    port: 8771
+    host: "127.0.0.1"
+    cors_origins:
+      - "http://localhost:3000"
+      - "http://127.0.0.1:3000"
+  
   # Protocol adapters
   protocols:
-    rest:
-      enabled: true
-      port: 8771
-      prefix: "/api/v1"
-      cors_origins:
-        - "http://localhost:3000"
-        - "http://127.0.0.1:3000"
+    # REST endpoints handled by main FastAPI backend - no separate adapter needed
     
     websocket:
       enabled: true
@@ -118,6 +121,23 @@ api_gateway:
     timeout_seconds: 30
     retry_attempts: 3
     correlation_cleanup_minutes: 60
+  
+  # Plugin configuration
+  plugins:
+    message_bus:
+      enabled: true
+    log_consumer:
+      enabled: true
+    encryption:
+      enabled: true
+    security:
+      enabled: true
+    rate_limiting:
+      enabled: true
+    validation:
+      enabled: true
+    routing:
+      enabled: true
 
 # User profile configuration
 user_profiles:

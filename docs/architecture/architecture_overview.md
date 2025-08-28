@@ -290,7 +290,7 @@ The AICO system consists of the following main parts:
 - CLI
 
 **Backend Service**
-The backend service is a Python application that provides the core functionality of AICO. It is built using FastAPI and ZeroMQ, and it is responsible for managing the state of the system, handling user input, and coordinating the work of the various domains.
+The backend service is a Python application that provides the core functionality of AICO. It uses a plugin-based architecture with FastAPI, ZeroMQ message bus, and encrypted data storage. The service runs continuously as a system daemon, coordinating autonomous agency, AI processing, and real-time communication through a modular plugin system.
 
 **Frontend App**
 
@@ -308,14 +308,14 @@ AICO's core architecture is designed to maximize modularity and maintain low cou
 
 ### Modular Message-Driven Design
 - **Each domain/module is a distinct code package or subsystem** with its own internal state, logic, and strict interface.
-- **All communication between modules is via the internal message bus** (ZeroMQ), within the backend service.
+- **All communication between backend modules is via the internal message bus (ZeroMQ) using Protocol Buffers for high-performance binary serialization. External API communication with the frontend uses JSON over HTTP/WebSocket for web-standard compatibility.**
 - **No direct function calls or shared state between modules** (except for startup/configuration)—all data exchange is through published/subscribed messages.
-- **Each module subscribes to topics and publishes outputs on its own topics**, using versioned, validated JSON schemas.
+- **Each module subscribes to topics and publishes outputs on its own topics**, using versioned, validated Protocol Buffer schemas.
 - **Modules can be developed, tested, and even replaced independently** as long as they honor the message contracts.
 
 ### Low Coupling and Contract Guarantees
 - **Loose Coupling:** Modules are only coupled by the message schemas and topic contracts—not by code dependencies or shared state.
-- **Contract Enforcement:** The message bus enforces versioned schemas, so if a publisher or subscriber changes, integration tests will catch contract violations.
+- **Contract Enforcement:** The message bus enforces versioned Protocol Buffer schemas, so if a publisher or subscriber changes, integration tests will catch contract violations.
 - **Pluggability:** Any module could, in theory, be extracted into a separate process or container in the future with minimal refactor, since all communication is already message-based.
 
 ### Client-Service Architecture
@@ -426,9 +426,11 @@ The AICO frontend is implemented as a Flutter application that serves as a thin 
 The AICO backend runs as a persistent system service, handling all AI processing, data management, and autonomous agency tasks. This design enables continuous operation and proactive behavior even when the UI is closed.
 
 ### Service Architecture
-- **System Service:** Backend runs as a system/background service (Windows Service, Linux daemon, macOS LaunchAgent).
-- **Continuous Operation:** Backend continues agency tasks (learning, research, reminders) even when UI is closed or minimized.
-- **Resource-Aware Processing:** All heavy AI processing occurs in the backend with intelligent resource management.
+- **System Service:** Backend runs as a persistent service with PID file management and graceful shutdown
+- **Plugin-Based Core:** Modular architecture using `GatewayCore`, `PluginRegistry`, and `ProtocolAdapterManager`
+- **Continuous Operation:** Background tasks and autonomous agency continue when UI is closed
+- **Resource-Aware Processing:** Intelligent resource management with configurable policies
+- **Process Management:** Signal-based shutdown coordination and background task management
 
 ### Local LLM Integration
 
@@ -444,12 +446,14 @@ This approach maintains architectural consistency, simplifies deployment, and en
 
 ### Core Backend Components
 
-#### Single Multi-Protocol API Gateway
-The API gateway is the single and multi-protocol entrypoint for the backend services. It acts as the counterpart for the Flutter UI, other UIs, embodiment adapters and other external services.
+#### Plugin-Based API Gateway
+The API Gateway (`AICOAPIGatewayV2`) provides a unified, encrypted entry point using a modular plugin architecture:
 
-- **REST API:** Standard HTTP API for commands, queries, and configuration.
-- **WebSocket API:** Real-time, bidirectional communication for events and notifications.
-- **(optional) gRPC:** High-performance, binary-protocol API for internal services.
+- **Single Port Design:** All endpoints served on port 8771 with unified FastAPI application
+- **ASGI Encryption Middleware:** Transparent encryption wrapping the entire application
+- **Domain-Based Routing:** Organized endpoints (`/api/v1/users/`, `/api/v1/admin/`, `/api/v1/logs/`)
+- **Plugin System:** Extensible middleware stack for authentication, rate limiting, and logging
+- **Protocol Adapters:** REST, WebSocket, and ZeroMQ adapters managed as plugins
 
 #### Job Scheduler & Task Queue
 - **Task Management:** Internal job/task queue manages all long-running, background, or proactive jobs (skill brushing, summarization, research).
@@ -466,10 +470,12 @@ The API gateway is the single and multi-protocol entrypoint for the backend serv
 - **Background Learning:** Performs learning, research, skill updates during spare time.
 - **User-Configurable Limits:** Users control which activities are allowed and resource limits.
 
-#### Message Bus
-- **Topic Management:** Manages publish/subscribe topics for inter-module communication.
-- **Message Routing:** Routes messages between modules based on topic subscriptions.
-- **Plugin Integration:** Enables third-party plugins to communicate via the message bus.
+#### Message Bus & Log Consumer
+- **ZeroMQ Broker:** High-performance message routing with Protocol Buffers serialization
+- **Topic-Based Routing:** Structured topics (`logs.*`, `events.*`) for module communication
+- **Log Consumer Service:** Dedicated service for persisting logs from ZMQ transport to encrypted database
+- **Protobuf Pipeline:** Binary message serialization for performance and type safety
+- **Plugin Integration:** Plugins communicate via standardized message bus topics
 
 #### Plugin Manager
 - **Plugin Discovery:** Automatically discovers and loads available plugins.
@@ -609,48 +615,68 @@ AICO employs a **shared library approach** for cross-subsystem logic to maintain
 
 **Solution**: Standalone shared libraries that can be imported by any subsystem, following the `aico.*` namespace hierarchy.
 
-### Library Structure
+### Current Library Structure
 
 ```
 aico/
-├── shared/                     # Shared libraries directory
-│   ├── aico-security/          # Security & encryption
-│   │   ├── setup.py
-│   │   └── aico/
-│   │       └── security/
-│   │           ├── __init__.py
-│   │           ├── key_manager.py
-│   │           ├── filesystem.py
-│   │           └── crypto.py
-│   ├── aico-data/              # Data models & schemas
-│   │   ├── setup.py
-│   │   └── aico/
-│   │       └── data/
-│   │           ├── models.py
-│   │           ├── schemas.py
-│   │           └── repositories.py
-│   ├── aico-core/              # Core utilities
-│   │   ├── setup.py
-│   │   └── aico/
-│   │       └── core/
-│   │           ├── config.py
-│   │           ├── logging.py
-│   │           └── bus.py
-│   └── aico-common/            # Common utilities
-│       ├── setup.py
-│       └── aico/
-│           └── common/
-│               ├── utils.py
-│               └── constants.py
-├── backend/                    # Python backend service
-│   ├── pyproject.toml          # includes aico-shared dependency
-│   └── main.py
+├── shared/                     # Unified shared library
+│   ├── pyproject.toml          # Namespace package configuration
+│   └── aico/
+│       ├── __init__.py         # Namespace package declaration
+│       ├── core/               # Core utilities
+│       │   ├── config.py       # Configuration management
+│       │   ├── logging.py      # Structured logging with ZMQ transport
+│       │   ├── bus.py          # Message bus client
+│       │   ├── paths.py        # Cross-platform path management
+│       │   └── process.py      # Process and PID management
+│       ├── security/           # Security & encryption
+│       │   ├── key_manager.py  # Key derivation and session management
+│       │   └── __init__.py
+│       ├── data/               # Data layer
+│       │   └── libsql/
+│       │       └── encrypted.py # Encrypted database connections
+│       └── proto/              # Protocol Buffers
+│           ├── aico_core_logging_pb2.py
+│           └── aico_core_common_pb2.py
+├── backend/                    # Backend service
+│   ├── pyproject.toml          # Dependencies: -e ../shared/
+│   ├── main.py                 # Service entry point
+│   ├── log_consumer.py         # Log persistence service
+│   └── api_gateway/            # Plugin-based gateway
+├── cli/                        # CLI application
+│   ├── requirements.txt        # Dependencies: -e ../shared/
+│   └── commands/               # CLI command modules
 ├── cli/                        # Development CLI
 │   ├── pyproject.toml          # includes aico-shared dependency
 │   └── aico_main.py
 └── frontend/                   # Flutter frontend
     └── pubspec.yaml            # May reference shared schemas
 ```
+
+### Startup Sequence
+
+The current backend follows this initialization sequence:
+
+1. **Main Process** (`main.py`):
+   - Initialize configuration and logging
+   - Setup PID file management and signal handlers
+   - Create shared encrypted database connection
+
+2. **API Gateway** (`AICOAPIGatewayV2`):
+   - Initialize `GatewayCore` with plugin system
+   - Load and start plugins (message bus, log consumer, adapters)
+   - Setup FastAPI integration with domain routing
+
+3. **Plugin Lifecycle**:
+   - Message bus broker starts on ports 5555/5556
+   - Log consumer service begins ZMQ subscription
+   - Protocol adapters register endpoints
+   - Middleware plugins configure security stack
+
+4. **Service Ready**:
+   - Health endpoints available
+   - Background tasks running
+   - Graceful shutdown handlers active
 
 ### Implementation Patterns
 

@@ -58,12 +58,12 @@ class AICOKeyManager:
     4. Salt management for databases
     """
     
-    def __init__(self, service_name: str = "AICO"):
-        self.service_name = service_name
+    def __init__(self, config: ConfigurationManager):
+        self.service_name = config.get("security.keyring_service_name", "AICO")
         self._session_cache_file = self._get_session_cache_file()
         self._session_cache = self._load_session_cache()  # Load persistent session cache
         self._keyring_bypass_count = self._session_cache.get("keyring_bypass_count", 0)
-        _get_logger().debug(f"Initialized AICOKeyManager for service: {service_name}")
+        _get_logger().debug(f"Initialized AICOKeyManager for service: {self.service_name}")
     
     def _is_sensitive_command(self, command_path: str) -> bool:
         """Check if command requires fresh authentication."""
@@ -473,7 +473,10 @@ class AICOKeyManager:
         Returns:
             File-specific encryption key
         """
-        salt = os.urandom(16)
+        # Use deterministic salt derived from purpose for consistent key derivation
+        import hashlib
+        salt = hashlib.sha256(f"aico-file-salt-{file_purpose}".encode()).digest()[:16]
+        
         argon2 = Argon2id(
             salt=salt,
             length=self._get_security_config("key_derivation.argon2id.length"),
@@ -510,6 +513,41 @@ class AICOKeyManager:
         )
         
         context = master_key + purpose.encode()
+        return argon2.derive(context)
+    
+    def derive_transport_key(self, master_key: bytes, component_name: str, key_length: int = 32) -> bytes:
+        """
+        Derive transport encryption key for component identity.
+        
+        Specialized key derivation for transport security system with deterministic
+        salt generation for consistent component identities across restarts.
+        
+        Args:
+            master_key: Master key
+            component_name: Component name (e.g., "api_gateway", "frontend")
+            key_length: Key length in bytes (default 32 for Ed25519)
+            
+        Returns:
+            Transport-specific key for component identity
+        """
+        # Use deterministic salt derived from component name for consistent identities
+        import hashlib
+        salt = hashlib.sha256(f"aico-transport-salt-{component_name}".encode()).digest()[:16]
+        
+        argon2 = Argon2id(
+            salt=salt,
+            length=key_length,
+            iterations=self._get_security_config("key_derivation.argon2id.transport_keys") or 
+                      self._get_security_config("key_derivation.argon2id.derived_keys"),
+            lanes=self._get_security_config("key_derivation.argon2id.lanes.transport_keys") or
+                  self._get_security_config("key_derivation.argon2id.lanes.derived_keys"),
+            memory_cost=self._get_security_config("key_derivation.argon2id.memory_cost.transport_keys") or
+                        self._get_security_config("key_derivation.argon2id.memory_cost.derived_keys"),
+            ad=None,
+            secret=None
+        )
+        
+        context = master_key + f"aico-transport-{component_name}".encode()
         return argon2.derive(context)
         
     def _derive_and_store(self, password: str) -> bytes:

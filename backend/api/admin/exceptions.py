@@ -88,6 +88,34 @@ class IpNotBlockedError(HTTPException):
         )
 
 
+class LogsServiceError(HTTPException):
+    """Raised when logs service operations fail"""
+    def __init__(self, message: str, status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR):
+        super().__init__(
+            status_code=status_code,
+            detail=f"Logs service error: {message}"
+        )
+
+
+class ConfigServiceError(HTTPException):
+    """Raised when configuration service operations fail"""
+    def __init__(self, message: str, status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR):
+        super().__init__(
+            status_code=status_code,
+            detail=f"Configuration service error: {message}"
+        )
+
+
+class ConfigValidationError(HTTPException):
+    """Raised when configuration validation fails"""
+    def __init__(self, errors: list, status_code: int = status.HTTP_400_BAD_REQUEST):
+        error_details = "; ".join(errors) if isinstance(errors, list) else str(errors)
+        super().__init__(
+            status_code=status_code,
+            detail=f"Configuration validation failed: {error_details}"
+        )
+
+
 def handle_admin_service_exceptions(func):
     """
     Decorator to handle common admin service exceptions and convert them to HTTP exceptions.
@@ -108,6 +136,10 @@ def handle_admin_service_exceptions(func):
             if "not found" in error_msg:
                 if "session" in error_msg:
                     raise SessionNotFoundError("unknown")
+                elif "log" in error_msg:
+                    raise LogsServiceError(str(e), status.HTTP_404_NOT_FOUND)
+                elif "config" in error_msg:
+                    raise ConfigServiceError(str(e), status.HTTP_404_NOT_FOUND)
                 else:
                     raise HTTPException(status_code=404, detail=str(e))
             elif "access denied" in error_msg or "forbidden" in error_msg:
@@ -115,7 +147,16 @@ def handle_admin_service_exceptions(func):
             elif "already exists" in error_msg or "already blocked" in error_msg:
                 raise HTTPException(status_code=409, detail=str(e))
             elif "invalid" in error_msg:
-                raise HTTPException(status_code=400, detail=str(e))
+                if "config" in error_msg:
+                    raise ConfigValidationError([str(e)])
+                else:
+                    raise HTTPException(status_code=400, detail=str(e))
+            elif "validation" in error_msg:
+                raise ConfigValidationError([str(e)])
+            elif "logs" in error_msg:
+                raise LogsServiceError(str(e))
+            elif "config" in error_msg:
+                raise ConfigServiceError(str(e))
             else:
                 raise GatewayServiceError(str(e))
     

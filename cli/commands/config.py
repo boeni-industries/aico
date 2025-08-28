@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 decorators_path = Path(__file__).parent.parent / "decorators"
 sys.path.insert(0, str(decorators_path))
-from sensitive import sensitive
+from cli.decorators.sensitive import sensitive
 
 # Standard Rich console - encoding is fixed at app startup
 from rich.console import Console
@@ -38,12 +38,12 @@ from aico.core.config import ConfigurationManager, ConfigurationError, Configura
 from aico.core.paths import AICOPaths
 
 # Import shared utilities using the same pattern as other CLI modules
-from utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
+from cli.utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
 
 def config_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
     if ctx.invoked_subcommand is None or help:
-        from utils.help_formatter import format_subcommand_help
+        from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
             ("get", "Get configuration value using dot notation"),
@@ -396,7 +396,7 @@ def init(
 ):
     """Initialize AICO configuration directories and setup."""
     
-    from utils.platform import get_platform_chars
+    from cli.utils.platform import get_platform_chars
     import shutil
     chars = get_platform_chars()
     
@@ -413,8 +413,7 @@ def init(
             # Running in development
             project_config_dir = Path(__file__).parent.parent.parent / "config"
         
-        # Check if configuration already exists
-        existing_configs = []
+        # Define configuration files to create
         config_files_to_create = [
             ("environments/development.yaml", project_config_dir / "environments" / "development.yaml"),
             ("environments/production.yaml", project_config_dir / "environments" / "production.yaml"),
@@ -423,37 +422,56 @@ def init(
             ("defaults/database.yaml", project_config_dir / "defaults" / "database.yaml"),
         ]
         
+        # Check existing configurations for informational purposes
+        existing_configs = []
+        missing_configs = []
+        
         for rel_path, source_file in config_files_to_create:
             target_file = config_dir / rel_path
             if target_file.exists():
                 existing_configs.append(target_file)
+            else:
+                missing_configs.append((rel_path, source_file))
         
-        # Safety check - warn about existing configurations
-        if existing_configs and not force:
-            console.print(f"{chars['cross']} [red]Configuration already exists![/red]")
-            console.print("\n[yellow]Existing configuration files:[/yellow]")
+        # Show status of existing configurations
+        if existing_configs:
+            console.print(f"{chars['check']} [green]Found existing configuration files:[/green]")
             for config_file in existing_configs:
                 console.print(f"  {chars['bullet']} {format_smart_path(config_file)}")
-            console.print(f"\n[yellow]Use [bold]--force[/bold] to overwrite existing configuration.[/yellow]")
-            console.print(f"[red]WARNING: This will destroy any custom settings![/red]")
-            raise typer.Exit(1)
+            if not force:
+                console.print(f"  [dim]Use --force to overwrite existing files[/dim]")
+            console.print()
         
-        # Initialize all platform directories
+        # Determine which files to actually create/update
+        files_to_process = config_files_to_create if force else missing_configs
+        
+        # Initialize all platform directories including new frontend paths
+        base_data_dir = AICOPaths.get_data_directory()
         directories = [
-            ("Data Directory", AICOPaths.get_data_directory() / "data"),
+            ("Data Directory", base_data_dir / "data"),
             ("Config Directory", config_dir),
             ("Cache Directory", AICOPaths.get_cache_directory()),
-            ("Logs Directory", AICOPaths.get_logs_directory())
+            ("Logs Directory", AICOPaths.get_logs_directory()),
+            ("Frontend State Directory", base_data_dir / "frontend" / "state"),
+            ("Frontend Cache Directory", AICOPaths.get_cache_directory() / "frontend"),
+            ("Frontend Offline Queue", base_data_dir / "frontend" / "offline_queue")
         ]
         
-        # Create all directories
+        # Create directories and track what was actually created
+        dirs_created = 0
+        dirs_existed = 0
         for dir_name, dir_path in directories:
-            AICOPaths.ensure_directory(dir_path)
-            console.print(f"{chars['check']} [green]Created {dir_name}[/green]: {format_smart_path(dir_path)}")
+            if dir_path.exists():
+                dirs_existed += 1
+            else:
+                AICOPaths.ensure_directory(dir_path)
+                console.print(f"{chars['check']} [green]Created {dir_name}[/green]: {format_smart_path(dir_path)}")
+                dirs_created += 1
         
         # Copy actual configuration files from templates
         files_created = 0
-        for rel_path, source_file in config_files_to_create:
+        files_skipped = 0
+        for rel_path, source_file in files_to_process:
             target_file = config_dir / rel_path
             
             if source_file.exists():
@@ -466,9 +484,22 @@ def init(
             else:
                 console.print(f"{chars['cross']} [yellow]Template not found[/yellow]: {source_file}")
         
-        if files_created > 0:
+        # Show summary with delta information
+        if dirs_created > 0 or files_created > 0 or len(existing_configs) > 0:
             console.print(f"\n{chars['sparkle']} [bold green]AICO configuration initialized successfully![/bold green]")
-            console.print(f"{chars['check']} [green]Created {files_created} configuration files[/green]")
+            
+            # Show what was actually created (delta only)
+            if dirs_created > 0:
+                console.print(f"{chars['check']} [green]Created {dirs_created} new directories[/green]")
+            if files_created > 0:
+                console.print(f"{chars['check']} [green]Created {files_created} configuration files[/green]")
+                
+            # Show what already existed (if relevant)
+            if existing_configs and not force:
+                console.print(f"{chars['check']} [green]Preserved {len(existing_configs)} existing configuration files[/green]")
+            if dirs_existed > 0 and dirs_created == 0:
+                console.print(f"{chars['check']} [dim]All directories already existed[/dim]")
+                
         else:
             console.print(f"\n{chars['cross']} [yellow]No configuration templates found to copy[/yellow]")
             

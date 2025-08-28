@@ -189,6 +189,42 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP TABLE IF EXISTS events",
             "DROP TABLE IF EXISTS logs"
         ]
+    ),
+    
+    2: SchemaVersion(
+        version=2,
+        name="Logs Table User UUID Migration",
+        description="Migrate logs table from user_id to user_uuid for consistency",
+        sql_statements=[
+            # Rename user_id column to user_uuid in logs table
+            "ALTER TABLE logs RENAME COLUMN user_id TO user_uuid",
+            
+            # Drop old index and create new one with correct column name
+            "DROP INDEX IF EXISTS idx_logs_user_timestamp",
+            "CREATE INDEX IF NOT EXISTS idx_logs_user_timestamp ON logs(user_uuid, timestamp)"
+        ],
+        rollback_statements=[
+            # Rollback: rename back to user_id
+            "DROP INDEX IF EXISTS idx_logs_user_timestamp", 
+            "ALTER TABLE logs RENAME COLUMN user_uuid TO user_id",
+            "CREATE INDEX IF NOT EXISTS idx_logs_user_timestamp ON logs(user_id, timestamp)"
+        ]
+    ),
+    3: SchemaVersion(
+        version=3,
+        name="Add session_type to auth_sessions",
+        description="Add session_type TEXT column to auth_sessions table for differentiating session origin.",
+        sql_statements=[
+            "ALTER TABLE auth_sessions ADD COLUMN session_type TEXT DEFAULT 'unified'"
+        ],
+        rollback_statements=[
+            # SQLite does not support DROP COLUMN directly; so for rollback, document the steps
+            # 1. Create new table without session_type
+            # 2. Copy data
+            # 3. Drop old table
+            # 4. Rename new table
+            # For now, log a warning or leave as a no-op if not supported
+        ]
     )
 })
 

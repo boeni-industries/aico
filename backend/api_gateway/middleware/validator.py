@@ -48,7 +48,7 @@ class MessageValidator:
                 "properties": {
                     "text": {"type": "string"},
                     "context": {"type": "object"},
-                    "user_id": {"type": "string"}
+                    "user_uuid": {"type": "string"}
                 },
                 "required": ["text"]
             },

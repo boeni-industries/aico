@@ -17,7 +17,7 @@ from typing import Optional
 # Import decorators
 decorators_path = Path(__file__).parent.parent / "decorators"
 sys.path.insert(0, str(decorators_path))
-from sensitive import sensitive, destructive
+from cli.decorators.sensitive import sensitive, destructive
 
 # Add shared module to path for CLI usage
 if getattr(sys, 'frozen', False):
@@ -40,13 +40,13 @@ from aico.core.logging import initialize_cli_logging, get_logger
 import aico.data.schemas.core
 
 # Import shared utilities using the same pattern as other CLI modules
-from utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
-from utils.timezone import format_timestamp_local, get_timezone_suffix
+from cli.utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
+from cli.utils.timezone import format_timestamp_local, get_timezone_suffix
 
 def database_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
     if ctx.invoked_subcommand is None or help:
-        from utils.help_formatter import format_subcommand_help
+        from cli.utils.help_formatter import format_subcommand_help
         
         subcommands = [
             ("init", "Initialize a new encrypted AICO database"),
@@ -94,7 +94,9 @@ console = Console()
 def _get_database_connection(db_path: str, force_fresh: bool = False) -> EncryptedLibSQLConnection:
     """Helper function to get authenticated database connection with session support."""
     try:
-        key_manager = AICOKeyManager()
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        key_manager = AICOKeyManager(config)
         
         if not key_manager.has_stored_key():
             console.print("[red]Error: Master key not found. Run 'aico security setup' first.[/red]")
@@ -182,7 +184,9 @@ def init(
     # Note: We'll handle existing databases later in the flow
     
     # Check if master password is set up
-    key_manager = AICOKeyManager()
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    key_manager = AICOKeyManager(config)
     master_password_was_created = False
     
     if not key_manager.has_stored_key() and not password:
@@ -302,7 +306,9 @@ def status(
     
     try:
         # Check if database is encrypted by trying to connect with key manager
-        key_manager = AICOKeyManager()
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        key_manager = AICOKeyManager(config)
         
         if key_manager.has_stored_key():
             # Database likely encrypted, use session-based authentication
@@ -438,7 +444,9 @@ def test(
         # Use clean connection without automatic logging (to avoid transaction conflicts)
         if password:
             # If password provided, authenticate with it first
-            key_manager = AICOKeyManager()
+            config = ConfigurationManager()
+            config.initialize(lightweight=True)
+            key_manager = AICOKeyManager(config)
             key_manager.authenticate(password, interactive=False)
         
         # Create clean connection without the automatic INSERT that _get_db_connection() does
@@ -677,7 +685,7 @@ def _get_db_connection():
         config = ConfigurationManager()
         config.initialize(lightweight=True)
         
-        key_manager = AICOKeyManager()
+        key_manager = AICOKeyManager(config)
         
         # Get database path
         paths = AICOPaths()
@@ -1053,7 +1061,16 @@ def exec(
                 console.print("[yellow]Cancelled[/yellow]")
                 return
         
-        result = conn.execute(query).fetchall()
+        cursor = conn.execute(query)
+        result = cursor.fetchall()
+        
+        # For non-SELECT queries, commit the transaction and show affected rows
+        query_upper = query.upper().strip()
+        if any(query_upper.startswith(op) for op in ["DELETE", "UPDATE", "INSERT"]):
+            conn.commit()
+            affected_rows = cursor.rowcount if hasattr(cursor, 'rowcount') else 0
+            console.print(f"[green]Query executed successfully. Affected rows: {affected_rows}[/green]")
+            return
         
         if not result:
             console.print("[yellow]Query returned no results[/yellow]")

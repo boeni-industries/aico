@@ -143,6 +143,7 @@ nav:
     - Data Federation: architecture/data_federation.md
     - Instrumentation: instrumentation/instrumentation.md
     - Logging: instrumentation/instrumentation_logging.md
+    - Log Consumer: architecture/log_consumer.md
     - Telemetry: instrumentation/telemetry.md
   - Administration:
     - Overview: admin/admin_overview.md
@@ -152,6 +153,7 @@ nav:
   - Privacy & Security:
     - Overview: security/security_overview.md
     - Data Security: security/data_security.md
+    - Transport Security: security/transit_security.md
     - Access Control: security/access_control.md
     - Consent Manager: security/consent.md
     - Audit System: security/audit.md  
@@ -187,17 +189,30 @@ nav:
     - Personality:
       - Personality Simulation: concepts/personality/personality_sim.md
       - Personality Definition: concepts/personality/personality_definition.md
+  - Frontend:
+    - Architecture Overview: frontend/frontend_architecture_overview.md
+    - UI/UX Design Principles: frontend/design_principles.md
+    - State Management: frontend/state_management.md
+    - Navigation: frontend/navigation.md
+    - User Flows: frontend/user_flows.md
+    - Networking: frontend/networking.md
+    - API Integration: frontend/api_integration.md
+    - Component Library: frontend/component_library.md
+    - Performance: frontend/performance_guidelines.md
+    - Testing: frontend/testing_strategy.md
   - Developer Guide:
     - Getting Started: developer-guide/getting_started.md
+    - UV Commands Cheat Sheet: developer-guide/uv_cheatsheet.md
     - Guidelines: developer-guide/guidelines.md
+    - Backend Patterns: developer-guide/backend_patterns.md
     - Contributing: developer-guide/contributing.md
+    - Testing: developer-guide/testing.md
     - Protocol Buffers: developer-guide/protobuf.md
     - Versioning: developer-guide/versioning.md
     - Namespaces: developer-guide/namespaces.md
     - CLI Handbook: developer-guide/cli_handbook.md
     - Schema Management: developer-guide/schema_management.md
     - UUID Standards: developer-guide/uuid_standards.md
-    - UI/UX: uiux/design_principles.md
     - Lessons Learned: developer-guide/lessons_learned.md
   - Roadmap:
     - Foundation: roadmap/foundation.md

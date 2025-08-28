@@ -1,0 +1,294 @@
+syntax = "proto3";
+import "google/protobuf/descriptor.proto";
+
+package aico.integration;
+
+option go_package = "github.com/boeni-industries/aico/proto/integration";
+option java_package = "industries.boeni.aico.proto.integration";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+
+// Crisis detection message
+// Matches the `crisis.detection` message format documented in docs/architecture/integration_msg.md.
+// Alert message indicating detection of a potential crisis situation requiring coordinated response across modules.
+// Fields:
+// - timestamp: When the crisis was detected
+// - source: Source module (e.g., emotion_recognition)
+// - crisis_id: Unique crisis identifier
+// - severity: Crisis severity (0.0-1.0)
+// - confidence: Detection confidence (0.0-1.0)
+// - crisis_type: Type of crisis detected (emotional_distress, safety_concern, etc.)
+// - detected_by: Detection information (module, method, signals)
+// - context: Crisis context (conversation_id, user_uuid, recent_message, etc.)
+// - response_guidance: Guidance for module responses
+// - escalation_path: Internal/external escalation info
+// See integration_msg.md for illustrative JSON and field semantics.
+message CrisisDetection {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;
+  
+  string crisis_id = 3;                // Unique crisis identifier
+  float severity = 4;                  // Crisis severity (0.0-1.0)
+  float confidence = 5;                // Detection confidence (0.0-1.0)
+  string crisis_type = 6;              // Type of crisis detected
+  
+  // Detection information
+  DetectionInfo detected_by = 7;
+  
+  // Crisis context
+  CrisisContext context = 8;
+  
+  // Response guidance
+  ResponseGuidance response_guidance = 9;
+  
+  // Escalation path
+  EscalationPath escalation_path = 10;
+}
+
+// Detection information
+// Detection information
+// Fields:
+// - module: Module that detected the crisis
+// - detection_method: Method used for detection
+// - detection_signals: Signals that triggered detection
+// See integration_msg.md for examples.
+message DetectionInfo {
+  string module = 1;                   // Module that detected the crisis
+  string detection_method = 2;         // Method used for detection
+  repeated DetectionSignal detection_signals = 3; // Signals that triggered detection
+}
+
+// Detection signal
+// Fields:
+// - signal: Signal type (e.g., facial_expression, voice_tone, text_content)
+// - value: Signal value (e.g., "extreme_distress")
+// - confidence: Signal confidence (0.0-1.0)
+// See integration_msg.md for examples.
+message DetectionSignal {
+  string signal = 1;                   // Signal type
+  string value = 2;                    // Signal value
+  float confidence = 3;                // Signal confidence (0.0-1.0)
+}
+
+// Crisis context
+// Crisis context
+// Fields:
+// - conversation_id: Conversation identifier
+// - user_uuid: User identifier
+// - recent_message: Recent message that triggered detection
+// - conversation_topic: Current conversation topic
+// - relationship_phase: Current relationship phase
+// See integration_msg.md for details.
+message CrisisContext {
+  string conversation_id = 1;          // Conversation identifier
+  string user_uuid = 2;                // User identifier
+  string recent_message = 3;           // Recent message that triggered detection
+  string conversation_topic = 4;       // Current conversation topic
+  string relationship_phase = 5;       // Current relationship phase
+}
+
+// Response guidance
+// Response guidance
+// Fields:
+// - priority: Response priority (immediate, high, moderate, etc.)
+// - protocol: Reference to predefined protocol
+// - required_actions: Required actions to take
+// - module_specific_instructions: Per-module instructions for handling crisis
+// See integration_msg.md for examples.
+message ResponseGuidance {
+  Priority priority = 1;               // Response priority
+  string protocol = 2;                 // Reference to predefined protocol
+  repeated string required_actions = 3; // Required actions to take
+  
+  // Module-specific instructions
+  ModuleInstructions module_specific_instructions = 4;
+  
+  enum Priority {
+    UNKNOWN = 0;
+    IMMEDIATE = 1;
+    HIGH = 2;
+    MODERATE = 3;
+    LOW = 4;
+  }
+}
+
+// Module-specific instructions
+// Module-specific instructions
+// Fields:
+// - personality_simulation: Trait/value emphasis
+// - emotion_simulation: Target emotional state, expression intensity
+// - chat_engine: Response type, avoid patterns
+// - autonomous_agency: Goal priority override, proactive actions
+// See integration_msg.md for examples.
+message ModuleInstructions {
+  // Personality simulation instructions
+  PersonalityInstructions personality_simulation = 1;
+  
+  // Emotion simulation instructions
+  EmotionInstructions emotion_simulation = 2;
+  
+  // Chat engine instructions
+  ChatEngineInstructions chat_engine = 3;
+  
+  // Autonomous agency instructions
+  AgencyInstructions autonomous_agency = 4;
+}
+
+// Personality simulation instructions
+message PersonalityInstructions {
+  repeated string trait_emphasis = 1;  // Traits to emphasize
+  repeated string value_emphasis = 2;  // Values to emphasize
+}
+
+// Emotion simulation instructions
+message EmotionInstructions {
+  string target_emotional_state = 1;   // Target emotional state
+  float expression_intensity = 2;      // Expression intensity (0.0-1.0)
+}
+
+// Chat engine instructions
+message ChatEngineInstructions {
+  string response_type = 1;            // Type of response to generate
+  repeated string avoid_patterns = 2;  // Patterns to avoid in responses
+}
+
+// Autonomous agency instructions
+message AgencyInstructions {
+  string goal_priority_override = 1;   // Goal priority override
+  repeated string proactive_actions = 2; // Proactive actions to take
+}
+
+// Escalation path
+message EscalationPath {
+  bool internal_escalation = 1;        // Whether to escalate internally
+  bool external_escalation = 2;        // Whether to escalate externally
+  repeated ExternalResource external_resources = 3; // External resources
+}
+
+// External resource
+message ExternalResource {
+  string resource_type = 1;            // Type of resource
+  string name = 2;                     // Resource name
+  string contact_info = 3;             // Contact information
+  string presentation_guidance = 4;    // How to present the resource
+}
+
+// Agency initiative message
+message AgencyInitiative {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;
+  
+  string initiative_id = 3;            // Unique initiative identifier
+  string initiative_type = 4;          // Type of initiative
+  float priority = 5;                  // Initiative priority (0.0-1.0)
+  
+  // Initiative details
+  InitiativeDetails details = 6;
+  
+  // Coordination requirements
+  CoordinationRequirements coordination = 7;
+}
+
+// Initiative details
+message InitiativeDetails {
+  string goal = 1;                     // Initiative goal
+  string rationale = 2;                // Rationale for the initiative
+  repeated string expected_outcomes = 3; // Expected outcomes
+  string user_context = 4;             // User context for the initiative
+}
+
+// Coordination requirements
+message CoordinationRequirements {
+  // Personality requirements
+  PersonalityRequirements personality = 1;
+  
+  // Emotion requirements
+  EmotionRequirements emotion = 2;
+  
+  // Expression requirements
+  ExpressionRequirements expression = 3;
+}
+
+// Personality requirements
+message PersonalityRequirements {
+  repeated string trait_activation = 1; // Traits to activate
+  string interaction_style = 2;        // Interaction style to use
+}
+
+// Emotion requirements
+message EmotionRequirements {
+  string emotional_tone = 1;           // Emotional tone to convey
+  float intensity = 2;                 // Intensity level (0.0-1.0)
+}
+
+// Expression requirements
+message ExpressionRequirements {
+  string communication_style = 1;      // Communication style to use
+  repeated string expression_elements = 2; // Elements to include in expression
+}
+
+// Expression coordination message
+message ExpressionCoordination {
+  google.protobuf.Timestamp timestamp = 1;
+  string source = 2;
+  
+  string expression_id = 3;            // Unique expression identifier
+  string context_id = 4;               // Context identifier
+  
+  // Expression configuration
+  ExpressionConfig config = 5;
+  
+  // Cross-modal coordination
+  CrossModalCoordination coordination = 6;
+}
+
+// Expression configuration
+message ExpressionConfig {
+  string primary_emotion = 1;          // Primary emotion to express
+  float intensity = 2;                 // Expression intensity (0.0-1.0)
+  string communication_intent = 3;     // Communication intent
+}
+
+// Cross-modal coordination
+message CrossModalCoordination {
+  // Facial expression
+  FacialConfig facial = 1;
+  
+  // Voice modulation
+  VoiceConfig voice = 2;
+  
+  // Text expression
+  TextConfig text = 3;
+  
+  // Gesture coordination
+  GestureConfig gesture = 4;
+}
+
+// Facial expression configuration
+message FacialConfig {
+  repeated string expressions = 1;     // Facial expressions to use
+  float intensity = 2;                 // Expression intensity (0.0-1.0)
+  int32 duration_ms = 3;               // Expression duration in milliseconds
+}
+
+// Voice modulation configuration
+message VoiceConfig {
+  float pitch_shift = 1;               // Pitch shift (-1.0 to 1.0)
+  float speed = 2;                     // Speech speed modifier
+  string emotional_quality = 3;        // Emotional quality of voice
+}
+
+// Text expression configuration
+message TextConfig {
+  string style = 1;                    // Text style
+  repeated string linguistic_markers = 2; // Linguistic markers to include
+  float emotional_content = 3;         // Emotional content level (0.0-1.0)
+}
+
+// Gesture configuration
+message GestureConfig {
+  repeated string gestures = 1;        // Gestures to use
+  float amplitude = 2;                 // Gesture amplitude (0.0-1.0)
+  int32 duration_ms = 3;               // Gesture duration in milliseconds
+}
