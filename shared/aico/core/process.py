@@ -204,25 +204,18 @@ class ProcessManager:
             return False
     
     def stop_service(self, timeout: int = 30) -> bool:
-        """Stop the service gracefully using shutdown file"""
+        """Stop the service gracefully using signal termination"""
         status = self.get_service_status()
         
         if not status["running"]:
             logger.info(f"Service {self.service_name} is not running")
+            self.cleanup_pid_files()  # Clean up stale PID files
             return True
         
         pid = status["pid"]
         logger.info(f"Stopping {self.service_name} service (PID: {pid})")
         
-        # Try shutdown file approach first for gateway service
-        if self.service_name == "gateway":
-            success = self._shutdown_via_file(pid, timeout)
-            if success:
-                self.cleanup_pid_files()
-                logger.info(f"Service {self.service_name} stopped successfully")
-                return True
-        
-        # Fallback to signal-based termination
+        # Use direct signal-based termination for all services
         success = self.terminate_process(pid, timeout)
         
         if success:

@@ -44,13 +44,10 @@ class AICOAPIGatewayV2:
     
     def _setup_signal_handlers(self) -> None:
         """Setup graceful shutdown signal handlers"""
-        def signal_handler(signum, frame):
-            self.logger.info(f"Received signal {signum}, initiating graceful shutdown")
-            self.shutdown_event.set()
-        
-        # Register signal handlers for graceful shutdown
-        signal.signal(signal.SIGTERM, signal_handler)
-        signal.signal(signal.SIGINT, signal_handler)
+        # Note: Signal handlers are now managed globally in main.py
+        # This method is kept for compatibility but doesn't register handlers
+        # to avoid conflicts with the global signal handler coordination
+        self.logger.info("Gateway signal handlers managed by main.py global handler")
     
     async def start(self, message_bus_address: str = "tcp://localhost:5555") -> None:
         """Start the API Gateway"""
@@ -59,6 +56,8 @@ class AICOAPIGatewayV2:
     
     async def stop(self) -> None:
         """Stop the API Gateway"""
+        self.logger.info("Stopping AICO API Gateway V2...")
+        self.shutdown_event.set()  # Signal shutdown to any waiting components
         await self.gateway_core.stop()
         self.logger.info("AICO API Gateway V2 stopped")
     

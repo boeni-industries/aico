@@ -162,10 +162,11 @@ class ProtocolAdapterManager:
             if name in self.adapter_tasks:
                 task = self.adapter_tasks[name]
                 if not task.done():
+                    self.logger.info(f"Cancelling background task for adapter: {name}")
                     task.cancel()
                     try:
-                        await task
-                    except asyncio.CancelledError:
+                        await asyncio.wait_for(task, timeout=3.0)
+                    except (asyncio.CancelledError, asyncio.TimeoutError):
                         pass
                 del self.adapter_tasks[name]
             
@@ -183,9 +184,29 @@ class ProtocolAdapterManager:
             await self.start_adapter(name)
     
     async def stop_all(self) -> None:
-        """Stop all active adapters"""
+        """Stop all active protocol adapters"""
+        # Cancel all background tasks first
+        cancel_tasks = []
+        for name, task in self.adapter_tasks.items():
+            if not task.done():
+                self.logger.info(f"Cancelling background task for adapter: {name}")
+                task.cancel()
+                cancel_tasks.append(task)
+        
+        # Wait for all tasks to be cancelled
+        if cancel_tasks:
+            try:
+                await asyncio.wait_for(asyncio.gather(*cancel_tasks, return_exceptions=True), timeout=5.0)
+            except asyncio.TimeoutError:
+                self.logger.warning("Some adapter tasks did not cancel within timeout")
+        
+        self.adapter_tasks.clear()
+        
+        # Now stop the adapters themselves
         for name in list(self.active_adapters.keys()):
             await self.stop_adapter(name)
+        self.active_adapters.clear()
+        self.logger.info("All protocol adapters stopped")
     
     def get_adapter(self, name: str) -> Optional[ProtocolAdapter]:
         """Get an active adapter by name"""

@@ -177,5 +177,11 @@ class MessageBusPlugin(PluginInterface):
     
     async def shutdown(self) -> None:
         """Cleanup message bus plugin resources"""
-        await self.stop()
-        self.logger.info("Message bus plugin shutdown")
+        self.logger.info("Shutting down message bus plugin...")
+        if self.message_bus_host:
+            try:
+                await self.message_bus_host.stop()
+                self.message_bus_host = None
+            except Exception as e:
+                self.logger.error(f"Error during message bus shutdown: {e}")
+        self.logger.info("Message bus plugin shutdown complete")

@@ -426,14 +426,17 @@ def start(
                 if result.returncode != 0:
                     console.print(f"[red]{chars['cross']} Gateway exited with code {result.returncode}[/red]")
                     raise typer.Exit(result.returncode)
+                else:
+                    console.print(f"[green]{chars['check']} Gateway stopped gracefully[/green]")
                     
             except FileNotFoundError as e:
                 console.print(f"[red]{chars['cross']} Command not found: {e}[/red]")
                 console.print(f"[yellow]{chars['lightbulb']} Check if UV is properly installed and backend dependencies are available[/yellow]")
                 raise typer.Exit(1)
             except KeyboardInterrupt:
-                console.print(f"\n[yellow]{chars['warning']} Backend process interrupted by user[/yellow]")
-                raise typer.Exit(0)
+                console.print(f"\n[yellow]Backend process exited with code 0[/yellow]")
+                console.print(f"[green]{chars['check']} Gateway stopped gracefully[/green]")
+                return  # Exit cleanly without raising exception
             
     except KeyboardInterrupt:
         console.print(f"\n[yellow]{chars['warning']} Gateway startup interrupted[/yellow]")

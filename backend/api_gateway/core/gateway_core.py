@@ -126,10 +126,10 @@ class GatewayCore:
             self.logger.info("Stopping AICO API Gateway...")
             self.running = False
             
-            # 1. Stop protocol adapters
+            # 1. Stop protocol adapters (includes cancelling their background tasks)
             await self._stop_protocols()
             
-            # 2. Shutdown plugins
+            # 2. Shutdown plugins (includes cancelling their background tasks)
             await self._shutdown_plugins()
             
             # 3. Disconnect message bus
@@ -371,10 +371,28 @@ class GatewayCore:
     
     async def _shutdown_plugins(self) -> None:
         """Shutdown all loaded plugins"""
+        shutdown_tasks = []
         for plugin_name, plugin in self.loaded_plugins.items():
             try:
-                await plugin.shutdown()
+                # Create shutdown task for each plugin
+                shutdown_task = asyncio.create_task(plugin.shutdown())
+                shutdown_task.set_name(f"shutdown_{plugin_name}")
+                shutdown_tasks.append((plugin_name, shutdown_task))
+            except Exception as e:
+                self.logger.error(f"Error creating shutdown task for plugin {plugin_name}: {e}")
+        
+        # Wait for all plugins to shutdown with timeout
+        for plugin_name, task in shutdown_tasks:
+            try:
+                await asyncio.wait_for(task, timeout=5.0)
                 self.logger.info(f"Shutdown plugin: {plugin_name}")
+            except asyncio.TimeoutError:
+                self.logger.warning(f"Plugin {plugin_name} shutdown timed out, cancelling")
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
             except Exception as e:
                 self.logger.error(f"Error shutting down plugin {plugin_name}: {e}")
     

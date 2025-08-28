@@ -9,6 +9,7 @@ This implements the proper architecture:
 """
 
 import asyncio
+import os
 import sys
 import signal
 import uvicorn
@@ -34,7 +35,9 @@ __version__ = "0.5.0"
 # Global components
 config_manager = None
 logger = None
+process_manager = None
 shutdown_event = asyncio.Event()
+background_tasks = set()  # Track all background tasks for cleanup
 
 try:
     # Initialize configuration and logging
@@ -43,10 +46,23 @@ try:
     initialize_logging(config_manager)
     logger = get_logger("backend", "main")
     
-    # Setup signal handlers
+    # Initialize process manager AFTER logging is set up
+    from aico.core.process import ProcessManager
+    process_manager = ProcessManager("gateway")
+    process_manager.write_pid(os.getpid())
+    
+    # Setup global signal handlers (will coordinate all shutdown)
     def signal_handler(signum, frame):
-        logger.info(f"Received signal {signum}, initiating shutdown")
+        logger.info(f"Received signal {signum}, initiating graceful shutdown")
         shutdown_event.set()
+        # Cancel all background tasks
+        for task in background_tasks:
+            if not task.done():
+                logger.info(f"Cancelling background task: {task.get_name()}")
+                task.cancel()
+        # Clean up PID file
+        if process_manager:
+            process_manager.cleanup_pid_files()
     
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
@@ -142,16 +158,32 @@ def create_app():
             except Exception as e:
                 print(f"[HEARTBEAT TEST] Error emitting heartbeat logs: {e}")
 
-        app.state.heartbeat_task = asyncio.create_task(_emit_heartbeat_logs())
+        heartbeat_task = asyncio.create_task(_emit_heartbeat_logs())
+        heartbeat_task.set_name("heartbeat_logs")
+        background_tasks.add(heartbeat_task)
+        app.state.heartbeat_task = heartbeat_task
         
         yield
         
         # Shutdown - cleanup async resources
         print("[LIFESPAN] App shutdown - stopping gateway")
+        
+        # Cancel all background tasks first
+        for task in list(background_tasks):
+            if not task.done():
+                print(f"[LIFESPAN] Cancelling task: {task.get_name()}")
+                task.cancel()
+                try:
+                    await asyncio.wait_for(task, timeout=2.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+        background_tasks.clear()
+        
+        # Stop gateway components
         if hasattr(app.state, 'gateway'):
             await app.state.gateway.stop()
-        if hasattr(app.state, 'heartbeat_task'):
-            app.state.heartbeat_task.cancel()
+        
+        print("[LIFESPAN] All components stopped gracefully")
     
     # Create FastAPI app with lifespan
     fastapi_app = FastAPI(
@@ -221,8 +253,18 @@ if __name__ == "__main__":
         
     except KeyboardInterrupt:
         print("[MAIN] Application interrupted by user")
+        # Graceful shutdown is handled by signal handlers and lifespan
+        print("[MAIN] Graceful shutdown completed")
     except Exception as e:
         print(f"[MAIN] Application error: {e}")
         import traceback
         print(f"[MAIN] Traceback: {traceback.format_exc()}")
+        # Cancel any remaining background tasks before exit
+        for task in background_tasks:
+            if not task.done():
+                task.cancel()
         sys.exit(1)
+    finally:
+        # Always clean up PID file on exit
+        if process_manager:
+            process_manager.cleanup_pid_files()

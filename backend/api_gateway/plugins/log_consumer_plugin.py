@@ -146,5 +146,11 @@ class LogConsumerPlugin(PluginInterface):
     
     async def shutdown(self) -> None:
         """Cleanup log consumer plugin resources"""
-        await self.stop()
-        self.logger.info("Log consumer plugin shutdown")
+        self.logger.info("Shutting down log consumer plugin...")
+        if self.log_consumer:
+            try:
+                await self.log_consumer.stop()
+                self.log_consumer = None
+            except Exception as e:
+                self.logger.error(f"Error during log consumer shutdown: {e}")
+        self.logger.info("Log consumer plugin shutdown complete")

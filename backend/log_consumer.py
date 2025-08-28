@@ -155,6 +155,8 @@ class AICOLogConsumer:
                                         print(f"[LOG CONSUMER MONITOR {count}] New task created: {self.message_task}")
                                     except Exception as e:
                                         print(f"[LOG CONSUMER MONITOR {count}] Failed to restart task: {e}")
+                                else:
+                                    print(f"[LOG CONSUMER MONITOR {count}] Task cancelled during shutdown - not restarting")
                             else:
                                 try:
                                     result = task.result()
@@ -176,18 +178,35 @@ class AICOLogConsumer:
     
     async def stop(self):
         """Stop the log consumer service"""
+        print("[LOG CONSUMER] Stopping log consumer...")
         self.running = False
-        if hasattr(self, 'subscriber') and self.subscriber:
-            self.subscriber.close()
-        if hasattr(self, 'context') and self.context:
-            self.context.term()
-        if self.db_connection:
-            # Use proper LibSQL disconnect method
+        
+        # Cancel message task if it exists
+        if hasattr(self, 'message_task') and self.message_task:
+            print("[LOG CONSUMER] Cancelling message task...")
+            self.message_task.cancel()
             try:
+                await asyncio.wait_for(self.message_task, timeout=3.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                print("[LOG CONSUMER] Message task cancelled/timed out")
+                pass
+        
+        # Close ZMQ subscriber
+        if hasattr(self, 'subscriber') and self.subscriber:
+            print("[LOG CONSUMER] Closing ZMQ subscriber...")
+            self.subscriber.close()
+        
+        # Note: ZMQ context is shared and managed by the plugin, don't terminate here
+        
+        # Close database connection
+        if self.db_connection:
+            try:
+                print("[LOG CONSUMER] Disconnecting database...")
                 self.db_connection.disconnect()
             except Exception as e:
-                # Log cleanup failure but don't crash - this is during shutdown
                 print(f"[LOG CONSUMER] Warning: Database cleanup failed during shutdown: {e}")
+        
+        print("[LOG CONSUMER] Log consumer stopped")
 
     
     async def _zmq_message_loop(self):
@@ -263,13 +282,13 @@ class AICOLogConsumer:
                 
         except asyncio.CancelledError:
             print("[LOG CONSUMER] Message loop was cancelled - checking if restart is needed")
-            # If we're still supposed to be running, restart the loop
+            # Only restart if we're still supposed to be running
             if self.running:
                 print("[LOG CONSUMER] Restarting message loop after cancellation")
                 # Create a new task to replace the cancelled one
                 self.message_task = asyncio.create_task(self._zmq_message_loop())
             else:
-                print("[LOG CONSUMER] Message loop cancelled during shutdown - exiting gracefully")
+                print("[LOG CONSUMER] Message loop cancelled during shutdown - staying stopped")
             raise  # Re-raise to maintain proper cancellation semantics
     
     async def _handle_log_message(self, log_entry: LogEntry):
