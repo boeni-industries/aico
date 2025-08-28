@@ -7,7 +7,7 @@ Provides decorators to mark CLI commands as sensitive (requiring fresh authentic
 import functools
 import sys
 from pathlib import Path
-from typing import Callable, Any
+from typing import Any
 
 # Add shared module to path for CLI usage
 if getattr(sys, 'frozen', False):
@@ -43,7 +43,7 @@ def sensitive(reason: str = "sensitive operation"):
         def delete():
             pass
     """
-    def decorator(func: Callable) -> Callable:
+    def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             
@@ -107,7 +107,7 @@ def destructive(reason: str = "dangerous operation"):
         def vacuum():
             pass
     """
-    def decorator(func: Callable) -> Callable:
+    def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             
@@ -158,7 +158,7 @@ def destructive(reason: str = "dangerous operation"):
     return decorator
 
 
-def is_sensitive_command(func: Callable) -> bool:
+def is_sensitive_command(func) -> bool:
     """
     Check if a function is marked as sensitive.
     
@@ -171,7 +171,7 @@ def is_sensitive_command(func: Callable) -> bool:
     return getattr(func, '_is_sensitive', False)
 
 
-def get_sensitive_reason(func: Callable) -> str:
+def get_sensitive_reason(func) -> str:
     """
     Get the reason why a function is marked as sensitive.
     

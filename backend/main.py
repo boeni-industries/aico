@@ -108,10 +108,17 @@ async def setup_backend_components():
     await api_gateway.start()
     logger.info("API Gateway initialized")
     
+    # Initialize Task Scheduler
+    from backend.scheduler import TaskScheduler, TaskStore
+    task_store = TaskStore(shared_db_connection)
+    task_scheduler = TaskScheduler(config_manager, task_store)
+    await task_scheduler.start()
+    logger.info("Task Scheduler initialized and started")
+    
     # Log consumer is already started by the API Gateway plugin system
     # No need to start it separately here
     
-    return api_gateway, None, shared_db_connection
+    return api_gateway, task_scheduler, shared_db_connection
 
 
 def create_app():
@@ -132,10 +139,11 @@ def create_app():
         if is_foreground:
             logger.info("Running in foreground mode - debug output enabled")
         logger.info(f"Starting AICO backend server v{__version__}")
-        api_gateway, _, shared_db_connection = await setup_backend_components()
+        api_gateway, task_scheduler, shared_db_connection = await setup_backend_components()
         
         # Store components in app state
         app.state.gateway = api_gateway
+        app.state.task_scheduler = task_scheduler
         app.state.db_connection = shared_db_connection
         
         # Skip FastAPI integration to avoid middleware timing issues
@@ -189,6 +197,11 @@ def create_app():
                     pass
         background_tasks.clear()
         
+        # Stop scheduler first
+        if hasattr(app.state, 'task_scheduler'):
+            print("[LIFESPAN] Stopping task scheduler...")
+            await app.state.task_scheduler.stop()
+        
         # Stop gateway components
         if hasattr(app.state, 'gateway'):
             await app.state.gateway.stop()
@@ -211,6 +224,10 @@ def create_app():
     # Add echo router directly
     from backend.api.echo import router as echo_router
     fastapi_app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])
+    
+    # Add scheduler router
+    from backend.api.scheduler.router import router as scheduler_router
+    fastapi_app.include_router(scheduler_router, prefix="/api/v1/scheduler", tags=["scheduler"])
     
     # Add encryption middleware as ASGI middleware wrapper
     from fastapi import Request

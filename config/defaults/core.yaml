@@ -139,6 +139,20 @@ api_gateway:
     routing:
       enabled: true
 
+# Task Scheduler configuration
+scheduler:
+  enabled: true
+  max_concurrent_tasks: 10
+  max_cpu_percent: 80
+  max_memory_percent: 80
+  scheduler_interval: 1.0  # seconds
+  default_retry_count: 3
+  default_retry_delay: 60  # seconds
+  max_retry_delay: 3600   # 1 hour
+  resource_check_interval: 30  # seconds
+  idle_threshold_cpu: 20      # percent
+  idle_threshold_memory: 70   # percent
+
 # User profile configuration
 user_profiles:
   default_user_type: "person"
