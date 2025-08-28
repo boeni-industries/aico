@@ -387,66 +387,63 @@ AICO's CLI provides comprehensive task management capabilities:
 
 ## Configuration
 
-### Core Configuration
+### Simplified Two-Tier Configuration Pattern
 
+The scheduler uses a simplified configuration approach to avoid YAML bloat while maintaining flexibility:
+
+#### 1. Core Scheduler Configuration (core.yaml)
 ```yaml
-# config/defaults/core.yaml
+# config/defaults/core.yaml - Only scheduler-level settings
 scheduler:
   enabled: true
   max_concurrent_tasks: 10
   max_cpu_percent: 80
   max_memory_percent: 80
-  
-  # Task discovery
-  auto_discover: true
-  task_modules:
-    - "aico.scheduler.tasks.maintenance"
-    - "aico.scheduler.tasks.agency"
-  
-  # Performance tuning
   scheduler_interval: 1.0  # seconds
-  batch_size: 100
-  cache_size: 10000
-  
-  # Failure handling
   default_retry_count: 3
   default_retry_delay: 60  # seconds
   max_retry_delay: 3600   # 1 hour
-  
-  # Resource management
   resource_check_interval: 30  # seconds
   idle_threshold_cpu: 20      # percent
   idle_threshold_memory: 70   # percent
-
-# Task-specific configuration
-tasks:
-  maintenance:
-    log_cleanup:
-      enabled: true
-      schedule: "0 3 * * *"  # Daily at 3 AM
-      retention_days: 30
-      max_size_mb: 500
-    
-    key_rotation:
-      enabled: true
-      schedule: "0 1 1 * *"  # Monthly
-      rotate_session_keys: true
-      rotate_database_keys: false
-    
-    health_check:
-      enabled: true
-      schedule: "*/5 * * * *"  # Every 5 minutes
-      check_database: true
-      check_message_bus: true
-      check_disk_space: true
-  
-  agency:
-    background_learning:
-      enabled: true
-      schedule: "*/30 * * * *"  # Every 30 minutes
-      max_duration: 600  # 10 minutes
-      idle_only: true
 ```
+
+#### 2. Task Defaults (Hardcoded in Task Classes)
+```python
+# Task classes define their own configuration schema and defaults
+class LogCleanupTask(BaseTask):
+    task_id = "maintenance.log_cleanup"
+    default_config = {
+        "enabled": True,
+        "schedule": "0 3 * * *",  # Daily at 3 AM
+        "retention_days": 30,
+        "max_size_mb": 500
+    }
+    
+    async def execute(self, context: TaskContext) -> TaskResult:
+        # Simple config access with automatic fallback to defaults
+        retention_days = context.get_config("retention_days")
+        max_size = context.get_config("max_size_mb")
+        # Implementation here
+```
+
+#### 3. Instance Configuration (Database Overrides)
+```sql
+-- scheduled_tasks table stores only overrides, not defaults
+INSERT INTO scheduled_tasks (task_id, schedule, config) VALUES 
+('maintenance.log_cleanup', '0 2 * * *', '{"retention_days": 45, "max_size_mb": 1000}');
+```
+
+#### Configuration Resolution Priority
+1. **Instance config** (database `config` JSON field) - highest priority
+2. **Task defaults** (hardcoded in task class) - fallback
+3. **No per-task YAML** - keeps core configuration clean and scalable
+
+This approach provides:
+- **KISS**: No complex multi-tier hierarchy
+- **DRY**: Configuration defaults co-located with task implementation
+- **Scalable**: Unlimited tasks without bloating core.yaml
+- **Maintainable**: Task owners control their configuration schema
 
 ## Database Schema
 
