@@ -219,10 +219,13 @@ class TaskExecutor:
         if not lock_acquired:
             self.logger.warning(f"Could not acquire lock for task {task_id}")
             return TaskResult(success=False, message="Could not acquire execution lock", skipped=True)
-        
+
+        # Add to running tasks *after* acquiring lock
+        self.running_tasks[task_id] = asyncio.current_task()
+
         start_time = datetime.now()
         task_instance = None
-        
+
         try:
             # Record execution start
             self.task_store.record_execution_start(task_id, execution_id)
@@ -283,10 +286,13 @@ class TaskExecutor:
             
             # Release lock
             self.task_store.release_lock(task_id, execution_id)
-            
+
             # Remove from running tasks
-            if task_id in self.running_tasks:
-                del self.running_tasks[task_id]
+            try:
+                if task_id in self.running_tasks:
+                    del self.running_tasks[task_id]
+            except KeyError:
+                self.logger.warning(f"Task {task_id} was not in running_tasks dict during cleanup.")
     
     async def _check_resource_constraints(self, context: TaskContext) -> bool:
         """Check if system resources allow task execution"""
