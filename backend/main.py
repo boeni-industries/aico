@@ -120,7 +120,17 @@ def create_app():
     
     @asynccontextmanager
     async def app_lifespan(app: FastAPI):
-        # Startup - initialize components in uvicorn's event loop
+        # Startup
+        # Initialize logging
+        logger = get_logger("backend", "service")
+        logger.info("Starting AICO Backend Server...")
+        
+        # Set debug print mode based on detach setting
+        from backend.log_consumer import set_foreground_mode
+        is_foreground = os.getenv('AICO_DETACH_MODE') == 'false'
+        set_foreground_mode(is_foreground)
+        if is_foreground:
+            logger.info("Running in foreground mode - debug output enabled")
         logger.info(f"Starting AICO backend server v{__version__}")
         api_gateway, _, shared_db_connection = await setup_backend_components()
         
@@ -199,7 +209,7 @@ def create_app():
         return {"status": "healthy", "service": "aico-backend", "version": __version__}
     
     # Add echo router directly
-    from backend.api.echo.router import router as echo_router
+    from backend.api.echo import router as echo_router
     fastapi_app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])
     
     # Add encryption middleware as ASGI middleware wrapper
