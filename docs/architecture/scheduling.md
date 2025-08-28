@@ -613,6 +613,75 @@ if config_manager.get("scheduler", {}).get("enabled", True):
 - Error handling and retry logic refinement
 - Documentation and testing
 
+## Task Execution Architecture
+
+The scheduler implements a three-layer task definition pattern to support different types of tasks:
+
+### 1. Built-in System Tasks (Hard-coded)
+Essential maintenance tasks bundled with the system for zero-maintenance operation:
+
+```python
+# backend/scheduler/tasks/maintenance.py
+class LogCleanupTask(BaseTask):
+    task_id = "maintenance.log_cleanup"
+    
+    async def execute(self, context: TaskContext) -> TaskResult:
+        retention_days = context.config.get("retention_days", 30)
+        deleted_count = await self.cleanup_logs(retention_days)
+        return TaskResult(success=True, data={"deleted": deleted_count})
+```
+
+### 2. Plugin-Discovered Tasks (Auto-loaded)
+Agency and extensible tasks discovered from configured modules:
+
+```python
+# backend/scheduler/tasks/agency.py  
+class BackgroundLearningTask(BaseTask):
+    task_id = "agency.background_learning"
+    
+    async def execute(self, context: TaskContext) -> TaskResult:
+        if not context.system_idle():
+            return TaskResult(success=True, skipped=True)
+        # ML training logic here
+```
+
+### 3. User-Defined Tasks (Database + Code)
+Custom tasks created by users via API/CLI:
+
+```python
+# Created via: aico scheduler create --task-class "CustomEmailTask" --schedule "0 9 * * *"
+# Code in: backend/scheduler/tasks/user/email_task.py
+class CustomEmailTask(BaseTask):
+    task_id = "user.email_task"
+    
+    async def execute(self, context: TaskContext) -> TaskResult:
+        # Custom user logic
+```
+
+### Task Lifecycle Management
+
+**Task Introduction:**
+- **System tasks**: Bundled in code, auto-registered at startup
+- **Plugin tasks**: Auto-discovered from configured modules via `TaskRegistry.discover_tasks()`
+- **User tasks**: Created via API/CLI, requires task class in `tasks/user/` directory
+
+**Task Removal:**
+- **System tasks**: Cannot be removed (only disabled via configuration)
+- **Plugin tasks**: Removed when plugin is unloaded or module unavailable
+- **User tasks**: Deleted via API/CLI, removes database record and optionally code file
+
+**Registry Discovery Pattern:**
+```python
+class TaskRegistry:
+    def discover_tasks(self):
+        # 1. Load built-in tasks from tasks/maintenance.py, tasks/agency.py
+        # 2. Scan configured plugin modules for BaseTask subclasses
+        # 3. Load user task definitions from database
+        # 4. Validate all task classes implement required interface
+```
+
+This architecture separates **scheduling** (when to run) from **execution** (what to run), following AICO's modular design principles.
+
 ### File Structure
 
 ```
@@ -625,12 +694,14 @@ backend/
 │   └── tasks/
 │       ├── __init__.py
 │       ├── base.py          # BaseTask abstract class
-│       ├── maintenance.py   # System maintenance tasks
-│       └── agency.py        # Autonomous agency tasks
+│       ├── maintenance.py   # Built-in system maintenance tasks
+│       ├── agency.py        # Built-in autonomous agency tasks
+│       └── user/            # User-defined task classes
+│           └── __init__.py
 ├── api/
 │   └── scheduler/
 │       ├── __init__.py
-│       ├── router.py        # FastAPI endpoints
+│       ├── router.py        # FastAPI endpoints (JSON CRUD)
 │       └── schemas.py       # Pydantic models
 ```
 
