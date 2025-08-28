@@ -516,13 +516,13 @@ def task_history(
                         try:
                             result_data = json.loads(exec_data[4])
                             if result_data.get('success'):
-                                result = result_data.get('message', 'Success')
+                                result = result_data.get('message', 'Success') or ""
                             else:
-                                result = result_data.get('error', 'Failed')
+                                result = result_data.get('error', 'Failed') or ""
                         except:
                             result = "Invalid result data"
                     elif exec_data[5]:
-                        result = exec_data[5]
+                        result = exec_data[5] or ""
                     
                     table.add_row(
                         exec_data[0][:8] + "...",  # Truncated execution ID
