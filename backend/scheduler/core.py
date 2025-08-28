@@ -6,6 +6,7 @@ for high-performance async task scheduling and execution.
 """
 
 import asyncio
+import os
 import importlib
 import inspect
 import uuid
@@ -201,6 +202,10 @@ class TaskExecutor:
         """Execute a single task with full lifecycle management"""
         task_id = task_config['task_id']
         execution_id = str(uuid.uuid4())
+        
+        # Print to console if in foreground mode for immediate visibility
+        if os.getenv('AICO_DETACH_MODE') == 'false':
+            print(f"[SCHEDULER] Executing task: {task_id}")
         
         self.logger.info(f"Starting execution of task {task_id} (execution_id: {execution_id})")
         
@@ -429,8 +434,7 @@ class TaskScheduler:
                         continue
                     
                     # Execute task asynchronously
-                    task_coro = self.task_executor.execute_task(task_class, task_config)
-                    self.task_executor.running_tasks[task_id] = asyncio.create_task(task_coro)
+                    asyncio.create_task(self.task_executor.execute_task(task_class, task_config))
                     
                     # Calculate next run time
                     next_run = self.cron_parser.next_run_time(task_config['schedule'], now)

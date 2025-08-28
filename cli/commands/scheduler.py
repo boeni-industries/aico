@@ -17,6 +17,7 @@ from rich.panel import Panel
 from rich import box
 from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from cron_descriptor import CasingTypeEnum, ExpressionDescriptor
 
 # Import decorators
 decorators_path = Path(__file__).parent.parent / "decorators"
@@ -38,21 +39,50 @@ from aico.security.key_manager import AICOKeyManager
 
 console = Console()
 
+def scheduler_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
+    """Show help when no subcommand is given or --help is used."""
+    if ctx.invoked_subcommand is None or help:
+        from cli.utils.help_formatter import format_subcommand_help
+        
+        subcommands = [
+            ("ls", "List scheduled tasks"),
+            ("show", "Show detailed task information"),
+            ("create", "Create a new scheduled task"),
+            ("update", "Update task configuration"),
+            ("enable", "Enable a task"),
+            ("disable", "Disable a task"),
+            ("delete", "Delete a task"),
+            ("trigger", "Manually trigger task execution"),
+            ("history", "Show task execution history"),
+            ("status", "Show scheduler status")
+        ]
+        
+        examples = [
+            "aico scheduler ls",
+            "aico scheduler status",
+            "aico scheduler show maintenance.log_cleanup",
+            "aico scheduler create my_task MyTaskClass '0 2 * * *'"
+        ]
+        
+        format_subcommand_help(
+            console=console,
+            command_name="scheduler",
+            description="Scheduled task management and scheduler status monitoring",
+            subcommands=subcommands,
+            examples=examples
+        )
+        raise typer.Exit()
+
 app = typer.Typer(
     help="Scheduled task management and scheduler status monitoring.",
-    invoke_without_command=True
+    callback=scheduler_callback,
+    invoke_without_command=True,
+    context_settings={"help_option_names": []}
 )
-
-@app.callback(invoke_without_command=True)
-def callback(ctx: typer.Context):
-    """Scheduler command group."""
-    if ctx.invoked_subcommand is None:
-        console.print("[bold red]Error:[/] Please specify a scheduler command.")
-        console.print(f"Run [cyan]aico scheduler --help[/] for a list of commands.")
-        raise typer.Exit(1)
 
 
 @app.command("ls")
+@sensitive
 def list_tasks(
     enabled_only: bool = typer.Option(False, "--enabled", "-e", help="Show only enabled tasks"),
     format_output: str = typer.Option("table", "--format", "-f", help="Output format: table, json")
@@ -91,27 +121,33 @@ def list_tasks(
             else:
                 # Table format
                 table = Table(
-                    title="✨ [bold cyan]Scheduled Tasks[/bold cyan]",
-                    title_justify="left",
-                    border_style="bright_blue",
-                    header_style="bold yellow",
+                    title="✨ Scheduled Tasks",
                     box=box.SIMPLE_HEAD,
-                    padding=(0, 1)
+                    title_justify="left",
+                    header_style="bold yellow"
                 )
                 table.add_column("Task ID", style="cyan", no_wrap=True)
-                table.add_column("Class", style="white")
-                table.add_column("Schedule", style="green")
-                table.add_column("Status", justify="left")
+                table.add_column("Class", style="green")
+                table.add_column("Schedule", style="yellow")
+                table.add_column("Description", style="bright_blue")
+                table.add_column("Status", style="green")
                 table.add_column("Created", style="dim")
                 
                 for task in tasks:
-                    status = "Enabled" if task[3] else "Disabled"
+                    status = "Enabled" if task[3] else "[dim]Disabled[/dim]"
                     created_at = format_timestamp_local(task[4]) if task[4] else "Unknown"
+                    
+                    try:
+                        descriptor = ExpressionDescriptor(task[2], casing_type=CasingTypeEnum.Sentence)
+                        description = descriptor.get_description()
+                    except:
+                        description = "[dim]Invalid cron[/dim]"
                     
                     table.add_row(
                         task[0],  # task_id
                         task[1],  # task_class
                         task[2],  # schedule
+                        description,
                         status,
                         created_at
                     )
@@ -506,6 +542,7 @@ def task_history(
 
 
 @app.command("status")
+@sensitive
 def scheduler_status():
     """Show scheduler status and statistics"""
     try:
