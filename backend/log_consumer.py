@@ -275,7 +275,10 @@ class AICOLogConsumer:
             # Check if this is a shutdown-related error (connection closed)
             error_str = str(e)
             if "Option::unwrap()" in error_str or "None value" in error_str or "PanicException" in str(type(e)):
-                # This is the shutdown race condition - just return silently
+                # TODO: Fix shutdown race condition properly - the background thread can still
+                # attempt DB access after connection is closed during shutdown. Current workaround
+                # catches the Rust panic and returns silently, but ideally we should prevent
+                # the race condition entirely through better thread synchronization.
                 return
             
             self.logger.error(f"Database insertion failed: {e}")
