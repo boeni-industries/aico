@@ -74,8 +74,8 @@ class GatewayCore:
         self.enabled_protocols = gateway_config.get("protocols", {})
         self.enabled_plugins = gateway_config.get("plugins", {})
         
-        print(f"[GATEWAY CORE] Enabled protocols from config: {list(self.enabled_protocols.keys())}")
-        print(f"[GATEWAY CORE] Protocol configs: {self.enabled_protocols}")
+        self.logger.info(f"Enabled protocols from config: {list(self.enabled_protocols.keys())}")
+        self.logger.info(f"Protocol configs: {self.enabled_protocols}")
         
         self.logger.info("Gateway core initialized", extra={
             "enabled_protocols": list(self.enabled_protocols.keys()),
@@ -185,7 +185,7 @@ class GatewayCore:
         from ..plugins.validation_plugin import ValidationPlugin
         from ..plugins.routing_plugin import RoutingPlugin
         
-        print(f"[GATEWAY CORE] Importing plugins...")
+        self.logger.info("Importing plugins...")
         
         # Order matters: MessageBus must start before LogConsumer
         plugin_classes = [
@@ -198,33 +198,32 @@ class GatewayCore:
             RoutingPlugin
         ]
         
-        print(f"[GATEWAY CORE] Plugin classes to register: {[cls.__name__ for cls in plugin_classes]}")
+        self.logger.info(f"Plugin classes to register: {[cls.__name__ for cls in plugin_classes]}")
         
         # Debug config structure
         try:
             core_config = self.config.get('core', {})
-            print(f"[GATEWAY CORE] Core config keys: {list(core_config.keys()) if hasattr(core_config, 'keys') else 'N/A'}")
+            self.logger.info(f"Core config keys: {list(core_config.keys()) if hasattr(core_config, 'keys') else 'N/A'}")
             if 'api_gateway' in core_config:
                 api_gw_config = core_config['api_gateway']
-                print(f"[GATEWAY CORE] API Gateway config keys: {list(api_gw_config.keys()) if hasattr(api_gw_config, 'keys') else 'N/A'}")
+                self.logger.info(f"API Gateway config keys: {list(api_gw_config.keys()) if hasattr(api_gw_config, 'keys') else 'N/A'}")
                 if 'plugins' in api_gw_config:
                     plugins_config = api_gw_config.get('plugins', {})
-                    print(f"[GATEWAY CORE] Plugins config: {plugins_config}")
+                    self.logger.info(f"Plugins config: {plugins_config}")
         except Exception as e:
-            print(f"[GATEWAY CORE] Error in config debug: {e}")
+            self.logger.error(f"Error in config debug: {e}")
             import traceback
-            print(f"[GATEWAY CORE] Traceback: {traceback.format_exc()}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
         
         for plugin_class in plugin_classes:
             try:
-                print(f"[GATEWAY CORE] Processing plugin class: {plugin_class.__name__}")
+                self.logger.info(f"Processing plugin class: {plugin_class.__name__}")
                 # Convert plugin class name to config key format
                 # LogConsumerPlugin -> log_consumer, MessageBusPlugin -> message_bus
                 plugin_name = plugin_class.__name__.replace('Plugin', '')
                 # Convert CamelCase to snake_case
                 import re
                 plugin_name = re.sub('([a-z0-9])([A-Z])', r'\1_\2', plugin_name).lower()
-                print(f"[GATEWAY CORE] Plugin name: {plugin_name}")
                 
                 # Try multiple config paths
                 plugins_config = self.config.get('api_gateway.plugins', {})
@@ -235,17 +234,17 @@ class GatewayCore:
                     plugins_config = api_gateway_config.get('plugins', {})
                 
                 plugin_config = plugins_config.get(plugin_name, {})
-                print(f"[GATEWAY CORE] Plugin config for {plugin_name}: {plugin_config}")
-                print(f"[GATEWAY CORE] Available plugins config keys: {list(plugins_config.keys())}")
+                self.logger.info(f"Plugin config for {plugin_name}: {plugin_config}")
+                self.logger.info(f"Available plugins config keys: {list(plugins_config.keys())}")
                 
-                print(f"[GATEWAY CORE] Processing plugin: {plugin_name}, enabled: {plugin_config.get('enabled', False)}")
+                self.logger.info(f"Processing plugin: {plugin_name}, enabled: {plugin_config.get('enabled', False)}")
                 
                 if plugin_config.get('enabled', False):
-                    print(f"[GATEWAY CORE] Creating instance of {plugin_class.__name__}")
+                    self.logger.info(f"Creating instance of {plugin_class.__name__}")
                     plugin_instance = plugin_class(plugin_config, self.logger)
-                    print(f"[GATEWAY CORE] Registering plugin: {plugin_name}")
+                    self.logger.info(f"Registering plugin: {plugin_name}")
                     self.plugin_registry.register_plugin(plugin_name, plugin_instance)
-                    print(f"[GATEWAY CORE] Registered plugin: {plugin_name}")
+                    self.logger.info(f"Registered plugin: {plugin_name}")
                     
                     # Initialize plugin with dependencies
                     # Get message bus from loaded plugins if available
@@ -257,12 +256,12 @@ class GatewayCore:
                         'db_connection': getattr(self, 'db_connection', None),
                         'message_bus': message_bus
                     }
-                    print(f"[GATEWAY CORE] Initializing plugin: {plugin_name}")
-                    print(f"[GATEWAY CORE] DB connection for {plugin_name}: {self.db_connection is not None}")
+                    self.logger.info(f"Initializing plugin: {plugin_name}")
+                    self.logger.info(f"DB connection for {plugin_name}: {self.db_connection is not None}")
                     await plugin_instance.initialize(dependencies)
-                    print(f"[GATEWAY CORE] Starting plugin: {plugin_name}")
+                    self.logger.info(f"Starting plugin: {plugin_name}")
                     await plugin_instance.start()
-                    print(f"[GATEWAY CORE] Plugin {plugin_name} started successfully")
+                    self.logger.info(f"Plugin {plugin_name} started successfully")
                     
                     # Add to loaded plugins
                     self.loaded_plugins[plugin_name] = plugin_instance
@@ -271,21 +270,25 @@ class GatewayCore:
                     # Log registered plugins
                     try:
                         registered_plugins = list(self.plugin_registry.registered_plugins.keys())
-                        print(f"[GATEWAY CORE] Final registered plugins: {registered_plugins}")
+                        self.logger.info(f"Final registered plugins: {registered_plugins}")
                         self.logger.info(f"Registered plugins: {registered_plugins}")
                     except Exception as e:
-                        print(f"[GATEWAY CORE] Error getting registered plugins: {e}")
+                        self.logger.error(f"Error getting registered plugins: {e}")
                         import traceback
-                        print(f"[GATEWAY CORE] Traceback: {traceback.format_exc()}")
+                        self.logger.error(f"Traceback: {traceback.format_exc()}")
                 else:
-                    print(f"[GATEWAY CORE] Plugin {plugin_name} is disabled")
+                    self.logger.info(f"Plugin {plugin_name} is disabled")
                     self.logger.info(f"Plugin {plugin_name} is disabled")
                     
             except Exception as e:
-                print(f"[GATEWAY CORE] Failed to register plugin {plugin_class.__name__}: {e}")
-                import traceback
-                print(f"[GATEWAY CORE] Traceback: {traceback.format_exc()}")
                 self.logger.error(f"Failed to register plugin {plugin_class.__name__}: {e}")
+                import traceback
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
+                self.logger.error(f"Failed to register plugin {plugin_class.__name__}: {e}")
+
+        # Print all active plugins once after registration is complete
+        registered_plugins = list(self.plugin_registry.registered_plugins.keys())
+        print(f"[GATEWAY CORE] Active plugins: {registered_plugins}")
     
     async def _initialize_protocols(self) -> None:
         """Initialize protocol adapters with dependency injection"""
@@ -308,17 +311,17 @@ class GatewayCore:
             }
             
             # Initialize REST adapter for FastAPI integration (no separate server)
-            print(f"DEBUG: Full config structure: {list(self.config.config_cache.keys())}")
-            print(f"DEBUG: Core config: {self.config.config_cache.get('core', {}).keys()}")
+            self.logger.debug(f"Full config structure: {list(self.config.config_cache.keys())}")
+            self.logger.debug(f"Core config: {self.config.config_cache.get('core', {}).keys()}")
             
             # Use proper configuration access pattern
             core_config = self.config.config_cache.get('core', {})
             api_gateway_config = core_config.get('api_gateway', {})
             rest_config = api_gateway_config.get('rest', {})
             
-            print(f"DEBUG: API Gateway config: {api_gateway_config.keys()}")
-            print(f"DEBUG: REST config: {rest_config}")
-            print(f"DEBUG: Registered adapters: {list(self.protocol_manager.registered_adapters.keys())}")
+            self.logger.debug(f"API Gateway config: {api_gateway_config.keys()}")
+            self.logger.debug(f"REST config: {rest_config}")
+            self.logger.debug(f"Registered adapters: {list(self.protocol_manager.registered_adapters.keys())}")
             
             # Initialize REST adapter for FastAPI integration
             success = await self.protocol_manager.initialize_adapter(
@@ -326,18 +329,18 @@ class GatewayCore:
                 rest_config, 
                 dependencies
             )
-            print(f"DEBUG: REST adapter initialization success: {success}")
+            self.logger.debug(f"REST adapter initialization success: {success}")
             
             # Initialize other enabled protocol adapters
             for protocol_name, protocol_config in self.enabled_protocols.items():
                 if protocol_name != "rest" and protocol_config.get("enabled", False):
-                    print(f"DEBUG: Initializing protocol adapter: {protocol_name}")
+                    self.logger.debug(f"Initializing protocol adapter: {protocol_name}")
                     success = await self.protocol_manager.initialize_adapter(
                         protocol_name, 
                         protocol_config, 
                         dependencies
                     )
-                    print(f"DEBUG: {protocol_name} adapter initialization success: {success}")
+                    self.logger.debug(f"{protocol_name} adapter initialization success: {success}")
                     if not success:
                         self.logger.error(f"Failed to initialize protocol adapter: {protocol_name}")
             
@@ -350,14 +353,14 @@ class GatewayCore:
     async def _start_protocols(self) -> None:
         """Start all initialized protocol adapters"""
         try:
-            print(f"DEBUG: Starting protocol adapters...")
+            self.logger.debug("Starting protocol adapters...")
             await self.protocol_manager.start_all()
-            print(f"DEBUG: Protocol adapters start_all() completed")
+            self.logger.debug("Protocol adapters start_all() completed")
             self.logger.info("Protocol adapters started")
         except Exception as e:
-            print(f"DEBUG: Failed to start protocols: {e}")
+            self.logger.error(f"Failed to start protocols: {e}")
             import traceback
-            print(f"DEBUG: Traceback: {traceback.format_exc()}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
             self.logger.error(f"Failed to start protocols: {e}")
             raise
     
@@ -408,7 +411,7 @@ class GatewayCore:
         # NOTE: CORS middleware disabled to prevent bypassing ASGI encryption middleware
         # FastAPI HTTP middleware intercepts requests before ASGI middleware can process them
         # CORS should be handled at the ASGI level if needed
-        print(f"[GATEWAY CORE] Skipped CORS middleware - would bypass ASGI encryption middleware")
+        self.logger.info("Skipped CORS middleware - would bypass ASGI encryption middleware")
         self.logger.info("CORS middleware skipped - would bypass ASGI encryption middleware")
         
         # Let plugins configure their middleware

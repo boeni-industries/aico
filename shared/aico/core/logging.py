@@ -145,8 +145,6 @@ class AICOLogger:
         if "ECHO TRACE" in message or "THIS_IS_A_TEST_LOG_FOR_TRACING" in str(kwargs.get("extra", {})):
             trace_id = kwargs.get("extra", {}).get("trace_id", "unknown")
             from backend.log_consumer import debugPrint
-            debugPrint(f"[LOGGER TRACE {trace_id}] STEP 4: AICOLogger._log() called - Level: {level}, Message: {message}")
-            debugPrint(f"[LOGGER TRACE {trace_id}] STEP 5: DB ready: {self._db_ready}, Transport: {self.transport}")
         
         if not self._db_ready:
             # Buffer logs during bootstrap
@@ -191,28 +189,12 @@ class AICOLogger:
     
     def _send_to_database(self, log_entry: LogEntry):
         """Send log entry to database via transport or fallback logging"""
-        # Debug tracing for echo endpoint logs (only in foreground mode)
-        if "ECHO TRACE" in log_entry.message or "THIS_IS_A_TEST_LOG_FOR_TRACING" in str(log_entry.extra):
-            trace_id = log_entry.extra.get("trace_id", "unknown")
-            from backend.log_consumer import debugPrint
-            debugPrint(f"[LOGGER TRACE {trace_id}] STEP 6: _send_to_database() called - Transport: {type(self.transport) if self.transport else None}")
-        
+
         if self.transport:
             try:
-                # Debug tracing before transport call (only in foreground mode)
-                if "ECHO TRACE" in log_entry.message or "THIS_IS_A_TEST_LOG_FOR_TRACING" in str(log_entry.extra):
-                    trace_id = log_entry.extra.get("trace_id", "unknown")
-                    from backend.log_consumer import debugPrint
-                    debugPrint(f"[LOGGER TRACE {trace_id}] STEP 7: Calling transport.send_log()")
-                
+ 
                 self.transport.send_log(log_entry)
                 
-                # Debug tracing after transport call (only in foreground mode)
-                if "ECHO TRACE" in log_entry.message or "THIS_IS_A_TEST_LOG_FOR_TRACING" in str(log_entry.extra):
-                    trace_id = log_entry.extra.get("trace_id", "unknown")
-                    from backend.log_consumer import debugPrint
-                    debugPrint(f"[LOGGER TRACE {trace_id}] STEP 8: transport.send_log() completed successfully")
-                    
             except Exception as e:
                 # Print error and fallback, never log recursively
                 print(f"[AICO LOGGING] Failed to send log to transport: {e}", file=sys.stderr)
@@ -220,11 +202,6 @@ class AICOLogger:
                 print(traceback.format_exc(), file=sys.stderr)
                 self._try_fallback_logging(log_entry)
         else:
-            # Debug tracing for no transport case (only in foreground mode)
-            if "ECHO TRACE" in log_entry.message or "THIS_IS_A_TEST_LOG_FOR_TRACING" in str(log_entry.extra):
-                trace_id = log_entry.extra.get("trace_id", "unknown")
-                from backend.log_consumer import debugPrint
-                debugPrint(f"[LOGGER TRACE {trace_id}] STEP 7: NO TRANSPORT - falling back to console logging")
             self._try_fallback_logging(log_entry)
     
     def mark_database_ready(self):

@@ -58,6 +58,7 @@ class AICOLogConsumer:
         self.running = False
         self.logger = get_logger("log_consumer", "service")
         from backend.log_consumer import debugPrint
+        # Only print ZMQ context type at startup in foreground mode
         debugPrint(f"[LOG CONSUMER] Using ZMQ context type: {type(self.context).__name__}")
     
     async def _handle_debug_message(self, topic: str, payload):
@@ -74,6 +75,7 @@ class AICOLogConsumer:
                 self.logger.error("Database connection is missing after initialization")
                 raise ConnectionError("LogConsumer is missing its database connection.")
 
+            # Only print database connection type at startup in foreground mode
             debugPrint(f"[LOG CONSUMER] Using database connection: {type(self.db_connection).__name__}")
 
             # Get message bus configuration - connect to SUBSCRIBER port (broker backend)
@@ -88,13 +90,15 @@ class AICOLogConsumer:
             time.sleep(0.2)
 
             def message_loop():
+                # Only print message loop start in foreground mode
                 debugPrint("[LOG CONSUMER] Starting message loop (threaded)")
                 while self.running:
                     try:
                         if self.subscriber.poll(timeout=100):
                             topic_bytes, data = self.subscriber.recv_multipart(zmq.NOBLOCK)
                             topic = topic_bytes.decode('utf-8')
-                            debugPrint(f"[LOG CONSUMER] Received message on topic: {topic}")
+                            # For deep debugging only; comment out by default
+                            # debugPrint(f"[LOG CONSUMER] Received message on topic: {topic}")
                             try:
                                 log_entry = LogEntry()
                                 log_entry.ParseFromString(data)
@@ -108,6 +112,7 @@ class AICOLogConsumer:
                     except Exception as e:
                         self.logger.error(f"Error in message loop: {e}")
                         time.sleep(1)
+                # Only print message loop exit in foreground mode
                 debugPrint("[LOG CONSUMER] Message loop exiting")
 
             self.message_thread = threading.Thread(target=message_loop, daemon=True)
@@ -270,14 +275,14 @@ class AICOLogConsumer:
 if __name__ == "__main__":
     import asyncio
     from aico.core.config import ConfigurationManager
-    print("[LOG CONSUMER] __main__ entry reached")
+    # print("[LOG CONSUMER] __main__ entry reached")
     consumer = AICOLogConsumer(ConfigurationManager())
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(consumer.start())
     try:
-        print("[LOG CONSUMER] Running. Press Ctrl+C to exit.")
+        # print("[LOG CONSUMER] Running. Press Ctrl+C to exit.")
         loop.run_forever()
     except KeyboardInterrupt:
-        print("[LOG CONSUMER] Stopping...")
+        # print("[LOG CONSUMER] Stopping...")
         loop.run_until_complete(consumer.stop())
