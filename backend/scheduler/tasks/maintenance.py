@@ -288,7 +288,7 @@ class HealthCheckTask(BaseTask):
         """Check database connectivity and basic operations"""
         try:
             # Simple query to test database
-            cursor = await context.db_connection.execute("SELECT 1")
+            cursor = context.db_connection.execute("SELECT 1")
             result = await cursor.fetchone()
             return result is not None
             
