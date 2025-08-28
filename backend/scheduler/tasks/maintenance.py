@@ -288,8 +288,11 @@ class HealthCheckTask(BaseTask):
         """Check database connectivity and basic operations"""
         try:
             # Simple query to test database
-            cursor = context.db_connection.execute("SELECT 1")
-            result = await cursor.fetchone()
+            def db_call():
+                cursor = context.db_connection.execute("SELECT 1")
+                return cursor.fetchone()
+            
+            result = await asyncio.to_thread(db_call)
             return result is not None
             
         except Exception as e:

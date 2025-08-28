@@ -141,15 +141,15 @@ def create_app():
         logger.info("Backend components initialized - LogConsumer active")
         
         # Heartbeat test logs
-        hb_logger = get_logger("backend", "heartbeat")
-        hb_logger.info(
-            "[HEARTBEAT TEST] Synchronous emit at startup",
-            extra={
-                "event_type": "heartbeat_test",
-                "sequence": 0,
-                "source": "backend.main",
-            },
-        )
+        # hb_logger = get_logger("backend", "heartbeat")
+        # hb_logger.info(
+        #     "[HEARTBEAT TEST] Synchronous emit at startup",
+        #     extra={
+        #         "event_type": "heartbeat_test",
+        #         "sequence": 0,
+        #         "source": "backend.main",
+        #     },
+        # )
 
         async def _emit_heartbeat_logs():
             try:
