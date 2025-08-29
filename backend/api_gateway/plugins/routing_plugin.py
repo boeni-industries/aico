@@ -27,7 +27,7 @@ class RoutingPlugin(PluginInterface):
             version="1.0.0",
             description="Message routing to message bus plugin",
             priority=PluginPriority.LOW,  # Routing runs last in the pipeline
-            dependencies=["security", "rate_limiting", "validation"],
+            dependencies=["security", "rate_limiting", "validation", "message_bus"],
             config_schema={
                 "enabled": {"type": "boolean", "default": True},
                 "timeout_seconds": {"type": "integer", "default": 30}
@@ -50,9 +50,10 @@ class RoutingPlugin(PluginInterface):
             # Create router without message bus (will be set in start())
             self.message_router = MessageRouter(router_config)
             
-            # Store message bus for later use in start()
             self.message_bus = dependencies.get('message_bus')
-            
+            if not self.message_bus:
+                raise ValueError("message_bus dependency not found")
+
             self.logger.info("Routing plugin initialized")
             
         except Exception as e:

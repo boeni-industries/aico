@@ -74,10 +74,10 @@ class LogCleanupTask(BaseTask):
         try:
             cutoff_date = (datetime.now() - timedelta(days=retention_days)).isoformat()
             
-            cursor = await context.db_connection.execute(
+            cursor = context.db_connection.execute(
                 "DELETE FROM logs WHERE timestamp < ?", (cutoff_date,)
             )
-            await context.db_connection.commit()
+            context.db_connection.commit()
             
             deleted_count = cursor.rowcount
             if deleted_count > 0:
@@ -346,32 +346,28 @@ class DatabaseVacuumTask(BaseTask):
     default_config = {
         "enabled": True,
         "schedule": "0 2 * * 0",  # Weekly on Sunday at 2 AM
-        "full_vacuum": False,  # Full vacuum is slower but more thorough
         "analyze_tables": True
     }
     
     async def execute(self, context: TaskContext) -> TaskResult:
         """Execute database vacuum task"""
         try:
-            full_vacuum = context.get_config("full_vacuum", False)
             analyze_tables = context.get_config("analyze_tables", True)
-            
+
             results = {}
-            
-            # Perform vacuum operation
-            if full_vacuum:
-                await context.db_connection.execute("VACUUM")
-                results["vacuum_type"] = "full"
-            else:
-                await context.db_connection.execute("VACUUM INCREMENTAL")
-                results["vacuum_type"] = "incremental"
+
+            # Perform a standard vacuum operation.
+            # This reclaims space and defragments the database.
+            self.logger.info("Starting database VACUUM...")
+            context.db_connection.execute("VACUUM")
+            results["vacuum_type"] = "standard"
             
             # Analyze tables for query optimization
             if analyze_tables:
-                await context.db_connection.execute("ANALYZE")
+                context.db_connection.execute("ANALYZE")
                 results["tables_analyzed"] = True
             
-            await context.db_connection.commit()
+            context.db_connection.commit()
             
             message = f"Database vacuum completed: {results}"
             self.logger.info(message)

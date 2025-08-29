@@ -140,36 +140,38 @@ def create_app():
         # Routes will be handled directly by the health endpoint below
         logger.info("Backend components initialized - LogConsumer active")
         
-        # Heartbeat test logs
+        # TODO: The heartbeat test logging is deprecated and will be removed.
+        # It was used for initial diagnostics and is no longer needed.
+        # # Heartbeat test logs
         # hb_logger = get_logger("backend", "heartbeat")
-        # hb_logger.info(
-        #     "[HEARTBEAT TEST] Synchronous emit at startup",
-        #     extra={
-        #         "event_type": "heartbeat_test",
-        #         "sequence": 0,
-        #         "source": "backend.main",
-        #     },
-        # )
+        # # hb_logger.info(
+        # #     "[HEARTBEAT TEST] Synchronous emit at startup",
+        # #     extra={
+        # #         "event_type": "heartbeat_test",
+        # #         "sequence": 0,
+        # #         "source": "backend.main",
+        # #     },
+        # # )
 
-        async def _emit_heartbeat_logs():
-            try:
-                for i in range(1, 4):
-                    hb_logger.info(
-                        f"[HEARTBEAT TEST] Emitting heartbeat log {i}/3",
-                        extra={
-                            "event_type": "heartbeat_test",
-                            "sequence": i,
-                            "source": "backend.main",
-                        },
-                    )
-                    await asyncio.sleep(1.0)
-            except Exception as e:
-                print(f"[HEARTBEAT TEST] Error emitting heartbeat logs: {e}")
+        # async def _emit_heartbeat_logs():
+        #     try:
+        #         for i in range(1, 4):
+        #             hb_logger.info(
+        #                 f"[HEARTBEAT TEST] Emitting heartbeat log {i}/3",
+        #                 extra={
+        #                     "event_type": "heartbeat_test",
+        #                     "sequence": i,
+        #                     "source": "backend.main",
+        #                 },
+        #             )
+        #             await asyncio.sleep(1.0)
+        #     except Exception as e:
+        #         print(f"[HEARTBEAT TEST] Error emitting heartbeat logs: {e}")
 
-        heartbeat_task = asyncio.create_task(_emit_heartbeat_logs())
-        heartbeat_task.set_name("heartbeat_logs")
-        background_tasks.add(heartbeat_task)
-        app.state.heartbeat_task = heartbeat_task
+        # heartbeat_task = asyncio.create_task(_emit_heartbeat_logs())
+        # heartbeat_task.set_name("heartbeat_logs")
+        # background_tasks.add(heartbeat_task)
+        # app.state.heartbeat_task = heartbeat_task
 
         async def watch_for_shutdown_file():
             """On Windows, watch for a shutdown file to trigger graceful exit."""

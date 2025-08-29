@@ -34,7 +34,7 @@ class TaskRegistry:
         """Discover and register all available tasks"""
         self.logger.info("Starting task discovery")
         
-        # 1. Load built-in tasks from tasks/maintenance.py and tasks/agency.py
+        # 1. Load built-in tasks from tasks/maintenance.py
         await self._load_builtin_tasks()
         
         # 2. Scan configured plugin modules for BaseTask subclasses
@@ -46,10 +46,9 @@ class TaskRegistry:
         self.logger.info(f"Task discovery completed. Registered {len(self.tasks)} tasks")
     
     async def _load_builtin_tasks(self):
-        """Load built-in maintenance and agency tasks"""
+        """Load built-in maintenance tasks"""
         builtin_modules = [
-            "backend.scheduler.tasks.maintenance",
-            "backend.scheduler.tasks.agency"
+            "backend.scheduler.tasks.maintenance"
         ]
         
         for module_name in builtin_modules:
@@ -413,25 +412,57 @@ class TaskScheduler:
             self.logger.error(f"Scheduler loop error: {e}")
             raise
     
+    async def _check_for_triggers(self) -> List[str]:
+        """Check for manually triggered tasks via trigger files."""
+        triggered_tasks = []
+        try:
+            from aico.core.paths import AICOPaths
+            paths = AICOPaths()
+            trigger_dir = paths.get_runtime_path() / "scheduler" / "triggers"
+
+            if not trigger_dir.exists():
+                return []
+
+            for trigger_file in trigger_dir.glob("*.trigger"):
+                task_id = trigger_file.stem
+                self.logger.info(f"Manual trigger file detected for task: {task_id}")
+                triggered_tasks.append(task_id)
+                try:
+                    trigger_file.unlink()  # Delete after processing
+                except OSError as e:
+                    self.logger.error(f"Failed to delete trigger file {trigger_file}: {e}")
+
+        except Exception as e:
+            self.logger.error(f"Error checking for task triggers: {e}")
+
+        return triggered_tasks
+
     async def _check_and_execute_tasks(self):
         """Check for tasks that need to run and execute them"""
         try:
             now = datetime.now()
-            tasks_to_run = []
-            
-            # Check each task's next run time
+            tasks_to_run: Set[str] = set()
+
+            # 1. Check for scheduled tasks
             for task_id, next_run in self.next_run_times.items():
                 if next_run <= now:
-                    tasks_to_run.append(task_id)
+                    tasks_to_run.add(task_id)
+
+            # 2. Check for manually triggered tasks
+            triggered_tasks = await self._check_for_triggers()
+            for task_id in triggered_tasks:
+                tasks_to_run.add(task_id)
             
             if not tasks_to_run:
                 return
             
             # Get task configurations from database
-            for task_id in tasks_to_run:
+            for task_id in list(tasks_to_run):  # Iterate over a copy
                 try:
                     task_config = self.task_store.get_task(task_id)
-                    if not task_config or not task_config.get('enabled', True):
+                    # For scheduled tasks, check if enabled. For triggered tasks, run regardless of enabled status.
+                    is_scheduled = task_id in self.next_run_times
+                    if not task_config or (is_scheduled and not task_config.get('enabled', True)):
                         continue
                     
                     task_class = self.task_registry.get_task_class(task_id)
@@ -442,13 +473,15 @@ class TaskScheduler:
                     # Execute task asynchronously
                     asyncio.create_task(self.task_executor.execute_task(task_class, task_config))
                     
-                    # Calculate next run time
-                    next_run = self.cron_parser.next_run_time(task_config['schedule'], now)
-                    if next_run:
-                        self.next_run_times[task_id] = next_run
-                        self.logger.debug(f"Next run for {task_id}: {next_run}")
-                    else:
-                        self.logger.warning(f"Could not calculate next run time for {task_id}")
+                    # For scheduled tasks, calculate next run time
+                    if is_scheduled:
+                        next_run = self.cron_parser.next_run_time(task_config['schedule'], now)
+                        if next_run:
+                            self.next_run_times[task_id] = next_run
+                            self.logger.debug(f"Next run for {task_id}: {next_run}")
+                        else:
+                            # This can happen if the cron is a one-off that has passed
+                            self.logger.warning(f"Could not calculate next run time for {task_id}")
                 
                 except Exception as e:
                     self.logger.error(f"Error processing task {task_id}: {e}")
