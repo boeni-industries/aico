@@ -131,10 +131,15 @@ def create_app():
         logger.info(f"Starting AICO backend server v{__version__}")
         api_gateway, task_scheduler, shared_db_connection = await setup_backend_components()
         
+        # Create UserService with shared DB connection
+        from aico.data.user import UserService
+        user_service = UserService(shared_db_connection)
+        
         # Store components in app state
         app.state.gateway = api_gateway
         app.state.task_scheduler = task_scheduler
         app.state.db_connection = shared_db_connection
+        app.state.user_service = user_service
         
         # Skip FastAPI integration to avoid middleware timing issues
         # Routes will be handled directly by the health endpoint below
@@ -275,8 +280,30 @@ def create_app():
     from backend.api.logs.router import router as logs_router
     fastapi_app.include_router(logs_router, prefix="/api/v1/logs", tags=["logs"])
     
+    # Add users router
+    from backend.api.users.router import router as users_router
+    fastapi_app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
+    
+    # Add admin router
+    from backend.api.admin.router import router as admin_router
+    fastapi_app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
+    
     # Add encryption middleware as ASGI middleware wrapper
     from fastapi import Request
+    
+    # Add simple request logging middleware
+    @fastapi_app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        if request.url.path == "/api/v1/users/authenticate":
+            logger.info(f"FastAPI received request: {request.method} {request.url.path}")
+            body = await request.body()
+            logger.info(f"FastAPI request body length: {len(body)} bytes")
+        response = await call_next(request)
+        if request.url.path == "/api/v1/users/authenticate":
+            logger.info(f"FastAPI response status: {response.status_code}")
+            if hasattr(response, 'body'):
+                logger.info(f"FastAPI response body: {response.body}")
+        return response
     from backend.api_gateway.middleware.encryption import EncryptionMiddleware
     from aico.security.key_manager import AICOKeyManager
     from aico.core.config import ConfigurationManager

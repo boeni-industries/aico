@@ -25,7 +25,7 @@ def _user_to_response(user) -> UserResponse:
         created_at=user.created_at.isoformat() if user.created_at else None,
         updated_at=user.updated_at.isoformat() if user.updated_at else None
     )
-from .dependencies import validate_uuid, validate_user_type, validate_pin, security
+from .dependencies import validate_uuid, validate_user_type, validate_pin, security, get_user_service, get_auth_manager
 from .exceptions import (
     UserNotFoundError, UserServiceError, InvalidCredentialsError,
     handle_user_service_exceptions
@@ -48,11 +48,19 @@ def initialize_router(user_svc: UserService, auth_mgr, admin_dependency):
     verify_admin_access = admin_dependency
 
 
-async def get_admin_dependency(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Wrapper for admin dependency that gets initialized later"""
-    if verify_admin_access is None:
-        raise HTTPException(status_code=500, detail="Authentication not initialized")
-    return await verify_admin_access(credentials)
+async def get_admin_dependency(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    auth_manager = Depends(get_auth_manager)
+):
+    """Admin access dependency using FastAPI app state"""
+    try:
+        token = credentials.credentials
+        # Verify admin token using auth manager
+        user = auth_manager.verify_admin_token(credentials)
+        return {"user_uuid": user.get("user_uuid"), "username": user.get("username")}
+    except Exception as e:
+        logger.error(f"Admin authentication failed: {e}")
+        raise HTTPException(status_code=401, detail="Invalid admin credentials")
 
 
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -227,10 +235,16 @@ async def list_users(
 
 
 @router.post("/authenticate", response_model=AuthenticationResponse)
-async def authenticate_user(request: AuthenticateRequest):
-    """Authenticate user with PIN and return JWT token"""
-    if not user_service or not auth_manager:
-        raise HTTPException(status_code=500, detail="Services not initialized")
+async def authenticate_user(
+    request: AuthenticateRequest,
+    user_service: UserService = Depends(get_user_service),
+    auth_manager = Depends(get_auth_manager)
+) -> AuthenticationResponse:
+    logger.info(f"AUTHENTICATE_USER: Starting authentication for user_uuid: {request.user_uuid}")
+    logger.info(f"AUTHENTICATE_USER: PIN provided: {bool(request.pin)}")
+    """Authenticate a user with PIN and return JWT token."""
+    
+    logger.info(f"Authentication endpoint called with user_uuid: {request.user_uuid}")
     
     # Validate UUID format
     validate_uuid(request.user_uuid)
@@ -239,21 +253,28 @@ async def authenticate_user(request: AuthenticateRequest):
     validate_pin(request.pin)
     
     try:
+        logger.info(f"Starting authentication for user: {request.user_uuid}")
         result = await user_service.authenticate_user(request.user_uuid, request.pin)
+        logger.info(f"User service authentication result: {result}")
         
         if not result["success"]:
-            return AuthenticationResponse(
+            response = AuthenticationResponse(
                 success=False,
                 error=result["error"]
             )
+            logger.info(f"Authentication failed response: {response.dict()}")
+            return response
         
         user = result["user"]
+        logger.info(f"Retrieved user from result: {user.uuid if user else 'None'}")
         
         # Get user roles from authorization service
         from aico.core.authorization import AuthorizationService
         authz_service = AuthorizationService(user_service.db)
+        logger.info("Getting user roles from authorization service")
         user_roles = authz_service.get_user_roles(user.uuid)
         user_permissions = authz_service.get_user_permissions(user.uuid)
+        logger.info(f"User roles: {user_roles}, permissions: {user_permissions}")
         
         # Generate JWT token with proper roles and permissions
         jwt_token = auth_manager.generate_jwt_token(
@@ -265,19 +286,23 @@ async def authenticate_user(request: AuthenticateRequest):
         )
         
         
-        return AuthenticationResponse(
+        response = AuthenticationResponse(
             success=True,
             user=_user_to_response(user),
             jwt_token=jwt_token,
             last_login=result.get("last_login")
         )
+        logger.info(f"Authentication success response: {response.dict()}")
+        return response
         
     except Exception as e:
         logger.error(f"Authentication failed: {e}")
-        return AuthenticationResponse(
+        response = AuthenticationResponse(
             success=False,
             error="Authentication system error"
         )
+        logger.info(f"Authentication failure response: {response.dict()}")
+        return response
 
 
 @router.post("/{user_uuid}/pin", status_code=status.HTTP_204_NO_CONTENT)

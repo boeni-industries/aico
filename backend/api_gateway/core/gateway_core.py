@@ -254,7 +254,8 @@ class GatewayCore:
                     dependencies = {
                         'config': self.config,
                         'db_connection': getattr(self, 'db_connection', None),
-                        'message_bus': message_bus
+                        'message_bus': message_bus,
+                        'gateway': self
                     }
                     self.logger.info(f"Initializing plugin: {plugin_name}")
                     self.logger.info(f"DB connection for {plugin_name}: {self.db_connection is not None}")
@@ -289,6 +290,16 @@ class GatewayCore:
         # Print all active plugins once after registration is complete
         registered_plugins = list(self.plugin_registry.registered_plugins.keys())
         print(f"[GATEWAY CORE] Active plugins: {registered_plugins}")
+        
+        # Update gateway core references to plugin instances
+        security_plugin = self.loaded_plugins.get('security')
+        if security_plugin and hasattr(security_plugin, 'auth_manager'):
+            self.auth_manager = security_plugin.auth_manager
+            self.logger.info("Updated gateway core auth_manager from security plugin")
+        
+        if security_plugin and hasattr(security_plugin, 'authz_manager'):
+            self.authz_manager = security_plugin.authz_manager
+            self.logger.info("Updated gateway core authz_manager from security plugin")
     
     async def _initialize_protocols(self) -> None:
         """Initialize protocol adapters with dependency injection"""

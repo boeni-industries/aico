@@ -150,6 +150,7 @@ class LogEntry {
     String? sessionId,
     String? environment,
   }) {
+    // Ensure error details are serializable
     final errorDetails = <String, dynamic>{
       'error': error.toString(),
       'type': error.runtimeType.toString(),
@@ -198,13 +199,40 @@ class LogEntry {
       if (line != null) 'line': line,
       if (userId != null) 'user_id': userId,
       if (traceId != null) 'trace_id': traceId,
-      if (extra != null) 'extra': extra,
+      if (extra != null) 'extra': _sanitizeMap(extra!),
       if (severity != null) 'severity': severity!.name,
       if (origin != null) 'origin': origin,
       if (environment != null) 'environment': environment,
       if (sessionId != null) 'session_id': sessionId,
-      if (errorDetails != null) 'error_details': errorDetails,
+      if (errorDetails != null) 'error_details': _sanitizeMap(errorDetails!),
     };
+  }
+
+  /// Sanitize a map to ensure all values are JSON-serializable
+  Map<String, dynamic> _sanitizeMap(Map<String, dynamic> map) {
+    final sanitized = <String, dynamic>{};
+    for (final entry in map.entries) {
+      sanitized[entry.key] = _sanitizeValue(entry.value);
+    }
+    return sanitized;
+  }
+
+  /// Sanitize a value to ensure it's JSON-serializable
+  dynamic _sanitizeValue(dynamic value) {
+    if (value == null || value is String || value is num || value is bool) {
+      return value;
+    } else if (value is List) {
+      return value.map(_sanitizeValue).toList();
+    } else if (value is Map) {
+      final sanitized = <String, dynamic>{};
+      for (final entry in value.entries) {
+        sanitized[entry.key.toString()] = _sanitizeValue(entry.value);
+      }
+      return sanitized;
+    } else {
+      // Convert any other type to string
+      return value.toString();
+    }
   }
 
   /// Create copy with updated status

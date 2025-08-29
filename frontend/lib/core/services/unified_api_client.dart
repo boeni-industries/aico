@@ -54,8 +54,11 @@ class UnifiedApiClient {
       final handshakeData = await _encryptionService.createHandshakeRequest();
       final request = HandshakeRequest(handshakeRequest: handshakeData['handshake_request']);
       
-      debugPrint('🔐 UnifiedApiClient: Sending handshake to $_baseUrl/handshake');
-      final response = await _dio.post('/handshake', data: request.toJson());
+      final handshakeUrl = '$_baseUrl/handshake';
+      debugPrint('🔐 UnifiedApiClient: _baseUrl = $_baseUrl');
+      debugPrint('🔐 UnifiedApiClient: Full handshake URL = $handshakeUrl');
+      debugPrint('🔐 UnifiedApiClient: Sending handshake request...');
+      final response = await _dio.post(handshakeUrl, data: request.toJson());
       debugPrint('🔐 UnifiedApiClient: Handshake response received: ${response.statusCode}');
       
       debugPrint('🔐 UnifiedApiClient: Processing handshake response...');

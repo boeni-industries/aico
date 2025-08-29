@@ -148,7 +148,6 @@ class EncryptionMiddleware:
             self.logger.debug(f"Available channels: {list(self.channels.keys())}")
             self.logger.debug(f"Client ID: {client_id}")
             self.logger.debug(f"Channel found: {channel is not None}")
-            self.logger.debug(f"Available channels: {list(self.channels.keys())}")
             
             if not channel or not channel.is_session_valid():
                 if self.require_encryption:

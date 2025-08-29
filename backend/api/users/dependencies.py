@@ -4,18 +4,38 @@ User Management API Dependencies
 User-specific authentication and validation dependencies.
 """
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Dict, Any, Optional
-import uuid as uuid_module
+from fastapi import HTTPException, Depends, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 import re
 import uuid
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
+from aico.data.user import UserService
 
 security = HTTPBearer()
 logger = get_logger("api", "users_dependencies")
+
+
+async def get_user_service(request: Request) -> UserService:
+    """Get UserService instance from FastAPI app state."""
+    if not hasattr(request.app.state, 'user_service'):
+        raise HTTPException(
+            status_code=503,
+            detail="User service not available"
+        )
+    return request.app.state.user_service
+
+
+async def get_auth_manager(request: Request):
+    """Get AuthManager instance from FastAPI app state."""
+    if not hasattr(request.app.state, 'gateway'):
+        raise HTTPException(
+            status_code=503,
+            detail="Authentication manager not available"
+        )
+    return request.app.state.gateway.auth_manager
 
 
 def create_user_auth_dependency(auth_manager):
@@ -92,7 +112,7 @@ def validate_uuid(uuid_str: str) -> str:
     """
     try:
         # Validate and normalize UUID
-        uuid_obj = uuid_module.UUID(uuid_str)
+        uuid_obj = uuid.UUID(uuid_str)
         return str(uuid_obj)
     except ValueError:
         raise HTTPException(

@@ -135,6 +135,9 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
         'remember_me': event.rememberMe,
       });
 
+      // Ensure encryption is initialized before making API calls
+      await _userRepository.initializeEncryption();
+
       final request = AuthenticateRequest(
         uuid: event.userUuid,
         pin: event.pin,
@@ -215,7 +218,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
 
       // Log authentication error
       await Log.e('auth', 'login_error', 'Authentication error occurred', 
-        error: e, 
+        error: Exception('Authentication failed: ${e.toString()}'), 
         extra: {
           'user_uuid': event.userUuid,
           'error_code': errorCode,
@@ -257,7 +260,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
     } catch (e) {
       // Log logout error
       await Log.e('auth', 'logout_error', 'Error during logout, forcing local cleanup', 
-        error: e,
+        error: Exception('Logout failed: ${e.toString()}'),
         extra: {'forced_cleanup': true}
       );
 
@@ -394,7 +397,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
 
       // Log auto-login failure
       await Log.e('auth', 'auto_login_failure', 'Automatic login failed', 
-        error: e,
+        error: Exception('Auto-login failed: ${e.toString()}'),
         stackTrace: stackTrace,
         extra: {
           'error_code': errorCode,
