@@ -271,6 +271,10 @@ def create_app():
     from backend.api.scheduler.router import router as scheduler_router
     fastapi_app.include_router(scheduler_router, prefix="/api/v1/scheduler", tags=["scheduler"])
     
+    # Add logs router
+    from backend.api.logs.router import router as logs_router
+    fastapi_app.include_router(logs_router, prefix="/api/v1/logs", tags=["logs"])
+    
     # Add encryption middleware as ASGI middleware wrapper
     from fastapi import Request
     from backend.api_gateway.middleware.encryption import EncryptionMiddleware

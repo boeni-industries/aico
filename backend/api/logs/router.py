@@ -46,6 +46,7 @@ async def submit_log(
     This endpoint accepts log entries from the frontend application
     and forwards them to the AICO logging infrastructure via the message bus.
     """
+    # Process log entry through the logging infrastructure
     try:
         # Validate required fields
         validate_module_name(log_entry.module)
