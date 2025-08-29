@@ -379,3 +379,19 @@ class TransportIdentityManager:
         """Create secure transport channel for component"""
         identity = self.get_component_identity(component_name)
         return SecureTransportChannel(identity, self.key_manager)
+
+    def process_handshake_and_create_channel(self, handshake_request: Dict[str, Any], component_name: str) -> Tuple[str, Dict[str, Any], SecureTransportChannel]:
+        """Process handshake, create channel, and return client_id, response, and channel."""
+        channel = self.create_secure_channel(component_name)
+        response_data = channel.process_handshake_request(handshake_request)
+
+        if "identity_key" not in handshake_request:
+            raise EncryptionError("Handshake request missing 'identity_key'")
+
+        identity_key_b64 = handshake_request["identity_key"]
+        identity_key_bytes = base64.b64decode(identity_key_b64)
+        client_id = identity_key_bytes.hex()[:16]
+
+        self.logger.info(f"Processed handshake for client_id: {client_id}")
+
+        return client_id, response_data, channel

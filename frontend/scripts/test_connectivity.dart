@@ -9,6 +9,7 @@ Future<void> main() async {
 
   // Test UnifiedApiClient: /health and /echo
   final encryptionService = EncryptionService();
+  await encryptionService.initialize();
   final unifiedClient = UnifiedApiClient(
     dio: dio,
     httpClient: http.Client(),
@@ -25,7 +26,7 @@ Future<void> main() async {
 
   try {
     await unifiedClient.initializeEncryption();
-    final echo = await unifiedClient.post('/echo', {'message': 'hello'}, fromJson: (json) => json['message']);
+    final echo = await unifiedClient.post('/echo', {'message': 'hello', 'test_data': {'key': 'value'}}, fromJson: (json) => json['echo']);
     debugPrint('UNIFIED /echo: SUCCESS: $echo');
   } catch (e) {
     debugPrint('UNIFIED /echo: ERROR: $e');

@@ -92,7 +92,7 @@ class UnifiedApiClient {
       final encryptedRequest = {
         'encrypted': true,
         'payload': encryptedPayload,
-        'clientId': _encryptionService.clientId,
+        'client_id': _encryptionService.clientId, // Match backend expectation
       };
       try {
         final response = await _dio.request(

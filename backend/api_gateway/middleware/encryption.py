@@ -294,18 +294,14 @@ class EncryptionMiddleware:
                 if 'timestamp' not in handshake_request:
                     handshake_request['timestamp'] = time.time()
                 
-                # Create secure channel and process handshake
-                channel = self.identity_manager.create_secure_channel("backend")
-                response_data = channel.process_handshake_request(handshake_request)
+                # Process handshake and get client_id and response data
+                client_id, response_data, channel = self.identity_manager.process_handshake_and_create_channel(
+                    handshake_request, "backend"
+                )
                 
-                # Store channel with client identity key (first 16 chars of identity key hex)
-                if "identity_key" in handshake_request:
-                    import base64
-                    identity_key_b64 = handshake_request["identity_key"]
-                    identity_key_bytes = base64.b64decode(identity_key_b64)
-                    client_verify_key_id = identity_key_bytes.hex()[:16]
-                    self.channels[client_verify_key_id] = channel
-                    self.logger.info(f"Stored channel with client_verify_key_id: {client_verify_key_id}")
+                # Store the channel for the client
+                self.channels[client_id] = channel
+                self.logger.info(f"Stored channel for client_id: {client_id}")
                 
                 # Return handshake response in transit security test format
                 return JSONResponse(

@@ -29,10 +29,10 @@ class EncryptionTestScreen extends StatefulWidget {
   const EncryptionTestScreen({super.key});
 
   @override
-  _EncryptionTestScreenState createState() => _EncryptionTestScreenState();
+  EncryptionTestScreenState createState() => EncryptionTestScreenState();
 }
 
-class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
+class EncryptionTestScreenState extends State<EncryptionTestScreen> {
   String _logOutput = 'Initializing...\n';
   final ScrollController _scrollController = ScrollController();
 
