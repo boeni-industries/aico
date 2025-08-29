@@ -40,23 +40,22 @@ class LogCleanupTask(BaseTask):
             
             # Clean up database log entries
             if cleanup_database:
-                deleted_count = await self._cleanup_database_logs(context, retention_days)
+                deleted_count = self._cleanup_database_logs(context, retention_days)
                 results["database_logs_deleted"] = deleted_count
             
             # Clean up log files
             if cleanup_files:
-                cleaned_size = await self._cleanup_log_files(context, retention_days, max_size_mb)
+                cleaned_size = self._cleanup_log_files(context, retention_days, max_size_mb)
                 results["files_cleaned_mb"] = cleaned_size
             
             # Clean up task execution history
             task_store = context.db_connection
             from ..storage import TaskStore
             store = TaskStore(task_store)
-            exec_deleted = await store.cleanup_old_executions(retention_days)
+            exec_deleted = store.cleanup_old_executions(retention_days)
             results["task_executions_deleted"] = exec_deleted
             
             message = f"Log cleanup completed: {results}"
-            self.logger.info(message)
             
             return TaskResult(
                 success=True,
@@ -69,7 +68,7 @@ class LogCleanupTask(BaseTask):
             self.logger.error(error_msg, exc_info=True)
             return TaskResult(success=False, error=error_msg)
     
-    async def _cleanup_database_logs(self, context: TaskContext, retention_days: int) -> int:
+    def _cleanup_database_logs(self, context: TaskContext, retention_days: int) -> int:
         """Clean up old log entries from database"""
         try:
             cutoff_date = (datetime.now() - timedelta(days=retention_days)).isoformat()
@@ -89,7 +88,7 @@ class LogCleanupTask(BaseTask):
             self.logger.warning(f"Database log cleanup failed: {e}")
             return 0
     
-    async def _cleanup_log_files(self, context: TaskContext, retention_days: int, max_size_mb: int) -> float:
+    def _cleanup_log_files(self, context: TaskContext, retention_days: int, max_size_mb: int) -> float:
         """Clean up old log files from filesystem"""
         try:
             # Get log directory from config
@@ -159,18 +158,17 @@ class KeyRotationTask(BaseTask):
             
             # Rotate session keys
             if rotate_session:
-                rotated_count = await self._rotate_session_keys(context, backup_keys)
+                rotated_count = self._rotate_session_keys(context, backup_keys)
                 results["session_keys_rotated"] = rotated_count
             
             # Database key rotation (if explicitly enabled)
             if rotate_database:
-                db_result = await self._rotate_database_keys(context, backup_keys)
+                db_result = self._rotate_database_keys(context, backup_keys)
                 results["database_key_rotated"] = db_result
             else:
                 results["database_key_rotated"] = "skipped (disabled)"
             
             message = f"Key rotation completed: {results}"
-            self.logger.info(message)
             
             return TaskResult(
                 success=True,
@@ -183,7 +181,7 @@ class KeyRotationTask(BaseTask):
             self.logger.error(error_msg, exc_info=True)
             return TaskResult(success=False, error=error_msg)
     
-    async def _rotate_session_keys(self, context: TaskContext, backup: bool) -> int:
+    def _rotate_session_keys(self, context: TaskContext, backup: bool) -> int:
         """Rotate session authentication keys"""
         try:
             # TODO: Implement session key rotation
@@ -200,7 +198,7 @@ class KeyRotationTask(BaseTask):
             self.logger.error(f"Session key rotation failed: {e}")
             return 0
     
-    async def _rotate_database_keys(self, context: TaskContext, backup: bool) -> bool:
+    def _rotate_database_keys(self, context: TaskContext, backup: bool) -> bool:
         """Rotate database encryption keys (dangerous operation)"""
         try:
             # TODO: Implement database key rotation
@@ -247,21 +245,21 @@ class HealthCheckTask(BaseTask):
             
             # Message bus health
             if context.get_config("check_message_bus", True):
-                bus_healthy = await self._check_message_bus_health(context)
+                bus_healthy = self._check_message_bus_health(context)
                 checks["message_bus"] = bus_healthy
                 all_healthy = all_healthy and bus_healthy
             
             # Disk space
             if context.get_config("check_disk_space", True):
                 disk_threshold = context.get_config("disk_threshold_percent", 90)
-                disk_healthy = await self._check_disk_space(context, disk_threshold)
+                disk_healthy = self._check_disk_space(context, disk_threshold)
                 checks["disk_space"] = disk_healthy
                 all_healthy = all_healthy and disk_healthy
             
             # Memory usage
             if context.get_config("check_memory", True):
                 memory_threshold = context.get_config("memory_threshold_percent", 85)
-                memory_healthy = await self._check_memory_usage(context, memory_threshold)
+                memory_healthy = self._check_memory_usage(context, memory_threshold)
                 checks["memory"] = memory_healthy
                 all_healthy = all_healthy and memory_healthy
             
@@ -270,8 +268,6 @@ class HealthCheckTask(BaseTask):
             
             if not all_healthy:
                 self.logger.warning(f"Health check failed: {checks}")
-            else:
-                self.logger.debug(f"Health check passed: {checks}")
             
             return TaskResult(
                 success=all_healthy,
@@ -299,7 +295,7 @@ class HealthCheckTask(BaseTask):
             self.logger.error(f"Database health check failed: {e}")
             return False
     
-    async def _check_message_bus_health(self, context: TaskContext) -> bool:
+    def _check_message_bus_health(self, context: TaskContext) -> bool:
         """Check message bus connectivity"""
         try:
             # TODO: Implement message bus health check
@@ -310,7 +306,7 @@ class HealthCheckTask(BaseTask):
             self.logger.error(f"Message bus health check failed: {e}")
             return False
     
-    async def _check_disk_space(self, context: TaskContext, threshold_percent: int) -> bool:
+    def _check_disk_space(self, context: TaskContext, threshold_percent: int) -> bool:
         """Check available disk space"""
         try:
             # Check disk space in current directory
@@ -327,7 +323,7 @@ class HealthCheckTask(BaseTask):
             self.logger.error(f"Disk space check failed: {e}")
             return False
     
-    async def _check_memory_usage(self, context: TaskContext, threshold_percent: int) -> bool:
+    def _check_memory_usage(self, context: TaskContext, threshold_percent: int) -> bool:
         """Check system memory usage"""
         try:
             # TODO: Implement proper memory usage checking
@@ -370,7 +366,6 @@ class DatabaseVacuumTask(BaseTask):
             context.db_connection.commit()
             
             message = f"Database vacuum completed: {results}"
-            self.logger.info(message)
             
             return TaskResult(
                 success=True,

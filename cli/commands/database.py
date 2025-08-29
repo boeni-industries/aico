@@ -132,30 +132,30 @@ def _get_database_connection(db_path: str, force_fresh: bool = False) -> Encrypt
         raise typer.Exit(1)
 
 
-def _format_table_value(value, column_name: str, utc: bool = False):
-    """Format table value with timezone handling for timestamp columns (display only)"""
+def _format_table_value(value, column_name: str, utc: bool = False, truncate: bool = True):
+    """Format table value with timezone handling and optional truncation."""
     if value is None:
         return ""
-    
+
     str_value = str(value)
-    
+
     # Detect timestamp columns by name and format
     timestamp_indicators = ['timestamp', 'created_at', 'updated_at', 'date', 'time']
     is_timestamp_column = any(indicator in column_name.lower() for indicator in timestamp_indicators)
-    
+
     # Check if value looks like ISO timestamp
     is_timestamp_value = ('T' in str_value and ('Z' in str_value or '+' in str_value or str_value.count(':') >= 2))
-    
+
     if (is_timestamp_column or is_timestamp_value) and len(str_value) > 10:
         try:
             return format_timestamp_local(str_value, show_utc=utc)
         except:
             pass  # Fall through to regular formatting
-    
-    # Truncate long values for display
-    if len(str_value) > 50:
-        str_value = str_value[:47] + "..."
-    
+
+    # Truncate long values for display if requested
+    if truncate and len(str_value) > 50:
+        return str_value[:47] + "..."
+
     return str_value
 
 
@@ -887,7 +887,7 @@ def head(
         for record in records:
             row_data = []
             for i, value in enumerate(record):
-                formatted_value = _format_table_value(value, columns[i], utc)
+                formatted_value = _format_table_value(value, columns[i], utc, truncate=True)
                 row_data.append(formatted_value)
             table.add_row(*row_data)
         
@@ -1091,12 +1091,13 @@ def exec(
             if result and len(result[0]) > 0:
                 # Create table with dynamic columns
                 table = Table(
-                    title=f"✨ [bold cyan]Query Results[/bold cyan]",
+                    title="✨ [bold cyan]Query Results[/bold cyan]",
                     title_justify="left",
                     border_style="bright_blue",
                     header_style="bold yellow",
                     box=box.SIMPLE_HEAD,
-                    padding=(0, 1)
+                    padding=(0, 1),
+                    expand=True  # Allow table to expand to full width
                 )
                 
                 # Get proper column names from query description
@@ -1127,13 +1128,15 @@ def exec(
                 
                 for col in columns:
                     col_header = col + get_timezone_suffix(utc) if col.lower() in ['timestamp', 'created_at', 'updated_at', 'date'] else col
-                    table.add_column(col_header, style="white")
+                    # Enable wrapping for potentially long content
+                    table.add_column(col_header, style="white", overflow="fold", no_wrap=False)
                 
                 # Add rows
                 for row in result:
                     row_data = []
                     for i, val in enumerate(row):
-                        formatted_value = _format_table_value(val, columns[i], utc)
+                        # Do not truncate values for exec command
+                        formatted_value = _format_table_value(val, columns[i], utc, truncate=False)
                         row_data.append(formatted_value)
                     table.add_row(*row_data)
                 
