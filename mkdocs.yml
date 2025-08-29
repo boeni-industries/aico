@@ -215,8 +215,9 @@ nav:
     - UUID Standards: developer-guide/uuid_standards.md
     - Lessons Learned: developer-guide/lessons_learned.md
   - Roadmap:
-    - Foundation: roadmap/foundation.md
+    - Foundation I: roadmap/foundation_I.md
     - MVP: roadmap/mvp.md
+    - Foundation II: roadmap/foundation_II.md
     - Confidante: roadmap/confidante.md
     - Sidekick: roadmap/sidekick.md
     - Co-Adventurer: roadmap/co_adventurer.md

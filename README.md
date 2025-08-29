@@ -20,9 +20,9 @@ AICO aims to be a true family member: emotionally aware, visually present, and c
 
 AICO's development follows a unique evolutionary path, with each stage deepening the relationship:
 
-🤝 **Companion** (MVP) → 💭 **Confidante** → 🦾 **Sidekick** → 🌟 **Co-Adventurer** → 🌐 **Embodied Presence** → 🤝 **Community**
+🏗️ **Foundation I** → 🤝 **Companion** (MVP) → 🏗️ **Foundation II** → 💭 **Confidante** → 🦾 **Sidekick** → 🌟 **Co-Adventurer** → 🌐 **Embodied Presence** → 🤝 **Community**
 
-This isn't just feature development—it's relationship evolution. We're building an AI that grows from basic conversation partner to trusted confidante, proactive sidekick, collaborative co-adventurer, and ultimately a fully embodied presence that connects you with a broader community while preserving your privacy.
+This isn't just feature development—it's relationship evolution. We start with essential infrastructure (Foundation I), validate core companion features (MVP), then build advanced infrastructure (Foundation II) before expanding into deeper relationship capabilities. We're building an AI that grows from basic conversation partner to trusted confidante, proactive sidekick, collaborative co-adventurer, and ultimately a fully embodied presence that connects you with a broader community while preserving your privacy.
 
 ## Architecture Overview
 
