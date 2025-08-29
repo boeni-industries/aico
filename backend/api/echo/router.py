@@ -31,6 +31,7 @@ class EchoResponse(BaseModel):
     status: str = "success"
 
 
+@router.post("/", response_model=EchoResponse, status_code=status.HTTP_200_OK)
 @router.post("", response_model=EchoResponse, status_code=status.HTTP_200_OK)
 async def echo_message(request: EchoRequest, raw_request: Request) -> EchoResponse:
     """
