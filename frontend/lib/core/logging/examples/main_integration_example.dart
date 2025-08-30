@@ -15,7 +15,7 @@ void main() async {
   Log.setEnvironment('production'); // or 'dev', 'staging'
   
   // Log app startup
-  Log.i('frontend.app', 'app.lifecycle.startup', 'AICO app starting');
+  Log.i('frontend.app', 'app/lifecycle/startup', 'AICO app starting');
   
   runApp(MyApp());
 }
@@ -42,7 +42,7 @@ Future<void> setupDependencies() async {
   await LoggingModule.register(getIt);
   
   // Log successful setup
-  Log.i('frontend.app', 'app.setup.complete', 'Dependency injection setup complete');
+  Log.i('frontend.app', 'app/setup/complete', 'Dependency injection setup complete');
 }
 
 class MyApp extends StatelessWidget {
@@ -74,13 +74,13 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    Log.i('frontend.home', 'widget.lifecycle.init', 'Home page initialized');
+    Log.i('frontend.home', 'widget/lifecycle/init', 'Home page initialized');
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    Log.i('frontend.home', 'widget.lifecycle.dispose', 'Home page disposed');
+    Log.i('frontend.home', 'widget/lifecycle/dispose', 'Home page disposed');
     super.dispose();
   }
 
@@ -88,7 +88,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     
-    Log.i('frontend.app', 'app.lifecycle.state_change', 'App lifecycle state changed', extra: {
+    Log.i('frontend.app', 'app/lifecycle/state_change', 'App lifecycle state changed', extra: {
       'state': state.toString(),
     });
     
@@ -111,7 +111,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
             Text('Welcome to AICO'),
             ElevatedButton(
               onPressed: () {
-                Log.i('frontend.home', 'ui.button.click', 'Welcome button clicked');
+                Log.i('frontend.home', 'ui/button/click', 'Welcome button clicked');
                 // Navigate or perform action
               },
               child: Text('Get Started'),
@@ -129,7 +129,7 @@ class LoggingNavigatorObserver extends NavigatorObserver {
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
     
-    Log.d('frontend.navigation', 'navigation.push', 'Route pushed', extra: {
+    Log.d('frontend.navigation', 'navigation/push', 'Route pushed', extra: {
       'route_name': route.settings.name ?? 'unnamed',
       'previous_route': previousRoute?.settings.name ?? 'none',
     });
@@ -139,7 +139,7 @@ class LoggingNavigatorObserver extends NavigatorObserver {
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
     
-    Log.d('frontend.navigation', 'navigation.pop', 'Route popped', extra: {
+    Log.d('frontend.navigation', 'navigation/pop', 'Route popped', extra: {
       'route_name': route.settings.name ?? 'unnamed',
       'previous_route': previousRoute?.settings.name ?? 'none',
     });
@@ -149,7 +149,7 @@ class LoggingNavigatorObserver extends NavigatorObserver {
   void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
     super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
     
-    Log.d('frontend.navigation', 'navigation.replace', 'Route replaced', extra: {
+    Log.d('frontend.navigation', 'navigation/replace', 'Route replaced', extra: {
       'new_route': newRoute?.settings.name ?? 'unnamed',
       'old_route': oldRoute?.settings.name ?? 'unnamed',
     });

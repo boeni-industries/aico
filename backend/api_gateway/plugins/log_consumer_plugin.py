@@ -10,7 +10,9 @@ import asyncio
 from typing import Dict, Any, Optional
 
 from ..core.plugin_registry import PluginInterface, PluginMetadata, PluginPriority
+from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
+from aico.core.topics import AICOTopics
 
 
 class LogConsumerPlugin(PluginInterface):
@@ -38,7 +40,7 @@ class LogConsumerPlugin(PluginInterface):
                 "enabled": {"type": "boolean", "default": True},
                 "zmq_sub_port": {"type": "integer", "default": 5556},
                 "zmq_host": {"type": "string", "default": "localhost"},
-                "topic_prefix": {"type": "string", "default": "logs."},
+                "topic_prefix": {"type": "string", "default": "logs/"},
                 "batch_size": {"type": "integer", "default": 100},
                 "flush_interval": {"type": "integer", "default": 5}
             }
@@ -91,7 +93,7 @@ class LogConsumerPlugin(PluginInterface):
             return
         
         try:
-            await self.log_consumer.start()
+            self.log_consumer.start()  # Remove await - start() is synchronous
             self.logger.info("Log consumer plugin started - ZMQ log transport active")
             
         except Exception as e:
@@ -102,7 +104,7 @@ class LogConsumerPlugin(PluginInterface):
         """Stop the log consumer service"""
         if self.log_consumer:
             try:
-                await self.log_consumer.stop()
+                self.log_consumer.stop()  # Remove await - stop() is also synchronous
                 self.logger.info("Log consumer plugin stopped")
             except Exception as e:
                 self.logger.error(f"Error stopping log consumer plugin: {e}")

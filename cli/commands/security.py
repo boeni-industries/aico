@@ -1114,20 +1114,20 @@ def role_show(
             
             # Add permission descriptions
             perm_descriptions = {
-                "admin.*": "Full administrative access",
-                "system.*": "System management operations",
-                "logs.*": "Log management and access",
-                "config.*": "Configuration management",
-                "users.*": "User management operations",
-                "audit.*": "Audit log access",
-                "conversation.*": "Chat and conversation access",
-                "memory.read": "Read memory data",
-                "personality.read": "Read personality data",
-                "profile.*": "Profile management",
-                "system.health": "Health check access",
-                "logs.write": "Write log entries",
-                "events.*": "Event handling",
-                "debug.*": "Debug operations"
+                AICOTopics.ALL_ADMIN: "Full administrative access",
+                AICOTopics.ALL_SYSTEM: "System management operations",
+                AICOTopics.ALL_LOGS: "Log management and access",
+                "config/*": "Configuration management",
+                "users/*": "User management operations",
+                "audit/*": "Audit log access",
+                AICOTopics.ALL_CONVERSATION: "Chat and conversation access",
+                "memory/read": "Read memory data",
+                "personality/read": "Read personality data",
+                "profile/*": "Profile management",
+                AICOTopics.SYSTEM_HEALTH: "Health check access",
+                "logs/write": "Write log entries",
+                "events/*": "Event handling",
+                "debug/*": "Debug operations"
             }
             
             for perm in permissions:

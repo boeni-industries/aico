@@ -345,7 +345,7 @@ class ZMQLogTransport:
             address = f"tcp://{host}:{publisher_port}"
             
             from backend.log_consumer import debugPrint
-            debugPrint(f"[ZMQ TRANSPORT] Using regular ZMQ context, connecting to {address}")
+            #debugPrint(f"[ZMQ TRANSPORT] Using regular ZMQ context, connecting to {address}")
             self._socket.connect(address)
         except Exception as e:
             # Log ZMQ transport initialization failure
@@ -374,11 +374,12 @@ class ZMQLogTransport:
             if log_entry.module:
                 topic_parts.append(log_entry.module)
             
-            topic = ".".join(topic_parts) if topic_parts else "general"
-            full_topic = f"logs.{topic}"
+            topic = "/".join(topic_parts) if topic_parts else "general"
+            from .topics import AICOTopics
+            full_topic = AICOTopics.build_logs_topic(topic)
             
             from backend.log_consumer import debugPrint
-            # debugPrint(f"[ZMQ TRACE {trace_id}] STEP 1: Preparing to send - Topic: {full_topic}, Message: {log_entry.message}")
+            #debugPrint(f"[ZMQ PUBLISHER {trace_id}] Publishing to topic: {full_topic}, Message: {log_entry.message}")
             
             # Serialize the protobuf message
             serialized_data = log_entry.SerializeToString()
@@ -407,82 +408,6 @@ class ZMQLogTransport:
     
     def close(self):
         """Clean up ZMQ resources"""
-        if self._socket:
-            self._socket.close()
-        if self._context:
-            self._context.term()
-
-
-class LogCollector:
-    """Collects logs from ZeroMQ message bus and stores in database"""
-    
-    def __init__(self, config_manager, db_connection):
-        self.config = config_manager
-        self.db = db_connection
-        self._context = None
-        self._socket = None
-        self._running = False
-        
-    def start(self):
-        """Start collecting logs from message bus"""
-        if not ZMQ_AVAILABLE:
-            return
-            
-        self._context = zmq.Context()
-        self._socket = self._context.socket(zmq.SUB)
-        
-        backend_port = self.config.get("message_bus.backend_port", 5555)
-        self._socket.bind(f"tcp://*:{backend_port}")
-        
-        # Subscribe to all log topics
-        topic = self.config.get("logging.transport.zmq_topic", "logs")
-        self._socket.setsockopt(zmq.SUBSCRIBE, f"{topic}.".encode('utf-8'))
-        
-        self._running = True
-        while self._running:
-            try:
-                topic_bytes, message_bytes = self._socket.recv_multipart(zmq.NOBLOCK)
-                log_data = json.loads(message_bytes.decode('utf-8'))
-                self._store_log(log_data)
-            except zmq.Again:
-                continue
-            except Exception as e:
-                import logging
-                logger = logging.getLogger('log_collector')
-                logger.error(f"Log collector error: {e}")
-    
-    def _store_log(self, log_data: Dict[str, Any]):
-        """Store log entry in database"""
-        try:
-            self.db.execute("""
-                INSERT INTO logs (
-                    timestamp, level, subsystem, module, function_name,
-                    file_path, line_number, topic, message, user_uuid,
-                    session_id, trace_id, extra
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, [
-                log_data.get("timestamp"),
-                log_data.get("level"),
-                log_data.get("subsystem"),
-                log_data.get("module"),
-                log_data.get("function_name"),
-                log_data.get("file_path"),
-                log_data.get("line_number"),
-                log_data.get("topic"),
-                log_data.get("message"),
-                log_data.get("user_uuid"),
-                log_data.get("session_id"),
-                log_data.get("trace_id"),
-                json.dumps(log_data.get("extra")) if log_data.get("extra") else None
-            ])
-        except Exception as e:
-            import logging
-            logger = logging.getLogger('log_storage')
-            logger.error(f"Log storage error: {e}")
-    
-    def stop(self):
-        """Stop collecting logs"""
-        self._running = False
         if self._socket:
             self._socket.close()
         if self._context:

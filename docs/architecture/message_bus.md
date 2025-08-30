@@ -42,7 +42,7 @@ message MessageMetadata {
   string message_id = 1;       // UUID string
   string timestamp = 2;        // ISO 8601 format
   string source = 3;           // Source module name
-  string message_type = 4;     // topic.subtopic format
+  string message_type = 4;     // topic/subtopic format
   string version = 5;          // Schema version
 }
 ```
@@ -114,49 +114,61 @@ The message bus uses a hierarchical topic structure that organizes messages by f
 
 ### Core Domains
 
-- **emotion.*** - Emotion simulation related messages
-  - `emotion.state.current` - Current emotional state
-  - `emotion.state.update` - Emotional state changes
-  - `emotion.appraisal.event` - Emotional appraisal of events
+**IMPORTANT**: AICO uses a centralized topic registry (`AICOTopics`) with slash-based notation for all message bus topics.
 
-- **personality.*** - Personality simulation related messages
-  - `personality.state.current` - Current personality state
-  - `personality.expression.communication` - Communication style parameters
-  - `personality.expression.decision` - Decision-making parameters
-  - `personality.expression.emotional` - Emotional tendency parameters
+- **emotion/** - Emotion simulation related messages
+  - `emotion/state/current` - Current emotional state
+  - `emotion/state/update` - Emotional state changes
+  - `emotion/appraisal/event` - Emotional appraisal of events
 
-- **agency.*** - Autonomous agency related messages
-  - `agency.goals.current` - Current agent goals
-  - `agency.initiative` - Proactive engagement initiatives
-  - `agency.decision.request` - Decision-making requests
-  - `agency.decision.response` - Decision outcomes
+- **personality/** - Personality simulation related messages
+  - `personality/state/current` - Current personality state
+  - `personality/expression/communication` - Communication style parameters
+  - `personality/expression/decision` - Decision-making parameters
+  - `personality/expression/emotional` - Emotional tendency parameters
 
-- **conversation.*** - Conversation and dialogue related messages
-  - `conversation.context` - Current conversation context
-  - `conversation.history` - Historical conversation data
-  - `conversation.intent` - Detected user intents
+- **agency/** - Autonomous agency related messages
+  - `agency/goals/current` - Current agent goals
+  - `agency/initiative` - Proactive engagement initiatives
+  - `agency/decision/request` - Decision-making requests
+  - `agency/decision/response` - Decision outcomes
 
-- **memory.*** - Memory and learning related messages
-  - `memory.store` - Memory storage requests
-  - `memory.retrieve` - Memory retrieval requests/responses
-  - `memory.consolidation` - Consolidated memory data
+- **conversation/** - Conversation and dialogue related messages
+  - `conversation/context/current` - Current conversation context
+  - `conversation/history/add` - Historical conversation data
+  - `conversation/intent/detected` - Detected user intents
 
-- **user.*** - User-related messages
-  - `user.interaction.history` - User interaction patterns
-  - `user.feedback` - Explicit and implicit user feedback
-  - `user.state` - Inferred user state
+- **memory/** - Memory and learning related messages
+  - `memory/store/request` - Memory storage requests
+  - `memory/retrieve/request` - Memory retrieval requests
+  - `memory/consolidation/start` - Memory consolidation triggers
 
-- **llm.*** - Large Language Model related messages
-  - `llm.conversation.events` - Conversation events from LLM
-  - `llm.prompt.conditioning.request` - Requests for prompt conditioning
-  - `llm.prompt.conditioning.response` - Prompt conditioning parameters
+- **user/** - User-related messages
+  - `user/interaction/history` - User interaction patterns
+  - `user/feedback/explicit` - Explicit user feedback
+  - `user/state/update` - Inferred user state changes
 
-- **ui.*** - User Interface related messages
-  - `ui.state.update` - UI state changes (theme, navigation, connection status)
-  - `ui.interaction` - User interactions (clicks, input, gestures)
-  - `ui.notification` - Display notifications and alerts
-  - `ui.command` - Backend commands to frontend (navigate, show modal, etc.)
-  - `ui.preferences` - UI preferences and settings updates
+- **llm/** - Large Language Model related messages
+  - `llm/conversation/events` - Conversation events from LLM
+  - `llm/prompt/conditioning/request` - Requests for prompt conditioning
+  - `llm/prompt/conditioning/response` - Prompt conditioning parameters
+
+- **ui/** - User Interface related messages
+  - `ui/state/update` - UI state changes (theme, navigation, connection status)
+  - `ui/interaction/event` - User interactions (clicks, input, gestures)
+  - `ui/notification/show` - Display notifications and alerts
+  - `ui/command/execute` - Backend commands to frontend
+  - `ui/preferences/update` - UI preferences and settings updates
+
+- **system/** - System management messages
+  - `system/bus/started` - Message bus startup events
+  - `system/bus/stopping` - Message bus shutdown events
+  - `system/module/registered` - Module registration events
+  - `system/health` - System health checks
+
+- **logs/** - Logging and audit messages
+  - `logs/entry` - Individual log entries
+  - `logs/*` - All log topics (wildcard subscription)
 
 ### Cross-Cutting Concerns
 
@@ -197,12 +209,29 @@ Modules interact with the message bus through a consistent pattern:
 
 The Emotion Simulation and Personality Simulation modules integrate through the message bus:
 
-1. Personality Simulation publishes `personality.expression.emotional` messages
+1. Personality Simulation publishes `personality/expression/emotional` messages
 2. Emotion Simulation subscribes to these messages to adjust emotional tendencies
-3. Emotion Simulation publishes `emotion.state.current` messages
+3. Emotion Simulation publishes `emotion/state/current` messages
 4. Personality Simulation subscribes to these messages to inform personality expression
 
 This bidirectional communication happens without direct dependencies between the modules.
+
+### Using the Central Topic Registry
+
+All code should use the `AICOTopics` class instead of string literals:
+
+```python
+from aico.core.topics import AICOTopics
+
+# Correct usage
+await client.publish(AICOTopics.EMOTION_STATE_CURRENT, emotion_data)
+await client.subscribe(AICOTopics.ALL_PERSONALITY, handler)
+
+# Incorrect usage (deprecated)
+await client.publish("emotion.state.current", emotion_data)  # DON'T DO THIS
+```
+
+**Migration Support**: The `TopicMigration` class provides automatic conversion from old dot notation to new slash notation for backward compatibility during the transition period.
 
 ## Plugin Integration
 

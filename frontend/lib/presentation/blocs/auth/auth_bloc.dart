@@ -1,4 +1,6 @@
-import 'package:aico_frontend/core/logging/logging_module.dart';
+import 'package:aico_frontend/core/logging/logging.dart';
+import 'package:aico_frontend/core/logging/logging_module.dart'; 
+import 'package:aico_frontend/core/topics/aico_topics.dart';
 import 'package:aico_frontend/core/utils/platform_utils.dart';
 import 'package:aico_frontend/networking/models/error_models.dart';
 import 'package:aico_frontend/networking/models/user_models.dart';
@@ -121,7 +123,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
   ) async {
     // Prevent concurrent authentication attempts
     if (_isAuthenticating) {
-      await Log.w('auth', 'login_concurrent', 'Login attempt blocked - authentication already in progress');
+      await Log.w('auth', AICOTopics.authLoginConcurrent, 'Login attempt blocked - authentication already in progress');
       return;
     }
 
@@ -130,7 +132,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
 
     try {
       // Log authentication attempt
-      await Log.i('auth', 'login_attempt', 'User login attempt started', extra: {
+      await Log.i('auth', AICOTopics.authLoginAttempt, 'User login attempt started', extra: {
         'user_uuid': event.userUuid,
         'remember_me': event.rememberMe,
       });
@@ -171,7 +173,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
         }
 
         // Log successful authentication
-        await Log.i('auth', 'login_success', 'User authentication successful', extra: {
+        await Log.i('auth', AICOTopics.authLoginSuccess, 'User authentication successful', extra: {
           'user_uuid': event.userUuid,
           'user_name': response.user!.fullName,
           'nickname': response.user!.nickname,
@@ -186,7 +188,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
         ));
       } else {
         // Log authentication failure
-        await Log.w('auth', 'login_failure', 'User authentication failed', extra: {
+        await Log.w('auth', AICOTopics.authLoginFailure, 'User authentication failed', extra: {
           'user_uuid': event.userUuid,
           'error': response.error ?? 'Authentication failed',
           'error_code': 'AUTH_FAILED',
@@ -217,7 +219,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
       }
 
       // Log authentication error
-      await Log.e('auth', 'login_error', 'Authentication error occurred', 
+      await Log.e('auth', AICOTopics.authLoginError, 'Authentication error occurred', 
         error: Exception('Authentication failed: ${e.toString()}'), 
         extra: {
           'user_uuid': event.userUuid,
@@ -242,7 +244,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
     emit(const AuthLoading());
 
     // Log logout attempt
-    await Log.i('auth', 'logout_attempt', 'User logout requested');
+    await Log.i('auth', AICOTopics.authLogoutAttempt, 'User logout requested');
 
     try {
       // Clear stored tokens and credentials
@@ -254,12 +256,12 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
       // await _userRepository.logout();
 
       // Log successful logout
-      await Log.i('auth', 'logout_success', 'User logged out successfully');
+      await Log.i('auth', AICOTopics.authLogoutSuccess, 'User logged out successfully');
 
       emit(const AuthUnauthenticated());
     } catch (e) {
       // Log logout error
-      await Log.e('auth', 'logout_error', 'Error during logout, forcing local cleanup', 
+      await Log.e('auth', AICOTopics.authLogoutError, 'Error during logout, forcing local cleanup', 
         error: Exception('Logout failed: ${e.toString()}'),
         extra: {'forced_cleanup': true}
       );
@@ -309,7 +311,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
   ) async {
     // Prevent concurrent authentication attempts
     if (_isAuthenticating) {
-      await Log.w('auth', 'auto_login_concurrent', 'Auto-login attempt blocked - authentication already in progress');
+      await Log.w('auth', AICOTopics.authAutoLoginConcurrent, 'Auto-login attempt blocked - authentication already in progress');
       return;
     }
 
@@ -318,7 +320,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
     emit(const AuthLoading());
 
     // Log auto-login attempt
-    await Log.i('auth', 'auto_login_attempt', 'Attempting automatic login with stored credentials');
+    await Log.i('auth', AICOTopics.authAutoLoginAttempt, 'Attempting automatic login with stored credentials');
 
     try {
       // Attempt auto-login using stored credentials
@@ -329,7 +331,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
         debugPrint('🔐 AuthBloc: Auto-login successful');
         
         // Log successful auto-login
-        await Log.i('auth', 'auto_login_success', 'Automatic login successful', extra: {
+        await Log.i('auth', AICOTopics.authAutoLoginSuccess, 'Automatic login successful', extra: {
           'user_uuid': authResponse.user!.uuid,
           'user_name': authResponse.user!.fullName,
           'nickname': authResponse.user!.nickname,
@@ -344,7 +346,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
         debugPrint('🔐 AuthBloc: No stored credentials found');
         
         // Log no stored credentials
-        await Log.i('auth', 'auto_login_no_credentials', 'No stored credentials found for auto-login');
+        await Log.i('auth', AICOTopics.authAutoLoginNoCredentials, 'No stored credentials found for auto-login');
         
         emit(const AuthUnauthenticated());
       }
@@ -396,7 +398,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
       }
 
       // Log auto-login failure
-      await Log.e('auth', 'auto_login_failure', 'Automatic login failed', 
+      await Log.e('auth', AICOTopics.authAutoLoginFailure, 'Automatic login failed', 
         error: Exception('Auto-login failed: ${e.toString()}'),
         stackTrace: stackTrace,
         extra: {

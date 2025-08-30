@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:aico_frontend/core/di/service_locator.dart';
 import 'package:aico_frontend/core/logging/logging_module.dart';
+import 'package:aico_frontend/core/logging/logging.dart';
+import 'package:aico_frontend/core/topics/aico_topics.dart';
 import 'package:aico_frontend/core/theme/aico_theme.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
 import 'package:aico_frontend/networking/repositories/user_repository.dart';
@@ -48,7 +50,7 @@ void main() async {
   await ServiceLocator.allReady();
   
   // Log application startup
-  await Log.i('app', 'startup', 'AICO Flutter application starting', extra: {
+  await Log.i('app', AICOTopics.appStartup, 'AICO Flutter application starting', extra: {
     'platform': Platform.operatingSystem,
     'version': Platform.operatingSystemVersion,
     'is_web': kIsWeb,
@@ -76,14 +78,14 @@ class _AicoAppState extends State<AicoApp> {
     _currentThemeMode = _themeManager.currentThemeMode;
     
     // Log app initialization
-    Log.i('app', 'initialization', 'App widget initialized', extra: {
+    Log.i('app', AICOTopics.appInitialization, 'App widget initialized', extra: {
       'theme_mode': _currentThemeMode.toString(),
     });
     
     // Listen to theme changes
     _themeManager.themeChanges.listen((themeMode) {
       if (mounted) {
-        Log.i('app', 'theme_change', 'Theme changed', extra: {
+        Log.i('app', AICOTopics.appThemeChange, 'Theme changed', extra: {
           'from': _currentThemeMode.toString(),
           'to': themeMode.toString(),
         });

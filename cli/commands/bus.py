@@ -151,8 +151,8 @@ def test_connection(
                 console.print(f"[green]✓[/green] Received: {message.metadata.message_type}")
             
             # Subscribe to test topic
-            await client.subscribe("test.*", test_callback)
-            console.print("[green]✓[/green] Subscribed to test.* topics")
+            await client.subscribe("test/*", test_callback)
+            console.print("[green]✓[/green] Subscribed to test/* topics")
             
             # Small delay to ensure subscription is active
             console.print("[dim]Waiting for subscription to activate...[/dim]")
@@ -176,10 +176,10 @@ def test_connection(
                 test_log.timestamp.CopyFrom(timestamp)
                 
                 await client.publish(
-                    f"test.message_{i}",
+                    f"test/message/{i}",
                     test_log
                 )
-                console.print(f"[cyan]→[/cyan] Sent test.message_{i}")
+                console.print(f"[cyan]→[/cyan] Sent test/message/{i}")
                 await asyncio.sleep(0.1)  # Small delay
             
             # Wait for messages to be received

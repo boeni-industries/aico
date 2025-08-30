@@ -7,17 +7,17 @@ class LoggingExamples {
   /// Example: Basic logging in a widget
   static void widgetLogging() {
     // Simple info log
-    Log.i('frontend.chat_ui', 'ui.button.click', 'User clicked Send button');
+    Log.i('frontend.chat_ui', 'ui/button/click', 'User clicked Send button');
     
     // Debug log with extra data
-    Log.d('frontend.chat_ui', 'ui.state.change', 'Chat state updated', extra: {
+    Log.d('frontend.chat_ui', 'ui/state/change', 'Chat state updated', extra: {
       'previous_state': 'idle',
       'new_state': 'typing',
       'message_count': 5,
     });
     
     // Warning log
-    Log.w('frontend.connection', 'network.slow', 'Network response taking longer than expected');
+    Log.w('frontend.connection', 'network/slow', 'Network response taking longer than expected');
   }
 
   /// Example: Error logging with exception handling
@@ -29,7 +29,7 @@ class LoggingExamples {
       // Log error with full context
       await Log.e(
         'frontend.api_client',
-        'api.request.failed',
+        'api/request/failed',
         'Failed to send message to backend',
         error: error,
         stackTrace: stackTrace,
@@ -45,10 +45,10 @@ class LoggingExamples {
   /// Example: BLoC integration
   static void blocLogging() {
     // In a BLoC event handler
-    Log.i('frontend.chat_bloc', 'bloc.event.received', 'Processing SendMessage event');
+    Log.i('frontend.chat_bloc', 'bloc/event/received', 'Processing SendMessage event');
     
     // State transition logging
-    Log.d('frontend.chat_bloc', 'bloc.state.transition', 'State changed', extra: {
+    Log.d('frontend.chat_bloc', 'bloc/state/transition', 'State changed', extra: {
       'from': 'ChatInitial',
       'to': 'ChatLoading',
       'event': 'SendMessageEvent',
@@ -58,37 +58,37 @@ class LoggingExamples {
   /// Example: Repository pattern logging
   static Future<void> repositoryLogging() async {
     // Before API call
-    Log.d('frontend.chat_repository', 'api.request.start', 'Sending message to backend');
+    Log.d('frontend.chat_repository', 'api/request/start', 'Sending message to backend');
     
     try {
       // API call here
       await Future.delayed(Duration(seconds: 1));
       
       // Success logging
-      Log.i('frontend.chat_repository', 'api.request.success', 'Message sent successfully', extra: {
+      Log.i('frontend.chat_repository', 'api/request/success', 'Message sent successfully', extra: {
         'response_time_ms': 1000,
         'message_id': 'msg_123',
       });
     } catch (e) {
       // Error logging
-      Log.e('frontend.chat_repository', 'api.request.error', 'Failed to send message', error: e);
+      Log.e('frontend.chat_repository', 'api/request/error', 'Failed to send message', error: e);
     }
   }
 
   /// Example: User interaction logging
   static void userInteractionLogging() {
     // Button clicks
-    Log.i('frontend.chat_ui', 'ui.interaction.click', 'User clicked avatar settings');
+    Log.i('frontend.chat_ui', 'ui/interaction/click', 'User clicked avatar settings');
     
     // Navigation
-    Log.d('frontend.navigation', 'ui.navigation.route', 'Navigated to settings screen', extra: {
+    Log.d('frontend.navigation', 'ui/navigation/route', 'Navigated to settings screen', extra: {
       'from_route': '/chat',
       'to_route': '/settings',
       'navigation_type': 'push',
     });
     
     // Form interactions
-    Log.d('frontend.settings_ui', 'ui.form.input', 'User updated theme preference', extra: {
+    Log.d('frontend.settings_ui', 'ui/form/input', 'User updated theme preference', extra: {
       'field': 'theme',
       'old_value': 'light',
       'new_value': 'dark',
@@ -100,7 +100,7 @@ class LoggingExamples {
     final stopwatch = Stopwatch()..start();
     
     // Start operation
-    Log.d('frontend.avatar_system', 'performance.operation.start', 'Starting avatar animation');
+    Log.d('frontend.avatar_system', 'performance/operation/start', 'Starting avatar animation');
     
     // Simulate work
     // ... do work ...
@@ -108,7 +108,7 @@ class LoggingExamples {
     stopwatch.stop();
     
     // Log performance metrics
-    Log.i('frontend.avatar_system', 'performance.operation.complete', 'Avatar animation completed', extra: {
+    Log.i('frontend.avatar_system', 'performance/operation/complete', 'Avatar animation completed', extra: {
       'duration_ms': stopwatch.elapsedMilliseconds,
       'animation_type': 'facial_expression',
       'frame_count': 60,
@@ -118,17 +118,17 @@ class LoggingExamples {
   /// Example: Connection state logging
   static void connectionLogging() {
     // Connection attempts
-    Log.i('frontend.connection_manager', 'connection.attempt', 'Attempting to connect to backend');
+    Log.i('frontend.connection_manager', 'connection/attempt', 'Attempting to connect to backend');
     
     // Connection success
-    Log.i('frontend.connection_manager', 'connection.established', 'Connected to backend', extra: {
+    Log.i('frontend.connection_manager', 'connection/established', 'Connected to backend', extra: {
       'protocol': 'websocket',
       'endpoint': 'ws://localhost:8772/ws',
       'connection_time_ms': 150,
     });
     
     // Connection issues
-    Log.w('frontend.connection_manager', 'connection.degraded', 'Connection quality degraded', extra: {
+    Log.w('frontend.connection_manager', 'connection/degraded', 'Connection quality degraded', extra: {
       'latency_ms': 500,
       'packet_loss_percent': 2.5,
     });
@@ -143,12 +143,12 @@ class LoggingExamples {
     Log.setEnvironment('production');
     
     // Now all subsequent logs will include this context
-    Log.i('frontend.auth', 'user.login.success', 'User logged in successfully');
+    Log.i('frontend.auth', 'user/login/success', 'User logged in successfully');
   }
 
   /// Example: Flushing logs before app termination
   static Future<void> appTerminationLogging() async {
-    Log.i('frontend.app', 'app.lifecycle.terminating', 'App is terminating');
+    Log.i('frontend.app', 'app/lifecycle/terminating', 'App is terminating');
     
     // Ensure all logs are sent before app closes
     await Log.flush();
@@ -159,7 +159,7 @@ class LoggingExamples {
     final status = Log.bufferStatus;
     
     if (status['pending']! > 100) {
-      Log.w('frontend.logging', 'logging.buffer.high', 'High number of pending logs', extra: status);
+      Log.w('frontend.logging', 'logging/buffer/high', 'High number of pending logs', extra: status);
     }
   }
 
@@ -183,12 +183,12 @@ class _ExampleChatWidgetState extends State<ExampleChatWidget> {
   @override
   void initState() {
     super.initState();
-    Log.d('frontend.chat_widget', 'widget.lifecycle.init', 'Chat widget initialized');
+    Log.d('frontend.chat_widget', 'widget/lifecycle/init', 'Chat widget initialized');
   }
 
   @override
   void dispose() {
-    Log.d('frontend.chat_widget', 'widget.lifecycle.dispose', 'Chat widget disposed');
+    Log.d('frontend.chat_widget', 'widget/lifecycle/dispose', 'Chat widget disposed');
     _controller.dispose();
     super.dispose();
   }
@@ -197,11 +197,11 @@ class _ExampleChatWidgetState extends State<ExampleChatWidget> {
     final message = _controller.text.trim();
     
     if (message.isEmpty) {
-      Log.w('frontend.chat_widget', 'ui.validation.empty_message', 'User tried to send empty message');
+      Log.w('frontend.chat_widget', 'ui/validation/empty_message', 'User tried to send empty message');
       return;
     }
 
-    Log.i('frontend.chat_widget', 'ui.action.send_message', 'User sending message', extra: {
+    Log.i('frontend.chat_widget', 'ui/action/send_message', 'User sending message', extra: {
       'message_length': message.length,
       'has_emoji': message.contains(RegExp(r'[\u{1f600}-\u{1f64f}]', unicode: true)),
     });
@@ -222,7 +222,7 @@ class _ExampleChatWidgetState extends State<ExampleChatWidget> {
           decoration: InputDecoration(hintText: 'Type a message...'),
           onChanged: (text) {
             // Log typing activity (but not the actual content for privacy)
-            Log.d('frontend.chat_widget', 'ui.input.typing', 'User typing', extra: {
+            Log.d('frontend.chat_widget', 'ui/input/typing', 'User typing', extra: {
               'text_length': text.length,
             });
           },

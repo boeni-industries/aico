@@ -16,6 +16,8 @@ from pathlib import Path
 from aico.core.bus import MessageBusClient
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
+from aico.core.topics import AICOTopics
+from aico.security.key_manager import AICOKeyManager
 from aico.proto.aico_core_logging_pb2 import LogEntry, LogLevel
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security import AICOKeyManager
@@ -61,7 +63,7 @@ class AICOLogConsumer:
         self.logger = get_logger("log_consumer", "service")
         from backend.log_consumer import debugPrint
         # Only print ZMQ context type at startup in foreground mode
-        debugPrint(f"[LOG CONSUMER] Using ZMQ context type: {type(self.context).__name__}")
+        # debugPrint(f"[LOG CONSUMER] Using ZMQ context type: {type(self.context).__name__}")
     
     async def _handle_debug_message(self, topic: str, payload):
         """Legacy debug handler - kept for potential future debugging needs"""
@@ -78,7 +80,7 @@ class AICOLogConsumer:
                 raise ConnectionError("LogConsumer is missing its database connection.")
 
             # Only print database connection type at startup in foreground mode
-            debugPrint(f"[LOG CONSUMER] Using database connection: {type(self.db_connection).__name__}")
+            # debugPrint(f"[LOG CONSUMER] Using database connection: {type(self.db_connection).__name__}")
 
             # Get message bus configuration - connect to SUBSCRIBER port (broker backend)
             sub_port = self.config_manager.get("message_bus.sub_port", 5556)
@@ -88,27 +90,38 @@ class AICOLogConsumer:
             self.subscriber.setsockopt(zmq.RCVHWM, 10000)
             self.subscriber.connect(f"tcp://{host}:{sub_port}")
             self.logger.info(f"Connected to message bus at tcp://{host}:{sub_port}")
-            self.subscriber.setsockopt(zmq.SUBSCRIBE, b"logs.")
+            from aico.core.topics import AICOTopics
+            subscription_pattern = AICOTopics.ZMQ_LOGS_PREFIX
+            # debugPrint(f"[LOG CONSUMER] Subscribing to prefix: {subscription_pattern}")
+            self.subscriber.setsockopt(zmq.SUBSCRIBE, subscription_pattern.encode('utf-8'))
             time.sleep(0.2)
 
             def message_loop():
                 # Only print message loop start in foreground mode
-                debugPrint("[LOG CONSUMER] Starting message loop (threaded)")
+                # debugPrint("[LOG CONSUMER] Starting message loop (threaded)")
                 try:
                     while self.running:
                         try:
                             if self.subscriber.poll(timeout=100):
                                 topic_bytes, data = self.subscriber.recv_multipart(zmq.NOBLOCK)
                                 topic = topic_bytes.decode('utf-8')
-                                # For deep debugging only; comment out by default
                                 # debugPrint(f"[LOG CONSUMER] Received message on topic: {topic}")
                                 try:
                                     log_entry = LogEntry()
                                     log_entry.ParseFromString(data)
+                                    # debugPrint(f"[LOG CONSUMER] Parsed log entry: {log_entry.subsystem}.{log_entry.module} - {log_entry.message}")
                                     self._insert_log_to_database(log_entry)
+                                    # debugPrint(f"[LOG CONSUMER] Successfully inserted log to database")
                                 except Exception as e:
+                                    # debugPrint(f"[LOG CONSUMER] Failed to process message: {e}")
                                     self.logger.warning(f"Failed to process message: {e}")
                             else:
+                                # Add periodic debug to show consumer is polling but not receiving
+                                import time
+                                current_time = int(time.time())
+                                if not hasattr(self, '_last_poll_debug') or current_time - self._last_poll_debug >= 5:
+                                    # debugPrint(f"[LOG CONSUMER] Polling... no messages received (subscribed to: {AICOTopics.ALL_LOGS})")
+                                    self._last_poll_debug = current_time
                                 time.sleep(0.01)
                         except zmq.Again:
                             continue
@@ -120,7 +133,7 @@ class AICOLogConsumer:
                     self.logger.error(f"Unhandled error in message loop: {e}")
                     return
                 # Only print message loop exit in foreground mode
-                debugPrint("[LOG CONSUMER] Message loop exiting")
+                # debugPrint("[LOG CONSUMER] Message loop exiting")
 
             self.message_thread = threading.Thread(target=message_loop, daemon=True)
             self.message_thread.start()
@@ -157,7 +170,7 @@ class AICOLogConsumer:
     
     async def _zmq_message_loop(self):
         """Main message processing loop with cancellation handling"""
-        debugPrint("[LOG CONSUMER] Starting message loop")
+        # debugPrint("[LOG CONSUMER] Starting message loop")
         
         try:
             while self.running:
@@ -208,10 +221,11 @@ class AICOLogConsumer:
         except asyncio.CancelledError:
             # Only restart if we're still supposed to be running
             if self.running:
-                debugPrint("[LOG CONSUMER] Restarting message loop after cancellation")
+                # debugPrint("[LOG CONSUMER] Restarting message loop after cancellation")
                 self.message_task = asyncio.create_task(self._zmq_message_loop())
             else:
-                debugPrint("[LOG CONSUMER] Message loop cancelled during shutdown - staying stopped")
+                # debugPrint("[LOG CONSUMER] Message loop cancelled during shutdown - staying stopped")
+                pass
             raise
     
     async def _handle_log_message(self, log_entry: LogEntry):
@@ -220,7 +234,7 @@ class AICOLogConsumer:
             self._insert_log_to_database(log_entry)
         except Exception as e:
             self.logger.error(f"Failed to insert log to database: {e}")
-            debugPrint(f"[LOG CONSUMER] Lost log entry: {log_entry.subsystem}.{log_entry.module} - {log_entry.message}")
+            # debugPrint(f"[LOG CONSUMER] Lost log entry: {log_entry.subsystem}.{log_entry.module} - {log_entry.message}")
     
     def _insert_log_to_database(self, log_entry: LogEntry):
         """Insert protobuf log entry into the database"""
@@ -283,7 +297,7 @@ class AICOLogConsumer:
                 return
             
             self.logger.error(f"Database insertion failed: {e}")
-            debugPrint(f"[LOG CONSUMER] Failed to insert: {log_entry.subsystem}.{log_entry.module} - {log_entry.message}")
+            # debugPrint(f"[LOG CONSUMER] Failed to insert: {log_entry.subsystem}.{log_entry.module} - {log_entry.message}")
             try:
                 if self.db_connection:
                     self.db_connection.rollback()

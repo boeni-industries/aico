@@ -15,6 +15,7 @@ from google.protobuf.any_pb2 import Any as ProtoAny
 from aico.core.config import ConfigurationManager
 from aico.core.bus import MessageBusBroker, MessageBusClient
 from aico.core.logging import get_logger
+from aico.core.topics import AICOTopics
 from aico.proto.aico_core_api_gateway_pb2 import ApiEvent
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
@@ -64,7 +65,7 @@ class AICOMessageBusHost:
             # Publish system startup event with proper protobuf message
             startup_event = ApiEvent()
             startup_event.event_id = str(uuid.uuid4())
-            startup_event.event_type = "system.bus.started"
+            startup_event.event_type = AICOTopics.SYSTEM_BUS_STARTED
             startup_event.client_id = "system.message_bus_host"
             startup_event.session_id = "system"
             
@@ -78,7 +79,7 @@ class AICOMessageBusHost:
             startup_event.metadata["status"] = "started"
             
             await self.internal_client.publish(
-                "system.bus.started",
+                AICOTopics.SYSTEM_BUS_STARTED,
                 startup_event
             )
             
@@ -101,7 +102,7 @@ class AICOMessageBusHost:
             if self.internal_client:
                 shutdown_event = ApiEvent()
                 shutdown_event.event_id = str(uuid.uuid4())
-                shutdown_event.event_type = "system.bus.stopping"
+                shutdown_event.event_type = AICOTopics.SYSTEM_BUS_STOPPING
                 shutdown_event.client_id = "system.message_bus_host"
                 shutdown_event.session_id = "system"
                 
@@ -115,7 +116,7 @@ class AICOMessageBusHost:
                 shutdown_event.metadata["status"] = "stopping"
                 
                 await self.internal_client.publish(
-                    "system.bus.stopping",
+                    AICOTopics.SYSTEM_BUS_STOPPING,
                     shutdown_event
                 )
             
@@ -168,7 +169,7 @@ class AICOMessageBusHost:
             # Publish module registration event
             registration_event = ApiEvent()
             registration_event.event_id = str(uuid.uuid4())
-            registration_event.event_type = "system.module.registered"
+            registration_event.event_type = AICOTopics.SYSTEM_MODULE_REGISTERED
             registration_event.client_id = f"backend.{module_name}"
             registration_event.session_id = "system"
             
@@ -183,7 +184,7 @@ class AICOMessageBusHost:
             registration_event.metadata["status"] = "registered"
             
             await self.internal_client.publish(
-                "system.module.registered",
+                AICOTopics.SYSTEM_MODULE_REGISTERED,
                 registration_event
             )
             
@@ -218,11 +219,11 @@ class AICOMessageBusHost:
         
         # API Gateway permissions
         api_gateway_topics = [
-            "conversation.*",
-            "emotion.*", 
-            "personality.*",
-            "system.status.*",
-            "admin.*"
+            AICOTopics.ALL_CONVERSATION,
+            AICOTopics.ALL_EMOTION,
+            AICOTopics.ALL_PERSONALITY,
+            "system/status/*",
+            "admin/*"
         ]
         
         for topic in system_topics:
@@ -318,9 +319,8 @@ async def example_emotion_module(bus_host: AICOMessageBusHost):
     
     # Register the module with appropriate permissions
     client = await bus_host.register_module("emotion_simulation", [
-        "emotion.*",
-        "personality.expression.*",
-        "conversation.context"
+        AICOTopics.ALL_EMOTION,
+        AICOTopics.CONVERSATION_CONTEXT_CURRENT
     ])
     
     # Subscribe to relevant topics
@@ -330,7 +330,7 @@ async def example_emotion_module(bus_host: AICOMessageBusHost):
         
         # Publish emotional state update
         await client.publish(
-            "emotion.state.current",
+            AICOTopics.EMOTION_STATE_CURRENT,
             {
                 "valence": 0.7,
                 "arousal": 0.5,
@@ -340,7 +340,7 @@ async def example_emotion_module(bus_host: AICOMessageBusHost):
             
         )
     
-    await client.subscribe("conversation.*", handle_conversation_event)
+    await client.subscribe(AICOTopics.ALL_CONVERSATION, handle_conversation_event)
     
     return client
 
@@ -349,9 +349,9 @@ async def example_personality_module(bus_host: AICOMessageBusHost):
     """Example of how a personality module would integrate"""
     
     client = await bus_host.register_module("personality_simulation", [
-        "personality.*",
-        "emotion.state.*",
-        "conversation.context"
+        AICOTopics.ALL_PERSONALITY,
+        "emotion/state/*",
+        AICOTopics.CONVERSATION_CONTEXT_CURRENT
     ])
     
     # Subscribe to emotional state changes
@@ -360,7 +360,7 @@ async def example_personality_module(bus_host: AICOMessageBusHost):
         
         # Publish personality expression parameters
         await client.publish(
-            "personality.expression.communication",
+            AICOTopics.PERSONALITY_EXPRESSION_COMMUNICATION,
             {
                 "warmth": 0.8,
                 "formality": 0.3,
@@ -368,7 +368,7 @@ async def example_personality_module(bus_host: AICOMessageBusHost):
             }
         )
     
-    await client.subscribe("emotion.state.*", handle_emotion_update)
+    await client.subscribe("emotion/state/*", handle_emotion_update)
     
     return client
 
