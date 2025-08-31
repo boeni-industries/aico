@@ -15,6 +15,12 @@
 - **Health Endpoint:** Liveness/readiness check for orchestration.
 - **Extensible Model Types:** While LLMs are the first and core supported type, the architecture is designed to support other foundational model types (e.g., embedding models, vision models) via the same gateway and API pattern.
 
+## Configuration Management
+- **Centralized Configuration:** `modelservice` uses the unified AICO Configuration Management System, as implemented in `shared/aico/core/config.py` and configured via the `/config` directory.
+- **Features:** Provides hierarchical, validated, and encrypted configuration with hot reloading, ensuring consistent settings across all AICO subsystems.
+- **Schema Validation:** All configuration is validated against JSON schemas to prevent misconfiguration and runtime errors.
+- **Usage:** Modelservice loads its settings (e.g., model runner endpoints, security parameters, rate limits, logging configuration) from the central configuration, supporting overrides via environment variables or runtime changes.
+
 ## Middleware & Security Stack
 - **Encryption:** All inbound and outbound payloads are encrypted using the same libsodium/session-based encryption as the API Gateway (EncryptionMiddleware).
 - **Security:** Request sanitization, IP filtering, and attack surface minimization via SecurityMiddleware.
