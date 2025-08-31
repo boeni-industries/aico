@@ -71,10 +71,10 @@ modelservice:
     cors_origins:
       - "http://localhost:3000"
       - "http://127.0.0.1:3000"
-  # Add additional protocol/adapters as needed
-  cors_origins:
-      - "http://localhost:3000"
-      - "http://127.0.0.1:3000"
+  # Ollama server configuration
+  ollama:
+    host: "127.0.0.1"
+    port: 11434
   
   # Protocol adapters
   protocols:

@@ -100,3 +100,8 @@ def get_frontend_version() -> str:
 def get_studio_version() -> str:
     """Get the studio version."""
     return get_version('studio')
+
+
+def get_modelservice_version() -> str:
+    """Get the modelservice version."""
+    return get_version('modelservice')
