@@ -814,7 +814,8 @@ def bump(
         "cli": update_cli_version,
         "backend": update_backend_version,
         "frontend": update_frontend_version,
-        "studio": update_studio_version
+        "studio": update_studio_version,
+        "modelservice": update_modelservice_version
     }
     update_func = update_functions[subsystem]
     updated = update_func(new_version)
@@ -838,6 +839,10 @@ def bump(
         # For cli, add cli/__version__.py
         cli_version_file = get_project_root() / "cli" / "__version__.py"
         subprocess.run(["git", "add", str(cli_version_file)], check=True)
+    elif subsystem == "modelservice":
+        # For modelservice, add modelservice/main.py
+        modelservice_main = get_project_root() / "modelservice" / "main.py"
+        subprocess.run(["git", "add", str(modelservice_main)], check=True)
     else:
         project_file = {
             "frontend": get_project_root() / "frontend" / "pubspec.yaml",
