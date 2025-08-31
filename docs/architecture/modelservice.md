@@ -13,8 +13,17 @@
 - **Text Generation Endpoint:** Unified REST endpoint for generating completions from foundational LLMs.
 - **Model Info Endpoint:** Query available models and their metadata.
 - **Health Endpoint:** Liveness/readiness check for orchestration.
-- **(Optional) Model Management:** List/load/unload models (future-proof, but minimal for MVP).
 - **Extensible Model Types:** While LLMs are the first and core supported type, the architecture is designed to support other foundational model types (e.g., embedding models, vision models) via the same gateway and API pattern.
+
+## Middleware & Security Stack
+- **Encryption:** All inbound and outbound payloads are encrypted using the same libsodium/session-based encryption as the API Gateway (EncryptionMiddleware).
+- **Security:** Request sanitization, IP filtering, and attack surface minimization via SecurityMiddleware.
+- **Rate Limiting:** Per-client request throttling using token bucket algorithm (RateLimiter).
+- **Validation:** Strict schema/protobuf validation for all request/response payloads (MessageValidator).
+- **Request Logging:** All requests and responses are logged via ZMQ transport using the RequestLoggingMiddleware, ensuring consistent audit trails across the platform.
+- **Shared Security:** Integrates with AICOKeyManager for key management, SecureTransportChannel for encrypted transport, and SessionService for JWT/session validation.
+
+> All middleware is reused or extended from the API Gateway and shared security modules to ensure architectural consistency and robust security.
 
 ## REST API Endpoints
 
@@ -62,6 +71,7 @@
 - The backend interacts with `modelservice` via REST.
 - Only `modelservice` talks directly to foundational model runners (e.g., Ollama, embedding servers, vision model servers).
 - All model-specific logic, parameters, and error handling are encapsulated in `modelservice`.
+- Logging, security, and validation are handled consistently with the API Gateway, including ZMQ-based request logging.
 
 ## Security & Deployment
 - Only accessible within the trusted network (e.g., Docker compose, localhost, or VPN).
