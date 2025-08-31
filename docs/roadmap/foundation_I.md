@@ -44,7 +44,7 @@ Build the **essential** system infrastructure required for MVP companion feature
 ## Phase 2: Core Infrastructure ✅
 
 ### Enhanced Message Bus
-- [ ] **Basic Topic Expansion**: Add topics as AI modules are developed (start minimal)
+- [x] **Basic Topic Expansion**: Add topics as AI modules are developed (start minimal)
 
 ### Task Scheduler Component
 - [x] **Background Scheduler**: Implement task scheduler for zero-maintenance operations (log cleanup, key rotation, health checks)
@@ -60,12 +60,12 @@ Build the **essential** system infrastructure required for MVP companion feature
 
 ### Data Layer Enhancement
 - [x] **libSQL Encryption**: Enable built-in database encryption
-- [ ] **Basic Schema**: Minimal schema for MVP AI features (expand incrementally)
+- [x] **Basic Schema**: Minimal schema for MVP AI features (expand incrementally)
 
 ### Flutter Enhancement
 - [x] **WebSocket Client**: Real-time communication with backend
-- [ ] **Request/Response Models**: Typed data models for API communication (MVP-needed)
-- [ ] **Error Handling**: Standardized error handling and user feedback (MVP-needed)
+- [x] **Request/Response Models**: Typed data models for API communication (MVP-needed)
+- [x] **Error Handling**: Standardized error handling and user feedback (MVP-needed)
 
 ## Phase 3: MVP-Critical Infrastructure
 
