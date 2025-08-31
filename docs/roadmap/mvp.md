@@ -2,8 +2,6 @@
 
 **Goal**: Basic companion that talks, remembers, and initiates.
 
-*Builds on [Foundation](foundation.md) infrastructure.*
-
 ## Frontend MVP
 
 ### Chat Interface

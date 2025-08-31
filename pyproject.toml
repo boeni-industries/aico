@@ -54,7 +54,7 @@ test = [
 aico = "cli.aico_main:app"
 
 [tool.setuptools]
-packages = ["aico", "cli", "backend"]
+packages = ["aico", "cli", "backend", "modelservice"]
 
 [tool.setuptools.package-dir]
 aico = "shared/aico"

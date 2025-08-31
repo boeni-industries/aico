@@ -103,13 +103,12 @@ AICO needs diverse skills and perspectives. Here's how you can contribute:
 ### **Getting Started**
 
 1. **Explore the Project**
-   - Read our README (file does not exist) and [Documentation](../welcome.md)
-   - Check out our [Development Roadmap](../welcome.md#development-roadmap)
+   - Read our README
+   - Check out our [Documentation](https://boeni-industries.github.io/aico/welcome/)
    - Browse existing [Issues](https://github.com/boeni-industries/aico/issues) and [Discussions](https://github.com/boeni-industries/aico/discussions)
 
 2. **Find Your First Contribution**
-   - Look for issues labeled `good first issue` or `help wanted`
-   - Check our [Current Development Stage](../roadmap/foundation.md)
+   - Look for issues labeled `good first issue` or `help wanted` or just ask the maintainer or post on the discussion forum
    - Ask questions in [Discussions](https://github.com/boeni-industries/aico/discussions)
 
 3. **Set Up Development Environment**
@@ -175,8 +174,6 @@ AICO needs diverse skills and perspectives. Here's how you can contribute:
 - Basic avatar system
 - Memory and personality engines
 - Voice interaction systems
-
-See our [detailed roadmaps](../welcome.md#development-roadmap) for complete development plans.
 
 ## 🆘 Getting Help
 

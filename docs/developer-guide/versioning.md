@@ -30,12 +30,13 @@ AICO uses modern, best-practice versioning to ensure stability and clarity acros
 
 ## Summary Table
 
-| Component | Versioning Scheme | Compatibility Management           |
-|-----------|-------------------|------------------------------------|
-| Shared    | SemVer            | Foundation library for CLI/Backend |
-| Backend   | SemVer            | API versioning, `/api/vX/` path    |
-| Frontend  | SemVer            | Declares required backend version  |
-| CLI       | SemVer            | Declares required backend version  |
-| Studio    | SemVer            | Declares required backend version  |
+| Component    | Versioning Scheme | Compatibility Management           |
+|--------------|-------------------|------------------------------------|
+| Shared       | SemVer            | Foundation library for CLI/Backend |
+| Backend      | SemVer            | API versioning, `/api/vX/` path    |
+| Frontend     | SemVer            | Declares required backend version  |
+| CLI          | SemVer            | Declares required backend version  |
+| Studio       | SemVer            | Declares required backend version  |
+| Modelservice | SemVer            | API versioning, `/api/vX/` path    |
 
 

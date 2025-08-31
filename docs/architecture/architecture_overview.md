@@ -434,13 +434,33 @@ The AICO backend runs as a persistent system service, handling all AI processing
 
 ### Local LLM Integration
 
-AICO uses an **integrated service pattern** for local LLM deployment:
+AICO uses a **native binary integration pattern** for local LLM deployment:
 
-- **LLM Module:** Runs within the backend service process, not as a separate container/daemon
-- **Ollama Integration:** Uses Ollama Python client library for model management and inference
-- **Message Bus Communication:** LLM Module communicates via ZeroMQ like all other modules
-- **Resource Coordination:** Integrates with existing Resource Monitor for CPU/memory/battery policies
-- **Context Integration:** Receives real-time personality and emotion context for prompt conditioning
+- **LLM Module:** Manages Ollama and other model runners as native binaries (not containers or daemons). The backend handles all packaging, download, installation, and update for maximum user experience.
+- **Ollama Integration:** Communicates with the Ollama binary over HTTP/gRPC. No Docker or container engine is required.
+- **Cross-Platform:** Prebuilt binaries for all major OSes are fetched and managed automatically.
+- **Message Bus Communication:** LLM Module communicates via ZeroMQ like all other modules.
+- **Resource Coordination:** Integrates with existing Resource Monitor for CPU/memory/battery policies.
+- **Context Integration:** Receives real-time personality and emotion context for prompt conditioning.
+- **Fallback:** In-process model serving (e.g., via llama.cpp Python bindings) may be supported for lightweight or experimental models in the future.
+
+#### Why Native Binary?
+Native binaries provide the best user experience, performance, and compatibility for local-first, privacy-first AI. Docker is not required, reducing installation complexity and system bloat.
+
+#### Comparison Table
+| Feature/Aspect            | Native Binary Integration (AICO)         | Docker-based (not used) | In-Process Model (future option) |
+|--------------------------|------------------------------------------|-------------------------|-----------------------------------|
+| User Installation        | Handled automatically by AICO            | Requires Docker install | Pure Python/pip, but limited      |
+| Platform Support         | Windows, macOS, Linux (prebuilt)         | All with Docker         | Python-supported only             |
+| Performance              | High (native, multi-threaded, GPU)       | High                    | Good for small models             |
+| Resource Isolation       | Excellent (separate process)             | Good                    | Poor (main process only)          |
+| Model Support            | Any CLI/server model runner (Ollama)     | Any in container        | Python-bindable models            |
+| Upgrade Path             | Handled by AICO, independent             | Docker images           | Python deps, less robust          |
+| Simplicity for User      | Maximum (zero manual steps)              | Low                     | Maximum (if supported)            |
+| GPU/Advanced HW          | Supported by runner                      | Supported               | Sometimes, with setup             |
+| Debuggability            | Good (logs, subprocess mgmt)             | Moderate                | High (in Python)                  |
+| Security                 | Good (sandboxable subprocess)            | Good                    | Good, but less isolated           |
+| Best For                 | All users, especially non-experts        | Advanced/server         | Dev, testing, light use           |
 
 This approach maintains architectural consistency, simplifies deployment, and enables tight integration with AICO's personality and emotion systems while preserving privacy through local-only processing.
 
@@ -548,7 +568,9 @@ The Update System manages automatic updates for both frontend and backend compon
 - **Text Analysis:** Natural language emotion understanding.
 
 #### LLM Module
-- **Model Management:** Manages local LLM models (Ollama) including loading, unloading, and updates.
+- **Model Management:** Manages local LLM models (Ollama) as native binaries, including automatic download, installation, update, and lifecycle management. No Docker or container engine is required.
+- **Cross-Platform:** Prebuilt binaries for Ollama are available for Windows (10+), macOS (12+), and Linux (x86_64/AMD64). The backend detects the user's OS and fetches the correct binary as needed.
+- **Maximum UX:** Users do not need to manually install or configure anything; all model runner management is handled automatically by AICO.
 - **Inference Engine:** Handles quantized model inference with resource-aware processing.
 - **Resource Coordination:** Integrates with Resource Monitor for CPU/memory/battery policy enforcement.
 

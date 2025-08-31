@@ -119,7 +119,7 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 ## 🛤️ Development Roadmap
 
 !!! info "Current Phase: Foundation"
-    We're currently building the core infrastructure scaffolding. See our [detailed roadmaps](roadmap/foundation.md) for the complete development journey.
+    We're currently building the core infrastructure scaffolding. See our roadmap for the complete development journey.
 
 ### **Development Stages**
 

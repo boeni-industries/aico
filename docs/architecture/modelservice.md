@@ -15,11 +15,53 @@
 - **Health Endpoint:** Liveness/readiness check for orchestration.
 - **Extensible Model Types:** While LLMs are the first and core supported type, the architecture is designed to support other foundational model types (e.g., embedding models, vision models) via the same gateway and API pattern.
 
-## Configuration Management
-- **Centralized Configuration:** `modelservice` uses the unified AICO Configuration Management System, as implemented in `shared/aico/core/config.py` and configured via the `/config` directory.
-- **Features:** Provides hierarchical, validated, and encrypted configuration with hot reloading, ensuring consistent settings across all AICO subsystems.
-- **Schema Validation:** All configuration is validated against JSON schemas to prevent misconfiguration and runtime errors.
-- **Usage:** Modelservice loads its settings (e.g., model runner endpoints, security parameters, rate limits, logging configuration) from the central configuration, supporting overrides via environment variables or runtime changes.
+## Model Runner Integration: Native Binary Approach
+- **Native Binary Integration:** AICO modelservice manages the model runner (Ollama) as a native binary subprocess. No Docker or container engine is required.
+- **Maximum UX:** All packaging, downloading, installation, and updates for Ollama are handled automatically by AICO. Users do not need to manually install or configure anything.
+- **Cross-Platform:** Prebuilt binaries for Ollama are available for Windows (10+), macOS (12+), and Linux (x86_64/AMD64). AICO detects the user's OS and downloads/installs the correct binary as needed.
+- **Lifecycle Management:** AICO starts, stops, and monitors the Ollama process transparently, providing clear error/help messages if any issues arise.
+- **Fallback:** In-process model serving (e.g., using llama.cpp Python bindings) may be supported as a lightweight fallback for certain models or platforms in the future.
+
+### Model Storage and Directory Structure
+
+Ollama's model storage is fully contained within the AICO deployment directory structure, following AICO's OS-specific standard path conventions (see `/shared/`).
+
+- **Model Directory:**
+  - All Ollama models (blobs and manifests) are stored in a dedicated `models` directory directly under the AICO root directory (as resolved by the configuration system for each OS).
+  - This path is managed and set by AICO, using the `OLLAMA_MODELS` environment variable at runtime to ensure Ollama does not store data outside the deployment directory.
+  - Example (all under the vendor/product root directory):
+    - **Linux:** `${XDG_DATA_HOME:-$HOME/.local/share}/boeni-industries/aico/models/`
+    - **macOS:** `$HOME/Library/Application Support/boeni-industries/aico/models/`
+    - **Windows:** `%LOCALAPPDATA%\boeni-industries\aico\models\`
+  - This guarantees that all model files are isolated from user or system-wide locations and are managed exclusively by AICO.
+
+- **Symlink Alternative:**
+  - On Unix-like systems, a symlink from the default Ollama models directory to the AICO-managed models directory may be used as an alternative for compatibility.
+
+- **No Data Leakage:**
+  - No model data is written outside the AICO deployment structure, supporting strict containment and easy backup/restore.
+
+### Why Native Binary?
+AICO is designed for local-first, privacy-first, and non-expert-friendly installation. Docker is not required, as it adds bloat and complexity. Native binaries provide the best user experience, performance, and compatibility.
+
+### Logging
+
+Ollama logs are fully contained within the AICO deployment structure:
+
+- **Log Directory:**
+  - All Ollama logs are written to `ollama.log` inside the `logs` directory directly under the AICO root directory (as resolved by the configuration system for each OS).
+  - Example (all under the vendor/product root directory):
+    - **Linux:** `${XDG_DATA_HOME:-$HOME/.local/share}/boeni-industries/aico/logs/ollama.log`
+    - **macOS:** `$HOME/Library/Application Support/boeni-industries/aico/logs/ollama.log`
+    - **Windows:** `%LOCALAPPDATA%\boeni-industries\aico\logs\ollama.log`
+  - Logging is configured at runtime by redirecting Ollama's output or using symlinks as needed, ensuring no logs are written to user or system-wide locations.
+
+- **Log Format and Rotation:**
+  - Logs can be output in structured JSON format for integration with AICO's logging and monitoring systems.
+  - Log rotation and archival are managed by AICO's existing log management tools.
+
+- **No Data Leakage:**
+  - All log data is contained within the deployment path, supporting audit, compliance, and easy cleanup.
 
 ## Middleware & Security Stack
 - **Encryption:** All inbound and outbound payloads are encrypted using the same libsodium/session-based encryption as the API Gateway (EncryptionMiddleware).

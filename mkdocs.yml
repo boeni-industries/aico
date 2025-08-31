@@ -136,6 +136,7 @@ nav:
     - Plugin Manager: architecture/plugin_system.md
     - API Gateway: architecture/api_gateway.md
     - API Reference: architecture/api_reference.md
+    - Model Service: architecture/modelservice.md
     - P2P Mesh Network: architecture/p2p_mesh.md
     - Device Roaming: architecture/roaming.md
     - Update System: architecture/update_system.md
