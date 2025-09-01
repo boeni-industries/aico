@@ -724,6 +724,8 @@
       
         
       
+        
+      
     
     
     
@@ -842,6 +844,29 @@
   
   <span class="md-ellipsis">
     API Reference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modelservice/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Model Service
     
   </span>
   
@@ -3866,14 +3891,97 @@ The CLI is a Python application that provides a command-line interface for inter
 <li><strong>Process Management:</strong> Signal-based shutdown coordination and background task management</li>
 </ul>
 <h3 id="local-llm-integration">Local LLM Integration<a class="headerlink" href="#local-llm-integration" title="Permanent link">&para;</a></h3>
-<p>AICO uses an <strong>integrated service pattern</strong> for local LLM deployment:</p>
+<p>AICO uses a <strong>native binary integration pattern</strong> for local LLM deployment:</p>
 <ul>
-<li><strong>LLM Module:</strong> Runs within the backend service process, not as a separate container/daemon</li>
-<li><strong>Ollama Integration:</strong> Uses Ollama Python client library for model management and inference</li>
-<li><strong>Message Bus Communication:</strong> LLM Module communicates via ZeroMQ like all other modules</li>
-<li><strong>Resource Coordination:</strong> Integrates with existing Resource Monitor for CPU/memory/battery policies</li>
-<li><strong>Context Integration:</strong> Receives real-time personality and emotion context for prompt conditioning</li>
+<li><strong>LLM Module:</strong> Manages Ollama and other model runners as native binaries (not containers or daemons). The backend handles all packaging, download, installation, and update for maximum user experience.</li>
+<li><strong>Ollama Integration:</strong> Communicates with the Ollama binary over HTTP/gRPC. No Docker or container engine is required.</li>
+<li><strong>Cross-Platform:</strong> Prebuilt binaries for all major OSes are fetched and managed automatically.</li>
+<li><strong>Message Bus Communication:</strong> LLM Module communicates via ZeroMQ like all other modules.</li>
+<li><strong>Resource Coordination:</strong> Integrates with existing Resource Monitor for CPU/memory/battery policies.</li>
+<li><strong>Context Integration:</strong> Receives real-time personality and emotion context for prompt conditioning.</li>
+<li><strong>Fallback:</strong> In-process model serving (e.g., via llama.cpp Python bindings) may be supported for lightweight or experimental models in the future.</li>
 </ul>
+<h4 id="why-native-binary">Why Native Binary?<a class="headerlink" href="#why-native-binary" title="Permanent link">&para;</a></h4>
+<p>Native binaries provide the best user experience, performance, and compatibility for local-first, privacy-first AI. Docker is not required, reducing installation complexity and system bloat.</p>
+<h4 id="comparison-table">Comparison Table<a class="headerlink" href="#comparison-table" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Feature/Aspect</th>
+<th>Native Binary Integration (AICO)</th>
+<th>Docker-based (not used)</th>
+<th>In-Process Model (future option)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>User Installation</td>
+<td>Handled automatically by AICO</td>
+<td>Requires Docker install</td>
+<td>Pure Python/pip, but limited</td>
+</tr>
+<tr>
+<td>Platform Support</td>
+<td>Windows, macOS, Linux (prebuilt)</td>
+<td>All with Docker</td>
+<td>Python-supported only</td>
+</tr>
+<tr>
+<td>Performance</td>
+<td>High (native, multi-threaded, GPU)</td>
+<td>High</td>
+<td>Good for small models</td>
+</tr>
+<tr>
+<td>Resource Isolation</td>
+<td>Excellent (separate process)</td>
+<td>Good</td>
+<td>Poor (main process only)</td>
+</tr>
+<tr>
+<td>Model Support</td>
+<td>Any CLI/server model runner (Ollama)</td>
+<td>Any in container</td>
+<td>Python-bindable models</td>
+</tr>
+<tr>
+<td>Upgrade Path</td>
+<td>Handled by AICO, independent</td>
+<td>Docker images</td>
+<td>Python deps, less robust</td>
+</tr>
+<tr>
+<td>Simplicity for User</td>
+<td>Maximum (zero manual steps)</td>
+<td>Low</td>
+<td>Maximum (if supported)</td>
+</tr>
+<tr>
+<td>GPU/Advanced HW</td>
+<td>Supported by runner</td>
+<td>Supported</td>
+<td>Sometimes, with setup</td>
+</tr>
+<tr>
+<td>Debuggability</td>
+<td>Good (logs, subprocess mgmt)</td>
+<td>Moderate</td>
+<td>High (in Python)</td>
+</tr>
+<tr>
+<td>Security</td>
+<td>Good (sandboxable subprocess)</td>
+<td>Good</td>
+<td>Good, but less isolated</td>
+</tr>
+<tr>
+<td>Best For</td>
+<td>All users, especially non-experts</td>
+<td>Advanced/server</td>
+<td>Dev, testing, light use</td>
+</tr>
+</tbody>
+</table>
 <p>This approach maintains architectural consistency, simplifies deployment, and enables tight integration with AICO's personality and emotion systems while preserving privacy through local-only processing.</p>
 <h3 id="core-backend-components">Core Backend Components<a class="headerlink" href="#core-backend-components" title="Permanent link">&para;</a></h3>
 <h4 id="plugin-based-api-gateway">Plugin-Based API Gateway<a class="headerlink" href="#plugin-based-api-gateway" title="Permanent link">&para;</a></h4>
@@ -3986,7 +4094,9 @@ The CLI is a Python application that provides a command-line interface for inter
 </ul>
 <h4 id="llm-module">LLM Module<a class="headerlink" href="#llm-module" title="Permanent link">&para;</a></h4>
 <ul>
-<li><strong>Model Management:</strong> Manages local LLM models (Ollama) including loading, unloading, and updates.</li>
+<li><strong>Model Management:</strong> Manages local LLM models (Ollama) as native binaries, including automatic download, installation, update, and lifecycle management. No Docker or container engine is required.</li>
+<li><strong>Cross-Platform:</strong> Prebuilt binaries for Ollama are available for Windows (10+), macOS (12+), and Linux (x86_64/AMD64). The backend detects the user's OS and fetches the correct binary as needed.</li>
+<li><strong>Maximum UX:</strong> Users do not need to manually install or configure anything; all model runner management is handled automatically by AICO.</li>
 <li><strong>Inference Engine:</strong> Handles quantized model inference with resource-aware processing.</li>
 <li><strong>Resource Coordination:</strong> Integrates with Resource Monitor for CPU/memory/battery policy enforcement.</li>
 </ul>
@@ -4141,19 +4251,19 @@ The CLI is a Python application that provides a command-line interface for inter
 <p>Subsystems install shared libraries in development mode:</p>
 <div class="language-toml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># In backend/pyproject.toml or cli/pyproject.toml</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">[tool.uv.sources]</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">aico-shared</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">path</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">&quot;../shared&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">editable</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">aico-shared</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;../shared&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">editable</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">true</span><span class="w"> </span><span class="p">}</span>
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
 </span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># Dependencies section includes:</span>
 </span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">dependencies</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="s2">&quot;aico-shared&quot;</span><span class="p">,</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="s">&quot;aico-shared&quot;</span><span class="p">,</span>
 </span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="c1"># ... other dependencies</span>
 </span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="p">]</span>
 </span></code></pre></div>
 <h4 id="usage-examples">Usage Examples<a class="headerlink" href="#usage-examples" title="Permanent link">&para;</a></h4>
 <p><strong>CLI Usage</strong> (Early Development):
 <div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># CLI can use security features before backend exists</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.security</span><span class="w"> </span><span class="kn">import</span> <span class="n">AICOKeyManager</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.security.filesystem</span><span class="w"> </span><span class="kn">import</span> <span class="n">SecureFilesystem</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span> <span class="nn">aico.security</span> <span class="kn">import</span> <span class="n">AICOKeyManager</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span> <span class="nn">aico.security.filesystem</span> <span class="kn">import</span> <span class="n">SecureFilesystem</span>
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
 </span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">key_manager</span> <span class="o">=</span> <span class="n">AICOKeyManager</span><span class="p">()</span>
 </span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">fs</span> <span class="o">=</span> <span class="n">SecureFilesystem</span><span class="p">(</span><span class="n">key_manager</span><span class="p">)</span>
@@ -4161,9 +4271,9 @@ The CLI is a Python application that provides a command-line interface for inter
 </span></code></pre></div></p>
 <p><strong>Backend Usage</strong> (Production):
 <div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Backend imports same libraries</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.security</span><span class="w"> </span><span class="kn">import</span> <span class="n">AICOKeyManager</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.data.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Conversation</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.core.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">Config</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">from</span> <span class="nn">aico.security</span> <span class="kn">import</span> <span class="n">AICOKeyManager</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kn">from</span> <span class="nn">aico.data.models</span> <span class="kn">import</span> <span class="n">Conversation</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="kn">from</span> <span class="nn">aico.core.config</span> <span class="kn">import</span> <span class="n">Config</span>
 </span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
 </span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1"># Identical API, different context</span>
 </span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">key_manager</span> <span class="o">=</span> <span class="n">AICOKeyManager</span><span class="p">()</span>

@@ -590,6 +590,8 @@
       
         
       
+        
+      
     
     
     
@@ -708,6 +710,29 @@
   
   <span class="md-ellipsis">
     API Reference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/modelservice/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Model Service
     
   </span>
   
@@ -3705,8 +3730,8 @@
 - Shared utilities, config, and backend integration in <code>utils.py</code> or <code>/lib</code>.</p>
 <h3 id="command-registration-pattern">Command Registration Pattern<a class="headerlink" href="#command-registration-pattern" title="Permanent link">&para;</a></h3>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># main.py</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">typer</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">commands</span><span class="w"> </span><span class="kn">import</span> <span class="n">status</span><span class="p">,</span> <span class="n">user</span><span class="p">,</span> <span class="n">db</span><span class="p">,</span> <span class="n">plugin</span><span class="p">,</span> <span class="n">logs</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">admin</span><span class="p">,</span> <span class="n">version</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kn">import</span> <span class="nn">typer</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="kn">from</span> <span class="nn">commands</span> <span class="kn">import</span> <span class="n">status</span><span class="p">,</span> <span class="n">user</span><span class="p">,</span> <span class="n">db</span><span class="p">,</span> <span class="n">plugin</span><span class="p">,</span> <span class="n">logs</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">admin</span><span class="p">,</span> <span class="n">version</span>
 </span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
 </span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">app</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Typer</span><span class="p">()</span>
 </span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="n">app</span><span class="o">.</span><span class="n">add_typer</span><span class="p">(</span><span class="n">version</span><span class="o">.</span><span class="n">app</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;version&quot;</span><span class="p">)</span>
