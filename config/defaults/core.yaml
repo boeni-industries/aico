@@ -61,21 +61,6 @@ api_gateway:
     port: 8771
     host: "127.0.0.1"
 
-# Modelservice configuration
-modelservice:
-  enabled: true
-  host: "127.0.0.1"
-  rest:
-    port: 8773
-    host: "127.0.0.1"
-    cors_origins:
-      - "http://localhost:3000"
-      - "http://127.0.0.1:3000"
-  # Ollama server configuration
-  ollama:
-    host: "127.0.0.1"
-    port: 11434
-  
   # Protocol adapters
   protocols:
     # REST endpoints handled by main FastAPI backend - no separate adapter needed
@@ -150,6 +135,21 @@ modelservice:
       enabled: true
     routing:
       enabled: true
+
+# Modelservice configuration
+modelservice:
+  enabled: true
+  host: "127.0.0.1"
+  rest:
+    port: 8773
+    host: "127.0.0.1"
+    cors_origins:
+      - "http://localhost:3000"
+      - "http://127.0.0.1:3000"
+  # Ollama server configuration
+  ollama:
+    host: "127.0.0.1"
+    port: 11434
 
 # Task Scheduler configuration
 scheduler:
