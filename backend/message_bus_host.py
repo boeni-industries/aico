@@ -38,6 +38,11 @@ class AICOMessageBusHost:
         # Module registry
         self.modules: Dict[str, MessageBusClient] = {}
         self.running = False
+        
+        # Shutdown coordination
+        self.shutdown_initiated = False
+        self.pending_messages = []
+        self.shutdown_timeout = 3.0  # Max time to wait for message draining
     
     async def start(self, db_connection: Optional[EncryptedLibSQLConnection] = None):
         """Start the message bus host"""
@@ -90,15 +95,15 @@ class AICOMessageBusHost:
             raise
     
     async def stop(self):
-        """Stop the message bus host"""
+        """Stop the message bus host with graceful message draining"""
         if not self.running:
             return
         
-        self.running = False
-        
         try:
+            # PHASE 1: Signal shutdown but keep persistence active
+            self.shutdown_initiated = True
+            
             # Publish system shutdown event
-            # Publish system shutdown event with proper protobuf message
             if self.internal_client:
                 shutdown_event = ApiEvent()
                 shutdown_event.event_id = str(uuid.uuid4())
@@ -120,6 +125,11 @@ class AICOMessageBusHost:
                     shutdown_event
                 )
             
+            # PHASE 2: Drain pending messages with timeout
+            await self._drain_pending_messages()
+            
+            # PHASE 3: Now safe to stop persistence and continue shutdown
+            self.running = False
             self.logger.info("Message bus host stopping")
             
             # Stop all module clients
@@ -273,35 +283,71 @@ class AICOMessageBusHost:
         
         async def persist_message(message):
             """Persist a message to the database"""
-            try:
-                # Serialize payload for storage
-                if isinstance(message.payload, ProtobufMessage):
-                    payload_data = message.payload.SerializeToString()
-                elif isinstance(message.payload, bytes):
-                    payload_data = message.payload
-                else:
-                    payload_data = json.dumps(message.payload).encode('utf-8')
+            # During shutdown, queue messages for draining instead of skipping
+            if self.shutdown_initiated and not self.running:
+                return  # Shutdown complete, no more persistence
+            elif self.shutdown_initiated:
+                # Queue message for draining phase
+                self.pending_messages.append(message)
+                return
                 
-                # Prepare metadata as JSON
+            try:
+                # Handle AicoMessage protobuf structure
+                if hasattr(message, 'any_payload'):
+                    # This is an AicoMessage protobuf
+                    payload = message.any_payload
+                elif hasattr(message, 'payload'):
+                    payload = message.payload
+                else:
+                    payload = message
+                
+                # Serialize payload for storage
+                if isinstance(payload, ProtobufMessage):
+                    payload_data = payload.SerializeToString()
+                elif isinstance(payload, bytes):
+                    payload_data = payload
+                elif payload is None:
+                    payload_data = b''
+                else:
+                    try:
+                        payload_data = json.dumps(payload).encode('utf-8')
+                    except (TypeError, ValueError):
+                        payload_data = str(payload).encode('utf-8')
+                
+                # Handle protobuf timestamp conversion
+                from datetime import datetime
+                if hasattr(message.metadata.timestamp, 'ToDatetime'):
+                    timestamp = message.metadata.timestamp.ToDatetime().isoformat()
+                else:
+                    timestamp = datetime.utcnow().isoformat()
+                
+                # Extract actual protobuf fields (based on aico_core_envelope.proto)
+                message_id = message.metadata.message_id
+                source = message.metadata.source  
+                message_type = message.metadata.message_type
+                version = message.metadata.version
+                
+                # Convert attributes map to dict for JSON storage
+                attributes_dict = dict(message.metadata.attributes) if message.metadata.attributes else {}
                 metadata_json = json.dumps({
-                    'attributes': message.metadata.attributes or {},
-                    'version': message.metadata.version
+                    'version': version,
+                    'attributes': attributes_dict
                 })
                 
-                # Insert message into database
-                await db_connection.execute("""
+                # Insert message into database (using actual protobuf fields)
+                db_connection.execute("""
                     INSERT INTO events (
                         timestamp, topic, source, message_type, message_id,
                         priority, correlation_id, payload, metadata
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    message.metadata.timestamp.isoformat(),
-                    message.metadata.message_type,
-                    message.metadata.source,
-                    message.metadata.message_type,
-                    message.metadata.message_id,
-                    message.metadata.priority.value,
-                    message.metadata.correlation_id,
+                    timestamp,
+                    message_type,  # topic field
+                    source,
+                    message_type,
+                    message_id,
+                    0,  # priority - not in protobuf, use default
+                    '',  # correlation_id - not in protobuf, use empty
                     payload_data,
                     metadata_json
                 ))
@@ -310,6 +356,124 @@ class AICOMessageBusHost:
                 self.logger.error(f"Failed to persist message {message.metadata.message_id}: {e}")
         
         return persist_message
+    
+    async def _drain_pending_messages(self):
+        """Drain all pending messages with timeout to ensure zero loss"""
+        if not self.pending_messages:
+            return
+        
+        self.logger.info(f"Draining {len(self.pending_messages)} pending messages...")
+        
+        try:
+            # Process all pending messages with timeout
+            await asyncio.wait_for(
+                self._process_pending_messages(),
+                timeout=self.shutdown_timeout
+            )
+            self.logger.info("All pending messages processed successfully")
+        except asyncio.TimeoutError:
+            self.logger.warning(f"Message draining timed out after {self.shutdown_timeout}s, "
+                              f"{len(self.pending_messages)} messages may be lost")
+        except Exception as e:
+            self.logger.error(f"Error during message draining: {e}")
+    
+    async def _process_pending_messages(self):
+        """Process all messages in the pending queue"""
+        import json
+        from google.protobuf.message import Message as ProtobufMessage
+        
+        for message in self.pending_messages:
+            try:
+                # Debug: Check message structure
+                # self.logger.info(f"Processing pending message: {type(message)}")
+                # self.logger.info(f"Message attributes: {dir(message)}")
+                
+                # Handle different message structures - AicoMessage protobuf
+                if hasattr(message, 'any_payload'):
+                    # This is an AicoMessage protobuf with any_payload field
+                    payload = message.any_payload
+                elif hasattr(message, 'payload'):
+                    payload = message.payload
+                else:
+                    payload = message  # Message might be the payload itself
+                
+                # Serialize payload for storage
+                if isinstance(payload, ProtobufMessage):
+                    payload_data = payload.SerializeToString()
+                elif isinstance(payload, bytes):
+                    payload_data = payload
+                elif payload is None:
+                    payload_data = b''
+                else:
+                    try:
+                        payload_data = json.dumps(payload).encode('utf-8')
+                    except (TypeError, ValueError):
+                        # Fallback: convert to string
+                        payload_data = str(payload).encode('utf-8')
+                
+                # Handle metadata safely
+                if hasattr(message, 'metadata') and message.metadata:
+                    metadata = message.metadata
+                    metadata_json = json.dumps({
+                        'attributes': getattr(metadata, 'attributes', {}) or {},
+                        'version': getattr(metadata, 'version', '1.0')
+                    })
+                    
+                    # Extract metadata fields safely
+                    timestamp = getattr(metadata, 'timestamp', None)
+                    if timestamp and hasattr(timestamp, 'isoformat'):
+                        timestamp_str = timestamp.isoformat()
+                    else:
+                        from datetime import datetime
+                        timestamp_str = datetime.utcnow().isoformat()
+                    
+                    message_type = getattr(metadata, 'message_type', 'unknown')
+                    source = getattr(metadata, 'source', 'unknown')
+                    message_id = getattr(metadata, 'message_id', str(uuid.uuid4()))
+                    priority = getattr(metadata, 'priority', None)
+                    priority_value = priority.value if priority and hasattr(priority, 'value') else 1
+                    correlation_id = getattr(metadata, 'correlation_id', None)
+                else:
+                    # Fallback metadata
+                    from datetime import datetime
+                    timestamp_str = datetime.utcnow().isoformat()
+                    message_type = 'shutdown_event'
+                    source = 'message_bus_host'
+                    message_id = str(uuid.uuid4())
+                    priority_value = 1
+                    correlation_id = None
+                    metadata_json = json.dumps({'attributes': {}, 'version': '1.0'})
+                
+                # Insert message into database synchronously for reliability
+                self.db_connection.execute("""
+                    INSERT INTO events (
+                        timestamp, topic, source, message_type, message_id,
+                        priority, correlation_id, payload, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    timestamp_str,
+                    message_type,
+                    source,
+                    message_type,
+                    message_id,
+                    priority_value,
+                    correlation_id,
+                    payload_data,
+                    metadata_json
+                ))
+                
+                # Commit immediately for each message during shutdown
+                self.db_connection.commit()
+                
+            except Exception as e:
+                # Use safe message ID extraction for error logging
+                msg_id = getattr(getattr(message, 'metadata', None), 'message_id', 'unknown')
+                self.logger.error(f"Failed to persist pending message {msg_id}: {e}")
+                import traceback
+                self.logger.error(f"Full error traceback: {traceback.format_exc()}")
+        
+        # Clear the pending messages queue
+        self.pending_messages.clear()
 
 
 # Example usage and integration patterns
