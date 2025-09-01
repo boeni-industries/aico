@@ -25,11 +25,7 @@ message_bus_host = None
 start_time = time.time()
 
 
-def initialize_router(gw, msg_bus):
-    """Initialize router with dependencies from main.py"""
-    global gateway, message_bus_host
-    gateway = gw
-    message_bus_host = msg_bus
+# Removed initialize_router - using proper FastAPI dependency injection
 
 
 @router.get("/", response_model=HealthResponse)

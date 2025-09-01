@@ -5,19 +5,20 @@ Implements token bucket rate limiting in the modular plugin architecture.
 """
 
 from typing import Dict, Any
-from ..core.plugin_registry import PluginInterface, PluginMetadata, PluginPriority
+from backend.core.plugin_base import BasePlugin, PluginMetadata, PluginPriority
 from ..middleware.rate_limiter import RateLimiter, RateLimitExceeded
+from aico.core.logging import get_logger
 
 
-class RateLimitingPlugin(PluginInterface):
+class RateLimitingPlugin(BasePlugin):
     """
     Rate limiting plugin using token bucket algorithm
     
     Wraps existing RateLimiter middleware into the plugin system.
     """
     
-    def __init__(self, config: Dict[str, Any], logger):
-        super().__init__(config, logger)
+    def __init__(self, name: str, container):
+        super().__init__(name, container)
         self.rate_limiter: RateLimiter = None
     
     @property
@@ -36,11 +37,11 @@ class RateLimitingPlugin(PluginInterface):
             }
         )
     
-    async def initialize(self, dependencies: Dict[str, Any]) -> None:
+    async def initialize(self) -> None:
         """Initialize rate limiter"""
         try:
             # Use plugin config for rate limiter
-            rate_limit_config = self.config.get("rate_limiting", {})
+            rate_limit_config = self.get_config("core.api_gateway.rate_limiting", {})
             self.rate_limiter = RateLimiter(rate_limit_config)
             
             self.logger.info("Rate limiting plugin initialized")
@@ -52,6 +53,10 @@ class RateLimitingPlugin(PluginInterface):
     async def start(self) -> None:
         """Start the rate limiting plugin"""
         self.logger.info("Rate limiting plugin started")
+    
+    async def stop(self) -> None:
+        """Stop the rate limiting plugin"""
+        self.logger.info("Rate limiting plugin stopped")
     
     async def process_request(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Process request through rate limiting"""

@@ -314,9 +314,8 @@ class MessageBusBroker:
         
         # ZeroMQ context and sockets (use regular context for compatibility with threaded proxy)
         import zmq
-        from backend.log_consumer import debugPrint
         self.context = zmq.Context()
-        debugPrint(f"[BROKER] Using ZMQ context type: {type(self.context).__name__}")
+        self.logger.debug(f"[BROKER] Using ZMQ context type: {type(self.context).__name__}")
         self.frontend = None  # Receives from publishers
         self.backend = None   # Sends to subscribers
         
@@ -329,31 +328,30 @@ class MessageBusBroker:
     async def start(self):
         """Start the message bus broker"""
         try:
-            from backend.log_consumer import debugPrint
-            debugPrint(f"[BROKER] Starting broker - pub_port: {self.pub_port}, sub_port: {self.sub_port}")
+            self.logger.debug(f"[BROKER] Starting broker - pub_port: {self.pub_port}, sub_port: {self.sub_port}")
             
             # Frontend socket for publishers
             self.frontend = self.context.socket(zmq.XSUB)
             self.frontend.setsockopt(zmq.LINGER, 0)  # Don't wait on close
-            debugPrint(f"[BROKER] Binding frontend (XSUB) to tcp://*:{self.pub_port}")
+            self.logger.debug(f"[BROKER] Binding frontend (XSUB) to tcp://*:{self.pub_port}")
             self.frontend.bind(f"tcp://*:{self.pub_port}")
             
             # Backend socket for subscribers
             self.backend = self.context.socket(zmq.XPUB)
             self.backend.setsockopt(zmq.LINGER, 0)  # Don't wait on close
-            debugPrint(f"[BROKER] Binding backend (XPUB) to tcp://*:{self.sub_port}")
+            self.logger.debug(f"[BROKER] Binding backend (XPUB) to tcp://*:{self.sub_port}")
             self.backend.bind(f"tcp://*:{self.sub_port}")
             
             self.running = True
-            debugPrint(f"[BROKER] Sockets bound successfully, starting proxy...")
+            self.logger.debug(f"[BROKER] Sockets bound successfully, starting proxy...")
             self.logger.info(f"Message bus broker started on {self.bind_address}")
             
             # Start proxy loop
-            asyncio.create_task(self._proxy_loop())
+            await self._start_proxy_task()
             
             # Give the task a moment to start
             await asyncio.sleep(0.1)
-            debugPrint(f"[BROKER] Broker startup complete")
+            self.logger.debug(f"[BROKER] Broker startup complete")
             
         except Exception as e:
             self.logger.error(f"Failed to start message bus broker: {e}")
@@ -385,6 +383,10 @@ class MessageBusBroker:
         
         self.logger.info("Message bus broker stopped")
     
+    async def _start_proxy_task(self):
+        """Start the proxy task in background"""
+        await self._proxy_loop()
+    
     async def _proxy_loop(self):
         """Main proxy loop for forwarding messages"""
         try:
@@ -394,16 +396,11 @@ class MessageBusBroker:
             
             def run_proxy():
                 try:
-                    from backend.log_consumer import debugPrint
-                    self.logger.info("Broker Proxy thread started: Frontend: tcp://*:{self.pub_port}, Backend: tcp://*:{self.sub_port}")
-                    debugPrint(f"Starting proxy - Frontend: tcp://*:{self.pub_port}, Backend: tcp://*:{self.sub_port}")
-                    # debugPrint(f"[BROKER PROXY] Frontend socket type: {self.frontend.socket_type}, Backend socket type: {self.backend.socket_type}")
-                    # debugPrint(f"[BROKER PROXY] Frontend socket state: {self.frontend.closed}, Backend socket state: {self.backend.closed}")
+                    self.logger.info(f"Broker Proxy thread started: Frontend: tcp://*:{self.pub_port}, Backend: tcp://*:{self.sub_port}")
                     
                     # Add a small delay to ensure sockets are fully bound
                     import time
                     time.sleep(0.1)
-                    # debugPrint(f"[BROKER PROXY] Starting zmq.proxy() - this should block indefinitely")
                     
                     # Start ZMQ proxy (blocks indefinitely until sockets are closed)
                     zmq.proxy(self.frontend, self.backend)

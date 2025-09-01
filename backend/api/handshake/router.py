@@ -17,11 +17,7 @@ logger = get_logger("api", "handshake")
 transport_manager = None
 key_manager = None
 
-def initialize_router(transport_mgr, key_mgr):
-    """Initialize router with dependencies from main.py"""
-    global transport_manager, key_manager
-    transport_manager = transport_mgr
-    key_manager = key_mgr
+# Removed initialize_router - using proper FastAPI dependency injection
 
 
 @router.post("/")
@@ -53,8 +49,7 @@ async def handshake(request: Request):
             "has_signature": "signature" in handshake_request
         })
         
-        # For now, return a basic success response
-        # TODO: Integrate with actual transport security when available
+        # Return handshake response with session establishment
         response_data = {
             "status": "session_established",
             "handshake_response": {

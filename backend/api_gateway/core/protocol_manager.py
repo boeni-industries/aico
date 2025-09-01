@@ -72,12 +72,12 @@ class ProtocolAdapterManager:
     def _register_builtin_adapters(self) -> None:
         """Register built-in protocol adapters"""
         # REST endpoints handled by main FastAPI backend - no adapter needed
-        from ..adapters.websocket_adapter_v2 import WebSocketAdapterV2
-        from ..adapters.zeromq_adapter_v2 import ZeroMQAdapterV2
-        from ..adapters.rest_adapter_v2 import RESTAdapterV2
-        self.registered_adapters["rest"] = RESTAdapterV2
-        self.registered_adapters["websocket"] = WebSocketAdapterV2
-        self.registered_adapters["zeromq_ipc"] = ZeroMQAdapterV2
+        from ..adapters.websocket_adapter import WebSocketAdapter
+        from ..adapters.zeromq_adapter import ZeroMQAdapter
+        from ..adapters.rest_adapter import RESTAdapter
+        self.registered_adapters["rest"] = RESTAdapter
+        self.registered_adapters["websocket"] = WebSocketAdapter
+        self.registered_adapters["zeromq_ipc"] = ZeroMQAdapter
     
     def register_adapter(self, name: str, adapter_class: Type[ProtocolAdapter]) -> None:
         """Register a protocol adapter class"""
@@ -95,12 +95,31 @@ class ProtocolAdapterManager:
                 self.logger.error(f"Protocol adapter not registered: {name}")
                 return False
             
-            # Create adapter instance with dependencies
+            # Create adapter instance with positional arguments based on adapter type
             adapter_class = self.registered_adapters[name]
-            adapter = adapter_class(config, dependencies)
             
-            # Call adapter's initialize method
-            await adapter.initialize(dependencies)
+            if name == "websocket":
+                adapter = adapter_class(
+                    config,
+                    dependencies.get('auth_manager'),
+                    dependencies.get('authz_manager'), 
+                    dependencies.get('message_router'),
+                    dependencies.get('rate_limiter'),
+                    dependencies.get('validator')
+                )
+            elif name == "zeromq_ipc":
+                adapter = adapter_class(
+                    config,
+                    dependencies.get('auth_manager'),
+                    dependencies.get('authz_manager'),
+                    dependencies.get('message_router'),
+                    dependencies.get('adaptive_transport')
+                )
+            else:
+                # Fallback for other adapters
+                adapter = adapter_class(config, dependencies)
+            
+            # Protocol adapters don't have initialize method - they're initialized in constructor
             
             # Store configuration and adapter
             self.adapter_configs[name] = config
@@ -119,7 +138,6 @@ class ProtocolAdapterManager:
     async def start_adapter(self, name: str) -> bool:
         """Start a specific protocol adapter"""
         try:
-            print(f"[PROTOCOL_MANAGER] Starting adapter: {name}")
             adapter = self.active_adapters.get(name)
             if not adapter:
                 #print(f"DEBUG: Adapter not found in active_adapters: {name}")
@@ -128,7 +146,16 @@ class ProtocolAdapterManager:
                 return False
             
             #print(f"DEBUG: Calling start() on {name} adapter")
-            await adapter.start()
+            
+            # Handle adapter-specific start parameters
+            if name == "websocket":
+                # WebSocket adapter requires host parameter
+                host = self.adapter_configs[name].get("host", "127.0.0.1")
+                await adapter.start(host)
+            else:
+                # Other adapters use parameterless start()
+                await adapter.start()
+                
             #print(f"DEBUG: {name} adapter start() completed")
             
             # For adapters that create background tasks, store them to keep alive

@@ -5,19 +5,20 @@ Handles message validation and conversion in the modular plugin architecture.
 """
 
 from typing import Dict, Any
-from ..core.plugin_registry import PluginInterface, PluginMetadata, PluginPriority
+from backend.core.plugin_base import BasePlugin, PluginMetadata, PluginPriority
 from ..middleware.validator import MessageValidator, ValidationError
+from aico.core.logging import get_logger
 
 
-class ValidationPlugin(PluginInterface):
+class ValidationPlugin(BasePlugin):
     """
     Message validation plugin
     
     Wraps existing MessageValidator middleware into the plugin system.
     """
     
-    def __init__(self, config: Dict[str, Any], logger):
-        super().__init__(config, logger)
+    def __init__(self, name: str, container):
+        super().__init__(name, container)
         self.validator: MessageValidator = None
     
     @property
@@ -34,7 +35,7 @@ class ValidationPlugin(PluginInterface):
             }
         )
     
-    async def initialize(self, dependencies: Dict[str, Any]) -> None:
+    async def initialize(self) -> None:
         """Initialize message validator"""
         try:
             self.validator = MessageValidator()
@@ -47,6 +48,10 @@ class ValidationPlugin(PluginInterface):
     async def start(self) -> None:
         """Start the validation plugin"""
         self.logger.info("Validation plugin started")
+    
+    async def stop(self) -> None:
+        """Stop the validation plugin"""
+        self.logger.info("Validation plugin stopped")
     
     async def process_request(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Process request through validation"""
@@ -76,7 +81,7 @@ class ValidationPlugin(PluginInterface):
         except Exception as e:
             self.logger.error(f"Validation plugin error: {e}")
             # On error, continue processing if not strict validation
-            if not self.config.get("strict_validation", False):
+            if not self.config_manager.get("core.api_gateway.validation.strict_validation", False):
                 return context
             
             context['error'] = {

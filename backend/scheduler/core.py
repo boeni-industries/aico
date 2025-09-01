@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Set, Type
 from pathlib import Path
 
 from aico.core.logging import get_logger
+from backend.core.service_container import BaseService
 from .tasks.base import BaseTask, TaskContext, TaskResult, TaskStatus
 from .storage import TaskStore
 from .cron import CronParser
@@ -249,7 +250,7 @@ class TaskExecutor:
                 return result
             
             # Execute task with timeout
-            scheduler_config = self.config_manager.get("scheduler", {})
+            scheduler_config = self.get_config("scheduler", {})
             timeout = scheduler_config.get("task_timeout", 3600)  # 1 hour default
             
             try:
@@ -293,10 +294,14 @@ class TaskExecutor:
             except KeyError:
                 self.logger.warning(f"Task {task_id} was not in running_tasks dict during cleanup.")
     
+    def get_config(self, key: str, default: Any = None) -> Any:
+        """Get configuration value from config manager"""
+        return self.config_manager.get(key, default)
+    
     async def _check_resource_constraints(self, context: TaskContext) -> bool:
         """Check if system resources allow task execution"""
         try:
-            scheduler_config = self.config_manager.get("scheduler", {})
+            scheduler_config = self.get_config("scheduler", {})
             max_cpu = scheduler_config.get("max_cpu_percent", 80)
             max_memory = scheduler_config.get("max_memory_percent", 80)
             
@@ -325,18 +330,16 @@ class TaskExecutor:
         return list(self.running_tasks.keys())
 
 
-class TaskScheduler:
+class TaskScheduler(BaseService):
     """Main scheduler that coordinates task discovery, scheduling, and execution"""
     
-    def __init__(self, config_manager, db_connection):
-        self.config_manager = config_manager
-        self.db_connection = db_connection
-        self.logger = get_logger("scheduler", "task_scheduler")
+    def __init__(self, name: str, container):
+        super().__init__(name, container)
         
         # Core components
-        self.task_registry = TaskRegistry(config_manager, db_connection)
-        self.task_executor = TaskExecutor(config_manager, db_connection)
-        self.task_store = TaskStore(db_connection)
+        self.task_registry = None
+        self.task_executor = None
+        self.task_store = None
         self.cron_parser = CronParser()
         
         # Runtime state
@@ -344,7 +347,22 @@ class TaskScheduler:
         self.scheduler_task: Optional[asyncio.Task] = None
         self.next_run_times: Dict[str, datetime] = {}
     
-    async def start(self):
+    async def initialize(self) -> None:
+        """Initialize scheduler components"""
+        database = self.require_service("database")
+        config_manager = self.container.config
+        
+        # Initialize core components
+        self.task_registry = TaskRegistry(config_manager, database)
+        self.task_executor = TaskExecutor(config_manager, database)
+        self.task_store = TaskStore(database)
+        
+        # Verify database tables exist
+        self.task_store.verify_tables_exist()
+        
+        self.logger.info("Task scheduler initialized")
+    
+    async def start(self) -> None:
         """Start the scheduler"""
         if self.running:
             self.logger.warning("Scheduler is already running")
@@ -353,9 +371,6 @@ class TaskScheduler:
         self.logger.info("Starting AICO Task Scheduler")
         
         try:
-            # Verify database tables exist
-            self.task_store.verify_tables_exist()
-            
             # Discover and register tasks
             await self.task_registry.discover_tasks()
             
@@ -369,16 +384,16 @@ class TaskScheduler:
             self.running = True
             self.scheduler_task = asyncio.create_task(self._scheduler_loop())
             
-            log_message = "AICO Task Scheduler started successfully"
+            log_message = "Task Scheduler started successfully"
             self.logger.info(log_message)
-            print(f"[SCHEDULER] {log_message}")
+            print(f"[+] {log_message}")
             
         except Exception as e:
             self.logger.error(f"Failed to start scheduler: {e}")
             self.running = False
             raise
     
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the scheduler"""
         if not self.running:
             return
@@ -397,7 +412,7 @@ class TaskScheduler:
     
     async def _scheduler_loop(self):
         """Main scheduler loop"""
-        scheduler_config = self.config_manager.get("scheduler", {})
+        scheduler_config = self.get_config("scheduler", {})
         interval = scheduler_config.get("scheduler_interval", 1.0)
         
         self.logger.info(f"Scheduler loop started (interval: {interval}s)")

@@ -13,29 +13,14 @@ import uuid
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.data.user import UserService
+from backend.core.lifecycle_manager import get_service_container, get_user_service, get_auth_manager
 
 security = HTTPBearer()
 logger = get_logger("api", "users_dependencies")
 
 
-async def get_user_service(request: Request) -> UserService:
-    """Get UserService instance from FastAPI app state."""
-    if not hasattr(request.app.state, 'user_service'):
-        raise HTTPException(
-            status_code=503,
-            detail="User service not available"
-        )
-    return request.app.state.user_service
-
-
-async def get_auth_manager(request: Request):
-    """Get AuthManager instance from FastAPI app state."""
-    if not hasattr(request.app.state, 'gateway'):
-        raise HTTPException(
-            status_code=503,
-            detail="Authentication manager not available"
-        )
-    return request.app.state.gateway.auth_manager
+# Use the proper dependency injection functions from lifecycle_manager
+# These are already imported above
 
 
 def create_user_auth_dependency(auth_manager):

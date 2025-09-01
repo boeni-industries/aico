@@ -84,7 +84,7 @@ class WebSocketAdapter:
         self.server = None
         
         # Configuration
-        self.port = config.get("port", 8081)
+        self.port = config.get("port", 8772)
         self.path = config.get("path", "/ws")
         self.heartbeat_interval = config.get("heartbeat_interval", 30)
         self.max_connections = config.get("max_connections", 1000)

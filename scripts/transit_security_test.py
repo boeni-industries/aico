@@ -22,12 +22,17 @@ shared_path = script_dir.parent / "shared"
 sys.path.insert(0, str(shared_path))
 
 try:
+    import json
+    import jwt
+    from datetime import datetime, timedelta
+    import time
+    import base64
     from nacl.public import PrivateKey, PublicKey, Box
-    from nacl.signing import SigningKey, VerifyKey
     from nacl.secret import SecretBox
-    from nacl.utils import random
+    from nacl.signing import SigningKey
     from nacl.encoding import Base64Encoder
     from nacl.exceptions import CryptoError
+    from nacl.utils import random
     
     from aico.core.config import ConfigurationManager
     from aico.security.key_manager import AICOKeyManager
@@ -39,16 +44,26 @@ except ImportError as e:
     sys.exit(1)
 
 
-class TransitSecurityTestClient:
+class EncryptedClient:
     """
-    Simplified client that simulates frontend encrypted communication
+    Client for testing encrypted communication with AICO backend
     """
     
-    def __init__(self, base_url: str = "http://127.0.0.1:8771"):
+    def __init__(self, base_url: str):
         self.base_url = base_url
         self.handshake_url = f"{base_url}/api/v1/handshake"
         
-        # Generate client identity (Ed25519 keypair)
+        # Encryption state
+        self.identity_key = None
+        self.client_private_key = None
+        self.server_public_key = None
+        self.session_key = None
+        self.session_box = None
+        
+        # Authentication state
+        self.jwt_token = None
+        
+        # Generate identity keys for signing
         self.signing_key = SigningKey.generate()
         self.verify_key = self.signing_key.verify_key
         
@@ -58,6 +73,49 @@ class TransitSecurityTestClient:
         self.session_box: Optional[SecretBox] = None
         
         print(f"🔑 Client identity generated: {self.verify_key.encode().hex()[:16]}...")
+    
+    def authenticate_user(self) -> bool:
+        """
+        Authenticate with backend using proper user credentials to get JWT token
+        (requires handshake to be completed first)
+        """
+        if not self.session_box:
+            print("❌ No active session - perform handshake first")
+            return False
+            
+        try:
+            print("🔐 Authenticating with backend...")
+            
+            # Test user credentials
+            auth_request = {
+                "user_uuid": "4837b1ac-f59a-400a-a875-6a4ea994c936",
+                "pin": "1234"
+            }
+            
+            print(f"📤 Sending encrypted authentication request...")
+            
+            # Send encrypted authentication request
+            auth_response = self.send_encrypted_request("/api/v1/users/authenticate", auth_request)
+            
+            if not auth_response:
+                print("❌ Authentication request failed")
+                return False
+            
+            if not auth_response.get("success"):
+                print(f"❌ Authentication rejected: {auth_response.get('error', 'Unknown error')}")
+                return False
+            
+            self.jwt_token = auth_response.get("jwt_token")
+            if not self.jwt_token:
+                print("❌ No JWT token in authentication response")
+                return False
+            
+            print("✅ Authentication successful - JWT token received")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Authentication error: {e}")
+            return False
     
     def perform_handshake(self) -> bool:
         """
@@ -181,18 +239,24 @@ class TransitSecurityTestClient:
             
             print(f"📤 Sending encrypted request to {endpoint}")
             
+            # Prepare headers with JWT token for authenticated endpoints
+            headers = {"Content-Type": "application/json"}
+            if self.jwt_token and not endpoint.endswith("/health"):
+                headers["Authorization"] = f"Bearer {self.jwt_token}"
+                print("🔐 Including JWT token for authentication")
+            
             # Send request (use GET for health endpoint, POST for others)
             if endpoint.endswith("/health"):
                 response = requests.get(
                     f"{self.base_url}{endpoint}",
-                    headers={"Content-Type": "application/json"},
+                    headers=headers,
                     timeout=10
                 )
             else:
                 response = requests.post(
                     f"{self.base_url}{endpoint}",
                     json=request_envelope,
-                    headers={"Content-Type": "application/json"},
+                    headers=headers,
                     timeout=10
                 )
             
@@ -310,11 +374,16 @@ def run_full_test():
     # Test 3: Encrypted handshake and communication
     print("\n🔐 Testing encrypted communication...")
     
-    client = TransitSecurityTestClient(base_url)
+    client = EncryptedClient(base_url)
     
-    # Perform handshake
+    # Perform handshake first (required before authentication)
     if not client.perform_handshake():
         print("\n❌ Encrypted handshake test failed")
+        return False
+    
+    # Authenticate with backend to get JWT token
+    if not client.authenticate_user():
+        print("\n❌ User authentication failed")
         return False
     
     # Test encrypted health check

@@ -6,11 +6,12 @@ in the modular plugin architecture.
 """
 
 from typing import Dict, Any
-from ..core.plugin_registry import PluginInterface, PluginMetadata, PluginPriority
+from backend.core.plugin_base import BasePlugin, PluginMetadata, PluginPriority
 from ..models.core.auth import AuthenticationManager, AuthorizationManager
+from aico.core.logging import get_logger
 
 
-class SecurityPlugin(PluginInterface):
+class SecurityPlugin(BasePlugin):
     """
     Security plugin handling authentication and authorization
     
@@ -18,10 +19,11 @@ class SecurityPlugin(PluginInterface):
     modular plugin system.
     """
     
-    def __init__(self, config: Dict[str, Any], logger):
-        super().__init__(config, logger)
+    def __init__(self, name: str, container):
+        super().__init__(name, container)
         self.auth_manager: AuthenticationManager = None
         self.authz_manager: AuthorizationManager = None
+        
     
     @property
     def metadata(self) -> PluginMetadata:
@@ -29,7 +31,7 @@ class SecurityPlugin(PluginInterface):
             name="security",
             version="1.0.0",
             description="Authentication and authorization security plugin",
-            priority=PluginPriority.HIGHEST,  # Security runs first
+            priority=PluginPriority.SECURITY,
             dependencies=[],
             config_schema={
                 "enabled": {"type": "boolean", "default": True},
@@ -38,30 +40,40 @@ class SecurityPlugin(PluginInterface):
             }
         )
     
-    async def initialize(self, dependencies: Dict[str, Any]) -> None:
+    def get_auth_manager(self) -> AuthenticationManager:
+        """Get the authentication manager instance"""
+        return self.auth_manager
+    
+    def get_authz_manager(self) -> AuthorizationManager:
+        """Get the authorization manager instance"""
+        return self.authz_manager
+    
+    async def initialize(self) -> None:
         """Initialize security managers"""
         try:
-            config_manager = dependencies.get('config')
-            db_connection = dependencies.get('db_connection')
+            config_manager = self.require_service('config')
+            database = self.require_service('database')
             
-            if not config_manager:
-                raise ValueError("ConfigurationManager dependency required")
+            # Create authentication manager instance
+            self.auth_manager = AuthenticationManager(config_manager, db_connection=database)
+            print("[✓] Authentication manager ready")
             
-            # Initialize authentication manager with database connection
-            self.auth_manager = AuthenticationManager(config_manager, db_connection)
+            # Create authorization manager instance  
+            security_config = config_manager.get("security", {})
+            self.authz_manager = AuthorizationManager(security_config)
+            print("[✓] Authorization manager ready")
             
-            # Initialize authorization manager
-            authz_config = config_manager.get("api_gateway.security.authorization", {})
-            self.authz_manager = AuthorizationManager(authz_config)
-            
-            self.logger.info("Security plugin initialized")
+            print("[✓] Security middleware active")
+            self.logger.info("Security plugin initialized successfully")
             
         except Exception as e:
+            print("[✗] Security middleware initialization failed")
             self.logger.error(f"Failed to initialize security plugin: {e}")
             raise
     
     async def start(self) -> None:
         """Start the security plugin"""
+        await super().start()
         self.logger.info("Security plugin started")
     
     async def process_request(self, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -130,6 +142,11 @@ class SecurityPlugin(PluginInterface):
         # Security features should be implemented at the ASGI level if needed
         self.logger.info("Security middleware skipped - would bypass ASGI encryption middleware")
     
+    async def stop(self) -> None:
+        """Stop the security plugin"""
+        await super().stop()
+        self.logger.info("Security plugin stopped")
+    
     async def shutdown(self) -> None:
-        """Cleanup security plugin resources"""
-        self.logger.info("Security plugin shutdown")
+        """Legacy compatibility method"""
+        await self.stop()

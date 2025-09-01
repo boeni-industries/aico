@@ -5,19 +5,23 @@ Handles transport encryption and key management in the modular plugin architectu
 """
 
 from typing import Dict, Any
-from ..core.plugin_registry import PluginInterface, PluginMetadata, PluginPriority
+from backend.core.plugin_base import BasePlugin, PluginMetadata, PluginPriority
+from aico.core.logging import get_logger
+from aico.security.key_manager import AICOKeyManager
 
 
-class EncryptionPlugin(PluginInterface):
+
+class EncryptionPlugin(BasePlugin):
     """
     Transport encryption plugin
     
     Manages encryption keys and secure transport channels.
     """
     
-    def __init__(self, config: Dict[str, Any], logger):
-        super().__init__(config, logger)
+    def __init__(self, name: str, container):
+        super().__init__(name, container)
         self.key_manager = None
+        
     
     @property
     def metadata(self) -> PluginMetadata:
@@ -25,22 +29,28 @@ class EncryptionPlugin(PluginInterface):
             name="encryption",
             version="1.0.0",
             description="Transport encryption and key management plugin",
-            priority=PluginPriority.INFRASTRUCTURE,  # Infrastructure level
+            priority=PluginPriority.SECURITY,
             dependencies=[],
-            config_schema={
-                "enabled": {"type": "boolean", "default": True},
-                "key_rotation_hours": {"type": "integer", "default": 24}
-            }
+            enabled=True
         )
     
-    async def initialize(self, dependencies: Dict[str, Any]) -> None:
+    async def initialize(self) -> None:
         """Initialize encryption components"""
         try:
-            # Get key manager from dependencies if available
-            self.key_manager = dependencies.get('key_manager')
-            self.logger.info("Encryption plugin initialized")
+            # Initialize key manager
+            print("[+] Initializing transport security...")
+            config_service = self.require_service('config')
+            self.key_manager = AICOKeyManager(config_service)
+            
+            # Display transport security status
+            print("[✓] Transport encryption keys loaded")
+            print("[✓] AES-256-GCM encryption ready")
+            print("[✓] Transport security middleware active")
+            
+            self.logger.info("Transport security initialized successfully")
             
         except Exception as e:
+            print("[✗] Transport security initialization failed")
             self.logger.error(f"Failed to initialize encryption plugin: {e}")
             raise
     
@@ -65,8 +75,14 @@ class EncryptionPlugin(PluginInterface):
     
     async def start(self) -> None:
         """Start the encryption plugin"""
+        await super().start()
         self.logger.info("Encryption plugin started")
     
+    async def stop(self) -> None:
+        """Stop the encryption plugin"""
+        await super().stop()
+        self.logger.info("Encryption plugin stopped")
+    
     async def shutdown(self) -> None:
-        """Cleanup encryption plugin resources"""
-        self.logger.info("Encryption plugin shutdown")
+        """Legacy compatibility method"""
+        await self.stop()

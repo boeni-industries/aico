@@ -135,26 +135,38 @@ class AICOLogger:
         return result
     
     def _log(self, level: str, message: str, **kwargs):
-        """Internal logging method"""
+        """Internal log method with transport handling"""
+        # Check if we should log this level
         if not self._should_log(level):
             return
             
-        log_entry = self._create_log_entry(level, message, **kwargs)
-        
-        # Debug tracing for echo endpoint logs (only in foreground mode)
-        if "ECHO TRACE" in message or "THIS_IS_A_TEST_LOG_FOR_TRACING" in str(kwargs.get("extra", {})):
-            trace_id = kwargs.get("extra", {}).get("trace_id", "unknown")
-            from backend.log_consumer import debugPrint
-        
-        if not self._db_ready:
-            # Buffer logs during bootstrap
-            self._bootstrap_buffer.append(log_entry)
-            if len(self._bootstrap_buffer) > self._max_buffer_size:
-                self._bootstrap_buffer.pop(0)  # Remove oldest
-            self._try_fallback_logging(log_entry)
-        else:
-            # Normal database logging
-            self._send_to_database(log_entry)
+        try:
+            # Create log entry
+            log_entry = self._create_log_entry(level, message, **kwargs)
+            
+            # Send via transport if available
+            if self.transport and not self._is_transport_disabled():
+                self.transport.send_log(log_entry)
+            else:
+                # Only print transport errors for ERROR level or higher
+                if level in ["ERROR", "CRITICAL"]:
+                    print(f"[ERROR] Logger has no transport - log not sent to ZMQ")
+            
+        except Exception as e:
+            # Only print transport failures for ERROR level or higher
+            if level in ["ERROR", "CRITICAL"]:
+                print(f"[ERROR] Logger transport failed: {e}")
+                print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] {level} {self.subsystem}.{self.module}: [TRANSPORT ERROR] {message}")
+                print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ERROR {self.subsystem}.{self.module}: Log transport failed: {e}")
+            
+            # Re-raise transport errors to trigger fallback behavior
+            raise
+    
+    def _log_to_console(self, level: str, message: str, **kwargs):
+        """Log to console as fallback - DISABLED (logs go to database only)"""
+        # Console logging disabled - logs should only go to database via ZMQ transport
+        # This method is kept for emergency fallback scenarios only
+        pass
     
     def _try_fallback_logging(self, log_entry: LogEntry):
         """Multi-layer fallback for when database isn't ready"""
@@ -190,7 +202,7 @@ class AICOLogger:
     def _send_to_database(self, log_entry: LogEntry):
         """Send log entry to database via transport or fallback logging"""
 
-        if self.transport:
+        if self.transport and not self._is_transport_disabled():
             try:
  
                 self.transport.send_log(log_entry)
@@ -203,6 +215,28 @@ class AICOLogger:
                 self._try_fallback_logging(log_entry)
         else:
             self._try_fallback_logging(log_entry)
+    
+    def _is_transport_disabled(self) -> bool:
+        """Determine if ZMQ transport should be disabled for this logger to prevent feedback loops.
+
+        Rules:
+        - Config-driven via `logging.disable_zmq_for` list of "subsystem.module" strings
+        - Built-in safeguard: disable for service.log_consumer by default
+        """
+        try:
+            disabled_list = self.config.get("logging.disable_zmq_for", []) or []
+        except Exception:
+            disabled_list = []
+
+        key = f"{self.subsystem}.{self.module}"
+        if key in disabled_list:
+            return True
+
+        # Built-in safeguard to avoid infinite loop if not explicitly configured
+        if self.subsystem == "service" and self.module.startswith("log_consumer"):
+            return True
+
+        return False
     
     def mark_database_ready(self):
         """Called after database initialization to flush bootstrap buffer"""
@@ -277,23 +311,26 @@ class AICOLoggerFactory:
         """Get or create transport for this logger factory"""
         if not self._transport and ZMQ_AVAILABLE:
             context = self.get_zmq_context()
+            #print(f"[DEBUG] Logger factory getting ZMQ context: {context is not None}")
             if context:
                 self._transport = ZMQLogTransport(self.config, context)
+                #print(f"[DEBUG] Created ZMQ transport, initializing...")
                 self._transport.initialize()
+                #print(f"[DEBUG] ZMQ transport initialization complete")
         return self._transport
     
     def reinitialize_loggers(self):
         """Re-initialize all existing loggers with the current transports."""
-        from backend.log_consumer import debugPrint
-        debugPrint("[LOGGING] Re-initializing all existing loggers with ZMQ transport...")
+        # Debug print for logger re-initialization
+        # print("[LOGGING] Re-initializing all existing loggers with ZMQ transport...")
         transport = self._get_transport()
         if not transport:
-            debugPrint("[LOGGING] Re-initialization skipped: ZMQ transport not available.")
+            # print("[LOGGING] Re-initialization skipped: ZMQ transport not available.")
             return
 
         for logger_name, logger in self._loggers.items():
             if not logger.transport:
-                debugPrint(f"[LOGGING] Updating transport for logger: {logger_name}")
+                # print(f"[LOGGING] Updating transport for logger: {logger_name}")
                 logger.transport = transport
 
     def mark_all_databases_ready(self):
@@ -334,6 +371,7 @@ class ZMQLogTransport:
     def initialize(self):
         """Initialize the ZMQ transport"""
         if not ZMQ_AVAILABLE or not self._context:
+            print(f"[ERROR] ZMQ transport initialization skipped - ZMQ_AVAILABLE: {ZMQ_AVAILABLE}, context: {self._context is not None}")
             return
 
         try:
@@ -344,9 +382,9 @@ class ZMQLogTransport:
             publisher_port = self.config.get("message_bus.pub_port", 5555)
             address = f"tcp://{host}:{publisher_port}"
             
-            from backend.log_consumer import debugPrint
-            # debugPrint(f"[ZMQ TRANSPORT] Using regular ZMQ context, connecting to {address}")
+            #print(f"[DEBUG] ZMQ transport connecting to {address}")
             self._socket.connect(address)
+            #print(f"[DEBUG] ZMQ transport connected successfully")
         except Exception as e:
             # Log ZMQ transport initialization failure
             import logging
@@ -360,6 +398,7 @@ class ZMQLogTransport:
     def send_log(self, log_entry: LogEntry):
         """Send log entry via ZMQ transport"""
         if not self._socket:
+            print(f"[ERROR] ZMQ transport socket not available - log not sent")
             return
             
         try:
@@ -378,12 +417,11 @@ class ZMQLogTransport:
             from .topics import AICOTopics
             full_topic = AICOTopics.build_logs_topic(topic)
             
-            # from backend.log_consumer import debugPrint
-            # debugPrint(f"[ZMQ PUBLISHER {trace_id}] Publishing to topic: {full_topic}, Message: {log_entry.message}")
-            
+            #print(f"[DEBUG] ZMQ sending log: {log_entry.subsystem}.{log_entry.module} -> {full_topic}")
+                     
             # Serialize the protobuf message
             serialized_data = log_entry.SerializeToString()
-            # debugPrint(f"[ZMQ TRACE {trace_id}] STEP 2: Serialized protobuf - {len(serialized_data)} bytes")
+            #print(f"[DEBUG] ZMQ serialized log: {len(serialized_data)} bytes")
             
             # Send via ZMQ socket (synchronous send for thread safety)
             self._socket.send_multipart([
@@ -391,7 +429,7 @@ class ZMQLogTransport:
                 serialized_data
             ], zmq.NOBLOCK)
             
-            # debugPrint(f"[ZMQ TRACE {trace_id}] STEP 3: Sent via ZMQ socket - Topic: {full_topic}")
+            #print(f"[DEBUG] ZMQ log sent successfully to topic: {full_topic}")
             
             # CRITICAL: Yield control to allow the ZMQ I/O thread to send the message
             # before the calling context (e.g., a short-lived request thread) terminates.
@@ -400,10 +438,15 @@ class ZMQLogTransport:
         except Exception as e:
             # Log transport failure but don't crash - logging must be resilient
             import logging
-            logger = logging.getLogger('zmq_transport')
-            logger.error(f"Failed to send log via ZMQ: {e}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            import sys
+            try:
+                logger = logging.getLogger('zmq_transport')
+                logger.error(f"Failed to send log via ZMQ: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+            except Exception as log_exc:
+                print(f"[CRITICAL] Logging failure in ZMQLogTransport.send_log: {log_exc}", file=sys.stderr)
+                print(f"[CRITICAL] Original error: {e}", file=sys.stderr)
             raise e  # Re-raise to trigger fallback logging
     
     def close(self):
@@ -653,11 +696,12 @@ def initialize_logging(config_manager) -> AICOLoggerFactory:
     global _logger_factory
     if _logger_factory is None:
         _logger_factory = AICOLoggerFactory(config_manager)
-        from backend.log_consumer import debugPrint
-        debugPrint(f"[LOGGING] Initialized new AICOLoggerFactory")
+        # Debug print for logger factory initialization
+        # print(f"[LOGGING] Initialized new AICOLoggerFactory")
     else:
-        from backend.log_consumer import debugPrint
-        debugPrint(f"[LOGGING] Using existing AICOLoggerFactory")
+        # Debug print for existing logger factory
+        # print(f"[LOGGING] Using existing AICOLoggerFactory")
+        pass
     return _logger_factory
 
 

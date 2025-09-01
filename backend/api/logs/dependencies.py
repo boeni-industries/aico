@@ -62,12 +62,12 @@ def validate_topic(topic: str) -> str:
             detail="Topic cannot be empty"
         )
     
-    # Basic validation - should follow dot notation
+    # Basic validation - should follow slash notation
     if not all(part.replace('_', '').replace('-', '').isalnum() 
-              for part in topic.split('.')):
+              for part in topic.split('/')):
         raise HTTPException(
             status_code=400,
-            detail="Topic must follow dot notation (e.g., 'ui.button.click')"
+            detail="Topic must follow slash notation (e.g., 'auth/login/attempt/v1')"
         )
     
     return topic.strip()

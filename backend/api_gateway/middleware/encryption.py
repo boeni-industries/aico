@@ -90,7 +90,7 @@ class EncryptionMiddleware:
         client_ip = request.client.host if request.client else "unknown"
         
         # Log all requests that reach encryption middleware
-        print(f"[ENCRYPTION MIDDLEWARE] Processing {request.method} {path} from {client_ip}")
+        #print(f"[ENCRYPTION MIDDLEWARE] Processing {request.method} {path} from {client_ip}")
         self.logger.debug(f"Processing request: {request.method} {path}")
         self.logger.info(f"ENCRYPTION MIDDLEWARE: {request.method} {path} from {client_ip}", extra={
             "event_type": "encryption_middleware_entry",
@@ -196,6 +196,26 @@ class EncryptionMiddleware:
                             # Replace the request body with decrypted data
                             decrypted_body = json.dumps(decrypted_data).encode()
                             
+                            # Create new scope with updated content-length but preserve all headers
+                            new_scope = scope.copy()
+                            headers = list(scope.get("headers", []))
+                            
+                            # Update content-length header
+                            updated_headers = []
+                            content_length_updated = False
+                            for name, value in headers:
+                                if name.lower() == b"content-length":
+                                    updated_headers.append((name, str(len(decrypted_body)).encode()))
+                                    content_length_updated = True
+                                else:
+                                    updated_headers.append((name, value))
+                            
+                            # Add content-length if not present
+                            if not content_length_updated:
+                                updated_headers.append((b"content-length", str(len(decrypted_body)).encode()))
+                            
+                            new_scope["headers"] = updated_headers
+                            
                             # Create a new receive callable with the decrypted body
                             async def new_receive():
                                 return {
@@ -204,8 +224,8 @@ class EncryptionMiddleware:
                                     "more_body": False
                                 }
                             
-                            # Forward the request with decrypted body
-                            await self.app(scope, new_receive, send)
+                            # Forward the request with decrypted body and preserved headers
+                            await self.app(new_scope, new_receive, send)
                             return
                             
                         except Exception as e:

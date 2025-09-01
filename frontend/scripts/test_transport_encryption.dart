@@ -117,6 +117,12 @@ Future<bool> runFullTest(Sodium sodium, void Function(String) log) async {
     return false;
   }
 
+  // Authenticate with test user credentials
+  if (!await client.authenticate()) {
+    log('\n❌ Authentication test failed');
+    return false;
+  }
+
   // Test encrypted echo
   log('\n📡 Testing encrypted echo...');
   final echoResponse = await client.sendEncryptedRequest('/api/v1/echo/', {
@@ -144,8 +150,9 @@ Future<bool> runFullTest(Sodium sodium, void Function(String) log) async {
     log('\n✅ All tests passed:');
     log('  • Backend connectivity');
     log('  • Encrypted handshake protocol');
-    log('  • Encrypted echo test');
-    log('\n🔐 Dart-backend encryption is working correctly!');
+    log('  • JWT authentication flow');
+    log('  • Encrypted echo test with auth');
+    log('\n🔐 Dart-backend encryption with JWT auth is working correctly!');
     return true;
   } else {
     log('⚠️ Transport Encryption Test FAILED');
@@ -213,6 +220,7 @@ class TransportEncryptionTestClient {
   // Session state
   KeyPair? _sessionKeyPair; // Ephemeral X25519 keypair for the session
   Uint8List? _serverPublicKey;
+  String? _jwtToken; // JWT token for authentication
 
   TransportEncryptionTestClient(this.baseUrl, this._sodium, this._log)
       : handshakeUrl = '$baseUrl/api/v1/handshake',
@@ -355,11 +363,38 @@ class TransportEncryptionTestClient {
     return jsonDecode(plaintext) as Map<String, dynamic>;
   }
 
+  /// Authenticate with backend and get JWT token
+  Future<bool> authenticate() async {
+    _log('\n🔐 Authenticating with backend...');
+    
+    try {
+      final authPayload = {
+        'user_uuid': '4837b1ac-f59a-400a-a875-6a4ea994c936',
+        'pin': '1234'
+      };
+      
+      final authResponse = await sendEncryptedRequest('/api/v1/users/authenticate', authPayload, includeAuth: false);
+      
+      if (authResponse != null && authResponse['success'] == true) {
+        _jwtToken = authResponse['jwt_token'];
+        _log('✅ Authentication successful - JWT token received');
+        return true;
+      } else {
+        _log('❌ Authentication failed: ${authResponse?['error'] ?? 'Unknown error'}');
+        return false;
+      }
+    } catch (e) {
+      _log('❌ Authentication error: $e');
+      return false;
+    }
+  }
+
   /// Send encrypted request to backend
   Future<Map<String, dynamic>?> sendEncryptedRequest(
     String endpoint,
-    Map<String, dynamic> payload,
-  ) async {
+    Map<String, dynamic> payload, {
+    bool includeAuth = true,
+  }) async {
     if (_sessionKeyPair == null) {
       _log('❌ No active session - perform handshake first');
       return null;
@@ -381,13 +416,22 @@ class TransportEncryptionTestClient {
       };
 
       _log('📤 Sending encrypted request to $endpoint');
+      if (includeAuth && _jwtToken != null) {
+        _log('🔐 Including JWT token for authentication');
+      }
+
+      // Prepare headers
+      final headers = {'Content-Type': 'application/json'};
+      if (includeAuth && _jwtToken != null) {
+        headers['Authorization'] = 'Bearer $_jwtToken';
+      }
 
       // Send request
       final response = await _dio.post(
         '$baseUrl$endpoint',
         data: requestEnvelope,
         options: Options(
-          headers: {'Content-Type': 'application/json'},
+          headers: headers,
           sendTimeout: const Duration(seconds: 10),
           receiveTimeout: const Duration(seconds: 10),
         ),
