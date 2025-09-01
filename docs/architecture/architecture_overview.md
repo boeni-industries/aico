@@ -286,6 +286,7 @@ AICO System
 The AICO system consists of the following main parts:
 - Backend service
 - Frontend app
+- Modelservice
 - Admin UI
 - CLI
 
@@ -295,6 +296,10 @@ The backend service is a Python application that provides the core functionality
 **Frontend App**
 
 The frontend app is a Flutter application that provides a user interface for interacting with AICO. It is built using the Flutter framework and the Dart programming language and provides a responsive and intuitive interface for users to interact with AICO.
+
+**Modelservice**
+
+The modelservice is a minimal REST-based subsystem that provides a unified API gateway to foundational large language model (LLM) inference, initially integrating with Ollama. It abstracts direct model runner access, ensuring modularity, security, and future extensibility for additional foundational models. The service manages Ollama as a native binary subprocess with automatic installation and lifecycle management.
 
 **Admin UI**
 The admin UI is a web application that provides a user interface for managing the system. It is built using the React framework and provides a responsive and intuitive interface for developers and advanced users to manage the system.

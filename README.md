@@ -35,6 +35,7 @@ This isn't just feature development—it's relationship evolution. We start with
 - **Key Technologies:**
   - **Backend:** Python, FastAPI, ZeroMQ, Protocol Buffers, libSQL, DuckDB, ChromaDB, RocksDB
   - **Frontend:** Flutter (UI), WebView (Three.js/Ready Player Me/TalkingHead.js for avatar)
+  - **Modelservice:** REST API gateway for LLM inference (Ollama integration)
   - **Admin Tools:** React-based Admin UI, Python CLI (Typer, Rich)
   - **Security:** End-to-end encryption, consent management, audit logging
 
@@ -90,7 +91,7 @@ AICO is engineered to deliver a truly companionable, proactive, and privacy-firs
 - Synchronized presence and attention management across devices
 
 ### 🔒 Privacy & Security
-- Local-first, encrypted data storage (libSQL, SQLCipher, gocryptfs)
+- Local-first, encrypted data storage (libSQL with SQLCipher, transparent AES-256-GCM file encryption)
 - End-to-end encryption, granular consent management, and permission controls
 - Homomorphic encryption for privacy-preserving cloud computations (optional, post-MVP)
 - Transparent audit logging and zero-knowledge authentication
