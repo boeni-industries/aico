@@ -3541,7 +3541,7 @@
 </ul>
 <h3 id="privacy-security">🔒 <strong>Privacy &amp; Security</strong><a class="headerlink" href="#privacy-security" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Local-first, encrypted data storage (libSQL, SQLCipher, gocryptfs)</li>
+<li>Local-first, encrypted data storage (libSQL with SQLCipher, transparent AES-256-GCM file encryption)</li>
 <li>End-to-end encryption, granular consent management, and permission controls</li>
 <li>Homomorphic encryption for privacy-preserving cloud computations (optional, post-MVP)</li>
 <li>Transparent audit logging and zero-knowledge authentication</li>
@@ -3578,10 +3578,10 @@
 <h3 id="development-stages"><strong>Development Stages</strong><a class="headerlink" href="#development-stages" title="Permanent link">&para;</a></h3>
 <ol>
 <li>
-<p><strong>🛠️ Foundation</strong> <em>(Current)</em> - Core infrastructure scaffolding</p>
+<p><strong>🛠️ Foundation I</strong> <em>(Current)</em> - Essential infrastructure for MVP</p>
 <ul>
-<li>ZeroMQ message bus, plugin system, FastAPI backend</li>
-<li>Resource management, security framework, development pipeline</li>
+<li>ZeroMQ message bus, FastAPI backend, basic security framework</li>
+<li>Task scheduler, encrypted data storage, WebSocket communication</li>
 </ul>
 </li>
 <li>
@@ -3589,6 +3589,13 @@
 <ul>
 <li>Text chat, voice interaction, basic avatar, memory system</li>
 <li>Local LLM integration, personality engine, emotion recognition</li>
+</ul>
+</li>
+<li>
+<p><strong>🛠️ Foundation II</strong> - Advanced infrastructure for production</p>
+<ul>
+<li>Plugin system, advanced resource management, update system</li>
+<li>CI/CD pipeline, monitoring, production deployment</li>
 </ul>
 </li>
 <li>
@@ -3661,6 +3668,7 @@
 </li>
 <li><strong>Backend:</strong> Python, FastAPI, ZeroMQ, Protocol Buffers, libSQL, DuckDB, ChromaDB, RocksDB</li>
 <li><strong>Frontend:</strong> Flutter (UI), WebView (Three.js/Ready Player Me/TalkingHead.js for avatar)</li>
+<li><strong>Modelservice:</strong> REST API gateway for LLM inference (Ollama integration)</li>
 <li><strong>Admin Tools:</strong> React-based Admin UI, Python CLI (Typer, Rich)</li>
 <li><strong>Security:</strong> End-to-end encryption, consent management, audit logging</li>
 </ul>

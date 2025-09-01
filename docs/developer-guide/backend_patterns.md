@@ -8,37 +8,58 @@ This guide covers current development patterns for AICO's backend service, inclu
 
 ### Plugin Architecture
 
-AICO uses a plugin-based architecture centered around the `GatewayCore` orchestrator:
+AICO uses a service container architecture with standardized plugin base classes:
 
 ```python
 from aico.core.logging import get_logger
-from backend.api_gateway.core.plugin_registry import PluginInterface
+from backend.core.plugin_base import BasePlugin, PluginMetadata, PluginPriority
+from backend.core.service_container import ServiceContainer
 
-class MyPlugin(PluginInterface):
-    def __init__(self, config, logger=None, **kwargs):
-        self.config = config
-        self.logger = logger or get_logger("plugin", "my_plugin")
-        self.db_connection = kwargs.get('db_connection')
+class MyPlugin(BasePlugin):
+    def __init__(self, name: str, container: ServiceContainer):
+        super().__init__(name, container)
+        self.logger = get_logger("plugin", "my_plugin")
+        
+    @property
+    def metadata(self):
+        return PluginMetadata(
+            name="My Plugin",
+            version="1.0.0",
+            description="Example plugin implementation",
+            priority=PluginPriority.NORMAL
+        )
+        
+    async def initialize(self) -> None:
+        """Initialize plugin with required services."""
+        self.config = self.require_service('config')
+        self.db_connection = self.require_service('database')
     
-    async def start(self):
+    async def start(self) -> None:
+        """Start plugin services."""
         self.logger.info("Starting MyPlugin")
-        # Plugin initialization logic
+        # Plugin startup logic
     
-    async def stop(self):
+    async def stop(self) -> None:
+        """Stop plugin services."""
         self.logger.info("Stopping MyPlugin")
         # Plugin cleanup logic
 ```
 
 ### Plugin Registration
 
-Plugins are automatically discovered and loaded by the `PluginRegistry`:
+Plugins are registered with the service container during backend startup:
 
 ```python
-# In plugin module
-def create_plugin(config, logger=None, **kwargs):
-    return MyPlugin(config, logger, **kwargs)
+# In BackendLifecycleManager
+from backend.api_gateway.plugins.my_plugin import MyPlugin
 
-# Plugin will be discovered if placed in api_gateway/plugins/
+# Register plugin with service container
+container.register_service(
+    "my_plugin",
+    lambda: MyPlugin("my_plugin", container),
+    dependencies=["config", "database"],
+    priority=100
+)
 ```
 
 ### Database Integration
@@ -46,10 +67,21 @@ def create_plugin(config, logger=None, **kwargs):
 Plugins receive a shared encrypted database connection:
 
 ```python
-class DatabasePlugin(PluginInterface):
-    def __init__(self, config, logger=None, **kwargs):
-        super().__init__(config, logger, **kwargs)
-        self.db_connection = kwargs.get('db_connection')
+class DatabasePlugin(BasePlugin):
+    def __init__(self, name: str, container: ServiceContainer):
+        super().__init__(name, container)
+        
+    @property
+    def metadata(self):
+        return PluginMetadata(
+            name="Database Plugin",
+            version="1.0.0",
+            description="Database integration plugin",
+            priority=PluginPriority.NORMAL
+        )
+        
+    async def initialize(self) -> None:
+        self.db_connection = self.require_service('database')
     
     async def start(self):
         # Use shared connection
@@ -102,7 +134,7 @@ Use the shared message bus client for inter-module communication:
 ```python
 from aico.core.bus import MessageBusClient
 
-class ServicePlugin(PluginInterface):
+class ServicePlugin(BasePlugin):
     async def start(self):
         self.bus_client = MessageBusClient()
         await self.bus_client.connect()
@@ -183,9 +215,9 @@ class LoggingService:
 Implement proper shutdown handling in plugins:
 
 ```python
-class ManagedPlugin(PluginInterface):
-    def __init__(self, config, logger=None, **kwargs):
-        super().__init__(config, logger, **kwargs)
+class ManagedPlugin(BasePlugin):
+    def __init__(self, name: str, container: ServiceContainer):
+        super().__init__(name, container)
         self.running = False
         self.background_tasks = set()
     
@@ -274,7 +306,7 @@ def transactional_operation(self, operations):
 Implement robust error handling in plugins:
 
 ```python
-class ResilientPlugin(PluginInterface):
+class ResilientPlugin(BasePlugin):
     async def start(self):
         retry_count = 0
         max_retries = 3
@@ -451,7 +483,7 @@ class DeploymentAwareService:
 Implement health checks for service monitoring:
 
 ```python
-class HealthCheckPlugin(PluginInterface):
+class HealthCheckPlugin(BasePlugin):
     async def health_check(self):
         checks = {
             "database": await self.check_database(),

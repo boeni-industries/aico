@@ -266,12 +266,47 @@ The Plugin System implements a comprehensive security model:
 
 ## Plugin Development
 
+### Backend Plugin Development
+
+For backend plugins, use the standardized `BasePlugin` architecture:
+
+```python
+from backend.core.plugin_base import BasePlugin, PluginMetadata, PluginPriority
+from backend.core.service_container import ServiceContainer
+
+class MyBackendPlugin(BasePlugin):
+    def __init__(self, name: str, container: ServiceContainer):
+        super().__init__(name, container)
+        
+    @property
+    def metadata(self):
+        return PluginMetadata(
+            name="My Backend Plugin",
+            version="1.0.0",
+            description="Backend functionality plugin",
+            priority=PluginPriority.NORMAL
+        )
+        
+    async def initialize(self) -> None:
+        """Initialize with required backend services."""
+        self.config = self.require_service('config')
+        self.database = self.require_service('database')
+        
+    async def start(self) -> None:
+        """Start plugin services."""
+        # Plugin startup logic
+        
+    async def stop(self) -> None:
+        """Stop plugin services."""
+        # Plugin cleanup logic
+```
+
 ### Development Workflow
 
 1. **Setup**: Install the AICO Plugin SDK
 2. **Create**: Generate plugin scaffold using templates
-3. **Develop**: Implement plugin functionality
-4. **Test**: Use local testing environment
+3. **Develop**: Implement plugin functionality using `BasePlugin`
+4. **Test**: Use local testing environment with service container
 5. **Package**: Create distributable plugin package
 6. **Publish**: Submit to marketplace or distribute directly
 

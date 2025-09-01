@@ -34,12 +34,12 @@ The API Gateway serves as the unified entry point for all external communication
 
 ### 1. Plugin-Based Architecture
 
-The API Gateway uses a modular plugin-based architecture centered around the `GatewayCore` orchestrator:
+The API Gateway uses a service container architecture with standardized plugin base classes:
 
-- **GatewayCore**: Central orchestrator managing plugin lifecycle, protocol adapters, and configuration
-- **PluginRegistry**: Discovers, loads, and manages plugins with dependency injection
-- **ProtocolAdapterManager**: Manages protocol adapters as specialized plugins
-- **Plugin System**: Extensible architecture allowing custom middleware, adapters, and services
+- **BackendLifecycleManager**: Central orchestrator managing service container, FastAPI lifecycle, and plugin coordination
+- **ServiceContainer**: Manages service registration, dependency injection, and lifecycle states
+- **BasePlugin**: Standardized plugin base class with metadata, lifecycle methods, and dependency injection
+- **Plugin System**: Extensible architecture using inheritance hierarchy (BasePlugin, SecurityPlugin, MiddlewarePlugin)
 
 ### 2. Protocol Adapters (Plugin-Based)
 
@@ -264,7 +264,7 @@ The current implementation uses a plugin-based middleware stack:
    - `/api/v1/logs/` - Log management endpoints
    - `/api/v1/health` - System health checks
 
-3. **Plugin Middleware Stack**: Applied via plugin system
+3. **Plugin Middleware Stack**: Applied via service container
    - Authentication validation (JWT tokens)
    - Rate limiting and abuse prevention
    - Request logging and metrics

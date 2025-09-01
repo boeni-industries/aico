@@ -3486,12 +3486,12 @@
 </ul>
 <h2 id="architecture-components">Architecture Components<a class="headerlink" href="#architecture-components" title="Permanent link">&para;</a></h2>
 <h3 id="1-plugin-based-architecture">1. Plugin-Based Architecture<a class="headerlink" href="#1-plugin-based-architecture" title="Permanent link">&para;</a></h3>
-<p>The API Gateway uses a modular plugin-based architecture centered around the <code>GatewayCore</code> orchestrator:</p>
+<p>The API Gateway uses a service container architecture with standardized plugin base classes:</p>
 <ul>
-<li><strong>GatewayCore</strong>: Central orchestrator managing plugin lifecycle, protocol adapters, and configuration</li>
-<li><strong>PluginRegistry</strong>: Discovers, loads, and manages plugins with dependency injection</li>
-<li><strong>ProtocolAdapterManager</strong>: Manages protocol adapters as specialized plugins</li>
-<li><strong>Plugin System</strong>: Extensible architecture allowing custom middleware, adapters, and services</li>
+<li><strong>BackendLifecycleManager</strong>: Central orchestrator managing service container, FastAPI lifecycle, and plugin coordination</li>
+<li><strong>ServiceContainer</strong>: Manages service registration, dependency injection, and lifecycle states</li>
+<li><strong>BasePlugin</strong>: Standardized plugin base class with metadata, lifecycle methods, and dependency injection</li>
+<li><strong>Plugin System</strong>: Extensible architecture using inheritance hierarchy (BasePlugin, SecurityPlugin, MiddlewarePlugin)</li>
 </ul>
 <h3 id="2-protocol-adapters-plugin-based">2. Protocol Adapters (Plugin-Based)<a class="headerlink" href="#2-protocol-adapters-plugin-based" title="Permanent link">&para;</a></h3>
 <p>Protocol adapters are implemented as plugins managed by the ProtocolAdapterManager:</p>
@@ -3735,7 +3735,7 @@
 <p><code>/api/v1/health</code> - System health checks</p>
 </li>
 <li>
-<p><strong>Plugin Middleware Stack</strong>: Applied via plugin system</p>
+<p><strong>Plugin Middleware Stack</strong>: Applied via service container</p>
 </li>
 <li>Authentication validation (JWT tokens)</li>
 <li>Rate limiting and abuse prevention</li>

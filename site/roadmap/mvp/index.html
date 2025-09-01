@@ -3221,9 +3221,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#integration-points" class="md-nav__link">
+  <a href="#ai-feature-integration" class="md-nav__link">
     <span class="md-ellipsis">
-      Integration Points
+      AI Feature Integration
     </span>
   </a>
   
@@ -3481,11 +3481,9 @@
 <h2 id="backend-mvp">Backend MVP<a class="headerlink" href="#backend-mvp" title="Permanent link">&para;</a></h2>
 <h3 id="llm-integration">LLM Integration<a class="headerlink" href="#llm-integration" title="Permanent link">&para;</a></h3>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Ollama Setup</strong>: Local LLM model management and inference</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Model Loading</strong>: Automatic model download and initialization</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Model Configuration</strong>: Configure Ollama models for companion personality</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Prompt Engineering</strong>: System prompts for personality and context</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Response Generation</strong>: Generate contextually appropriate responses</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Resource Management</strong>: CPU/memory monitoring for LLM operations</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Fallback Handling</strong>: Graceful degradation when LLM unavailable</li>
 </ul>
 <h3 id="memory-system">Memory System<a class="headerlink" href="#memory-system" title="Permanent link">&para;</a></h3>
@@ -3534,31 +3532,18 @@
 <h3 id="core-services">Core Services<a class="headerlink" href="#core-services" title="Permanent link">&para;</a></h3>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Chat API</strong>: REST endpoints for sending/receiving messages</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>WebSocket API</strong>: Real-time bidirectional communication</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory API</strong>: Store and retrieve user memories</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality API</strong>: Get/set personality configuration</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Status API</strong>: System health and availability status</li>
 </ul>
-<h2 id="integration-points">Integration Points<a class="headerlink" href="#integration-points" title="Permanent link">&para;</a></h2>
-<h3 id="message-bus-integration">Message Bus Integration<a class="headerlink" href="#message-bus-integration" title="Permanent link">&para;</a></h3>
+<h2 id="ai-feature-integration">AI Feature Integration<a class="headerlink" href="#ai-feature-integration" title="Permanent link">&para;</a></h2>
+<h3 id="module-coordination">Module Coordination<a class="headerlink" href="#module-coordination" title="Permanent link">&para;</a></h3>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>LLM Module</strong>: Subscribe to conversation events, publish responses</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory Module</strong>: Subscribe to conversation events, publish memories</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality Module</strong>: Publish personality parameters and traits</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion Recognition Module</strong>: Subscribe to user input, publish detected emotions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion Simulation Module</strong>: Subscribe to events, publish AICO emotional states</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Agency Module</strong>: Subscribe to context and emotions, publish initiatives</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Module</strong>: Subscribe to TTS requests, publish audio responses</li>
-</ul>
-<h3 id="data-flow">Data Flow<a class="headerlink" href="#data-flow" title="Permanent link">&para;</a></h3>
-<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>User Input</strong>: Frontend → API → Message Bus → LLM/Emotion Recognition Modules</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Memory Storage</strong>: Conversation events → Memory Module → Database</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality Context</strong>: Personality Module → LLM Module prompts</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion Context</strong>: Emotion Recognition → Emotion Simulation → Expression</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice Processing</strong>: Voice input → STT → LLM → TTS → Voice output</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Proactive Behavior</strong>: Agency Module → Frontend notifications</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Avatar Sync</strong>: Emotion states → Avatar expressions and animations</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>LLM-Memory Integration</strong>: LLM uses memory context for personalized responses</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Personality-LLM Integration</strong>: Personality traits influence LLM prompt generation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion Recognition Integration</strong>: User emotion detection informs response generation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Emotion Expression Integration</strong>: AICO emotions coordinate across avatar, voice, and text</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Agency-Memory Integration</strong>: Proactive behavior based on conversation history</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Voice-Avatar Sync</strong>: Lip-sync and expressions match voice output</li>
 </ul>
 <h2 id="validation-criteria">Validation Criteria<a class="headerlink" href="#validation-criteria" title="Permanent link">&para;</a></h2>
 <h3 id="core-functionality">Core Functionality<a class="headerlink" href="#core-functionality" title="Permanent link">&para;</a></h3>
@@ -3590,14 +3575,12 @@
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Adapts communication style based on user mood</li>
 </ul>
 <h2 id="technical-requirements">Technical Requirements<a class="headerlink" href="#technical-requirements" title="Permanent link">&para;</a></h2>
+<p><em>Note: Core infrastructure (FastAPI, ZeroMQ, WebSocket, database encryption) provided by Foundation I</em></p>
 <ul>
-<li><strong>Frontend</strong>: Flutter for cross-platform UI</li>
-<li><strong>Backend</strong>: Python with FastAPI for core services</li>
-<li><strong>LLM</strong>: Local Ollama instance (Llama 2 or similar)</li>
-<li><strong>Voice</strong>: Whisper.cpp (STT) + Coqui/Piper (TTS)</li>
-<li><strong>Storage</strong>: SQLite for memory, ChromaDB for embeddings</li>
-<li><strong>Message Bus</strong>: ZeroMQ pub/sub (from Foundation)</li>
-<li><strong>Avatar</strong>: Three.js + Ready Player Me + TalkingHead.js</li>
+<li><strong>LLM</strong>: Local Ollama configuration for companion personality</li>
+<li><strong>Voice</strong>: Whisper.cpp (STT) + Coqui/Piper (TTS) integration</li>
+<li><strong>Memory</strong>: ChromaDB embeddings for semantic search</li>
+<li><strong>Avatar</strong>: Three.js + Ready Player Me + TalkingHead.js in WebView</li>
 <li><strong>Emotion</strong>: Basic Component Process Model implementation</li>
 <li><strong>Personality</strong>: Big Five trait system with expression mapping</li>
 </ul>

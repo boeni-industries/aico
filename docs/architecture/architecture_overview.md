@@ -432,7 +432,7 @@ The AICO backend runs as a persistent system service, handling all AI processing
 
 ### Service Architecture
 - **System Service:** Backend runs as a persistent service with PID file management and graceful shutdown
-- **Plugin-Based Core:** Modular architecture using `GatewayCore`, `PluginRegistry`, and `ProtocolAdapterManager`
+- **Plugin-Based Core:** Modular architecture using `BackendLifecycleManager`, `ServiceContainer`, and `BasePlugin` hierarchy
 - **Continuous Operation:** Background tasks and autonomous agency continue when UI is closed
 - **Resource-Aware Processing:** Intelligent resource management with configurable policies
 - **Process Management:** Signal-based shutdown coordination and background task management
@@ -689,10 +689,10 @@ The current backend follows this initialization sequence:
    - Setup PID file management and signal handlers
    - Create shared encrypted database connection
 
-2. **API Gateway** (`AICOAPIGatewayV2`):
-   - Initialize `GatewayCore` with plugin system
-   - Load and start plugins (message bus, log consumer, adapters)
-   - Setup FastAPI integration with domain routing
+2. **API Gateway** (`BackendLifecycleManager`):
+   - Initialize `ServiceContainer` with dependency injection
+   - Register and start services/plugins with priority ordering
+   - Setup FastAPI integration with single lifespan context and domain routing
 
 3. **Plugin Lifecycle**:
    - Message bus broker starts on ports 5555/5556
