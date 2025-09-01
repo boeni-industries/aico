@@ -54,7 +54,7 @@ Build the **essential** system infrastructure required for MVP companion feature
 - [x] **Performance**: Optimize for 1000+ messages/second with <100ms latency
 
 ### Service Layer Enhancement
-- [ ] **Service Management**: Windows Service / Linux daemon / macOS LaunchAgent
+- [x] **Service Management**: Windows Service / Linux daemon / macOS LaunchAgent
 - [x] **Graceful Shutdown**: Clean service restart without data loss
 - [x] **WebSocket Support**: Real-time bidirectional communication
 
@@ -68,6 +68,11 @@ Build the **essential** system infrastructure required for MVP companion feature
 - [x] **Error Handling**: Standardized error handling and user feedback (MVP-needed)
 
 ## Phase 3: MVP-Critical Infrastructure
+
+### Basic Model Service (Required for text-based conversations)
+- [ ] **Model Service**: Basic abstraction layer to LLM providers via Ollama
+- [ ] **Model Configuration**: Basic model configuration for text-based conversations
+- [ ] **Model Execution**: Basic model execution for text-based conversations
 
 ### WebView Avatar Integration (Required for MVP Embodiment)
 - [ ] **WebView Widget**: Flutter WebView setup for avatar rendering

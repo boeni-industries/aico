@@ -36,11 +36,9 @@
 ## Backend MVP
 
 ### LLM Integration
-- [ ] **Ollama Setup**: Local LLM model management and inference
-- [ ] **Model Loading**: Automatic model download and initialization
+- [ ] **Model Configuration**: Configure Ollama models for companion personality
 - [ ] **Prompt Engineering**: System prompts for personality and context
 - [ ] **Response Generation**: Generate contextually appropriate responses
-- [ ] **Resource Management**: CPU/memory monitoring for LLM operations
 - [ ] **Fallback Handling**: Graceful degradation when LLM unavailable
 
 ### Memory System
@@ -83,30 +81,18 @@
 
 ### Core Services
 - [ ] **Chat API**: REST endpoints for sending/receiving messages
-- [ ] **WebSocket API**: Real-time bidirectional communication
 - [ ] **Memory API**: Store and retrieve user memories
 - [ ] **Personality API**: Get/set personality configuration
-- [ ] **Status API**: System health and availability status
 
-## Integration Points
+## AI Feature Integration
 
-### Message Bus Integration
-- [ ] **LLM Module**: Subscribe to conversation events, publish responses
-- [ ] **Memory Module**: Subscribe to conversation events, publish memories
-- [ ] **Personality Module**: Publish personality parameters and traits
-- [ ] **Emotion Recognition Module**: Subscribe to user input, publish detected emotions
-- [ ] **Emotion Simulation Module**: Subscribe to events, publish AICO emotional states
-- [ ] **Agency Module**: Subscribe to context and emotions, publish initiatives
-- [ ] **Voice Module**: Subscribe to TTS requests, publish audio responses
-
-### Data Flow
-- [ ] **User Input**: Frontend → API → Message Bus → LLM/Emotion Recognition Modules
-- [ ] **Memory Storage**: Conversation events → Memory Module → Database
-- [ ] **Personality Context**: Personality Module → LLM Module prompts
-- [ ] **Emotion Context**: Emotion Recognition → Emotion Simulation → Expression
-- [ ] **Voice Processing**: Voice input → STT → LLM → TTS → Voice output
-- [ ] **Proactive Behavior**: Agency Module → Frontend notifications
-- [ ] **Avatar Sync**: Emotion states → Avatar expressions and animations
+### Module Coordination
+- [ ] **LLM-Memory Integration**: LLM uses memory context for personalized responses
+- [ ] **Personality-LLM Integration**: Personality traits influence LLM prompt generation
+- [ ] **Emotion Recognition Integration**: User emotion detection informs response generation
+- [ ] **Emotion Expression Integration**: AICO emotions coordinate across avatar, voice, and text
+- [ ] **Agency-Memory Integration**: Proactive behavior based on conversation history
+- [ ] **Voice-Avatar Sync**: Lip-sync and expressions match voice output
 
 ## Validation Criteria
 
@@ -137,13 +123,12 @@
 
 ## Technical Requirements
 
-- **Frontend**: Flutter for cross-platform UI
-- **Backend**: Python with FastAPI for core services
-- **LLM**: Local Ollama instance (Llama 2 or similar)
-- **Voice**: Whisper.cpp (STT) + Coqui/Piper (TTS)
-- **Storage**: SQLite for memory, ChromaDB for embeddings
-- **Message Bus**: ZeroMQ pub/sub (from Foundation)
-- **Avatar**: Three.js + Ready Player Me + TalkingHead.js
+*Note: Core infrastructure (FastAPI, ZeroMQ, WebSocket, database encryption) provided by Foundation I*
+
+- **LLM**: Local Ollama configuration for companion personality
+- **Voice**: Whisper.cpp (STT) + Coqui/Piper (TTS) integration
+- **Memory**: ChromaDB embeddings for semantic search
+- **Avatar**: Three.js + Ready Player Me + TalkingHead.js in WebView
 - **Emotion**: Basic Component Process Model implementation
 - **Personality**: Big Five trait system with expression mapping
 
