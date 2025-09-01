@@ -9,13 +9,18 @@ import asyncio
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 # Add shared module to path
 shared_path = Path(__file__).parent.parent.parent / "shared"
 sys.path.insert(0, str(shared_path))
 
 from aico.core.version import get_modelservice_version
+from aico.core.logging import get_logger
+from aico.core.topics import AICOTopics
+from aico.security.key_manager import AICOKeyManager
+from aico.security.transport import TransportIdentityManager
+from aico.security.exceptions import EncryptionError
 from .schemas import (
     HealthResponse, CompletionRequest, CompletionResponse, 
     ModelsResponse, ModelInfo, ModelStatus, ModelType,
@@ -27,6 +32,63 @@ from .dependencies import get_modelservice_config
 __version__ = get_modelservice_version()
 
 router = APIRouter(prefix="/api/v1", tags=["modelservice"])
+
+# Global identity manager for handshake endpoint
+_identity_manager: Optional[TransportIdentityManager] = None
+
+# Logger for modelservice router
+logger = get_logger("modelservice", "api_router")
+
+
+def get_identity_manager() -> TransportIdentityManager:
+    """Get or create identity manager for handshake."""
+    global _identity_manager
+    if _identity_manager is None:
+        key_manager = AICOKeyManager()
+        _identity_manager = TransportIdentityManager(key_manager)
+    return _identity_manager
+
+
+@router.post("/handshake")
+async def handshake(request_data: Dict[str, Any]):
+    """
+    Handshake endpoint for establishing encrypted communication.
+    
+    Uses the same transport security pattern as API Gateway.
+    """
+    try:
+        identity_manager = get_identity_manager()
+        client_id, response_data, channel = identity_manager.process_handshake_and_create_channel(
+            request_data, "modelservice"
+        )
+        
+        logger.info(
+            f"Successful handshake with client {client_id}",
+            extra={"topic": AICOTopics.SECURITY_TRANSPORT_SESSION}
+        )
+        
+        return response_data
+        
+    except EncryptionError as e:
+        error_msg = f"Handshake failed: {str(e)}"
+        logger.error(
+            error_msg,
+            extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg
+        )
+    except Exception as e:
+        error_msg = f"Internal handshake error: {str(e)}"
+        logger.error(
+            error_msg,
+            extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg
+        )
 
 
 async def check_system_health(config: dict) -> Dict[str, Any]:
@@ -128,6 +190,18 @@ async def _check_ollama_health(ollama_url: str) -> Dict[str, Any]:
 async def health_check(config: dict = Depends(get_modelservice_config)):
     """Health check endpoint for modelservice."""
     health_data = await check_system_health(config)
+    
+    # Log health check results
+    if health_data["status"] == "healthy":
+        logger.info(
+            "Health check passed - all systems operational",
+            extra={"topic": AICOTopics.SYSTEM_HEALTH}
+        )
+    else:
+        logger.warning(
+            f"Health check failed - status: {health_data['status']}, errors: {health_data.get('errors', [])}",
+            extra={"topic": AICOTopics.SYSTEM_HEALTH}
+        )
     
     return HealthResponse(
         status=health_data["status"],

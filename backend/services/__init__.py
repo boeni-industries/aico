@@ -8,5 +8,6 @@ Service layer containing business logic separated from API endpoints.
 # from .user_service import UserBusinessService
 # from .admin_service import AdminBusinessService
 # from .auth_service import AuthBusinessService
+from .modelservice_client import ModelServiceClient, get_modelservice_client
 
-__all__ = []
+__all__ = ["ModelServiceClient", "get_modelservice_client"]

@@ -13,6 +13,7 @@ sys.path.insert(0, str(shared_path))
 
 from aico.core.config import ConfigurationManager
 from aico.core.version import get_modelservice_version
+from aico.security.key_manager import AICOKeyManager
 from .api.router import router
 
 # Get version from VERSIONS file
@@ -26,6 +27,20 @@ def create_app() -> FastAPI:
         description="Model management and inference service",
         version=__version__
     )
+    
+    # Initialize configuration and key manager for encryption middleware
+    try:
+        config_manager = ConfigurationManager()
+        config_manager.initialize()
+        key_manager = AICOKeyManager(config_manager)
+        
+        # Import and add encryption middleware (same pattern as API Gateway)
+        from backend.api_gateway.middleware.encryption import EncryptionMiddleware
+        app.add_middleware(EncryptionMiddleware, key_manager=key_manager)
+        
+    except Exception as e:
+        # No fallback - encryption is mandatory
+        raise RuntimeError(f"Failed to initialize encryption middleware: {e}. Secure communication is required.")
     
     # Include API router
     app.include_router(router)

@@ -51,6 +51,10 @@ class GatewayCore:
         self.key_manager = AICOKeyManager(config)
         self.message_bus: Optional[MessageBusClient] = None
         
+        # ZMQ context for plugins
+        import zmq
+        self.zmq_context = zmq.Context()
+        
         # Initialize auth managers (will be properly set up during plugin loading)
         self.auth_manager = None
         self.authz_manager = None
@@ -145,13 +149,20 @@ class GatewayCore:
     async def _connect_message_bus(self) -> None:
         """Connect to the AICO message bus"""
         try:
+            print("[GATEWAY CORE] Attempting to connect to message bus...")
             self.message_bus = MessageBusClient("api_gateway")
+            print("[GATEWAY CORE] MessageBusClient created, calling connect()...")
             await self.message_bus.connect()
+            print("[GATEWAY CORE] MessageBusClient.connect() completed successfully")
             # Set message bus on plugin registry for dependency injection
             self.plugin_registry.message_bus = self.message_bus
             self.logger.info("Connected to message bus")
+            print("[GATEWAY CORE] Message bus connection established")
         except Exception as e:
             self.logger.error(f"Failed to connect to message bus: {e}")
+            print(f"[GATEWAY CORE] ERROR: Failed to connect to message bus: {e}")
+            import traceback
+            print(f"[GATEWAY CORE] Traceback: {traceback.format_exc()}")
             raise
     
     async def _load_plugins(self) -> None:
@@ -160,13 +171,9 @@ class GatewayCore:
             # Register built-in plugins
             await self._register_builtin_plugins()
             
-            # Load enabled plugins
-            for plugin_name, plugin_config in self.enabled_plugins.items():
-                if plugin_config.get("enabled", False):
-                    plugin = await self.plugin_registry.load_plugin(plugin_name, plugin_config)
-                    if plugin:
-                        self.loaded_plugins[plugin_name] = plugin
-                        self.logger.info(f"Loaded plugin: {plugin_name}")
+            # Skip Step 2 plugin loading since we handle plugins directly in Step 1
+            # This avoids the "Plugin not registered" errors for plugins that don't implement PluginInterface
+            pass
             
             self.logger.info(f"Loaded {len(self.loaded_plugins)} plugins")
             
@@ -174,122 +181,79 @@ class GatewayCore:
             self.logger.error(f"Failed to load plugins: {e}")
             raise
     
-    async def _register_builtin_plugins(self) -> None:
-        """Register built-in plugins"""
-        # Register built-in plugins
-        from ..plugins.log_consumer_plugin import LogConsumerPlugin
-        from ..plugins.message_bus_plugin import MessageBusPlugin
-        from ..plugins.encryption_plugin import EncryptionPlugin
-        from ..plugins.security_plugin import SecurityPlugin
-        from ..plugins.rate_limiting_plugin import RateLimitingPlugin
-        from ..plugins.validation_plugin import ValidationPlugin
-        from ..plugins.routing_plugin import RoutingPlugin
+    async def _register_builtin_plugins(self):
+        """Register built-in plugins based on configuration"""
+        self.logger.debug("Starting plugin registration process")
+        print("[GATEWAY CORE] Starting plugin registration process")
         
-        self.logger.info("Importing plugins...")
+        # Debug: Show the entire config structure
+        all_config = self.config.config_cache
+        self.logger.debug(f"Full config structure keys: {list(all_config.keys())}")
+        print(f"[GATEWAY CORE] Full config structure keys: {list(all_config.keys())}")
         
-        # Order matters: MessageBus must start before LogConsumer
-        plugin_classes = [
-            MessageBusPlugin,      # Start broker first
-            LogConsumerPlugin,     # Then connect log consumer
-            EncryptionPlugin,      # Infrastructure level
-            SecurityPlugin,
-            RateLimitingPlugin,
-            ValidationPlugin,
-            RoutingPlugin
-        ]
+        # Debug: Check if api_gateway exists in config (it's nested under 'core')
+        core_config = self.config.get('core', {})
+        api_gateway_config = core_config.get('api_gateway', {})
+        self.logger.debug(f"core config keys: {list(core_config.keys())}")
+        print(f"[GATEWAY CORE] core config keys: {list(core_config.keys())}")
+        self.logger.debug(f"api_gateway config keys: {list(api_gateway_config.keys())}")
+        print(f"[GATEWAY CORE] api_gateway config keys: {list(api_gateway_config.keys())}")
         
-        self.logger.info(f"Plugin classes to register: {[cls.__name__ for cls in plugin_classes]}")
+        # Get plugins configuration from core.api_gateway.plugins
+        plugins_config = api_gateway_config.get('plugins', {})
+        self.logger.debug(f"Plugin config lookup result: {plugins_config}")
+        print(f"[GATEWAY CORE] Plugin config lookup result: {plugins_config}")
         
-        # Debug config structure
-        try:
-            core_config = self.config.get('core', {})
-            self.logger.info(f"Core config keys: {list(core_config.keys()) if hasattr(core_config, 'keys') else 'N/A'}")
-            if 'api_gateway' in core_config:
-                api_gw_config = core_config['api_gateway']
-                self.logger.info(f"API Gateway config keys: {list(api_gw_config.keys()) if hasattr(api_gw_config, 'keys') else 'N/A'}")
-                if 'plugins' in api_gw_config:
-                    plugins_config = api_gw_config.get('plugins', {})
-                    self.logger.info(f"Plugins config: {plugins_config}")
-        except Exception as e:
-            self.logger.error(f"Error in config debug: {e}")
-            import traceback
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
+        if not plugins_config:
+            self.logger.warning("No plugins configuration found at 'api_gateway.plugins'")
+            print("[GATEWAY CORE] WARNING: No plugins configuration found at 'api_gateway.plugins'")
+            return
         
-        for plugin_class in plugin_classes:
-            try:
-                self.logger.info(f"Processing plugin class: {plugin_class.__name__}")
-                # Convert plugin class name to config key format
-                # LogConsumerPlugin -> log_consumer, MessageBusPlugin -> message_bus
-                plugin_name = plugin_class.__name__.replace('Plugin', '')
-                # Convert CamelCase to snake_case
-                import re
-                plugin_name = re.sub('([a-z0-9])([A-Z])', r'\1_\2', plugin_name).lower()
-                
-                # Try multiple config paths
-                plugins_config = self.config.get('api_gateway.plugins', {})
-                if not plugins_config:
-                    # Try core.api_gateway.plugins
-                    core_config = self.config.get('core', {})
-                    api_gateway_config = core_config.get('api_gateway', {})
-                    plugins_config = api_gateway_config.get('plugins', {})
-                
-                plugin_config = plugins_config.get(plugin_name, {})
-                self.logger.info(f"Plugin config for {plugin_name}: {plugin_config}")
-                self.logger.info(f"Available plugins config keys: {list(plugins_config.keys())}")
-                
-                self.logger.info(f"Processing plugin: {plugin_name}, enabled: {plugin_config.get('enabled', False)}")
-                
-                if plugin_config.get('enabled', False):
-                    self.logger.info(f"Creating instance of {plugin_class.__name__}")
-                    plugin_instance = plugin_class(plugin_config, self.logger)
-                    self.logger.info(f"Registering plugin: {plugin_name}")
-                    self.plugin_registry.register_plugin(plugin_name, plugin_instance)
-                    self.logger.info(f"Registered plugin: {plugin_name}")
-                    
-                    # Initialize plugin with dependencies
-                    # Get message bus from loaded plugins if available
-                    message_bus_plugin = self.loaded_plugins.get('message_bus')
-                    message_bus = getattr(message_bus_plugin, 'message_bus', None) if message_bus_plugin else self.message_bus
-                    
-                    dependencies = {
-                        'config': self.config,
-                        'db_connection': getattr(self, 'db_connection', None),
-                        'message_bus': message_bus,
-                        'gateway': self
-                    }
-                    self.logger.info(f"Initializing plugin: {plugin_name}")
-                    self.logger.info(f"DB connection for {plugin_name}: {self.db_connection is not None}")
-                    await plugin_instance.initialize(dependencies)
-                    self.logger.info(f"Starting plugin: {plugin_name}")
-                    await plugin_instance.start()
-                    self.logger.info(f"Plugin {plugin_name} started successfully")
-                    
-                    # Add to loaded plugins
+        # Import plugin classes
+        from backend.log_consumer import AICOLogConsumer
+        from backend.api_gateway.plugins.message_bus_plugin import MessageBusPlugin
+        
+        # Define available plugin classes
+        plugin_classes = {
+            'message_bus': MessageBusPlugin,
+            'log_consumer': AICOLogConsumer,
+        }
+        
+        self.logger.debug(f"Available plugin classes: {list(plugin_classes.keys())}")
+        print(f"[GATEWAY CORE] Available plugin classes: {list(plugin_classes.keys())}")
+        
+        # Register each plugin
+        for plugin_name, plugin_class in plugin_classes.items():
+            self.logger.debug(f"Processing plugin: {plugin_name}")
+            print(f"[GATEWAY CORE] Processing plugin: {plugin_name}")
+            
+            plugin_config = plugins_config.get(plugin_name, {})
+            self.logger.debug(f"Config for {plugin_name}: {plugin_config}")
+            print(f"[GATEWAY CORE] Config for {plugin_name}: {plugin_config}")
+            
+            if plugin_config.get('enabled', False):
+                self.logger.info(f"Registering plugin: {plugin_name}")
+                print(f"[GATEWAY CORE] Registering plugin: {plugin_name}")
+                try:
+                    plugin_instance = plugin_class(self.config, self.db_connection, self.zmq_context)
+                    plugin_instance.start()
+                    # Store in loaded_plugins for immediate access
                     self.loaded_plugins[plugin_name] = plugin_instance
-                    self.logger.info(f"Registered and started plugin: {plugin_name}")
-                    
-                    # Log registered plugins
-                    try:
-                        registered_plugins = list(self.plugin_registry.registered_plugins.keys())
-                        self.logger.info(f"Final registered plugins: {registered_plugins}")
-                        self.logger.info(f"Registered plugins: {registered_plugins}")
-                    except Exception as e:
-                        self.logger.error(f"Error getting registered plugins: {e}")
-                        import traceback
-                        self.logger.error(f"Traceback: {traceback.format_exc()}")
-                else:
-                    self.logger.info(f"Plugin {plugin_name} is disabled")
-                    self.logger.info(f"Plugin {plugin_name} is disabled")
-                    
-            except Exception as e:
-                self.logger.error(f"Failed to register plugin {plugin_class.__name__}: {e}")
-                import traceback
-                self.logger.error(f"Traceback: {traceback.format_exc()}")
-                self.logger.error(f"Failed to register plugin {plugin_class.__name__}: {e}")
-
-        # Print all active plugins once after registration is complete
-        registered_plugins = list(self.plugin_registry.registered_plugins.keys())
-        print(f"[GATEWAY CORE] Active plugins: {registered_plugins}")
+                    self.logger.info(f"Successfully registered and started plugin: {plugin_name}")
+                    print(f"[GATEWAY CORE] Successfully registered and started plugin: {plugin_name}")
+                except Exception as e:
+                    self.logger.error(f"Failed to register plugin {plugin_name}: {e}")
+                    print(f"[GATEWAY CORE] ERROR: Failed to register plugin {plugin_name}: {e}")
+                    import traceback
+                    print(f"[GATEWAY CORE] Traceback: {traceback.format_exc()}")
+            else:
+                self.logger.debug(f"Plugin {plugin_name} is disabled or not configured")
+                print(f"[GATEWAY CORE] Plugin {plugin_name} is disabled or not configured")
+        
+        # Log final plugin count
+        active_plugins = list(self.loaded_plugins.keys())
+        self.logger.info(f"Active plugins: {active_plugins}")
+        print(f"[GATEWAY CORE] Active plugins: {active_plugins}")
         
         # Update gateway core references to plugin instances
         security_plugin = self.loaded_plugins.get('security')
@@ -307,7 +271,7 @@ class GatewayCore:
             # Prepare dependencies for protocol adapters
             # Get log consumer from loaded plugins
             log_consumer_plugin = self.loaded_plugins.get('log_consumer')
-            log_consumer = getattr(log_consumer_plugin, 'log_consumer', None) if log_consumer_plugin else None
+            log_consumer = log_consumer_plugin if log_consumer_plugin else None
             
             dependencies = {
                 'config': self.config,

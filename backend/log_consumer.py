@@ -97,48 +97,40 @@ class AICOLogConsumer:
             time.sleep(0.2)
 
             def message_loop():
-                # Only print message loop start in foreground mode
-                # debugPrint("[LOG CONSUMER] Starting message loop (threaded)")
-                try:
-                    while self.running:
-                        try:
-                            if self.subscriber.poll(timeout=100):
-                                topic_bytes, data = self.subscriber.recv_multipart(zmq.NOBLOCK)
-                                topic = topic_bytes.decode('utf-8')
-                                # debugPrint(f"[LOG CONSUMER] Received message on topic: {topic}")
-                                try:
-                                    log_entry = LogEntry()
-                                    log_entry.ParseFromString(data)
-                                    # debugPrint(f"[LOG CONSUMER] Parsed log entry: {log_entry.subsystem}.{log_entry.module} - {log_entry.message}")
-                                    self._insert_log_to_database(log_entry)
-                                    # debugPrint(f"[LOG CONSUMER] Successfully inserted log to database")
-                                except Exception as e:
-                                    # debugPrint(f"[LOG CONSUMER] Failed to process message: {e}")
-                                    self.logger.warning(f"Failed to process message: {e}")
-                            else:
-                                # Add periodic debug to show consumer is polling but not receiving
-                                import time
-                                current_time = int(time.time())
-                                if not hasattr(self, '_last_poll_debug') or current_time - self._last_poll_debug >= 5:
-                                    # debugPrint(f"[LOG CONSUMER] Polling... no messages received (subscribed to: {AICOTopics.ALL_LOGS})")
-                                    self._last_poll_debug = current_time
-                                time.sleep(0.01)
-                        except zmq.Again:
-                            continue
-                        except Exception as e:
-                            self.logger.error(f"Error in message loop: {e}")
-                            time.sleep(1)
-                except Exception as e:
-                    # Normal exception handling for message loop errors
-                    self.logger.error(f"Unhandled error in message loop: {e}")
-                    return
-                # Only print message loop exit in foreground mode
-                # debugPrint("[LOG CONSUMER] Message loop exiting")
+                debugPrint("[LOG CONSUMER] Starting message loop (threaded)")
+                while self.running:
+                    try:
+                        if self.subscriber.poll(timeout=100):
+                            topic_bytes, data = self.subscriber.recv_multipart(zmq.NOBLOCK)
+                            topic = topic_bytes.decode('utf-8')
+                            debugPrint(f"[LOG CONSUMER] Received message on topic: {topic}")
+                            try:
+                                log_entry = LogEntry()
+                                log_entry.ParseFromString(data)
+                                debugPrint(f"[LOG CONSUMER] Parsed log entry: {log_entry.subsystem}.{log_entry.module} - {log_entry.message}")
+                                self._insert_log_to_database(log_entry)
+                                debugPrint(f"[LOG CONSUMER] Successfully inserted log to database")
+                            except Exception as e:
+                                debugPrint(f"[LOG CONSUMER] Failed to process message: {e}")
+                                self.logger.warning(f"Failed to process message: {e}")
+                        else:
+                            # Add periodic debug to show consumer is polling but not receiving
+                            import time
+                            current_time = int(time.time())
+                            if not hasattr(self, '_last_poll_debug') or current_time - self._last_poll_debug >= 5:
+                                debugPrint(f"[LOG CONSUMER] Polling... no messages received (subscribed to: {subscription_pattern})")
+                                self._last_poll_debug = current_time
+                            time.sleep(0.01)
+                    except zmq.Again:
+                        continue
+                    except Exception as e:
+                        self.logger.error(f"Error in message loop: {e}")
+                        time.sleep(1)
 
             self.message_thread = threading.Thread(target=message_loop, daemon=True)
             self.message_thread.start()
             self.logger.info("Log consumer started successfully")
-
+            debugPrint("[LOG CONSUMER] Log consumer started successfully")
         except Exception as e:
             self.logger.error(f"Failed to start log consumer: {e}")
             raise
@@ -152,6 +144,10 @@ class AICOLogConsumer:
             self.subscriber.close()
         
         self.running = False
+    
+    async def shutdown(self):
+        """Shutdown method for plugin interface compatibility"""
+        self.stop()
 
         # Wait for message thread to exit
         if hasattr(self, 'message_thread') and self.message_thread:

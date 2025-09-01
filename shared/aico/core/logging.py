@@ -345,7 +345,7 @@ class ZMQLogTransport:
             address = f"tcp://{host}:{publisher_port}"
             
             from backend.log_consumer import debugPrint
-            #debugPrint(f"[ZMQ TRANSPORT] Using regular ZMQ context, connecting to {address}")
+            debugPrint(f"[ZMQ TRANSPORT] Using regular ZMQ context, connecting to {address}")
             self._socket.connect(address)
         except Exception as e:
             # Log ZMQ transport initialization failure
@@ -379,11 +379,11 @@ class ZMQLogTransport:
             full_topic = AICOTopics.build_logs_topic(topic)
             
             from backend.log_consumer import debugPrint
-            #debugPrint(f"[ZMQ PUBLISHER {trace_id}] Publishing to topic: {full_topic}, Message: {log_entry.message}")
+            debugPrint(f"[ZMQ PUBLISHER {trace_id}] Publishing to topic: {full_topic}, Message: {log_entry.message}")
             
             # Serialize the protobuf message
             serialized_data = log_entry.SerializeToString()
-            # debugPrint(f"[ZMQ TRACE {trace_id}] STEP 2: Serialized protobuf - {len(serialized_data)} bytes")
+            debugPrint(f"[ZMQ TRACE {trace_id}] STEP 2: Serialized protobuf - {len(serialized_data)} bytes")
             
             # Send via ZMQ socket (synchronous send for thread safety)
             self._socket.send_multipart([
@@ -391,7 +391,7 @@ class ZMQLogTransport:
                 serialized_data
             ], zmq.NOBLOCK)
             
-            # debugPrint(f"[ZMQ TRACE {trace_id}] STEP 3: Sent via ZMQ socket - Topic: {full_topic}")
+            debugPrint(f"[ZMQ TRACE {trace_id}] STEP 3: Sent via ZMQ socket - Topic: {full_topic}")
             
             # CRITICAL: Yield control to allow the ZMQ I/O thread to send the message
             # before the calling context (e.g., a short-lived request thread) terminates.
