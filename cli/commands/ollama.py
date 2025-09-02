@@ -5,11 +5,13 @@ This module provides direct Ollama management commands following AICO's CLI visu
 Commands interact with the modelservice API and OllamaManager for consistency.
 """
 
+import typer
+import json
 import asyncio
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Dict, Any
 
 import httpx
-import typer
 from rich.console import Console
 from rich.table import Table
 from rich import box
@@ -19,6 +21,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from ..utils.api_client import get_modelservice_client
 from ..utils.formatting import format_error, format_success
 from ..utils.help_formatter import format_subcommand_help
+from aico.security.exceptions import EncryptionError
 
 console = Console()
 
@@ -111,14 +114,16 @@ app = typer.Typer(
 @app.command("status")
 def status():
     """Show Ollama status and running models."""
+    asyncio.run(_status_async())
+
+async def _status_async():
+    """Async implementation of status command."""
     console.print("\n✨ [bold cyan]Ollama Status[/bold cyan]")
     
     try:
         # Get Ollama status from modelservice
-        with get_modelservice_client() as client:
-            response = client.get("/api/v1/ollama/status")
-            response.raise_for_status()
-            status_data = response.json()
+        async with get_modelservice_client() as client:
+            status_data = await client.request("GET", "/ollama/status")
         
         # Create status table
         table = Table(
@@ -155,22 +160,23 @@ def status():
         
         # Show running models if available
         if status_data.get("healthy"):
-            _show_running_models()
+            await _show_running_models_async()
         
         console.print()
         
+    except EncryptionError as e:
+        error_msg = f"Authentication failed: {str(e)}"
+        console.print(format_error(error_msg))
     except Exception as e:
         error_msg = _format_connection_error(str(e))
         console.print(format_error(error_msg))
 
 
-def _show_running_models():
+async def _show_running_models_async():
     """Show currently running models."""
     try:
-        with get_modelservice_client() as client:
-            response = client.get("/api/v1/ollama/models/running")
-            response.raise_for_status()
-            models_data = response.json()
+        async with get_modelservice_client() as client:
+            models_data = await client.request("GET", "/ollama/models")
         
         if models_data.get("models"):
             console.print("\n✨ [bold cyan]Running Models[/bold cyan]")

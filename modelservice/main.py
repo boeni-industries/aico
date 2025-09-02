@@ -61,9 +61,10 @@ def create_app() -> FastAPI:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan for startup/shutdown logging and hooks."""
-    # Load configuration (logging already initialized at module level)
+    # Re-initialize logging in the lifespan context
     cfg = ConfigurationManager()
     cfg.initialize()
+    initialize_logging(cfg)
     
     modelservice_config = cfg.get("modelservice", {})
     rest_config = modelservice_config.get("rest", {})
@@ -92,21 +93,63 @@ async def lifespan(app: FastAPI):
     print(f"[>] Encryption: {'Enabled (XChaCha20-Poly1305)' if _encryption_enabled else 'Disabled'}")
     print("=" * 60)
     
-    # Initialize Ollama
-    print("[*] Initializing Ollama...")
+    # Initialize Ollama with rich progress indicators
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+    from rich.panel import Panel
+    from rich.text import Text
+    
+    console = Console()
+    console.print(Panel.fit("[bold cyan]Initializing Ollama[/bold cyan]", border_style="cyan"))
+    
     try:
-        if await ollama_manager.ensure_installed():
-            print("[+] Ollama binary ready")
-            if await ollama_manager.start_ollama():
-                print("[+] Ollama server started")
-                ollama_status = await ollama_manager.get_status()
-                print(f"[>] Ollama: http://127.0.0.1:11434 (v{ollama_status.get('version', 'unknown')})")
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console,
+            transient=False
+        ) as progress:
+            
+            # Check installation
+            install_task = progress.add_task("Checking Ollama installation...", total=100)
+            progress.update(install_task, advance=20)
+            
+            if await ollama_manager.ensure_installed():
+                progress.update(install_task, completed=100, description="✓ Ollama binary ready")
+                
+                # Start server
+                start_task = progress.add_task("Starting Ollama server...", total=100)
+                progress.update(start_task, advance=30)
+                
+                if await ollama_manager.start_ollama():
+                    progress.update(start_task, completed=100, description="✓ Ollama server started")
+                    
+                    # Get status
+                    status_task = progress.add_task("Verifying server status...", total=100)
+                    progress.update(status_task, advance=50)
+                    
+                    ollama_status = await ollama_manager.get_status()
+                    if ollama_status:
+                        version = ollama_status.get('version', 'unknown')
+                        progress.update(status_task, completed=100, description=f"✓ Ollama v{version} ready")
+                        console.print(f"[green]✓[/green] Ollama server: http://127.0.0.1:11434")
+                    else:
+                        progress.update(status_task, completed=100, description="⚠ Status check incomplete")
+                        console.print("[yellow]⚠[/yellow] Could not verify Ollama status")
+                else:
+                    progress.update(start_task, completed=100, description="✗ Server start failed")
+                    console.print("[red]✗[/red] Ollama server failed to start")
             else:
-                print("[!] Warning: Ollama server failed to start")
-        else:
-            print("[!] Warning: Ollama installation failed")
+                progress.update(install_task, completed=100, description="✗ Installation failed")
+                console.print("[red]✗[/red] Ollama installation failed")
+                
     except Exception as e:
-        print(f"[!] Ollama initialization error: {e}")
+        console.print(f"[red]✗ Ollama initialization error:[/red] {e}")
+        # Log the full exception for debugging
+        import traceback
+        console.print(f"[dim]Full traceback:[/dim]\n{traceback.format_exc()}")
     
     print("=" * 60)
     print("[+] Starting server... (Press Ctrl+C to stop)\n")

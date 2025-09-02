@@ -88,12 +88,10 @@ class OllamaManager:
             
             if not force_update and self.is_installed():
                 self.logger.info("Ollama already installed")
-                
-                # Auto-pull default models if configured
-                await self._ensure_default_models()
                 return True
             
             self.logger.info("Installing/updating Ollama...")
+            print("    → Downloading Ollama binary...")
             
             # Get latest release info
             release_info = await self._get_latest_release()
@@ -105,9 +103,6 @@ class OllamaManager:
             success = await self._download_and_install(release_info)
             if success:
                 self.logger.info(f"Ollama {release_info['tag_name']} installed successfully")
-                
-                # Auto-pull default models after installation
-                await self._ensure_default_models()
                 return True
             else:
                 self.logger.error("Failed to install Ollama")
@@ -290,27 +285,29 @@ class OllamaManager:
             
             # Start Ollama server with config-based environment
             env = os.environ.copy()
-            env["OLLAMA_MODELS"] = str(self.models_dir)
-            
-            # Apply config settings to environment
             ollama_host = self.ollama_config.get("host", "127.0.0.1")
             ollama_port = self.ollama_config.get("port", 11434)
-            env["OLLAMA_HOST"] = ollama_host
-            env["OLLAMA_PORT"] = str(ollama_port)
+            env["OLLAMA_HOST"] = f"{ollama_host}:{ollama_port}"
+            env["OLLAMA_MODELS"] = str(self.models_dir)
             
-            self.ollama_process = await asyncio.create_subprocess_exec(
-                str(self.ollama_binary), "serve",
+            # Start process
+            self.ollama_process = subprocess.Popen(
+                [str(self.ollama_binary), "serve"],
                 env=env,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=str(self.bin_dir)
             )
             
-            # Wait a moment for startup
+            # Give it a moment to start
             await asyncio.sleep(2)
             
-            # Verify it's running
+            # Verify it's running and auto-pull models
             if await self.is_running():
                 self.logger.info(f"Ollama server started successfully on {ollama_host}:{ollama_port}")
+                
+                # Auto-pull default models after server is running
+                await self._ensure_default_models()
                 return True
             else:
                 self.logger.error("Ollama server failed to start")
@@ -383,24 +380,59 @@ class OllamaManager:
         return status
     
     async def _ensure_default_models(self) -> None:
-        """Auto-pull default models based on config settings."""
+        """Auto-pull default models based on config settings with rich progress."""
         try:
             self._ensure_logger()
             default_models = self.ollama_config.get("default_models", {})
             
-            for role, model_config in default_models.items():
-                if model_config.get("auto_pull", False):
+            # Import rich components for model downloading
+            from rich.console import Console
+            from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+            from rich.panel import Panel
+            
+            console = Console()
+            models_to_pull = [(role, config) for role, config in default_models.items() 
+                             if config.get("auto_pull", False)]
+            
+            if not models_to_pull:
+                self.logger.info("No models configured for auto-pull")
+                return
+                
+            console.print(Panel.fit("[bold yellow]Downloading Default Models[/bold yellow]", border_style="yellow"))
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console,
+                transient=False
+            ) as progress:
+                
+                for role, model_config in models_to_pull:
                     model_name = model_config.get("name")
                     if model_name:
                         self.logger.info(f"Auto-pulling default {role} model: {model_name}")
-                        success = await self.pull_model(model_name)
+                        
+                        # Create task for this model
+                        task = progress.add_task(f"Downloading {role} model: {model_name}", total=100)
+                        progress.update(task, advance=10)
+                        
+                        success = await self.pull_model(model_name, progress_callback=lambda p: progress.update(task, completed=p))
+                        
                         if success:
                             self.logger.info(f"Successfully pulled {model_name}")
+                            progress.update(task, completed=100, description=f"✓ Downloaded {model_name}")
+                            console.print(f"[green]✓[/green] Model ready: {model_name}")
                         else:
                             self.logger.warning(f"Failed to pull {model_name}")
+                            progress.update(task, completed=100, description=f"✗ Failed: {model_name}")
+                            console.print(f"[red]✗[/red] Failed to download: {model_name}")
                             
         except Exception as e:
             self.logger.error(f"Error ensuring default models: {e}")
+            # Fail loudly as per guidelines
+            raise RuntimeError(f"Failed to ensure default models: {e}") from e
     
     async def list_models(self) -> Dict:
         """
@@ -410,6 +442,7 @@ class OllamaManager:
             Dict: Model information from Ollama API
         """
         try:
+            self._ensure_logger()
             ollama_url = self.ollama_config.get("url", "http://127.0.0.1:11434")
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"{ollama_url}/api/tags", timeout=10)
@@ -420,42 +453,72 @@ class OllamaManager:
             self.logger.error(f"Failed to list models: {e}")
             return {"models": [], "error": str(e)}
     
-    async def pull_model(self, model_name: str) -> bool:
+    async def pull_model(self, model_name: str, progress_callback=None) -> bool:
         """
-        Pull/download a model.
+        Pull/download a model with progress tracking.
         
         Args:
             model_name: Name of the model to pull
+            progress_callback: Optional callback for progress updates (0-100)
             
         Returns:
             bool: True if successful, False otherwise
         """
         try:
+            self._ensure_logger()
             self.logger.info(f"Pulling model: {model_name}")
             
-            async with httpx.AsyncClient(timeout=300) as client:  # 5 minute timeout
-                response = await client.post(
-                    "http://127.0.0.1:11434/api/pull",
-                    json={"name": model_name}
-                )
-                response.raise_for_status()
-                
-                # Stream the response to track progress
-                async for line in response.aiter_lines():
-                    if line:
-                        try:
-                            data = json.loads(line)
-                            if "status" in data:
-                                self.logger.info(f"Pull progress: {data['status']}")
-                        except json.JSONDecodeError:
-                            continue
-                
-                self.logger.info(f"Successfully pulled model: {model_name}")
-                return True
+            ollama_url = self.ollama_config.get("url", "http://127.0.0.1:11434")
+            
+            # Stream the pull request to track progress
+            async with httpx.AsyncClient(timeout=600) as client:
+                async with client.stream(
+                    "POST",
+                    f"{ollama_url}/api/pull",
+                    json={"name": model_name},
+                    timeout=600
+                ) as response:
+                    response.raise_for_status()
+                    
+                    total_size = 0
+                    downloaded = 0
+                    
+                    async for line in response.aiter_lines():
+                        if line:
+                            try:
+                                import json
+                                data = json.loads(line)
+                                
+                                # Track download progress
+                                if "total" in data and "completed" in data:
+                                    total_size = data["total"]
+                                    downloaded = data["completed"]
+                                    
+                                    if progress_callback and total_size > 0:
+                                        progress_pct = min(100, int((downloaded / total_size) * 100))
+                                        progress_callback(progress_pct)
+                                
+                                # Check for completion
+                                if data.get("status") == "success":
+                                    if progress_callback:
+                                        progress_callback(100)
+                                    return True
+                                    
+                                # Log any errors
+                                if "error" in data:
+                                    self.logger.error(f"Model pull error: {data['error']}")
+                                    return False
+                                    
+                            except json.JSONDecodeError:
+                                # Skip malformed JSON lines
+                                continue
+                    
+                    return True
                 
         except Exception as e:
             self.logger.error(f"Failed to pull model {model_name}: {e}")
-            return False
+            # Fail loudly as per guidelines
+            raise RuntimeError(f"Model pull failed for {model_name}: {e}") from e
     
     async def remove_model(self, model_name: str) -> bool:
         """
