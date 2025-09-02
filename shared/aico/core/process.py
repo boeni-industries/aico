@@ -281,6 +281,13 @@ class ProcessManager:
                                 'AICO_SERVICE_MODE=gateway'
                             ]):
                                 processes.append(proc.info)
+                        elif self.service_name == "modelservice":
+                            if any(pattern in cmdline_str for pattern in [
+                                'modelservice.main',
+                                'modelservice/main.py',
+                                'AICO_SERVICE_MODE=modelservice'
+                            ]) or ('uvicorn' in cmdline_str and 'modelservice' in cmdline_str):
+                                processes.append(proc.info)
                         
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue

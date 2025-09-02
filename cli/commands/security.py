@@ -38,7 +38,9 @@ def _get_key_manager():
     from aico.core.config import ConfigurationManager
     config_manager = ConfigurationManager()
     config_manager.initialize(lightweight=True)
-    return AICOKeyManager(config_manager)
+    key_manager = AICOKeyManager(config_manager)
+    key_manager.config_manager = config_manager  # Attach for CLI use only
+    return key_manager
 
 def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
@@ -407,12 +409,16 @@ def status(
         transport_table.add_column("Status", style="cyan", justify="left")
         transport_table.add_column("Details", style="dim", justify="left")
         
+        # Default values for error case
+        transport_enabled = False
+        transport_border = "yellow"
+        transport_status = "Transport encryption status unknown"
+        algorithm = "Unknown"
         try:
             # Check transport encryption configuration
             transport_config = key_manager.config_manager.get("security", {}).get("transport_encryption", {})
             transport_enabled = transport_config.get("enabled", True)
             algorithm = transport_config.get("algorithm", "XChaCha20-Poly1305")
-            
             if transport_enabled:
                 transport_table.add_row("Encryption", "Enabled", f"{algorithm} authenticated encryption")
                 transport_table.add_row("Identity Keys", "Ed25519", "Component signing keys")
@@ -428,23 +434,19 @@ def status(
                 challenge_size = handshake_config.get("challenge_size", 32)
                 transport_table.add_row("Challenge Size", f"{challenge_size * 8}-bit", "Handshake security")
                 
+                transport_status = "Zero-effort end-to-end encryption active"
+                transport_border = "green"
             else:
                 transport_table.add_row("Encryption", "Disabled", "Transport not encrypted")
                 transport_table.add_row("Security Level", "Basic HTTPS", "TLS only")
-                
+                transport_status = "Transport encryption disabled - using TLS only"
+                transport_border = "yellow"
         except Exception as e:
             transport_table.add_row("Configuration", "Error", f"Failed to load: {e}")
-        
+            transport_status = f"Transport encryption status error: {e}"
+            transport_border = "red"
         console.print(transport_table)
-        
         # Transport Status Summary
-        if transport_enabled:
-            transport_status = "Zero-effort end-to-end encryption active"
-            transport_border = "green"
-        else:
-            transport_status = "Transport encryption disabled - using TLS only"
-            transport_border = "yellow"
-            
         transport_panel = Panel(
             transport_status,
             title="🔐 Transport Security",

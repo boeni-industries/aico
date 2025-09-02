@@ -2,28 +2,34 @@
 Dependencies for modelservice API endpoints.
 """
 
-from typing import Generator
-import sys
-from pathlib import Path
-
-# Add shared module to path
-shared_path = Path(__file__).parent.parent.parent / "shared"
-sys.path.insert(0, str(shared_path))
+from typing import Dict, Any
+from fastapi import Depends
 
 from aico.core.config import ConfigurationManager
+from aico.security.key_manager import AICOKeyManager
+from aico.security.transport import TransportIdentityManager
+from aico.security.service_auth import ServiceAuthManager
 
 
-def get_config_manager() -> ConfigurationManager:
-    """Get configuration manager instance."""
+def get_modelservice_config() -> Dict[str, Any]:
+    """Get modelservice configuration."""
     config_manager = ConfigurationManager()
     config_manager.initialize()
-    return config_manager
-
-
-def get_modelservice_config() -> dict:
-    """Get modelservice configuration."""
-    config_manager = get_config_manager()
     return config_manager.get("modelservice", {})
 
 
-# TODO: Add additional dependencies as needed
+def get_identity_manager() -> TransportIdentityManager:
+    """Get transport identity manager instance."""
+    config_manager = ConfigurationManager()
+    config_manager.initialize()
+    key_manager = AICOKeyManager(config_manager)
+    return TransportIdentityManager(key_manager)
+
+
+def get_service_auth_manager() -> ServiceAuthManager:
+    """Get service authentication manager"""
+    config_manager = ConfigurationManager()
+    config_manager.initialize()
+    key_manager = AICOKeyManager(config_manager)
+    identity_manager = TransportIdentityManager(key_manager)
+    return ServiceAuthManager(key_manager, identity_manager)

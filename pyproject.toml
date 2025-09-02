@@ -60,3 +60,8 @@ packages = ["aico", "cli", "backend", "modelservice"]
 aico = "shared/aico"
 cli = "cli"
 backend = "backend"
+
+[dependency-groups]
+test = [
+    "pytest-asyncio>=1.1.0",
+]

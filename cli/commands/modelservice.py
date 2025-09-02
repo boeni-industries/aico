@@ -49,15 +49,39 @@ def _is_modelservice_running() -> bool:
         
         try:
             response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=2)
-            return response.status_code == 200
+            if response.status_code == 200:
+                return True
         except requests.exceptions.RequestException:
-            # If HTTP check fails, fall back to PID check (for detached processes)
-            try:
-                process_manager = ProcessManager("modelservice")
-                status = process_manager.get_service_status()
-                return status["running"]
-            except Exception:
-                return False
+            pass  # Continue to process check
+        
+        # Fallback: Check for running processes (works for both detached and foreground)
+        try:
+            import psutil
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    cmdline = proc.info.get('cmdline', [])
+                    if cmdline:
+                        cmdline_str = ' '.join(cmdline)
+                        if any(pattern in cmdline_str for pattern in [
+                            'modelservice.main',
+                            'modelservice/main.py',
+                            'AICO_SERVICE_MODE=modelservice'
+                        ]):
+                            return True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        except ImportError:
+            pass
+        
+        # Final fallback: PID file check (for detached processes only)
+        try:
+            process_manager = ProcessManager("modelservice")
+            status = process_manager.get_service_status()
+            return status["running"]
+        except Exception:
+            pass
+        
+        return False
         
     except Exception:
         return False
@@ -270,53 +294,58 @@ def stop():
             console.print(f"[yellow]{chars['warning']} Modelservice is not running[/yellow]")
             return
         
-        # Try ProcessManager first (works for detached processes with PID files)
-        process_manager = ProcessManager("modelservice")
-        status = process_manager.get_service_status()
-        
-        if status["running"] and status.get("pid"):
-            # Detached process with PID file - use ProcessManager
-            success = process_manager.stop_service(timeout=30)
-            if success:
-                console.print(f"[green]{chars['check']} Modelservice stopped gracefully[/green]")
-                return
-        
-        # No PID file found - likely foreground process, use psutil to find and stop
+        # Direct process termination approach
         try:
             import psutil
             import signal
             
             stopped_any = False
+            modelservice_pids = []
+            
+            console.print(f"[dim]Searching for modelservice processes...[/dim]")
+            
+            # Find all modelservice processes
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                 try:
                     cmdline = proc.info.get('cmdline', [])
-                    if (cmdline and 
-                        any('python' in arg.lower() for arg in cmdline) and
-                        any('modelservice.main' in arg for arg in cmdline)):
+                    if cmdline:
+                        cmdline_str = ' '.join(cmdline)
                         
-                        console.print(f"[dim]Found modelservice process (PID: {proc.info['pid']})[/dim]")
-                        
-                        # Send SIGTERM for graceful shutdown
-                        if sys.platform == "win32":
-                            proc.terminate()
-                        else:
-                            proc.send_signal(signal.SIGTERM)
-                        
-                        # Wait for process to exit gracefully
-                        try:
-                            proc.wait(timeout=10)
-                            stopped_any = True
-                            console.print(f"[green]{chars['check']} Modelservice stopped gracefully[/green]")
-                        except psutil.TimeoutExpired:
-                            # Force kill if graceful shutdown failed
-                            proc.kill()
-                            stopped_any = True
-                            console.print(f"[yellow]{chars['warning']} Modelservice force-stopped[/yellow]")
-                        
+                        # Look for modelservice processes
+                        if 'modelservice.main' in cmdline_str:
+                            modelservice_pids.append(proc.info['pid'])
+                            console.print(f"[dim]Found modelservice process (PID: {proc.info['pid']})[/dim]")
+                            
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
             
-            if not stopped_any:
+            # Terminate all modelservice processes
+            for pid in modelservice_pids:
+                try:
+                    process = psutil.Process(pid)
+                    console.print(f"[cyan]Terminating modelservice process (PID: {pid})[/cyan]")
+                    
+                    # Cross-platform graceful shutdown
+                    process.terminate()  # Works on all platforms via psutil
+                    
+                    # Wait for process to exit gracefully
+                    try:
+                        process.wait(timeout=5)
+                        stopped_any = True
+                        console.print(f"[green]{chars['check']} Process {pid} stopped gracefully[/green]")
+                    except psutil.TimeoutExpired:
+                        # Force kill if graceful shutdown failed
+                        process.kill()
+                        stopped_any = True
+                        console.print(f"[yellow]{chars['warning']} Process {pid} force-stopped[/yellow]")
+                        
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    console.print(f"[dim]Process {pid} already terminated or access denied[/dim]")
+                    continue
+            
+            if stopped_any:
+                console.print(f"[green]{chars['check']} All modelservice processes terminated[/green]")
+            else:
                 console.print(f"[yellow]{chars['warning']} No running Modelservice processes found[/yellow]")
                 
         except ImportError:
@@ -355,37 +384,93 @@ def status():
         
         # Check if running
         is_running = _is_modelservice_running()
+        health_data = {}
         
-        # Create status table
-        table = Table(title=f"{chars['sparkle']} Modelservice Status", show_header=True, header_style="bold magenta")
-        table.add_column("Property", style="cyan", no_wrap=True)
-        table.add_column("Value", style="green")
-        
-        # Basic status
-        status_color = "green" if is_running else "red"
-        status_text = "Running" if is_running else "Stopped"
-        table.add_row("Status", f"[{status_color}]{status_text}[/{status_color}]")
-        table.add_row("Host", host)
-        table.add_row("Port", str(port))
-        
+        # Get health data if running
         if is_running:
             try:
-                # Get health info
-                response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=2)
+                response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=5)
                 if response.status_code == 200:
                     health_data = response.json()
-                    table.add_row("Health", "[green]Healthy[/green]")
-                    table.add_row("Version", health_data.get("version", "Unknown"))
-                    table.add_row("Service", health_data.get("service", "Unknown"))
-                else:
-                    table.add_row("Health", f"[red]Unhealthy (HTTP {response.status_code})[/red]")
             except requests.exceptions.RequestException:
-                table.add_row("Health", "[red]Unreachable[/red]")
+                pass
         
-        console.print(table)
-        
+        # Primary status header (matching gateway format)
         if is_running:
-            console.print(f"\n{chars['bullet']} [cyan]Modelservice endpoint:[/cyan] http://{host}:{port}/api/v1/health")
+            health_status = health_data.get("status", "unknown")
+            if health_status == "healthy":
+                console.print(f"{chars['globe']} [bold green]Modelservice Status: HEALTHY[/bold green]")
+            else:
+                console.print(f"{chars['globe']} [bold yellow]Modelservice Status: RUNNING (Unhealthy)[/bold yellow]")
+            
+            version = health_data.get("version", "Unknown")
+            console.print(f"   [dim]Version {version} • {host}:{port}[/dim]")
+        else:
+            console.print(f"{chars['globe']} [bold red]Modelservice Status: OFFLINE[/bold red]")
+            console.print(f"   [dim]Not responding • {host}:{port}[/dim]")
+        
+        console.print()
+        
+        # Health details if unhealthy
+        if is_running and health_data.get("status") == "unhealthy":
+            checks = health_data.get("checks", {})
+            errors = health_data.get("errors", [])
+            
+            if checks:
+                table = Table(title="Health Checks", show_header=True, header_style="bold red")
+                table.add_column("Component", style="cyan", no_wrap=True)
+                table.add_column("Status", justify="left")
+                table.add_column("Details", style="dim")
+                
+                for component, check_data in checks.items():
+                    if isinstance(check_data, dict):
+                        status = check_data.get("status", "unknown")
+                        if status == "healthy" or check_data.get("healthy", False):
+                            status_display = f"[green]{chars['check']} Healthy[/green]"
+                            details = f"Response: {check_data.get('response_time_ms', 'N/A')}ms"
+                        else:
+                            status_display = f"[red]{chars['cross']} Unhealthy[/red]"
+                            error = check_data.get("error", "Unknown error")
+                            # Wrap long error messages instead of truncating
+                            if len(error) > 60:
+                                # Split long error into multiple lines
+                                import textwrap
+                                wrapped_lines = textwrap.wrap(error, width=60)
+                                details = "\n".join(wrapped_lines)
+                            else:
+                                details = error
+                    else:
+                        status_display = f"[yellow]{chars['warning']} Unknown[/yellow]"
+                        details = str(check_data)
+                    
+                    table.add_row(component.replace("_", " ").title(), status_display, details)
+                
+                console.print(table)
+                console.print()
+            
+            if errors:
+                console.print(f"[red]{chars['cross']} Issues Found:[/red]")
+                for error in errors:
+                    console.print(f"  • {error}")
+                console.print()
+        
+        # Endpoints table
+        if is_running:
+            table = Table(title="Available Endpoints", show_header=True, header_style="bold blue")
+            table.add_column("Endpoint", style="cyan", no_wrap=True)
+            table.add_column("Purpose", style="dim")
+            
+            endpoints = [
+                ("/api/v1/health", "Service health and status"),
+                ("/api/v1/handshake", "Encrypted communication setup"),
+                ("/api/v1/completions", "Text generation"),
+                ("/api/v1/models", "List available models")
+            ]
+            
+            for endpoint, purpose in endpoints:
+                table.add_row(f"http://{host}:{port}{endpoint}", purpose)
+            
+            console.print(table)
         
     except Exception as e:
         console.print(f"{chars['cross']} [red]Error checking Modelservice status: {e}[/red]")

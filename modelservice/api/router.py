@@ -2,69 +2,51 @@
 FastAPI router for modelservice endpoints.
 """
 
-import sys
 import time
 import httpx
 import asyncio
-from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime
-from typing import Dict, Any, Optional
-
-# Add shared module to path
-shared_path = Path(__file__).parent.parent.parent / "shared"
-sys.path.insert(0, str(shared_path))
+from typing import Dict, Any
 
 from aico.core.version import get_modelservice_version
 from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics
-from aico.security.key_manager import AICOKeyManager
-from aico.security.transport import TransportIdentityManager
 from aico.security.exceptions import EncryptionError
+from aico.security.transport import TransportIdentityManager
 from .schemas import (
     HealthResponse, CompletionRequest, CompletionResponse, 
     ModelsResponse, ModelInfo, ModelStatus, ModelType,
     UsageStats, ErrorResponse
 )
-from .dependencies import get_modelservice_config
+from .dependencies import get_modelservice_config, get_identity_manager
+from .logging_client import get_logging_client, APIGatewayLoggingClient
+from .service_logger import get_service_logger, ServiceLogger
 
 # Get version from VERSIONS file
 __version__ = get_modelservice_version()
 
 router = APIRouter(prefix="/api/v1", tags=["modelservice"])
 
-# Global identity manager for handshake endpoint
-_identity_manager: Optional[TransportIdentityManager] = None
-
 # Logger for modelservice router
 logger = get_logger("modelservice", "api_router")
 
 
-def get_identity_manager() -> TransportIdentityManager:
-    """Get or create identity manager for handshake."""
-    global _identity_manager
-    if _identity_manager is None:
-        key_manager = AICOKeyManager()
-        _identity_manager = TransportIdentityManager(key_manager)
-    return _identity_manager
-
-
 @router.post("/handshake")
-async def handshake(request_data: Dict[str, Any]):
+async def handshake(request_data: Dict[str, Any], identity_manager: TransportIdentityManager = Depends(get_identity_manager)):
     """
     Handshake endpoint for establishing encrypted communication.
     
     Uses the same transport security pattern as API Gateway.
     """
     try:
-        identity_manager = get_identity_manager()
         client_id, response_data, channel = identity_manager.process_handshake_and_create_channel(
             request_data, "modelservice"
         )
         
         logger.info(
             f"Successful handshake with client {client_id}",
-            extra={"topic": AICOTopics.SECURITY_TRANSPORT_SESSION}
+            extra={"topic": AICOTopics.LOGS_ENTRY}
         )
         
         return response_data
@@ -73,7 +55,7 @@ async def handshake(request_data: Dict[str, Any]):
         error_msg = f"Handshake failed: {str(e)}"
         logger.error(
             error_msg,
-            extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
+            extra={"topic": AICOTopics.LOGS_ENTRY}
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -83,7 +65,7 @@ async def handshake(request_data: Dict[str, Any]):
         error_msg = f"Internal handshake error: {str(e)}"
         logger.error(
             error_msg,
-            extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
+            extra={"topic": AICOTopics.LOGS_ENTRY}
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -91,12 +73,13 @@ async def handshake(request_data: Dict[str, Any]):
         )
 
 
-async def check_system_health(config: dict) -> Dict[str, Any]:
+async def check_system_health(config: dict, logging_client: APIGatewayLoggingClient) -> Dict[str, Any]:
     """
     Comprehensive system health check function.
     
     This function can be extended to check multiple health indicators:
     - Ollama connectivity and status
+    - API Gateway connectivity and logging
     - Model availability
     - Resource usage (memory, disk)
     - Service dependencies
@@ -113,42 +96,48 @@ async def check_system_health(config: dict) -> Dict[str, Any]:
         "suggestions": []
     }
     
-    # Check Ollama connectivity
-    ollama_url = config.get("ollama_url", "http://localhost:11434")
-    ollama_healthy = await _check_ollama_health(ollama_url)
+    # Check API Gateway connectivity
+    api_gateway_health = await logging_client.check_api_gateway_health()
+    health_data["checks"]["api_gateway"] = api_gateway_health
     
-    health_data["checks"]["ollama"] = ollama_healthy
-    health_data["details"]["ollama_url"] = ollama_url
-    
-    # Determine overall status and add actionable error information
-    if not ollama_healthy["healthy"]:
-        if not ollama_healthy["reachable"]:
-            health_data["status"] = "unhealthy"
-            if ollama_healthy.get("error") == "timeout":
-                health_data["errors"].append(f"Ollama service at {ollama_url} is not responding (timeout)")
-                health_data["suggestions"].extend([
-                    "Check if Ollama is installed and running",
-                    f"Verify Ollama is accessible at {ollama_url}",
-                    "Try starting Ollama with: ollama serve"
-                ])
-            else:
-                error_msg = ollama_healthy.get("error", "connection failed")
-                health_data["errors"].append(f"Cannot connect to Ollama service: {error_msg}")
-                health_data["suggestions"].extend([
-                    "Ensure Ollama is installed and running",
-                    f"Check if the configured URL {ollama_url} is correct",
-                    "Verify network connectivity and firewall settings",
-                    "Try starting Ollama with: ollama serve"
-                ])
+    if api_gateway_health["status"] != "healthy":
+        health_data["status"] = "unhealthy"
+        if not api_gateway_health["reachable"]:
+            health_data["errors"].append("API Gateway is not reachable")
+            health_data["suggestions"].extend([
+                "Check if API Gateway (backend) is running",
+                "Verify API Gateway URL configuration",
+                "Check network connectivity to API Gateway"
+            ])
         else:
-            health_data["status"] = "degraded"
-            status_code = ollama_healthy.get("status_code", "unknown")
+            health_data["errors"].append(f"API Gateway returned error: {api_gateway_health.get('error', 'unknown')}")
+            health_data["suggestions"].extend([
+                "API Gateway is running but not responding correctly",
+                "Check API Gateway service logs for errors",
+                "Verify service authentication configuration"
+            ])
+    
+    # Check Ollama connectivity
+    ollama_health = await _check_ollama_health(config.get("ollama_url", "http://localhost:11434"))
+    health_data["checks"]["ollama"] = ollama_health
+    
+    if not ollama_health["healthy"]:
+        health_data["status"] = "unhealthy"
+        if not ollama_health["reachable"]:
+            health_data["errors"].append("Ollama service is not reachable")
+            health_data["suggestions"].extend([
+                "Check if Ollama is running",
+                "Verify Ollama URL configuration",
+                "Check network connectivity to Ollama service"
+            ])
+        else:
+            status_code = ollama_health.get("status_code")
             health_data["errors"].append(f"Ollama service returned HTTP {status_code}")
             health_data["suggestions"].extend([
                 "Ollama is running but not responding correctly",
                 "Check Ollama service logs for errors",
                 "Try restarting Ollama service",
-                f"Verify API endpoint {ollama_url}/api/tags is accessible"
+                f"Verify API endpoint {config.get('ollama_url', 'http://localhost:11434')}/api/tags is accessible"
             ])
     
     # Future health checks can be added here:
@@ -187,20 +176,24 @@ async def _check_ollama_health(ollama_url: str) -> Dict[str, Any]:
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health_check(config: dict = Depends(get_modelservice_config)):
+async def health_check(
+    config: dict = Depends(get_modelservice_config),
+    identity_manager: TransportIdentityManager = Depends(get_identity_manager),
+    logging_client: APIGatewayLoggingClient = Depends(get_logging_client)
+) -> HealthResponse:
     """Health check endpoint for modelservice."""
-    health_data = await check_system_health(config)
+    health_data = await check_system_health(config, logging_client)
     
     # Log health check results
     if health_data["status"] == "healthy":
         logger.info(
             "Health check passed - all systems operational",
-            extra={"topic": AICOTopics.SYSTEM_HEALTH}
+            extra={"topic": AICOTopics.SYSTEM_HEALTH_CHECK}
         )
     else:
         logger.warning(
             f"Health check failed - status: {health_data['status']}, errors: {health_data.get('errors', [])}",
-            extra={"topic": AICOTopics.SYSTEM_HEALTH}
+            extra={"topic": AICOTopics.SYSTEM_HEALTH_CHECK}
         )
     
     return HealthResponse(
@@ -217,10 +210,16 @@ async def health_check(config: dict = Depends(get_modelservice_config)):
 @router.post("/completions", response_model=CompletionResponse)
 async def create_completion(
     request: CompletionRequest,
-    config: dict = Depends(get_modelservice_config)
-):
+    config: dict = Depends(get_modelservice_config),
+    logging_client: APIGatewayLoggingClient = Depends(get_logging_client)
+) -> CompletionResponse:
     """Generate text completion using Ollama."""
     ollama_url = config.get("ollama_url", "http://localhost:11434")
+    
+    # Log completion request
+    service_logger = get_service_logger(logging_client)
+    await service_logger._log_async("INFO", f"Completion request received for model: {request.model}", 
+                                   extra={"model": request.model, "prompt_length": len(request.prompt)})
     
     # Prepare Ollama request payload
     ollama_payload = {

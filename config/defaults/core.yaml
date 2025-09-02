@@ -141,16 +141,15 @@ api_gateway:
 modelservice:
   enabled: true
   host: "127.0.0.1"
-  rest:
-    port: 8773
-    host: "127.0.0.1"
-    cors_origins:
-      - "http://localhost:3000"
-      - "http://127.0.0.1:3000"
+  port: 8773
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
   # Ollama server configuration
   ollama:
     host: "127.0.0.1"
     port: 11434
+  
 
 # Task Scheduler configuration
 scheduler:
@@ -169,4 +168,22 @@ scheduler:
 # User profile configuration
 user_profiles:
   default_user_type: "person"
+
+# Service Authentication Configuration
+# For automated service-to-service authentication (not user-based)
+service_auth:
+  # Default settings for all service tokens
+  defaults:
+    token_validity_hours: 8760  # 1 year
+    issuer: "aico-system"
+    require_component_identity: true
+    validate_audience: true
+    validate_expiry: true
+
+  # Service permissions for API Gateway access
+  # Note: All permissions relate to API Gateway endpoints
+  services:
+    modelservice:
+      - "logs:write"
+      - "health:read"
 
