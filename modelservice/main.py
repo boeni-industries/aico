@@ -3,6 +3,7 @@ Modelservice main application entry point.
 """
 
 import sys
+import os
 from pathlib import Path
 from fastapi import FastAPI
 import uvicorn
@@ -11,7 +12,12 @@ import uvicorn
 shared_path = Path(__file__).parent.parent / "shared"
 sys.path.insert(0, str(shared_path))
 
+# Initialize configuration and logging before any imports that get loggers
 from aico.core.config import ConfigurationManager
+from aico.core.logging import initialize_logging
+config_manager = ConfigurationManager()
+config_manager.initialize()
+initialize_logging(config_manager)
 from aico.core.version import get_modelservice_version
 from aico.security.key_manager import AICOKeyManager
 from .api.router import router
