@@ -131,6 +131,8 @@ nav:
     - Quick Start: user-guide/quick_start.md
   - Architecture:
       - Overview: architecture/architecture_overview.md
+  - Conversation Flows:
+      - End-to-End Multimodal: flow/conversation_e2e.md
   - Core Infrastructure:
     - Message Bus: architecture/message_bus.md
     - Plugin Manager: architecture/plugin_system.md
@@ -192,6 +194,9 @@ nav:
       - Personality Definition: concepts/personality/personality_definition.md
     - LLM:
       - Foundation Model: concepts/llm/foundation_model.md
+      - Multimodality: concepts/llm/multimodality.md
+  - Flows:
+    - Conversation Multimodal: flow/conversation_e2e.md
   - Frontend:
     - Architecture Overview: frontend/frontend_architecture_overview.md
     - UI/UX Design Principles: frontend/design_principles.md
