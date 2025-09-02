@@ -190,6 +190,8 @@ nav:
     - Personality:
       - Personality Simulation: concepts/personality/personality_sim.md
       - Personality Definition: concepts/personality/personality_definition.md
+    - LLM:
+      - Foundation Model: concepts/llm/foundation_model.md
   - Frontend:
     - Architecture Overview: frontend/frontend_architecture_overview.md
     - UI/UX Design Principles: frontend/design_principles.md
