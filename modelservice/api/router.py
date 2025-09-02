@@ -151,7 +151,7 @@ async def check_system_health(config: dict, logging_client: APIGatewayLoggingCli
 async def _check_ollama_health(ollama_url: str) -> Dict[str, Any]:
     """Check Ollama service health."""
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=1.0) as client:
             response = await client.get(f"{ollama_url}/api/tags")
             return {
                 "healthy": response.status_code == 200,

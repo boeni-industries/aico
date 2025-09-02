@@ -48,17 +48,23 @@ def _is_modelservice_running() -> bool:
         port = config.get('rest', {}).get('port', 8773)
         
         try:
-            response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=2)
-            if response.status_code == 200:
-                return True
+            response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=1)
+            # Accept any response (200, 503, etc.) as "running"
+            return True
         except requests.exceptions.RequestException:
             pass  # Continue to process check
         
-        # Fallback: Check for running processes (works for both detached and foreground)
+        # Fallback: Check for running processes (optimized scan)
         try:
             import psutil
+            # Only scan python processes to reduce overhead
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                 try:
+                    # Skip non-Python processes early
+                    name = proc.info.get('name', '').lower()
+                    if not any(py in name for py in ['python', 'uvicorn']):
+                        continue
+                        
                     cmdline = proc.info.get('cmdline', [])
                     if cmdline:
                         cmdline_str = ' '.join(cmdline)
@@ -389,11 +395,19 @@ def status():
         # Get health data if running
         if is_running:
             try:
-                response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=5)
-                if response.status_code == 200:
-                    health_data = response.json()
-            except requests.exceptions.RequestException:
-                pass
+                response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=3)
+                health_data = response.json()
+            except requests.exceptions.RequestException as e:
+                # Service is running but health endpoint failed - still show basic info
+                health_data = {
+                    "status": "connection_failed", 
+                    "version": "0.0.2", 
+                    "checks": {
+                        "api_gateway": {"status": "unknown", "reachable": False, "error": "connection_failed"},
+                        "ollama": {"healthy": False, "reachable": False, "error": "unknown"}
+                    }, 
+                    "errors": ["Health endpoint unreachable"]
+                }
         
         # Primary status header (matching gateway format)
         if is_running:
@@ -411,13 +425,13 @@ def status():
         
         console.print()
         
-        # Health details if unhealthy
-        if is_running and health_data.get("status") == "unhealthy":
+        # Health details if running (show for both healthy and unhealthy)
+        if is_running and health_data:
             checks = health_data.get("checks", {})
             errors = health_data.get("errors", [])
             
             if checks:
-                table = Table(title="Health Checks", show_header=True, header_style="bold red")
+                table = Table(title="Health Checks", show_header=True, header_style="bold blue")
                 table.add_column("Component", style="cyan", no_wrap=True)
                 table.add_column("Status", justify="left")
                 table.add_column("Details", style="dim")

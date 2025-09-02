@@ -33,7 +33,7 @@ class APIGatewayLoggingClient:
         self.base_url = f"http://{self.api_gateway_host}:{self.api_gateway_port}"
         
         # HTTP client configuration
-        self.timeout = 10.0
+        self.timeout = 2.0
         self.max_retries = 3
         
         # Service token cache
@@ -159,14 +159,17 @@ class APIGatewayLoggingClient:
     async def check_api_gateway_health(self) -> Dict[str, Any]:
         """Check API Gateway connectivity and health"""
         try:
-            response = await self._make_authenticated_request("GET", "/api/v1/health")
+            # Health endpoint doesn't require authentication - call directly for speed
+            url = f"{self.base_url}/api/v1/health"
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(url)
             
             if response.status_code == 200:
                 health_data = response.json()
                 return {
                     "status": "healthy",
                     "reachable": True,
-                    "response_time_ms": response.elapsed.total_seconds() * 1000,
+                    "response_time_ms": int(response.elapsed.total_seconds() * 1000),
                     "api_gateway_status": health_data.get("status", "unknown")
                 }
             else:
@@ -174,7 +177,7 @@ class APIGatewayLoggingClient:
                     "status": "unhealthy",
                     "reachable": True,
                     "error": f"HTTP {response.status_code}",
-                    "response_time_ms": response.elapsed.total_seconds() * 1000
+                    "response_time_ms": int(response.elapsed.total_seconds() * 1000)
                 }
                 
         except httpx.ConnectError:
