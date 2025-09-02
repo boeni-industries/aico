@@ -67,9 +67,9 @@ class OllamaManager:
     def _ensure_logger(self):
         """Ensure logger is initialized (lazy initialization)."""
         if self.logger is None:
-            from shared.aico.core.logging import get_logger
+            from aico.core.logging import get_logger
             self.logger = get_logger("externals", "ollama")
-        
+
     def _get_ollama_binary_path(self) -> Path:
         """Get the expected path to the Ollama binary for this platform."""
         if self.platform == "Windows":

@@ -61,9 +61,11 @@ def create_app() -> FastAPI:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan for startup/shutdown logging and hooks."""
-    # Re-initialize logging in the lifespan context
+    # Load configuration
     cfg = ConfigurationManager()
     cfg.initialize()
+    
+    # Initialize logging in lifespan context
     initialize_logging(cfg)
     
     modelservice_config = cfg.get("modelservice", {})
