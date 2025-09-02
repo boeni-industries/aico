@@ -23,21 +23,27 @@ from ..utils.help_formatter import format_subcommand_help
 console = Console()
 
 
-def _format_connection_error(error_str: str) -> str:
+def _format_connection_error(error_str: str, command_context: str = "general") -> str:
     """Format connection errors to be more helpful and platform-independent."""
     error_lower = error_str.lower()
     
     # Connection refused errors
     if "connection" in error_lower and ("refused" in error_lower or "10061" in error_str):
-        return (
-            "Cannot connect to modelservice (Ollama) - is it running?\n"
-            "Try: aico modelservice start"
-        )
+        if command_context == "lifecycle":
+            return (
+                "Modelservice is not running - required for Ollama management.\n"
+                "Start modelservice first: aico modelservice start"
+            )
+        else:
+            return (
+                "Cannot connect to modelservice (Ollama) - is it running?\n"
+                "Try: aico modelservice start"
+            )
     
     # Timeout errors
     if "timeout" in error_lower or "timed out" in error_lower:
         return (
-            "Connection to modelservice (Ollama) timed out - service may be starting up or overloaded.\n"
+            "Connection to modelservice timed out - service may be starting up or overloaded.\n"
             "Wait a moment and try again, or check: aico modelservice status"
         )
     
@@ -50,13 +56,19 @@ def _format_connection_error(error_str: str) -> str:
     
     # Generic connection error
     if "connection" in error_lower:
-        return (
-            "Failed to connect to modelservice (Ollama).\n"
-            "Ensure modelservice is running: aico modelservice start"
-        )
+        if command_context == "lifecycle":
+            return (
+                "Cannot reach modelservice - required for Ollama management.\n"
+                "Ensure modelservice is running: aico modelservice start"
+            )
+        else:
+            return (
+                "Failed to connect to modelservice (Ollama).\n"
+                "Ensure modelservice is running: aico modelservice start"
+            )
     
     # Return original error if no specific pattern matches
-    return f"Ollama status check failed: {error_str}"
+    return f"Ollama operation failed: {error_str}"
 
 
 def ollama_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
@@ -219,7 +231,8 @@ def install(force: bool = typer.Option(False, "--force", help="Force reinstall e
         
         except Exception as e:
             progress.update(task, description="Installation failed")
-            console.print(format_error(f"Failed to install Ollama: {e}"))
+            error_msg = _format_connection_error(str(e))
+            console.print(format_error(error_msg))
     
     console.print()
 
@@ -278,7 +291,8 @@ def logs(lines: int = typer.Option(50, "--lines", "-n", help="Number of log line
             console.print("[dim]No logs available[/dim]")
     
     except Exception as e:
-        console.print(format_error(f"Failed to retrieve logs: {e}"))
+        error_msg = _format_connection_error(str(e))
+        console.print(format_error(error_msg))
     
     console.print()
 
@@ -356,7 +370,8 @@ def models_list():
             console.print("[dim]Use 'aico ollama models pull <model>' to download models[/dim]")
     
     except Exception as e:
-        console.print(format_error(f"Failed to list models: {e}"))
+        error_msg = _format_connection_error(str(e))
+        console.print(format_error(error_msg))
     
     console.print()
 
@@ -389,7 +404,8 @@ def models_pull(model_name: str = typer.Argument(..., help="Name of the model to
         
         except Exception as e:
             progress.update(task, description="Download failed")
-            console.print(format_error(f"Failed to download model: {e}"))
+            error_msg = _format_connection_error(str(e))
+            console.print(format_error(error_msg))
     
     console.print()
 
@@ -420,7 +436,8 @@ def models_remove(
             console.print(format_error(f"Removal failed: {result.get('error', 'Unknown error')}"))
     
     except Exception as e:
-        console.print(format_error(f"Failed to remove model: {e}"))
+        error_msg = _format_connection_error(str(e))
+        console.print(format_error(error_msg))
     
     console.print()
 
@@ -442,7 +459,7 @@ def start():
             console.print(format_error(f"Failed to start Ollama: {result.get('error', 'Unknown error')}"))
     
     except Exception as e:
-        error_msg = _format_connection_error(str(e))
+        error_msg = _format_connection_error(str(e), "lifecycle")
         console.print(format_error(error_msg))
     
     console.print()
@@ -465,7 +482,7 @@ def stop():
             console.print(format_error(f"Failed to stop Ollama: {result.get('error', 'Unknown error')}"))
     
     except Exception as e:
-        error_msg = _format_connection_error(str(e))
+        error_msg = _format_connection_error(str(e), "lifecycle")
         console.print(format_error(error_msg))
     
     console.print()
@@ -493,7 +510,7 @@ def restart():
             console.print(format_error(f"Failed to restart Ollama: {result.get('error', 'Unknown error')}"))
     
     except Exception as e:
-        error_msg = _format_connection_error(str(e))
+        error_msg = _format_connection_error(str(e), "lifecycle")
         console.print(format_error(error_msg))
     
     console.print()
