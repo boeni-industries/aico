@@ -64,13 +64,18 @@ async def lifespan(app: FastAPI):
     # Load configuration
     cfg = ConfigurationManager()
     cfg.initialize()
+    
+    # Initialize logging before creating OllamaManager
+    from aico.core.logging import initialize_logging
+    initialize_logging(cfg)
+    
     modelservice_config = cfg.get("modelservice", {})
     rest_config = modelservice_config.get("rest", {})
     host = rest_config.get("host", "127.0.0.1")
     port = rest_config.get("port", 8773)
     env = os.getenv("AICO_ENV", "development")
 
-    # Initialize OllamaManager
+    # Initialize OllamaManager (now that logging is initialized)
     from .core.ollama_manager import OllamaManager
     ollama_manager = OllamaManager()
     
