@@ -23,6 +23,7 @@ class APIGatewayLoggingClient:
     def __init__(self, config: Dict[str, Any], service_auth: ServiceAuthManager):
         self.config = config
         self.service_auth = service_auth
+        # Uses "modelservice" subsystem log level from config
         self.logger = get_logger("modelservice", "logging_client")
         
         # Get API Gateway configuration

@@ -21,10 +21,13 @@ logging:
       backend: "INFO" 
       frontend: "INFO"
       studio: "INFO"
+      modelservice: "INFO"
     modules:
       # Fine-grained control per module if needed
       security: "INFO"  # Security logs are important
       database: "INFO"
+    externals:
+      ollama: "INFO"    # Ollama server and model logs
       
   # Retention and cleanup
   retention:
@@ -147,8 +150,62 @@ modelservice:
     - "http://127.0.0.1:3000"
   # Ollama server configuration
   ollama:
+    # Connection settings
     host: "127.0.0.1"
     port: 11434
+    url: "http://127.0.0.1:11434"
+    
+    # Auto-management settings
+    auto_install: true  # Automatically install Ollama binary if missing
+    auto_start: true    # Start Ollama server with modelservice
+    auto_update: true   # Check for Ollama updates weekly
+    
+    # Default models by capability role
+    default_models:
+      conversation:
+        name: "hermes3:8b"
+        description: "Nous Hermes 3 - Primary foundation model for character consistency"
+        auto_pull: true
+        priority: 1
+      vision:
+        name: "llama3.2-vision:11b"
+        description: "Scene understanding and emotional context"
+        auto_pull: false
+        priority: 2
+      vision_extended:
+        name: "qwen2.5-vl:7b"
+        description: "Advanced vision - OCR, documents, and object detection"
+        auto_pull: false
+        priority: 3
+      lightweight:
+        name: "llama3.2:1b"
+        description: "Ultra-fast model for simple tasks"
+        auto_pull: false
+        priority: 4
+    
+    # Default model parameters
+    default_parameters:
+      temperature: 0.7
+      max_tokens: 2048
+      top_p: 0.9
+      top_k: 40
+      repeat_penalty: 1.1
+      stop: []
+    
+    # Resource management
+    resources:
+      # Unload models after inactivity to free memory
+      auto_unload_minutes: 30
+      # Maximum concurrent model instances
+      max_concurrent_models: 2
+      # Memory threshold to start unloading models (percentage)
+      memory_threshold_percent: 85
+    
+    # Update and maintenance
+    updates:
+      check_interval_hours: 168  # Weekly (7 * 24)
+      auto_update_binary: true
+      backup_models_before_update: true
   
 
 # Task Scheduler configuration

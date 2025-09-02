@@ -96,6 +96,10 @@ class MessageBusClient:
             
             self.logger.info(f"Connecting to message bus at {host}:{pub_port}/{sub_port}")
             
+            # Verify broker is actually running before connecting
+            if not await self._verify_broker_available(host, pub_port):
+                raise MessageBusError(f"Message bus broker not available at {host}:{pub_port} - is the backend running?")
+            
             # Publisher socket for sending messages
             self.publisher = self.context.socket(zmq.PUB)
             self.publisher.setsockopt(zmq.LINGER, 0)  # Don't wait on close
@@ -129,6 +133,19 @@ class MessageBusClient:
         
         self.context.term()
         self.logger.info("Disconnected from message bus")
+    
+    async def _verify_broker_available(self, host: str, port: int) -> bool:
+        """Verify that the message bus broker is actually running and accepting connections."""
+        import socket
+        try:
+            # Try to establish a TCP connection to the broker port
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2.0)  # 2 second timeout
+            result = sock.connect_ex((host, port))
+            sock.close()
+            return result == 0  # 0 means connection successful
+        except Exception:
+            return False
     
     async def publish(self, topic: str, payload: ProtobufMessage, 
                      correlation_id: Optional[str] = None, attributes: Optional[Dict[str, str]] = None):
@@ -165,6 +182,7 @@ class MessageBusClient:
         await self.publisher.send_multipart([topic.encode('utf-8'), message_data])
         
         self.logger.debug(f"Published protobuf message to topic '{topic}': {metadata.message_id}")
+        self.logger.debug(f"Message data length: {len(message_data)} bytes")
         
         # Persist message if enabled
         if self.persistence_enabled:
@@ -182,7 +200,7 @@ class MessageBusClient:
         # Store callback for application-level pattern matching
         self.subscriptions[topic_pattern] = callback
         
-        self.logger.info(f"Subscribed to topic pattern: {topic_pattern}")
+        self.logger.info(f"Subscribed to topic pattern: {topic_pattern} (ZMQ filter: '{zmq_filter}')")
         
     async def unsubscribe(self, topic_pattern: str):
         """Unsubscribe from a topic pattern"""
@@ -199,14 +217,20 @@ class MessageBusClient:
                 topic, message_data = await self.subscriber.recv_multipart()
                 topic = topic.decode('utf-8')
                 
+                self.logger.debug(f"Received message on topic: '{topic}', data length: {len(message_data)}")
+                
                 # Deserialize protobuf message
                 message = AicoMessage()
                 message.ParseFromString(message_data)
                 
                 # Find matching subscriptions and invoke callbacks
                 for pattern, callback in self.subscriptions.items():
+                    self.logger.debug(f"Checking pattern '{pattern}' against topic '{topic}'")
                     if self._topic_matches_pattern(topic, pattern):
+                        self.logger.debug(f"Pattern '{pattern}' matches topic '{topic}' - invoking callback")
                         await self._invoke_callback(callback, message)
+                    else:
+                        self.logger.debug(f"Pattern '{pattern}' does not match topic '{topic}'")
                         
             except Exception as e:
                 if self.running:
@@ -220,15 +244,11 @@ class MessageBusClient:
         
         # Find the longest prefix before any wildcard
         if "*" in pattern:
-            # For "test.*" -> "test."
-            # For "system.auth.*" -> "system.auth."
+            # For "test/message/*" -> "test/message/"
+            # For "system/auth/*" -> "system/auth/"
             wildcard_pos = pattern.find("*")
             prefix = pattern[:wildcard_pos]
-            # Remove trailing dot if pattern ends with ".*"
-            if prefix.endswith("."):
-                return prefix
-            else:
-                return prefix
+            return prefix
         else:
             # No wildcards, use exact pattern as filter
             return pattern
@@ -242,9 +262,9 @@ class MessageBusClient:
         if "*" not in pattern:
             return topic == pattern
         
-        # Convert pattern to regex-like matching
-        topic_parts = topic.split('.')
-        pattern_parts = pattern.split('.')
+        # Convert pattern to regex-like matching using slash separators
+        topic_parts = topic.split('/')
+        pattern_parts = pattern.split('/')
         
         return self._match_parts(topic_parts, pattern_parts)
     

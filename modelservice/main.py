@@ -68,12 +68,12 @@ async def lifespan(app: FastAPI):
     rest_config = modelservice_config.get("rest", {})
     host = rest_config.get("host", "127.0.0.1")
     port = rest_config.get("port", 8773)
-    ollama_url = (
-        (modelservice_config.get("ollama", {}) or {}).get("url")
-        or cfg.get("ollama", {}).get("url", "N/A")
-    )
     env = os.getenv("AICO_ENV", "development")
 
+    # Initialize OllamaManager
+    from .core.ollama_manager import OllamaManager
+    ollama_manager = OllamaManager()
+    
     # Initialize process management for graceful shutdown
     process_manager = None
     if os.getenv("AICO_DETACH_MODE") == "true":
@@ -81,20 +81,37 @@ async def lifespan(app: FastAPI):
         process_manager = ProcessManager("modelservice")
         process_manager.write_pid(os.getpid())
 
-    # Startup banner
+    # Startup: Ensure Ollama is installed and start it
     print("\n" + "=" * 60)
     print("[*] AICO Modelservice")
     print("=" * 60)
     print(f"[>] Server: http://{host}:{port}")
     print(f"[>] Environment: {env}")
     print(f"[>] Version: v{__version__}")
-    print(f"[>] Ollama URL: {ollama_url}")
     print(f"[>] Encryption: {'Enabled (XChaCha20-Poly1305)' if _encryption_enabled else 'Disabled'}")
     print("=" * 60)
     
+    # Initialize Ollama
+    print("[*] Initializing Ollama...")
+    try:
+        if await ollama_manager.ensure_installed():
+            print("[+] Ollama binary ready")
+            if await ollama_manager.start_ollama():
+                print("[+] Ollama server started")
+                ollama_status = await ollama_manager.get_status()
+                print(f"[>] Ollama: http://127.0.0.1:11434 (v{ollama_status.get('version', 'unknown')})")
+            else:
+                print("[!] Warning: Ollama server failed to start")
+        else:
+            print("[!] Warning: Ollama installation failed")
+    except Exception as e:
+        print(f"[!] Ollama initialization error: {e}")
     
     print("=" * 60)
     print("[+] Starting server... (Press Ctrl+C to stop)\n")
+
+    # Store ollama_manager in app state for API access
+    app.state.ollama_manager = ollama_manager
 
     try:
         yield
@@ -102,6 +119,14 @@ async def lifespan(app: FastAPI):
         print("\n[-] Graceful shutdown initiated...")
     finally:
         print("[~] Stopping services...")
+        
+        # Stop Ollama gracefully
+        try:
+            await ollama_manager.stop_ollama()
+            print("[+] Ollama stopped")
+        except Exception as e:
+            print(f"[!] Error stopping Ollama: {e}")
+            
         if process_manager:
             process_manager.cleanup_pid_files()
         print("[+] Shutdown complete.")

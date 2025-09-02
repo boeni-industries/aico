@@ -57,6 +57,7 @@ from cli.commands.logs import app as logs_app
 from cli.commands.bus import app as bus_app
 from cli.commands.scheduler import app as scheduler_app
 from cli.commands.modelservice import app as modelservice_app
+from cli.commands.ollama import app as ollama_app
 from cli.utils.platform import get_platform_chars
 
 # Get platform-appropriate characters
@@ -79,6 +80,7 @@ app.add_typer(scheduler_app, name="scheduler", help="⏰ Task scheduler manageme
 app.add_typer(dev_app, name="dev", help=f"{chars['dev']} Development utilities")
 app.add_typer(bus_app, name="bus", help=f"{chars['bus']} Message bus management")
 app.add_typer(modelservice_app, name="modelservice", help="🤖 Model service management")
+app.add_typer(ollama_app, name="ollama", help="🦙 Ollama model management")
 
 # Import and register gateway commands
 try:
@@ -114,6 +116,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             ("🚌", "bus", "Message bus testing, monitoring, and management"),
             ("🌐", "gateway", "API Gateway management and protocol control"),
             ("🤖", "modelservice", "Model service management and control"),
+            ("🦙", "ollama", "Ollama model management and operations"),
             ("🧹", "dev", "Development utilities (data cleanup, security reset)")
         ]
         

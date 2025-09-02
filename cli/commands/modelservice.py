@@ -478,7 +478,9 @@ def status():
                 ("/api/v1/health", "Service health and status"),
                 ("/api/v1/handshake", "Encrypted communication setup"),
                 ("/api/v1/completions", "Text generation"),
-                ("/api/v1/models", "List available models")
+                ("/api/v1/models", "List available models"),
+                ("/api/v1/ollama/status", "Ollama service status"),
+                ("/api/v1/ollama/models", "Ollama model management")
             ]
             
             for endpoint, purpose in endpoints:

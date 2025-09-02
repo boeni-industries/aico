@@ -66,18 +66,17 @@ from aico.core.bus import MessageBusClient, MessageBusBroker, create_client
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
 from aico.core.paths import AICOPaths
-# Optional protobuf imports to avoid chicken/egg problem with CLI
-try:
-    from aico.proto import aico_core_logging_pb2
-except ImportError:
-    # Protobuf files not generated yet - use fallback
-    aico_core_logging_pb2 = None
+# Required protobuf imports - fail loudly if not available
+from aico.proto import aico_core_logging_pb2
+from aico.proto.aico_core_logging_pb2 import LogEntry, LogLevel
 from google.protobuf.timestamp_pb2 import Timestamp
 
 def _get_database_connection(db_path: str, force_fresh: bool = False) -> EncryptedLibSQLConnection:
     """Helper function to get authenticated database connection with session support."""
     try:
-        key_manager = AICOKeyManager()
+        from aico.core.config import ConfigurationManager
+        config = ConfigurationManager()
+        key_manager = AICOKeyManager(config)
         
         if not key_manager.has_stored_key():
             console.print("[red]Error: Master key not found. Run 'aico security setup' first.[/red]")
@@ -150,9 +149,9 @@ def test_connection(
                 received_messages.append(message)
                 console.print(f"[green]✓[/green] Received: {message.metadata.message_type}")
             
-            # Subscribe to test topic
-            await client.subscribe("test/*", test_callback)
-            console.print("[green]✓[/green] Subscribed to test/* topics")
+            # Subscribe to test topic - use exact pattern that matches sent messages
+            await client.subscribe("test/message/*", test_callback)
+            console.print("[green]✓[/green] Subscribed to test/message/* topics")
             
             # Small delay to ensure subscription is active
             console.print("[dim]Waiting for subscription to activate...[/dim]")

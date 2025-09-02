@@ -28,16 +28,23 @@ __version__ = get_modelservice_version()
 
 router = APIRouter(prefix="/api/v1", tags=["modelservice"])
 
-# Logger for modelservice router
+# Logger for modelservice router - uses "modelservice" subsystem log level from config
 logger = get_logger("modelservice", "api_router")
 
 
 @router.post("/handshake")
 async def handshake(request_data: Dict[str, Any], identity_manager: TransportIdentityManager = Depends(get_identity_manager)):
     """
-    Handshake endpoint for establishing encrypted communication.
+    Handshake endpoint for establishing encrypted communication between CLI and modelservice.
     
-    Uses the same transport security pattern as API Gateway.
+    This endpoint enables secure CLI-to-modelservice communication by:
+    1. Exchanging Ed25519 identity keys and X25519 ephemeral keys
+    2. Establishing XChaCha20-Poly1305 encrypted channels
+    3. Creating session-based encryption for all subsequent API calls
+    4. Following AICO's transport security pattern (same as API Gateway)
+    
+    The CLI initiates handshake before making other modelservice API calls to ensure
+    all communication is encrypted end-to-end, maintaining AICO's privacy-first principles.
     """
     try:
         client_id, response_data, channel = identity_manager.process_handshake_and_create_channel(
@@ -348,3 +355,201 @@ def _format_size(size_bytes: int) -> str:
         i += 1
     
     return f"{size_bytes:.1f} {size_names[i]}"
+
+
+# Ollama-specific endpoints for CLI integration
+@router.get("/ollama/status")
+async def ollama_status():
+    """Get Ollama status and system information."""
+    from fastapi import Request
+    from starlette.requests import Request as StarletteRequest
+    
+    # Access the ollama_manager from app state
+    try:
+        # This will be set by the lifespan function in main.py
+        from fastapi import Request
+        import inspect
+        
+        # Get the current request context to access app state
+        frame = inspect.currentframe()
+        while frame:
+            if 'request' in frame.f_locals and hasattr(frame.f_locals['request'], 'app'):
+                request = frame.f_locals['request']
+                break
+            frame = frame.f_back
+        
+        if frame and hasattr(request.app.state, 'ollama_manager'):
+            ollama_manager = request.app.state.ollama_manager
+            status_data = await ollama_manager.get_status()
+            return status_data
+        else:
+            # Fallback: create new manager instance
+            from ..core.ollama_manager import OllamaManager
+            ollama_manager = OllamaManager()
+            status_data = await ollama_manager.get_status()
+            return status_data
+            
+    except Exception as e:
+        return {
+            "installed": False,
+            "running": False,
+            "healthy": False,
+            "error": str(e)
+        }
+
+
+@router.post("/ollama/install")
+async def ollama_install(force: bool = False):
+    """Install or update Ollama binary."""
+    try:
+        from ..core.ollama_manager import OllamaManager
+        ollama_manager = OllamaManager()
+        
+        success = await ollama_manager.ensure_installed(force_update=force)
+        
+        if success:
+            status = await ollama_manager.get_status()
+            return {
+                "success": True,
+                "version": status.get("version"),
+                "binary_path": status.get("binary_path")
+            }
+        else:
+            return {
+                "success": False,
+                "error": "Installation failed"
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@router.post("/ollama/serve")
+async def ollama_serve():
+    """Start Ollama server directly."""
+    try:
+        from ..core.ollama_manager import OllamaManager
+        ollama_manager = OllamaManager()
+        
+        success = await ollama_manager.start_ollama()
+        
+        return {
+            "success": success,
+            "error": None if success else "Failed to start Ollama server"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@router.get("/ollama/logs")
+async def ollama_logs(lines: int = 50):
+    """Get Ollama logs."""
+    try:
+        from ..core.ollama_manager import OllamaManager
+        ollama_manager = OllamaManager()
+        
+        logs = await ollama_manager.get_logs(lines)
+        
+        return {
+            "logs": logs
+        }
+        
+    except Exception as e:
+        return {
+            "logs": [],
+            "error": str(e)
+        }
+
+
+@router.get("/ollama/models")
+async def ollama_models():
+    """List Ollama models."""
+    try:
+        from ..core.ollama_manager import OllamaManager
+        ollama_manager = OllamaManager()
+        
+        models = await ollama_manager.list_models()
+        
+        return models
+        
+    except Exception as e:
+        return {
+            "models": [],
+            "error": str(e)
+        }
+
+
+@router.get("/ollama/models/running")
+async def ollama_running_models():
+    """List currently running models."""
+    try:
+        from ..core.ollama_manager import OllamaManager
+        ollama_manager = OllamaManager()
+        
+        # For now, return the same as list_models
+        # In the future, this could query Ollama's running processes
+        models = await ollama_manager.list_models()
+        
+        return models
+        
+    except Exception as e:
+        return {
+            "models": [],
+            "error": str(e)
+        }
+
+
+@router.post("/ollama/models/pull")
+async def ollama_pull_model(request: Dict[str, str]):
+    """Pull/download a model."""
+    try:
+        model_name = request.get("name")
+        if not model_name:
+            return {
+                "success": False,
+                "error": "Model name is required"
+            }
+        
+        from ..core.ollama_manager import OllamaManager
+        ollama_manager = OllamaManager()
+        
+        success = await ollama_manager.pull_model(model_name)
+        
+        return {
+            "success": success,
+            "error": None if success else f"Failed to pull model {model_name}"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@router.delete("/ollama/models/{model_name}")
+async def ollama_remove_model(model_name: str):
+    """Remove a model."""
+    try:
+        from ..core.ollama_manager import OllamaManager
+        ollama_manager = OllamaManager()
+        
+        success = await ollama_manager.remove_model(model_name)
+        
+        return {
+            "success": success,
+            "error": None if success else f"Failed to remove model {model_name}"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
