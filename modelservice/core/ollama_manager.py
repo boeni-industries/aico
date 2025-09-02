@@ -84,9 +84,9 @@ class OllamaManager:
             # Check config for auto_install setting
             if not self.ollama_config.get("auto_install", True) and not force_update:
                 self.logger.info("Auto-install disabled in config, skipping installation")
-                return self.is_installed()
+                return await self._is_ollama_installed()
             
-            if not force_update and self.is_installed():
+            if not force_update and await self._is_ollama_installed():
                 self.logger.info("Ollama already installed")
                 return True
             
@@ -94,13 +94,19 @@ class OllamaManager:
             print("    → Downloading Ollama binary...")
             
             # Get latest release info
-            release_info = await self._get_latest_release()
+            release_info = await self._get_release_info()
             if not release_info:
                 self.logger.error("Failed to get Ollama release information")
                 return False
             
+            # Get platform-specific download info
+            download_url, binary_name = self._get_download_info(release_info)
+            if not download_url:
+                self.logger.error("No suitable download found for this platform")
+                return False
+            
             # Download and install
-            success = await self._download_and_install(release_info)
+            success = await self._download_and_install(download_url, binary_name)
             if success:
                 self.logger.info(f"Ollama {release_info['tag_name']} installed successfully")
                 return True
@@ -109,24 +115,48 @@ class OllamaManager:
                 return False
                 
         except Exception as e:
-            self.logger.error(f"Error ensuring Ollama installation: {e}")
+            self.logger.error(f"Failed to ensure Ollama installation: {type(e).__name__}: {e}")
+            self.logger.debug(f"Installation error details", exc_info=True)
             return False
     
     async def _is_ollama_installed(self) -> bool:
         """Check if Ollama binary exists and is executable."""
+        self._ensure_logger()
+        
         if not self.ollama_binary.exists():
+            self.logger.error(f"Ollama binary not found at expected path: {self.ollama_binary}")
             return False
+        
+        file_size = self.ollama_binary.stat().st_size
+        self.logger.debug(f"Found Ollama binary: {self.ollama_binary} ({file_size:,} bytes)")
             
         # Test if binary is executable
         try:
-            result = await asyncio.create_subprocess_exec(
-                str(self.ollama_binary), "--version",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+            import subprocess
+            result = subprocess.run(
+                [str(self.ollama_binary), "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10
             )
-            await result.wait()
-            return result.returncode == 0
-        except Exception:
+            
+            if result.returncode == 0:
+                version_info = result.stdout.strip() if result.stdout else "unknown"
+                self.logger.info(f"Ollama binary verification successful: {version_info}")
+                return True
+            else:
+                self.logger.error(f"Ollama binary version check failed (exit code {result.returncode})")
+                if result.stderr:
+                    self.logger.error(f"Version check stderr: {result.stderr.strip()}")
+                if result.stdout:
+                    self.logger.debug(f"Version check stdout: {result.stdout.strip()}")
+                return False
+                
+        except subprocess.TimeoutExpired:
+            self.logger.error("Ollama binary version check timed out after 10 seconds")
+            return False
+        except Exception as e:
+            self.logger.error(f"Failed to execute Ollama binary version check: {type(e).__name__}: {e}")
             return False
     
     async def _should_update(self) -> bool:
@@ -228,13 +258,37 @@ class OllamaManager:
             self.logger.error(f"Failed to get release info: {e}")
             return None
     
+    def _get_download_info(self, release_info: Dict) -> tuple[Optional[str], Optional[str]]:
+        """Extract platform-specific download URL and binary name from release info."""
+        assets = release_info.get("assets", [])
+        
+        # Platform-specific asset patterns
+        if self.platform == "Windows":
+            pattern = "windows-amd64.zip"
+            binary_name = "ollama-windows-amd64.zip"
+        elif self.platform == "Darwin":
+            pattern = "darwin"
+            binary_name = "ollama-darwin"
+        elif self.platform == "Linux":
+            pattern = "linux-amd64"
+            binary_name = "ollama-linux-amd64"
+        else:
+            return None, None
+        
+        # Find matching asset
+        for asset in assets:
+            if pattern in asset["name"]:
+                return asset["browser_download_url"], asset["name"]
+        
+        return None, None
+    
     async def _download_and_install(self, download_url: str, binary_name: str) -> bool:
         """Download and install Ollama binary."""
         try:
             temp_file = self.bin_dir / f"temp_{binary_name}"
             
             # Download file
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(follow_redirects=True) as client:
                 async with client.stream("GET", download_url) as response:
                     response.raise_for_status()
                     
@@ -249,6 +303,8 @@ class OllamaManager:
                     # Extract ollama.exe
                     zip_ref.extract("ollama.exe", self.bin_dir)
                 temp_file.unlink()  # Remove zip file
+                # Ensure the extracted binary is executable
+                self.ollama_binary.chmod(0o755)
             else:
                 # Unix binary - move and make executable
                 shutil.move(str(temp_file), str(self.ollama_binary))
@@ -258,10 +314,30 @@ class OllamaManager:
             return True
             
         except Exception as e:
-            self.logger.error(f"Failed to download and install: {e}")
+            self.logger.error(f"Ollama download/installation failed: {type(e).__name__}: {e}")
+            self.logger.debug(f"Download error details", exc_info=True)
+            
             # Cleanup on failure
-            if temp_file.exists():
-                temp_file.unlink()
+            try:
+                if 'temp_file' in locals() and temp_file.exists():
+                    temp_file.unlink()
+                    self.logger.debug(f"Cleaned up temporary file: {temp_file}")
+            except Exception as cleanup_error:
+                self.logger.warning(f"Failed to cleanup temporary file: {cleanup_error}")
+            
+            return False
+    
+    async def is_running(self) -> bool:
+        """Check if Ollama server is running and responding."""
+        try:
+            ollama_host = self.ollama_config.get("host", "127.0.0.1")
+            ollama_port = self.ollama_config.get("port", 11434)
+            
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"http://{ollama_host}:{ollama_port}/api/tags")
+                return response.status_code == 200
+        except Exception:
             return False
     
     async def start_ollama(self) -> bool:
@@ -273,7 +349,7 @@ class OllamaManager:
                 self.logger.info("Auto-start disabled in config, skipping Ollama startup")
                 return False
             
-            if not self.is_installed():
+            if not await self._is_ollama_installed():
                 self.logger.error("Ollama not installed, cannot start")
                 return False
             
@@ -302,19 +378,58 @@ class OllamaManager:
             # Give it a moment to start
             await asyncio.sleep(2)
             
-            # Verify it's running and auto-pull models
+            # Verify server startup
             if await self.is_running():
-                self.logger.info(f"Ollama server started successfully on {ollama_host}:{ollama_port}")
+                self.logger.info(f"✓ Ollama server started successfully on {ollama_host}:{ollama_port}")
                 
                 # Auto-pull default models after server is running
                 await self._ensure_default_models()
                 return True
             else:
-                self.logger.error("Ollama server failed to start")
+                # Collect detailed error information
+                error_details = []
+                
+                if self.ollama_process:
+                    if self.ollama_process.poll() is not None:
+                        # Process has terminated
+                        exit_code = self.ollama_process.returncode
+                        error_details.append(f"Process exited with code {exit_code}")
+                        
+                        try:
+                            stdout, stderr = self.ollama_process.communicate(timeout=1)
+                            if stderr:
+                                stderr_text = stderr.decode().strip()
+                                error_details.append(f"stderr: {stderr_text}")
+                            if stdout:
+                                stdout_text = stdout.decode().strip()
+                                error_details.append(f"stdout: {stdout_text}")
+                        except subprocess.TimeoutExpired:
+                            error_details.append("Could not retrieve process output (timeout)")
+                    else:
+                        error_details.append("Process is still running but not responding to health checks")
+                else:
+                    error_details.append("Process handle is None")
+                
+                # Check if port is already in use
+                try:
+                    import socket
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        result = s.connect_ex((ollama_host, ollama_port))
+                        if result == 0:
+                            error_details.append(f"Port {ollama_port} appears to be in use by another process")
+                except Exception:
+                    pass
+                
+                error_msg = "Ollama server failed to start"
+                if error_details:
+                    error_msg += f": {'; '.join(error_details)}"
+                
+                self.logger.error(error_msg)
                 return False
                 
         except Exception as e:
-            self.logger.error(f"Error starting Ollama: {e}")
+            self.logger.error(f"Unexpected error during Ollama startup: {type(e).__name__}: {e}")
+            self.logger.debug(f"Ollama startup exception details", exc_info=True)
             return False
     
     async def stop_ollama(self) -> bool:
