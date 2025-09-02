@@ -262,3 +262,8 @@ def get_development_database_path(filename: str = "aico.db") -> Path:
 def get_custom_database_path(directory: str, filename: str = "aico.db") -> Path:
     """Get database path in custom directory."""
     return AICOPaths.resolve_database_path(filename, directory)
+
+
+def get_aico_root_path() -> Path:
+    """Get AICO root data directory for binaries and models."""
+    return AICOPaths.get_data_directory()
