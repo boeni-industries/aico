@@ -16,11 +16,33 @@
 - **Extensible Model Types:** While LLMs are the first and core supported type, the architecture is designed to support other foundational model types (e.g., embedding models, vision models) via the same gateway and API pattern.
 
 ## Model Runner Integration: Native Binary Approach
-- **Native Binary Integration:** AICO modelservice manages the model runner (Ollama) as a native binary subprocess. No Docker or container engine is required.
-- **Maximum UX:** All packaging, downloading, installation, and updates for Ollama are handled automatically by AICO. Users do not need to manually install or configure anything.
-- **Cross-Platform:** Prebuilt binaries for Ollama are available for Windows (10+), macOS (12+), and Linux (x86_64/AMD64). AICO detects the user's OS and downloads/installs the correct binary as needed.
-- **Lifecycle Management:** AICO starts, stops, and monitors the Ollama process transparently, providing clear error/help messages if any issues arise.
-- **Fallback:** In-process model serving (e.g., using llama.cpp Python bindings) may be supported as a lightweight fallback for certain models or platforms in the future.
+
+### OllamaManager Component
+The `OllamaManager` is a core component within modelservice responsible for complete Ollama lifecycle management:
+
+- **Automated Installation:** Downloads platform-specific Ollama binaries from GitHub releases API with zero user intervention
+- **Binary Management:** Installs Ollama in AICO's controlled `/bin` directory structure
+- **Process Lifecycle:** Manages Ollama as a subprocess with proper startup, monitoring, and graceful shutdown
+- **Health Monitoring:** Continuous health checks and automatic restart on failure
+- **Update Management:** Automatic updates via GitHub releases API with version tracking
+
+### Cross-Platform Binary Management
+- **Platform Detection:** Automatically detects OS and architecture for correct binary selection
+- **GitHub Releases Integration:** Uses official Ollama releases API for reliable, versioned downloads
+- **Binary Verification:** SHA256 checksum validation for security and integrity
+- **Installation Paths:**
+  - **Windows:** `%LOCALAPPDATA%\boeni-industries\aico\bin\ollama.exe`
+  - **macOS:** `~/Library/Application Support/boeni-industries/aico/bin/ollama`
+  - **Linux:** `~/.local/share/boeni-industries/aico/bin/ollama`
+
+### Environment Configuration
+OllamaManager configures Ollama with AICO-specific environment variables:
+```bash
+OLLAMA_MODELS=/path/to/aico/models     # Model storage in AICO structure
+OLLAMA_LOGS=/path/to/aico/logs/ollama.log  # Logs in AICO directory
+OLLAMA_HOST=127.0.0.1:11434           # Local-only binding
+OLLAMA_KEEP_ALIVE=5m                  # Resource-aware model unloading
+```
 
 ### Model Storage and Directory Structure
 
@@ -44,24 +66,20 @@ Ollama's model storage is fully contained within the AICO deployment directory s
 ### Why Native Binary?
 AICO is designed for local-first, privacy-first, and non-expert-friendly installation. Docker is not required, as it adds bloat and complexity. Native binaries provide the best user experience, performance, and compatibility.
 
-### Logging
+### Logging Integration
 
-Ollama logs are fully contained within the AICO deployment structure:
+Ollama logs are integrated into AICO's unified logging system:
 
-- **Log Directory:**
-  - All Ollama logs are written to `ollama.log` inside the `logs` directory directly under the AICO root directory (as resolved by the configuration system for each OS).
-  - Example (all under the vendor/product root directory):
-    - **Linux:** `${XDG_DATA_HOME:-$HOME/.local/share}/boeni-industries/aico/logs/ollama.log`
-    - **macOS:** `$HOME/Library/Application Support/boeni-industries/aico/logs/ollama.log`
-    - **Windows:** `%LOCALAPPDATA%\boeni-industries\aico\logs\ollama.log`
-  - Logging is configured at runtime by redirecting Ollama's output or using symlinks as needed, ensuring no logs are written to user or system-wide locations.
+- **ZMQ Log Transport:** Ollama logs are captured and routed through AICO's ZeroMQ message bus to the central Log Consumer service
+- **Unified Log Storage:** All Ollama logs are stored in the encrypted AICO database alongside other system logs
+- **Log Directory Fallback:** Local `ollama.log` file in AICO's logs directory as backup when ZMQ transport unavailable
+- **Structured Format:** Ollama output parsed and formatted as structured log entries with proper timestamps and levels
+- **CLI Access:** Ollama logs accessible via `aico logs` commands with filtering and search capabilities
 
-- **Log Format and Rotation:**
-  - Logs can be output in structured JSON format for integration with AICO's logging and monitoring systems.
-  - Log rotation and archival are managed by AICO's existing log management tools.
-
-- **No Data Leakage:**
-  - All log data is contained within the deployment path, supporting audit, compliance, and easy cleanup.
+**Log Paths (fallback only):**
+- **Linux:** `${XDG_DATA_HOME:-$HOME/.local/share}/boeni-industries/aico/logs/ollama.log`
+- **macOS:** `$HOME/Library/Application Support/boeni-industries/aico/logs/ollama.log`
+- **Windows:** `%LOCALAPPDATA%\boeni-industries\aico\logs\ollama.log`
 
 ## Middleware & Security Stack
 - **Encryption:** All inbound and outbound payloads are encrypted using the same libsodium/session-based encryption as the API Gateway (EncryptionMiddleware).
@@ -115,11 +133,43 @@ Ollama logs are fully contained within the AICO deployment structure:
   { "status": "ok" }
   ```
 
+## CLI Integration
+
+### Command Groups
+- **`aico ollama`** - Direct Ollama and model management commands
+- **`aico modelservice`** - Modelservice operations (start/stop/status/health)
+
+### Ollama Commands (`aico ollama`)
+```bash
+aico ollama status          # Show Ollama status and running models
+aico ollama install         # Force reinstall/update Ollama binary
+aico ollama models list     # List available and installed models
+aico ollama models pull     # Download specific models
+aico ollama models remove   # Remove models to free space
+aico ollama logs           # View Ollama-specific logs
+aico ollama serve          # Start Ollama directly (debug mode)
+```
+
+### Modelservice Commands (`aico modelservice`)
+```bash
+aico modelservice start     # Start modelservice with OllamaManager
+aico modelservice stop      # Stop modelservice and Ollama
+aico modelservice status    # Service health and endpoint status
+aico modelservice health    # Detailed health check and diagnostics
+```
+
+### CLI Integration Architecture
+- **Rich Visual Style:** Follows AICO CLI visual guide with cyan headers, green values, and clean tables
+- **Shared Logic:** CLI commands use modelservice REST API and OllamaManager for consistency
+- **Error Handling:** Actionable error messages with clear next steps
+- **Progress Indicators:** Rich progress bars for model downloads and installations
+
 ## Integration Pattern
 - The backend interacts with `modelservice` via REST.
 - Only `modelservice` talks directly to foundational model runners (e.g., Ollama, embedding servers, vision model servers).
 - All model-specific logic, parameters, and error handling are encapsulated in `modelservice`.
 - Logging, security, and validation are handled consistently with the API Gateway, including ZMQ-based request logging.
+- **OllamaManager** handles all Ollama binary management, process lifecycle, and environment configuration.
 
 ## Security & Deployment
 - Only accessible within the trusted network (e.g., Docker compose, localhost, or VPN).
