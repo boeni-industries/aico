@@ -42,8 +42,8 @@ class OllamaManager:
     }
     
     def __init__(self):
-        # Uses "externals.ollama" log level from config
-        self.logger = get_logger("externals", "ollama")
+        # Initialize logger - will be set up after logging is initialized
+        self.logger = None
         self.aico_root = get_aico_root_path()
         self.bin_dir = self.aico_root / "bin"
         self.models_dir = self.aico_root / "models"
@@ -63,6 +63,12 @@ class OllamaManager:
         # Platform detection
         self.platform = platform.system()
         self.ollama_binary = self._get_ollama_binary_path()
+    
+    def _ensure_logger(self):
+        """Ensure logger is initialized (lazy initialization)."""
+        if self.logger is None:
+            from shared.aico.core.logging import get_logger
+            self.logger = get_logger("externals", "ollama")
         
     def _get_ollama_binary_path(self) -> Path:
         """Get the expected path to the Ollama binary for this platform."""
@@ -74,6 +80,7 @@ class OllamaManager:
     async def ensure_installed(self, force_update: bool = False) -> bool:
         """Ensure Ollama is installed and up to date, respecting config settings."""
         try:
+            self._ensure_logger()
             # Check config for auto_install setting
             if not self.ollama_config.get("auto_install", True) and not force_update:
                 self.logger.info("Auto-install disabled in config, skipping installation")
@@ -263,8 +270,9 @@ class OllamaManager:
             return False
     
     async def start_ollama(self) -> bool:
-        """Start the Ollama server process, respecting config settings."""
+        """Start Ollama server if not already running, respecting config settings."""
         try:
+            self._ensure_logger()
             # Check config for auto_start setting
             if not self.ollama_config.get("auto_start", True):
                 self.logger.info("Auto-start disabled in config, skipping Ollama startup")
@@ -377,6 +385,7 @@ class OllamaManager:
     async def _ensure_default_models(self) -> None:
         """Auto-pull default models based on config settings."""
         try:
+            self._ensure_logger()
             default_models = self.ollama_config.get("default_models", {})
             
             for role, model_config in default_models.items():

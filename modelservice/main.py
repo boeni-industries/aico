@@ -61,13 +61,9 @@ def create_app() -> FastAPI:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan for startup/shutdown logging and hooks."""
-    # Load configuration
+    # Load configuration (logging already initialized at module level)
     cfg = ConfigurationManager()
     cfg.initialize()
-    
-    # Initialize logging before creating OllamaManager
-    from aico.core.logging import initialize_logging
-    initialize_logging(cfg)
     
     modelservice_config = cfg.get("modelservice", {})
     rest_config = modelservice_config.get("rest", {})
