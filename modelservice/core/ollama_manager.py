@@ -340,9 +340,17 @@ class OllamaManager:
             
             import httpx
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"http://{ollama_host}:{ollama_port}/api/tags")
-                return response.status_code == 200
-        except Exception:
+                # Use /api/version endpoint for better server detection
+                response = await client.get(f"http://{ollama_host}:{ollama_port}/api/version")
+                is_running = response.status_code == 200
+                if is_running:
+                    version_data = response.json()
+                    self.logger.info(f"Server detection: {ollama_host}:{ollama_port} -> {is_running} (version: {version_data.get('version', 'unknown')})")
+                else:
+                    self.logger.info(f"Server detection: {ollama_host}:{ollama_port} -> {is_running} (status: {response.status_code})")
+                return is_running
+        except Exception as e:
+            self.logger.info(f"Server detection failed: {ollama_host}:{ollama_port} -> False (error: {e})")
             return False
     
     async def start_ollama(self) -> bool:
@@ -361,6 +369,12 @@ class OllamaManager:
             if await self.is_running():
                 self.logger.info("✓ Ollama server already running - skipping startup")
                 print("    ✓ Found existing Ollama server")
+                # Don't start our own process since external server is running
+                self.ollama_process = None
+                
+                # Test model detection with external server
+                running_models = await self.get_running_models()
+                self.logger.info(f"External server running models: {running_models}")
                 return True
             
             self.logger.info("Starting Ollama server...")
@@ -455,10 +469,10 @@ class OllamaManager:
             self._ensure_logger()
             
             if not self.ollama_process:
-                self.logger.info("No Ollama process to stop")
+                self.logger.info("No Ollama process to stop (external server detected)")
                 return True
                 
-            self.logger.info("Stopping Ollama server...")
+            self.logger.info("Stopping Ollama server (started by modelservice)...")
             
             # Graceful shutdown
             self.ollama_process.terminate()
@@ -640,37 +654,58 @@ class OllamaManager:
             return 180.0  # 3 minutes default
     
     async def _is_model_running(self, model_name: str) -> bool:
-        """Check if a specific model is currently loaded/running."""
+        """Check if a specific model is loaded and running by querying the Ollama server."""
+        import time
+        start_time = time.time()
         try:
             ollama_host = self.ollama_config.get("host", "127.0.0.1")
             ollama_port = self.ollama_config.get("port", 11434)
+            url = f"http://{ollama_host}:{ollama_port}/api/ps"
             
+            import httpx
             async with httpx.AsyncClient(timeout=2.0) as client:
                 # Use /api/ps endpoint (equivalent to 'ollama ps')
-                response = await client.get(f"http://{ollama_host}:{ollama_port}/api/ps")
+                self.logger.info(f"Making request to: {url}")
+                response = await client.get(url)
+                elapsed = time.time() - start_time
+                self.logger.info(f"_is_model_running took {elapsed:.2f}s")
+                
+                # Log raw response details
+                self.logger.info(f"Response status: {response.status_code}")
+                self.logger.info(f"Response headers: {dict(response.headers)}")
+                
                 if response.status_code == 200:
+                    raw_text = response.text
+                    self.logger.info(f"Raw response text: {raw_text}")
+                    
                     data = response.json()
+                    self.logger.info(f"Parsed JSON: {data}")
+                    
                     models = data.get("models", [])
                     
                     # Debug logging to see what we get
-                    self.logger.debug(f"Running models from /api/ps: {models}")
+                    self.logger.info(f"Running models from /api/ps: {len(models)} models found")
                     
                     # Check if our model is in the running models list
                     for model in models:
                         model_name_in_list = model.get("name", "")
+                        model_size = model.get("size", 0)
+                        self.logger.info(f"Found running model: '{model_name_in_list}' (size: {model_size} bytes)")
+                        
                         # Match exact name or name with tag
                         if model_name_in_list == model_name or model_name_in_list.startswith(f"{model_name}:"):
-                            self.logger.debug(f"Found running model: {model_name_in_list}")
+                            self.logger.info(f"✓ Model match found: {model_name_in_list}")
                             return True
                     
-                    self.logger.debug(f"Model {model_name} not found in running models")
+                    self.logger.info(f"Model {model_name} not found in {len(models)} running models")
                     return False
                 else:
-                    self.logger.debug(f"/api/ps returned status {response.status_code}")
+                    self.logger.info(f"/api/ps returned status {response.status_code}, body: {response.text}")
                     return False
                     
         except Exception as e:
-            self.logger.debug(f"Error checking if model {model_name} is running: {e}")
+            elapsed = time.time() - start_time
+            self.logger.info(f"Error checking if model {model_name} is running after {elapsed:.2f}s: {e}")
             return False
     
     def _create_progress_bar(self, percent: int, width: int = 40) -> str:
