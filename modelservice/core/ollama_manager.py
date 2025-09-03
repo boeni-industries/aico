@@ -501,62 +501,118 @@ class OllamaManager:
         return status
     
     async def _ensure_default_models(self) -> None:
-        """Auto-pull default models based on config settings with rich progress."""
+        """Auto-pull default models based on config settings."""
         try:
             self._ensure_logger()
             default_models = self.ollama_config.get("default_models", {})
             
-            # Debug configuration loading
-            self.logger.debug(f"Ollama config keys: {list(self.ollama_config.keys())}")
-            self.logger.debug(f"Default models config: {default_models}")
-            
-            if not default_models:
+            if not default_models or not any(default_models.values()):
                 self.logger.info("No models configured for auto-pull")
                 return
             
-            from rich.console import Console
-            from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
-            from rich.panel import Panel
-            
-            console = Console()
-            
-            # Filter models that need to be downloaded
-            models_to_download = []
-            for model_key, model_config in default_models.items():
-                if model_config.get("auto_pull", False):
-                    actual_model_name = model_config.get("name", model_key)
-                    if not await self._is_model_available(actual_model_name):
-                        models_to_download.append((actual_model_name, model_config))
-                    else:
-                        console.print(f"[green]✓[/green] Model {actual_model_name} already available")
-            
-            if not models_to_download:
-                console.print("[green]✓[/green] All configured models are already available")
-                return
-            
-            # Download models without rich progress to avoid display conflicts
-            for actual_model_name, model_config in models_to_download:
-                model_size = model_config.get("size", "unknown size")
-                print(f"→ Starting download: {actual_model_name} ({model_size})")
-                
-                try:
-                    await self._pull_model_simple(actual_model_name)
-                    print(f"✓ Model ready: {actual_model_name}")
-                    self.logger.info(f"Successfully pulled model: {actual_model_name}")
-                except Exception as e:
-                    print(f"✗ Failed to download: {actual_model_name} - {e}")
-                    self.logger.error(f"Failed to pull model {actual_model_name}: {e}")
+            # Download each model that needs to be downloaded
+            for config_key, model_config in default_models.items():
+                if isinstance(model_config, dict) and model_config.get("auto_pull", False):
+                    actual_model_name = model_config.get("name")
+                    if actual_model_name and not await self._is_model_available(actual_model_name):
+                        try:
+                            self._print_status("🚀", f"Starting download: {actual_model_name}", "blue")
+                            await self._pull_model_simple(actual_model_name)
+                            self._print_status("✅", f"Model ready: {actual_model_name}", "green")
+                            self.logger.info(f"Successfully pulled model: {actual_model_name}")
+                        except Exception as e:
+                            self._print_status("❌", f"Failed to download: {actual_model_name} - {e}", "red")
+                            self.logger.error(f"Failed to pull model {actual_model_name}: {e}")
                         
         except Exception as e:
             self.logger.error(f"Error ensuring default models: {e}")
     
+    def _create_progress_bar(self, percent: int, width: int = 40) -> str:
+        """Create a beautiful progress bar with safe ASCII characters."""
+        # Use simple ASCII characters that work everywhere
+        filled = "="
+        empty = " "
+        left_cap = "["
+        right_cap = "]"
+        
+        filled_width = int(width * percent / 100)
+        empty_width = width - filled_width
+        bar = filled * filled_width + empty * empty_width
+        return f"{left_cap}{bar}{right_cap}"
+    
+    def _format_bytes(self, bytes_val: int) -> str:
+        """Format bytes into human readable format."""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if bytes_val < 1024.0:
+                return f"{bytes_val:.1f} {unit}"
+            bytes_val /= 1024.0
+        return f"{bytes_val:.1f} TB"
+    
+    def _supports_ansi_escapes(self) -> bool:
+        """Check if terminal supports ANSI escape sequences."""
+        import sys
+        import os
+        
+        # Not a TTY - no ANSI support needed
+        if not sys.stdout.isatty():
+            return False
+            
+        # Windows Terminal and modern terminals
+        if os.getenv("WT_SESSION") or os.getenv("TERM_PROGRAM"):
+            return True
+            
+        # GitBash/MSYS2/Cygwin on Windows
+        if sys.platform == "win32" and (
+            os.getenv("MSYSTEM") or 
+            "bash" in os.getenv("SHELL", "").lower() or
+            "Git" in os.getenv("TERM_PROGRAM", "")
+        ):
+            return True
+            
+        # Linux/macOS terminals
+        if sys.platform in ["linux", "darwin"] and os.getenv("TERM"):
+            return True
+            
+        # Windows with ANSICON
+        if os.getenv("ANSICON"):
+            return True
+            
+        # Default: assume no ANSI support (Windows CMD/PowerShell)
+        return False
+
+    def _print_status(self, icon: str, message: str, color_code: str = ""):
+        """Print a beautifully formatted status message."""
+        import sys
+        import os
+        
+        # ANSI color codes (safe fallback if not supported)
+        colors = {
+            "blue": "\033[94m",
+            "green": "\033[92m", 
+            "yellow": "\033[93m",
+            "red": "\033[91m",
+            "cyan": "\033[96m",
+            "reset": "\033[0m"
+        }
+        
+        # Check for color support
+        supports_color = self._supports_ansi_escapes() and color_code in colors
+        
+        if supports_color:
+            print(f"{colors[color_code]}{icon} {message}{colors['reset']}")
+        else:
+            print(f"{icon} {message}")
+
     async def _pull_model_simple(self, model_name: str) -> None:
-        """Pull a model with real-time streaming progress."""
+        """Pull a model with beautiful real-time streaming progress."""
         ollama_host = self.ollama_config.get("host", "127.0.0.1")
         ollama_port = self.ollama_config.get("port", 11434)
         
         import httpx
         import json
+        import sys
+        
+        # Don't duplicate the "Starting download" message - it's already printed by caller
         
         async with httpx.AsyncClient(timeout=600.0) as client:
             try:
@@ -575,6 +631,7 @@ class OllamaManager:
                     total_size = None
                     downloaded = 0
                     last_percent = -1
+                    current_layer = ""
                     
                     async for line in response.aiter_lines():
                         if not line.strip():
@@ -587,34 +644,56 @@ class OllamaManager:
                             # Extract size information
                             if "total" in progress_data and total_size is None:
                                 total_size = progress_data["total"]
-                                size_mb = total_size / (1024 * 1024)
-                                print(f"📦 Model size: {size_mb:.1f} MB")
+                                size_formatted = self._format_bytes(total_size)
+                                self._print_status("📦", f"Model size: {size_formatted}", "blue")
                             
-                            # Show progress for downloading
-                            if "completed" in progress_data and total_size:
+                            # Show progress for downloading - only for large files and meaningful progress
+                            if "completed" in progress_data and total_size and total_size > 1024 * 1024:  # Only files > 1MB
                                 downloaded = progress_data["completed"]
                                 percent = int((downloaded / total_size) * 100)
                                 
-                                # Only print progress every 5% to avoid spam
-                                if percent != last_percent and percent % 5 == 0:
-                                    downloaded_mb = downloaded / (1024 * 1024)
-                                    total_mb = total_size / (1024 * 1024)
-                                    print(f"⬇️  Downloading: {percent}% ({downloaded_mb:.1f}/{total_mb:.1f} MB)")
+                                # Show progress every 2% or on completion, and only if we have meaningful progress
+                                if percent != last_percent and percent > 0 and (percent % 2 == 0 or percent == 100):
+                                    progress_bar = self._create_progress_bar(percent)
+                                    downloaded_formatted = self._format_bytes(downloaded)
+                                    total_formatted = self._format_bytes(total_size)
+                                    
+                                    # Only show progress bar in TTY mode
+                                    if sys.stdout.isatty():
+                                        import sys
+                                        line = f"📥 {progress_bar} {percent:3d}% ({downloaded_formatted}/{total_formatted})"
+                                        padded_line = line.ljust(80)
+                                        sys.stdout.write(f"\r{padded_line}")
+                                        sys.stdout.flush()
+                                        
+                                        # Clear progress bar when complete
+                                        if percent == 100:
+                                            sys.stdout.write("\r" + " " * 80 + "\r")
+                                            sys.stdout.flush()
+                                    
                                     last_percent = percent
                             
-                            # Show other status updates
-                            elif status:
-                                if "pulling" in status.lower():
-                                    print(f"🔄 {status}")
+                            # Show layer status updates - but don't interfere with progress bar
+                            elif status and status != current_layer:
+                                current_layer = status
+                                # Only show status for significant events, not every layer
+                                if "success" in status.lower():
+                                    self._print_status("✅", "Download complete!", "green")
                                 elif "verifying" in status.lower():
-                                    print(f"✅ {status}")
-                                elif "success" in status.lower():
-                                    print(f"✅ Download complete!")
-                                elif status not in ["", "downloading"]:
-                                    print(f"ℹ️  {status}")
+                                    self._print_status("🔍", "Verifying download...", "cyan")
+                                elif "writing" in status.lower():
+                                    self._print_status("💾", "Writing manifest...", "blue")
                                 
                         except json.JSONDecodeError:
                             continue
+                    
+                    # Clear progress bar and add newline
+                    if sys.stdout.isatty():
+                        import sys
+                        # Clear line with spaces then add newline
+                        sys.stdout.write("\r" + " " * 80 + "\r")
+                        sys.stdout.flush()
+                        print()  # Add newline
                     
             except httpx.TimeoutException:
                 self.logger.error(f"Timeout pulling model {model_name}")
@@ -639,50 +718,6 @@ class OllamaManager:
         except Exception:
             return False
     
-    async def _pull_model_with_progress(self, model_name: str, progress, task_id) -> None:
-        """Pull a model with real-time progress updates."""
-        ollama_host = self.ollama_config.get("host", "127.0.0.1")
-        ollama_port = self.ollama_config.get("port", 11434)
-        
-        import httpx
-        import json
-        
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            async with client.stream(
-                "POST",
-                f"http://{ollama_host}:{ollama_port}/api/pull",
-                json={"name": model_name, "stream": True}
-            ) as response:
-                response.raise_for_status()
-                
-                async for line in response.aiter_lines():
-                    if line.strip():
-                        try:
-                            data = json.loads(line)
-                            
-                            if "total" in data and "completed" in data:
-                                total = data["total"]
-                                completed = data["completed"]
-                                
-                                if total > 0:
-                                    percent = int((completed / total) * 100)
-                                    progress.update(task_id, completed=percent)
-                                    
-                                    # Update description with download info
-                                    if "status" in data:
-                                        status = data["status"]
-                                        size_mb = total / (1024 * 1024)
-                                        progress.update(task_id, description=f"{status} {model_name} ({size_mb:.1f}MB)")
-                            
-                            elif "status" in data:
-                                # Handle status updates without progress
-                                status = data["status"]
-                                if "error" in data:
-                                    raise Exception(f"{status}: {data['error']}")
-                                progress.update(task_id, description=f"{status} {model_name}")
-                                
-                        except json.JSONDecodeError:
-                            continue
     
     async def list_models(self) -> Dict:
         """
@@ -705,7 +740,7 @@ class OllamaManager:
     
     async def pull_model(self, model_name: str, progress_callback=None) -> bool:
         """
-        Pull/download a model with progress tracking.
+        Pull/download a model with beautiful progress tracking.
         
         Args:
             model_name: Name of the model to pull
@@ -718,52 +753,9 @@ class OllamaManager:
             self._ensure_logger()
             self.logger.info(f"Pulling model: {model_name}")
             
-            ollama_url = self.ollama_config.get("url", "http://127.0.0.1:11434")
-            
-            # Stream the pull request to track progress
-            async with httpx.AsyncClient(timeout=600) as client:
-                async with client.stream(
-                    "POST",
-                    f"{ollama_url}/api/pull",
-                    json={"name": model_name},
-                    timeout=600
-                ) as response:
-                    response.raise_for_status()
-                    
-                    total_size = 0
-                    downloaded = 0
-                    
-                    async for line in response.aiter_lines():
-                        if line:
-                            try:
-                                import json
-                                data = json.loads(line)
-                                
-                                # Track download progress
-                                if "total" in data and "completed" in data:
-                                    total_size = data["total"]
-                                    downloaded = data["completed"]
-                                    
-                                    if progress_callback and total_size > 0:
-                                        progress_pct = min(100, int((downloaded / total_size) * 100))
-                                        progress_callback(progress_pct)
-                                
-                                # Check for completion
-                                if data.get("status") == "success":
-                                    if progress_callback:
-                                        progress_callback(100)
-                                    return True
-                                    
-                                # Log any errors
-                                if "error" in data:
-                                    self.logger.error(f"Model pull error: {data['error']}")
-                                    return False
-                                    
-                            except json.JSONDecodeError:
-                                # Skip malformed JSON lines
-                                continue
-                    
-                    return True
+            # Use the beautiful progress UI instead of ugly callback
+            await self._pull_model_simple(model_name)
+            return True
                 
         except Exception as e:
             self.logger.error(f"Failed to pull model {model_name}: {e}")

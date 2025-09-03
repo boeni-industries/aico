@@ -95,63 +95,35 @@ async def lifespan(app: FastAPI):
     print(f"[>] Encryption: {'Enabled (XChaCha20-Poly1305)' if _encryption_enabled else 'Disabled'}")
     print("=" * 60)
     
-    # Initialize Ollama with rich progress indicators
-    from rich.console import Console
-    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-    from rich.panel import Panel
-    from rich.text import Text
-    
-    console = Console()
-    console.print(Panel.fit("[bold cyan]Initializing Ollama[/bold cyan]", border_style="cyan"))
+    # Initialize Ollama with beautiful status messages
+    print("🔧 Initializing Ollama")
     
     try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=console,
-            transient=True
-        ) as progress:
+        if await ollama_manager.ensure_installed():
+            print("✅ Ollama binary ready")
             
-            # Check installation
-            install_task = progress.add_task("Checking Ollama installation...", total=100)
-            progress.update(install_task, advance=20)
-            
-            if await ollama_manager.ensure_installed():
-                progress.update(install_task, completed=100, description="✓ Ollama binary ready")
+            if await ollama_manager.start_ollama():
+                print("✅ Ollama server started")
                 
-                # Start server
-                start_task = progress.add_task("Starting Ollama server...", total=100)
-                progress.update(start_task, advance=30)
-                
-                if await ollama_manager.start_ollama():
-                    progress.update(start_task, completed=100, description="✓ Ollama server started")
+                ollama_status = await ollama_manager.get_status()
+                if ollama_status:
+                    version = ollama_status.get('version', 'unknown')
+                    print(f"✅ Ollama v{version} ready at http://127.0.0.1:11434")
                     
-                    # Get status
-                    status_task = progress.add_task("Verifying server status...", total=100)
-                    progress.update(status_task, advance=50)
-                    
-                    ollama_status = await ollama_manager.get_status()
-                    if ollama_status:
-                        version = ollama_status.get('version', 'unknown')
-                        progress.update(status_task, completed=100, description=f"✓ Ollama v{version} ready")
-                        console.print(f"[green]✓[/green] Ollama server: http://127.0.0.1:11434")
-                    else:
-                        progress.update(status_task, completed=100, description="⚠ Status check incomplete")
-                        console.print("[yellow]⚠[/yellow] Could not verify Ollama status")
+                    # Auto-pull default models
+                    await ollama_manager._ensure_default_models()
                 else:
-                    progress.update(start_task, completed=100, description="✗ Server start failed")
-                    console.print("[red]✗[/red] Ollama server failed to start")
+                    print("⚠️ Could not verify Ollama status")
             else:
-                progress.update(install_task, completed=100, description="✗ Installation failed")
-                console.print("[red]✗[/red] Ollama installation failed")
+                print("❌ Ollama server failed to start")
+        else:
+            print("❌ Ollama installation failed")
                 
     except Exception as e:
-        console.print(f"[red]✗ Ollama initialization error:[/red] {e}")
+        print(f"❌ Ollama initialization error: {e}")
         # Log the full exception for debugging
         import traceback
-        console.print(f"[dim]Full traceback:[/dim]\n{traceback.format_exc()}")
+        print(f"Full traceback:\n{traceback.format_exc()}")
     
     print("=" * 60)
     print("[+] Starting server... (Press Ctrl+C to stop)\n")
