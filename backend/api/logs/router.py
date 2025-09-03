@@ -176,8 +176,21 @@ async def process_log_entry(log_data: dict):
             'ERROR': 'error'
         }
         
+        # Handle enum objects from frontend (convert to string)
         log_level = log_data.get('level', 'INFO')
+        if hasattr(log_level, 'value'):
+            log_level = log_level.value
+        elif not isinstance(log_level, str):
+            log_level = str(log_level)
+        
         log_method = getattr(subsystem_logger, level_mapping.get(log_level, 'info'))
+        
+        # Handle severity enum objects from frontend
+        severity = log_data.get('severity')
+        if hasattr(severity, 'value'):
+            severity = severity.value
+        elif severity is not None and not isinstance(severity, str):
+            severity = str(severity)
         
         # Create extra context for structured logging with correct field names for database
         extra_context = {
@@ -188,7 +201,7 @@ async def process_log_entry(log_data: dict):
             'trace_id': log_data.get('trace_id'),
             'frontend_timestamp': log_data.get('timestamp'),
             'source': log_data.get('source'),
-            'severity': log_data.get('severity'),
+            'severity': severity,
             'environment': log_data.get('environment'),
             'origin': log_data.get('origin'),
             'file': log_data.get('file'),

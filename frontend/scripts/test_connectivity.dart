@@ -51,11 +51,21 @@ Future<void> main() async {
     
     final authResponse = await dio.post('/users/authenticate', data: authRequest);
     
-    if (authResponse.data['success'] == true) {
-      jwtToken = authResponse.data['jwt_token'];
+    // Check if response is encrypted and decrypt it
+    Map<String, dynamic> authData;
+    if (authResponse.data['encrypted'] == true) {
+      // Decrypt the response payload
+      final decryptedPayload = encryptionService.decryptPayload(authResponse.data['payload']);
+      authData = decryptedPayload;
+    } else {
+      authData = authResponse.data;
+    }
+    
+    if (authData['success'] == true) {
+      jwtToken = authData['jwt_token'];
       debugPrint('✅ Authentication successful - JWT token received');
     } else {
-      debugPrint('❌ Authentication failed: ${authResponse.data['error']}');
+      debugPrint('❌ Authentication failed: ${authData['error']}');
       return;
     }
     
@@ -79,8 +89,17 @@ Future<void> main() async {
       }),
     );
     
+    // Check if echo response is encrypted and decrypt it
+    Map<String, dynamic> echoData;
+    if (echoResponse.data['encrypted'] == true) {
+      final decryptedEchoPayload = encryptionService.decryptPayload(echoResponse.data['payload']);
+      echoData = decryptedEchoPayload;
+    } else {
+      echoData = echoResponse.data;
+    }
+    
     debugPrint('✅ Encrypted echo with auth successful');
-    debugPrint('Echo response: ${echoResponse.data}');
+    debugPrint('Echo response: $echoData');
     
     debugPrint('\n==================================================');
     debugPrint('🎉 Flutter Connectivity Test COMPLETED SUCCESSFULLY!');

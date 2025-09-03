@@ -105,8 +105,8 @@ class UnifiedApiClient {
         );
         // Decrypt response if needed
         final responseData = response.data;
-        if (responseData is Map<String, dynamic> && responseData['encrypted'] == true && responseData.containsKey('encrypted_payload')) {
-          final decrypted = _encryptionService.decryptPayload(responseData['encrypted_payload']);
+        if (responseData is Map<String, dynamic> && responseData['encrypted'] == true && responseData.containsKey('payload')) {
+          final decrypted = _encryptionService.decryptPayload(responseData['payload']);
           if (fromJson != null) return fromJson(decrypted);
           return decrypted as T;
         } else {

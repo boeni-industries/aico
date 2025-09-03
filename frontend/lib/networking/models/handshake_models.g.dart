@@ -39,13 +39,13 @@ Map<String, dynamic> _$EncryptedRequestToJson(EncryptedRequest instance) =>
 EncryptedResponse _$EncryptedResponseFromJson(Map<String, dynamic> json) =>
     EncryptedResponse(
       encrypted: json['encrypted'] as bool,
-      payload: json['encrypted_payload'] as String,
+      payload: json['payload'] as String,
     );
 
 Map<String, dynamic> _$EncryptedResponseToJson(EncryptedResponse instance) =>
     <String, dynamic>{
       'encrypted': instance.encrypted,
-      'encrypted_payload': instance.payload,
+      'payload': instance.payload,
     };
 
 EchoRequest _$EchoRequestFromJson(Map<String, dynamic> json) => EchoRequest(
