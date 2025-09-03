@@ -177,6 +177,7 @@ class RESTAdapter:
                 "active_connections": getattr(self, '_active_connections', 0),
                 "uptime": getattr(self, '_uptime', 0)
             }
+        
     
     def mount_router(self, router: APIRouter, prefix: str = "", tags: Optional[list] = None):
         """Mount a domain router to the FastAPI app"""

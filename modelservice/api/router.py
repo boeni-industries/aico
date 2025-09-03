@@ -359,6 +359,7 @@ def _format_size(size_bytes: int) -> str:
 
 # Ollama-specific endpoints for CLI integration
 @router.get("/ollama/status")
+@router.post("/ollama/status")
 async def ollama_status():
     """Get Ollama status and system information."""
     from fastapi import Request
@@ -469,6 +470,7 @@ async def ollama_logs(lines: int = 50):
 
 
 @router.get("/ollama/models")
+@router.post("/ollama/models")
 async def ollama_models():
     """List Ollama models."""
     try:
@@ -487,7 +489,8 @@ async def ollama_models():
 
 
 @router.get("/ollama/models/running")
-async def ollama_running_models():
+@router.post("/ollama/models/running")
+async def ollama_models_running():
     """List currently running models."""
     try:
         from ..core.ollama_manager import OllamaManager

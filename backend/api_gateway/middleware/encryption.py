@@ -178,6 +178,56 @@ class EncryptionMiddleware:
                     await self.app(scope, receive, send)
                     return
             
+            # Create response interceptor for encryption (for all requests with valid session)
+            response_start_sent = False
+            cached_start_message = None
+            
+            async def encrypt_send(message):
+                nonlocal response_start_sent, cached_start_message
+                
+                if message["type"] == "http.response.start":
+                    # Cache the start message, we'll send it after we know the body size
+                    cached_start_message = message
+                elif message["type"] == "http.response.body":
+                    # Encrypt response body if it's JSON
+                    body = message.get("body", b"")
+                    encrypted_body = body  # Default to original body
+                    
+                    try:
+                        if body:
+                            response_data = json.loads(body.decode())
+                            encrypted_payload = channel.encrypt_json_payload(response_data)
+                            encrypted_response = {
+                                "encrypted": True,
+                                "payload": encrypted_payload,
+                                "encryption": "xchacha20poly1305"
+                            }
+                            encrypted_body = json.dumps(encrypted_response).encode()
+                    except (json.JSONDecodeError, Exception):
+                        # Not JSON or encryption failed, use original body
+                        pass
+                    
+                    # Update Content-Length in cached start message if we have one
+                    if cached_start_message and not response_start_sent:
+                        headers = list(cached_start_message.get("headers", []))
+                        updated_headers = []
+                        
+                        for name, value in headers:
+                            if name.lower() == b"content-length":
+                                updated_headers.append((name, str(len(encrypted_body or b"")).encode()))
+                            else:
+                                updated_headers.append((name, value))
+                        
+                        cached_start_message["headers"] = updated_headers
+                        await send(cached_start_message)
+                        response_start_sent = True
+                    
+                    # Send the body (ensure it's not None)
+                    message["body"] = encrypted_body or b""
+                    await send(message)
+                else:
+                    await send(message)
+            
             # Check if request is encrypted and decrypt if needed
             if body:
                 try:
@@ -224,8 +274,8 @@ class EncryptionMiddleware:
                                     "more_body": False
                                 }
                             
-                            # Forward the request with decrypted body and preserved headers
-                            await self.app(new_scope, new_receive, send)
+                            # Forward the request with decrypted body and encrypted response
+                            await self.app(new_scope, new_receive, encrypt_send)
                             return
                             
                         except Exception as e:
@@ -238,8 +288,8 @@ class EncryptionMiddleware:
                     # Not JSON, pass through
                     pass
             
-            # Pass through unencrypted requests
-            await self.app(scope, receive, send)
+            # Pass through unencrypted requests but encrypt responses for valid sessions
+            await self.app(scope, receive, encrypt_send)
             
         except (EncryptionError, DecryptionError) as e:
             self.logger.error(f"Encryption middleware error: {e}")

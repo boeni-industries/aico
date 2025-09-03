@@ -143,8 +143,9 @@ api_gateway:
 # Modelservice configuration
 modelservice:
   enabled: true
-  host: "127.0.0.1"
-  port: 8773
+  rest:
+    host: "127.0.0.1"
+    port: 8773
   cors_origins:
     - "http://localhost:3000"
     - "http://127.0.0.1:3000"
