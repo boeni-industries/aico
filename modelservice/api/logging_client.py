@@ -46,9 +46,12 @@ class APIGatewayLoggingClient:
             try:
                 self._service_token = self.service_auth.ensure_service_token("modelservice")
                 self.logger.info("Modelservice authenticated to API Gateway successfully", extra={
+                    "connection_status": "established",
+                    "auth_method": "JWT_EdDSA", 
                     "target": "api-gateway",
-                    "auth_method": "JWT_EdDSA",
-                    "connection_status": "established"
+                    "service_name": "modelservice",
+                    "gateway_host": self.api_gateway_host,
+                    "gateway_port": self.api_gateway_port
                 })
                 # Print statement for successful authentication
                 print(f"[+] Successfully authenticated to API Gateway with service token")

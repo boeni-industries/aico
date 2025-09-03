@@ -556,3 +556,80 @@ async def ollama_remove_model(model_name: str):
             "success": False,
             "error": str(e)
         }
+
+
+@router.post("/ollama/shutdown")
+async def ollama_shutdown():
+    """Stop Ollama server daemon."""
+    try:
+        from ..core.ollama_manager import OllamaManager
+        ollama_manager = OllamaManager()
+        
+        success = await ollama_manager.stop_ollama()
+        
+        return {
+            "success": success,
+            "error": None if success else "Failed to stop Ollama server"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@router.post("/ollama/models/start")
+async def ollama_start_model(request: Dict[str, str]):
+    """Start/run a specific model."""
+    try:
+        model_name = request.get("name")
+        if not model_name:
+            return {
+                "success": False,
+                "error": "Model name is required"
+            }
+        
+        from ..core.ollama_manager import OllamaManager
+        ollama_manager = OllamaManager()
+        
+        success = await ollama_manager.start_model(model_name)
+        
+        return {
+            "success": success,
+            "error": None if success else f"Failed to start model {model_name}"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@router.post("/ollama/models/stop")
+async def ollama_stop_model(request: Dict[str, str]):
+    """Stop a specific model."""
+    try:
+        model_name = request.get("name")
+        if not model_name:
+            return {
+                "success": False,
+                "error": "Model name is required"
+            }
+        
+        from ..core.ollama_manager import OllamaManager
+        ollama_manager = OllamaManager()
+        
+        success = await ollama_manager.stop_model(model_name)
+        
+        return {
+            "success": success,
+            "error": None if success else f"Failed to stop model {model_name}"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }

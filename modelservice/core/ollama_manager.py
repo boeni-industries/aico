@@ -366,20 +366,28 @@ class OllamaManager:
             self.logger.info("Starting Ollama server...")
             
             # Start Ollama server with config-based environment
-            env = os.environ.copy()
+            env = dict(os.environ)
             ollama_host = self.ollama_config.get("host", "127.0.0.1")
             ollama_port = self.ollama_config.get("port", 11434)
             env["OLLAMA_HOST"] = f"{ollama_host}:{ollama_port}"
             env["OLLAMA_MODELS"] = str(self.models_dir)
             
-            # Start process
+            # Configure Ollama logging
+            ollama_log_file = self.logs_dir / "ollama.log"
+            env["OLLAMA_LOGS"] = str(self.logs_dir)
+            
+            # Start process with log file redirection
+            log_file = open(ollama_log_file, 'a', encoding='utf-8')
             self.ollama_process = subprocess.Popen(
                 [str(self.ollama_binary), "serve"],
                 env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,  # Redirect stderr to stdout (log file)
                 cwd=str(self.bin_dir)
             )
+            
+            # Store log file handle for cleanup
+            self.ollama_log_file = log_file
             
             # Give it a moment to start
             await asyncio.sleep(2)
@@ -387,9 +395,6 @@ class OllamaManager:
             # Verify server startup
             if await self.is_running():
                 self.logger.info(f"✓ Ollama server started successfully on {ollama_host}:{ollama_port}")
-                
-                # Auto-pull default models after server is running
-                await self._ensure_default_models()
                 return True
             else:
                 # Collect detailed error information
@@ -401,18 +406,24 @@ class OllamaManager:
                         exit_code = self.ollama_process.returncode
                         error_details.append(f"Process exited with code {exit_code}")
                         
+                        # Check log file for error details
                         try:
-                            stdout, stderr = self.ollama_process.communicate(timeout=1)
-                            if stderr:
-                                stderr_text = stderr.decode().strip()
-                                error_details.append(f"stderr: {stderr_text}")
-                            if stdout:
-                                stdout_text = stdout.decode().strip()
-                                error_details.append(f"stdout: {stdout_text}")
-                        except subprocess.TimeoutExpired:
-                            error_details.append("Could not retrieve process output (timeout)")
+                            if hasattr(self, 'ollama_log_file'):
+                                self.ollama_log_file.flush()  # Ensure logs are written
+                            
+                            ollama_log_file = self.logs_dir / "ollama.log"
+                            if ollama_log_file.exists():
+                                # Read last 10 lines of log file
+                                with open(ollama_log_file, 'r', encoding='utf-8') as f:
+                                    lines = f.readlines()
+                                    last_lines = lines[-10:] if len(lines) > 10 else lines
+                                    if last_lines:
+                                        log_content = ''.join(last_lines).strip()
+                                        error_details.append(f"Recent logs: {log_content}")
+                        except Exception as log_err:
+                            error_details.append(f"Could not read log file: {log_err}")
                     else:
-                        error_details.append("Process is still running but not responding to health checks")
+                        error_details.append("Process is running but server is not responding to health checks")
                 else:
                     error_details.append("Process handle is None")
                 
@@ -440,30 +451,44 @@ class OllamaManager:
     
     async def stop_ollama(self) -> bool:
         """Stop the Ollama server process."""
-        if not self.ollama_process:
-            return True
-            
         try:
+            self._ensure_logger()
+            
+            if not self.ollama_process:
+                self.logger.info("No Ollama process to stop")
+                return True
+                
             self.logger.info("Stopping Ollama server...")
             
-            # Try graceful shutdown first
+            # Graceful shutdown
             self.ollama_process.terminate()
             
+            # Wait for graceful shutdown
             try:
-                await asyncio.wait_for(self.ollama_process.wait(), timeout=10)
-                self.logger.info("Ollama stopped gracefully")
-            except asyncio.TimeoutError:
+                self.ollama_process.wait(timeout=10)
+                self.logger.info("✓ Ollama server stopped gracefully")
+                return True
+            except subprocess.TimeoutExpired:
                 # Force kill if graceful shutdown fails
-                self.logger.warning("Ollama did not stop gracefully, forcing shutdown")
+                self.logger.warning("Graceful shutdown timed out, forcing termination")
                 self.ollama_process.kill()
-                await self.ollama_process.wait()
+                self.ollama_process.wait()
+                self.logger.info("✓ Ollama server force-stopped")
+                return True
                 
+        except Exception as e:
+            self.logger.error(f"Error stopping Ollama: {e}")
+            return False
+        finally:
+            # Clean up log file handle
+            if hasattr(self, 'ollama_log_file'):
+                try:
+                    self.ollama_log_file.close()
+                    delattr(self, 'ollama_log_file')
+                except:
+                    pass
             self.ollama_process = None
             return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to stop Ollama: {e}")
-            return False
     
     async def _health_check(self) -> bool:
         """Check if Ollama API is responding using config URL."""
@@ -500,32 +525,53 @@ class OllamaManager:
         
         return status
     
-    async def _ensure_default_models(self) -> None:
-        """Auto-pull default models based on config settings."""
+    async def _ensure_default_models(self) -> list:
+        """Auto-pull and start default models based on config settings.
+        
+        Returns:
+            list: Names of models that were successfully started
+        """
+        started_models = []
         try:
             self._ensure_logger()
             default_models = self.ollama_config.get("default_models", {})
             
             if not default_models or not any(default_models.values()):
                 self.logger.info("No models configured for auto-pull")
-                return
+                return started_models
             
-            # Download each model that needs to be downloaded
+            # Download and start each model that needs to be downloaded
             for config_key, model_config in default_models.items():
                 if isinstance(model_config, dict) and model_config.get("auto_pull", False):
                     actual_model_name = model_config.get("name")
-                    if actual_model_name and not await self._is_model_available(actual_model_name):
+                    if actual_model_name:
                         try:
-                            self._print_status("🚀", f"Starting download: {actual_model_name}", "blue")
-                            await self._pull_model_simple(actual_model_name)
-                            self._print_status("✅", f"Model ready: {actual_model_name}", "green")
-                            self.logger.info(f"Successfully pulled model: {actual_model_name}")
+                            # Check if model needs to be downloaded
+                            if not await self._is_model_available(actual_model_name):
+                                self._print_status("🚀", f"Starting download: {actual_model_name}", "blue")
+                                await self._pull_model_simple(actual_model_name)
+                                self._print_status("✅", f"Model downloaded: {actual_model_name}", "green")
+                                self.logger.info(f"Successfully pulled model: {actual_model_name}")
+                            
+                            # Start the model (whether just downloaded or already available)
+                            if model_config.get("auto_start", True):  # Default to auto-start
+                                # Estimate loading time based on model name/size
+                                estimated_time = self._estimate_loading_time(actual_model_name)
+                                self._print_status("⏳", f"Starting model: {actual_model_name} (this can take up to {estimated_time} seconds)", "blue")
+                                if await self.start_model(actual_model_name):
+                                    started_models.append(actual_model_name)
+                                    self._print_status("✅", f"Model started: {actual_model_name}", "green")
+                                else:
+                                    self._print_status("⚠️", f"Model downloaded but failed to start: {actual_model_name}", "yellow")
+                            
                         except Exception as e:
-                            self._print_status("❌", f"Failed to download: {actual_model_name} - {e}", "red")
-                            self.logger.error(f"Failed to pull model {actual_model_name}: {e}")
+                            self._print_status("❌", f"Failed to prepare model: {actual_model_name} - {e}", "red")
+                            self.logger.error(f"Failed to prepare model {actual_model_name}: {e}")
                         
         except Exception as e:
             self.logger.error(f"Error ensuring default models: {e}")
+        
+        return started_models
     
     def _create_progress_bar(self, percent: int, width: int = 40) -> str:
         """Create a beautiful progress bar with safe ASCII characters."""
@@ -790,3 +836,165 @@ class OllamaManager:
         except Exception as e:
             self.logger.error(f"Failed to remove model {model_name}: {e}")
             return False
+    
+    async def start_model(self, model_name: str) -> bool:
+        """
+        Start/run a specific model (equivalent to 'ollama run').
+        This loads the model into memory and makes it ready for conversation.
+        
+        Args:
+            model_name: Name of the model to start
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            self._ensure_logger()
+            self.logger.info(f"Starting model: {model_name}")
+            
+            # Check if server is running first
+            if not await self.is_running():
+                self.logger.error("Ollama server is not running. Start server first with 'serve' command.")
+                return False
+            
+            ollama_host = self.ollama_config.get("host", "127.0.0.1")
+            ollama_port = self.ollama_config.get("port", 11434)
+            
+            # Start model by making a simple generation request
+            # This loads the model into memory (large models need more time)
+            timeout_seconds = 120.0  # 2 minutes for large models like 8B parameters
+            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+                response = await client.post(
+                    f"http://{ollama_host}:{ollama_port}/api/generate",
+                    json={
+                        "model": model_name,
+                        "prompt": "Hello",
+                        "stream": False
+                    }
+                )
+                response.raise_for_status()
+                
+                self.logger.info(f"Successfully started model: {model_name}")
+                self._print_status("✅", f"Model ready: {model_name}", "green")
+                return True
+                
+        except Exception as e:
+            # Handle timeout specifically for large models
+            if "ReadTimeout" in str(type(e).__name__) or "timeout" in str(e).lower():
+                timeout_msg = f"Model loading timeout after {timeout_seconds}s - {model_name} is likely a large model that needs more time to load"
+                self.logger.error(f"Failed to start model {model_name}: {timeout_msg}")
+                self._print_status("⏱️", f"Timeout starting: {model_name} - Large model may need more time", "yellow")
+                return False
+            
+            # Handle other exceptions
+            error_msg = str(e)
+            detailed_error = error_msg
+            
+            # Try to extract HTTP response details
+            if hasattr(e, 'response'):
+                try:
+                    response = e.response
+                    status_code = getattr(response, 'status_code', 'unknown')
+                    
+                    # Try different ways to get response text
+                    response_text = None
+                    if hasattr(response, 'text'):
+                        response_text = response.text
+                    elif hasattr(response, 'content'):
+                        response_text = response.content.decode('utf-8', errors='ignore')
+                    elif hasattr(response, 'json'):
+                        try:
+                            response_json = response.json()
+                            response_text = str(response_json)
+                        except:
+                            pass
+                    
+                    if response_text:
+                        detailed_error = f"HTTP {status_code}: {response_text}"
+                    else:
+                        detailed_error = f"HTTP {status_code}: {error_msg}"
+                        
+                except Exception as parse_error:
+                    detailed_error = f"{error_msg} (failed to parse response: {parse_error})"
+            
+            self.logger.error(f"Failed to start model {model_name}: {detailed_error}")
+            self._print_status("❌", f"Failed to start: {model_name} - {detailed_error[:150]}...", "red")
+            return False
+    
+    async def stop_model(self, model_name: str) -> bool:
+        """
+        Stop a running model to free memory.
+        
+        Args:
+            model_name: Name of the model to stop
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            self._ensure_logger()
+            self.logger.info(f"Stopping model: {model_name}")
+            
+            # Check if server is running first
+            if not await self.is_running():
+                self.logger.warning("Ollama server is not running")
+                return True  # Model is effectively stopped if server is down
+            
+            ollama_host = self.ollama_config.get("host", "127.0.0.1")
+            ollama_port = self.ollama_config.get("port", 11434)
+            
+            # Ollama doesn't have a direct "stop model" API
+            # Models are automatically unloaded after inactivity
+            # For now, we'll just verify the model exists and log the action
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # Check if model exists
+                response = await client.get(f"http://{ollama_host}:{ollama_port}/api/tags")
+                response.raise_for_status()
+                
+                models = response.json().get("models", [])
+                model_exists = any(model.get("name", "").startswith(model_name) for model in models)
+                
+                if model_exists:
+                    self.logger.info(f"Model {model_name} will be unloaded after inactivity")
+                    self._print_status("✅", f"Model stopped: {model_name}", "green")
+                    return True
+                else:
+                    self.logger.warning(f"Model {model_name} not found")
+                    return False
+                
+        except Exception as e:
+            self.logger.error(f"Failed to stop model {model_name}: {e}")
+            self._print_status("❌", f"Failed to stop: {model_name} - {e}", "red")
+            return False
+    
+    async def get_running_models(self) -> Dict:
+        """
+        Get list of currently loaded/running models.
+        
+        Returns:
+            Dict: Information about running models
+        """
+        try:
+            self._ensure_logger()
+            
+            if not await self.is_running():
+                return {"models": [], "error": "Ollama server not running"}
+            
+            ollama_host = self.ollama_config.get("host", "127.0.0.1")
+            ollama_port = self.ollama_config.get("port", 11434)
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # Get running processes (if available)
+                response = await client.get(f"http://{ollama_host}:{ollama_port}/api/ps")
+                
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    # Fallback to listing all available models
+                    response = await client.get(f"http://{ollama_host}:{ollama_port}/api/tags")
+                    response.raise_for_status()
+                    return response.json()
+                    
+        except Exception as e:
+            self.logger.error(f"Failed to get running models: {e}")
+            return {"models": [], "error": str(e)}

@@ -99,20 +99,21 @@ def ollama_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             subcommands=[
                 ("status", "Show Ollama status and running models"),
                 ("install", "Install Ollama binary if not present"),
-                ("start", "Start Ollama server"),
-                ("stop", "Stop Ollama server"),
-                ("restart", "Restart Ollama server"),
+                ("serve", "Start Ollama server daemon"),
+                ("shutdown", "Stop Ollama server daemon"),
+                ("start", "Start/run a specific model"),
+                ("stop", "Stop a specific model"),
+                ("restart", "Restart a specific model"),
                 ("logs", "View Ollama server logs"),
                 ("models", "Model management commands (list, pull, remove)")
             ],
             examples=[
                 "aico ollama status",
-                "aico ollama install",
-                "aico ollama start",
-                "aico ollama stop",
-                "aico ollama restart",
-                "aico ollama models list",
-                "aico ollama models pull llama3.2:3b"
+                "aico ollama serve",
+                "aico ollama start llama3.2:3b",
+                "aico ollama stop llama3.2:3b",
+                "aico ollama models pull hermes3:8b",
+                "aico ollama shutdown"
             ]
         )
         raise typer.Exit()
@@ -137,7 +138,7 @@ async def _status_async():
     
     try:
         # Get Ollama status from modelservice
-        async with get_modelservice_client() as client:
+        with get_modelservice_client() as client:
             status_data = await client.request("GET", "/ollama/status")
         
         # Create status table
@@ -190,7 +191,7 @@ async def _status_async():
 async def _show_running_models_async():
     """Show currently running models."""
     try:
-        async with get_modelservice_client() as client:
+        with get_modelservice_client() as client:
             models_data = await client.request("GET", "/ollama/models")
         
         if models_data.get("models"):
@@ -471,19 +472,20 @@ def models_remove(
     console.print()
 
 
-@app.command("start")
-def start():
-    """Start Ollama server."""
+@app.command("serve")
+def serve():
+    """Start Ollama server daemon."""
     console.print("\n✨ [bold cyan]Starting Ollama Server[/bold cyan]")
     
     try:
         with get_modelservice_client() as client:
-            response = client.post("/api/v1/ollama/start")
+            response = client.post("/api/v1/ollama/serve")
             response.raise_for_status()
             result = response.json()
         
         if result.get("success"):
             console.print(format_success("Ollama server started successfully"))
+            console.print("[dim]Server is now ready to run models[/dim]")
         else:
             console.print(format_error(f"Failed to start Ollama: {result.get('error', 'Unknown error')}"))
     
@@ -494,14 +496,14 @@ def start():
     console.print()
 
 
-@app.command("stop")
-def stop():
-    """Stop Ollama server."""
+@app.command("shutdown")
+def shutdown():
+    """Stop Ollama server daemon."""
     console.print("\n✨ [bold cyan]Stopping Ollama Server[/bold cyan]")
     
     try:
         with get_modelservice_client() as client:
-            response = client.post("/api/v1/ollama/stop")
+            response = client.post("/api/v1/ollama/shutdown")
             response.raise_for_status()
             result = response.json()
         
@@ -517,26 +519,84 @@ def stop():
     console.print()
 
 
-@app.command("restart")
-def restart():
-    """Restart Ollama server."""
-    console.print("\n✨ [bold cyan]Restarting Ollama Server[/bold cyan]")
+@app.command("start")
+def start(model_name: str = typer.Argument(..., help="Name of the model to start")):
+    """Start/run a specific model."""
+    console.print(f"\n✨ [bold cyan]Starting Model: {model_name}[/bold cyan]")
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    ) as progress:
+        
+        task = progress.add_task(f"Starting {model_name}...", total=None)
+        
+        try:
+            with get_modelservice_client() as client:
+                response = client.post("/api/v1/ollama/models/start", json={"name": model_name})
+                response.raise_for_status()
+                result = response.json()
+            
+            progress.update(task, description="Model started")
+            
+            if result.get("success"):
+                console.print(format_success(f"Model '{model_name}' started successfully"))
+                console.print("[dim]Model is now ready for conversation[/dim]")
+            else:
+                console.print(format_error(f"Failed to start model: {result.get('error', 'Unknown error')}"))
+        
+        except Exception as e:
+            progress.update(task, description="Start failed")
+            error_msg = _format_connection_error(str(e), "lifecycle")
+            console.print(format_error(error_msg))
+    
+    console.print()
+
+
+@app.command("stop")
+def stop(model_name: str = typer.Argument(..., help="Name of the model to stop")):
+    """Stop a specific model."""
+    console.print(f"\n✨ [bold cyan]Stopping Model: {model_name}[/bold cyan]")
     
     try:
         with get_modelservice_client() as client:
-            # Stop first
-            response = client.post("/api/v1/ollama/stop")
-            response.raise_for_status()
-            
-            # Start again
-            response = client.post("/api/v1/ollama/start")
+            response = client.post("/api/v1/ollama/models/stop", json={"name": model_name})
             response.raise_for_status()
             result = response.json()
         
         if result.get("success"):
-            console.print(format_success("Ollama server restarted successfully"))
+            console.print(format_success(f"Model '{model_name}' stopped successfully"))
         else:
-            console.print(format_error(f"Failed to restart Ollama: {result.get('error', 'Unknown error')}"))
+            console.print(format_error(f"Failed to stop model: {result.get('error', 'Unknown error')}"))
+    
+    except Exception as e:
+        error_msg = _format_connection_error(str(e), "lifecycle")
+        console.print(format_error(error_msg))
+    
+    console.print()
+
+
+@app.command("restart")
+def restart(model_name: str = typer.Argument(..., help="Name of the model to restart")):
+    """Restart a specific model."""
+    console.print(f"\n✨ [bold cyan]Restarting Model: {model_name}[/bold cyan]")
+    
+    try:
+        with get_modelservice_client() as client:
+            # Stop first
+            response = client.post("/api/v1/ollama/models/stop", json={"name": model_name})
+            response.raise_for_status()
+            
+            # Start again
+            response = client.post("/api/v1/ollama/models/start", json={"name": model_name})
+            response.raise_for_status()
+            result = response.json()
+        
+        if result.get("success"):
+            console.print(format_success(f"Model '{model_name}' restarted successfully"))
+        else:
+            console.print(format_error(f"Failed to restart model: {result.get('error', 'Unknown error')}"))
     
     except Exception as e:
         error_msg = _format_connection_error(str(e), "lifecycle")

@@ -85,48 +85,72 @@ async def lifespan(app: FastAPI):
         process_manager = ProcessManager("modelservice")
         process_manager.write_pid(os.getpid())
 
+    # Initialize logger for startup messages
+    from aico.core.logging import AICOLogger
+    logger = AICOLogger("modelservice", "startup", cfg)
+    
     # Startup: Ensure Ollama is installed and start it
-    print("\n" + "=" * 60)
-    print("[*] AICO Modelservice")
-    print("=" * 60)
-    print(f"[>] Server: http://{host}:{port}")
-    print(f"[>] Environment: {env}")
-    print(f"[>] Version: v{__version__}")
-    print(f"[>] Encryption: {'Enabled (XChaCha20-Poly1305)' if _encryption_enabled else 'Disabled'}")
+    startup_msg = "\n" + "=" * 60 + "\n[*] AICO Modelservice\n" + "=" * 60
+    print(startup_msg)
+    logger.info("AICO Modelservice starting up")
+    
+    server_info = f"[>] Server: http://{host}:{port}\n[>] Environment: {env}\n[>] Version: v{__version__}\n[>] Encryption: {'Enabled (XChaCha20-Poly1305)' if _encryption_enabled else 'Disabled'}"
+    print(server_info)
+    logger.info(f"Server configuration - Host: {host}, Port: {port}, Environment: {env}, Version: {__version__}, Encryption: {'Enabled' if _encryption_enabled else 'Disabled'}")
+    
     print("=" * 60)
     
     # Initialize Ollama with beautiful status messages
     print("🔧 Initializing Ollama")
+    logger.info("Starting Ollama initialization")
     
     try:
         if await ollama_manager.ensure_installed():
             print("✅ Ollama binary ready")
+            logger.info("Ollama binary installation verified")
             
             if await ollama_manager.start_ollama():
                 print("✅ Ollama server started")
+                logger.info("Ollama server started successfully")
                 
                 ollama_status = await ollama_manager.get_status()
                 if ollama_status:
                     version = ollama_status.get('version', 'unknown')
                     print(f"✅ Ollama v{version} ready at http://127.0.0.1:11434")
+                    logger.info(f"Ollama v{version} ready at http://127.0.0.1:11434")
                     
-                    # Auto-pull default models
-                    await ollama_manager._ensure_default_models()
+                    # Auto-pull and start default models
+                    started_models = await ollama_manager._ensure_default_models()
+                    
+                    # Report started models
+                    if started_models:
+                        print(f"✅ Started {len(started_models)} model(s): {', '.join(started_models)}")
+                        logger.info(f"Started {len(started_models)} model(s): {', '.join(started_models)}")
+                    else:
+                        print("ℹ️ No models configured for auto-start")
+                        logger.info("No models configured for auto-start")
                 else:
                     print("⚠️ Could not verify Ollama status")
+                    logger.warning("Could not verify Ollama status")
             else:
                 print("❌ Ollama server failed to start")
+                logger.error("Ollama server failed to start")
         else:
             print("❌ Ollama installation failed")
+            logger.error("Ollama installation failed")
                 
     except Exception as e:
         print(f"❌ Ollama initialization error: {e}")
+        logger.error(f"Ollama initialization error: {e}")
         # Log the full exception for debugging
         import traceback
-        print(f"Full traceback:\n{traceback.format_exc()}")
+        full_traceback = traceback.format_exc()
+        print(f"Full traceback:\n{full_traceback}")
+        logger.error(f"Full traceback: {full_traceback}")
     
     print("=" * 60)
     print("[+] Starting server... (Press Ctrl+C to stop)\n")
+    logger.info("Modelservice startup complete, server starting")
 
     # Store ollama_manager in app state for API access
     app.state.ollama_manager = ollama_manager
@@ -135,19 +159,24 @@ async def lifespan(app: FastAPI):
         yield
     except (KeyboardInterrupt, SystemExit):
         print("\n[-] Graceful shutdown initiated...")
+        logger.info("Graceful shutdown initiated")
     finally:
         print("[~] Stopping services...")
+        logger.info("Stopping services")
         
         # Stop Ollama gracefully
         try:
             await ollama_manager.stop_ollama()
             print("[+] Ollama stopped")
+            logger.info("Ollama stopped successfully")
         except Exception as e:
             print(f"[!] Error stopping Ollama: {e}")
+            logger.error(f"Error stopping Ollama: {e}")
             
         if process_manager:
             process_manager.cleanup_pid_files()
         print("[+] Shutdown complete.")
+        logger.info("Shutdown complete")
 
 
 app = FastAPI(lifespan=lifespan, title="AICO Modelservice", version=__version__)

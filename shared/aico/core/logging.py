@@ -178,8 +178,30 @@ class AICOLogger:
             timestamp = datetime.fromtimestamp(log_entry.timestamp.seconds + log_entry.timestamp.nanos / 1e9)
             timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
             
-            print(f"[{timestamp_str}] {log_entry.level} "
-                  f"{log_entry.subsystem}.{log_entry.module}: {log_entry.message}")
+            # Format main log line
+            main_line = f"{timestamp_str} {log_entry.level} {log_entry.subsystem}.{log_entry.module} {log_entry.message}"
+            print(main_line)
+            
+            # Format extra data with proper indentation and no truncation
+            if hasattr(log_entry, 'extra') and log_entry.extra:
+                import json
+                try:
+                    # Parse extra data if it's a JSON string
+                    if isinstance(log_entry.extra, str):
+                        extra_data = json.loads(log_entry.extra)
+                    else:
+                        extra_data = log_entry.extra
+                    
+                    # Format each key-value pair with proper indentation
+                    for key, value in extra_data.items():
+                        if isinstance(value, str) and len(value) > 80:
+                            # For long strings, use multi-line format
+                            print(f"    ├─ {key}: {value}")
+                        else:
+                            print(f"    ├─ {key}: {value}")
+                except (json.JSONDecodeError, AttributeError, TypeError):
+                    # Fallback for non-JSON extra data
+                    print(f"    ├─ extra: {log_entry.extra}")
         
         # Layer 2: Temporary file (if configured)
         if self.config.get("logging.bootstrap.fallback_temp_file", False):
