@@ -522,29 +522,30 @@ class OllamaManager:
             
             # Filter models that need to be downloaded
             models_to_download = []
-            for model_name, model_config in default_models.items():
+            for model_key, model_config in default_models.items():
                 if model_config.get("auto_pull", False):
-                    if not await self._is_model_available(model_name):
-                        models_to_download.append((model_name, model_config))
+                    actual_model_name = model_config.get("name", model_key)
+                    if not await self._is_model_available(actual_model_name):
+                        models_to_download.append((actual_model_name, model_config))
                     else:
-                        console.print(f"[green]✓[/green] Model {model_name} already available")
+                        console.print(f"[green]✓[/green] Model {actual_model_name} already available")
             
             if not models_to_download:
                 console.print("[green]✓[/green] All configured models are already available")
                 return
             
             # Download models without rich progress to avoid display conflicts
-            for model_name, model_config in models_to_download:
+            for actual_model_name, model_config in models_to_download:
                 model_size = model_config.get("size", "unknown size")
-                print(f"→ Starting download: {model_name} ({model_size})")
+                print(f"→ Starting download: {actual_model_name} ({model_size})")
                 
                 try:
-                    await self._pull_model_simple(model_name)
-                    print(f"✓ Model ready: {model_name}")
-                    self.logger.info(f"Successfully pulled model: {model_name}")
+                    await self._pull_model_simple(actual_model_name)
+                    print(f"✓ Model ready: {actual_model_name}")
+                    self.logger.info(f"Successfully pulled model: {actual_model_name}")
                 except Exception as e:
-                    print(f"✗ Failed to download: {model_name} - {e}")
-                    self.logger.error(f"Failed to pull model {model_name}: {e}")
+                    print(f"✗ Failed to download: {actual_model_name} - {e}")
+                    self.logger.error(f"Failed to pull model {actual_model_name}: {e}")
                         
         except Exception as e:
             self.logger.error(f"Error ensuring default models: {e}")
