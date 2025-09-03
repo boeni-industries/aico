@@ -108,9 +108,14 @@ class SecureTransportChannel:
         challenge = random(32)
         timestamp = time.time()
         
+        # Generate ephemeral X25519 keypair for session
+        self.session_private_key = PrivateKey.generate()
+        session_public_key = self.session_private_key.public_key
+        
         message = HandshakeMessage(
             component=self.identity.component_name,
-            public_key=base64.b64encode(self.identity.public_key_bytes()).decode(),
+            public_key=base64.b64encode(bytes(session_public_key)).decode(),
+            identity_key=base64.b64encode(bytes(self.identity.verify_key)).decode(),
             timestamp=timestamp,
             challenge=base64.b64encode(challenge).decode()
         )
@@ -177,6 +182,7 @@ class SecureTransportChannel:
             response = HandshakeMessage(
                 component=self.identity.component_name,
                 public_key=base64.b64encode(bytes(session_public_key)).decode(),
+                identity_key=base64.b64encode(bytes(self.identity.verify_key)).decode(),
                 timestamp=time.time(),
                 challenge=base64.b64encode(response_challenge).decode()
             )
@@ -204,12 +210,15 @@ class SecureTransportChannel:
         try:
             response = HandshakeMessage.from_dict(response_data)
             
+            # Store response for session key establishment
+            self.peer_handshake_response = response
+            
             # Verify timestamp freshness
             if abs(time.time() - response.timestamp) > self.handshake_timeout:
                 raise EncryptionError("Handshake response timestamp too old")
             
-            # Verify signature
-            peer_verify_key = VerifyKey(base64.b64decode(response.public_key))
+            # Verify signature using identity key (Ed25519), not public key (X25519)
+            peer_verify_key = VerifyKey(base64.b64decode(response.identity_key))
             challenge = base64.b64decode(response.challenge)
             signature = base64.b64decode(response.signature)
             
@@ -249,12 +258,12 @@ class SecureTransportChannel:
             if not hasattr(self, 'session_private_key'):
                 raise EncryptionError("No session private key - handshake not completed")
             
-            # Get peer's X25519 public key from handshake request
+            # Get peer's X25519 public key from handshake response
             if hasattr(self, 'peer_session_key'):
                 peer_public_key = PublicKey(self.peer_session_key)
             else:
-                # Fallback for old format
-                peer_public_key = PublicKey(self.peer_identity.public_key_bytes())
+                # Use the public_key from handshake response (X25519 session key)
+                peer_public_key = PublicKey(base64.b64decode(self.peer_handshake_response.public_key))
             
             # Create Box for encryption using the consistent keypair
             self.session_box = Box(self.session_private_key, peer_public_key)

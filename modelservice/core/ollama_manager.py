@@ -51,7 +51,13 @@ class OllamaManager:
         # Load configuration
         self.config_manager = ConfigurationManager()
         self.config_manager.initialize()
-        self.ollama_config = self.config_manager.get("modelservice", {}).get("ollama", {})
+        
+        # Debug: Check what's actually in the config
+        full_config = self.config_manager.config_cache
+        
+        # The configuration is in core.yaml, loaded under the 'core' key
+        # Access it as: core.modelservice.ollama
+        self.ollama_config = self.config_manager.get("core.modelservice.ollama", {})
         self.logs_dir = self.aico_root / "logs"
         self.ollama_process: Optional[subprocess.Popen] = None
         
@@ -182,23 +188,22 @@ class OllamaManager:
     async def _get_current_version(self) -> Optional[str]:
         """Get currently installed Ollama version."""
         try:
-            result = await asyncio.create_subprocess_exec(
-                str(self.ollama_binary), "--version",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+            import subprocess
+            result = subprocess.run(
+                [str(self.ollama_binary), "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10
             )
-            stdout, _ = await result.communicate()
-            
-            if result.returncode == 0:
-                # Parse version from output like "ollama version is 0.1.XX"
-                version_line = stdout.decode().strip()
+            if result.returncode == 0 and result.stdout:
+                # Parse version from output like "ollama version is 0.11.8"
+                version_line = result.stdout.strip()
                 if "version is" in version_line:
                     return version_line.split("version is")[-1].strip()
-                    
-        except Exception as e:
-            self.logger.debug(f"Could not get current version: {e}")
-            
-        return None
+                return version_line
+            return None
+        except Exception:
+            return None
     
     async def _get_latest_version(self) -> Optional[str]:
         """Get latest Ollama version from GitHub releases."""
@@ -354,7 +359,8 @@ class OllamaManager:
                 return False
             
             if await self.is_running():
-                self.logger.info("Ollama is already running")
+                self.logger.info("✓ Ollama server already running - skipping startup")
+                print("    ✓ Found existing Ollama server")
                 return True
             
             self.logger.info("Starting Ollama server...")
@@ -500,54 +506,138 @@ class OllamaManager:
             self._ensure_logger()
             default_models = self.ollama_config.get("default_models", {})
             
-            # Import rich components for model downloading
+            # Debug configuration loading
+            self.logger.debug(f"Ollama config keys: {list(self.ollama_config.keys())}")
+            self.logger.debug(f"Default models config: {default_models}")
+            
+            if not default_models:
+                self.logger.info("No models configured for auto-pull")
+                return
+            
             from rich.console import Console
-            from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+            from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
             from rich.panel import Panel
             
             console = Console()
-            models_to_pull = [(role, config) for role, config in default_models.items() 
-                             if config.get("auto_pull", False)]
             
-            if not models_to_pull:
-                self.logger.info("No models configured for auto-pull")
+            # Filter models that need to be downloaded
+            models_to_download = []
+            for model_name, model_config in default_models.items():
+                if model_config.get("auto_pull", False):
+                    if not await self._is_model_available(model_name):
+                        models_to_download.append((model_name, model_config))
+                    else:
+                        console.print(f"[green]✓[/green] Model {model_name} already available")
+            
+            if not models_to_download:
+                console.print("[green]✓[/green] All configured models are already available")
                 return
-                
-            console.print(Panel.fit("[bold yellow]Downloading Default Models[/bold yellow]", border_style="yellow"))
             
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                console=console,
-                transient=False
-            ) as progress:
+            # Download models without rich progress to avoid display conflicts
+            for model_name, model_config in models_to_download:
+                model_size = model_config.get("size", "unknown size")
+                print(f"→ Starting download: {model_name} ({model_size})")
                 
-                for role, model_config in models_to_pull:
-                    model_name = model_config.get("name")
-                    if model_name:
-                        self.logger.info(f"Auto-pulling default {role} model: {model_name}")
+                try:
+                    await self._pull_model_simple(model_name)
+                    print(f"✓ Model ready: {model_name}")
+                    self.logger.info(f"Successfully pulled model: {model_name}")
+                except Exception as e:
+                    print(f"✗ Failed to download: {model_name} - {e}")
+                    self.logger.error(f"Failed to pull model {model_name}: {e}")
                         
-                        # Create task for this model
-                        task = progress.add_task(f"Downloading {role} model: {model_name}", total=100)
-                        progress.update(task, advance=10)
-                        
-                        success = await self.pull_model(model_name, progress_callback=lambda p: progress.update(task, completed=p))
-                        
-                        if success:
-                            self.logger.info(f"Successfully pulled {model_name}")
-                            progress.update(task, completed=100, description=f"✓ Downloaded {model_name}")
-                            console.print(f"[green]✓[/green] Model ready: {model_name}")
-                        else:
-                            self.logger.warning(f"Failed to pull {model_name}")
-                            progress.update(task, completed=100, description=f"✗ Failed: {model_name}")
-                            console.print(f"[red]✗[/red] Failed to download: {model_name}")
-                            
         except Exception as e:
             self.logger.error(f"Error ensuring default models: {e}")
-            # Fail loudly as per guidelines
-            raise RuntimeError(f"Failed to ensure default models: {e}") from e
+    
+    async def _pull_model_simple(self, model_name: str) -> None:
+        """Pull a model without rich progress display."""
+        ollama_host = self.ollama_config.get("host", "127.0.0.1")
+        ollama_port = self.ollama_config.get("port", 11434)
+        
+        import httpx
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            try:
+                response = await client.post(
+                    f"http://{ollama_host}:{ollama_port}/api/pull",
+                    json={"name": model_name, "stream": False}
+                )
+                
+                if response.status_code != 200:
+                    error_text = response.text
+                    self.logger.error(f"Ollama pull failed for {model_name}: HTTP {response.status_code} - {error_text}")
+                    raise Exception(f"HTTP {response.status_code}: {error_text}")
+                
+                result = response.json()
+                self.logger.debug(f"Ollama pull response for {model_name}: {result}")
+                
+            except httpx.RequestError as e:
+                self.logger.error(f"Network error pulling {model_name}: {e}")
+                raise Exception(f"Network error: {e}")
+            except Exception as e:
+                self.logger.error(f"Unexpected error pulling {model_name}: {e}")
+                raise
+                            
+    
+    async def _is_model_available(self, model_name: str) -> bool:
+        """Check if a model is already downloaded."""
+        try:
+            ollama_host = self.ollama_config.get("host", "127.0.0.1")
+            ollama_port = self.ollama_config.get("port", 11434)
+            
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(f"http://{ollama_host}:{ollama_port}/api/tags")
+                if response.status_code == 200:
+                    models = response.json().get("models", [])
+                    return any(model.get("name", "").startswith(model_name) for model in models)
+                return False
+        except Exception:
+            return False
+    
+    async def _pull_model_with_progress(self, model_name: str, progress, task_id) -> None:
+        """Pull a model with real-time progress updates."""
+        ollama_host = self.ollama_config.get("host", "127.0.0.1")
+        ollama_port = self.ollama_config.get("port", 11434)
+        
+        import httpx
+        import json
+        
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            async with client.stream(
+                "POST",
+                f"http://{ollama_host}:{ollama_port}/api/pull",
+                json={"name": model_name, "stream": True}
+            ) as response:
+                response.raise_for_status()
+                
+                async for line in response.aiter_lines():
+                    if line.strip():
+                        try:
+                            data = json.loads(line)
+                            
+                            if "total" in data and "completed" in data:
+                                total = data["total"]
+                                completed = data["completed"]
+                                
+                                if total > 0:
+                                    percent = int((completed / total) * 100)
+                                    progress.update(task_id, completed=percent)
+                                    
+                                    # Update description with download info
+                                    if "status" in data:
+                                        status = data["status"]
+                                        size_mb = total / (1024 * 1024)
+                                        progress.update(task_id, description=f"{status} {model_name} ({size_mb:.1f}MB)")
+                            
+                            elif "status" in data:
+                                # Handle status updates without progress
+                                status = data["status"]
+                                if "error" in data:
+                                    raise Exception(f"{status}: {data['error']}")
+                                progress.update(task_id, description=f"{status} {model_name}")
+                                
+                        except json.JSONDecodeError:
+                            continue
     
     async def list_models(self) -> Dict:
         """
@@ -648,9 +738,11 @@ class OllamaManager:
         try:
             self.logger.info(f"Removing model: {model_name}")
             
+            ollama_url = self.ollama_config.get("url", "http://127.0.0.1:11434")
+            
             async with httpx.AsyncClient() as client:
                 response = await client.delete(
-                    "http://127.0.0.1:11434/api/delete",
+                    f"{ollama_url}/api/delete",
                     json={"name": model_name}
                 )
                 response.raise_for_status()

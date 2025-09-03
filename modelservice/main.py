@@ -111,7 +111,7 @@ async def lifespan(app: FastAPI):
             BarColumn(),
             TaskProgressColumn(),
             console=console,
-            transient=False
+            transient=True
         ) as progress:
             
             # Check installation

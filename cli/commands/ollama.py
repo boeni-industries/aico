@@ -342,9 +342,7 @@ def models_list():
     
     try:
         with get_modelservice_client() as client:
-            response = client.get("/api/v1/ollama/models")
-            response.raise_for_status()
-            models_data = response.json()
+            models_data = client.get("/ollama/models")
         
         if models_data.get("models"):
             table = Table(

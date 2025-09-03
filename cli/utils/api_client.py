@@ -8,7 +8,7 @@ Uses the same transport security patterns as backend-modelservice communication.
 import httpx
 import asyncio
 from contextlib import asynccontextmanager, contextmanager
-from typing import Dict, Any, Optional, AsyncGenerator, Generator
+from typing import Dict, Any, Optional, Generator
 
 from aico.core.config import ConfigurationManager
 from aico.security.key_manager import AICOKeyManager
@@ -23,11 +23,11 @@ class CLIModelServiceClient:
         self.config_manager = ConfigurationManager()
         self.config_manager.initialize()
         
-        # Get modelservice configuration
-        modelservice_config = self.config_manager.get("modelservice", {})
-        rest_config = modelservice_config.get("rest", {})
+        # Get API Gateway configuration (handshake endpoint is on gateway, not modelservice)
+        gateway_config = self.config_manager.get("core.api_gateway", {})
+        rest_config = gateway_config.get("rest", {})
         host = rest_config.get("host", "127.0.0.1")
-        port = rest_config.get("port", 8773)
+        port = rest_config.get("port", 8771)
         self.base_url = f"http://{host}:{port}"
         
         # Initialize encryption
@@ -54,17 +54,28 @@ class CLIModelServiceClient:
             # Perform handshake with modelservice
             handshake_request = self.secure_channel.create_handshake_request()
             
+            # Wrap handshake request in expected format
+            handshake_payload = {
+                "handshake_request": handshake_request
+            }
+            
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     f"{self.base_url}/api/v1/handshake",
-                    json=handshake_request
+                    json=handshake_payload
                 )
                 
                 if response.status_code != 200:
                     raise EncryptionError(f"Modelservice handshake failed: HTTP {response.status_code} - {response.text}")
                 
-                handshake_response = response.json()
-                success = self.secure_channel.process_handshake_response(handshake_response)
+                response_data = response.json()
+                
+                # Extract handshake response from API Gateway wrapper
+                if response_data.get("status") == "session_established":
+                    handshake_response = response_data.get("handshake_response", {})
+                    success = self.secure_channel.process_handshake_response(handshake_response)
+                else:
+                    raise EncryptionError(f"Handshake failed: {response_data.get('error', 'Unknown error')}")
                 
                 if not success:
                     raise EncryptionError("Modelservice handshake response processing failed")
@@ -85,18 +96,37 @@ class CLIModelServiceClient:
         
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                # Encrypt request payload
+                # Create client_id from identity key
+                identity = self.identity_manager.get_component_identity("cli")
+                client_id = bytes(identity.verify_key).hex()[:16]
+                
+                # Prepare headers
+                headers = {
+                    "X-Client-ID": client_id,
+                    "Content-Type": "application/json"
+                }
+                
+                # Encrypt request payload if provided
                 if data:
                     encrypted_payload = self.secure_channel.encrypt_json_payload(data)
-                    request_data = {"encrypted_payload": encrypted_payload}
+                    request_data = {
+                        "encrypted": True,
+                        "payload": encrypted_payload,
+                        "client_id": client_id
+                    }
                 else:
-                    request_data = None
+                    # For GET requests, still need to indicate encryption
+                    request_data = {
+                        "encrypted": True,
+                        "client_id": client_id
+                    }
                 
                 # Make HTTP request
                 if method.upper() == "GET":
-                    response = await client.get(url)
+                    # GET requests can't have JSON body, use query params or headers
+                    response = await client.get(url, headers=headers)
                 elif method.upper() == "POST":
-                    response = await client.post(url, json=request_data)
+                    response = await client.post(url, headers=headers, json=request_data)
                 else:
                     raise ValueError(f"Unsupported HTTP method: {method}")
                 
@@ -116,14 +146,26 @@ class CLIModelServiceClient:
                     
         except httpx.RequestError as e:
             raise EncryptionError(f"Network error during {method} {endpoint}: {e}") from e
+    
+    def get(self, endpoint: str):
+        """Synchronous GET request - returns JSON data directly."""
+        return asyncio.run(self.request("GET", endpoint))
+    
+    def post(self, endpoint: str, json: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None):
+        """Synchronous POST request - returns JSON data directly.""" 
+        return asyncio.run(self.request("POST", endpoint, json))
+    
+    def delete(self, endpoint: str):
+        """Synchronous DELETE request - returns JSON data directly."""
+        return asyncio.run(self.request("DELETE", endpoint))
 
 
 # Global client instance
 _cli_modelservice_client: Optional[CLIModelServiceClient] = None
 
 
-@asynccontextmanager
-async def get_modelservice_client() -> AsyncGenerator[CLIModelServiceClient, None]:
+@contextmanager
+def get_modelservice_client() -> Generator[CLIModelServiceClient, None, None]:
     """Get encrypted modelservice client for CLI commands."""
     global _cli_modelservice_client
     
