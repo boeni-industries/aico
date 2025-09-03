@@ -26,6 +26,21 @@ from aico.security.exceptions import EncryptionError
 console = Console()
 
 
+def _format_model_size(size_bytes: int) -> str:
+    """Format size in bytes to human readable format."""
+    if size_bytes == 0:
+        return "0 B"
+    
+    size_names = ["B", "KB", "MB", "GB", "TB"]
+    i = 0
+    size = float(size_bytes)
+    while size >= 1024 and i < len(size_names) - 1:
+        size /= 1024.0
+        i += 1
+    
+    return f"{size:.1f} {size_names[i]}"
+
+
 def _format_connection_error(error_str: str, command_context: str = "general") -> str:
     """Format connection errors to be more helpful and platform-independent."""
     error_lower = error_str.lower()
@@ -195,8 +210,13 @@ async def _show_running_models_async():
             
             for model in models_data["models"]:
                 name = model.get("name", "unknown")
-                size = model.get("size", "N/A")
-                modified = model.get("modified_at", "N/A")
+                # Convert size to string - handle both integer bytes and string formats
+                size_raw = model.get("size", 0)
+                if isinstance(size_raw, int):
+                    size = _format_model_size(size_raw)
+                else:
+                    size = str(size_raw) if size_raw else "N/A"
+                modified = str(model.get("modified_at", "N/A"))
                 models_table.add_row(name, size, modified)
             
             console.print(models_table)
@@ -360,8 +380,13 @@ def models_list():
             
             for model in models_data["models"]:
                 name = model.get("name", "unknown")
-                size = model.get("size", "N/A")
-                modified = model.get("modified_at", "N/A")
+                # Convert size to string - handle both integer bytes and string formats
+                size_raw = model.get("size", 0)
+                if isinstance(size_raw, int):
+                    size = _format_model_size(size_raw)
+                else:
+                    size = str(size_raw) if size_raw else "N/A"
+                modified = str(model.get("modified_at", "N/A"))
                 
                 # Determine status
                 status = "[green]Ready[/green]"

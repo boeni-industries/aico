@@ -551,34 +551,78 @@ class OllamaManager:
             self.logger.error(f"Error ensuring default models: {e}")
     
     async def _pull_model_simple(self, model_name: str) -> None:
-        """Pull a model without rich progress display."""
+        """Pull a model with real-time streaming progress."""
         ollama_host = self.ollama_config.get("host", "127.0.0.1")
         ollama_port = self.ollama_config.get("port", 11434)
         
         import httpx
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        import json
+        
+        async with httpx.AsyncClient(timeout=600.0) as client:
             try:
-                response = await client.post(
+                # Use streaming to get real-time progress
+                async with client.stream(
+                    "POST",
                     f"http://{ollama_host}:{ollama_port}/api/pull",
-                    json={"name": model_name, "stream": False}
-                )
-                
-                if response.status_code != 200:
-                    error_text = response.text
-                    self.logger.error(f"Ollama pull failed for {model_name}: HTTP {response.status_code} - {error_text}")
-                    raise Exception(f"HTTP {response.status_code}: {error_text}")
-                
-                result = response.json()
-                self.logger.debug(f"Ollama pull response for {model_name}: {result}")
-                
-            except httpx.RequestError as e:
-                self.logger.error(f"Network error pulling {model_name}: {e}")
-                raise Exception(f"Network error: {e}")
+                    json={"name": model_name, "stream": True}
+                ) as response:
+                    
+                    if response.status_code != 200:
+                        error_text = await response.aread()
+                        self.logger.error(f"Ollama pull failed for {model_name}: HTTP {response.status_code} - {error_text.decode()}")
+                        raise Exception(f"HTTP {response.status_code}: {error_text.decode()}")
+                    
+                    total_size = None
+                    downloaded = 0
+                    last_percent = -1
+                    
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
+                            
+                        try:
+                            progress_data = json.loads(line)
+                            status = progress_data.get("status", "")
+                            
+                            # Extract size information
+                            if "total" in progress_data and total_size is None:
+                                total_size = progress_data["total"]
+                                size_mb = total_size / (1024 * 1024)
+                                print(f"📦 Model size: {size_mb:.1f} MB")
+                            
+                            # Show progress for downloading
+                            if "completed" in progress_data and total_size:
+                                downloaded = progress_data["completed"]
+                                percent = int((downloaded / total_size) * 100)
+                                
+                                # Only print progress every 5% to avoid spam
+                                if percent != last_percent and percent % 5 == 0:
+                                    downloaded_mb = downloaded / (1024 * 1024)
+                                    total_mb = total_size / (1024 * 1024)
+                                    print(f"⬇️  Downloading: {percent}% ({downloaded_mb:.1f}/{total_mb:.1f} MB)")
+                                    last_percent = percent
+                            
+                            # Show other status updates
+                            elif status:
+                                if "pulling" in status.lower():
+                                    print(f"🔄 {status}")
+                                elif "verifying" in status.lower():
+                                    print(f"✅ {status}")
+                                elif "success" in status.lower():
+                                    print(f"✅ Download complete!")
+                                elif status not in ["", "downloading"]:
+                                    print(f"ℹ️  {status}")
+                                
+                        except json.JSONDecodeError:
+                            continue
+                    
+            except httpx.TimeoutException:
+                self.logger.error(f"Timeout pulling model {model_name}")
+                raise Exception("Request timeout")
             except Exception as e:
                 self.logger.error(f"Unexpected error pulling {model_name}: {e}")
                 raise
-                            
-    
+
     async def _is_model_available(self, model_name: str) -> bool:
         """Check if a model is already downloaded."""
         try:
