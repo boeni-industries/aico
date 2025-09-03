@@ -73,8 +73,14 @@ class OllamaManager:
     def _ensure_logger(self):
         """Ensure logger is initialized (lazy initialization)."""
         if self.logger is None:
-            from aico.core.logging import get_logger
-            self.logger = get_logger("externals", "ollama")
+            try:
+                from shared.aico.core.logging import get_logger
+                self.logger = get_logger("externals", "ollama")
+            except RuntimeError:
+                # Logging not initialized yet, use basic Python logger as fallback
+                import logging
+                self.logger = logging.getLogger("ollama_manager")
+                self.logger.setLevel(logging.INFO)
 
     def _get_ollama_binary_path(self) -> Path:
         """Get the expected path to the Ollama binary for this platform."""
@@ -649,6 +655,7 @@ class OllamaManager:
     
     async def _is_model_running(self, model_name: str) -> bool:
         """Check if a specific model is loaded and running by querying the Ollama server."""
+        self._ensure_logger()
         import time
         start_time = time.time()
         try:

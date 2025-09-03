@@ -220,7 +220,9 @@ async def create_completion(
     config: dict = Depends(get_modelservice_config),
     logging_client: APIGatewayLoggingClient = Depends(get_logging_client)
 ) -> CompletionResponse:
-    """Generate text completion using Ollama."""
+    """Generate text completion using the message processor."""
+    from ..core.message_processor import MessageProcessor, ProcessingContext
+    
     ollama_url = config.get("ollama_url", "http://localhost:11434")
     
     # Log completion request
@@ -228,69 +230,30 @@ async def create_completion(
     await service_logger._log_async("INFO", f"Completion request received for model: {request.model}", 
                                    extra={"model": request.model, "prompt_length": len(request.prompt)})
     
-    # Prepare Ollama request payload
-    ollama_payload = {
-        "model": request.model,
-        "prompt": request.prompt,
-        "stream": False,  # Non-streaming for now
-        "options": {}
-    }
-    
-    # Map parameters to Ollama options
-    if request.parameters:
-        params = request.parameters
-        if params.max_tokens is not None:
-            ollama_payload["options"]["num_predict"] = params.max_tokens
-        if params.temperature is not None:
-            ollama_payload["options"]["temperature"] = params.temperature
-        if params.top_p is not None:
-            ollama_payload["options"]["top_p"] = params.top_p
-        if params.top_k is not None:
-            ollama_payload["options"]["top_k"] = params.top_k
-        if params.repeat_penalty is not None:
-            ollama_payload["options"]["repeat_penalty"] = params.repeat_penalty
-        if params.stop is not None:
-            ollama_payload["options"]["stop"] = params.stop
-    
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{ollama_url}/api/generate",
-                json=ollama_payload
-            )
-            
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Ollama error: {response.text}"
-                )
-            
-            ollama_response = response.json()
-            
-            # Extract completion text
-            completion_text = ollama_response.get("response", "")
-            
-            # Calculate token usage (approximate)
-            prompt_tokens = len(request.prompt.split())
-            completion_tokens = len(completion_text.split())
-            
-            usage = UsageStats(
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens
-            )
-            
-            return CompletionResponse(
-                completion=completion_text,
-                model=request.model,
-                usage=usage,
-                finish_reason="stop",
-                created=int(time.time())
-            )
-            
-    except httpx.RequestError as e:
+        # Create message processor with proper configuration
+        processor = MessageProcessor()
+        
+        # Create processing context
+        context = ProcessingContext(
+            request_id=f"req_{int(time.time())}",
+            metadata={"endpoint": "completions"}
+        )
+        
+        # Process the completion request
+        response = await processor.process_completion(request, context)
+        
+        return response
+        
+    except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Failed to connect to Ollama: {str(e)}"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(e)
         )
     except Exception as e:
         raise HTTPException(
