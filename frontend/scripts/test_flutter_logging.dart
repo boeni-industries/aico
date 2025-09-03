@@ -1,9 +1,10 @@
 import 'dart:io';
+
+import 'package:aico_frontend/core/services/encryption_service.dart';
+import 'package:aico_frontend/core/services/unified_api_client.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:aico_frontend/core/services/encryption_service.dart';
-import 'package:aico_frontend/core/services/unified_api_client.dart';
 
 /// Test script to verify Flutter logging integration with encryption
 /// This simulates the logs that would be sent by the Flutter app

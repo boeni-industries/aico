@@ -1,11 +1,11 @@
 import 'dart:io';
 
 import 'package:aico_frontend/core/di/service_locator.dart';
-import 'package:aico_frontend/core/logging/logging_module.dart';
 import 'package:aico_frontend/core/logging/logging.dart';
-import 'package:aico_frontend/core/topics/aico_topics.dart';
+import 'package:aico_frontend/core/logging/logging_module.dart';
 import 'package:aico_frontend/core/theme/aico_theme.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
+import 'package:aico_frontend/core/topics/aico_topics.dart';
 import 'package:aico_frontend/networking/repositories/user_repository.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:aico_frontend/presentation/blocs/auth/auth_bloc.dart';
