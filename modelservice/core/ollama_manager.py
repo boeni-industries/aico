@@ -557,12 +557,32 @@ class OllamaManager:
                             if model_config.get("auto_start", True):  # Default to auto-start
                                 # Estimate loading time based on model name/size
                                 estimated_time = self._estimate_loading_time(actual_model_name)
-                                self._print_status("⏳", f"Starting model: {actual_model_name} (this can take up to {estimated_time} seconds)", "blue")
-                                if await self.start_model(actual_model_name):
+                                
+                                # Check if model is already running first (fast check)
+                                if await self._is_model_running(actual_model_name):
                                     started_models.append(actual_model_name)
-                                    self._print_status("✅", f"Model started: {actual_model_name}", "green")
+                                    self._print_status("✅", f"Model ready: {actual_model_name}", "green")
                                 else:
-                                    self._print_status("⚠️", f"Model downloaded but failed to start: {actual_model_name}", "yellow")
+                                    # Show spinner during loading
+                                    import sys
+                                    if sys.stdout.isatty():
+                                        # Terminal mode: use in-place update
+                                        print(f"🔄 Starting model: {actual_model_name} (this can take up to {estimated_time} seconds)", end="", flush=True)
+                                        if await self.start_model(actual_model_name):
+                                            started_models.append(actual_model_name)
+                                            # Clear line and show success - use longer padding to clear previous text
+                                            print(f"\r✅ Model ready: {actual_model_name}" + " " * 50)
+                                        else:
+                                            # Clear line and show failure
+                                            print(f"\r❌ Failed to start: {actual_model_name}" + " " * 50)
+                                    else:
+                                        # Non-terminal mode: use separate lines
+                                        self._print_status("🔄", f"Starting model: {actual_model_name} (this can take up to {estimated_time} seconds)", "blue")
+                                        if await self.start_model(actual_model_name):
+                                            started_models.append(actual_model_name)
+                                            self._print_status("✅", f"Model ready: {actual_model_name}", "green")
+                                        else:
+                                            self._print_status("❌", f"Failed to start: {actual_model_name}", "red")
                             
                         except Exception as e:
                             self._print_status("❌", f"Failed to prepare model: {actual_model_name} - {e}", "red")
@@ -572,6 +592,86 @@ class OllamaManager:
             self.logger.error(f"Error ensuring default models: {e}")
         
         return started_models
+    
+    def _estimate_loading_time(self, model_name: str) -> int:
+        """Estimate model loading time based on model name and size patterns."""
+        model_lower = model_name.lower()
+        
+        # Extract parameter size from model name
+        if "1b" in model_lower or "1.5b" in model_lower:
+            return 10  # Small models: ~10 seconds
+        elif "3b" in model_lower or "7b" in model_lower:
+            return 20  # Medium models: ~20 seconds  
+        elif "8b" in model_lower or "9b" in model_lower:
+            return 30  # Large 8B models: ~30 seconds
+        elif "13b" in model_lower or "14b" in model_lower:
+            return 45  # Very large models: ~45 seconds
+        elif "70b" in model_lower or "72b" in model_lower:
+            return 90  # Huge models: ~90 seconds
+        else:
+            # Default estimate based on common patterns
+            if "tiny" in model_lower or "mini" in model_lower:
+                return 10
+            elif "small" in model_lower:
+                return 15
+            elif "medium" in model_lower:
+                return 25
+            elif "large" in model_lower:
+                return 40
+            else:
+                return 30  # Conservative default for unknown models
+    
+    def _get_model_timeout(self, model_name: str) -> float:
+        """Get adaptive timeout for model based on size."""
+        model_lower = model_name.lower()
+        
+        # Generous timeouts for different model sizes
+        if "1b" in model_lower or "1.5b" in model_lower:
+            return 60.0   # 1 minute for small models
+        elif "3b" in model_lower or "7b" in model_lower:
+            return 120.0  # 2 minutes for medium models
+        elif "8b" in model_lower or "9b" in model_lower:
+            return 300.0  # 5 minutes for large 8B models
+        elif "13b" in model_lower or "14b" in model_lower:
+            return 600.0  # 10 minutes for very large models
+        elif "70b" in model_lower or "72b" in model_lower:
+            return 1200.0 # 20 minutes for huge models
+        else:
+            return 180.0  # 3 minutes default
+    
+    async def _is_model_running(self, model_name: str) -> bool:
+        """Check if a specific model is currently loaded/running."""
+        try:
+            ollama_host = self.ollama_config.get("host", "127.0.0.1")
+            ollama_port = self.ollama_config.get("port", 11434)
+            
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                # Use /api/ps endpoint (equivalent to 'ollama ps')
+                response = await client.get(f"http://{ollama_host}:{ollama_port}/api/ps")
+                if response.status_code == 200:
+                    data = response.json()
+                    models = data.get("models", [])
+                    
+                    # Debug logging to see what we get
+                    self.logger.debug(f"Running models from /api/ps: {models}")
+                    
+                    # Check if our model is in the running models list
+                    for model in models:
+                        model_name_in_list = model.get("name", "")
+                        # Match exact name or name with tag
+                        if model_name_in_list == model_name or model_name_in_list.startswith(f"{model_name}:"):
+                            self.logger.debug(f"Found running model: {model_name_in_list}")
+                            return True
+                    
+                    self.logger.debug(f"Model {model_name} not found in running models")
+                    return False
+                else:
+                    self.logger.debug(f"/api/ps returned status {response.status_code}")
+                    return False
+                    
+        except Exception as e:
+            self.logger.debug(f"Error checking if model {model_name} is running: {e}")
+            return False
     
     def _create_progress_bar(self, percent: int, width: int = 40) -> str:
         """Create a beautiful progress bar with safe ASCII characters."""
@@ -857,12 +957,17 @@ class OllamaManager:
                 self.logger.error("Ollama server is not running. Start server first with 'serve' command.")
                 return False
             
+            # Check if model is already running (fast check) - but not here to avoid double-check
+            # This check is now done at the caller level in _ensure_default_models
+            
             ollama_host = self.ollama_config.get("host", "127.0.0.1")
             ollama_port = self.ollama_config.get("port", 11434)
             
+            # Adaptive timeout based on model size
+            timeout_seconds = self._get_model_timeout(model_name)
+            
             # Start model by making a simple generation request
             # This loads the model into memory (large models need more time)
-            timeout_seconds = 120.0  # 2 minutes for large models like 8B parameters
             async with httpx.AsyncClient(timeout=timeout_seconds) as client:
                 response = await client.post(
                     f"http://{ollama_host}:{ollama_port}/api/generate",
@@ -875,15 +980,18 @@ class OllamaManager:
                 response.raise_for_status()
                 
                 self.logger.info(f"Successfully started model: {model_name}")
-                self._print_status("✅", f"Model ready: {model_name}", "green")
                 return True
                 
         except Exception as e:
             # Handle timeout specifically for large models
             if "ReadTimeout" in str(type(e).__name__) or "timeout" in str(e).lower():
-                timeout_msg = f"Model loading timeout after {timeout_seconds}s - {model_name} is likely a large model that needs more time to load"
+                # Try to detect if model is actually loaded despite timeout
+                if await self._is_model_running(model_name):
+                    self.logger.info(f"Model {model_name} started successfully (despite timeout)")
+                    return True
+                
+                timeout_msg = f"Model loading timeout after {timeout_seconds}s - {model_name} may need more time or resources"
                 self.logger.error(f"Failed to start model {model_name}: {timeout_msg}")
-                self._print_status("⏱️", f"Timeout starting: {model_name} - Large model may need more time", "yellow")
                 return False
             
             # Handle other exceptions
@@ -918,7 +1026,6 @@ class OllamaManager:
                     detailed_error = f"{error_msg} (failed to parse response: {parse_error})"
             
             self.logger.error(f"Failed to start model {model_name}: {detailed_error}")
-            self._print_status("❌", f"Failed to start: {model_name} - {detailed_error[:150]}...", "red")
             return False
     
     async def stop_model(self, model_name: str) -> bool:
