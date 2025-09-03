@@ -342,15 +342,9 @@ class OllamaManager:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 # Use /api/version endpoint for better server detection
                 response = await client.get(f"http://{ollama_host}:{ollama_port}/api/version")
-                is_running = response.status_code == 200
-                if is_running:
-                    version_data = response.json()
-                    self.logger.info(f"Server detection: {ollama_host}:{ollama_port} -> {is_running} (version: {version_data.get('version', 'unknown')})")
-                else:
-                    self.logger.info(f"Server detection: {ollama_host}:{ollama_port} -> {is_running} (status: {response.status_code})")
-                return is_running
+                return response.status_code == 200
         except Exception as e:
-            self.logger.info(f"Server detection failed: {ollama_host}:{ollama_port} -> False (error: {e})")
+            self.logger.debug(f"Server detection failed: {ollama_host}:{ollama_port} -> False (error: {e})")
             return False
     
     async def start_ollama(self) -> bool:
@@ -665,47 +659,32 @@ class OllamaManager:
             import httpx
             async with httpx.AsyncClient(timeout=2.0) as client:
                 # Use /api/ps endpoint (equivalent to 'ollama ps')
-                self.logger.info(f"Making request to: {url}")
                 response = await client.get(url)
                 elapsed = time.time() - start_time
-                self.logger.info(f"_is_model_running took {elapsed:.2f}s")
-                
-                # Log raw response details
-                self.logger.info(f"Response status: {response.status_code}")
-                self.logger.info(f"Response headers: {dict(response.headers)}")
+                self.logger.debug(f"_is_model_running took {elapsed:.2f}s")
                 
                 if response.status_code == 200:
-                    raw_text = response.text
-                    self.logger.info(f"Raw response text: {raw_text}")
-                    
                     data = response.json()
-                    self.logger.info(f"Parsed JSON: {data}")
-                    
                     models = data.get("models", [])
-                    
-                    # Debug logging to see what we get
-                    self.logger.info(f"Running models from /api/ps: {len(models)} models found")
                     
                     # Check if our model is in the running models list
                     for model in models:
                         model_name_in_list = model.get("name", "")
-                        model_size = model.get("size", 0)
-                        self.logger.info(f"Found running model: '{model_name_in_list}' (size: {model_size} bytes)")
                         
                         # Match exact name or name with tag
                         if model_name_in_list == model_name or model_name_in_list.startswith(f"{model_name}:"):
-                            self.logger.info(f"✓ Model match found: {model_name_in_list}")
+                            self.logger.debug(f"Model match found: {model_name_in_list}")
                             return True
                     
-                    self.logger.info(f"Model {model_name} not found in {len(models)} running models")
+                    self.logger.debug(f"Model {model_name} not found in {len(models)} running models")
                     return False
                 else:
-                    self.logger.info(f"/api/ps returned status {response.status_code}, body: {response.text}")
+                    self.logger.debug(f"/api/ps returned status {response.status_code}")
                     return False
                     
         except Exception as e:
             elapsed = time.time() - start_time
-            self.logger.info(f"Error checking if model {model_name} is running after {elapsed:.2f}s: {e}")
+            self.logger.debug(f"Error checking if model {model_name} is running after {elapsed:.2f}s: {e}")
             return False
     
     def _create_progress_bar(self, percent: int, width: int = 40) -> str:
