@@ -11,7 +11,7 @@ from datetime import datetime
 
 from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics
-from .logging_client import APIGatewayLoggingClient
+from .logging_client import AICOLoggingClient
 
 
 class ServiceLogger:
@@ -22,7 +22,7 @@ class ServiceLogger:
     API Gateway submission for centralized log collection.
     """
     
-    def __init__(self, logging_client: APIGatewayLoggingClient, subsystem: str = "modelservice", module: str = "api"):
+    def __init__(self, logging_client: AICOLoggingClient, subsystem: str = "modelservice", module: str = "api"):
         self.logging_client = logging_client
         self.subsystem = subsystem
         self.module = module
@@ -68,7 +68,7 @@ class ServiceLogger:
             
             # Try to submit to API Gateway if available
             if await self._check_api_gateway_availability():
-                success = await self.logging_client.submit_log(
+                success = self.logging_client.submit_log(
                     level=level,
                     message=message,
                     module=self.module,
@@ -123,7 +123,7 @@ class ServiceLogger:
 _service_logger: Optional[ServiceLogger] = None
 
 
-def get_service_logger(logging_client: APIGatewayLoggingClient, 
+def get_service_logger(logging_client: AICOLoggingClient, 
                       subsystem: str = "modelservice", 
                       module: str = "api") -> ServiceLogger:
     """Get or create service logger instance"""

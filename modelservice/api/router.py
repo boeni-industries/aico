@@ -20,7 +20,7 @@ from .schemas import (
     UsageStats, ErrorResponse
 )
 from .dependencies import get_modelservice_config, get_identity_manager
-from .logging_client import get_logging_client, APIGatewayLoggingClient
+from .logging_client import get_logging_client, AICOLoggingClient
 from .service_logger import get_service_logger, ServiceLogger
 
 # Get version from VERSIONS file
@@ -80,7 +80,7 @@ async def handshake(request_data: Dict[str, Any], identity_manager: TransportIde
         )
 
 
-async def check_system_health(config: dict, logging_client: APIGatewayLoggingClient) -> Dict[str, Any]:
+async def check_system_health(config: dict, logging_client: AICOLoggingClient) -> Dict[str, Any]:
     """
     Comprehensive system health check function.
     
@@ -186,7 +186,7 @@ async def _check_ollama_health(ollama_url: str) -> Dict[str, Any]:
 async def health_check(
     config: dict = Depends(get_modelservice_config),
     identity_manager: TransportIdentityManager = Depends(get_identity_manager),
-    logging_client: APIGatewayLoggingClient = Depends(get_logging_client)
+    logging_client: AICOLoggingClient = Depends(get_logging_client)
 ) -> HealthResponse:
     """Health check endpoint for modelservice."""
     health_data = await check_system_health(config, logging_client)
@@ -218,7 +218,7 @@ async def health_check(
 async def create_completion(
     request: CompletionRequest,
     config: dict = Depends(get_modelservice_config),
-    logging_client: APIGatewayLoggingClient = Depends(get_logging_client)
+    logging_client: AICOLoggingClient = Depends(get_logging_client)
 ) -> CompletionResponse:
     """Generate text completion using the message processor."""
     from ..core.message_processor import MessageProcessor, ProcessingContext

@@ -205,22 +205,15 @@ def main():
     # Test authentication to API Gateway before starting server
     try:
         from .api.dependencies import get_modelservice_config, get_service_auth_manager
-        from .api.logging_client import APIGatewayLoggingClient
+        from .api.logging_client import AICOLoggingClient
         import asyncio
         
         config = get_modelservice_config()
         service_auth = get_service_auth_manager()
-        logging_client = APIGatewayLoggingClient(config, service_auth)
+        logging_client = AICOLoggingClient(config)
         
-        # Force authentication attempt
-        async def test_auth():
-            try:
-                await logging_client._get_service_token()
-                print("[+] API Gateway authentication: SUCCESS")
-            except Exception as e:
-                print(f"[!] API Gateway authentication: FAILED - {e}")
-        
-        asyncio.run(test_auth())
+        # Test logging functionality
+        print("[+] Using AICO internal logging system")
     except Exception as e:
         print(f"[!] Authentication test failed: {e}")
     
