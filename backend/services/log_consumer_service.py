@@ -9,11 +9,12 @@ import asyncio
 import threading
 import time
 import json
-import zmq
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics
+from aico.core.bus import MessageBusClient
+from aico.core import AicoMessage
 from aico.proto.aico_core_logging_pb2 import LogEntry, LogLevel
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from backend.core.service_container import BaseService, ServiceContainer, ServiceState
@@ -35,92 +36,93 @@ class LogConsumerService(BaseService):
         self.enabled = self.get_config("core.api_gateway.plugins.log_consumer.enabled", True)
         
         # Runtime state
-        self.subscriber: Optional[zmq.Socket] = None
+        self.message_bus_client: Optional[MessageBusClient] = None
         self.message_thread: Optional[threading.Thread] = None
         self.running = False
         
         # Dependencies (resolved during initialization)
         self.db_connection: Optional[EncryptedLibSQLConnection] = None
-        self.zmq_context: Optional[zmq.Context] = None
         
         self.logger.info(f"Log consumer service created (enabled: {self.enabled})")
     
     async def initialize(self) -> None:
-        """Initialize log consumer with dependencies"""
-        if not self.enabled:
-            self.logger.info("ZMQ log transport disabled, log consumer will not start")
-            return
-        
-        # Get required dependencies
-        self.db_connection = self.require_service("database")
-        self.zmq_context = self.require_service("zmq_context")
-        
-        if not self.db_connection:
-            raise ValueError("Log consumer requires database connection")
-        
-        if not self.zmq_context:
-            raise ValueError("Log consumer requires ZMQ context")
-        
-        # Validate configuration
-        self._validate_configuration()
-        
-        self.logger.info("Log consumer initialized with dependencies")
-    
-    async def start(self) -> None:
-        """Start log consumer operations"""
-        if not self.enabled:
-            self.logger.info("Log consumer disabled, not starting")
-            return
-        
-        if not self.db_connection or not self.zmq_context:
-            raise RuntimeError("Log consumer not properly initialized - missing dependencies")
-        
+        """Initialize the log consumer service"""
         try:
-            self.running = True
-            self.logger.info("Starting log consumer service")
+            self.logger.info("Initializing log consumer service...")
             
-            # Setup ZMQ subscriber
-            self._setup_subscriber()
+            # Check if service is enabled
+            if not self.enabled:
+                self.logger.info("Log consumer service is disabled")
+                self.state = ServiceState.STOPPED
+                return
             
-            # Start message processing thread
-            self._start_message_thread()
+            # Resolve dependencies
+            self.db_connection = self.container.get_service("database")
             
-            self.logger.info("Log consumer started successfully - ZMQ log transport active")
+            if not self.db_connection:
+                raise RuntimeError("Database service not available")
+            
+            # Create encrypted MessageBusClient
+            from aico.core.config import ConfigurationManager
+            config = ConfigurationManager()
+            self.message_bus_client = MessageBusClient("log_consumer", config)
+            
+            # Validate configuration
+            self._validate_config()
+            
+            self.logger.info("Log consumer service initialized successfully")
+            self.state = ServiceState.INITIALIZED
             
         except Exception as e:
-            self.running = False
-            self.logger.error(f"Failed to start log consumer: {e}")
+            self.logger.error(f"Failed to initialize log consumer service: {e}")
+            self.state = ServiceState.ERROR
+            raise
+    
+    async def start(self) -> None:
+        """Start the log consumer service"""
+        try:
+            if self.state != ServiceState.INITIALIZED:
+                raise RuntimeError(f"Service not initialized (state: {self.state})")
+            
+            self.logger.info("Starting log consumer service...")
+            
+            # Connect to message bus with encryption
+            await self.message_bus_client.connect()
+            
+            # Subscribe to log messages with callback
+            await self.message_bus_client.subscribe(
+                AICOTopics.ZMQ_LOGS_PREFIX + "*",
+                self._handle_log_message
+            )
+            
+            self.running = True
+            self.logger.info("Log consumer service started successfully")
+            self.state = ServiceState.RUNNING
+            
+        except Exception as e:
+            self.logger.error(f"Failed to start log consumer service: {e}")
+            self.state = ServiceState.ERROR
             raise
     
     async def stop(self) -> None:
-        """Stop log consumer operations"""
-        if not self.running:
-            return
-        
-        self.logger.info("Stopping log consumer service")
-        
-        # Signal shutdown
-        self.running = False
-        
-        # Wait for message thread to finish
-        if self.message_thread and self.message_thread.is_alive():
-            self.logger.debug("Waiting for message thread to finish...")
-            self.message_thread.join(timeout=2.0)
+        """Stop the log consumer service"""
+        try:
+            self.logger.info("Stopping log consumer service...")
             
-            if self.message_thread.is_alive():
-                self.logger.warning("Message thread did not finish within timeout")
-        
-        # Close ZMQ socket
-        if self.subscriber:
-            try:
-                self.subscriber.close()
-                self.logger.debug("ZMQ subscriber socket closed")
-            except Exception as e:
-                self.logger.warning(f"Error closing ZMQ socket: {e}")
-            finally:
-                self.subscriber = None
-        
-        self.logger.info("Log consumer stopped successfully")
+            # Stop message processing
+            self.running = False
+            
+            # Disconnect from message bus
+            if self.message_bus_client:
+                await self.message_bus_client.disconnect()
+                self.message_bus_client = None
+            
+            self.logger.info("Log consumer service stopped")
+            self.state = ServiceState.STOPPED
+            
+        except Exception as e:
+            self.logger.error(f"Error stopping log consumer service: {e}")
+            self.state = ServiceState.ERROR
     
     async def health_check(self) -> Dict[str, Any]:
         """Check log consumer health status"""
@@ -130,11 +132,7 @@ class LogConsumerService(BaseService):
             **base_health,
             "enabled": self.enabled,
             "running": self.running,
-            "zmq_subscriber": self.subscriber is not None,
-            "message_thread": {
-                "exists": self.message_thread is not None,
-                "alive": self.message_thread.is_alive() if self.message_thread else False
-            },
+            "message_bus_client": self.message_bus_client is not None,
             "configuration": {
                 "zmq_enabled": self.enabled,
                 "sub_port": self.message_bus_config.get("sub_port"),
@@ -146,16 +144,14 @@ class LogConsumerService(BaseService):
         if self.enabled:
             log_consumer_health["healthy"] = (
                 self.running and 
-                self.subscriber is not None and 
-                self.message_thread is not None and 
-                self.message_thread.is_alive()
+                self.message_bus_client is not None
             )
         else:
             log_consumer_health["healthy"] = True  # Disabled services are considered healthy
         
         return log_consumer_health
     
-    def _validate_configuration(self) -> None:
+    def _validate_config(self) -> None:
         """Validate log consumer configuration"""
         if not self.message_bus_config:
             raise ValueError("Missing message_bus configuration")
@@ -173,103 +169,27 @@ class LogConsumerService(BaseService):
         
         self.logger.debug("Log consumer configuration validated")
     
-    def _setup_subscriber(self) -> None:
-        """Setup ZMQ subscriber socket"""
+    def _handle_log_message(self, message: AicoMessage) -> None:
+        """Handle incoming log message from MessageBusClient"""
         try:
-            # Get configuration from message_bus config
-            sub_port = self.message_bus_config["sub_port"]
-            host = self.message_bus_config["host"]
-            
-            # Create and configure subscriber socket
-            self.subscriber = self.zmq_context.socket(zmq.SUB)
-            self.subscriber.setsockopt(zmq.RCVHWM, 10000)  # High water mark
-            self.subscriber.connect(f"tcp://{host}:{sub_port}")
-            
-            # Subscribe to log messages
-            subscription_pattern = AICOTopics.ZMQ_LOGS_PREFIX
-            self.subscriber.setsockopt(zmq.SUBSCRIBE, subscription_pattern.encode('utf-8'))
-            
-            self.logger.info(f"ZMQ subscriber connected to tcp://{host}:{sub_port}")
-            self.logger.debug(f"Subscribed to pattern: {subscription_pattern}")
-            
-            # Brief pause to ensure subscription is registered
-            time.sleep(0.1)
-            
-        except Exception as e:
-            self.logger.error(f"Failed to setup ZMQ subscriber: {e}")
-            raise
-    
-    def _start_message_thread(self) -> None:
-        """Start message processing thread"""
-        try:
-            self.message_thread = threading.Thread(
-                target=self._message_loop,
-                name=f"log_consumer_{self.name}",
-                daemon=True
-            )
-            self.message_thread.start()
-            
-            self.logger.debug("Message processing thread started")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to start message thread: {e}")
-            raise
-    
-    def _message_loop(self) -> None:
-        """Main message processing loop (runs in separate thread)"""
-        #print(f"[DEBUG] Log consumer message loop started")
-        
-        last_poll_log = 0
-        poll_log_interval = 30  # Log polling status every 30 seconds
-        
-        try:
-            while self.running:
-                try:
-                    # Poll for messages with timeout
-                    if self.subscriber.poll(timeout=100):  # 100ms timeout
-                        #print(f"[DEBUG] Log consumer detected message available")
-                        # Receive message
-                        topic_bytes, data = self.subscriber.recv_multipart(zmq.NOBLOCK)
-                        topic = topic_bytes.decode('utf-8')
-                        
-                        #print(f"[DEBUG] Log consumer received message: topic={topic}, size={len(data)}")
-                        
-                        # Process log entry
-                        self._process_log_message(topic, data)
-                        
-                    else:
-                        # No message received - periodic status logging
-                        current_time = time.time()
-                        if current_time - last_poll_log >= poll_log_interval:
-                            #print(f"[DEBUG] Log consumer polling - no messages received in {poll_log_interval}s")
-                            last_poll_log = current_time
-                        
-                        # Brief sleep to prevent busy waiting
-                        time.sleep(0.01)
-                        
-                except zmq.Again:
-                    # No message available, continue polling
-                    continue
-                    
-                except Exception as e:
-                    self.logger.error(f"Error in message loop: {e}")
-                    if self.running:
-                        # Brief pause before retrying
-                        time.sleep(1.0)
-                    
-        except Exception as e:
-            self.logger.error(f"Fatal error in message loop: {e}")
-        finally:
-            self.logger.debug("Message processing loop ended")
-    
-    def _process_log_message(self, topic: str, data: bytes) -> None:
-        """Process individual log message"""
-        try:
-            #print(f"[DEBUG] Log consumer received message on topic: {topic}, data size: {len(data)} bytes")
-            
-            # Parse protobuf log entry
+            # Extract protobuf payload from AicoMessage
+            if not message.payload:
+                self.logger.warning("Received log message with no payload")
+                return
+                
+            # Deserialize protobuf LogEntry
             log_entry = LogEntry()
-            log_entry.ParseFromString(data)
+            log_entry.ParseFromString(message.payload)
+            
+            # Process the log entry
+            self._process_log_entry(log_entry)
+            
+        except Exception as e:
+            self.logger.error(f"Error handling log message: {e}")
+    
+    def _process_log_entry(self, log_entry: LogEntry) -> None:
+        """Process individual log entry"""
+        try:
             
             #print(f"[DEBUG] Parsed log entry: {log_entry.subsystem}.{log_entry.module} - {log_entry.message[:50]}...")
             
@@ -284,8 +204,7 @@ class LogConsumerService(BaseService):
             #print(f"[DEBUG] Log entry inserted to database successfully")
                 
         except Exception as e:
-            #print(f"[DEBUG] Failed to process log message from topic '{topic}': {e}")
-            self.logger.warning(f"Failed to process log message from topic '{topic}': {e}")
+            self.logger.warning(f"Failed to process log entry: {e}")
     
     def _insert_log_to_database(self, log_entry: LogEntry) -> None:
         """Insert log entry to database with error handling"""
@@ -338,6 +257,49 @@ class LogConsumerService(BaseService):
         except Exception as e:
             self.logger.error(f"Failed to insert log to database: {e}")
             # Don't raise - we don't want to crash the consumer for individual log failures
+
+    async def _setup_curve_encryption(self):
+        """Setup CurveZMQ encryption for the log consumer"""
+        if not self.encryption_enabled:
+            self.logger.info("CurveZMQ encryption disabled for log consumer")
+            return
+            
+        try:
+            # Initialize configuration and key manager
+            config_manager = ConfigurationManager()
+            key_manager = AICOKeyManager(config_manager)
+            
+            # Get master key (non-interactive for service mode)
+            master_key = key_manager.authenticate(interactive=False)
+            
+            # Derive CurveZMQ keypair for this log consumer
+            self.public_key, self.secret_key = key_manager.derive_curve_keypair(master_key, "message_bus_client_log_consumer")
+            
+            self.logger.debug("CurveZMQ keys derived for log consumer")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to setup CurveZMQ encryption: {e}")
+            # NO PLAINTEXT FALLBACK - Fail securely
+            raise RuntimeError(f"CurveZMQ encryption setup failed: {e}")
+
+    def _get_broker_public_key(self) -> str:
+        """Get broker's public key for server authentication"""
+        try:
+            # Initialize configuration and key manager
+            config_manager = ConfigurationManager()
+            key_manager = AICOKeyManager(config_manager)
+            
+            # Get master key (non-interactive for service mode)
+            master_key = key_manager.authenticate(interactive=False)
+            
+            # Derive broker's public key (same as broker derives for itself)
+            broker_public_key, _ = key_manager.derive_curve_keypair(master_key, "message_bus_broker")
+            
+            return broker_public_key
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get broker public key: {e}")
+            raise
 
 
 def create_log_consumer_service(container: ServiceContainer) -> LogConsumerService:

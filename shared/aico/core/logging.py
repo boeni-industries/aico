@@ -383,49 +383,46 @@ class DirectDatabaseTransport:
 
 
 class ZMQLogTransport:
-    """ZeroMQ-based log transport for sending logs to message bus"""
-
-    def __init__(self, config, zmq_context):
+    """ZeroMQ transport for log messages using encrypted MessageBusClient"""
+    
+    def __init__(self, config: 'ConfigurationManager', zmq_context):
         self.config = config
-        self._socket = None
-        self._context = zmq_context  # Use shared context
+        self._message_bus_client = None
+        self._initialized = False
 
     def initialize(self):
-        """Initialize the ZMQ transport"""
-        if not ZMQ_AVAILABLE or not self._context:
-            print(f"[ERROR] ZMQ transport initialization skipped - ZMQ_AVAILABLE: {ZMQ_AVAILABLE}, context: {self._context is not None}")
+        """Initialize the encrypted ZMQ transport"""
+        if not ZMQ_AVAILABLE:
+            print(f"[ERROR] ZMQ transport initialization skipped - ZMQ not available")
             return
 
         try:
-            self._socket = self._context.socket(zmq.PUB)
+            # Create encrypted MessageBusClient for log transport
+            from .bus import MessageBusClient
+            self._message_bus_client = MessageBusClient("zmq_log_transport", self.config)
             
-            # Get message bus configuration - connect to broker frontend port
-            host = self.config.get("message_bus.host", "localhost")
-            publisher_port = self.config.get("message_bus.pub_port", 5555)
-            address = f"tcp://{host}:{publisher_port}"
-            
-            #print(f"[DEBUG] ZMQ transport connecting to {address}")
-            self._socket.connect(address)
-            #print(f"[DEBUG] ZMQ transport connected successfully")
+            # Connect asynchronously - we'll handle this in send_log
+            self._initialized = True
+            #print(f"[DEBUG] Encrypted ZMQ log transport initialized")
         except Exception as e:
             # Log ZMQ transport initialization failure
             import logging
             logger = logging.getLogger('zmq_transport')
-            logger.error(f"Failed to initialize ZMQ transport: {e}")
+            logger.error(f"Failed to initialize encrypted ZMQ transport: {e}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
-            self._socket = None
-            self._context = None
+            self._message_bus_client = None
+            self._initialized = False
     
     def send_log(self, log_entry: LogEntry):
-        """Send log entry via ZMQ transport"""
-        if not self._socket:
-            print(f"[ERROR] ZMQ transport socket not available - log not sent")
+        """Send log entry via encrypted ZMQ transport"""
+        if not self._initialized or not self._message_bus_client:
+            print(f"[ERROR] Encrypted ZMQ transport not available - log not sent")
             return
             
         try:
             import uuid
-            import zmq
+            import asyncio
             trace_id = str(uuid.uuid4())[:8]
             
             # Create topic from subsystem and module
@@ -439,23 +436,23 @@ class ZMQLogTransport:
             from .topics import AICOTopics
             full_topic = AICOTopics.build_logs_topic(topic)
             
-            #print(f"[DEBUG] ZMQ sending log: {log_entry.subsystem}.{log_entry.module} -> {full_topic}")
-                     
-            # Serialize the protobuf message
-            serialized_data = log_entry.SerializeToString()
-            #print(f"[DEBUG] ZMQ serialized log: {len(serialized_data)} bytes")
+            #print(f"[DEBUG] Encrypted ZMQ sending log: {log_entry.subsystem}.{log_entry.module} -> {full_topic}")
             
-            # Send via ZMQ socket (synchronous send for thread safety)
-            self._socket.send_multipart([
-                full_topic.encode('utf-8'),
-                serialized_data
-            ], zmq.NOBLOCK)
+            # Send via encrypted MessageBusClient - handle async in sync context
+            try:
+                # Try to get current event loop
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # We're in an async context - schedule the send
+                    asyncio.create_task(self._async_send_log(full_topic, log_entry))
+                else:
+                    # We're in sync context - run async send
+                    loop.run_until_complete(self._async_send_log(full_topic, log_entry))
+            except RuntimeError:
+                # No event loop - create new one for this send
+                asyncio.run(self._async_send_log(full_topic, log_entry))
             
-            #print(f"[DEBUG] ZMQ log sent successfully to topic: {full_topic}")
-            
-            # CRITICAL: Yield control to allow the ZMQ I/O thread to send the message
-            # before the calling context (e.g., a short-lived request thread) terminates.
-            time.sleep(0.001)
+            #print(f"[DEBUG] Encrypted ZMQ log sent successfully to topic: {full_topic}")
             
         except Exception as e:
             # Log transport failure but don't crash - logging must be resilient
@@ -463,7 +460,7 @@ class ZMQLogTransport:
             import sys
             try:
                 logger = logging.getLogger('zmq_transport')
-                logger.error(f"Failed to send log via ZMQ: {e}")
+                logger.error(f"Failed to send log via encrypted ZMQ: {e}")
                 import traceback
                 logger.error(f"Traceback: {traceback.format_exc()}")
             except Exception as log_exc:
@@ -471,12 +468,42 @@ class ZMQLogTransport:
                 print(f"[CRITICAL] Original error: {e}", file=sys.stderr)
             raise e  # Re-raise to trigger fallback logging
     
+    async def _async_send_log(self, topic: str, log_entry: LogEntry):
+        """Async helper to send log via encrypted MessageBusClient"""
+        try:
+            # Ensure client is connected
+            if not self._message_bus_client.connected:
+                await self._message_bus_client.connect()
+            
+            # Create AicoMessage with protobuf payload
+            from . import AicoMessage, MessageMetadata
+            metadata = MessageMetadata(
+                message_id=str(uuid.uuid4()),
+                timestamp=int(time.time() * 1000),
+                source="zmq_log_transport",
+                message_type="log_entry"
+            )
+            
+            message = AicoMessage(
+                metadata=metadata,
+                payload=log_entry.SerializeToString()
+            )
+            
+            # Publish encrypted log message
+            await self._message_bus_client.publish(topic, message)
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger('zmq_transport')
+            logger.error(f"Failed to send encrypted log message: {e}")
+            raise
+    
     def close(self):
-        """Clean up ZMQ resources"""
-        if self._socket:
-            self._socket.close()
-        if self._context:
-            self._context.term()
+        """Clean up encrypted ZMQ transport resources"""
+        if self._message_bus_client:
+            # Note: MessageBusClient cleanup will be handled by its own lifecycle
+            self._message_bus_client = None
+        self._initialized = False
 
 
 class LogRepository:

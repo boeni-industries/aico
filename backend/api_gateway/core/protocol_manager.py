@@ -73,11 +73,9 @@ class ProtocolAdapterManager:
         """Register built-in protocol adapters"""
         # REST endpoints handled by main FastAPI backend - no adapter needed
         from ..adapters.websocket_adapter import WebSocketAdapter
-        from ..adapters.zeromq_adapter import ZeroMQAdapter
         from ..adapters.rest_adapter import RESTAdapter
         self.registered_adapters["rest"] = RESTAdapter
         self.registered_adapters["websocket"] = WebSocketAdapter
-        self.registered_adapters["zeromq_ipc"] = ZeroMQAdapter
     
     def register_adapter(self, name: str, adapter_class: Type[ProtocolAdapter]) -> None:
         """Register a protocol adapter class"""

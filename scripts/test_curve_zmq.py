@@ -29,7 +29,7 @@ class SimpleCurveBroker:
         self.context = zmq.asyncio.Context()
         self.frontend = None
         self.backend = None
-        self.encryption_enabled = False
+        self.encryption_enabled = True  # Force encryption for security
         self.public_key = None
         self.secret_key = None
         
@@ -53,8 +53,8 @@ class SimpleCurveBroker:
                 print(f"   🔑 Generated CurveZMQ broker keypair")
                 
         except Exception as e:
-            print(f"   ⚠️  Encryption setup failed: {e}, falling back to plaintext")
-            self.encryption_enabled = False
+            print(f"   ❌ Failed to setup encryption: {e}")
+            raise RuntimeError(f"CurveZMQ encryption required but setup failed: {e}")
     
     async def start(self):
         """Start the broker"""
@@ -64,13 +64,16 @@ class SimpleCurveBroker:
         self.frontend = self.context.socket(zmq.XSUB)
         self.backend = self.context.socket(zmq.XPUB)
         
-        if self.encryption_enabled:
-            # Configure as CURVE server
-            self.frontend.setsockopt(zmq.CURVE_SERVER, 1)
-            self.frontend.setsockopt(zmq.CURVE_SECRETKEY, self.secret_key)
-            
-            self.backend.setsockopt(zmq.CURVE_SERVER, 1)
-            self.backend.setsockopt(zmq.CURVE_SECRETKEY, self.secret_key)
+        # Always configure CurveZMQ encryption - no plaintext mode
+        self.frontend.setsockopt(zmq.CURVE_SERVER, 1)
+        self.frontend.setsockopt_string(zmq.CURVE_SECRETKEY, self.secret_key)
+        self.frontend.setsockopt_string(zmq.CURVE_PUBLICKEY, self.public_key)
+        
+        self.backend.setsockopt(zmq.CURVE_SERVER, 1)
+        self.backend.setsockopt_string(zmq.CURVE_SECRETKEY, self.secret_key)
+        self.backend.setsockopt_string(zmq.CURVE_PUBLICKEY, self.public_key)
+        
+        print("   🔒 CurveZMQ encryption enabled on broker")
         
         # Bind sockets
         self.frontend.bind("tcp://*:5555")
@@ -144,12 +147,11 @@ class SimpleCurveClient:
                 self.broker_public_key, _ = key_manager.derive_curve_keypair(
                     master_key, "message_bus_broker"
                 )
-                
                 print(f"   🔑 Generated CurveZMQ client keypair for {self.client_id}")
                 
         except Exception as e:
-            print(f"   ⚠️  Encryption setup failed for {self.client_id}: {e}")
-            self.encryption_enabled = False
+            print(f"   ❌ Failed to setup encryption: {e}")
+            raise RuntimeError(f"CurveZMQ encryption required but setup failed: {e}")
     
     async def connect(self):
         """Connect to broker"""
@@ -159,15 +161,16 @@ class SimpleCurveClient:
         self.publisher = self.context.socket(zmq.PUB)
         self.subscriber = self.context.socket(zmq.SUB)
         
-        if self.encryption_enabled:
-            # Configure as CURVE client
-            self.publisher.setsockopt(zmq.CURVE_SECRETKEY, self.secret_key)
-            self.publisher.setsockopt(zmq.CURVE_PUBLICKEY, self.public_key)
-            self.publisher.setsockopt(zmq.CURVE_SERVERKEY, self.broker_public_key)
-            
-            self.subscriber.setsockopt(zmq.CURVE_SECRETKEY, self.secret_key)
-            self.subscriber.setsockopt(zmq.CURVE_PUBLICKEY, self.public_key)
-            self.subscriber.setsockopt(zmq.CURVE_SERVERKEY, self.broker_public_key)
+        # Always configure CurveZMQ encryption - no plaintext mode
+        self.publisher.setsockopt_string(zmq.CURVE_SECRETKEY, self.secret_key)
+        self.publisher.setsockopt_string(zmq.CURVE_PUBLICKEY, self.public_key)
+        self.publisher.setsockopt_string(zmq.CURVE_SERVERKEY, self.broker_public_key)
+        
+        self.subscriber.setsockopt_string(zmq.CURVE_SECRETKEY, self.secret_key)
+        self.subscriber.setsockopt_string(zmq.CURVE_PUBLICKEY, self.public_key)
+        self.subscriber.setsockopt_string(zmq.CURVE_SERVERKEY, self.broker_public_key)
+        
+        print(f"   🔒 CurveZMQ encryption enabled for client {self.client_id}")
         
         # Connect to broker
         self.publisher.connect("tcp://localhost:5555")
