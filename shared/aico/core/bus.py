@@ -621,13 +621,13 @@ class MessageBusBroker:
     async def _proxy_loop(self):
         """Main proxy loop for forwarding messages"""
         try:
-            print(f"[BROKER PROXY] Starting async proxy: Frontend: tcp://*:{self.pub_port}, Backend: tcp://*:{self.sub_port}")
+            #print(f"[BROKER PROXY] Starting async proxy: Frontend: tcp://*:{self.pub_port}, Backend: tcp://*:{self.sub_port}")
             self.logger.info(f"Broker Proxy started: Frontend: tcp://*:{self.pub_port}, Backend: tcp://*:{self.sub_port}")
             
             # Brief delay to ensure sockets are ready
             await asyncio.sleep(0.1)
             
-            print(f"[BROKER PROXY] Starting async message forwarding...")
+            #print(f"[BROKER PROXY] Starting async message forwarding...")
             
             # Manual async proxy implementation
             import zmq.asyncio
@@ -635,43 +635,39 @@ class MessageBusBroker:
             poller.register(self.frontend, zmq.POLLIN)
             poller.register(self.backend, zmq.POLLIN)
             
-            poll_count = 0
             while self.running:
                 try:
                     socks = await poller.poll(timeout=100)  # 100ms timeout
-                    poll_count += 1
                     
                     if not socks:
                         # No messages - this is normal, continue polling
-                        if poll_count % 50 == 0:  # Every 5 seconds
-                            print(f"[BROKER PROXY] Still polling... (poll #{poll_count})")
                         continue
                     
-                    print(f"[BROKER PROXY] Poll returned {len(socks)} socket(s) with events")
+                    #   print(f"[BROKER PROXY] Poll returned {len(socks)} socket(s) with events")
                     
                     for sock, event in socks:
                         if sock == self.frontend and event == zmq.POLLIN:
                             # Forward from frontend (publishers) to backend (subscribers)
-                            print(f"[BROKER PROXY] Receiving message from frontend (publisher)")
+                            #print(f"[BROKER PROXY] Receiving message from frontend (publisher)")
                             message = await self.frontend.recv_multipart()
-                            print(f"[BROKER PROXY] Forwarding message to backend (subscribers): {len(message)} parts")
+                            #print(f"[BROKER PROXY] Forwarding message to backend (subscribers): {len(message)} parts")
                             await self.backend.send_multipart(message)
-                            print(f"[BROKER PROXY] Forwarded message from publisher to subscribers")
+                            #print(f"[BROKER PROXY] Forwarded message from publisher to subscribers")
                             
                         elif sock == self.backend and event == zmq.POLLIN:
                             # Forward from backend (subscribers) to frontend (publishers)
-                            print(f"[BROKER PROXY] Receiving subscription from backend (subscriber)")
+                            #print(f"[BROKER PROXY] Receiving subscription from backend (subscriber)")
                             message = await self.backend.recv_multipart()
-                            print(f"[BROKER PROXY] Forwarding subscription to frontend (publishers): {len(message)} parts")
+                            #print(f"[BROKER PROXY] Forwarding subscription to frontend (publishers): {len(message)} parts")
                             await self.frontend.send_multipart(message)
-                            print(f"[BROKER PROXY] Forwarded subscription from subscriber to publishers")
+                            #print(f"[BROKER PROXY] Forwarded subscription from subscriber to publishers")
                             
                 except Exception as e:
                     if self.running:
                         self.logger.error(f"Error in proxy loop iteration: {e}")
                         await asyncio.sleep(0.1)
             
-            print(f"[BROKER PROXY] Proxy loop exiting")
+            #print(f"[BROKER PROXY] Proxy loop exiting")
             self.logger.info("Broker Proxy loop exiting")
             
         except Exception as e:

@@ -105,14 +105,6 @@ class ProtocolAdapterManager:
                     dependencies.get('rate_limiter'),
                     dependencies.get('validator')
                 )
-            elif name == "zeromq_ipc":
-                adapter = adapter_class(
-                    config,
-                    dependencies.get('auth_manager'),
-                    dependencies.get('authz_manager'),
-                    dependencies.get('message_router'),
-                    dependencies.get('adaptive_transport')
-                )
             else:
                 # Fallback for other adapters
                 adapter = adapter_class(config, dependencies)

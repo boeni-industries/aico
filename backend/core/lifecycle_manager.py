@@ -92,12 +92,6 @@ class BackendLifecycleManager:
         else:
             print(f"[!] WebSocket: Disabled")
         
-        # ZeroMQ status
-        zeromq_config = protocols_config.get("zeromq_ipc", {})
-        if zeromq_config.get("enabled", True):
-            print(f"[✓] ZeroMQ IPC: Running")
-        else:
-            print(f"[!] ZeroMQ IPC: Disabled")
         
         # Security status
         print(f"[✓] Transport Security: Active (AES-256-GCM)")
@@ -404,24 +398,6 @@ class BackendLifecycleManager:
                 await self.protocol_manager.start_adapter("websocket")
                 print(f"[✓] WebSocket server running on ws://127.0.0.1:{websocket_config.get('port', 8772)}{websocket_config.get('path', '/ws')}")
             
-            # Initialize and start ZeroMQ adapter if enabled
-            zeromq_config = protocols_config.get("zeromq_ipc", {})
-            if zeromq_config.get("enabled", True):
-                print(f"[+] Starting ZeroMQ IPC adapter...")
-                
-                # ZeroMQ needs adaptive_transport
-                zeromq_dependencies = dependencies.copy()
-                try:
-                    message_bus_plugin = self.container.get_service('message_bus_plugin')
-                    if message_bus_plugin:
-                        zeromq_dependencies['adaptive_transport'] = getattr(message_bus_plugin, 'adaptive_transport', None)
-                except:
-                    self.logger.warning("Message bus plugin not available for ZeroMQ adapter")
-                
-                await self.protocol_manager.initialize_adapter("zeromq_ipc", zeromq_config, zeromq_dependencies)
-                await self.protocol_manager.start_adapter("zeromq_ipc")
-                print(f"[✓] ZeroMQ IPC adapter running")
-                
             self.logger.info("Protocol adapters started successfully")
             
         except Exception as e:
@@ -540,7 +516,7 @@ class BackendLifecycleManager:
             return {
                 "status": "healthy",
                 "service": "aico-api-gateway", 
-                "adapters": ["rest", "websocket", "zeromq"],
+                "adapters": ["rest", "websocket"],
                 "version": get_backend_version()
             }
         

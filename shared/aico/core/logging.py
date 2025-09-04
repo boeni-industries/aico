@@ -155,21 +155,18 @@ class AICOLogger:
             for key, value in extra.items():
                 log_entry.extra[key] = str(value)
         
-        # Route to appropriate transport or early buffer
-        global _early_startup_buffer, _early_buffer_enabled, _logger_factory
-        # Prevent feedback loop: do not send logs from ZMQ/log_consumer to ZMQ or buffer
+        # Route to appropriate transport or direct database fallback
+        global _logger_factory
+        # Prevent feedback loop: do not send logs from ZMQ/log_consumer to ZMQ or database
         if self._is_transport_disabled():
-            # Only fallback log (console/file), never to ZMQ or buffer
+            # Only fallback log (console/file), never to ZMQ or database
             self._try_fallback_logging(log_entry)
             return
-        if _logger_factory and _logger_factory._transport:
-            _logger_factory._transport.send_log(log_entry)
-        elif _early_buffer_enabled:
-            # Buffer early startup messages before ZMQ transport is ready
-            _early_startup_buffer.append(log_entry)
-            print(f"[EARLY BUFFER] Buffered startup message: {self.subsystem}.{self.module} - {message[:50]}...")
+        if _logger_factory and _logger_factory._transport and self._is_zmq_transport_ready():
+            _logger_factory._transport.send_log(log_entry)  # ZMQ logging
         else:
-            print(f"[ERROR] Logger has no transport - log not sent to ZMQ")
+            # Direct database fallback for early startup logs
+            self._direct_database_fallback(log_entry)  # Direct DB logging
     
     def _log_to_console(self, level: str, message: str, **kwargs):
         """Log to console as fallback - DISABLED (logs go to database only)"""
@@ -177,11 +174,399 @@ class AICOLogger:
         # This method is kept for emergency fallback scenarios only
         pass
     
+    def _direct_database_fallback(self, log_entry: LogEntry) -> None:
+        """
+        Direct database fallback when ZMQ transport is not available.
+        
+        This method attempts to write logs directly to the database during
+        early startup when the ZMQ transport is not yet ready.
+        """
+        # Skip if level filtering is configured and this entry doesn't meet threshold
+        global _logger_factory
+        if _logger_factory and hasattr(_logger_factory, 'config'):
+            if not self._should_log_level(log_entry.level, _logger_factory.config):
+                return  # Skip logging if level is below threshold
+                
+        # Prevent recursion by checking if we're already in a fallback operation
+        if hasattr(self, '_in_fallback') and self._in_fallback:
+            self._fallback_log(log_entry)
+            return
+        
+        try:
+            self._in_fallback = True
+            if _logger_factory and hasattr(_logger_factory, 'config'):
+                # First try: get database connection from service container
+                if hasattr(_logger_factory, 'container') and _logger_factory.container:
+                    try:
+                        db_connection = _logger_factory.container.get_service('database')
+                        if db_connection:
+                            direct_transport = DirectDatabaseTransport(_logger_factory.config, db_connection)
+                            direct_transport.send_log(log_entry)
+                            return
+                    except:
+                        pass
+                
+                # Fallback: create encrypted database connection using minimal key manager
+                try:
+                    db_connection = self._create_fallback_encrypted_connection(_logger_factory.config)
+                    if db_connection:
+                        # Use direct SQL insert instead of DirectDatabaseTransport to avoid protobuf issues
+                        self._persist_log_entry_directly(db_connection, log_entry)
+                        return
+                except RuntimeError as e:
+                    error_msg = str(e)
+                    # Check if this is a security initialization error
+                    if "Master key not found" in error_msg or "Run 'aico security init'" in error_msg:
+                        # Security not initialized - this is expected during first run
+                        # Fall back to console logging without error spam
+                        pass
+                    else:
+                        pass  # Silent fallback for non-security errors
+                    # Continue to final fallback
+                except Exception as e:
+                    pass  # Silent fallback for other errors
+                    # Continue to final fallback
+                
+        except Exception as e:
+            # Silent fallback failure - don't spam logs
+            pass
+        finally:
+            self._in_fallback = False
+        
+        # Final fallback to console if database unavailable
+        self._try_fallback_logging(log_entry)
+    
+    def _fallback_log(self, log_entry):
+        """Fallback logging when ZMQ transport is not available"""
+        # Skip if level filtering is configured and this entry doesn't meet threshold
+        global _logger_factory
+        if _logger_factory and hasattr(_logger_factory, 'config'):
+            if not self._should_log_level(log_entry.level, _logger_factory.config):
+                return  # Skip logging if level is below threshold
+            
+        try:
+            self._in_fallback = True
+            if _logger_factory and hasattr(_logger_factory, 'config'):
+                # First try: get database connection from service container
+                if hasattr(_logger_factory, 'container') and _logger_factory.container:
+                    try:
+                        db_connection = _logger_factory.container.get_service('database')
+                        if db_connection:
+                            direct_transport = DirectDatabaseTransport(_logger_factory.config, db_connection)
+                            direct_transport.send_log(log_entry)
+                            return
+                    except Exception:
+                        pass
+                
+                # Fallback: create encrypted database connection using minimal key manager
+                try:
+                    db_connection = self._create_fallback_encrypted_connection(_logger_factory.config)
+                    if db_connection:
+                        # Use direct SQL insert instead of DirectDatabaseTransport to avoid protobuf issues
+                        self._persist_log_entry_directly(db_connection, log_entry)
+                        return
+                except RuntimeError as e:
+                    error_msg = str(e)
+                    # Check if this is a security initialization error
+                    if "Master key not found" in error_msg or "Run 'aico security init'" in error_msg:
+                        # Security not initialized - this is expected during first run
+                        # Fall back to console logging without error spam
+                        pass
+                    else:
+                        pass  # Silent fallback for non-security errors
+                    # Continue to final fallback
+                except Exception:
+                    pass  # Silent fallback for other errors
+                    # Continue to final fallback
+                
+        except Exception:
+            # Silent fallback failure - don't spam logs
+            pass
+        finally:
+            self._in_fallback = False
+        
+        # Final fallback to console if database unavailable
+        self._try_fallback_logging(log_entry)
+    _fallback_db_path = None
+    
+    def _create_fallback_encrypted_connection(self, config_manager):
+        """Create encrypted database connection for fallback logging without any logging calls"""
+        # Return cached connection if available
+        if self._fallback_connection:
+            try:
+                # Test if connection is still valid
+                self._fallback_connection.execute("SELECT 1").fetchone()
+                return self._fallback_connection
+            except Exception:
+                # Connection is stale, clear cache and recreate
+                self._fallback_connection = None
+                self._fallback_encryption_key = None
+                self._fallback_db_path = None
+        
+        try:
+            import libsql
+            import keyring
+            from cryptography.hazmat.primitives import hashes
+            from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+            from cryptography.hazmat.backends import default_backend
+            from pathlib import Path
+            
+            # Get database path using proper AICO path resolution
+            try:
+                from aico.core.paths import AICOPaths
+                directory_mode = config_manager.get("system.paths.directory_mode", "auto")
+                db_path = AICOPaths.resolve_database_path("aico.db", directory_mode)
+            except Exception as e:
+                # Ultimate fallback if path resolution fails
+                db_path = Path("aico.db")
+            
+            # FAIL LOUDLY: Database must exist - don't create it
+            if not db_path.exists():
+                raise FileNotFoundError(f"Database not found at {db_path}. Run 'aico db init' first.")
+            
+            # Get salt path
+            salt_path = Path(f"{db_path}.salt")
+            
+            # FAIL LOUDLY: Salt file must exist if database exists
+            if not salt_path.exists():
+                raise FileNotFoundError(f"Database salt file not found at {salt_path}. Database may be corrupted.")
+            
+            # Reuse cached encryption key if available and path matches
+            if self._fallback_encryption_key and self._fallback_db_path == db_path:
+                encryption_key = self._fallback_encryption_key
+            else:
+                # Get master key from keyring without logging - use same service name as key manager
+                service_name = config_manager.get("security.keyring_service_name", "AICO")
+                try:
+                    stored_key = keyring.get_password(service_name, "master_key")
+                except Exception as e:
+                    raise RuntimeError(f"Failed to retrieve master key from keyring: {e}")
+                
+                if not stored_key:
+                    raise RuntimeError("Master key not found in keyring. Run 'aico security init' first.")
+                
+                master_key = bytes.fromhex(stored_key)
+                
+                # Read existing salt file
+                with open(salt_path, 'rb') as f:
+                    salt = f.read()
+                
+                # Derive database encryption key using PBKDF2 (minimal implementation)
+                kdf = PBKDF2HMAC(
+                    algorithm=hashes.SHA256(),
+                    length=32,  # 256-bit key
+                    salt=salt,
+                    iterations=100000,  # Standard iterations
+                    backend=default_backend()
+                )
+                
+                context = master_key + b"aico-db-libsql"
+                encryption_key = kdf.derive(context)
+                
+                # Cache the derived key and path
+                self._fallback_encryption_key = encryption_key
+                self._fallback_db_path = db_path
+            
+            # Create encrypted connection
+            connection = libsql.connect(str(db_path))
+            
+            # Apply encryption key
+            key_hex = encryption_key.hex()
+            connection.execute(f"PRAGMA key = 'x\"{key_hex}\"'")
+            
+            # Set busy timeout for lock handling (other settings inherited from main connection)
+            connection.execute("PRAGMA busy_timeout = 5000")  # 5 second timeout for locks
+            
+            # Verify encryption is working
+            try:
+                connection.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
+            except Exception as e:
+                raise RuntimeError(f"Database encryption verification failed: {e}")
+            
+            # Cache the connection for reuse
+            self._fallback_connection = connection
+            result = connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='logs'").fetchone()
+            if not result:
+                connection.close()
+                raise RuntimeError("Logs table not found in database. Run 'aico db init' to create schema.")
+            
+            # Verify schema matches expected columns
+            columns = connection.execute("PRAGMA table_info(logs)").fetchall()
+            column_names = {col[1] for col in columns}
+            required_columns = {
+                'timestamp', 'level', 'subsystem', 'module', 'function_name',
+                'file_path', 'line_number', 'topic', 'message', 'user_uuid',
+                'session_id', 'trace_id', 'extra'
+            }
+            
+            if not required_columns.issubset(column_names):
+                connection.close()
+                missing = required_columns - column_names
+                raise RuntimeError(f"Logs table schema mismatch. Missing columns: {missing}. Run 'aico db init' to fix schema.")
+            
+            # Cache the connection for reuse
+            self._fallback_connection = connection
+            return connection
+            
+        except Exception as e:
+            # FAIL LOUDLY: Don't hide fallback connection errors
+            raise RuntimeError(f"Fallback database connection failed: {e}")
+    
+    def _persist_log_entry_directly(self, db_connection, log_entry):
+        """Directly persist log entry to database without protobuf complexity"""
+        import time
+        import random
+        
+        max_retries = 2  # Reduced retries to avoid long hangs
+        base_delay = 0.05  # 50ms base delay
+        
+        for attempt in range(max_retries):
+            try:
+                from datetime import datetime, timezone
+                
+                # Convert protobuf timestamp to UTC ISO string
+                if hasattr(log_entry.timestamp, 'seconds'):
+                    timestamp = datetime.fromtimestamp(
+                        log_entry.timestamp.seconds + log_entry.timestamp.nanos / 1e9, 
+                        tz=timezone.utc
+                    )
+                    timestamp_str = timestamp.isoformat().replace('+00:00', 'Z')
+                else:
+                    timestamp_str = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+                
+                # Convert level enum to string
+                level_str = str(log_entry.level)
+                if hasattr(log_entry, 'level') and hasattr(log_entry.level, 'name'):
+                    level_str = log_entry.level.name
+                elif str(log_entry.level) in ['10', '20', '30', '40', '50']:
+                    level_map = {'10': 'DEBUG', '20': 'INFO', '30': 'WARNING', '40': 'ERROR', '50': 'CRITICAL'}
+                    level_str = level_map.get(str(log_entry.level), 'INFO')
+                
+                # Prepare extra data as JSON
+                extra_json = None
+                if hasattr(log_entry, 'extra') and log_entry.extra:
+                    try:
+                        import json
+                        extra_json = json.dumps(dict(log_entry.extra))
+                    except Exception:
+                        extra_json = str(log_entry.extra)
+                
+                # Insert directly into logs table with retry logic
+                db_connection.execute("""
+                    INSERT INTO logs (
+                        timestamp, level, subsystem, module, function_name, 
+                        file_path, line_number, topic, message, user_uuid, 
+                        session_id, trace_id, extra
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    timestamp_str,
+                    level_str,
+                    getattr(log_entry, 'subsystem', ''),
+                    getattr(log_entry, 'module', ''),
+                    getattr(log_entry, 'function', ''),
+                    getattr(log_entry, 'file_path', None),
+                    getattr(log_entry, 'line_number', None),
+                    getattr(log_entry, 'topic', ''),
+                    getattr(log_entry, 'message', ''),
+                    getattr(log_entry, 'user_uuid', None),
+                    getattr(log_entry, 'session_id', None),
+                    getattr(log_entry, 'trace_id', None),
+                    extra_json
+                ))
+                db_connection.commit()
+                return  # Success - exit retry loop
+                
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "database is locked" in error_msg or "busy" in error_msg:
+                    if attempt < max_retries - 1:  # Don't sleep on last attempt
+                        # Linear backoff with minimal jitter for faster startup
+                        delay = base_delay * (attempt + 1) + random.uniform(0, 0.01)
+                        time.sleep(delay)
+                        continue
+                # Re-raise on final attempt or non-locking errors
+                raise RuntimeError(f"Direct log persistence failed: {e}")
+    
+    def _should_log_level(self, log_level, config_manager) -> bool:
+        """Check if log entry should be logged based on configured levels"""
+        try:
+            # Convert protobuf level to string
+            if hasattr(log_level, 'name'):
+                level_name = log_level.name
+            elif str(log_level) in ['10', '20', '30', '40', '50']:
+                level_map = {'10': 'DEBUG', '20': 'INFO', '30': 'WARNING', '40': 'ERROR', '50': 'CRITICAL'}
+                level_name = level_map.get(str(log_level), 'INFO')
+            else:
+                level_name = str(log_level).upper()
+            
+            # Get configured level - default to INFO
+            configured_level = config_manager.get("logging.levels.default", "INFO")
+            
+            # Level hierarchy: DEBUG < INFO < WARNING < ERROR < CRITICAL
+            level_hierarchy = {'DEBUG': 10, 'INFO': 20, 'WARNING': 30, 'ERROR': 40, 'CRITICAL': 50}
+            
+            current_level_value = level_hierarchy.get(level_name, 20)  # Default to INFO
+            configured_level_value = level_hierarchy.get(configured_level, 20)  # Default to INFO
+            
+            # Only log if current level is >= configured level
+            return current_level_value >= configured_level_value
+            
+        except Exception:
+            # If level checking fails, default to allowing the log
+            return True
+    
+    def _is_zmq_transport_ready(self) -> bool:
+        """Check if ZMQ transport is ready to send messages (broker available)"""
+        global _logger_factory
+        if not _logger_factory or not _logger_factory._transport:
+            return False
+        
+        # Check if transport has broker availability flag set
+        transport = _logger_factory._transport
+        broker_available = hasattr(transport, '_broker_available') and transport._broker_available
+        client_connected = hasattr(transport, '_message_bus_client') and transport._message_bus_client and transport._message_bus_client.connected
+        
+        # Require BOTH broker available AND client connected for ZMQ transport to be ready
+        return broker_available and client_connected
+    
     def _try_fallback_logging(self, log_entry: LogEntry):
         """Multi-layer fallback for when database isn't ready"""
         
-        # Layer 1: Console output (always available)
-        if self.config.get("logging.bootstrap.fallback_console", True):
+        # Skip if level filtering is configured and this entry doesn't meet threshold
+        global _logger_factory
+        if _logger_factory and hasattr(_logger_factory, 'config'):
+            if not self._should_log_level(log_entry.level, _logger_factory.config):
+                return  # Skip logging if level is below threshold
+        
+        # First try encrypted database fallback before falling back to console
+        try:
+            # Skip fallback logging if ZMQ transport is ready
+            if _logger_factory and _logger_factory._transport and self._is_zmq_transport_ready():
+                # ZMQ transport is ready, don't fallback to console
+                return
+                
+            # Try encrypted database fallback first
+            if not hasattr(self, '_in_fallback') or not self._in_fallback:
+                try:
+                    self._in_fallback = True
+                    if _logger_factory and hasattr(_logger_factory, 'config'):
+                        db_connection = self._create_fallback_encrypted_connection(_logger_factory.config)
+                        if db_connection:
+                            self._persist_log_entry_directly(db_connection, log_entry)
+                            self._in_fallback = False
+                            return
+                except Exception:
+                    # Silent failure, continue to console fallback
+                    pass
+                finally:
+                    self._in_fallback = False
+        except Exception:
+            # Silent failure, continue to console fallback
+            pass
+            
+        # Layer 1: Console output (only if encrypted database fallback failed and not disabled)
+        fallback_console_enabled = self.config.get("logging.bootstrap.fallback_console", False)  # Default to False
+        if fallback_console_enabled:
             # Convert protobuf timestamp to readable format
             from datetime import datetime
             timestamp = datetime.fromtimestamp(log_entry.timestamp.seconds + log_entry.timestamp.nanos / 1e9)
@@ -224,11 +609,9 @@ class AICOLogger:
             with open(temp_log_path, "a", encoding="utf-8") as f:
                 f.write(log_entry.to_json() + "\n")
         except Exception as e:
-            # Last resort fallback failed - log to stderr but don't crash
+            # Last resort fallback failed - silent failure to avoid log spam
             # This is acceptable because it's the final fallback in a chain
-            import sys
-            print(f"[LOGGING] Warning: Emergency file fallback failed: {e}", file=sys.stderr)
-            print(f"[LOGGING] Lost log: {log_entry.level} {log_entry.subsystem}.{log_entry.module}: {log_entry.message}", file=sys.stderr)
+            pass
     
     def _send_to_database(self, log_entry: LogEntry):
         """Send log entry to database via transport or fallback logging"""
@@ -239,10 +622,7 @@ class AICOLogger:
                 self.transport.send_log(log_entry)
                 
             except Exception as e:
-                # Print error and fallback, never log recursively
-                print(f"[AICO LOGGING] Failed to send log to transport: {e}", file=sys.stderr)
-                import traceback
-                print(traceback.format_exc(), file=sys.stderr)
+                # Silent fallback to avoid recursive logging
                 self._try_fallback_logging(log_entry)
         else:
             self._try_fallback_logging(log_entry)
@@ -400,7 +780,6 @@ class ZMQLogTransport:
     def initialize(self):
         """Initialize the encrypted ZMQ transport"""
         if not ZMQ_AVAILABLE:
-            print(f"[ERROR] ZMQ transport initialization skipped - ZMQ not available")
             return
 
         try:
@@ -411,8 +790,7 @@ class ZMQLogTransport:
             # Connect asynchronously - we'll handle this in send_log
             self._initialized = True
             
-            # Transfer any early buffered messages to this transport
-            _transfer_early_buffer_to_transport()
+            # Early buffer removed - using direct database fallback instead
             #print(f"[DEBUG] Encrypted ZMQ log transport initialized")
         except Exception as e:
             # Log ZMQ transport initialization failure
@@ -444,8 +822,8 @@ class ZMQLogTransport:
                 loop = asyncio.get_running_loop()
                 loop.create_task(self._async_send_log(topic, log_entry))
             except RuntimeError:
-                # No running loop, create a new task in the default loop
-                asyncio.create_task(self._async_send_log(topic, log_entry))
+                # No running loop - silently fail, logs will go to direct database fallback
+                pass
         except Exception:
             # Silently fail
             pass
@@ -471,6 +849,48 @@ class ZMQLogTransport:
             logger.error(f"Failed to send encrypted log message: {e}")
             raise
     
+    def mark_broker_ready(self):
+        """Mark the message broker as ready for log transport"""
+        self._broker_available = True
+        # Reset retry count when broker becomes available
+        self._connection_retry_count = 0
+        
+        # Attempt to connect to the broker now that it's ready
+        if self._message_bus_client and not self._message_bus_client.connected:
+            import asyncio
+            try:
+                # Try to get the current event loop and schedule connection
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._connect_to_broker())
+            except RuntimeError:
+                # No running loop - try synchronous connection
+                try:
+                    # Create a temporary event loop for connection
+                    import threading
+                    def connect_sync():
+                        try:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            loop.run_until_complete(self._connect_to_broker())
+                            loop.close()
+                        except Exception:
+                            pass  # Silent failure, will retry on send_log
+                    
+                    # Run connection in background thread to avoid blocking
+                    thread = threading.Thread(target=connect_sync, daemon=True)
+                    thread.start()
+                except Exception:
+                    pass  # Silent failure, connection will happen on first send_log call
+    
+    async def _connect_to_broker(self):
+        """Async helper to connect to the message broker"""
+        try:
+            if self._message_bus_client and not self._message_bus_client.connected:
+                await self._message_bus_client.connect()
+        except Exception:
+            # Connection will be retried on next send_log call
+            pass
+        
     def close(self):
         """Clean up encrypted ZMQ transport resources"""
         if self._message_bus_client:
@@ -711,9 +1131,7 @@ class LogRetentionManager:
 # Global logger factory instance
 _logger_factory: Optional[AICOLoggerFactory] = None
 
-# Early startup buffer for messages before ZMQ transport is ready
-_early_startup_buffer = []
-_early_buffer_enabled = True
+# Removed early startup buffer - using direct database fallback instead
 
 
 def initialize_logging(config_manager) -> AICOLoggerFactory:
@@ -766,27 +1184,10 @@ def get_logger(subsystem: str, module: str) -> AICOLogger:
 
 def _get_zmq_transport() -> Optional[ZMQLogTransport]:
     """Get the global ZMQ transport instance for broker ready notifications"""
-    if _logger_factory and hasattr(_logger_factory, 'zmq_transport'):
-        return _logger_factory.zmq_transport
+    if _logger_factory and hasattr(_logger_factory, '_transport'):
+        return _logger_factory._transport
     return None
 
 
-def _transfer_early_buffer_to_transport():
-    """Transfer early startup buffer to ZMQ transport when it becomes available, with recursion guard."""
-    global _early_startup_buffer, _early_buffer_enabled
-    if getattr(_transfer_early_buffer_to_transport, '_transferring', False):
-        # Already transferring, skip to avoid recursion
-        return
-    if not _early_startup_buffer or not _logger_factory or not hasattr(_logger_factory, 'zmq_transport') or not _logger_factory.zmq_transport:
-        return
-    try:
-        _transfer_early_buffer_to_transport._transferring = True
-        print(f"[EARLY BUFFER] Transferring {len(_early_startup_buffer)} early startup messages to ZMQ transport...")
-        for log_entry in _early_startup_buffer:
-            _logger_factory.zmq_transport.send_log(log_entry)
-        _early_startup_buffer.clear()
-        _early_buffer_enabled = False
-        print(f"[EARLY BUFFER] Transfer complete - early buffering disabled")
-    finally:
-        _transfer_early_buffer_to_transport._transferring = False
+# Removed _transfer_early_buffer_to_transport - using direct database fallback instead
 
