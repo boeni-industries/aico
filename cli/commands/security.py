@@ -132,14 +132,13 @@ def setup(
     if master_exists:
         if not jwt_only:
             if jwt_exists:
-                console.print("✅ [green]Master password and JWT secrets already set up.[/green]")
-                console.print("Use 'aico security passwd' to update master password if needed.")
-                raise typer.Exit(0)  # Success exit - nothing to do
+                console.print("🔐 [cyan]Master password and JWT secrets exist, validating all security components...[/cyan]")
+                jwt_only = True  # Skip password setup but continue with validation
             else:
                 console.print("🔐 [cyan]Master password exists, initializing missing JWT secrets...[/cyan]")
                 jwt_only = True  # Force JWT-only mode
         else:
-            console.print("🔐 [cyan]Master password exists, initializing JWT secrets only...[/cyan]")
+            console.print("🔐 [cyan]Master password exists, validating security components...[/cyan]")
     
     # Get password if not provided (only for new setup)
     if not jwt_only:
@@ -204,6 +203,40 @@ def setup(
         except Exception as e:
             console.print(f"⚠️ [yellow]File encryption key validation failed: {e}[/yellow]")
             console.print("   File encryption may not work properly")
+        
+        # Initialize CurveZMQ transport keys for message bus encryption
+        try:
+            console.print("🔒 Setting up CurveZMQ transport encryption...")
+            master_key = key_manager.authenticate(interactive=False)
+            
+            # Test CurveZMQ key derivation for all message bus components
+            curve_components = [
+                "message_bus_broker",
+                "message_bus_client_api_gateway",
+                "message_bus_client_log_consumer", 
+                "message_bus_client_scheduler",
+                "message_bus_client_cli",
+                "message_bus_client_modelservice",
+                "message_bus_client_system_host",
+                "message_bus_client_backend_modules"
+            ]
+            
+            for component in curve_components:
+                public_key, secret_key = key_manager.derive_curve_keypair(master_key, component)
+                # Verify keys are 40-character Z85 encoded strings for CurveZMQ
+                if len(public_key) != 40 or len(secret_key) != 40:
+                    raise ValueError(f"Invalid CurveZMQ key length for component '{component}': pub={len(public_key)}, sec={len(secret_key)} chars (expected 40)")
+                # Verify they are valid Z85 strings
+                if not all(c in "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#" for c in public_key + secret_key):
+                    raise ValueError(f"Invalid Z85 encoding for component '{component}'")
+            
+            console.print("✅ [green]CurveZMQ transport keys validated[/green]")
+            console.print("🛡️ [green]Message bus encryption ready[/green]")
+            actions_taken.append("CurveZMQ transport keys validated")
+            
+        except Exception as e:
+            console.print(f"⚠️ [yellow]CurveZMQ transport key validation failed: {e}[/yellow]")
+            console.print("   Message bus encryption may not work properly")
         
         # Summary of actions taken
         if actions_taken:
@@ -453,6 +486,99 @@ def status(
             border_style=transport_border
         )
         console.print(transport_panel)
+        
+        # CurveZMQ Message Bus Encryption Section
+        curvezmq_table = Table(
+            title="🔒 CurveZMQ Message Bus Encryption",
+            title_justify="left",
+            show_header=True,
+            header_style="bold yellow",
+            border_style="bright_blue",
+            box=box.SIMPLE_HEAD
+        )
+        curvezmq_table.add_column("Component", style="bold white", justify="left")
+        curvezmq_table.add_column("Status", style="cyan", justify="left")
+        curvezmq_table.add_column("Details", style="dim", justify="left")
+        
+        # Default values for error case
+        curvezmq_enabled = False
+        curvezmq_border = "yellow"
+        curvezmq_status = "CurveZMQ encryption status unknown"
+        working_components = 0
+        total_components = 0
+        
+        try:
+            # Check CurveZMQ encryption configuration
+            transport_config = key_manager.config_manager.get("security", {}).get("transport", {})
+            curvezmq_enabled = transport_config.get("message_bus_encryption", True)
+            
+            if curvezmq_enabled:
+                # Test CurveZMQ key derivation for all components
+                master_key = key_manager.authenticate(interactive=False)
+                curve_components = [
+                    ("Broker", "message_bus_broker"),
+                    ("API Gateway", "message_bus_client_api_gateway"),
+                    ("Log Consumer", "message_bus_client_log_consumer"), 
+                    ("Scheduler", "message_bus_client_scheduler"),
+                    ("CLI", "message_bus_client_cli"),
+                    ("Model Service", "message_bus_client_modelservice"),
+                    ("System Host", "message_bus_client_system_host"),
+                    ("Backend Modules", "message_bus_client_backend_modules")
+                ]
+                
+                total_components = len(curve_components)
+                
+                for display_name, component_name in curve_components:
+                    try:
+                        public_key, secret_key = key_manager.derive_curve_keypair(master_key, component_name)
+                        if len(public_key) == 40 and len(secret_key) == 40:
+                            curvezmq_table.add_row(display_name, "Ready", "CurveZMQ keypair available")
+                            working_components += 1
+                        else:
+                            curvezmq_table.add_row(display_name, "Invalid", f"Key length error: {len(public_key)}/{len(secret_key)} chars")
+                    except Exception as e:
+                        curvezmq_table.add_row(display_name, "Error", f"Key derivation failed: {str(e)[:40]}...")
+                
+                # CurveZMQ configuration details
+                curve_config = transport_config.get("curvezmq", {})
+                auth_policy = curve_config.get("authentication_policy", "CURVE_ALLOW_ANY")
+                key_derivation = curve_config.get("key_derivation", {})
+                iterations = key_derivation.get("iterations", 1)
+                memory_mb = key_derivation.get("memory_cost", 65536) // 1024  # Convert KiB to MB
+                
+                curvezmq_table.add_row("Authentication", "Configured", f"Policy: {auth_policy}")
+                curvezmq_table.add_row("Key Derivation", "Argon2id", f"{iterations} iterations, {memory_mb}MB memory")
+                
+                # Overall status
+                if working_components == total_components:
+                    curvezmq_status = f"All {total_components} components ready for encrypted communication"
+                    curvezmq_border = "green"
+                elif working_components > 0:
+                    curvezmq_status = f"{working_components}/{total_components} components ready - partial encryption"
+                    curvezmq_border = "yellow"
+                else:
+                    curvezmq_status = "No components ready - message bus encryption unavailable"
+                    curvezmq_border = "red"
+            else:
+                curvezmq_table.add_row("Encryption", "Disabled", "Message bus uses plaintext")
+                curvezmq_table.add_row("Security Level", "None", "All inter-component communication unencrypted")
+                curvezmq_status = "CurveZMQ encryption disabled - plaintext message bus"
+                curvezmq_border = "red"
+                
+        except Exception as e:
+            curvezmq_table.add_row("Configuration", "Error", f"Failed to check status: {str(e)[:50]}...")
+            curvezmq_status = f"CurveZMQ status check failed: {e}"
+            curvezmq_border = "red"
+            
+        console.print(curvezmq_table)
+        
+        # CurveZMQ Status Summary
+        curvezmq_panel = Panel(
+            curvezmq_status,
+            title="🔒 Message Bus Security",
+            border_style=curvezmq_border
+        )
+        console.print(curvezmq_panel)
     
     # Show recommendations
     if not health_info["has_master_key"]:

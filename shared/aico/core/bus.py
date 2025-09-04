@@ -81,6 +81,11 @@ class MessageBusClient:
         # Message persistence (optional)
         self.persistence_enabled = False
         self.message_log = None
+        
+        # CurveZMQ encryption
+        self.encryption_enabled = False
+        self.public_key = None
+        self.secret_key = None
     
     async def connect(self):
         """Connect to the message bus"""
@@ -94,7 +99,15 @@ class MessageBusClient:
             pub_port = bus_config.get("pub_port", 5555)
             sub_port = bus_config.get("sub_port", 5556)
             
-            self.logger.info(f"Connecting to message bus at {host}:{pub_port}/{sub_port}")
+            # Check if encryption is enabled
+            security_config = config.get("security", {})
+            transport_config = security_config.get("transport", {})
+            self.encryption_enabled = transport_config.get("message_bus_encryption", True)
+            
+            if self.encryption_enabled:
+                await self._setup_curve_encryption(config)
+            
+            self.logger.info(f"Connecting to message bus at {host}:{pub_port}/{sub_port} (encryption: {'enabled' if self.encryption_enabled else 'disabled'})")
             
             # Verify broker is actually running before connecting
             if not await self._verify_broker_available(host, pub_port):
@@ -103,11 +116,16 @@ class MessageBusClient:
             # Publisher socket for sending messages
             self.publisher = self.context.socket(zmq.PUB)
             self.publisher.setsockopt(zmq.LINGER, 0)  # Don't wait on close
-            self.publisher.connect(f"tcp://{host}:{pub_port}")
             
             # Subscriber socket for receiving messages
             self.subscriber = self.context.socket(zmq.SUB)
             self.subscriber.setsockopt(zmq.LINGER, 0)  # Don't wait on close
+            
+            # Configure CurveZMQ encryption if enabled
+            if self.encryption_enabled:
+                self._configure_curve_sockets()
+            
+            self.publisher.connect(f"tcp://{host}:{pub_port}")
             self.subscriber.connect(f"tcp://{host}:{sub_port}")
             
             self.running = True
@@ -146,6 +164,76 @@ class MessageBusClient:
             return result == 0  # 0 means connection successful
         except Exception:
             return False
+    
+    async def _setup_curve_encryption(self, config: ConfigurationManager):
+        """Setup CurveZMQ encryption keys"""
+        try:
+            from aico.security.key_manager import AICOKeyManager
+            
+            # Initialize key manager
+            key_manager = AICOKeyManager(config)
+            
+            # Get master key (non-interactive for service mode)
+            master_key = key_manager.authenticate(interactive=False)
+            
+            # Derive CurveZMQ keypair for this client
+            self.public_key, self.secret_key = key_manager.derive_curve_keypair(master_key, self.client_id)
+            
+            self.logger.debug(f"CurveZMQ keys derived for client: {self.client_id}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to setup CurveZMQ encryption: {e}")
+            # Fall back to plaintext mode
+            self.encryption_enabled = False
+            self.logger.warning("Falling back to plaintext message bus communication")
+    
+    def _configure_curve_sockets(self):
+        """Configure sockets for CurveZMQ encryption"""
+        if not self.encryption_enabled or not self.secret_key:
+            return
+            
+        try:
+            # Get broker's public key for server authentication
+            broker_public_key = self._get_broker_public_key()
+            
+            # Configure publisher socket as CURVE client
+            self.publisher.setsockopt_string(zmq.CURVE_SECRETKEY, self.secret_key)
+            self.publisher.setsockopt_string(zmq.CURVE_PUBLICKEY, self.public_key)
+            self.publisher.setsockopt_string(zmq.CURVE_SERVERKEY, broker_public_key)
+            
+            # Configure subscriber socket as CURVE client
+            self.subscriber.setsockopt_string(zmq.CURVE_SECRETKEY, self.secret_key)
+            self.subscriber.setsockopt_string(zmq.CURVE_PUBLICKEY, self.public_key)
+            self.subscriber.setsockopt_string(zmq.CURVE_SERVERKEY, broker_public_key)
+            
+            self.logger.debug("CurveZMQ socket configuration completed")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to configure CurveZMQ sockets: {e}")
+            self.encryption_enabled = False
+    
+    def _get_broker_public_key(self) -> str:
+        """Get broker's public key for server authentication"""
+        try:
+            from aico.security.key_manager import AICOKeyManager
+            from aico.core.config import ConfigurationManager
+            
+            # Initialize key manager
+            config = ConfigurationManager()
+            key_manager = AICOKeyManager(config)
+            
+            # Get master key (non-interactive for service mode)
+            master_key = key_manager.authenticate(interactive=False)
+            
+            # Derive broker's public key (same as broker derives for itself)
+            broker_public_key, _ = key_manager.derive_curve_keypair(master_key, "message_bus_broker")
+            
+            return broker_public_key
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get broker public key: {e}")
+            # Fall back to zero key - will cause connection failure but allows graceful degradation
+            return b'\x00' * 32
     
     async def publish(self, topic: str, payload: ProtobufMessage, 
                      correlation_id: Optional[str] = None, attributes: Optional[Dict[str, str]] = None):
@@ -332,6 +420,11 @@ class MessageBusBroker:
         self.pub_port = bus_config.get("pub_port", 5555)
         self.sub_port = bus_config.get("sub_port", 5556)
         
+        # Check if encryption is enabled
+        security_config = config.get("security", {})
+        transport_config = security_config.get("transport", {})
+        self.encryption_enabled = transport_config.get("message_bus_encryption", True)
+        
         # ZeroMQ context and sockets (use regular context for compatibility with threaded proxy)
         import zmq
         self.context = zmq.Context()
@@ -344,21 +437,36 @@ class MessageBusBroker:
         
         # Topic access control
         self.topic_permissions: Dict[str, Set[str]] = {}
+        
+        # CurveZMQ authentication
+        self.auth = None
+        self.server_public_key = None
+        self.server_secret_key = None
     
     async def start(self):
         """Start the message bus broker"""
         try:
-            self.logger.debug(f"[BROKER] Starting broker - pub_port: {self.pub_port}, sub_port: {self.sub_port}")
+            self.logger.debug(f"[BROKER] Starting broker - pub_port: {self.pub_port}, sub_port: {self.sub_port} (encryption: {'enabled' if self.encryption_enabled else 'disabled'})")
+            
+            # Setup CurveZMQ authentication if encryption is enabled
+            if self.encryption_enabled:
+                await self._setup_curve_authentication()
             
             # Frontend socket for publishers
             self.frontend = self.context.socket(zmq.XSUB)
             self.frontend.setsockopt(zmq.LINGER, 0)  # Don't wait on close
-            self.logger.debug(f"[BROKER] Binding frontend (XSUB) to tcp://*:{self.pub_port}")
-            self.frontend.bind(f"tcp://*:{self.pub_port}")
             
             # Backend socket for subscribers
             self.backend = self.context.socket(zmq.XPUB)
             self.backend.setsockopt(zmq.LINGER, 0)  # Don't wait on close
+            
+            # Configure CurveZMQ encryption if enabled
+            if self.encryption_enabled:
+                self._configure_curve_broker_sockets()
+            
+            self.logger.debug(f"[BROKER] Binding frontend (XSUB) to tcp://*:{self.pub_port}")
+            self.frontend.bind(f"tcp://*:{self.pub_port}")
+            
             self.logger.debug(f"[BROKER] Binding backend (XPUB) to tcp://*:{self.sub_port}")
             self.backend.bind(f"tcp://*:{self.sub_port}")
             
@@ -381,6 +489,14 @@ class MessageBusBroker:
         """Stop the message bus broker"""
         self.running = False
         
+        # Stop CurveZMQ authenticator if running
+        if self.auth:
+            try:
+                self.auth.stop()
+                self.logger.debug("CurveZMQ authenticator stopped")
+            except Exception as e:
+                self.logger.warning(f"Error stopping CurveZMQ authenticator: {e}")
+        
         # Close sockets with proper cleanup
         if self.frontend:
             self.frontend.close(linger=0)
@@ -402,6 +518,61 @@ class MessageBusBroker:
             self.context.term()
         
         self.logger.info("Message bus broker stopped")
+    
+    async def _setup_curve_authentication(self):
+        """Setup CurveZMQ authentication for the broker"""
+        try:
+            from aico.security.key_manager import AICOKeyManager
+            from aico.core.config import ConfigurationManager
+            import zmq.auth
+            
+            # Initialize key manager
+            config = ConfigurationManager()
+            key_manager = AICOKeyManager(config)
+            
+            # Get master key (non-interactive for service mode)
+            master_key = key_manager.authenticate(interactive=False)
+            
+            # Derive broker keypair
+            self.server_public_key, self.server_secret_key = key_manager.derive_curve_keypair(master_key, "message_bus_broker")
+            
+            # Start ThreadAuthenticator
+            self.auth = zmq.auth.ThreadAuthenticator(self.context)
+            self.auth.start()
+            
+            # Configure CURVE authentication to allow any client with valid CURVE credentials
+            # This implements zero-configuration security - any component with valid keys can connect
+            self.auth.configure_curve(domain='*', location=zmq.auth.CURVE_ALLOW_ANY)
+            
+            self.logger.info("CurveZMQ authentication configured with CURVE_ALLOW_ANY policy")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to setup CurveZMQ authentication: {e}")
+            # Fall back to plaintext mode
+            self.encryption_enabled = False
+            self.logger.warning("Falling back to plaintext message bus broker")
+    
+    def _configure_curve_broker_sockets(self):
+        """Configure broker sockets for CurveZMQ encryption"""
+        if not self.encryption_enabled or not self.server_secret_key:
+            return
+            
+        try:
+            # Configure frontend socket as CURVE server
+            self.frontend.setsockopt_string(zmq.CURVE_SECRETKEY, self.server_secret_key)
+            self.frontend.setsockopt_string(zmq.CURVE_PUBLICKEY, self.server_public_key)
+            self.frontend.setsockopt(zmq.CURVE_SERVER, 1)
+            
+            # Configure backend socket as CURVE server
+            self.backend.setsockopt_string(zmq.CURVE_SECRETKEY, self.server_secret_key)
+            self.backend.setsockopt_string(zmq.CURVE_PUBLICKEY, self.server_public_key)
+            self.backend.setsockopt(zmq.CURVE_SERVER, 1)
+            
+            self.logger.debug("CurveZMQ broker socket configuration completed")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to configure CurveZMQ broker sockets: {e}")
+            self.encryption_enabled = False
     
     async def _start_proxy_task(self):
         """Start the proxy task in background"""
