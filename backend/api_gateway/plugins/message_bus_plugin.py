@@ -80,6 +80,9 @@ class MessageBusPlugin(BasePlugin):
                 "persistence": "enabled" if self.db_connection else "disabled"
             })
             
+            # Notify ZMQ log transport that broker is ready
+            self._notify_log_transport_broker_ready()
+            
         except Exception as e:
             self.logger.error(f"Failed to start message bus plugin: {e}")
             print(f"[ERROR]: Failed to start message bus plugin: {e}")
@@ -159,6 +162,29 @@ class MessageBusPlugin(BasePlugin):
                 "status": "error", 
                 "message": f"Health check failed: {e}"
             }
+    
+    def _notify_log_transport_broker_ready(self):
+        """Notify ZMQ log transport that broker is ready to accept connections"""
+        try:
+            print(f"[DEBUG] _notify_log_transport_broker_ready() called")
+            from aico.core.logging import get_logger_factory
+            
+            # Get the global logger factory instance
+            factory = get_logger_factory()
+            print(f"[DEBUG] Logger factory: {factory is not None}")
+            
+            if factory and hasattr(factory, '_transport') and factory._transport:
+                print(f"[DEBUG] Factory has _transport: {factory._transport is not None}")
+                print(f"[DEBUG] Calling mark_broker_ready()")
+                factory._transport.mark_broker_ready()
+                self.logger.info("Notified ZMQ log transport that broker is ready")
+            else:
+                print(f"[DEBUG] Factory missing _transport or transport is None")
+            
+        except Exception as e:
+            # Don't fail startup if notification fails
+            print(f"[DEBUG] Exception in notification: {e}")
+            self.logger.warning(f"Failed to notify log transport broker ready: {e}")
     
     async def shutdown(self) -> None:
         """Cleanup message bus plugin resources"""

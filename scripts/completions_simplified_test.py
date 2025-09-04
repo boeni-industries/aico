@@ -28,7 +28,7 @@ async def perform_handshake(client: httpx.AsyncClient) -> tuple[Box, str]:
     import os
     from nacl.signing import SigningKey, VerifyKey
     
-    # Generate ephemeral keypairs
+    # Generate ephemeral keypair
     client_private_key = PrivateKey.generate()
     client_public_key = client_private_key.public_key
     

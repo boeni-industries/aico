@@ -49,19 +49,22 @@ class LogConsumerPlugin(BasePlugin):
     async def initialize(self) -> None:
         """Initialize log consumer with database connection"""
         try:
-            # Create log consumer service directly
+            # Create log consumer service using the service container pattern
             from backend.services.log_consumer_service import LogConsumerService
             
+            # Create the service with proper container dependency injection
             self.log_consumer = LogConsumerService("log_consumer", self.container)
             self.logger.info(f"Log consumer service created: {self.log_consumer is not None}")
             
+            # Initialize the service (this will resolve dependencies from container)
             await self.log_consumer.initialize()
             self.logger.info("Log consumer service initialized successfully")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize log consumer plugin: {e}", exc_info=True)
-            # Don't raise - let plugin continue without log consumer
+            # Fail fast - raise the error to prevent silent failures
             self.log_consumer = None
+            raise
     
     async def start(self) -> None:
         """Start the log consumer service"""

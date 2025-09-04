@@ -135,8 +135,7 @@ class BackendLifecycleManager:
         # Display available routes
         self._display_routes()
         
-        # Display log consumer status and debug initialization
-        #await self._debug_log_consumer_initialization()
+        # Display log consumer status (debug logic removed)
         
         # Start protocol adapters (WebSocket, ZeroMQ)
         await self._start_protocol_adapters()
@@ -263,8 +262,6 @@ class BackendLifecycleManager:
             priority=25
         )
         
-        # Log consumer will be registered as a plugin, not a core service
-        
         self.logger.debug("Core services registered")
     
     def _register_plugin_classes(self) -> None:
@@ -336,6 +333,7 @@ class BackendLifecycleManager:
             "validation": [],
             "routing": [],
             "message_bus": ["zmq_context"],
+            "log_consumer": ["database", "zmq_context"],
         }
         
         return dependency_map.get(plugin_name, [])
@@ -344,6 +342,7 @@ class BackendLifecycleManager:
         """Get plugin startup priority"""
         priority_map = {
             "message_bus": 20,
+            "log_consumer": 25,  # Start log consumer after message bus
             "security": 30,
             "encryption": 35,
             "rate_limiting": 40,
@@ -668,12 +667,51 @@ class BackendLifecycleManager:
             if message_bus_plugin:
                 # Message bus plugin starts broker in its start() method
                 print("[✓] ZMQ message broker running on tcp://*:5555")
+                
+                # Notify ZMQ log transport that broker is ready to flush buffered messages
+                self._notify_log_transport_broker_ready()
             else:
                 print("[✗] ZMQ message broker not available - message_bus_plugin not found")
                 
         except Exception as e:
             self.logger.error(f"Failed to start message broker: {e}")
             print(f"[✗] ZMQ message broker failed: {e}")
+    
+    def _notify_log_transport_broker_ready(self) -> None:
+        """Notify ZMQ log transport that broker is ready to flush buffered startup messages"""
+        try:
+            # Get the global ZMQ transport instance from the logging system
+            from aico.core.logging import _get_zmq_transport
+            zmq_transport = _get_zmq_transport()
+            if zmq_transport:
+                print("[+] Notifying ZMQ log transport that broker is ready...")
+                zmq_transport.mark_broker_ready()
+                print("[✓] ZMQ log transport notified - buffered startup messages will be flushed")
+            else:
+                print("[!] ZMQ log transport not found - startup messages may be lost")
+                
+            # Also notify log consumer service to connect
+            self._notify_log_consumer_broker_ready()
+                
+        except Exception as e:
+            self.logger.warning(f"Failed to notify ZMQ log transport: {e}")
+            print(f"[!] Warning: Could not notify ZMQ log transport: {e}")
+    
+    def _notify_log_consumer_broker_ready(self) -> None:
+        """Notify log consumer service that broker is ready"""
+        try:
+            log_consumer_plugin = self.container.get_service('log_consumer_plugin')
+            if log_consumer_plugin and log_consumer_plugin.log_consumer:
+                print("[+] Notifying log consumer that broker is ready...")
+                import asyncio
+                # Run the async method in the current event loop
+                asyncio.create_task(log_consumer_plugin.log_consumer.connect_when_broker_ready())
+                print("[✓] Log consumer notified - will connect to message bus")
+            else:
+                print("[!] Log consumer service not found")
+        except Exception as e:
+            self.logger.warning(f"Failed to notify log consumer: {e}")
+            print(f"[!] Warning: Could not notify log consumer: {e}")
     
     def _display_log_consumer_status(self) -> None:
         """Display log consumer service status"""

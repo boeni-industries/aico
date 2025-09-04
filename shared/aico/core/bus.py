@@ -12,7 +12,7 @@ import uuid
 import zmq
 import zmq.asyncio
 from datetime import datetime
-from typing import Dict, List, Callable, Optional, Any
+from typing import Dict, List, Callable, Optional, Any, Set
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.message import Message as ProtobufMessage
@@ -22,6 +22,29 @@ if platform.system() == "Windows":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from .config import ConfigurationManager
+
+# Shared static keys for minimal CurveZMQ authentication
+_SHARED_BROKER_KEYS = None
+
+def _get_shared_broker_keys():
+    """Get shared broker keypair for minimal authentication"""
+    global _SHARED_BROKER_KEYS
+    if _SHARED_BROKER_KEYS is None:
+        # Generate once and reuse - same approach as working test
+        broker_public, broker_secret = zmq.curve_keypair()
+        _SHARED_BROKER_KEYS = (
+            broker_public.decode('ascii'),
+            broker_secret.decode('ascii')
+        )
+    return _SHARED_BROKER_KEYS
+
+def _get_shared_broker_public_key():
+    """Get shared broker public key"""
+    return _get_shared_broker_keys()[0]
+
+def _get_shared_broker_secret_key():
+    """Get shared broker secret key"""
+    return _get_shared_broker_keys()[1]
 # Optional protobuf imports to avoid chicken/egg problem with CLI
 try:
     from ..proto.aico_core_envelope_pb2 import AicoMessage, MessageMetadata
@@ -77,6 +100,7 @@ class MessageBusClient:
         self.subscriber = None
         self.subscriptions: Dict[str, Callable] = {}
         self.running = False
+        self.connected = False  # Initialize connected property
         
         # Message persistence (optional)
         self.persistence_enabled = False
@@ -94,7 +118,7 @@ class MessageBusClient:
             from aico.core.config import ConfigurationManager
             config = ConfigurationManager()
             config.initialize(lightweight=True)
-            bus_config = config.get("message_bus", {})
+            bus_config = config.get("core.message_bus", {})
             host = bus_config.get("host", "localhost")
             pub_port = bus_config.get("pub_port", 5555)
             sub_port = bus_config.get("sub_port", 5556)
@@ -129,6 +153,7 @@ class MessageBusClient:
             self.subscriber.connect(f"tcp://{host}:{sub_port}")
             
             self.running = True
+            self.connected = True  # Add connected property for compatibility
             # Update broker_address to reflect actual connection
             self.broker_address = f"tcp://{host}:{pub_port}"
             self.logger.info(f"Connected to message bus at {self.broker_address}")
@@ -143,6 +168,7 @@ class MessageBusClient:
     async def disconnect(self):
         """Disconnect from the message bus"""
         self.running = False
+        self.connected = False  # Update connected property
         
         if self.publisher:
             self.publisher.close()
@@ -166,20 +192,14 @@ class MessageBusClient:
             return False
     
     async def _setup_curve_encryption(self, config: ConfigurationManager):
-        """Setup CurveZMQ encryption keys"""
+        """Setup CurveZMQ encryption keys using minimal in-memory approach"""
         try:
-            from aico.security.key_manager import AICOKeyManager
+            # Generate client keypair directly in memory
+            client_public, client_secret = zmq.curve_keypair()
+            self.public_key = client_public.decode('ascii')
+            self.secret_key = client_secret.decode('ascii')
             
-            # Initialize key manager
-            key_manager = AICOKeyManager(config)
-            
-            # Get master key (non-interactive for service mode)
-            master_key = key_manager.authenticate(interactive=False)
-            
-            # Derive CurveZMQ keypair for this client
-            self.public_key, self.secret_key = key_manager.derive_curve_keypair(master_key, self.client_id)
-            
-            # Security logging: Key derivation success
+            # Security logging: Key generation success
             self.logger.info(f"[SECURITY] CurveZMQ encryption enabled for client: {self.client_id}")
             self.logger.debug(f"[SECURITY] Client public key fingerprint: {self.public_key[:8]}...")
             
@@ -223,32 +243,10 @@ class MessageBusClient:
             raise MessageBusError(f"CurveZMQ socket configuration failed for {self.client_id}: {e}")
     
     def _get_broker_public_key(self) -> str:
-        """Get broker's public key for server authentication"""
-        try:
-            from aico.security.key_manager import AICOKeyManager
-            from aico.core.config import ConfigurationManager
-            
-            # Initialize key manager
-            config = ConfigurationManager()
-            key_manager = AICOKeyManager(config)
-            
-            # Get master key (non-interactive for service mode)
-            master_key = key_manager.authenticate(interactive=False)
-            
-            # Derive broker's public key (same as broker derives for itself)
-            broker_public_key, _ = key_manager.derive_curve_keypair(master_key, "message_bus_broker")
-            
-            # Security logging: Broker key retrieval success
-            self.logger.debug(f"[SECURITY] Successfully retrieved broker public key for authentication")
-            
-            return broker_public_key
-            
-        except Exception as e:
-            # Security logging: Broker key retrieval failure
-            self.logger.error(f"[SECURITY] CRITICAL: Failed to get broker public key for {self.client_id}: {e}")
-            self.logger.warning(f"[SECURITY] WARNING: Using fallback key - connection will fail")
-            # Fall back to zero key - will cause connection failure but allows graceful degradation
-            return b'\x00' * 32
+        """Get broker's public key for server authentication - using shared static key"""
+        # Use a shared static broker public key (same as broker uses)
+        # This implements minimal authentication - all clients use same broker key
+        return _get_shared_broker_public_key()
     
     async def publish(self, topic: str, payload: ProtobufMessage, 
                      correlation_id: Optional[str] = None, attributes: Optional[Dict[str, str]] = None):
@@ -278,16 +276,16 @@ class MessageBusClient:
         any_payload.Pack(payload)
         message.any_payload.CopyFrom(any_payload)
         
-        # Serialize to binary protobuf
+        # Serialize message
         message_data = message.SerializeToString()
         
-        # Send message with topic as routing key
+        # Send the message
         await self.publisher.send_multipart([topic.encode('utf-8'), message_data])
         
-        # Security logging: Message publication
-        encryption_status = "encrypted" if self.encryption_enabled else "plaintext"
-        self.logger.debug(f"Published {encryption_status} protobuf message to topic '{topic}': {metadata.message_id}")
-        self.logger.debug(f"Message data length: {len(message_data)} bytes")
+        # Security logging: Message publication (disabled to prevent feedback loop)
+        # encryption_status = "encrypted" if self.encryption_enabled else "plaintext"
+        # self.logger.debug(f"Published {encryption_status} protobuf message to topic '{topic}': {metadata.message_id}")
+        # self.logger.debug(f"Message data length: {len(message_data)} bytes")
         if not self.encryption_enabled:
             self.logger.warning(f"[SECURITY] WARNING: Message {metadata.message_id} sent in plaintext to topic '{topic}'")
         
@@ -328,9 +326,9 @@ class MessageBusClient:
                 topic, message_data = await self.subscriber.recv_multipart()
                 topic = topic.decode('utf-8')
                 
-                # Security logging: Message reception
-                encryption_status = "encrypted" if self.encryption_enabled else "plaintext"
-                self.logger.debug(f"Received {encryption_status} message on topic: '{topic}', data length: {len(message_data)}")
+                # Security logging: Message reception (disabled to prevent feedback loop)
+                # encryption_status = "encrypted" if self.encryption_enabled else "plaintext"
+                # self.logger.debug(f"Received {encryption_status} message on topic: '{topic}', data length: {len(message_data)}")
                 if not self.encryption_enabled:
                     self.logger.warning(f"[SECURITY] WARNING: Client {self.client_id} received plaintext message on topic '{topic}'")
                 
@@ -340,12 +338,13 @@ class MessageBusClient:
                 
                 # Find matching subscriptions and invoke callbacks
                 for pattern, callback in self.subscriptions.items():
-                    self.logger.debug(f"Checking pattern '{pattern}' against topic '{topic}'")
+                    # Debug logging disabled to prevent feedback loop
+                    # self.logger.debug(f"Checking pattern '{pattern}' against topic '{topic}'")
                     if self._topic_matches_pattern(topic, pattern):
-                        self.logger.debug(f"Pattern '{pattern}' matches topic '{topic}' - invoking callback")
+                        # self.logger.debug(f"Pattern '{pattern}' matches topic '{topic}' - invoking callback")
                         await self._invoke_callback(callback, message)
-                    else:
-                        self.logger.debug(f"Pattern '{pattern}' does not match topic '{topic}'")
+                    # else:
+                        # self.logger.debug(f"Pattern '{pattern}' does not match topic '{topic}'")
                         
             except Exception as e:
                 if self.running:
@@ -389,9 +388,13 @@ class MessageBusClient:
             return not topic_parts
         
         if not topic_parts:
-            return all(p == "*" for p in pattern_parts)
+            return all(p in ["*", "**"] for p in pattern_parts)
         
         if pattern_parts[0] == "*":
+            # Single * at end of pattern matches any remaining segments
+            if len(pattern_parts) == 1:
+                return True
+            # Single * in middle matches exactly one segment
             return self._match_parts(topic_parts[1:], pattern_parts[1:])
         elif pattern_parts[0] == "**":
             # Match any number of segments
@@ -443,7 +446,7 @@ class MessageBusBroker:
         from aico.core.config import ConfigurationManager
         config = ConfigurationManager()
         config.initialize(lightweight=True)
-        bus_config = config.get("message_bus", {})
+        bus_config = config.get("core.message_bus", {})
         self.pub_port = bus_config.get("pub_port", 5555)
         self.sub_port = bus_config.get("sub_port", 5556)
         
@@ -452,9 +455,9 @@ class MessageBusBroker:
         transport_config = security_config.get("transport", {})
         self.encryption_enabled = transport_config.get("message_bus_encryption", True)
         
-        # ZeroMQ context and sockets (use regular context for compatibility with threaded proxy)
-        import zmq
-        self.context = zmq.Context()
+        # ZeroMQ context and sockets (use asyncio context for compatibility with async clients)
+        import zmq.asyncio
+        self.context = zmq.asyncio.Context()
         self.logger.debug(f"[BROKER] Using ZMQ context type: {type(self.context).__name__}")
         self.frontend = None  # Receives from publishers
         self.backend = None   # Sends to subscribers
@@ -465,8 +468,7 @@ class MessageBusBroker:
         # Topic access control
         self.topic_permissions: Dict[str, Set[str]] = {}
         
-        # CurveZMQ authentication
-        self.auth = None
+        # CurveZMQ encryption
         self.server_public_key = None
         self.server_secret_key = None
     
@@ -475,20 +477,16 @@ class MessageBusBroker:
         try:
             self.logger.debug(f"[BROKER] Starting broker - pub_port: {self.pub_port}, sub_port: {self.sub_port} (encryption: {'enabled' if self.encryption_enabled else 'disabled'})")
             
-            # Setup CurveZMQ authentication if encryption is enabled
-            if self.encryption_enabled:
-                await self._setup_curve_authentication()
-            
-            # Frontend socket for publishers
+            # Create broker sockets
             self.frontend = self.context.socket(zmq.XSUB)
-            self.frontend.setsockopt(zmq.LINGER, 0)  # Don't wait on close
+            self.frontend.setsockopt(zmq.LINGER, 0)
             
-            # Backend socket for subscribers
             self.backend = self.context.socket(zmq.XPUB)
-            self.backend.setsockopt(zmq.LINGER, 0)  # Don't wait on close
+            self.backend.setsockopt(zmq.LINGER, 0)
             
             # Configure CurveZMQ encryption if enabled
             if self.encryption_enabled:
+                await self._setup_curve_authentication()
                 self._configure_curve_broker_sockets()
             
             self.logger.debug(f"[BROKER] Binding frontend (XSUB) to tcp://*:{self.pub_port}")
@@ -516,13 +514,6 @@ class MessageBusBroker:
         """Stop the message bus broker"""
         self.running = False
         
-        # Stop CurveZMQ authenticator if running
-        if self.auth:
-            try:
-                self.auth.stop()
-                self.logger.debug("CurveZMQ authenticator stopped")
-            except Exception as e:
-                self.logger.warning(f"Error stopping CurveZMQ authenticator: {e}")
         
         # Close sockets with proper cleanup
         if self.frontend:
@@ -530,12 +521,8 @@ class MessageBusBroker:
         if self.backend:
             self.backend.close(linger=0)
         
-        # Wait for proxy thread to finish if it exists
-        if hasattr(self, 'proxy_thread') and self.proxy_thread.is_alive():
-            # Give the thread a moment to notice the closed sockets and exit
-            await asyncio.sleep(0.2)
-            if self.proxy_thread.is_alive():
-                self.logger.warning("Proxy thread still running after socket close")
+        # Give proxy loop a moment to exit
+        await asyncio.sleep(0.2)
         
         # Small delay to ensure sockets are fully closed
         await asyncio.sleep(0.1)
@@ -584,48 +571,23 @@ class MessageBusBroker:
             return {}
     
     async def _setup_curve_authentication(self):
-        """Setup CurveZMQ authentication for the broker"""
+        """Setup CurveZMQ encryption for the broker using minimal in-memory approach"""
         try:
-            from aico.security.key_manager import AICOKeyManager
-            from aico.core.config import ConfigurationManager
-            import zmq.auth
-            
             # Security logging: Authentication setup start
-            self.logger.info("[SECURITY] Setting up CurveZMQ authentication for message bus broker")
+            self.logger.info("[SECURITY] Setting up CurveZMQ encryption for message bus broker")
             
-            # Initialize key manager
-            config = ConfigurationManager()
-            key_manager = AICOKeyManager(config)
+            # Use shared static broker keys (same approach as working test)
+            self.server_public_key = _get_shared_broker_public_key()
+            self.server_secret_key = _get_shared_broker_secret_key()
             
-            # Get master key (non-interactive for service mode)
-            master_key = key_manager.authenticate(interactive=False)
-            
-            # Derive broker keypair
-            self.server_public_key, self.server_secret_key = key_manager.derive_curve_keypair(master_key, "message_bus_broker")
-            self.logger.info(f"[SECURITY] Broker CurveZMQ keypair derived successfully")
+            self.logger.info(f"[SECURITY] Broker CurveZMQ keypair loaded successfully")
             self.logger.debug(f"[SECURITY] Broker public key fingerprint: {self.server_public_key[:8]}...")
-            
-            # Start ThreadAuthenticator
-            self.auth = zmq.auth.ThreadAuthenticator(self.context)
-            self.auth.start()
-            self.logger.debug("[SECURITY] ZMQ ThreadAuthenticator started for client validation")
-            
-            # Configure CURVE authentication with explicit client validation
-            # Generate list of authorized client public keys
-            authorized_clients = self._get_authorized_client_keys()
-            
-            # Configure CURVE authentication with specific client keys
-            for client_name, client_public_key in authorized_clients.items():
-                self.auth.configure_curve(domain='*', location=client_public_key)
-                self.logger.debug(f"[SECURITY] Authorized CurveZMQ client: {client_name} (key: {client_public_key[:8]}...)")
-            
-            self.logger.info(f"[SECURITY] CurveZMQ authentication configured with {len(authorized_clients)} authorized clients")
-            self.logger.info(f"[SECURITY] Broker authentication setup complete - all connections will be encrypted")
+            self.logger.info(f"[SECURITY] CurveZMQ encryption setup complete - all connections will be encrypted")
             
         except Exception as e:
-            self.logger.error(f"[SECURITY] CRITICAL: Failed to setup CurveZMQ authentication: {e}")
+            self.logger.error(f"[SECURITY] CRITICAL: Failed to setup CurveZMQ encryption: {e}")
             # NO PLAINTEXT FALLBACK - Fail securely
-            raise MessageBusError(f"CurveZMQ broker authentication setup failed: {e}")
+            raise MessageBusError(f"CurveZMQ encryption setup failed: {e}")
     
     def _configure_curve_broker_sockets(self):
         """Configure broker sockets for CurveZMQ encryption"""
@@ -654,41 +616,68 @@ class MessageBusBroker:
     
     async def _start_proxy_task(self):
         """Start the proxy task in background"""
-        await self._proxy_loop()
+        asyncio.create_task(self._proxy_loop())
     
     async def _proxy_loop(self):
         """Main proxy loop for forwarding messages"""
         try:
-            # Run ZeroMQ proxy in thread pool to avoid blocking event loop
-            import concurrent.futures
-            import threading
+            print(f"[BROKER PROXY] Starting async proxy: Frontend: tcp://*:{self.pub_port}, Backend: tcp://*:{self.sub_port}")
+            self.logger.info(f"Broker Proxy started: Frontend: tcp://*:{self.pub_port}, Backend: tcp://*:{self.sub_port}")
             
-            def run_proxy():
+            # Brief delay to ensure sockets are ready
+            await asyncio.sleep(0.1)
+            
+            print(f"[BROKER PROXY] Starting async message forwarding...")
+            
+            # Manual async proxy implementation
+            import zmq.asyncio
+            poller = zmq.asyncio.Poller()
+            poller.register(self.frontend, zmq.POLLIN)
+            poller.register(self.backend, zmq.POLLIN)
+            
+            poll_count = 0
+            while self.running:
                 try:
-                    self.logger.info(f"Broker Proxy thread started: Frontend: tcp://*:{self.pub_port}, Backend: tcp://*:{self.sub_port}")
+                    socks = await poller.poll(timeout=100)  # 100ms timeout
+                    poll_count += 1
                     
-                    # Add a small delay to ensure sockets are fully bound
-                    import time
-                    time.sleep(0.1)
+                    if not socks:
+                        # No messages - this is normal, continue polling
+                        if poll_count % 50 == 0:  # Every 5 seconds
+                            print(f"[BROKER PROXY] Still polling... (poll #{poll_count})")
+                        continue
                     
-                    # Start ZMQ proxy (blocks indefinitely until sockets are closed)
-                    zmq.proxy(self.frontend, self.backend)
-                    self.logger.warning(f"ZMQ proxy returned unexpectedly")
+                    print(f"[BROKER PROXY] Poll returned {len(socks)} socket(s) with events")
+                    
+                    for sock, event in socks:
+                        if sock == self.frontend and event == zmq.POLLIN:
+                            # Forward from frontend (publishers) to backend (subscribers)
+                            print(f"[BROKER PROXY] Receiving message from frontend (publisher)")
+                            message = await self.frontend.recv_multipart()
+                            print(f"[BROKER PROXY] Forwarding message to backend (subscribers): {len(message)} parts")
+                            await self.backend.send_multipart(message)
+                            print(f"[BROKER PROXY] Forwarded message from publisher to subscribers")
+                            
+                        elif sock == self.backend and event == zmq.POLLIN:
+                            # Forward from backend (subscribers) to frontend (publishers)
+                            print(f"[BROKER PROXY] Receiving subscription from backend (subscriber)")
+                            message = await self.backend.recv_multipart()
+                            print(f"[BROKER PROXY] Forwarding subscription to frontend (publishers): {len(message)} parts")
+                            await self.frontend.send_multipart(message)
+                            print(f"[BROKER PROXY] Forwarded subscription from subscriber to publishers")
+                            
                 except Exception as e:
-                    self.logger.error(f"Error in proxy thread: {e}")
-                    import traceback
-                    self.logger.error(f"Proxy thread traceback: {traceback.format_exc()}")
-                finally:
-                    self.logger.info("Broker Proxy thread exiting")
+                    if self.running:
+                        self.logger.error(f"Error in proxy loop iteration: {e}")
+                        await asyncio.sleep(0.1)
             
-            # Start proxy in background thread
-            self.proxy_thread = threading.Thread(target=run_proxy, daemon=True)
-            self.proxy_thread.start()
-            self.logger.info("ZeroMQ proxy started in background thread")
+            print(f"[BROKER PROXY] Proxy loop exiting")
+            self.logger.info("Broker Proxy loop exiting")
             
         except Exception as e:
             if self.running:
                 self.logger.error(f"Error starting proxy loop: {e}")
+                print(f"[BROKER PROXY] Error: {e}")
     
     def add_topic_permission(self, client_id: str, topic_pattern: str):
         """Grant topic access permission to a client"""

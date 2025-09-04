@@ -24,7 +24,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 # Optional protobuf imports to avoid chicken/egg problem with CLI
 try:
-    from ..proto.aico_core_logging_pb2 import LogEntry, LogLevel
+    from aico.proto.aico_core_logging_pb2 import LogEntry, LogLevel
 except ImportError:
     # Protobuf files not generated yet - use fallbacks
     LogEntry = None
@@ -73,10 +73,8 @@ class AICOLogger:
         self.module = module
         self.config = config_manager
         self.transport = transport
-        self._bootstrap_buffer: List[LogEntry] = []
         # If we have a transport, assume database is ready (CLI mode or ZMQ initialized)
         self._db_ready = transport is not None
-        self._max_buffer_size = self.config.get("logging.bootstrap.buffer_size", 100)
         
     def _create_log_entry(self, level: str, message: str, **kwargs) -> LogEntry:
         """Create a structured protobuf log entry with automatic context detection"""
@@ -134,33 +132,44 @@ class AICOLogger:
         
         return result
     
-    def _log(self, level: str, message: str, **kwargs):
-        """Internal log method with transport handling"""
-        # Check if we should log this level
-        if not self._should_log(level):
+    def _log(self, level: int, message: str, extra: Optional[Dict[str, Any]] = None) -> None:
+        """Internal logging method that handles transport routing"""
+        # Create LogEntry protobuf message
+        log_entry = LogEntry()
+        log_entry.timestamp.GetCurrentTime()
+        log_entry.level = level
+        log_entry.subsystem = self.subsystem
+        log_entry.module = self.module
+        log_entry.message = message
+        
+        # Add caller information
+        frame = inspect.currentframe()
+        if frame and frame.f_back and frame.f_back.f_back:
+            caller_frame = frame.f_back.f_back
+            log_entry.function = caller_frame.f_code.co_name
+            log_entry.file_path = caller_frame.f_code.co_filename
+            log_entry.line_number = caller_frame.f_lineno
+        
+        # Add extra data if provided
+        if extra:
+            for key, value in extra.items():
+                log_entry.extra[key] = str(value)
+        
+        # Route to appropriate transport or early buffer
+        global _early_startup_buffer, _early_buffer_enabled, _logger_factory
+        # Prevent feedback loop: do not send logs from ZMQ/log_consumer to ZMQ or buffer
+        if self._is_transport_disabled():
+            # Only fallback log (console/file), never to ZMQ or buffer
+            self._try_fallback_logging(log_entry)
             return
-            
-        try:
-            # Create log entry
-            log_entry = self._create_log_entry(level, message, **kwargs)
-            
-            # Send via transport if available
-            if self.transport and not self._is_transport_disabled():
-                self.transport.send_log(log_entry)
-            else:
-                # Only print transport errors for ERROR level or higher
-                if level in ["ERROR", "CRITICAL"]:
-                    print(f"[ERROR] Logger has no transport - log not sent to ZMQ")
-            
-        except Exception as e:
-            # Only print transport failures for ERROR level or higher
-            if level in ["ERROR", "CRITICAL"]:
-                print(f"[ERROR] Logger transport failed: {e}")
-                print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] {level} {self.subsystem}.{self.module}: [TRANSPORT ERROR] {message}")
-                print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] ERROR {self.subsystem}.{self.module}: Log transport failed: {e}")
-            
-            # Re-raise transport errors to trigger fallback behavior
-            raise
+        if _logger_factory and _logger_factory._transport:
+            _logger_factory._transport.send_log(log_entry)
+        elif _early_buffer_enabled:
+            # Buffer early startup messages before ZMQ transport is ready
+            _early_startup_buffer.append(log_entry)
+            print(f"[EARLY BUFFER] Buffered startup message: {self.subsystem}.{self.module} - {message[:50]}...")
+        else:
+            print(f"[ERROR] Logger has no transport - log not sent to ZMQ")
     
     def _log_to_console(self, level: str, message: str, **kwargs):
         """Log to console as fallback - DISABLED (logs go to database only)"""
@@ -261,19 +270,8 @@ class AICOLogger:
         return False
     
     def mark_database_ready(self):
-        """Called after database initialization to flush bootstrap buffer"""
+        """Called after database initialization (no-op, buffer removed)"""
         self._db_ready = True
-        # Flush bootstrap buffer to database
-        for buffered_log in self._bootstrap_buffer:
-            try:
-                self._send_to_database(buffered_log)
-            except Exception as e:
-                import logging
-                logger = logging.getLogger('aico_logging')
-                logger.error(f"Error flushing buffered log: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-        self._bootstrap_buffer.clear()
     
     # Public logging methods
     def debug(self, message: str, **kwargs):
@@ -386,9 +384,18 @@ class ZMQLogTransport:
     """ZeroMQ transport for log messages using encrypted MessageBusClient"""
     
     def __init__(self, config: 'ConfigurationManager', zmq_context):
+        from collections import deque
         self.config = config
         self._message_bus_client = None
         self._initialized = False
+        
+        # Buffering state removed
+        self._broker_available = False
+        self._connection_retry_count = 0
+        self._max_retries = 3
+        self._last_retry_time = 0
+        self._retry_delay = 5.0  # seconds between retry attempts
+        self._flush_in_progress = False  # Prevent concurrent flush attempts
 
     def initialize(self):
         """Initialize the encrypted ZMQ transport"""
@@ -403,6 +410,9 @@ class ZMQLogTransport:
             
             # Connect asynchronously - we'll handle this in send_log
             self._initialized = True
+            
+            # Transfer any early buffered messages to this transport
+            _transfer_early_buffer_to_transport()
             #print(f"[DEBUG] Encrypted ZMQ log transport initialized")
         except Exception as e:
             # Log ZMQ transport initialization failure
@@ -415,82 +425,45 @@ class ZMQLogTransport:
             self._initialized = False
     
     def send_log(self, log_entry: LogEntry):
-        """Send log entry via encrypted ZMQ transport"""
+        """Send log entry via encrypted ZMQ transport (no buffering)"""
         if not self._initialized or not self._message_bus_client:
-            print(f"[ERROR] Encrypted ZMQ transport not available - log not sent")
             return
-            
         try:
-            import uuid
-            import asyncio
-            trace_id = str(uuid.uuid4())[:8]
-            
             # Create topic from subsystem and module
-            topic_parts = []
+            topic_parts = ["logs"]  # Add logs prefix for proper routing
             if log_entry.subsystem:
                 topic_parts.append(log_entry.subsystem)
             if log_entry.module:
                 topic_parts.append(log_entry.module)
-            
-            topic = "/".join(topic_parts) if topic_parts else "general"
+            topic = "/".join(topic_parts) if len(topic_parts) > 1 else "logs/general"
             from .topics import AICOTopics
-            full_topic = AICOTopics.build_logs_topic(topic)
+            import asyncio
             
-            #print(f"[DEBUG] Encrypted ZMQ sending log: {log_entry.subsystem}.{log_entry.module} -> {full_topic}")
-            
-            # Send via encrypted MessageBusClient - handle async in sync context
+            # Get the current event loop and schedule the task
             try:
-                # Try to get current event loop
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # We're in an async context - schedule the send
-                    asyncio.create_task(self._async_send_log(full_topic, log_entry))
-                else:
-                    # We're in sync context - run async send
-                    loop.run_until_complete(self._async_send_log(full_topic, log_entry))
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._async_send_log(topic, log_entry))
             except RuntimeError:
-                # No event loop - create new one for this send
-                asyncio.run(self._async_send_log(full_topic, log_entry))
-            
-            #print(f"[DEBUG] Encrypted ZMQ log sent successfully to topic: {full_topic}")
-            
-        except Exception as e:
-            # Log transport failure but don't crash - logging must be resilient
-            import logging
-            import sys
-            try:
-                logger = logging.getLogger('zmq_transport')
-                logger.error(f"Failed to send log via encrypted ZMQ: {e}")
-                import traceback
-                logger.error(f"Traceback: {traceback.format_exc()}")
-            except Exception as log_exc:
-                print(f"[CRITICAL] Logging failure in ZMQLogTransport.send_log: {log_exc}", file=sys.stderr)
-                print(f"[CRITICAL] Original error: {e}", file=sys.stderr)
-            raise e  # Re-raise to trigger fallback logging
+                # No running loop, create a new task in the default loop
+                asyncio.create_task(self._async_send_log(topic, log_entry))
+        except Exception:
+            # Silently fail
+            pass
     
     async def _async_send_log(self, topic: str, log_entry: LogEntry):
         """Async helper to send log via encrypted MessageBusClient"""
         try:
-            # Ensure client is connected
+            # Ensure client is connected - fail silently if broker not available during startup
             if not self._message_bus_client.connected:
-                await self._message_bus_client.connect()
+                try:
+                    await self._message_bus_client.connect()
+                except Exception as e:
+                    # Silently fail during startup when broker isn't ready yet
+                    if "broker not available" in str(e):
+                        return
+                    raise
             
-            # Create AicoMessage with protobuf payload
-            from . import AicoMessage, MessageMetadata
-            metadata = MessageMetadata(
-                message_id=str(uuid.uuid4()),
-                timestamp=int(time.time() * 1000),
-                source="zmq_log_transport",
-                message_type="log_entry"
-            )
-            
-            message = AicoMessage(
-                metadata=metadata,
-                payload=log_entry.SerializeToString()
-            )
-            
-            # Publish encrypted log message
-            await self._message_bus_client.publish(topic, message)
+            await self._message_bus_client.publish(topic, log_entry)
             
         except Exception as e:
             import logging
@@ -501,7 +474,6 @@ class ZMQLogTransport:
     def close(self):
         """Clean up encrypted ZMQ transport resources"""
         if self._message_bus_client:
-            # Note: MessageBusClient cleanup will be handled by its own lifecycle
             self._message_bus_client = None
         self._initialized = False
 
@@ -516,7 +488,7 @@ class LogRepository:
         """Persist a protobuf LogEntry to the logs table"""
         import json
         try:
-            from ..proto.aico_core_logging_pb2 import LogLevel
+            from aico.proto.aico_core_logging_pb2 import LogLevel
         except ImportError:
             # Fallback if protobuf not available
             LogLevel = None
@@ -736,8 +708,12 @@ class LogRetentionManager:
         return estimated_bytes / (1024 * 1024)
 
 
-# Global factory instance (created by each subsystem)
+# Global logger factory instance
 _logger_factory: Optional[AICOLoggerFactory] = None
+
+# Early startup buffer for messages before ZMQ transport is ready
+_early_startup_buffer = []
+_early_buffer_enabled = True
 
 
 def initialize_logging(config_manager) -> AICOLoggerFactory:
@@ -786,3 +762,31 @@ def get_logger(subsystem: str, module: str) -> AICOLogger:
     if not _logger_factory:
         raise RuntimeError("Logging not initialized. Call initialize_logging() first.")
     return _logger_factory.create_logger(subsystem, module)
+
+
+def _get_zmq_transport() -> Optional[ZMQLogTransport]:
+    """Get the global ZMQ transport instance for broker ready notifications"""
+    if _logger_factory and hasattr(_logger_factory, 'zmq_transport'):
+        return _logger_factory.zmq_transport
+    return None
+
+
+def _transfer_early_buffer_to_transport():
+    """Transfer early startup buffer to ZMQ transport when it becomes available, with recursion guard."""
+    global _early_startup_buffer, _early_buffer_enabled
+    if getattr(_transfer_early_buffer_to_transport, '_transferring', False):
+        # Already transferring, skip to avoid recursion
+        return
+    if not _early_startup_buffer or not _logger_factory or not hasattr(_logger_factory, 'zmq_transport') or not _logger_factory.zmq_transport:
+        return
+    try:
+        _transfer_early_buffer_to_transport._transferring = True
+        print(f"[EARLY BUFFER] Transferring {len(_early_startup_buffer)} early startup messages to ZMQ transport...")
+        for log_entry in _early_startup_buffer:
+            _logger_factory.zmq_transport.send_log(log_entry)
+        _early_startup_buffer.clear()
+        _early_buffer_enabled = False
+        print(f"[EARLY BUFFER] Transfer complete - early buffering disabled")
+    finally:
+        _transfer_early_buffer_to_transport._transferring = False
+

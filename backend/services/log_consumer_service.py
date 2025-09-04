@@ -14,7 +14,7 @@ from typing import Dict, Any, Optional
 from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics
 from aico.core.bus import MessageBusClient
-from aico.core import AicoMessage
+from aico.proto.aico_core_envelope_pb2 import AicoMessage
 from aico.proto.aico_core_logging_pb2 import LogEntry, LogLevel
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from backend.core.service_container import BaseService, ServiceContainer, ServiceState
@@ -34,6 +34,10 @@ class LogConsumerService(BaseService):
         self.log_config = self.get_config("core.logging", {})
         self.message_bus_config = self.get_config("core.message_bus", {})
         self.enabled = self.get_config("core.api_gateway.plugins.log_consumer.enabled", True)
+        
+        # Debug configuration access
+        self.logger.info(f"Log consumer config debug - message_bus_config: {self.message_bus_config}")
+        self.logger.info(f"Log consumer config debug - log_config: {self.log_config}")
         
         # Runtime state
         self.message_bus_client: Optional[MessageBusClient] = None
@@ -62,10 +66,8 @@ class LogConsumerService(BaseService):
             if not self.db_connection:
                 raise RuntimeError("Database service not available")
             
-            # Create encrypted MessageBusClient
-            from aico.core.config import ConfigurationManager
-            config = ConfigurationManager()
-            self.message_bus_client = MessageBusClient("log_consumer", config)
+            # Create encrypted MessageBusClient using container config
+            self.message_bus_client = MessageBusClient("log_consumer")
             
             # Validate configuration
             self._validate_config()
@@ -85,25 +87,57 @@ class LogConsumerService(BaseService):
                 raise RuntimeError(f"Service not initialized (state: {self.state})")
             
             self.logger.info("Starting log consumer service...")
+            print(f"[LOG CONSUMER] Starting log consumer service...")
             
             # Connect to message bus with encryption
             await self.message_bus_client.connect()
+            print(f"[LOG CONSUMER] Connected to message bus")
             
             # Subscribe to log messages with callback
+            subscription_topic = AICOTopics.ZMQ_LOGS_PREFIX + "*"
+            print(f"[LOG CONSUMER] Subscribing to topic: {subscription_topic}")
             await self.message_bus_client.subscribe(
-                AICOTopics.ZMQ_LOGS_PREFIX + "*",
+                subscription_topic,
                 self._handle_log_message
             )
+            print(f"[LOG CONSUMER] Subscription complete")
             
             self.running = True
             self.logger.info("Log consumer service started successfully")
+            print(f"[LOG CONSUMER] Service started successfully")
             self.state = ServiceState.RUNNING
             
         except Exception as e:
+            print(f"[LOG CONSUMER] ERROR: Failed to start log consumer service: {e}")
             self.logger.error(f"Failed to start log consumer service: {e}")
             self.state = ServiceState.ERROR
             raise
     
+    async def connect_when_broker_ready(self) -> None:
+        """Connect to message bus when broker becomes available"""
+        if not self.running or not self.message_bus_client:
+            return
+            
+        try:
+            print(f"[LOG CONSUMER] Broker ready notification received - attempting connection...")
+            
+            # Try to connect now that broker is ready
+            await self.message_bus_client.connect()
+            print(f"[LOG CONSUMER] Connected to message bus successfully")
+            
+            # Subscribe to log messages with callback
+            subscription_topic = AICOTopics.ZMQ_LOGS_PREFIX + "*"
+            print(f"[LOG CONSUMER] Subscribing to topic: {subscription_topic}")
+            await self.message_bus_client.subscribe(
+                subscription_topic,
+                self._handle_log_message
+            )
+            print(f"[LOG CONSUMER] Subscription complete - ready to receive log messages")
+            
+        except Exception as e:
+            print(f"[LOG CONSUMER] Failed to connect when broker ready: {e}")
+            self.logger.error(f"Failed to connect when broker ready: {e}")
+
     async def stop(self) -> None:
         """Stop the log consumer service"""
         try:
@@ -170,40 +204,42 @@ class LogConsumerService(BaseService):
         self.logger.debug("Log consumer configuration validated")
     
     def _handle_log_message(self, message: AicoMessage) -> None:
-        """Handle incoming log message from MessageBusClient"""
-        try:
-            # Extract protobuf payload from AicoMessage
-            if not message.payload:
-                self.logger.warning("Received log message with no payload")
-                return
+        """Handle incoming log message from message bus"""
                 
-            # Deserialize protobuf LogEntry
-            log_entry = LogEntry()
-            log_entry.ParseFromString(message.payload)
-            
-            # Process the log entry
-            self._process_log_entry(log_entry)
-            
-        except Exception as e:
-            self.logger.error(f"Error handling log message: {e}")
+        if message.HasField('any_payload'):
+                                    
+            # The Any payload should now contain LogEntry directly (no double-wrapping)
+            try:
+                log_entry = LogEntry()
+                success = message.any_payload.Unpack(log_entry)
+                                
+                if success:
+                                        # Process the log entry
+                    self._process_log_entry(log_entry)
+                else:
+                    print(f"[LOG CONSUMER] ERROR: Unpack returned False - type mismatch")
+                                        
+            except Exception as e:
+                print(f"[LOG CONSUMER] ERROR: Failed to unpack Any payload to LogEntry: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print(f"[LOG CONSUMER] ERROR: Message has no any_payload field")
     
     def _process_log_entry(self, log_entry: LogEntry) -> None:
         """Process individual log entry"""
         try:
-            
-            #print(f"[DEBUG] Parsed log entry: {log_entry.subsystem}.{log_entry.module} - {log_entry.message[:50]}...")
-            
+                        
             # Filter: Ignore logs generated by this log consumer itself to prevent feedback loop
             if (log_entry.subsystem == "service" and log_entry.module and log_entry.module.startswith("log_consumer")):
-                #print(f"[DEBUG] Skipping own log entry to prevent feedback loop: {log_entry.subsystem}.{log_entry.module}")
-                return
+                                return
 
-            # Insert to database
+                        # Insert to database
             self._insert_log_to_database(log_entry)
             
-            #print(f"[DEBUG] Log entry inserted to database successfully")
-                
+                            
         except Exception as e:
+            print(f"[LOG CONSUMER] ERROR: Failed to process log entry: {e}")
             self.logger.warning(f"Failed to process log entry: {e}")
     
     def _insert_log_to_database(self, log_entry: LogEntry) -> None:
