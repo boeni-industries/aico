@@ -16,11 +16,13 @@ import time
 import uuid
 import zmq
 import zmq.asyncio
+import asyncio
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from google.protobuf.timestamp_pb2 import Timestamp
+from .topics import AICOTopics
 
 # Optional protobuf imports to avoid chicken/egg problem with CLI
 try:
@@ -426,13 +428,14 @@ class AICOLogger:
                 
                 # Convert protobuf timestamp to UTC ISO string
                 if hasattr(log_entry.timestamp, 'seconds'):
-                    timestamp = datetime.fromtimestamp(
-                        log_entry.timestamp.seconds + log_entry.timestamp.nanos / 1e9, 
-                        tz=timezone.utc
-                    )
+                    # Use utcfromtimestamp to properly interpret the timestamp as UTC
+                    timestamp = datetime.utcfromtimestamp(
+                        log_entry.timestamp.seconds + log_entry.timestamp.nanos / 1e9
+                    ).replace(tzinfo=timezone.utc)
                     timestamp_str = timestamp.isoformat().replace('+00:00', 'Z')
                 else:
-                    timestamp_str = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+                    # Use utcnow() to ensure UTC timestamp
+                    timestamp_str = datetime.utcnow().replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
                 
                 # Convert level enum to string
                 level_str = str(log_entry.level)
@@ -569,8 +572,9 @@ class AICOLogger:
         if fallback_console_enabled:
             # Convert protobuf timestamp to readable format
             from datetime import datetime
-            timestamp = datetime.fromtimestamp(log_entry.timestamp.seconds + log_entry.timestamp.nanos / 1e9)
-            timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            # Use utcfromtimestamp to properly interpret the timestamp as UTC
+            timestamp = datetime.utcfromtimestamp(log_entry.timestamp.seconds + log_entry.timestamp.nanos / 1e9)
+            timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S UTC")
             
             # Format main log line
             main_line = f"{timestamp_str} {log_entry.level} {log_entry.subsystem}.{log_entry.module} {log_entry.message}"
@@ -702,6 +706,8 @@ class AICOLoggerFactory:
         # Apply global database ready state to new logger
         if self._db_ready:
             logger._db_ready = True
+            # Add debug output to confirm db_ready state is applied to new loggers
+            #print(f"[LOGGER FACTORY] Applied db_ready=True to new logger {subsystem}.{module}")
         
         logger_key = f"{subsystem}:{module}"
         self._loggers[logger_key] = logger  # Track logger
@@ -807,15 +813,22 @@ class ZMQLogTransport:
         if not self._initialized or not self._message_bus_client:
             return
         try:
-            # Create topic from subsystem and module
-            topic_parts = ["logs"]  # Add logs prefix for proper routing
+            # Create a hierarchical topic structure following AICO standard
+            # Format: logs/<subsystem>/<module> to match the standard topic hierarchy
+            
+            topic = AICOTopics.ZMQ_LOGS_PREFIX
+            
+            # Add subsystem and module as separate segments in the hierarchy
             if log_entry.subsystem:
-                topic_parts.append(log_entry.subsystem)
-            if log_entry.module:
-                topic_parts.append(log_entry.module)
-            topic = "/".join(topic_parts) if len(topic_parts) > 1 else "logs/general"
-            from .topics import AICOTopics
-            import asyncio
+                topic += log_entry.subsystem
+                if log_entry.module:
+                    topic += "/" + log_entry.module
+                # No need to add version for logs
+            else:
+                topic += "general"
+            
+            # Debug output for topic construction
+            #print(f"[ZMQ TRANSPORT] Constructed topic: '{topic}' for log entry: {log_entry.subsystem}.{log_entry.module}")
             
             # Get the current event loop and schedule the task
             try:

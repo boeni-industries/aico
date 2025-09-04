@@ -87,24 +87,24 @@ class LogConsumerService(BaseService):
                 raise RuntimeError(f"Service not initialized (state: {self.state})")
             
             self.logger.info("Starting log consumer service...")
-            print(f"[LOG CONSUMER] Starting log consumer service...")
+            #print(f"[LOG CONSUMER] Starting log consumer service...")
             
             # Connect to message bus with encryption
             await self.message_bus_client.connect()
-            print(f"[LOG CONSUMER] Connected to message bus")
+            #print(f"[LOG CONSUMER] Connected to message bus")
             
             # Subscribe to log messages with callback
-            subscription_topic = AICOTopics.ZMQ_LOGS_PREFIX + "*"
-            print(f"[LOG CONSUMER] Subscribing to topic: {subscription_topic}")
+            subscription_topic = AICOTopics.ZMQ_LOGS_PREFIX + "**"
+            #print(f"[LOG CONSUMER] Subscribing to topic: {subscription_topic}")
             await self.message_bus_client.subscribe(
                 subscription_topic,
                 self._handle_log_message
             )
-            print(f"[LOG CONSUMER] Subscription complete")
+            #print(f"[LOG CONSUMER] Subscription complete")
             
             self.running = True
             self.logger.info("Log consumer service started successfully")
-            print(f"[LOG CONSUMER] Service started successfully")
+            #print(f"[LOG CONSUMER] Service started successfully")
             self.state = ServiceState.RUNNING
             
         except Exception as e:
@@ -119,20 +119,20 @@ class LogConsumerService(BaseService):
             return
             
         try:
-            print(f"[LOG CONSUMER] Broker ready notification received - attempting connection...")
+            #print(f"[LOG CONSUMER] Broker ready notification received - attempting connection...")
             
             # Try to connect now that broker is ready
             await self.message_bus_client.connect()
-            print(f"[LOG CONSUMER] Connected to message bus successfully")
+            #print(f"[LOG CONSUMER] Connected to message bus successfully")
             
             # Subscribe to log messages with callback
-            subscription_topic = AICOTopics.ZMQ_LOGS_PREFIX + "*"
-            print(f"[LOG CONSUMER] Subscribing to topic: {subscription_topic}")
+            subscription_topic = AICOTopics.ZMQ_LOGS_PREFIX + "**"
+            #print(f"[LOG CONSUMER] Subscribing to topic: {subscription_topic}")
             await self.message_bus_client.subscribe(
                 subscription_topic,
                 self._handle_log_message
             )
-            print(f"[LOG CONSUMER] Subscription complete - ready to receive log messages")
+            #print(f"[LOG CONSUMER] Subscription complete - ready to receive log messages")
             
         except Exception as e:
             print(f"[LOG CONSUMER] Failed to connect when broker ready: {e}")
@@ -203,28 +203,34 @@ class LogConsumerService(BaseService):
         
         self.logger.debug("Log consumer configuration validated")
     
-    def _handle_log_message(self, message: AicoMessage) -> None:
+    async def _handle_log_message(self, message: AicoMessage) -> None:
         """Handle incoming log message from message bus"""
-                
-        if message.HasField('any_payload'):
-                                    
-            # The Any payload should now contain LogEntry directly (no double-wrapping)
-            try:
-                log_entry = LogEntry()
-                success = message.any_payload.Unpack(log_entry)
-                                
-                if success:
-                                        # Process the log entry
-                    self._process_log_entry(log_entry)
-                else:
-                    print(f"[LOG CONSUMER] ERROR: Unpack returned False - type mismatch")
-                                        
-            except Exception as e:
-                print(f"[LOG CONSUMER] ERROR: Failed to unpack Any payload to LogEntry: {e}")
-                import traceback
-                traceback.print_exc()
-        else:
-            print(f"[LOG CONSUMER] ERROR: Message has no any_payload field")
+        try:
+            # For debugging, just print that we received a message
+            # Don't try to extract topic from metadata as it might not be available
+            #print(f"[LOG CONSUMER] Received a message from message bus")
+            
+            if message.HasField('any_payload'):
+                # The Any payload should now contain LogEntry directly (no double-wrapping)
+                try:
+                    log_entry = LogEntry()
+                    success = message.any_payload.Unpack(log_entry)
+                    
+                    if success:
+                        # Process the log entry
+                        #print(f"[LOG CONSUMER] Successfully unpacked log entry")
+                        self._process_log_entry(log_entry)
+                    else:
+                        print(f"[LOG CONSUMER] ERROR: Unpack returned False - type mismatch")
+                        
+                except Exception as e:
+                    print(f"[LOG CONSUMER] ERROR: Failed to unpack Any payload to LogEntry: {e}")
+            else:
+                print(f"[LOG CONSUMER] ERROR: Message has no any_payload field")
+        except Exception as e:
+            print(f"[LOG CONSUMER] ERROR: Failed to process message: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _process_log_entry(self, log_entry: LogEntry) -> None:
         """Process individual log entry"""
@@ -250,7 +256,8 @@ class LogConsumerService(BaseService):
             ts_seconds = int(log_entry.timestamp.seconds)
             ts_nanos = int(getattr(log_entry.timestamp, 'nanos', 0))
             ts = ts_seconds + (ts_nanos / 1_000_000_000)
-            timestamp_iso = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+            # Use datetime.utcfromtimestamp to properly interpret the timestamp as UTC
+            timestamp_iso = datetime.utcfromtimestamp(ts).replace(tzinfo=timezone.utc).isoformat()
 
             # Level should be stored as TEXT (e.g., "INFO")
             try:

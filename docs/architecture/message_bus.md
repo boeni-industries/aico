@@ -118,6 +118,60 @@ The message bus uses a hierarchical topic structure that organizes messages by f
 
 **IMPORTANT**: AICO uses a centralized topic registry (`AICOTopics`) with slash-based notation for all message bus topics.
 
+### ZeroMQ Subscription Behavior
+
+#### Critical Considerations
+
+1. **ZeroMQ uses prefix matching only**
+   - When you subscribe to a pattern, ZeroMQ converts it to a prefix filter
+   - Example: `logs/*` becomes ZMQ filter `logs/`
+   - This means ZeroMQ will deliver ANY message whose topic starts with that prefix
+
+2. **Application-level pattern matching**
+   - After ZeroMQ delivers messages based on prefix, AICO performs application-level pattern matching
+   - This is where wildcard semantics are applied
+
+#### Wildcard Patterns
+
+AICO supports two types of wildcards:
+
+| Pattern | Description | Example | Matches | Doesn't Match |
+|---------|-------------|---------|---------|---------------|
+| `*` | Matches exactly one segment | `logs/*` | `logs/backend` | `logs/backend/main` |
+| `**` | Matches any number of segments | `logs/**` | `logs/backend`, `logs/backend/main` | N/A |
+
+#### Common Subscription Patterns
+
+| Use Case | Pattern | ZMQ Filter | Matches |
+|----------|---------|------------|---------|
+| All logs | `logs/**` | `logs/` | All logs from any subsystem and module |
+| Specific subsystem | `logs/backend/**` | `logs/backend/` | All logs from backend subsystem |
+| Specific module | `logs/backend/main` | `logs/backend/main` | Only logs from backend.main |
+
+#### Best Practices
+
+1. **Always use `**` for multi-level wildcards**
+   - When subscribing to hierarchical topics, use `**` instead of `*` to match multiple levels
+   - Example: Use `logs/**` instead of `logs/*` to capture all logs
+
+2. **Debug topic matching issues**
+   - Use `_pattern_to_zmq_filter()` to see what ZMQ filter is being used
+   - Use `_topic_matches_pattern()` to test if topics match patterns
+
+#### Common Pitfalls
+
+1. **Using `*` when `**` is needed**
+   - `logs/*` only matches `logs/backend` but not `logs/backend/main`
+   - Use `logs/**` to match all log topics regardless of depth
+
+2. **Forgetting ZeroMQ's prefix matching behavior**
+   - ZeroMQ doesn't understand wildcards - it only does prefix matching
+   - The application handles the actual wildcard semantics
+
+3. **Inconsistent topic structure**
+   - Always follow the hierarchical structure with proper slashes
+   - Never use underscores to flatten hierarchical topics
+
 - **emotion/** - Emotion simulation related messages
   - `emotion/state/current` - Current emotional state
   - `emotion/state/update` - Emotional state changes
