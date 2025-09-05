@@ -43,3 +43,13 @@
 **Solution**: Add `@functools.wraps(func)` to preserve function metadata in decorators.
 
 **Key Lessons**: FastAPI relies on function signatures for OpenAPI generation. Always use `@functools.wraps` in decorators to preserve metadata.
+
+## ZMQ Log Transport Connection Management
+
+**Problem**: ZMQ logging transport never sent logs to database despite broker being available and transport initialized.
+
+**Root Cause**: `mark_broker_ready()` only set `_broker_available` flag but never connected the MessageBusClient. Transport readiness check required both broker availability AND client connection.
+
+**Solution**: Modified `mark_broker_ready()` to immediately schedule client connection when broker becomes available.
+
+**Key Lessons**: Broker availability ≠ Client connection. Both conditions must be true for transport readiness. Always verify end-to-end message flow, not just individual component states.

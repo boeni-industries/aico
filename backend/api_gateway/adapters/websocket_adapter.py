@@ -68,7 +68,7 @@ class WebSocketAdapter:
                  authz_manager: AuthorizationManager, message_router: MessageRouter,
                  rate_limiter: RateLimiter, validator: MessageValidator):
         
-        self.logger = get_logger("api_gateway", "websocket")
+        self.logger = get_logger("backend", "api_gateway.websocket")
         self.config = config
         self.auth_manager = auth_manager
         self.authz_manager = authz_manager

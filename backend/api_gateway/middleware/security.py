@@ -40,7 +40,7 @@ class SecurityMiddleware:
     
     def __init__(self, config: dict):
         self.config = config
-        self.logger = get_logger("api_gateway", "security")
+        self.logger = get_logger("backend", "api_gateway.security")
         
         # Compile IP networks for efficient checking
         self.allowed_networks = []

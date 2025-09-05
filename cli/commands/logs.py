@@ -162,10 +162,8 @@ def ls(
     
     repo = _get_log_repository()
     
-    # Build filters
+    # Build filters (exclude level - we'll filter after retrieval to show level and UP)
     filters = {}
-    if level:
-        filters["level"] = level.upper()
     if subsystem:
         filters["subsystem"] = subsystem
     if module:
@@ -187,6 +185,21 @@ def ls(
     
     # Get logs
     logs = repo.get_logs(limit=limit, **filters)
+    
+    # Apply level filtering (show specified level and UP)
+    from aico.core.config import ConfigurationManager
+    config_manager = ConfigurationManager()
+    config_manager.initialize()
+    
+    # Determine which level to filter by
+    filter_level = level.upper() if level else config_manager.get("logging.levels.default", "INFO")
+    
+    # Level hierarchy for filtering
+    level_hierarchy = {'DEBUG': 10, 'INFO': 20, 'WARNING': 30, 'ERROR': 40, 'CRITICAL': 50}
+    filter_level_value = level_hierarchy.get(filter_level, 20)
+    
+    # Filter logs to show specified level and UP
+    logs = [log for log in logs if level_hierarchy.get(log['level'], 20) >= filter_level_value]
     
     if not logs:
         console.print("[yellow]No logs found matching criteria[/yellow]")
@@ -443,15 +456,28 @@ def tail(
     # Determine number of entries to show (--limit takes precedence over --lines)
     num_entries = limit if limit is not None else lines
     
-    # Build filters
+    # Build filters (exclude level - we'll filter after retrieval to show level and UP)
     filters = {}
-    if level:
-        filters["level"] = level.upper()
     if subsystem:
         filters["subsystem"] = subsystem
     
     # Get recent logs
     logs = repo.get_logs(limit=num_entries, **filters)
+    
+    # Apply level filtering (show specified level and UP)
+    from aico.core.config import ConfigurationManager
+    config_manager = ConfigurationManager()
+    config_manager.initialize()
+    
+    # Determine which level to filter by
+    filter_level = level.upper() if level else config_manager.get("logging.levels.default", "INFO")
+    
+    # Level hierarchy for filtering
+    level_hierarchy = {'DEBUG': 10, 'INFO': 20, 'WARNING': 30, 'ERROR': 40, 'CRITICAL': 50}
+    filter_level_value = level_hierarchy.get(filter_level, 20)
+    
+    # Filter logs to show specified level and UP
+    logs = [log for log in logs if level_hierarchy.get(log['level'], 20) >= filter_level_value]
     
     # Display logs
     for log in reversed(logs):  # Show oldest first
@@ -499,15 +525,28 @@ def grep(
     
     repo = _get_log_repository()
     
-    # Build base filters
+    # Build base filters (exclude level - we'll filter after retrieval to show level and UP)
     filters = {}
-    if level:
-        filters["level"] = level.upper()
     if subsystem:
         filters["subsystem"] = subsystem
     
     # Get logs and filter by pattern
     all_logs = repo.get_logs(limit=limit * 2, **filters)  # Get more to account for filtering
+    
+    # Apply level filtering (show specified level and UP)
+    from aico.core.config import ConfigurationManager
+    config_manager = ConfigurationManager()
+    config_manager.initialize()
+    
+    # Determine which level to filter by
+    filter_level = level.upper() if level else config_manager.get("logging.levels.default", "INFO")
+    
+    # Level hierarchy for filtering
+    level_hierarchy = {'DEBUG': 10, 'INFO': 20, 'WARNING': 30, 'ERROR': 40, 'CRITICAL': 50}
+    filter_level_value = level_hierarchy.get(filter_level, 20)
+    
+    # Filter logs to show specified level and UP
+    all_logs = [log for log in all_logs if level_hierarchy.get(log['level'], 20) >= filter_level_value]
     matching_logs = []
     pattern_lower = pattern.lower()
     

@@ -59,7 +59,7 @@ class RESTAdapter:
                  rate_limiter: RateLimiter, validator: MessageValidator,
                  security_middleware: SecurityMiddleware, key_manager: AICOKeyManager):
         
-        self.logger = get_logger("api_gateway", "rest")
+        self.logger = get_logger("backend", "api_gateway.rest")
         self.config = config
         self.auth_manager = auth_manager
         self.authz_manager = authz_manager

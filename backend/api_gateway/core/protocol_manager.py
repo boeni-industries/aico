@@ -19,7 +19,7 @@ class ProtocolAdapter(ABC):
     def __init__(self, config: Dict[str, Any], dependencies: Dict[str, Any]):
         self.config = config
         self.dependencies = dependencies
-        self.logger = dependencies.get('logger', get_logger("api_gateway", "protocol"))
+        self.logger = dependencies.get('logger', get_logger("backend", "api_gateway.protocol"))
         self.running = False
     
     @property
@@ -57,7 +57,7 @@ class ProtocolAdapterManager:
     """
     
     def __init__(self, config: Dict[str, Any], logger=None):
-        self.logger = logger if logger else get_logger("api_gateway", "protocol_manager")
+        self.logger = logger if logger else get_logger("backend", "api_gateway.protocol_manager")
         self.config = config
         self.registered_adapters: Dict[str, Type[ProtocolAdapter]] = {}
         self.active_adapters: Dict[str, ProtocolAdapter] = {}

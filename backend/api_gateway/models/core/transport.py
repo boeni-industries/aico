@@ -51,7 +51,7 @@ class AdaptiveTransport:
     
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.logger = get_logger("api_gateway", "transport")
+        self.logger = get_logger("backend", "api_gateway.transport")
         
         # Transport priority order
         self.priority = config.get("priority", ["zeromq_ipc", "websocket", "rest"])

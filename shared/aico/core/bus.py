@@ -92,7 +92,14 @@ class MessageBusClient:
     def __init__(self, client_id: str, broker_address: str = "tcp://localhost:5555"):
         self.client_id = client_id
         self.broker_address = broker_address  # Keep for logging, but use config for actual connection
-        self.logger = get_logger("bus", f"client.{client_id}")
+        
+        # Avoid circular dependency during logging initialization
+        try:
+            self.logger = get_logger("bus", f"client.{client_id}")
+        except RuntimeError:
+            # Logging not initialized yet - use fallback
+            import logging
+            self.logger = logging.getLogger(f"bus.client.{client_id}")
         
         # ZeroMQ context and sockets
         self.context = zmq.asyncio.Context()

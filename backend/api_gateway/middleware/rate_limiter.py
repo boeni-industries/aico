@@ -63,7 +63,7 @@ class RateLimiter:
     
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.logger = get_logger("api_gateway", "rate_limiter")
+        self.logger = get_logger("backend", "api_gateway.rate_limiter")
         
         # Configuration - convert per-minute to per-second
         requests_per_minute = config.get("default_requests_per_minute", 100)

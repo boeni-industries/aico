@@ -88,7 +88,7 @@ class AuthenticationManager:
     
     def __init__(self, config: ConfigurationManager, db_connection=None):
         self.config = config
-        self.logger = get_logger("api_gateway", "auth")
+        self.logger = get_logger("backend", "api_gateway.auth")
         
         # Use AICO security infrastructure
         self.key_manager = AICOKeyManager(config)
@@ -598,7 +598,7 @@ class AuthorizationManager:
     """
     
     def __init__(self, authz_config: Dict[str, Any]):
-        self.logger = get_logger("api_gateway", "authz")
+        self.logger = get_logger("backend", "api_gateway.authz")
         self.config = authz_config
         
         # RBAC configuration

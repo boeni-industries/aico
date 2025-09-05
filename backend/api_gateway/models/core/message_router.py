@@ -45,7 +45,7 @@ class MessageRouter:
     
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.logger = get_logger("api_gateway", "router")
+        self.logger = get_logger("backend", "api_gateway.router")
         
         # Configuration
         self.timeout = config.get("timeout", 30)

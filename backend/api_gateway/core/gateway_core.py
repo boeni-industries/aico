@@ -51,7 +51,7 @@ class GatewayCore:
     
     def __init__(self, config: ConfigurationManager, logger=None, db_connection=None):
         self.config = config
-        self.logger = logger or get_logger("api_gateway", "core")
+        self.logger = logger or get_logger("backend", "api_gateway.core")
         self.db_connection = db_connection
         
         # Initialize service container for new architecture
