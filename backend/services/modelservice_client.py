@@ -1,286 +1,190 @@
 """
-Encrypted HTTP client for backend-modelservice communication.
+ZMQ client for backend-modelservice communication.
 
-Uses the same transport security patterns as frontend-backend communication
-with mandatory encryption and proper ZMQ logging integration.
+Uses ZeroMQ message bus with CurveZMQ encryption for secure communication
+with the modelservice subsystem.
 """
 
+import asyncio
 import json
-import httpx
+import uuid
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
 from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics
 from aico.core.config import ConfigurationManager
-from aico.security.key_manager import AICOKeyManager
-from aico.security.transport import TransportIdentityManager, SecureTransportChannel
-from aico.security.exceptions import EncryptionError, DecryptionError
+from aico.core.bus import MessageBusClient
 
 
 @dataclass
 class ModelServiceConfig:
     """Configuration for modelservice client."""
-    base_url: str
+    broker_address: str
     timeout: float
     encryption_enabled: bool = True
 
 
 class ModelServiceClient:
     """
-    Encrypted HTTP client for modelservice communication.
+    ZMQ client for modelservice communication.
     
-    Provides the same zero-effort encryption as frontend-backend communication
-    using existing transport security infrastructure.
+    Provides secure communication with modelservice via ZeroMQ message bus
+    with CurveZMQ encryption.
     """
     
-    def __init__(self, key_manager: AICOKeyManager, config_manager: ConfigurationManager, config: Optional[ModelServiceConfig] = None):
-        self.key_manager = key_manager
+    def __init__(self, config_manager: ConfigurationManager, config: Optional[ModelServiceConfig] = None):
         self.config_manager = config_manager
         
         # Load configuration from AICO config system
         if config is None:
-            modelservice_config = config_manager.get("modelservice", {})
-            rest_config = modelservice_config.get("rest", {})
-            host = rest_config.get("host", "127.0.0.1")
-            port = rest_config.get("port", 8773)
-            base_url = f"http://{host}:{port}"
-            timeout = modelservice_config.get("timeout", 30.0)
-            self.config = ModelServiceConfig(base_url=base_url, timeout=timeout)
+            bus_config = config_manager.get("message_bus", {})
+            broker_address = bus_config.get("broker_address", "tcp://localhost:5555")
+            timeout = bus_config.get("timeout", 30.0)
+            self.config = ModelServiceConfig(broker_address=broker_address, timeout=timeout)
         else:
             self.config = config
             
         self.logger = get_logger("backend", "modelservice_client")
-        
-        # Initialize transport security
-        self.identity_manager = TransportIdentityManager(key_manager)
-        self.secure_channel: Optional[SecureTransportChannel] = None
-        self.session_established = False
-        
-        if self.config.encryption_enabled:
-            self._initialize_secure_channel()
+        self.bus_client: Optional[MessageBusClient] = None
     
-    def _initialize_secure_channel(self):
-        """Initialize secure transport channel for backend component."""
-        try:
-            self.secure_channel = self.identity_manager.create_secure_channel("backend")
+    async def _ensure_connection(self):
+        """Ensure ZMQ connection is established."""
+        if self.bus_client is None:
+            self.bus_client = MessageBusClient(
+                broker_address=self.config.broker_address,
+                identity="backend_modelservice_client",
+                enable_curve=True
+            )
+            await self.bus_client.connect()
             self.logger.info(
-                "Secure transport channel initialized for modelservice communication",
-                extra={"topic": AICOTopics.SECURITY_TRANSPORT_SESSION}
+                "Connected to message bus for modelservice communication",
+                extra={"topic": AICOTopics.LOGS_ENTRY}
             )
-        except Exception as e:
-            error_msg = f"Failed to initialize secure channel for modelservice: {e}"
-            self.logger.error(
-                error_msg,
-                extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
-            )
-            raise EncryptionError(error_msg) from e
     
-    async def _ensure_session(self):
-        """Ensure encrypted session is established with modelservice."""
-        if not self.config.encryption_enabled:
-            raise EncryptionError("Encryption is disabled - secure communication required")
+    async def _send_request(self, request_topic: str, response_topic: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Send a request via ZMQ and wait for response."""
+        await self._ensure_connection()
         
-        if self.session_established and self.secure_channel.is_session_valid():
-            return
+        # Generate correlation ID for request/response pattern
+        correlation_id = str(uuid.uuid4())
+        request_message = {
+            'correlation_id': correlation_id,
+            'data': data,
+            'timestamp': asyncio.get_event_loop().time()
+        }
+        
+        # Set up response handler
+        response_received = asyncio.Event()
+        response_data = {}
+        
+        async def handle_response(topic: str, message: dict):
+            nonlocal response_data
+            if message.get('correlation_id') == correlation_id:
+                response_data = message
+                response_received.set()
+        
+        # Subscribe to response topic
+        await self.bus_client.subscribe(response_topic, handle_response)
         
         try:
-            # Perform handshake with modelservice
-            handshake_request = self.secure_channel.create_handshake_request()
+            # Send request
+            await self.bus_client.publish(request_topic, request_message)
             
-            async with httpx.AsyncClient(timeout=self.config.timeout) as client:
-                response = await client.post(
-                    f"{self.config.base_url}/api/v1/handshake",
-                    json=handshake_request
-                )
-                
-                if response.status_code != 200:
-                    error_msg = f"Modelservice handshake failed: HTTP {response.status_code} - {response.text}"
-                    self.logger.error(
-                        error_msg,
-                        extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
-                    )
-                    raise EncryptionError(error_msg)
-                
-                handshake_response = response.json()
-                success = self.secure_channel.process_handshake_response(handshake_response)
-                
-                if not success:
-                    error_msg = "Modelservice handshake response processing failed - invalid cryptographic response"
-                    self.logger.error(
-                        error_msg,
-                        extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
-                    )
-                    raise EncryptionError(error_msg)
-                
-                self.session_established = True
-                self.logger.info(
-                    "Encrypted session established with modelservice",
-                    extra={"topic": AICOTopics.SECURITY_TRANSPORT_SESSION}
-                )
-                
-        except httpx.RequestError as e:
-            error_msg = f"Network error during modelservice handshake: {e}"
-            self.logger.error(
-                error_msg,
-                extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
-            )
-            raise EncryptionError(error_msg) from e
-        except EncryptionError:
-            raise
+            # Wait for response with timeout
+            await asyncio.wait_for(response_received.wait(), timeout=self.config.timeout)
+            
+            return response_data.get('data', {})
+            
+        except asyncio.TimeoutError:
+            error_msg = f"Request timed out after {self.config.timeout}s"
+            self.logger.error(error_msg, extra={"topic": AICOTopics.LOGS_ENTRY})
+            return {"success": False, "error": error_msg}
         except Exception as e:
-            error_msg = f"Unexpected error during modelservice session establishment: {e}"
-            self.logger.error(
-                error_msg,
-                extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
-            )
-            raise EncryptionError(error_msg) from e
+            error_msg = f"ZMQ request failed: {str(e)}"
+            self.logger.error(error_msg, extra={"topic": AICOTopics.LOGS_ENTRY})
+            return {"success": False, "error": error_msg}
     
-    async def _make_request(self, method: str, endpoint: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Make encrypted HTTP request to modelservice."""
-        await self._ensure_session()
-        
-        if not self.secure_channel:
-            error_msg = "No secure channel available for modelservice communication"
-            self.logger.error(
-                error_msg,
-                extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
-            )
-            raise EncryptionError(error_msg)
-        
-        url = f"{self.config.base_url}/api/v1{endpoint}"
-        
-        try:
-            async with httpx.AsyncClient(timeout=self.config.timeout) as client:
-                # Encrypt request payload
-                if data:
-                    try:
-                        encrypted_payload = self.secure_channel.encrypt_json_payload(data)
-                        request_data = {"encrypted_payload": encrypted_payload}
-                    except Exception as e:
-                        error_msg = f"Failed to encrypt request payload for {endpoint}: {e}"
-                        self.logger.error(
-                            error_msg,
-                            extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
-                        )
-                        raise EncryptionError(error_msg) from e
-                else:
-                    request_data = None
-                
-                # Make HTTP request
-                if method.upper() == "GET":
-                    response = await client.get(url)
-                elif method.upper() == "POST":
-                    response = await client.post(url, json=request_data)
-                else:
-                    raise ValueError(f"Unsupported HTTP method: {method}")
-                
-                if response.status_code != 200:
-                    error_msg = f"Modelservice API error: {method} {endpoint} returned HTTP {response.status_code} - {response.text}"
-                    self.logger.error(
-                        error_msg,
-                        extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
-                    )
-                    raise httpx.HTTPStatusError(
-                        error_msg,
-                        request=response.request,
-                        response=response
-                    )
-                
-                # Decrypt response
-                try:
-                    response_data = response.json()
-                    if "encrypted_payload" in response_data:
-                        decrypted_data = self.secure_channel.decrypt_json_payload(response_data["encrypted_payload"])
-                        self.logger.debug(
-                            f"Successfully decrypted response from {endpoint}",
-                            extra={"topic": AICOTopics.SECURITY_TRANSPORT_SESSION}
-                        )
-                        return decrypted_data
-                    else:
-                        # Unencrypted response - this should not happen in secure mode
-                        error_msg = f"Received unencrypted response from {endpoint} - security violation"
-                        self.logger.error(
-                            error_msg,
-                            extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
-                        )
-                        raise EncryptionError(error_msg)
-                except DecryptionError as e:
-                    error_msg = f"Failed to decrypt response from {endpoint}: {e}"
-                    self.logger.error(
-                        error_msg,
-                        extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
-                    )
-                    raise EncryptionError(error_msg) from e
-                except json.JSONDecodeError as e:
-                    error_msg = f"Invalid JSON response from {endpoint}: {e}"
-                    self.logger.error(
-                        error_msg,
-                        extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
-                    )
-                    raise EncryptionError(error_msg) from e
-                    
-        except httpx.RequestError as e:
-            error_msg = f"Network error during {method} {endpoint}: {e}"
-            self.logger.error(
-                error_msg,
-                extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
-            )
-            raise EncryptionError(error_msg) from e
-        except EncryptionError:
-            raise
-        except Exception as e:
-            error_msg = f"Unexpected error during {method} {endpoint}: {e}"
-            self.logger.error(
-                error_msg,
-                extra={"topic": AICOTopics.SECURITY_TRANSPORT_ERROR}
-            )
-            raise EncryptionError(error_msg) from e
+    async def get_health(self) -> Dict[str, Any]:
+        """Get modelservice health status."""
+        return await self._send_request(
+            AICOTopics.MODELSERVICE_HEALTH_REQUEST,
+            AICOTopics.MODELSERVICE_HEALTH_RESPONSE,
+            {}
+        )
     
-    async def health_check(self) -> Dict[str, Any]:
-        """Check modelservice health."""
-        return await self._make_request("GET", "/health")
-    
-    async def list_models(self) -> List[Dict[str, Any]]:
-        """List available models."""
-        response = await self._make_request("GET", "/models")
-        return response.get("models", [])
-    
-    async def create_completion(
-        self,
-        model: str,
-        prompt: str,
-        max_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Generate text completion."""
+    async def get_completions(self, model: str, prompt: str, **kwargs) -> Dict[str, Any]:
+        """Get text completions from modelservice."""
         request_data = {
             "model": model,
             "prompt": prompt,
-            "parameters": {}
+            "stream": kwargs.get("stream", False),
+            "options": kwargs.get("options", {})
         }
         
-        if max_tokens is not None:
-            request_data["parameters"]["max_tokens"] = max_tokens
-        if temperature is not None:
-            request_data["parameters"]["temperature"] = temperature
+        return await self._send_request(
+            AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST,
+            AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE,
+            request_data
+        )
+    
+    async def get_models(self) -> Dict[str, Any]:
+        """Get list of available models."""
+        return await self._send_request(
+            AICOTopics.MODELSERVICE_MODELS_REQUEST,
+            AICOTopics.MODELSERVICE_MODELS_RESPONSE,
+            {}
+        )
+    
+    async def get_model_info(self, model_name: str) -> Dict[str, Any]:
+        """Get information about a specific model."""
+        return await self._send_request(
+            AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST,
+            AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE,
+            {"model_name": model_name}
+        )
+    
+    async def get_embeddings(self, model: str, prompt: str) -> Dict[str, Any]:
+        """Get embeddings from modelservice."""
+        request_data = {
+            "model": model,
+            "prompt": prompt
+        }
         
-        # Add any additional parameters
-        request_data["parameters"].update(kwargs)
-        
-        return await self._make_request("POST", "/completions", request_data)
+        return await self._send_request(
+            AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
+            AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
+            request_data
+        )
+    
+    async def get_status(self) -> Dict[str, Any]:
+        """Get modelservice status."""
+        return await self._send_request(
+            AICOTopics.MODELSERVICE_STATUS_REQUEST,
+            AICOTopics.MODELSERVICE_STATUS_RESPONSE,
+            {}
+        )
+    
+    async def disconnect(self):
+        """Disconnect from the message bus."""
+        if self.bus_client:
+            await self.bus_client.disconnect()
+            self.bus_client = None
+            self.logger.info(
+                "Disconnected from message bus",
+                extra={"topic": AICOTopics.LOGS_ENTRY}
+            )
 
 
 # Singleton instance for backend use
 _modelservice_client: Optional[ModelServiceClient] = None
 
 
-def get_modelservice_client(key_manager: AICOKeyManager, config_manager: ConfigurationManager) -> ModelServiceClient:
+def get_modelservice_client(config_manager: ConfigurationManager) -> ModelServiceClient:
     """Get singleton modelservice client instance."""
     global _modelservice_client
     
     if _modelservice_client is None:
-        _modelservice_client = ModelServiceClient(key_manager, config_manager)
+        _modelservice_client = ModelServiceClient(config_manager)
     
     return _modelservice_client

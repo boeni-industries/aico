@@ -1,66 +1,36 @@
 """
-Modelservice main application entry point.
+Modelservice main application entry point - ZMQ Message Bus Implementation.
+
+This module implements a pure ZeroMQ message bus service that replaces the
+FastAPI/uvicorn HTTP server. All communication is via ZMQ with CurveZMQ encryption.
 """
 
 import sys
 import os
+import asyncio
+import signal
 from pathlib import Path
-from contextlib import asynccontextmanager
-from fastapi import FastAPI
-import uvicorn
-
-# Note: sys.path hacks removed; rely on proper package configuration per pyproject.toml
 
 # Initialize configuration and logging before any imports that get loggers
 from aico.core.config import ConfigurationManager
-from aico.core.logging import initialize_logging
+from aico.core.logging import initialize_logging, get_logger
 config_manager = ConfigurationManager()
 config_manager.initialize()
 initialize_logging(config_manager)
 from aico.core.version import get_modelservice_version
-from aico.security.key_manager import AICOKeyManager
-from .api.router import router
+from .core.zmq_service import ModelserviceZMQService
 
 # Get version from VERSIONS file
 __version__ = get_modelservice_version()
 
-# Track encryption middleware initialization for banner display
-_encryption_enabled = False
+logger = get_logger("modelservice", "main")
+
+# Global service instance for signal handling
+_zmq_service = None
 
 
-def create_app() -> FastAPI:
-    """Create and configure the FastAPI application."""
-    app = FastAPI(
-        title="AICO Modelservice",
-        description="Model management and inference service",
-        version=__version__
-    )
-    
-    # Initialize configuration and key manager for encryption middleware
-    try:
-        config_manager = ConfigurationManager()
-        config_manager.initialize()
-        key_manager = AICOKeyManager(config_manager)
-        
-        # Import and add encryption middleware (same pattern as API Gateway)
-        from backend.api_gateway.middleware.encryption import EncryptionMiddleware
-        app.add_middleware(EncryptionMiddleware, key_manager=key_manager)
-        global _encryption_enabled
-        _encryption_enabled = True
-        
-    except Exception as e:
-        # No fallback - encryption is mandatory
-        raise RuntimeError(f"Failed to initialize encryption middleware: {e}. Secure communication is required.")
-    
-    # Include API router
-    app.include_router(router)
-    
-    return app
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """FastAPI lifespan for startup/shutdown logging and hooks."""
+async def initialize_modelservice():
+    """Initialize modelservice with Ollama and return configuration."""
     # Load configuration
     cfg = ConfigurationManager()
     cfg.initialize()
@@ -69,9 +39,6 @@ async def lifespan(app: FastAPI):
     initialize_logging(cfg)
     
     modelservice_config = cfg.get("modelservice", {})
-    rest_config = modelservice_config.get("rest", {})
-    host = rest_config.get("host", "127.0.0.1")
-    port = rest_config.get("port", 8773)
     env = os.getenv("AICO_ENV", "development")
 
     # Initialize OllamaManager (now that logging is initialized)
@@ -84,19 +51,15 @@ async def lifespan(app: FastAPI):
         from aico.core.process import ProcessManager
         process_manager = ProcessManager("modelservice")
         process_manager.write_pid(os.getpid())
-
-    # Initialize logger for startup messages
-    from aico.core.logging import AICOLogger
-    logger = AICOLogger("modelservice", "startup", cfg)
     
     # Startup: Ensure Ollama is installed and start it
-    startup_msg = "\n" + "=" * 60 + "\n[*] AICO Modelservice\n" + "=" * 60
+    startup_msg = "\n" + "=" * 60 + "\n[*] AICO Modelservice (ZMQ)\n" + "=" * 60
     print(startup_msg)
     logger.info("AICO Modelservice starting up")
     
-    server_info = f"[>] Server: http://{host}:{port}\n[>] Environment: {env}\n[>] Version: v{__version__}\n[>] Encryption: {'Enabled (XChaCha20-Poly1305)' if _encryption_enabled else 'Disabled'}"
+    server_info = f"[>] Communication: ZeroMQ Message Bus\n[>] Environment: {env}\n[>] Version: v{__version__}\n[>] Encryption: CurveZMQ Enabled"
     print(server_info)
-    logger.info(f"Server configuration - Host: {host}, Port: {port}, Environment: {env}, Version: {__version__}, Encryption: {'Enabled' if _encryption_enabled else 'Disabled'}")
+    logger.info(f"Server configuration - Communication: ZMQ, Environment: {env}, Version: {__version__}, Encryption: CurveZMQ")
     
     print("=" * 60)
     
@@ -149,90 +112,83 @@ async def lifespan(app: FastAPI):
         logger.error(f"Full traceback: {full_traceback}")
     
     print("=" * 60)
-    print("[+] Starting server... (Press Ctrl+C to stop)\n")
-    logger.info("Modelservice startup complete, server starting")
+    print("[+] Starting ZMQ service... (Press Ctrl+C to stop)\n")
+    logger.info("Modelservice startup complete, ZMQ service starting")
 
-    # Store ollama_manager in app state for API access
-    app.state.ollama_manager = ollama_manager
-
-    try:
-        yield
-    except (KeyboardInterrupt, SystemExit):
-        print("\n[-] Graceful shutdown initiated...")
-        logger.info("Graceful shutdown initiated")
-    finally:
-        print("[~] Stopping services...")
-        logger.info("Stopping services")
-        
-        # Stop Ollama gracefully
-        try:
-            await ollama_manager.stop_ollama()
-            print("[+] Ollama stopped")
-            logger.info("Ollama stopped successfully")
-        except Exception as e:
-            print(f"[!] Error stopping Ollama: {e}")
-            logger.error(f"Error stopping Ollama: {e}")
-            
-        if process_manager:
-            process_manager.cleanup_pid_files()
-        print("[+] Shutdown complete.")
-        logger.info("Shutdown complete")
+    return cfg, ollama_manager, process_manager
 
 
-app = FastAPI(lifespan=lifespan, title="AICO Modelservice", version=__version__)
-# Reapply middleware and router to the app created above
-try:
-    cfg_for_mw = ConfigurationManager()
-    cfg_for_mw.initialize()
-    key_manager_for_mw = AICOKeyManager(cfg_for_mw)
-    from backend.api_gateway.middleware.encryption import EncryptionMiddleware
-    app.add_middleware(EncryptionMiddleware, key_manager=key_manager_for_mw)
-    _encryption_enabled = True
-except Exception as e:
-    raise RuntimeError(f"Failed to initialize encryption middleware: {e}. Secure communication is required.")
-app.include_router(router)
-
-
-def main():
-    """Main entry point for the modelservice."""
-    # Load configuration for host/port
-    cfg = ConfigurationManager()
-    cfg.initialize()
-    rest = (cfg.get("modelservice", {}) or {}).get("rest", {})
-    host = rest.get("host", "127.0.0.1")
-    port = rest.get("port", 8773)
+async def shutdown_modelservice(ollama_manager, process_manager):
+    """Gracefully shutdown modelservice and Ollama."""
+    print("\n[-] Graceful shutdown initiated...")
+    logger.info("Graceful shutdown initiated")
     
-    # Test authentication to API Gateway before starting server
+    print("[~] Stopping services...")
+    logger.info("Stopping services")
+    
+    # Stop Ollama gracefully
     try:
-        from .api.dependencies import get_modelservice_config, get_service_auth_manager
-        from .api.logging_client import AICOLoggingClient
-        import asyncio
-        
-        config = get_modelservice_config()
-        service_auth = get_service_auth_manager()
-        logging_client = AICOLoggingClient(config)
-        
-        # Test logging functionality
-        print("[+] Using AICO internal logging system")
+        await ollama_manager.stop_ollama()
+        print("[+] Ollama stopped")
+        logger.info("Ollama stopped successfully")
     except Exception as e:
-        print(f"[!] Authentication test failed: {e}")
-    
-    # Determine if we should enable reload based on environment
-    env = os.getenv("AICO_ENV", "development")
-    detach_mode = os.getenv("AICO_DETACH_MODE", "false") == "true"
-    
-    # Disable reload entirely to prevent restart loops
-    # Auto-reload causes issues with file watching and process management
-    enable_reload = False
+        print(f"[!] Error stopping Ollama: {e}")
+        logger.error(f"Error stopping Ollama: {e}")
+        
+    if process_manager:
+        process_manager.cleanup_pid_files()
+    print("[+] Shutdown complete.")
+    logger.info("Shutdown complete")
 
-    uvicorn.run(
-        "modelservice.main:app",
-        host=host,
-        port=port,
-        reload=enable_reload,
-        log_level="info",
-    )
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals."""
+    global _zmq_service
+    logger.info(f"Received signal {signum}, initiating shutdown")
+    if _zmq_service:
+        asyncio.create_task(_zmq_service.stop())
+
+
+async def main():
+    """Main entry point for the modelservice ZMQ service."""
+    global _zmq_service
+    
+    try:
+        # Set up signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        
+        # Initialize modelservice and Ollama
+        config, ollama_manager, process_manager = await initialize_modelservice()
+        
+        # Create and start ZMQ service
+        _zmq_service = ModelserviceZMQService(config, ollama_manager)
+        
+        # Start the ZMQ service (this will run until stopped)
+        await _zmq_service.start()
+        
+    except KeyboardInterrupt:
+        logger.info("Received keyboard interrupt")
+    except Exception as e:
+        logger.error(f"Modelservice error: {str(e)}")
+        raise
+    finally:
+        # Cleanup
+        if _zmq_service:
+            await _zmq_service.stop()
+        await shutdown_modelservice(ollama_manager, process_manager)
+
+
+def run_main():
+    """Synchronous wrapper for the async main function."""
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Modelservice stopped by user")
+    except Exception as e:
+        logger.error(f"Fatal error: {str(e)}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    run_main()

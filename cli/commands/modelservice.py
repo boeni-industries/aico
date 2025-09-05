@@ -32,6 +32,10 @@ from aico.core.process import ProcessManager
 from cli.decorators.sensitive import destructive
 from cli.utils.help_formatter import format_subcommand_help
 from cli.utils.platform import get_platform_chars
+from cli.utils.zmq_client import (
+    get_modelservice_health, get_modelservice_status, 
+    get_ollama_status, get_ollama_models, is_modelservice_running_zmq
+)
 
 console = Console()
 
@@ -42,17 +46,9 @@ chars = get_platform_chars()
 def _is_modelservice_running() -> bool:
     """Check if Modelservice is currently running"""
     try:
-        # Primary check: HTTP health endpoint (works for both detached and foreground)
-        config = _get_modelservice_config()
-        host = config.get('host', '127.0.0.1')
-        port = config.get('rest', {}).get('port', 8773)
-        
-        try:
-            response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=1)
-            # Accept any response (200, 503, etc.) as "running"
+        # Primary check: ZMQ health endpoint
+        if is_modelservice_running_zmq():
             return True
-        except requests.exceptions.RequestException:
-            pass  # Continue to process check
         
         # Fallback: Check for running processes (optimized scan)
         try:
@@ -62,7 +58,7 @@ def _is_modelservice_running() -> bool:
                 try:
                     # Skip non-Python processes early
                     name = proc.info.get('name', '').lower()
-                    if not any(py in name for py in ['python', 'uvicorn']):
+                    if not any(py in name for py in ['python']):
                         continue
                         
                     cmdline = proc.info.get('cmdline', [])
@@ -384,29 +380,37 @@ def restart():
 def status():
     """Show Modelservice status and health."""
     try:
-        config = _get_modelservice_config()
-        host = config.get('host', '127.0.0.1')
-        port = config.get('rest', {}).get('port', 8773)
-        
         # Check if running
         is_running = _is_modelservice_running()
         health_data = {}
         
-        # Get health data if running
+        # Get health data if running via ZMQ
         if is_running:
             try:
-                response = requests.get(f"http://{host}:{port}/api/v1/health", timeout=3)
-                health_data = response.json()
-            except requests.exceptions.RequestException as e:
-                # Service is running but health endpoint failed - still show basic info
+                health_response = get_modelservice_health()
+                if health_response.get("success"):
+                    health_data = health_response.get("data", {})
+                else:
+                    # Service is running but health endpoint failed - still show basic info
+                    health_data = {
+                        "status": "connection_failed", 
+                        "version": "0.0.2", 
+                        "checks": {
+                            "api_gateway": {"status": "unknown", "reachable": False, "error": "connection_failed"},
+                            "ollama": {"healthy": False, "reachable": False, "error": "unknown"}
+                        }, 
+                        "issues": ["Health endpoint unreachable via ZMQ"]
+                    }
+            except Exception as e:
+                # Fallback health data for display
                 health_data = {
                     "status": "connection_failed", 
                     "version": "0.0.2", 
                     "checks": {
-                        "api_gateway": {"status": "unknown", "reachable": False, "error": "connection_failed"},
+                        "api_gateway": {"status": "unknown", "reachable": False, "error": "zmq_connection_failed"},
                         "ollama": {"healthy": False, "reachable": False, "error": "unknown"}
                     }, 
-                    "errors": ["Health endpoint unreachable"]
+                    "issues": [f"ZMQ health check failed: {str(e)}"]
                 }
         
         # Primary status header (matching gateway format)
@@ -418,17 +422,17 @@ def status():
                 console.print(f"{chars['globe']} [bold yellow]Modelservice Status: RUNNING (Unhealthy)[/bold yellow]")
             
             version = health_data.get("version", "Unknown")
-            console.print(f"   [dim]Version {version} • {host}:{port}[/dim]")
+            console.print(f"   [dim]Version {version} • ZMQ Message Bus[/dim]")
         else:
             console.print(f"{chars['globe']} [bold red]Modelservice Status: OFFLINE[/bold red]")
-            console.print(f"   [dim]Not responding • {host}:{port}[/dim]")
+            console.print(f"   [dim]Not responding via ZMQ[/dim]")
         
         console.print()
         
         # Health details if running (show for both healthy and unhealthy)
         if is_running and health_data:
             checks = health_data.get("checks", {})
-            errors = health_data.get("errors", [])
+            errors = health_data.get("issues", [])
             
             if checks:
                 table = Table(title="Health Checks", show_header=True, header_style="bold blue")
@@ -468,23 +472,23 @@ def status():
                     console.print(f"  • {error}")
                 console.print()
         
-        # Endpoints table
+        # ZMQ Topics table
         if is_running:
-            table = Table(title="Available Endpoints", show_header=True, header_style="bold blue")
-            table.add_column("Endpoint", style="cyan", no_wrap=True)
+            table = Table(title="Available ZMQ Topics", show_header=True, header_style="bold blue")
+            table.add_column("Topic", style="cyan", no_wrap=True)
             table.add_column("Purpose", style="dim")
             
-            endpoints = [
-                ("/api/v1/health", "Service health and status"),
-                ("/api/v1/handshake", "Encrypted communication setup"),
-                ("/api/v1/completions", "Text generation"),
-                ("/api/v1/models", "List available models"),
-                ("/api/v1/ollama/status", "Ollama service status"),
-                ("/api/v1/ollama/models", "Ollama model management")
+            topics = [
+                ("modelservice/health/request", "Service health and status"),
+                ("modelservice/completions/request", "Text generation"),
+                ("modelservice/models/request", "List available models"),
+                ("modelservice/status/request", "Service status information"),
+                ("ollama/status/request", "Ollama service status"),
+                ("ollama/models/request", "Ollama model management")
             ]
             
-            for endpoint, purpose in endpoints:
-                table.add_row(f"http://{host}:{port}{endpoint}", purpose)
+            for topic, purpose in topics:
+                table.add_row(topic, purpose)
             
             console.print(table)
         

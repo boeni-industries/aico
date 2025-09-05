@@ -32,6 +32,8 @@ class AICOTopics:
     ZMQ_CRISIS_PREFIX = "crisis/"
     ZMQ_EXPRESSION_PREFIX = "expression/"
     ZMQ_LEARNING_PREFIX = "learning/"
+    ZMQ_OLLAMA_PREFIX = "ollama/"
+    ZMQ_MODELSERVICE_PREFIX = "modelservice/"
     # Wildcard constants for queries/filters
 
     """Central registry for all AICO message bus topics"""
@@ -50,6 +52,8 @@ class AICOTopics:
     CRISIS = "crisis"
     EXPRESSION = "expression"
     LEARNING = "learning"
+    OLLAMA = "ollama"
+    MODELSERVICE = "modelservice"
     
     # ===== COMMON TOPIC PATTERNS =====
     
@@ -119,6 +123,8 @@ class AICOTopics:
     SYSTEM_MODULE_REGISTERED = "system/module/registered/v1"
     SYSTEM_MODULE_UNREGISTERED = "system/module/unregistered/v1"
     SYSTEM_HEALTH_CHECK = "system/health/check/v1"
+    SYSTEM_HEALTH_REQUEST = "system/health/request/v1"
+    SYSTEM_HEALTH_RESPONSE = "system/health/response/v1"
     SYSTEM_STATUS_UPDATE = "system/status/update/v1"
     
     # Auth Domain
@@ -158,6 +164,45 @@ class AICOTopics:
     # Learning Domain
     LEARNING_COORDINATION_START = "learning/coordination/start/v1"
     LEARNING_FEEDBACK_UPDATE = "learning/feedback/update/v1"
+    
+    # Ollama Domain (CLI management topics)
+    OLLAMA_STATUS_REQUEST = "ollama/status/request/v1"
+    OLLAMA_STATUS_RESPONSE = "ollama/status/response/v1"
+    OLLAMA_INSTALL_REQUEST = "ollama/install/request/v1"
+    OLLAMA_INSTALL_RESPONSE = "ollama/install/response/v1"
+    OLLAMA_SERVE_REQUEST = "ollama/serve/request/v1"
+    OLLAMA_SERVE_RESPONSE = "ollama/serve/response/v1"
+    OLLAMA_LOGS_REQUEST = "ollama/logs/request/v1"
+    OLLAMA_LOGS_RESPONSE = "ollama/logs/response/v1"
+    OLLAMA_MODELS_REQUEST = "ollama/models/request/v1"
+    OLLAMA_MODELS_RESPONSE = "ollama/models/response/v1"
+    OLLAMA_MODELS_PULL_REQUEST = "ollama/models/pull/request/v1"
+    OLLAMA_MODELS_PULL_RESPONSE = "ollama/models/pull/response/v1"
+    OLLAMA_MODELS_REMOVE_REQUEST = "ollama/models/remove/request/v1"
+    OLLAMA_MODELS_REMOVE_RESPONSE = "ollama/models/remove/response/v1"
+    OLLAMA_SHUTDOWN_REQUEST = "ollama/shutdown/request/v1"
+    OLLAMA_SHUTDOWN_RESPONSE = "ollama/shutdown/response/v1"
+    OLLAMA_MODELS_START_REQUEST = "ollama/models/start/request/v1"
+    OLLAMA_MODELS_START_RESPONSE = "ollama/models/start/response/v1"
+    OLLAMA_MODELS_STOP_REQUEST = "ollama/models/stop/request/v1"
+    OLLAMA_MODELS_STOP_RESPONSE = "ollama/models/stop/response/v1"
+    OLLAMA_MODELS_RUNNING_REQUEST = "ollama/models/running/request/v1"
+    OLLAMA_MODELS_RUNNING_RESPONSE = "ollama/models/running/response/v1"
+    
+    # Modelservice Domain (ZMQ topics for REST endpoint replacements)
+    MODELSERVICE_HEALTH_REQUEST = "modelservice/health/request/v1"
+    MODELSERVICE_HEALTH_RESPONSE = "modelservice/health/response/v1"
+    MODELSERVICE_COMPLETIONS_REQUEST = "modelservice/completions/request/v1"
+    MODELSERVICE_COMPLETIONS_RESPONSE = "modelservice/completions/response/v1"
+    MODELSERVICE_COMPLETIONS_STREAM = "modelservice/completions/stream/v1"
+    MODELSERVICE_MODELS_REQUEST = "modelservice/models/request/v1"
+    MODELSERVICE_MODELS_RESPONSE = "modelservice/models/response/v1"
+    MODELSERVICE_MODEL_INFO_REQUEST = "modelservice/model/info/request/v1"
+    MODELSERVICE_MODEL_INFO_RESPONSE = "modelservice/model/info/response/v1"
+    MODELSERVICE_EMBEDDINGS_REQUEST = "modelservice/embeddings/request/v1"
+    MODELSERVICE_EMBEDDINGS_RESPONSE = "modelservice/embeddings/response/v1"
+    MODELSERVICE_STATUS_REQUEST = "modelservice/status/request/v1"
+    MODELSERVICE_STATUS_RESPONSE = "modelservice/status/response/v1"
     
     # ===== TOPIC BUILDERS =====
     

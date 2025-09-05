@@ -1,211 +1,219 @@
 #!/usr/bin/env python3
 """
-Completions Test Script
+Completions Test Script - ZMQ Version
 
-Tests the modelservice completions endpoint directly to verify Ollama integration.
-This script sends a simple "hello world" request to test the complete flow.
+Tests the modelservice completions via ZeroMQ message bus with CurveZMQ encryption.
+This script sends a simple "hello world" request to test the complete ZMQ flow.
 """
 
 import asyncio
-import httpx
 import json
 import sys
+import uuid
 from pathlib import Path
 from typing import Dict, Any
 
-# Add shared module to path for encryption
+# Add shared module to path
 script_dir = Path(__file__).parent
 shared_path = script_dir.parent / "shared"
 sys.path.insert(0, str(shared_path))
 
-from nacl.public import PrivateKey, PublicKey, Box
-import base64
+from aico.core.config import ConfigurationManager
+from aico.core.logging import initialize_logging, get_logger
+from aico.core.topics import AICOTopics
+from aico.core.bus import MessageBusClient
+
+# Initialize configuration and logging
+config_manager = ConfigurationManager()
+config_manager.initialize()
+initialize_logging(config_manager)
+logger = get_logger("test", "completions")
 
 
-async def perform_handshake(client: httpx.AsyncClient) -> tuple[Box, str]:
-    """Perform encryption handshake with modelservice using AICO format."""
-    import time
-    import os
-    from nacl.signing import SigningKey, VerifyKey
-    
-    # Generate ephemeral keypair
-    client_private_key = PrivateKey.generate()
-    client_public_key = client_private_key.public_key
-    
-    # Generate signing keypair for authentication
-    signing_key = SigningKey.generate()
-    verify_key = signing_key.verify_key
-    
-    # Create handshake request in AICO format
-    challenge_bytes = os.urandom(32)
-    handshake_request = {
-        "component": "test_client",
-        "identity_key": base64.b64encode(bytes(verify_key)).decode(),  # Ed25519 for signatures
-        "public_key": base64.b64encode(bytes(client_public_key)).decode(),   # X25519 for key exchange
-        "timestamp": int(time.time()),
-        "challenge": base64.b64encode(challenge_bytes).decode()
-    }
-    
-    # Sign the challenge
-    signature = signing_key.sign(challenge_bytes).signature
-    handshake_request["signature"] = base64.b64encode(signature).decode()
-    
-    # Wrap in proper payload format
-    handshake_payload = {
-        "handshake_request": handshake_request
-    }
-    
-    # Send handshake request
-    handshake_response = await client.post(
-        "http://127.0.0.1:8773/api/v1/handshake",
-        json=handshake_payload
-    )
-    
-    if handshake_response.status_code != 200:
-        raise Exception(f"Handshake failed: {handshake_response.text}")
-    
-    handshake_data = handshake_response.json()
-    print(f"Handshake response: {json.dumps(handshake_data, indent=2)}")
-    
-    # Get server public key from AICO response format
-    if "handshake_response" in handshake_data:
-        response_data = handshake_data["handshake_response"]
-        server_public_key_b64 = response_data["public_key"]
-    else:
-        # Fallback to direct format
-        server_public_key_b64 = handshake_data["public_key"]
-    
-    # Generate client ID - this should match what the backend generates
-    # Backend uses: identity_key_bytes.hex()[:16]
-    client_id = bytes(verify_key).hex()[:16]
-    
-    # Create encryption box
-    server_public_key = PublicKey(base64.b64decode(server_public_key_b64))
-    box = Box(client_private_key, server_public_key)
-    
-    return box, client_id
-
-
-async def test_modelservice_completions():
-    """Test the modelservice completions endpoint with encryption."""
-    print("Testing modelservice completions endpoint with encryption...")
-    
+async def test_modelservice_health() -> bool:
+    """Test modelservice health via ZMQ."""
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            # Perform handshake
-            print("Performing encryption handshake...")
-            box, client_id = await perform_handshake(client)
-            print(f"Handshake successful, client_id: {client_id}")
+        # Initialize message bus client
+        bus_config = config_manager.get('message_bus', {})
+        client = MessageBusClient(
+            broker_address=bus_config.get('broker_address', 'tcp://localhost:5555'),
+            identity="test_client",
+            enable_curve=True
+        )
+        
+        await client.connect()
+        logger.info("Connected to message bus")
+        
+        # Send health check request
+        correlation_id = str(uuid.uuid4())
+        request_message = {
+            'correlation_id': correlation_id,
+            'data': {},
+            'timestamp': asyncio.get_event_loop().time()
+        }
+        
+        # Set up response handler
+        response_received = asyncio.Event()
+        response_data = {}
+        
+        async def handle_health_response(topic: str, message: dict):
+            nonlocal response_data
+            if message.get('correlation_id') == correlation_id:
+                response_data = message
+                response_received.set()
+        
+        # Subscribe to response topic
+        await client.subscribe(AICOTopics.MODELSERVICE_HEALTH_RESPONSE, handle_health_response)
+        
+        # Send request
+        await client.publish(AICOTopics.MODELSERVICE_HEALTH_REQUEST, request_message)
+        logger.info("Sent health check request")
+        
+        # Wait for response with timeout
+        try:
+            await asyncio.wait_for(response_received.wait(), timeout=10.0)
             
-            # Test request payload
-            test_request = {
-                "model": "hermes3:8b",
-                "prompt": "Hello! Please respond with a brief greeting.",
-                "parameters": {
-                    "max_tokens": 50,
-                    "temperature": 0.7
+            if response_data.get('data', {}).get('success'):
+                logger.info("Health check successful")
+                print("✅ Modelservice health check passed")
+                return True
+            else:
+                error = response_data.get('data', {}).get('error', 'Unknown error')
+                logger.error(f"Health check failed: {error}")
+                print(f"❌ Modelservice health check failed: {error}")
+                return False
+                
+        except asyncio.TimeoutError:
+            logger.error("Health check timed out")
+            print("❌ Modelservice health check timed out")
+            return False
+        
+        finally:
+            await client.disconnect()
+            
+    except Exception as e:
+        logger.error(f"Health check error: {str(e)}")
+        print(f"❌ Health check error: {str(e)}")
+        return False
+
+
+async def test_modelservice_completions() -> bool:
+    """Test modelservice completions via ZMQ."""
+    try:
+        # Initialize message bus client
+        bus_config = config_manager.get('message_bus', {})
+        client = MessageBusClient(
+            broker_address=bus_config.get('broker_address', 'tcp://localhost:5555'),
+            identity="test_client",
+            enable_curve=True
+        )
+        
+        await client.connect()
+        logger.info("Connected to message bus for completions test")
+        
+        # Send completions request
+        correlation_id = str(uuid.uuid4())
+        completion_request = {
+            'correlation_id': correlation_id,
+            'data': {
+                'model': 'llama3.2:1b',  # Use a small model for testing
+                'prompt': 'Hello! Please respond with a brief greeting.',
+                'stream': False,
+                'options': {
+                    'temperature': 0.7,
+                    'max_tokens': 50
                 }
-            }
+            },
+            'timestamp': asyncio.get_event_loop().time()
+        }
+        
+        # Set up response handler
+        response_received = asyncio.Event()
+        response_data = {}
+        
+        async def handle_completion_response(topic: str, message: dict):
+            nonlocal response_data
+            if message.get('correlation_id') == correlation_id:
+                response_data = message
+                response_received.set()
+        
+        # Subscribe to response topic
+        await client.subscribe(AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE, handle_completion_response)
+        
+        # Send request
+        await client.publish(AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST, completion_request)
+        logger.info("Sent completions request")
+        print("🤖 Sending completion request to modelservice...")
+        
+        # Wait for response with timeout
+        try:
+            await asyncio.wait_for(response_received.wait(), timeout=30.0)
             
-            print(f"Request payload: {json.dumps(test_request, indent=2)}")
-            
-            # Encrypt the request
-            encrypted_data = box.encrypt(json.dumps(test_request).encode())
-            encrypted_b64 = base64.b64encode(encrypted_data).decode()
-            
-            print("\nSending encrypted request to http://127.0.0.1:8773/api/v1/completions...")
-            
-            response = await client.post(
-                "http://127.0.0.1:8773/api/v1/completions",
-                json={
-                    "encrypted": True,
-                    "payload": encrypted_b64,
-                    "client_id": client_id
-                },
-                headers={"User-Agent": "completions_test_client"}
-            )
-            
-            print(f"Status Code: {response.status_code}")
-            print(f"Headers: {dict(response.headers)}")
-            
-            if response.status_code in [200, 500, 502]:  # 502 might be encrypted error response
-                result = response.json()
+            if response_data.get('data', {}).get('success'):
+                completion_data = response_data.get('data', {}).get('data', {})
+                response_text = completion_data.get('response', 'No response text')
+                model = completion_data.get('model', 'unknown')
                 
-                # Decrypt response if encrypted
-                if "encrypted" in result and result.get("encrypted") == True:
-                    encrypted_response = base64.b64decode(result["payload"])
-                    decrypted_response = box.decrypt(encrypted_response)
-                    result = json.loads(decrypted_response.decode())
-                
-                print(f"\nSuccess! Response:")
-                print(json.dumps(result, indent=2))
-                
-                # Extract and display the completion
-                if "completion" in result:
-                    completion_text = result["completion"]
-                    print(f"\nModel Response: '{completion_text}'")
-                else:
-                    print("No completion text found in response")
-                    
+                logger.info(f"Completion successful from model {model}")
+                print(f"✅ Completion successful!")
+                print(f"📝 Model: {model}")
+                print(f"💬 Response: {response_text}")
+                return True
             else:
-                print(f"\nError Response:")
-                try:
-                    error_data = response.json()
-                    print(json.dumps(error_data, indent=2))
-                except:
-                    print(response.text)
-                    
-    except httpx.ConnectError:
-        print("❌ Connection failed - is the modelservice running on port 8773?")
-    except httpx.TimeoutException:
-        print("❌ Request timed out - model may be loading or server overloaded")
-    except Exception as e:
-        print(f"❌ Unexpected error: {e}")
-
-
-async def test_ollama_direct():
-    """Test Ollama directly to verify it's working."""
-    print("\nTesting Ollama directly...")
-    
-    ollama_request = {
-        "model": "hermes3:8b",
-        "prompt": "Hello!",
-        "stream": False
-    }
-    
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "http://localhost:11434/api/generate",
-                json=ollama_request
-            )
-            
-            print(f"Ollama Status: {response.status_code}")
-            
-            if response.status_code == 200:
-                result = response.json()
-                print(f"Ollama Response: '{result.get('response', 'No response field')}'")
-            else:
-                print(f"Ollama Error: {response.text}")
+                error = response_data.get('data', {}).get('error', 'Unknown error')
+                logger.error(f"Completion failed: {error}")
+                print(f"❌ Completion failed: {error}")
+                return False
                 
+        except asyncio.TimeoutError:
+            logger.error("Completion request timed out")
+            print("❌ Completion request timed out (30s)")
+            return False
+        
+        finally:
+            await client.disconnect()
+            
     except Exception as e:
-        print(f"❌ Ollama connection failed: {e}")
+        logger.error(f"Completion test error: {str(e)}")
+        print(f"❌ Completion test error: {str(e)}")
+        return False
 
 
 async def main():
-    """Run all tests."""
-    print("🚀 Starting completions test...\n")
+    """Main test function."""
+    print("=" * 60)
+    print("🧪 AICO Modelservice ZMQ Test Suite")
+    print("=" * 60)
     
-    # Test Ollama directly first
-    await test_ollama_direct()
+    # Test 1: Health Check
+    print("\n1️⃣ Testing modelservice health...")
+    health_ok = await test_modelservice_health()
     
-    print("\n" + "="*50)
+    if not health_ok:
+        print("\n❌ Health check failed - skipping completions test")
+        return False
     
-    # Test modelservice completions endpoint
-    await test_modelservice_completions()
+    # Test 2: Completions
+    print("\n2️⃣ Testing modelservice completions...")
+    completions_ok = await test_modelservice_completions()
     
-    print("\n✅ Test completed!")
+    # Summary
+    print("\n" + "=" * 60)
+    print("📊 Test Results:")
+    print(f"   Health Check: {'✅ PASS' if health_ok else '❌ FAIL'}")
+    print(f"   Completions:  {'✅ PASS' if completions_ok else '❌ FAIL'}")
+    print("=" * 60)
+    
+    return health_ok and completions_ok
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        success = asyncio.run(main())
+        sys.exit(0 if success else 1)
+    except KeyboardInterrupt:
+        print("\n🛑 Test interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n💥 Test suite error: {str(e)}")
+        sys.exit(1)
