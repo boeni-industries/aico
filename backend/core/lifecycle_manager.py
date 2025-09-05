@@ -6,6 +6,7 @@ with FastAPI's lifespan events, eliminating event loop conflicts and dependency 
 """
 
 import asyncio
+import sys
 from contextlib import asynccontextmanager
 from typing import Dict, Any, Optional, List
 from fastapi import FastAPI, Depends, Request
@@ -656,22 +657,23 @@ class BackendLifecycleManager:
     def _notify_log_transport_broker_ready(self) -> None:
         """Notify ZMQ log transport that broker is ready to flush buffered startup messages"""
         try:
+            print("[LIFECYCLE] Attempting to notify ZMQ log transport...", file=sys.stderr, flush=True)
             # Get the global ZMQ transport instance from the logging system
             from aico.core.logging import _get_zmq_transport
             zmq_transport = _get_zmq_transport()
             if zmq_transport:
-                print("[+] Notifying ZMQ log transport that broker is ready...")
+                print("[LIFECYCLE] Found ZMQ transport, calling mark_broker_ready()...", file=sys.stderr, flush=True)
                 zmq_transport.mark_broker_ready()
-                print("[✓] ZMQ log transport notified - buffered startup messages will be flushed")
+                print("[LIFECYCLE] ZMQ log transport notified successfully", file=sys.stderr, flush=True)
             else:
-                print("[!] ZMQ log transport not found - startup messages may be lost")
+                print("[LIFECYCLE] ZMQ log transport not found - startup messages may be lost", file=sys.stderr, flush=True)
                 
             # Also notify log consumer service to connect
             self._notify_log_consumer_broker_ready()
                 
         except Exception as e:
             self.logger.warning(f"Failed to notify ZMQ log transport: {e}")
-            print(f"[!] Warning: Could not notify ZMQ log transport: {e}")
+            print(f"[LIFECYCLE] ERROR: Could not notify ZMQ log transport: {e}", file=sys.stderr, flush=True)
     
     def _notify_log_consumer_broker_ready(self) -> None:
         """Notify log consumer service that broker is ready"""

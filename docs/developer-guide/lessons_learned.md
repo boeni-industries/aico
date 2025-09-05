@@ -53,3 +53,24 @@
 **Solution**: Modified `mark_broker_ready()` to immediately schedule client connection when broker becomes available.
 
 **Key Lessons**: Broker availability ≠ Client connection. Both conditions must be true for transport readiness. Always verify end-to-end message flow, not just individual component states.
+
+## Circular Import Dependencies in Logging Systems
+
+**Problem**: ZMQ logging transport silently failed to initialize, causing all logs to fall back to direct database writes (which also failed silently).
+
+**Root Cause**: Circular import dependency prevented `MessageBusClient` from being imported at module load time. The logging module tried to import from `bus.py`, which imported from `config.py`, creating a circular reference back to logging components.
+
+**Debugging Challenges**: 
+- Silent import failures wrapped in try/except blocks
+- Multiple fallback mechanisms masked the core issue  
+- Async connection timing made it hard to trace when connections weren't happening
+- No obvious error messages pointing to import failures
+
+**Solution**: Replace module-level imports with lazy imports inside initialization methods to break the circular dependency chain.
+
+**Key Lessons**: 
+- Circular imports cause silent failures that cascade through dependent systems
+- Always add debug output to import failures, even in try/except blocks
+- Lazy imports can resolve circular dependencies when modules need each other
+- Test import paths independently before testing full system integration
+- Silent fallbacks should log warnings, not fail completely silently

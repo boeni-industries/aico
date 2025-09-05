@@ -24,11 +24,8 @@ from typing import Any, Dict, List, Optional, Union
 from google.protobuf.timestamp_pb2 import Timestamp
 from .topics import AICOTopics
 
-# Optional imports to avoid chicken/egg problem with CLI
-try:
-    from .bus import MessageBusClient
-except ImportError:
-    MessageBusClient = None
+# MessageBusClient will be imported lazily to avoid circular imports
+MessageBusClient = None
 
 # Optional protobuf imports to avoid chicken/egg problem with CLI
 try:
@@ -238,8 +235,8 @@ class AICOLogger:
                     # Continue to final fallback
                 
         except Exception as e:
-            # Silent fallback failure - don't spam logs
-            pass
+            # Make fallback failures visible for debugging
+            print(f"[LOGGING FALLBACK] Direct database fallback failed: {e}", file=sys.stderr)
         finally:
             self._in_fallback = False
         
@@ -735,12 +732,13 @@ class AICOLoggerFactory:
         """Get or create transport for this logger factory"""
         if not self._transport and ZMQ_AVAILABLE:
             context = self.get_zmq_context()
-            #print(f"[DEBUG] Logger factory getting ZMQ context: {context is not None}")
+            import sys
+            print(f"[DEBUG] Logger factory getting ZMQ context: {context is not None}", file=sys.stderr, flush=True)
             if context:
                 self._transport = ZMQLogTransport(self.config, context)
-                #print(f"[DEBUG] Created ZMQ transport, initializing...")
+                print(f"[DEBUG] Created ZMQ transport, initializing...", file=sys.stderr, flush=True)
                 self._transport.initialize()
-                #print(f"[DEBUG] ZMQ transport initialization complete")
+                print(f"[DEBUG] ZMQ transport initialization complete", file=sys.stderr, flush=True)
         return self._transport
     
     def reinitialize_loggers(self):
@@ -798,11 +796,29 @@ class ZMQLogTransport:
 
     def initialize(self):
         """Initialize the ZMQ transport"""
+        import sys
+        
+        # Lazy import to avoid circular dependencies
+        global MessageBusClient
+        if MessageBusClient is None:
+            try:
+                from aico.core.bus import MessageBusClient as _MessageBusClient
+                MessageBusClient = _MessageBusClient
+                print(f"[ZMQ TRANSPORT] Lazy import of MessageBusClient successful", file=sys.stderr, flush=True)
+            except ImportError as e:
+                print(f"[ZMQ TRANSPORT] Failed to import MessageBusClient: {e}", file=sys.stderr, flush=True)
+                return
+        
+        print(f"[ZMQ TRANSPORT] initialize() called, ZMQ_AVAILABLE={ZMQ_AVAILABLE}, MessageBusClient={MessageBusClient is not None}", file=sys.stderr, flush=True)
+        
         if not ZMQ_AVAILABLE or not MessageBusClient:
+            print(f"[ZMQ TRANSPORT] Skipping initialization - missing dependencies", file=sys.stderr, flush=True)
             return
         
+        print(f"[ZMQ TRANSPORT] Creating MessageBusClient...", file=sys.stderr, flush=True)
         self._message_bus_client = MessageBusClient("zmq_log_transport")
         self._initialized = True
+        print(f"[ZMQ TRANSPORT] MessageBusClient created successfully", file=sys.stderr, flush=True)
             
     def send_log(self, log_entry: LogEntry):
         """Send a log entry via ZMQ transport"""
@@ -842,21 +858,38 @@ class ZMQLogTransport:
     
     def mark_broker_ready(self):
         """Mark the ZMQ broker as ready and attempt to connect client"""
+        import sys
+        print(f"[ZMQ TRANSPORT] mark_broker_ready() called", file=sys.stderr, flush=True)
         self._broker_available = True
         
+        # Debug the client state
+        if self._message_bus_client:
+            print(f"[ZMQ TRANSPORT] Client exists, connected={self._message_bus_client.connected}", file=sys.stderr, flush=True)
+        else:
+            print(f"[ZMQ TRANSPORT] No message bus client found", file=sys.stderr, flush=True)
+            return
+        
         # Immediately connect the client when broker becomes available
-        if self._message_bus_client and not self._message_bus_client.connected:
+        if not self._message_bus_client.connected:
             try:
                 loop = asyncio.get_running_loop()
                 loop.create_task(self._connect_client())
+                print(f"[ZMQ TRANSPORT] Scheduled client connection task", file=sys.stderr, flush=True)
             except RuntimeError:
-                pass# Connection will be established lazily when first log is sent
+                print(f"[ZMQ TRANSPORT] No event loop - will connect on first log", file=sys.stderr, flush=True)
+                pass  # Connection will be established lazily when first log is sent
+        else:
+            print(f"[ZMQ TRANSPORT] Client already connected", file=sys.stderr, flush=True)
     
     async def _connect_client(self):
         """Helper method to connect the message bus client"""
         try:
             await self._message_bus_client.connect()
-        except Exception:
+            import sys
+            print(f"[ZMQ TRANSPORT] Client connected successfully", file=sys.stderr, flush=True)
+        except Exception as e:
+            import sys
+            print(f"[ZMQ TRANSPORT] Client connection failed: {e}", file=sys.stderr, flush=True)
             pass  # Silently fail
     
     def close(self):
@@ -1118,7 +1151,8 @@ def initialize_logging(config_manager) -> AICOLoggerFactory:
     if _logger_factory is None:
         _logger_factory = AICOLoggerFactory(config_manager)
         # Debug print for logger factory initialization
-        # print(f"[LOGGING] Initialized new AICOLoggerFactory")
+        import sys
+        print(f"[LOGGING] Initialized new AICOLoggerFactory", file=sys.stderr, flush=True)
     else:
         # Debug print for existing logger factory
         # print(f"[LOGGING] Using existing AICOLoggerFactory")
