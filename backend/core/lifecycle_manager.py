@@ -655,20 +655,21 @@ class BackendLifecycleManager:
             print(f"[✗] ZMQ message broker failed: {e}")
     
     def _notify_log_transport_broker_ready(self) -> None:
-        """Notify ZMQ log transport that broker is ready to flush buffered startup messages"""
+        """Notify ZMQ log transport that broker is ready, but delay buffer flush until LogConsumer is subscribed"""
         try:
             print("[LIFECYCLE] Attempting to notify ZMQ log transport...", file=sys.stderr, flush=True)
             # Get the global ZMQ transport instance from the logging system
             from aico.core.logging import _get_zmq_transport
             zmq_transport = _get_zmq_transport()
             if zmq_transport:
-                print("[LIFECYCLE] Found ZMQ transport, calling mark_broker_ready()...", file=sys.stderr, flush=True)
-                zmq_transport.mark_broker_ready()
-                print("[LIFECYCLE] ZMQ log transport notified successfully", file=sys.stderr, flush=True)
+                print("[LIFECYCLE] Found ZMQ transport, marking broker ready (without buffer flush)...", file=sys.stderr, flush=True)
+                # Mark broker ready but don't flush buffer yet
+                zmq_transport._broker_available = True
+                print("[LIFECYCLE] ZMQ log transport broker marked ready", file=sys.stderr, flush=True)
             else:
                 print("[LIFECYCLE] ZMQ log transport not found - startup messages may be lost", file=sys.stderr, flush=True)
                 
-            # Also notify log consumer service to connect
+            # Notify log consumer service to connect
             self._notify_log_consumer_broker_ready()
                 
         except Exception as e:
@@ -676,20 +677,44 @@ class BackendLifecycleManager:
             print(f"[LIFECYCLE] ERROR: Could not notify ZMQ log transport: {e}", file=sys.stderr, flush=True)
     
     def _notify_log_consumer_broker_ready(self) -> None:
-        """Notify log consumer service that broker is ready"""
+        """Notify log consumer service that broker is ready and schedule buffer flush after subscription"""
         try:
             log_consumer_plugin = self.container.get_service('log_consumer_plugin')
             if log_consumer_plugin and log_consumer_plugin.log_consumer:
                 print("[+] Notifying log consumer that broker is ready...")
                 import asyncio
-                # Run the async method in the current event loop
-                asyncio.create_task(log_consumer_plugin.log_consumer.connect_when_broker_ready())
-                print("[✓] Log consumer notified - will connect to message bus")
+                # Run the async method in the current event loop and flush buffer after subscription
+                asyncio.create_task(self._connect_log_consumer_and_flush_buffer(log_consumer_plugin.log_consumer))
+                print("[✓] Log consumer notified - will connect to message bus and flush buffer")
             else:
                 print("[!] Log consumer service not found")
         except Exception as e:
             self.logger.warning(f"Failed to notify log consumer: {e}")
             print(f"[!] Warning: Could not notify log consumer: {e}")
+    
+    async def _connect_log_consumer_and_flush_buffer(self, log_consumer):
+        """Connect log consumer and flush buffer after subscription is complete"""
+        try:
+            # Connect the log consumer first
+            await log_consumer.connect_when_broker_ready()
+            
+            # Wait a brief moment for subscription to be fully established
+            import asyncio
+            await asyncio.sleep(0.1)
+            
+            # Now flush the buffered logs
+            print("[LIFECYCLE] Log consumer subscribed, flushing buffered logs...", file=sys.stderr, flush=True)
+            from aico.core.logging import _get_zmq_transport
+            zmq_transport = _get_zmq_transport()
+            if zmq_transport:
+                zmq_transport._flush_log_buffer()
+                print("[LIFECYCLE] Buffered logs flushed successfully", file=sys.stderr, flush=True)
+            else:
+                print("[LIFECYCLE] ZMQ transport not found for buffer flush", file=sys.stderr, flush=True)
+                
+        except Exception as e:
+            self.logger.warning(f"Failed to connect log consumer and flush buffer: {e}")
+            print(f"[LIFECYCLE] ERROR: Could not connect log consumer and flush buffer: {e}", file=sys.stderr, flush=True)
     
     def _display_log_consumer_status(self) -> None:
         """Display log consumer service status"""

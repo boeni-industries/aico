@@ -74,3 +74,26 @@
 - Lazy imports can resolve circular dependencies when modules need each other
 - Test import paths independently before testing full system integration
 - Silent fallbacks should log warnings, not fail completely silently
+
+## LogBuffer Flush Timing for Startup Log Capture
+
+**Problem**: LogBuffer successfully captured all startup logs but they weren't persisting to database. Buffered logs were being flushed immediately when ZMQ broker became available, but LogConsumer hadn't subscribed to the `logs/` topic yet.
+
+**Root Cause**: Timing mismatch between broker availability and consumer readiness. The buffer flush occurred before the LogConsumer service was fully connected and subscribed to receive messages.
+
+**Failed Approach**: Flushing buffer immediately when `mark_broker_ready()` was called, assuming broker availability meant the entire logging pipeline was ready.
+
+**Solution**: Implement two-phase buffer flush timing:
+1. Mark ZMQ transport broker as ready (enable direct logging for new messages)
+2. Wait for LogConsumer to connect and subscribe to `logs/` topic
+3. Add brief delay (100ms) for subscription to be fully established
+4. Then flush all buffered startup logs
+
+**Implementation**: Modified `_notify_log_transport_broker_ready()` to only set `_broker_available = True` without flushing, then added `_connect_log_consumer_and_flush_buffer()` to coordinate timing.
+
+**Key Lessons**: 
+- Broker availability ≠ Consumer readiness - both must be verified before buffer flush
+- LogBuffer timing is critical: too early = lost messages, too late = delayed visibility
+- Always coordinate buffer flush with the actual message consumer, not just the broker
+- Brief delays after subscription establishment prevent race conditions
+- End-to-end message flow testing is essential for distributed logging systems
