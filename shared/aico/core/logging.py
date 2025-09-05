@@ -777,11 +777,14 @@ class DirectDatabaseTransport:
         try:
             self.repository.store_log(log_entry)
         except Exception as e:
-            import logging
-            logger = logging.getLogger('cli_logging')
-            logger.error(f"Failed to store log: {e}")
+            # LOUD FAILURE: Print to stderr AND raise exception
+            import sys
+            error_msg = f"CRITICAL: DirectDatabaseTransport failed to store log: {e}"
+            print(error_msg, file=sys.stderr)
             import traceback
-            logger.error(traceback.format_exc())
+            traceback.print_exc(file=sys.stderr)
+            # Don't raise - would break CLI, but make it very visible
+            print(f"[LOGGING FAILURE] Message lost: {log_entry.message}", file=sys.stderr)
 
 
 class ZMQLogTransport:
@@ -921,12 +924,14 @@ class LogRepository:
             ))
             self.db.commit()
         except Exception as e:
-            import logging
-            logger = logging.getLogger('log_repository')
-            logger.error(f"Failed to persist log in LogRepository: {e}")
-            logger.error(f"Log entry details: level={log_entry.level}, subsystem={log_entry.subsystem}, module={log_entry.module}, message={log_entry.message}")
+            # LOUD FAILURE: Print to stderr with full details
+            import sys
+            error_msg = f"CRITICAL: LogRepository failed to persist log: {e}"
+            print(error_msg, file=sys.stderr)
+            print(f"[LOST LOG] level={LogLevel.Name(log_entry.level) if LogLevel else 'UNKNOWN'}, subsystem={log_entry.subsystem}, module={log_entry.module}, message={log_entry.message}", file=sys.stderr)
             import traceback
-            logger.error(traceback.format_exc())
+            traceback.print_exc(file=sys.stderr)
+            # Don't raise - would break application, but make failure very visible
     
     def get_logs(self, limit: int = 100, **filters) -> List[Dict[str, Any]]:
         """Retrieve logs with optional filtering"""
@@ -1100,8 +1105,9 @@ class LogRetentionManager:
         return estimated_bytes / (1024 * 1024)
 
 
-# Global logger factory instance
+# Global logger factory instances
 _logger_factory: Optional[AICOLoggerFactory] = None
+_cli_logger_factory: Optional[AICOLoggerFactory] = None
 
 # Removed early startup buffer - using direct database fallback instead
 
@@ -1127,41 +1133,70 @@ def get_logger_factory() -> Optional[AICOLoggerFactory]:
 
 def initialize_cli_logging(config_manager, db_connection) -> AICOLoggerFactory:
     """Initialize logging for CLI commands with direct database access"""
-    global _logger_factory
+    global _cli_logger_factory
     
-    # Don't overwrite existing backend logger factory - create separate CLI factory
-    if _logger_factory is not None:
-        print(f"[DEBUG] CLI logging: Backend logger factory exists, creating separate CLI factory")
-        cli_factory = AICOLoggerFactory(config_manager)
-        cli_factory._transport = DirectDatabaseTransport(config_manager, db_connection)
-        cli_factory._cli_mode = True
-        cli_factory.mark_all_databases_ready()
-        return cli_factory
-    else:
-        print(f"[DEBUG] CLI logging: No existing factory, creating global CLI factory")
-        _logger_factory = AICOLoggerFactory(config_manager)
-        _logger_factory._transport = DirectDatabaseTransport(config_manager, db_connection)
-        _logger_factory._cli_mode = True  # Mark as CLI mode
-        _logger_factory.mark_all_databases_ready()  # Mark database as ready for CLI
-        return _logger_factory
+    print(f"[DEBUG] CLI logging: Creating CLI factory with DirectDatabaseTransport")
+    _cli_logger_factory = AICOLoggerFactory(config_manager)
+    _cli_logger_factory._transport = DirectDatabaseTransport(config_manager, db_connection)
+    _cli_logger_factory._cli_mode = True
+    _cli_logger_factory.mark_all_databases_ready()
+    
+    # Verify the transport is working by creating and testing a logger
+    try:
+        test_logger = _cli_logger_factory.create_logger("cli", "init_test")
+        test_logger.info("CLI logging factory initialized and verified")
+        print(f"[DEBUG] CLI logging: Factory verification successful")
+        print(f"[DEBUG] CLI logging: CLI factory set globally: {_cli_logger_factory is not None}")
+    except Exception as e:
+        print(f"[ERROR] CLI logging: Factory verification failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise RuntimeError(f"CLI logging initialization failed: {e}")
+    
+    return _cli_logger_factory
 
 
 def is_cli_context() -> bool:
-    """Detect if running in CLI context"""
+    """Detect if running in CLI context - only warn for direct CLI logger usage"""
     import sys
+    import inspect
+    
     # Check if running as PyInstaller bundle (CLI executable)
     if getattr(sys, 'frozen', False):
+        # Only warn if called directly from CLI code, not from shared modules
+        frame = inspect.currentframe()
+        if frame and frame.f_back and frame.f_back.f_back:
+            caller_file = frame.f_back.f_back.f_code.co_filename
+            return 'cli' in caller_file and 'shared' not in caller_file
         return True
+    
     # Check if main module suggests CLI context
     if hasattr(sys, 'argv') and len(sys.argv) > 0:
-        return 'cli' in sys.argv[0] or 'aico.exe' in sys.argv[0]
+        if 'cli' in sys.argv[0] or 'aico.exe' in sys.argv[0]:
+            # Only warn if called directly from CLI code, not from shared modules
+            frame = inspect.currentframe()
+            if frame and frame.f_back and frame.f_back.f_back:
+                caller_file = frame.f_back.f_back.f_code.co_filename
+                return 'cli' in caller_file and 'shared' not in caller_file
+            return True
     return False
 
 
 def get_logger(subsystem: str, module: str) -> AICOLogger:
     """Get a logger instance (requires prior initialization)"""
+    global _cli_logger_factory, _logger_factory
+    
+    # Use CLI factory if available (CLI context takes priority)
+    if _cli_logger_factory:
+        return _cli_logger_factory.create_logger(subsystem, module)
+    
     if not _logger_factory:
-        raise RuntimeError("Logging not initialized. Call initialize_logging() first.")
+        raise RuntimeError("Logging not initialized. Call initialize_logging() or initialize_cli_logging() first.")
+    
+    # Warn if using backend factory in potential CLI context
+    if is_cli_context():
+        print(f"[WARNING] Using backend logger factory in CLI context - logs may not persist to database")
+    
     return _logger_factory.create_logger(subsystem, module)
 
 
