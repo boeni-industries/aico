@@ -36,14 +36,78 @@ async def initialize_modelservice():
     cfg.initialize()
     
     # Initialize logging in lifespan context
-    initialize_logging(cfg)
+    print("[DEBUG] Initializing logging...")
+    logger_factory = initialize_logging(cfg)
+    print(f"[DEBUG] Logger factory created: {logger_factory is not None}")
+    print(f"[DEBUG] Logger factory transport: {logger_factory._transport is not None if logger_factory else 'No factory'}")
     
     modelservice_config = cfg.get("modelservice", {})
     env = os.getenv("AICO_ENV", "development")
 
-    # Initialize OllamaManager (now that logging is initialized)
+    # Import log buffer for early startup logging
+    from .core.log_buffer import buffer_log, flush_startup_logs
+    
+    # Startup: Display initial info and buffer early logs
+    startup_msg = "\n" + "=" * 60 + "\n[*] AICO Modelservice (ZMQ)\n" + "=" * 60
+    print(startup_msg)
+    buffer_log("INFO", "AICO Modelservice starting up")
+    
+    server_info = f"[>] Communication: ZeroMQ Message Bus\n[>] Environment: {env}\n[>] Version: v{__version__}\n[>] Encryption: CurveZMQ Enabled"
+    print(server_info)
+    buffer_log("INFO", f"Server configuration - Communication: ZMQ, Environment: {env}, Version: {__version__}, Encryption: CurveZMQ")
+    
+    print("=" * 60)
+    
+    # Check if backend is running before starting ZMQ service
+    print("🔍 Checking backend availability...")
+    backend_available = await _check_backend_health(cfg)
+    if not backend_available:
+        print("⚠️  Backend not available - logs will use fallback storage")
+        buffer_log("WARNING", "Backend not available at startup - using fallback logging")
+    else:
+        print("✅ Backend is available")
+        buffer_log("INFO", "Backend confirmed available at startup")
+    
+    # Start ZMQ service EARLY to capture all subsequent logs
+    print("🔌 Starting ZMQ logging service...")
+    buffer_log("INFO", "Starting ZMQ service early for log capture")
+    
+    zmq_service = ModelserviceZMQService(cfg, None)  # No ollama_manager yet
+    await zmq_service.start_early()  # New method for early startup
+    
+    # Initialize ZMQ logging transport now that message bus is available
+    print("[DEBUG] Checking logger factory transport...")
+    if logger_factory._transport:
+        print("[DEBUG] Logger factory has transport, marking broker ready...")
+        logger_factory._transport.mark_broker_ready()
+        logger_factory.reinitialize_loggers()
+        print("[DEBUG] Logger transport reinitialized")
+    else:
+        print("[DEBUG] Logger factory has no transport!")
+    
+    # Flush buffered logs now that ZMQ is available
+    flush_startup_logs()
+    
+    # Test logging to verify ZMQ transport is working
+    print("[DEBUG] Testing logger.info call...")
+    logger.info("ZMQ logging transport initialized and ready", extra={"topic": "logs/entry/v1"})
+    print("[DEBUG] Testing logger.warning call...")
+    logger.warning("Testing modelservice log routing", extra={"topic": "logs/entry/v1"})
+    print("[DEBUG] Testing logger.error call...")
+    logger.error("Testing modelservice error log", extra={"topic": "logs/entry/v1"})
+    print("[DEBUG] Log test calls completed")
+    
+    # Also test without the extra topic to see if that works
+    print("[DEBUG] Testing logger without extra topic...")
+    logger.info("Testing modelservice log without extra topic")
+    print("[DEBUG] Logger test without topic completed")
+    
+    # Initialize OllamaManager (now that ZMQ logging is available)
     from .core.ollama_manager import OllamaManager
     ollama_manager = OllamaManager()
+    
+    # Set the ollama_manager in the ZMQ service
+    zmq_service.set_ollama_manager(ollama_manager)
     
     # Initialize process management for graceful shutdown
     process_manager = None
@@ -51,17 +115,6 @@ async def initialize_modelservice():
         from aico.core.process import ProcessManager
         process_manager = ProcessManager("modelservice")
         process_manager.write_pid(os.getpid())
-    
-    # Startup: Ensure Ollama is installed and start it
-    startup_msg = "\n" + "=" * 60 + "\n[*] AICO Modelservice (ZMQ)\n" + "=" * 60
-    print(startup_msg)
-    logger.info("AICO Modelservice starting up")
-    
-    server_info = f"[>] Communication: ZeroMQ Message Bus\n[>] Environment: {env}\n[>] Version: v{__version__}\n[>] Encryption: CurveZMQ Enabled"
-    print(server_info)
-    logger.info(f"Server configuration - Communication: ZMQ, Environment: {env}, Version: {__version__}, Encryption: CurveZMQ")
-    
-    print("=" * 60)
     
     # Initialize Ollama with beautiful status messages
     print("🔧 Initializing Ollama")
@@ -112,10 +165,30 @@ async def initialize_modelservice():
         logger.error(f"Full traceback: {full_traceback}")
     
     print("=" * 60)
-    print("[+] Starting ZMQ service... (Press Ctrl+C to stop)\n")
-    logger.info("Modelservice startup complete, ZMQ service starting")
+    print("[+] ZMQ service ready... (Press Ctrl+C to stop)\n")
+    logger.info("Modelservice startup complete, ZMQ service ready")
 
-    return cfg, ollama_manager, process_manager
+    return cfg, ollama_manager, process_manager, zmq_service
+
+
+async def _check_backend_health(cfg: ConfigurationManager) -> bool:
+    """Check if the backend is running and accessible."""
+    try:
+        import httpx
+        
+        # Get backend configuration
+        backend_config = cfg.get("core.api_gateway", {})
+        host = backend_config.get("host", "localhost")
+        port = backend_config.get("port", 8771)
+        
+        # Try to connect to backend health endpoint
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(f"http://{host}:{port}/api/v1/health")
+            return response.status_code == 200
+            
+    except Exception as e:
+        print(f"[DEBUG] Backend health check failed: {e}")
+        return False
 
 
 async def shutdown_modelservice(ollama_manager, process_manager):
@@ -158,14 +231,11 @@ async def main():
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
         
-        # Initialize modelservice and Ollama
-        config, ollama_manager, process_manager = await initialize_modelservice()
+        # Initialize modelservice and Ollama (ZMQ service started early)
+        config, ollama_manager, process_manager, _zmq_service = await initialize_modelservice()
         
-        # Create and start ZMQ service
-        _zmq_service = ModelserviceZMQService(config, ollama_manager)
-        
-        # Start the ZMQ service (this will run until stopped)
-        await _zmq_service.start()
+        # Continue running the ZMQ service (already started early)
+        await _zmq_service.run()
         
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt")

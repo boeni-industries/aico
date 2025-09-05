@@ -43,7 +43,7 @@ class MessageProcessor:
         # Initialize logger first
         try:
             from shared.aico.core.logging import get_logger
-            self.logger = get_logger("modelservice", "message_processor")
+            self.logger = get_logger("modelservice", "core.message_processor")
         except RuntimeError:
             # Logging not initialized yet, use basic Python logger as fallback
             import logging

@@ -34,12 +34,12 @@ def _get_logger():
             
             # Try to initialize logging if not already done
             try:
-                _logger = get_logger("security", "key_manager")
+                _logger = get_logger("shared", "security.key_manager")
             except RuntimeError:
                 # Logging not initialized, initialize it
                 config = ConfigurationManager()
                 initialize_logging(config)
-                _logger = get_logger("security", "key_manager")
+                _logger = get_logger("shared", "security.key_manager")
         except Exception:
             # Fallback to standard logging if unified system fails
             import logging

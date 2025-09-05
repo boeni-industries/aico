@@ -75,7 +75,7 @@ class OllamaManager:
         if self.logger is None:
             try:
                 from shared.aico.core.logging import get_logger
-                self.logger = get_logger("externals", "ollama")
+                self.logger = get_logger("modelservice", "core.ollama_manager")
             except RuntimeError:
                 # Logging not initialized yet, use basic Python logger as fallback
                 import logging

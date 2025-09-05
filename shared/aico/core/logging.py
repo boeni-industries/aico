@@ -159,14 +159,20 @@ class AICOLogger:
         
         # Route to appropriate transport or direct database fallback
         global _logger_factory
+        print(f"[DEBUG] AICOLogger.log() routing - factory={_logger_factory is not None}, transport={_logger_factory._transport is not None if _logger_factory else False}")
+        
         # Prevent feedback loop: do not send logs from ZMQ/log_consumer to ZMQ or database
         if self._is_transport_disabled():
+            print(f"[DEBUG] Transport disabled for {self.subsystem}.{self.module}")
             # Only fallback log (console/file), never to ZMQ or database
             self._try_fallback_logging(log_entry)
             return
+        
         if _logger_factory and _logger_factory._transport and self._is_zmq_transport_ready():
+            print(f"[DEBUG] Using ZMQ transport for log: {message}")
             _logger_factory._transport.send_log(log_entry)  # ZMQ logging
         else:
+            print(f"[DEBUG] Using direct database fallback for log: {message}")
             # Direct database fallback for early startup logs
             self._direct_database_fallback(log_entry)  # Direct DB logging
     
@@ -522,12 +528,15 @@ class AICOLogger:
         """Check if ZMQ transport is ready to send messages (broker available)"""
         global _logger_factory
         if not _logger_factory or not _logger_factory._transport:
+            print(f"[DEBUG] ZMQ transport ready check: factory={_logger_factory is not None}, transport={_logger_factory._transport is not None if _logger_factory else False}")
             return False
         
         # Check if transport has broker availability flag set
         transport = _logger_factory._transport
         broker_available = hasattr(transport, '_broker_available') and transport._broker_available
         client_connected = hasattr(transport, '_message_bus_client') and transport._message_bus_client and transport._message_bus_client.connected
+        
+        print(f"[DEBUG] ZMQ transport ready check: broker_available={broker_available}, client_connected={client_connected}")
         
         # Require BOTH broker available AND client connected for ZMQ transport to be ready
         return broker_available and client_connected
@@ -770,35 +779,29 @@ class ZMQLogTransport:
     """ZeroMQ transport for log messages using encrypted MessageBusClient"""
     
     def __init__(self, config: 'ConfigurationManager', zmq_context):
-        from collections import deque
         self.config = config
         self._message_bus_client = None
         self._initialized = False
-        
-        # Buffering state removed
         self._broker_available = False
-        self._connection_retry_count = 0
-        self._max_retries = 3
-        self._last_retry_time = 0
-        self._retry_delay = 5.0  # seconds between retry attempts
-        self._flush_in_progress = False  # Prevent concurrent flush attempts
 
     def initialize(self):
         """Initialize the encrypted ZMQ transport"""
+        print(f"[DEBUG] ZMQLogTransport.initialize() called, ZMQ_AVAILABLE={ZMQ_AVAILABLE}")
         if not ZMQ_AVAILABLE:
+            print(f"[DEBUG] ZMQ not available, skipping initialization")
             return
 
         try:
             # Create encrypted MessageBusClient for log transport
             from .bus import MessageBusClient
-            self._message_bus_client = MessageBusClient("zmq_log_transport", self.config)
+            print(f"[DEBUG] Creating MessageBusClient for log transport")
+            self._message_bus_client = MessageBusClient("zmq_log_transport")
             
-            # Connect asynchronously - we'll handle this in send_log
             self._initialized = True
+            print(f"[DEBUG] ZMQ transport initialized successfully")
             
-            # Early buffer removed - using direct database fallback instead
-            #print(f"[DEBUG] Encrypted ZMQ log transport initialized")
         except Exception as e:
+            print(f"[DEBUG] ZMQ transport initialization failed: {e}")
             # Log ZMQ transport initialization failure
             import logging
             logger = logging.getLogger('zmq_transport')
@@ -809,8 +812,10 @@ class ZMQLogTransport:
             self._initialized = False
     
     def send_log(self, log_entry: LogEntry):
-        """Send log entry via encrypted ZMQ transport (no buffering)"""
+        """Send log entry via encrypted ZMQ transport"""
+        print(f"[DEBUG] ZMQLogTransport.send_log() called - initialized={self._initialized}, client={self._message_bus_client is not None}")
         if not self._initialized or not self._message_bus_client:
+            print(f"[DEBUG] ZMQ transport not ready, skipping log: {log_entry.message}")
             return
         try:
             # Create a hierarchical topic structure following AICO standard
@@ -823,90 +828,86 @@ class ZMQLogTransport:
                 topic += log_entry.subsystem
                 if log_entry.module:
                     topic += "/" + log_entry.module
-                # No need to add version for logs
             else:
                 topic += "general"
             
-            # Debug output for topic construction
-            #print(f"[ZMQ TRANSPORT] Constructed topic: '{topic}' for log entry: {log_entry.subsystem}.{log_entry.module}")
+            print(f"[DEBUG] ZMQ transport sending log to topic '{topic}': {log_entry.message}")
             
             # Get the current event loop and schedule the task
             try:
                 loop = asyncio.get_running_loop()
                 loop.create_task(self._async_send_log(topic, log_entry))
+                print(f"[DEBUG] ZMQ transport scheduled async send")
             except RuntimeError:
+                print(f"[DEBUG] ZMQ transport: No running loop")
                 # No running loop - silently fail, logs will go to direct database fallback
                 pass
-        except Exception:
+        except Exception as e:
+            print(f"[DEBUG] ZMQ transport send_log exception: {e}")
             # Silently fail
             pass
     
     async def _async_send_log(self, topic: str, log_entry: LogEntry):
         """Async helper to send log via encrypted MessageBusClient"""
         try:
+            print(f"[DEBUG] ZMQ _async_send_log called for topic '{topic}'")
             # Ensure client is connected - fail silently if broker not available during startup
             if not self._message_bus_client.connected:
+                print(f"[DEBUG] ZMQ client not connected, attempting to connect...")
                 try:
                     await self._message_bus_client.connect()
+                    print(f"[DEBUG] ZMQ client connected successfully")
                 except Exception as e:
+                    print(f"[DEBUG] ZMQ connection failed: {e}")
                     # Silently fail during startup when broker isn't ready yet
-                    if "broker not available" in str(e):
-                        return
-                    raise
+                    return
             
+            print(f"[DEBUG] ZMQ publishing log entry...")
             await self._message_bus_client.publish(topic, log_entry)
+            print(f"[DEBUG] ZMQ log published successfully")
             
         except Exception as e:
-            import logging
-            logger = logging.getLogger('zmq_transport')
-            logger.error(f"Failed to send encrypted log message: {e}")
-            raise
+            print(f"[DEBUG] ZMQ _async_send_log failed: {e}")
+            # Silently fail - logs will go to direct database fallback
+            pass
     
     def mark_broker_ready(self):
         """Mark the message broker as ready for log transport"""
+        print(f"[DEBUG] ZMQLogTransport.mark_broker_ready() called")
         self._broker_available = True
-        # Reset retry count when broker becomes available
-        self._connection_retry_count = 0
+        print(f"[DEBUG] ZMQ transport broker marked as available")
         
-        # Attempt to connect to the broker now that it's ready
+        # Immediately connect the client when broker becomes available
         if self._message_bus_client and not self._message_bus_client.connected:
+            print(f"[DEBUG] ZMQ transport connecting client to broker...")
             import asyncio
             try:
-                # Try to get the current event loop and schedule connection
                 loop = asyncio.get_running_loop()
-                loop.create_task(self._connect_to_broker())
+                loop.create_task(self._connect_client())
+                print(f"[DEBUG] ZMQ transport client connection scheduled")
             except RuntimeError:
-                # No running loop - try synchronous connection
-                try:
-                    # Create a temporary event loop for connection
-                    import threading
-                    def connect_sync():
-                        try:
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                            loop.run_until_complete(self._connect_to_broker())
-                            loop.close()
-                        except Exception:
-                            pass  # Silent failure, will retry on send_log
-                    
-                    # Run connection in background thread to avoid blocking
-                    thread = threading.Thread(target=connect_sync, daemon=True)
-                    thread.start()
-                except Exception:
-                    pass  # Silent failure, connection will happen on first send_log call
+                print(f"[DEBUG] ZMQ transport: No running loop for immediate connection")
+                # Connection will be established lazily when first log is sent
     
-    async def _connect_to_broker(self):
-        """Async helper to connect to the message broker"""
+    async def _connect_client(self):
+        """Helper method to connect the MessageBusClient"""
         try:
-            if self._message_bus_client and not self._message_bus_client.connected:
-                await self._message_bus_client.connect()
-        except Exception:
-            # Connection will be retried on next send_log call
-            pass
+            print(f"[DEBUG] ZMQ transport _connect_client() called")
+            await self._message_bus_client.connect()
+            print(f"[DEBUG] ZMQ transport client connected successfully")
+        except Exception as e:
+            print(f"[DEBUG] ZMQ transport client connection failed: {e}")
         
     def close(self):
         """Clean up encrypted ZMQ transport resources"""
         if self._message_bus_client:
+            # Properly disconnect the client
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._message_bus_client.disconnect())
+            except RuntimeError:
+                pass  # No running loop
             self._message_bus_client = None
         self._initialized = False
 
@@ -1169,11 +1170,22 @@ def get_logger_factory() -> Optional[AICOLoggerFactory]:
 def initialize_cli_logging(config_manager, db_connection) -> AICOLoggerFactory:
     """Initialize logging for CLI commands with direct database access"""
     global _logger_factory
-    _logger_factory = AICOLoggerFactory(config_manager)
-    _logger_factory._transport = DirectDatabaseTransport(config_manager, db_connection)
-    _logger_factory._cli_mode = True  # Mark as CLI mode
-    _logger_factory.mark_all_databases_ready()  # Mark database as ready for CLI
-    return _logger_factory
+    
+    # Don't overwrite existing backend logger factory - create separate CLI factory
+    if _logger_factory is not None:
+        print(f"[DEBUG] CLI logging: Backend logger factory exists, creating separate CLI factory")
+        cli_factory = AICOLoggerFactory(config_manager)
+        cli_factory._transport = DirectDatabaseTransport(config_manager, db_connection)
+        cli_factory._cli_mode = True
+        cli_factory.mark_all_databases_ready()
+        return cli_factory
+    else:
+        print(f"[DEBUG] CLI logging: No existing factory, creating global CLI factory")
+        _logger_factory = AICOLoggerFactory(config_manager)
+        _logger_factory._transport = DirectDatabaseTransport(config_manager, db_connection)
+        _logger_factory._cli_mode = True  # Mark as CLI mode
+        _logger_factory.mark_all_databases_ready()  # Mark database as ready for CLI
+        return _logger_factory
 
 
 def is_cli_context() -> bool:

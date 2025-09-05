@@ -61,7 +61,7 @@ class TaskContext:
         self.db_connection = db_connection
         self.instance_config = instance_config or {}
         self.execution_id = execution_id
-        self.logger = get_logger("scheduler", "task_context")
+        self.logger = get_logger("backend", "scheduler.task_context")
     
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get configuration value with fallback chain:
@@ -113,7 +113,7 @@ class BaseTask(ABC):
         if not self.task_id:
             raise ValueError(f"Task class {self.__class__.__name__} must define task_id")
         
-        self.logger = get_logger("scheduler", f"task.{self.task_id}")
+        self.logger = get_logger("backend", f"scheduler.task.{self.task_id}")
     
     @abstractmethod
     async def execute(self, context: TaskContext) -> TaskResult:

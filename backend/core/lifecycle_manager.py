@@ -34,7 +34,7 @@ class BackendLifecycleManager:
     
     def __init__(self, config_manager: ConfigurationManager):
         self.config = config_manager
-        self.logger = get_logger("core", "lifecycle_manager")
+        self.logger = get_logger("backend", "core.lifecycle_manager")
         
         # Core components
         self.container = ServiceContainer(config_manager)

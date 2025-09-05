@@ -9,7 +9,7 @@ import asyncio
 import time
 import httpx
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics
@@ -42,10 +42,12 @@ class ModelserviceZMQHandlers:
             response.success = True
             response.status = health_data["status"]
             
+            print("[DEBUG] About to log health check completion...")
             logger.info(
                 f"Health check completed: {health_data['status']}",
                 extra={"topic": AICOTopics.LOGS_ENTRY}
             )
+            print("[DEBUG] Health check log sent")
             
         except Exception as e:
             response.success = False
@@ -134,105 +136,118 @@ class ModelserviceZMQHandlers:
         
         return response
     
-    async def handle_models_request(self, request_data: dict) -> dict:
-        """Handle models list requests via ZMQ."""
+    async def handle_models_request(self, request_payload) -> ModelsResponse:
+        """Handle models list requests via Protocol Buffers."""
+        response = ModelsResponse()
+        
         try:
             # Forward to Ollama
             ollama_url = f"http://{self.config.get('ollama', {}).get('host', 'localhost')}:{self.config.get('ollama', {}).get('port', 11434)}"
             
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(f"{ollama_url}/api/tags")
+                ollama_response = await client.get(f"{ollama_url}/api/tags")
                 
-                if response.status_code != 200:
-                    raise Exception(f"Ollama error: {response.status_code} - {response.text}")
+                if ollama_response.status_code != 200:
+                    raise Exception(f"Ollama error: {ollama_response.status_code} - {ollama_response.text}")
                 
-                ollama_data = response.json()
-                models = []
+                ollama_data = ollama_response.json()
                 
                 for model_data in ollama_data.get("models", []):
-                    model_info = {
-                        "name": model_data["name"],
-                        "size": model_data.get("size", 0),
-                        "digest": model_data.get("digest", ""),
-                        "modified_at": model_data.get("modified_at", ""),
-                        "status": "available",
-                        "type": "llm"
-                    }
-                    models.append(model_info)
+                    model_info = ModelInfo()
+                    model_info.name = model_data["name"]
+                    model_info.model = model_data["name"]
+                    model_info.size = model_data.get("size", 0)
+                    model_info.digest = model_data.get("digest", "")
+                    
+                    # Convert timestamp if present
+                    if "modified_at" in model_data:
+                        try:
+                            dt = datetime.fromisoformat(model_data["modified_at"].replace('Z', '+00:00'))
+                            model_info.modified_at.FromDatetime(dt)
+                        except:
+                            pass
+                    
+                    response.models.append(model_info)
                 
-                models_response = {"models": models}
+                response.success = True
                 
                 logger.info(
-                    f"Retrieved {len(models)} models from Ollama",
+                    f"Retrieved {len(response.models)} models from Ollama",
                     extra={"topic": AICOTopics.LOGS_ENTRY}
                 )
                 
-                return {"success": True, "data": models_response}
-                
         except Exception as e:
-            error_msg = f"Models request failed: {str(e)}"
-            logger.error(error_msg, extra={"topic": AICOTopics.LOGS_ENTRY})
-            return {"success": False, "error": error_msg}
+            response.success = False
+            response.error = f"Models request failed: {str(e)}"
+            logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+        
+        return response
     
-    async def handle_model_info_request(self, request_data: dict) -> dict:
-        """Handle model info requests via ZMQ."""
+    async def handle_model_info_request(self, request_payload) -> ModelInfoResponse:
+        """Handle model info requests via Protocol Buffers."""
+        response = ModelInfoResponse()
+        
         try:
-            model_name = request_data.get("model_name")
+            model_name = request_payload.model
             if not model_name:
-                raise ValueError("model_name is required")
+                response.success = False
+                response.error = "model is required"
+                return response
             
             # Forward to Ollama
             ollama_url = f"http://{self.config.get('ollama', {}).get('host', 'localhost')}:{self.config.get('ollama', {}).get('port', 11434)}"
             
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
+                ollama_response = await client.post(
                     f"{ollama_url}/api/show",
                     json={"name": model_name}
                 )
                 
-                if response.status_code != 200:
-                    raise Exception(f"Ollama error: {response.status_code} - {response.text}")
+                if ollama_response.status_code != 200:
+                    raise Exception(f"Ollama error: {ollama_response.status_code} - {ollama_response.text}")
                 
-                ollama_data = response.json()
+                ollama_data = ollama_response.json()
                 
-                model_info = {
-                    "name": model_name,
-                    "size": ollama_data.get("size", 0),
-                    "digest": ollama_data.get("digest", ""),
-                    "modified_at": ollama_data.get("modified_at", ""),
-                    "status": "available",
-                    "type": "llm",
-                    "parameters": ollama_data.get("parameters", {}),
-                    "template": ollama_data.get("template", ""),
-                    "system": ollama_data.get("system", "")
-                }
+                from aico.proto.aico_modelservice_pb2 import ModelDetails
+                details = ModelDetails()
+                details.format = ollama_data.get("format", "")
+                details.family = ollama_data.get("family", "")
+                details.parameter_size = ollama_data.get("parameter_size", 0)
+                details.quantization_level = ollama_data.get("quantization_level", 0)
+                
+                response.success = True
+                response.details.CopyFrom(details)
                 
                 logger.info(
                     f"Retrieved info for model {model_name}",
                     extra={"topic": AICOTopics.LOGS_ENTRY}
                 )
                 
-                return {"success": True, "data": model_info}
-                
         except Exception as e:
-            error_msg = f"Model info request failed: {str(e)}"
-            logger.error(error_msg, extra={"topic": AICOTopics.LOGS_ENTRY})
-            return {"success": False, "error": error_msg}
+            response.success = False
+            response.error = f"Model info request failed: {str(e)}"
+            logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+        
+        return response
     
-    async def handle_embeddings_request(self, request_data: dict) -> dict:
-        """Handle embeddings requests via ZMQ."""
+    async def handle_embeddings_request(self, request_payload) -> EmbeddingsResponse:
+        """Handle embeddings requests via Protocol Buffers."""
+        response = EmbeddingsResponse()
+        
         try:
-            model = request_data.get("model")
-            prompt = request_data.get("prompt")
+            model = request_payload.model
+            prompt = request_payload.prompt
             
             if not model or not prompt:
-                raise ValueError("model and prompt are required")
+                response.success = False
+                response.error = "model and prompt are required"
+                return response
             
             # Forward to Ollama
             ollama_url = f"http://{self.config.get('ollama', {}).get('host', 'localhost')}:{self.config.get('ollama', {}).get('port', 11434)}"
             
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
+                ollama_response = await client.post(
                     f"{ollama_url}/api/embeddings",
                     json={
                         "model": model,
@@ -240,47 +255,71 @@ class ModelserviceZMQHandlers:
                     }
                 )
                 
-                if response.status_code != 200:
-                    raise Exception(f"Ollama error: {response.status_code} - {response.text}")
+                if ollama_response.status_code != 200:
+                    raise Exception(f"Ollama error: {ollama_response.status_code} - {ollama_response.text}")
                 
-                ollama_data = response.json()
+                ollama_data = ollama_response.json()
+                
+                # Add embeddings to response
+                if "embedding" in ollama_data:
+                    response.embedding.extend(ollama_data["embedding"])
+                
+                response.success = True
                 
                 logger.info(
                     f"Generated embeddings for model {model}",
                     extra={"topic": AICOTopics.LOGS_ENTRY}
                 )
                 
-                return {"success": True, "data": ollama_data}
-                
         except Exception as e:
-            error_msg = f"Embeddings request failed: {str(e)}"
-            logger.error(error_msg, extra={"topic": AICOTopics.LOGS_ENTRY})
-            return {"success": False, "error": error_msg}
+            response.success = False
+            response.error = f"Embeddings request failed: {str(e)}"
+            logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+        
+        return response
     
-    async def handle_status_request(self, request_data: dict) -> dict:
-        """Handle status requests via ZMQ."""
+    async def handle_status_request(self, request_payload) -> StatusResponse:
+        """Handle status requests via Protocol Buffers."""
+        response = StatusResponse()
+        
         try:
-            # Get comprehensive status information
-            status_data = {
-                "service": "modelservice",
-                "version": self.version,
-                "status": "running",
-                "timestamp": datetime.utcnow().isoformat(),
-                "ollama_status": await self._check_ollama_status(),
-                "uptime": time.time() - getattr(self, '_start_time', time.time())
-            }
+            # Create service status
+            status = ServiceStatus()
+            status.version = self.version
+            status.ollama_running = True  # Will be updated by health check
+            status.ollama_version = "unknown"
+            status.loaded_models_count = 0
+            
+            # Check Ollama status
+            ollama_status = await self._check_ollama_status()
+            if ollama_status.get("available", False):
+                status.ollama_running = True
+                # Get models count
+                try:
+                    models_response = await self.handle_models_request(None)
+                    if models_response.success:
+                        status.loaded_models_count = len(models_response.models)
+                        for model in models_response.models:
+                            status.loaded_models.append(model.name)
+                except:
+                    pass
+            else:
+                status.ollama_running = False
+            
+            response.success = True
+            response.status.CopyFrom(status)
             
             logger.info(
                 "Status request completed",
                 extra={"topic": AICOTopics.LOGS_ENTRY}
             )
             
-            return {"success": True, "data": status_data}
-            
         except Exception as e:
-            error_msg = f"Status request failed: {str(e)}"
-            logger.error(error_msg, extra={"topic": AICOTopics.LOGS_ENTRY})
-            return {"success": False, "error": error_msg}
+            response.success = False
+            response.error = f"Status request failed: {str(e)}"
+            logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+        
+        return response
     
     async def _check_system_health(self) -> Dict[str, Any]:
         """Comprehensive system health check."""
@@ -339,7 +378,7 @@ class ModelserviceZMQHandlers:
                 "url": f"http://{self.config['ollama']['host']}:{self.config['ollama']['port']}"
             }
     
-    async def _check_gateway_status(self) -> Dict[str, Any]:
+    async def _check_gateway_status(self) -> dict:
         """Check API Gateway status (optional)."""
         try:
             gateway_url = f"http://{self.config.get('api_gateway', {}).get('host', 'localhost')}:{self.config.get('api_gateway', {}).get('port', 8771)}"

@@ -27,7 +27,7 @@ class TaskRegistry:
     def __init__(self, config_manager, db_connection):
         self.config_manager = config_manager
         self.db_connection = db_connection
-        self.logger = get_logger("scheduler", "task_registry")
+        self.logger = get_logger("backend", "scheduler.task_registry")
         self.tasks: Dict[str, Type[BaseTask]] = {}
         self.task_store = TaskStore(db_connection)
     
@@ -194,7 +194,7 @@ class TaskExecutor:
     def __init__(self, config_manager, db_connection):
         self.config_manager = config_manager
         self.db_connection = db_connection
-        self.logger = get_logger("scheduler", "task_executor")
+        self.logger = get_logger("backend", "scheduler.task_executor")
         self.task_store = TaskStore(db_connection)
         self.running_tasks: Dict[str, asyncio.Task] = {}
     

@@ -86,25 +86,27 @@ class LogConsumerService(BaseService):
             if self.state != ServiceState.INITIALIZED:
                 raise RuntimeError(f"Service not initialized (state: {self.state})")
             
-            self.logger.info("Starting log consumer service...")
-            #print(f"[LOG CONSUMER] Starting log consumer service...")
+            self.logger = get_logger("backend", "services.log_consumer")
+            print(f"[LOG CONSUMER] Starting log consumer service...")
             
             # Connect to message bus with encryption
             await self.message_bus_client.connect()
-            #print(f"[LOG CONSUMER] Connected to message bus")
+            print(f"[LOG CONSUMER] Connected to message bus")
             
             # Subscribe to log messages with callback
-            subscription_topic = AICOTopics.ZMQ_LOGS_PREFIX + "**"
-            #print(f"[LOG CONSUMER] Subscribing to topic: {subscription_topic}")
+            # ZMQ uses prefix matching, so "logs/" will match all topics starting with "logs/"
+            subscription_topic = AICOTopics.ZMQ_LOGS_PREFIX  # This is "logs/"
+            print(f"[LOG CONSUMER] Subscribing to topic: {subscription_topic}")
+            print(f"[LOG CONSUMER] Callback function: {self._handle_log_message}")
             await self.message_bus_client.subscribe(
                 subscription_topic,
                 self._handle_log_message
             )
-            #print(f"[LOG CONSUMER] Subscription complete")
+            print(f"[LOG CONSUMER] Subscription complete")
             
             self.running = True
             self.logger.info("Log consumer service started successfully")
-            #print(f"[LOG CONSUMER] Service started successfully")
+            print(f"[LOG CONSUMER] Service started successfully")
             self.state = ServiceState.RUNNING
             
         except Exception as e:
@@ -126,7 +128,8 @@ class LogConsumerService(BaseService):
             #print(f"[LOG CONSUMER] Connected to message bus successfully")
             
             # Subscribe to log messages with callback
-            subscription_topic = AICOTopics.ZMQ_LOGS_PREFIX + "**"
+            # ZMQ uses prefix matching, so "logs/" will match all topics starting with "logs/"
+            subscription_topic = AICOTopics.ZMQ_LOGS_PREFIX  # This is "logs/"
             #print(f"[LOG CONSUMER] Subscribing to topic: {subscription_topic}")
             await self.message_bus_client.subscribe(
                 subscription_topic,
@@ -203,13 +206,13 @@ class LogConsumerService(BaseService):
         
         self.logger.debug("Log consumer configuration validated")
     
-    async def _handle_log_message(self, message: AicoMessage) -> None:
+    def _handle_log_message(self, message: AicoMessage) -> None:
         """Handle incoming log message from message bus"""
+        print(f"[DEBUG] LOG CONSUMER: Callback invoked!")
+        print(f"[DEBUG] LOG CONSUMER: Message type: {type(message)}")
+        print(f"[DEBUG] LOG CONSUMER: Message has any_payload: {message.HasField('any_payload') if message else 'message is None'}")
+        
         try:
-            # For debugging, just print that we received a message
-            # Don't try to extract topic from metadata as it might not be available
-            #print(f"[LOG CONSUMER] Received a message from message bus")
-            
             if message.HasField('any_payload'):
                 # The Any payload should now contain LogEntry directly (no double-wrapping)
                 try:

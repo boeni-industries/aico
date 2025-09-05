@@ -19,7 +19,7 @@ class TaskStore:
     
     def __init__(self, db_connection):
         self.db = db_connection
-        self.logger = get_logger("scheduler", "task_store")
+        self.logger = get_logger("backend", "scheduler.task_store")
     
     def verify_tables_exist(self):
         """Verify that the required scheduler tables exist in the database."""

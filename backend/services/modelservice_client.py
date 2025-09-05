@@ -45,7 +45,7 @@ class ModelServiceClient:
         else:
             self.config = config
             
-        self.logger = get_logger("backend", "modelservice_client")
+        self.logger = get_logger("backend", "services.modelservice_client")
         self.bus_client: Optional[MessageBusClient] = None
     
     async def _ensure_connection(self):

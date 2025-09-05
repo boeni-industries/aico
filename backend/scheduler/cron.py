@@ -42,7 +42,7 @@ class CronParser:
     }
     
     def __init__(self, cache_size: int = 1000):
-        self.logger = get_logger("scheduler", "cron_parser")
+        self.logger = get_logger("backend", "scheduler.cron_parser")
         self._cache: Dict[str, Tuple[CronField, ...]] = {}
         self._cache_size = cache_size
     

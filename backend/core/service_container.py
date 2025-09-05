@@ -55,7 +55,7 @@ class BaseService(ABC):
         self.name = name
         self.container = container
         self.config = container.config.get(f"core.services.{name}", {})
-        self.logger = get_logger("service", name)
+        self.logger = get_logger("backend", f"service.{name}")
         self.state = ServiceState.REGISTERED
         self._dependencies_resolved = False
     
@@ -102,7 +102,7 @@ class ServiceContainer:
     
     def __init__(self, config_manager: ConfigurationManager):
         self.config = config_manager
-        self.logger = get_logger("core", "service_container")
+        self.logger = get_logger("backend", "core.service_container")
         
         # Service registry
         self._definitions: Dict[str, ServiceDefinition] = {}

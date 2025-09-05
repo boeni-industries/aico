@@ -66,7 +66,7 @@ class ServiceAuthManager:
     def __init__(self, key_manager: AICOKeyManager, identity_manager: TransportIdentityManager):
         self.key_manager = key_manager
         self.identity_manager = identity_manager
-        self.logger = get_logger("security", "service_auth")
+        self.logger = get_logger("shared", "security.service_auth")
         
         # Service permissions mapping
         self.service_permissions = {

@@ -260,7 +260,7 @@ class PluginRegistry:
     
     def __init__(self):
         self._plugin_classes: Dict[str, type] = {}
-        self.logger = get_logger("core", "plugin_registry")
+        self.logger = get_logger("backend", "core.plugin_registry")
     
     def register_plugin_class(self, name: str, plugin_class: type) -> None:
         """Register a plugin class"""

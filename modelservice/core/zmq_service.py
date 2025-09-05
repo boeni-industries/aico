@@ -24,12 +24,15 @@ logger = get_logger("modelservice", "zmq_service")
 class ModelserviceZMQService:
     """ZeroMQ service for modelservice message handling."""
     
-    def __init__(self, config: dict, ollama_manager):
-        self.config = config
+    def __init__(self, config: ConfigurationManager, ollama_manager=None):
+        """Initialize the ZMQ service with configuration and optional Ollama manager."""
+        self.config = config.get("modelservice", {})
         self.ollama_manager = ollama_manager
-        self.handlers = ModelserviceZMQHandlers(config, ollama_manager)
-        self.bus_client: Optional[MessageBusClient] = None
+        self.bus_client = None
         self.running = False
+        
+        # Initialize handlers with dependencies (ollama_manager can be None initially)
+        self.handlers = ModelserviceZMQHandlers(self.config, ollama_manager)
         
         # Topic to handler mapping
         self.topic_handlers = {
@@ -48,6 +51,44 @@ class ModelserviceZMQService:
             AICOTopics.OLLAMA_SHUTDOWN_REQUEST: self._handle_ollama_shutdown,
         }
     
+    def set_ollama_manager(self, ollama_manager):
+        """Set the Ollama manager after early initialization."""
+        self.ollama_manager = ollama_manager
+        self.handlers.ollama_manager = ollama_manager
+        logger.info("Ollama manager injected into ZMQ service")
+    
+    async def start_early(self):
+        """Start ZMQ service early for log capture, without full initialization."""
+        try:
+            logger.info("Starting modelservice ZMQ service (early mode)...")
+            
+            # Initialize message bus client
+            bus_config = self.config.get('message_bus', {})
+            self.bus_client = MessageBusClient(
+                client_id="modelservice",
+                broker_address=bus_config.get('broker_address', 'tcp://localhost:5555')
+            )
+            
+            await self.bus_client.connect()
+            
+            # Subscribe to topics that don't require Ollama
+            basic_topics = [
+                AICOTopics.MODELSERVICE_HEALTH_REQUEST,
+                AICOTopics.MODELSERVICE_STATUS_REQUEST,
+            ]
+            
+            for topic in basic_topics:
+                if topic in self.topic_handlers:
+                    await self.bus_client.subscribe(topic, self._handle_message)
+                    logger.info(f"Subscribed to topic (early): {topic}")
+            
+            self.running = True
+            logger.info("Modelservice ZMQ service started (early mode)")
+            
+        except Exception as e:
+            logger.error(f"Failed to start ZMQ service (early): {str(e)}")
+            raise
+    
     async def start(self):
         """Start the ZMQ service and subscribe to topics."""
         try:
@@ -56,20 +97,32 @@ class ModelserviceZMQService:
             # Initialize message bus client with CurveZMQ encryption
             bus_config = self.config.get('message_bus', {})
             self.bus_client = MessageBusClient(
-                broker_address=bus_config.get('broker_address', 'tcp://localhost:5555'),
-                identity="modelservice",
-                enable_curve=True
+                client_id="modelservice",
+                broker_address=bus_config.get('broker_address', 'tcp://localhost:5555')
             )
             
             await self.bus_client.connect()
             
-            # Subscribe to all modelservice topics
-            for topic in self.topic_handlers.keys():
-                await self.bus_client.subscribe(topic, self._handle_message)
-                logger.info(f"Subscribed to topic: {topic}")
+            # Subscribe to remaining topics that require Ollama
+            ollama_topics = [
+                AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST,
+                AICOTopics.MODELSERVICE_MODELS_REQUEST,
+                AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST,
+                AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
+                AICOTopics.OLLAMA_STATUS_REQUEST,
+                AICOTopics.OLLAMA_MODELS_REQUEST,
+                AICOTopics.OLLAMA_MODELS_PULL_REQUEST,
+                AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST,
+                AICOTopics.OLLAMA_SERVE_REQUEST,
+                AICOTopics.OLLAMA_SHUTDOWN_REQUEST,
+            ]
             
-            self.running = True
-            logger.info("Modelservice ZMQ service started successfully")
+            for topic in ollama_topics:
+                if topic in self.topic_handlers:
+                    await self.bus_client.subscribe(topic, self._handle_message)
+                    logger.info(f"Subscribed to topic: {topic}")
+            
+            logger.info("Modelservice ZMQ service fully initialized")
             
             # Start message processing loop
             await self._message_loop()
@@ -88,12 +141,22 @@ class ModelserviceZMQService:
         
         logger.info("Modelservice ZMQ service stopped")
     
+    async def run(self):
+        """Continue running the ZMQ service (for services started early)."""
+        if not self.running:
+            logger.error("Cannot run ZMQ service - not started")
+            return
+            
+        logger.info("ZMQ service continuing to run...")
+        await self._message_loop()
+    
     async def _message_loop(self):
-        """Main message processing loop."""
+        """Main message processing loop - keep service alive while MessageBusClient handles messages."""
         while self.running:
             try:
-                # Process messages with timeout to allow graceful shutdown
-                await asyncio.sleep(0.1)
+                # Keep the service alive while MessageBusClient handles message reception
+                # The actual message processing is handled by the MessageBusClient's _message_loop
+                await asyncio.sleep(1.0)
             except Exception as e:
                 logger.error(f"Error in message loop: {str(e)}")
                 if self.running:

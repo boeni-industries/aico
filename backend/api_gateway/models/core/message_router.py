@@ -68,11 +68,11 @@ class MessageRouter:
         self.logger.info("[ROUTER] Setting message bus client...")
         self.message_bus = message_bus
         
-        # Subscribe to response topics
-        self.logger.info("[ROUTER] Subscribing to api.response.* topics...")
-        await self.message_bus.subscribe("api.response.*", self._handle_response)
-        self.logger.info("[ROUTER] Subscribing to system.error.* topics...")
-        await self.message_bus.subscribe("system.error.*", self._handle_error)
+        # Subscribe to response topics (using ZMQ prefix matching)
+        self.logger.info("[ROUTER] Subscribing to api/response/ topics...")
+        await self.message_bus.subscribe("api/response/", self._handle_response)
+        self.logger.info("[ROUTER] Subscribing to system/error/ topics...")
+        await self.message_bus.subscribe("system/error/", self._handle_error)
         
         self.logger.info("[ROUTER] Message bus connected for routing")
     
@@ -173,21 +173,23 @@ class MessageRouter:
             if self._topic_matches_pattern(external_topic, pattern):
                 return internal_topic
         
-        # Default mapping: api.* → internal topic
-        if external_topic.startswith("api."):
-            return external_topic[4:]  # Remove "api." prefix
+        # Default mapping: api/* → internal topic
+        if external_topic.startswith("api/"):
+            return external_topic[4:]  # Remove "api/" prefix
         
         # No mapping found
         return None
     
     def _topic_matches_pattern(self, topic: str, pattern: str) -> bool:
-        """Check if topic matches pattern (supports wildcards)"""
+        """Check if topic matches pattern (simple prefix matching, no wildcards needed)"""
+        # For API gateway routing, we only need simple prefix or exact matching
+        # ZMQ handles prefix filtering at socket level, this is for API route mapping
         if pattern == "*":
             return True
         
-        if pattern.endswith("*"):
-            prefix = pattern[:-1]
-            return topic.startswith(prefix)
+        # Simple prefix matching (no wildcards needed)
+        if pattern.endswith("/"):
+            return topic.startswith(pattern)
         
         return topic == pattern
     

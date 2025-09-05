@@ -326,6 +326,10 @@ class MessageBusClient:
                 topic, message_data = await self.subscriber.recv_multipart()
                 topic = topic.decode('utf-8')
                 
+                # Debug: Show message reception for log_consumer client
+                if self.client_id == "log_consumer":
+                    print(f"[DEBUG] MessageBusClient({self.client_id}): Received message on topic '{topic}', data length: {len(message_data)}")
+                
                 # Security logging: Message reception (disabled to prevent feedback loop)
                 # encryption_status = "encrypted" if self.encryption_enabled else "plaintext"
                 # self.logger.debug(f"Received {encryption_status} message on topic: '{topic}', data length: {len(message_data)}")
@@ -336,15 +340,15 @@ class MessageBusClient:
                 message = AicoMessage()
                 message.ParseFromString(message_data)
                 
-                # Find matching subscriptions and invoke callbacks
+                # ZMQ already filtered messages at socket level, so invoke all callbacks
+                # No need for application-level pattern matching since ZMQ handles prefix filtering
+                if self.client_id == "log_consumer":
+                    print(f"[DEBUG] MessageBusClient({self.client_id}): Invoking {len(self.subscriptions)} callbacks for topic '{topic}'")
+                
                 for pattern, callback in self.subscriptions.items():
-                    # Debug logging disabled to prevent feedback loop
-                    # self.logger.debug(f"Checking pattern '{pattern}' against topic '{topic}'")
-                    if self._topic_matches_pattern(topic, pattern):
-                        # self.logger.debug(f"Pattern '{pattern}' matches topic '{topic}' - invoking callback")
-                        await self._invoke_callback(callback, message)
-                    # else:
-                        # self.logger.debug(f"Pattern '{pattern}' does not match topic '{topic}'")
+                    if self.client_id == "log_consumer":
+                        print(f"[DEBUG] MessageBusClient({self.client_id}): Invoking callback for subscription '{pattern}'")
+                    await self._invoke_callback(callback, message)
                         
             except Exception as e:
                 if self.running:
@@ -352,59 +356,16 @@ class MessageBusClient:
                     await asyncio.sleep(0.1)  # Brief pause on error
     
     def _pattern_to_zmq_filter(self, pattern: str) -> str:
-        """Convert wildcard pattern to ZeroMQ prefix filter"""
+        """Convert subscription pattern to ZeroMQ prefix filter"""
+        # ZMQ uses simple prefix matching, no wildcards needed
+        # "*" or "**" means subscribe to all messages (empty filter)
         if pattern == "*" or pattern == "**":
             return ""  # Empty filter = receive all messages
         
-        # Find the longest prefix before any wildcard
-        if "*" in pattern:
-            # For "test/message/*" -> "test/message/"
-            # For "system/auth/*" -> "system/auth/"
-            wildcard_pos = pattern.find("*")
-            prefix = pattern[:wildcard_pos]
-            return prefix
-        else:
-            # No wildcards, use exact pattern as filter
-            return pattern
+        # For any other pattern, use it directly as ZMQ prefix filter
+        # ZMQ will match any topic that starts with this prefix
+        return pattern
     
-    def _topic_matches_pattern(self, topic: str, pattern: str) -> bool:
-        """Check if topic matches subscription pattern"""
-        # Simple wildcard matching (* for any segment, ** for any path)
-        if pattern == "*" or pattern == "**":
-            return True
-        
-        if "*" not in pattern:
-            return topic == pattern
-        
-        # Convert pattern to regex-like matching using slash separators
-        topic_parts = topic.split('/')
-        pattern_parts = pattern.split('/')
-        
-        return self._match_parts(topic_parts, pattern_parts)
-    
-    def _match_parts(self, topic_parts: List[str], pattern_parts: List[str]) -> bool:
-        """Match topic parts against pattern parts"""
-        if not pattern_parts:
-            return not topic_parts
-        
-        if not topic_parts:
-            return all(p in ["*", "**"] for p in pattern_parts)
-        
-        if pattern_parts[0] == "*":
-            # Single * at end of pattern matches any remaining segments
-            if len(pattern_parts) == 1:
-                return True
-            # Single * in middle matches exactly one segment
-            return self._match_parts(topic_parts[1:], pattern_parts[1:])
-        elif pattern_parts[0] == "**":
-            # Match any number of segments
-            for i in range(len(topic_parts) + 1):
-                if self._match_parts(topic_parts[i:], pattern_parts[1:]):
-                    return True
-            return False
-        else:
-            return (topic_parts[0] == pattern_parts[0] and 
-                   self._match_parts(topic_parts[1:], pattern_parts[1:]))
     
     async def _invoke_callback(self, callback: Callable, message: AicoMessage):
         """Invoke callback, handling both sync and async functions"""

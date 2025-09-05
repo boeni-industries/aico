@@ -91,7 +91,7 @@ class SecureTransportChannel:
     def __init__(self, identity: ComponentIdentity, key_manager: AICOKeyManager):
         self.identity = identity
         self.key_manager = key_manager
-        self.logger = get_logger("security", "transport")
+        self.logger = get_logger("shared", "security.transport")
         
         # Session state
         self.peer_identity: Optional[ComponentIdentity] = None
@@ -354,7 +354,7 @@ class TransportIdentityManager:
     
     def __init__(self, key_manager: AICOKeyManager):
         self.key_manager = key_manager
-        self.logger = get_logger("security", "transport_identity")
+        self.logger = get_logger("shared", "security.transport_identity")
         self._identities: Dict[str, ComponentIdentity] = {}
     
     def get_component_identity(self, component_name: str) -> ComponentIdentity:
