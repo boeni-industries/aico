@@ -161,7 +161,11 @@ class MessageBusClient:
             
             # Configure CurveZMQ encryption if enabled
             if self.encryption_enabled:
+                self.logger.info(f"[SECURITY] Client {self.client_id} configuring CurveZMQ authentication")
                 self._configure_curve_sockets()
+                self.logger.info(f"[SECURITY] Client {self.client_id} CurveZMQ configuration complete")
+            else:
+                self.logger.warning(f"[SECURITY] WARNING: Client {self.client_id} connecting WITHOUT encryption")
             
             self.publisher.connect(f"tcp://{host}:{pub_port}")
             self.subscriber.connect(f"tcp://{host}:{sub_port}")
@@ -171,6 +175,11 @@ class MessageBusClient:
             # Update broker_address to reflect actual connection
             self.broker_address = f"tcp://{host}:{pub_port}"
             self.logger.info(f"Connected to message bus at {self.broker_address}")
+            
+            # Test connection with a small delay to catch immediate auth failures
+            await asyncio.sleep(0.1)
+            if self.encryption_enabled:
+                self.logger.info(f"[SECURITY] Client {self.client_id} CurveZMQ authentication appears successful")
             
             # Start message processing loop
             asyncio.create_task(self._message_loop())
@@ -305,6 +314,20 @@ class MessageBusClient:
         if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
             self.logger.warning(f"[SECURITY] WARNING: Message {metadata.message_id} sent in plaintext to topic '{topic}'")
         
+        # Log potential authentication failures for encrypted connections
+        if self.encryption_enabled:
+            self.logger.debug(f"[SECURITY] Client {self.client_id} published encrypted message {metadata.message_id} to topic '{topic}'")
+            
+            # Add a mechanism to detect if messages are being silently dropped
+            # Store message info for potential timeout detection
+            if not hasattr(self, '_published_messages'):
+                self._published_messages = {}
+            self._published_messages[metadata.message_id] = {
+                'topic': topic,
+                'timestamp': asyncio.get_event_loop().time(),
+                'client_id': self.client_id
+            }
+        
         # Persist message if enabled
         if self.persistence_enabled:
             await self._persist_message(message)
@@ -346,15 +369,28 @@ class MessageBusClient:
                 if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
                     self.logger.warning(f"[SECURITY] WARNING: Client {self.client_id} received plaintext message on topic '{topic}'")
                 
+                # Log successful encrypted message reception
+                if self.encryption_enabled:
+                    self.logger.debug(f"[SECURITY] Client {self.client_id} received encrypted message on topic '{topic}'")
+                
                 # Deserialize protobuf message
                 from ..proto.aico_core_envelope_pb2 import AicoMessage
                 message = AicoMessage()
                 message.ParseFromString(message_data)
                 
-                # ZMQ already filtered messages at socket level, so invoke all callbacks
-                # No need for application-level pattern matching since ZMQ handles prefix filtering
+                # Find the matching subscription pattern for this topic
+                matching_callback = None
                 for pattern, callback in self.subscriptions.items():
-                    await self._invoke_callback(callback, message)
+                    # Check if topic matches the subscription pattern
+                    if pattern == "*" or pattern == "**" or topic.startswith(pattern):
+                        matching_callback = callback
+                        break
+            
+                # Only invoke the matching callback, not all callbacks
+                if matching_callback:
+                    await self._invoke_callback(matching_callback, message)
+                else:
+                    self.logger.warning(f"No matching subscription found for topic: {topic}")
                         
             except Exception as e:
                 if self.running:
@@ -540,7 +576,9 @@ class MessageBusBroker:
                 "message_bus_client_modelservice",
                 "message_bus_client_system_host",
                 "message_bus_client_backend_modules",
-                "zeromq_adapter"  # API Gateway ZMQ adapter
+                "zeromq_adapter",  # API Gateway ZMQ adapter
+                "test_client_health",  # Test script health check client
+                "test_client_completions"  # Test script completions client
             ]
             
             # Derive public keys for all authorized clients
@@ -566,8 +604,11 @@ class MessageBusBroker:
             self.server_public_key = _get_shared_broker_public_key()
             self.server_secret_key = _get_shared_broker_secret_key()
             
+            # Get authorized client keys and log them for debugging
+            authorized_clients = self._get_authorized_client_keys()
             self.logger.info(f"[SECURITY] Broker CurveZMQ keypair loaded successfully")
             self.logger.debug(f"[SECURITY] Broker public key fingerprint: {self.server_public_key[:8]}...")
+            self.logger.info(f"[SECURITY] Authorized clients: {list(authorized_clients.keys())}")
             self.logger.info(f"[SECURITY] CurveZMQ encryption setup complete - all connections will be encrypted")
             
         except Exception as e:

@@ -56,10 +56,21 @@ class ModelserviceMessageFactory:
         if not envelope.HasField('any_payload'):
             raise ValueError("Envelope has no payload")
         
+        # Debug logging for payload unpacking
+        from aico.core.logging import get_logger
+        logger = get_logger("modelservice", "protobuf_debug")
+        
+        logger.info(f"[DEBUG] Attempting to unpack payload as {expected_type.__name__}")
+        logger.info(f"[DEBUG] Payload type URL: {envelope.any_payload.type_url}")
+        logger.info(f"[DEBUG] Payload value length: {len(envelope.any_payload.value)} bytes")
+        
         payload = expected_type()
         if not envelope.any_payload.Unpack(payload):
+            logger.error(f"[DEBUG] FAILED to unpack payload as {expected_type.__name__}")
+            logger.error(f"[DEBUG] Expected type URL should contain: {expected_type.DESCRIPTOR.full_name}")
             raise ValueError(f"Failed to unpack payload as {expected_type.__name__}")
         
+        logger.info(f"[DEBUG] Successfully unpacked payload as {expected_type.__name__}")
         return payload
     
     # Request message factories
@@ -68,7 +79,7 @@ class ModelserviceMessageFactory:
         """Create a health check request."""
         request = HealthRequest()
         return ModelserviceMessageFactory.create_envelope(
-            request, "modelservice/health/request", correlation_id
+            request, "modelservice/health/request/v1", correlation_id
         )
     
     @staticmethod
@@ -105,7 +116,7 @@ class ModelserviceMessageFactory:
             request.system = system
         
         return ModelserviceMessageFactory.create_envelope(
-            request, "modelservice/completions/request", correlation_id
+            request, "modelservice/completions/request/v1", correlation_id
         )
     
     @staticmethod
@@ -113,7 +124,7 @@ class ModelserviceMessageFactory:
         """Create a models list request."""
         request = ModelsRequest()
         return ModelserviceMessageFactory.create_envelope(
-            request, "modelservice/models/request", correlation_id
+            request, "modelservice/models/request/v1", correlation_id
         )
     
     @staticmethod
@@ -122,7 +133,7 @@ class ModelserviceMessageFactory:
         request = ModelInfoRequest()
         request.model = model
         return ModelserviceMessageFactory.create_envelope(
-            request, "modelservice/model_info/request", correlation_id
+            request, "modelservice/model_info/request/v1", correlation_id
         )
     
     @staticmethod
@@ -136,7 +147,7 @@ class ModelserviceMessageFactory:
         request.model = model
         request.prompt = prompt
         return ModelserviceMessageFactory.create_envelope(
-            request, "modelservice/embeddings/request", correlation_id
+            request, "modelservice/embeddings/request/v1", correlation_id
         )
     
     @staticmethod
@@ -144,7 +155,7 @@ class ModelserviceMessageFactory:
         """Create a status request."""
         request = StatusRequest()
         return ModelserviceMessageFactory.create_envelope(
-            request, "modelservice/status/request", correlation_id
+            request, "modelservice/status/request/v1", correlation_id
         )
     
     # Ollama management request factories
@@ -153,7 +164,7 @@ class ModelserviceMessageFactory:
         """Create an Ollama status request."""
         request = OllamaStatusRequest()
         return ModelserviceMessageFactory.create_envelope(
-            request, "ollama/status/request", correlation_id
+            request, "ollama/status/request/v1", correlation_id
         )
     
     @staticmethod
@@ -161,7 +172,7 @@ class ModelserviceMessageFactory:
         """Create an Ollama models request."""
         request = OllamaModelsRequest()
         return ModelserviceMessageFactory.create_envelope(
-            request, "ollama/models/request", correlation_id
+            request, "ollama/models/request/v1", correlation_id
         )
     
     @staticmethod
@@ -170,7 +181,7 @@ class ModelserviceMessageFactory:
         request = OllamaPullRequest()
         request.model = model
         return ModelserviceMessageFactory.create_envelope(
-            request, "ollama/models/pull/request", correlation_id
+            request, "ollama/models/pull/request/v1", correlation_id
         )
     
     @staticmethod
@@ -179,7 +190,7 @@ class ModelserviceMessageFactory:
         request = OllamaRemoveRequest()
         request.model = model
         return ModelserviceMessageFactory.create_envelope(
-            request, "ollama/models/remove/request", correlation_id
+            request, "ollama/models/remove/request/v1", correlation_id
         )
     
     @staticmethod
@@ -187,7 +198,7 @@ class ModelserviceMessageFactory:
         """Create an Ollama serve request."""
         request = OllamaServeRequest()
         return ModelserviceMessageFactory.create_envelope(
-            request, "ollama/serve/request", correlation_id
+            request, "ollama/serve/request/v1", correlation_id
         )
     
     @staticmethod
@@ -195,7 +206,7 @@ class ModelserviceMessageFactory:
         """Create an Ollama shutdown request."""
         request = OllamaShutdownRequest()
         return ModelserviceMessageFactory.create_envelope(
-            request, "ollama/shutdown/request", correlation_id
+            request, "ollama/shutdown/request/v1", correlation_id
         )
     
 
@@ -212,7 +223,11 @@ class ModelserviceMessageParser:
     
     @staticmethod
     def get_correlation_id(envelope: AicoMessage) -> str:
-        """Extract correlation ID from envelope metadata."""
+        """Extract correlation ID from envelope metadata attributes."""
+        # Check if correlation_id is in attributes first
+        if "correlation_id" in envelope.metadata.attributes:
+            return envelope.metadata.attributes["correlation_id"]
+        # Fall back to message_id if no correlation_id attribute
         return envelope.metadata.message_id
     
     @staticmethod
@@ -223,28 +238,34 @@ class ModelserviceMessageParser:
     @staticmethod
     def extract_request_payload(envelope: AicoMessage, topic: str):
         """Extract request payload from envelope based on topic."""
+        from aico.core.logging import get_logger
+        logger = get_logger("modelservice", "protobuf_debug")
+        
         message_type = envelope.metadata.message_type
+        logger.info(f"[DEBUG] extract_request_payload called with message_type: {message_type}")
         
         # Map message types to their corresponding protobuf classes
         request_types = {
-            "modelservice/health/request": HealthRequest,
-            "modelservice/completions/request": CompletionsRequest,
-            "modelservice/models/request": ModelsRequest,
-            "modelservice/model_info/request": ModelInfoRequest,
-            "modelservice/embeddings/request": EmbeddingsRequest,
-            "modelservice/status/request": StatusRequest,
-            "ollama/status/request": OllamaStatusRequest,
-            "ollama/models/request": OllamaModelsRequest,
-            "ollama/models/pull/request": OllamaPullRequest,
-            "ollama/models/remove/request": OllamaRemoveRequest,
-            "ollama/serve/request": OllamaServeRequest,
-            "ollama/shutdown/request": OllamaShutdownRequest,
+            "modelservice/health/request/v1": HealthRequest,
+            "modelservice/completions/request/v1": CompletionsRequest,
+            "modelservice/models/request/v1": ModelsRequest,
+            "modelservice/model_info/request/v1": ModelInfoRequest,
+            "modelservice/embeddings/request/v1": EmbeddingsRequest,
+            "modelservice/status/request/v1": StatusRequest,
+            "ollama/status/request/v1": OllamaStatusRequest,
+            "ollama/models/request/v1": OllamaModelsRequest,
+            "ollama/models/pull/request/v1": OllamaPullRequest,
+            "ollama/models/remove/request/v1": OllamaRemoveRequest,
+            "ollama/serve/request/v1": OllamaServeRequest,
+            "ollama/shutdown/request/v1": OllamaShutdownRequest,
         }
         
         request_class = request_types.get(message_type)
         if not request_class:
+            logger.error(f"[DEBUG] Unknown request type: {message_type}")
             raise ValueError(f"Unknown request type: {message_type}")
         
+        logger.info(f"[DEBUG] Found request class: {request_class.__name__} for message_type: {message_type}")
         return ModelserviceMessageFactory.extract_payload(envelope, request_class)
     
     @staticmethod
@@ -254,18 +275,18 @@ class ModelserviceMessageParser:
         
         # Map message types to their corresponding protobuf classes
         response_types = {
-            "modelservice/health/response": HealthResponse,
-            "modelservice/completions/response": CompletionsResponse,
-            "modelservice/models/response": ModelsResponse,
-            "modelservice/model_info/response": ModelInfoResponse,
-            "modelservice/embeddings/response": EmbeddingsResponse,
-            "modelservice/status/response": StatusResponse,
-            "ollama/status/response": OllamaStatusResponse,
-            "ollama/models/response": OllamaModelsResponse,
-            "ollama/models/pull/response": OllamaPullResponse,
-            "ollama/models/remove/response": OllamaRemoveResponse,
-            "ollama/serve/response": OllamaServeResponse,
-            "ollama/shutdown/response": OllamaShutdownResponse,
+            "modelservice/health/response/v1": HealthResponse,
+            "modelservice/completions/response/v1": CompletionsResponse,
+            "modelservice/models/response/v1": ModelsResponse,
+            "modelservice/model_info/response/v1": ModelInfoResponse,
+            "modelservice/embeddings/response/v1": EmbeddingsResponse,
+            "modelservice/status/response/v1": StatusResponse,
+            "ollama/status/response/v1": OllamaStatusResponse,
+            "ollama/models/response/v1": OllamaModelsResponse,
+            "ollama/models/pull/response/v1": OllamaPullResponse,
+            "ollama/models/remove/response/v1": OllamaRemoveResponse,
+            "ollama/serve/response/v1": OllamaServeResponse,
+            "ollama/shutdown/response/v1": OllamaShutdownResponse,
         }
         
         response_class = response_types.get(message_type)

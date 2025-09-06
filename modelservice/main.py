@@ -235,8 +235,8 @@ async def main():
         # Initialize modelservice and Ollama (ZMQ service started early)
         config, ollama_manager, process_manager, _zmq_service = await initialize_modelservice()
         
-        # Continue running the ZMQ service (already started early)
-        await _zmq_service.run()
+        # Complete the full ZMQ service initialization (subscribe to all topics)
+        await _zmq_service.start()
         
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt")
