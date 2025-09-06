@@ -46,3 +46,30 @@ def format_info(message: str) -> Panel:
         title="ℹ️ Info",
         title_align="left"
     )
+
+
+def get_status_chars() -> dict:
+    """Get platform-appropriate status characters."""
+    import platform
+    
+    # Use ASCII characters for cross-platform compatibility
+    if platform.system() == "Windows":
+        return {
+            "check": "✓",
+            "cross": "✗", 
+            "warning": "!",
+            "info": "i",
+            "running": "►",
+            "stopped": "■",
+            "globe": "●"
+        }
+    else:
+        return {
+            "check": "✓",
+            "cross": "✗",
+            "warning": "⚠",
+            "info": "ℹ",
+            "running": "▶",
+            "stopped": "⏹",
+            "globe": "🌐"
+        }
