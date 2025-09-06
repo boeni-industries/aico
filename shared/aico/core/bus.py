@@ -102,11 +102,11 @@ class MessageBusClient:
             self.logger = create_infrastructure_logger(f"bus.client.{client_id}")
         else:
             try:
-                self.logger = get_logger("bus", f"client.{client_id}")
+                self.logger = get_logger("shared", f"bus.client.{client_id}")
             except RuntimeError:
                 # Logging not initialized yet - use fallback
                 import logging
-                self.logger = logging.getLogger(f"bus.client.{client_id}")
+                self.logger = logging.getLogger(f"shared.bus.client.{client_id}")
         
         # ZeroMQ context and sockets
         self.context = self.zmq_context
@@ -426,7 +426,7 @@ class MessageBusBroker:
     
     def __init__(self, bind_address: str = "tcp://*:5555"):
         self.bind_address = bind_address
-        self.logger = get_logger("bus", "broker")
+        self.logger = get_logger("shared", "bus.broker")
         
         # Parse ports from config
         from aico.core.config import ConfigurationManager

@@ -101,11 +101,6 @@ async def initialize_modelservice():
     else:
         print("⚠️  Logger factory has no transport!")
     
-    # Test logging to verify ZMQ transport is working
-    logger.info("ZMQ logging transport initialized and ready", extra={"topic": "logs/entry/v1"})
-    logger.warning("Testing modelservice log routing", extra={"topic": "logs/entry/v1"})
-    logger.error("Testing modelservice error log", extra={"topic": "logs/entry/v1"})
-    
     # Also test without the extra topic to see if that works
     logger.info("Testing modelservice log without extra topic")
     
