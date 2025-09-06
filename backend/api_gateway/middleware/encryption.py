@@ -314,12 +314,28 @@ class EncryptionMiddleware:
             "/docs",
             "/redoc", 
             "/openapi.json",
-            "/api/v1/health",     # Public gateway health check
-            "/api/v1/health/",    # Public gateway health check (with trailing slash)
-            "/api/v1/handshake",  # Encryption session establishment
-            "/api/v1/handshake/"  # Encryption session establishment (with trailing slash)
+            "/api/v1/health",         # Public gateway health check
+            "/api/v1/health/",        # Public gateway health check (with trailing slash)
+            "/api/v1/health/detailed", # Detailed health check
+            "/api/v1/health/detailed/", # Detailed health check (with trailing slash)
+            "/api/v1/handshake",      # Encryption session establishment
+            "/api/v1/handshake/"      # Encryption session establishment (with trailing slash)
         ]
         
+        # Check exact matches for public endpoints
+        if path in public_endpoints:
+            self.logger.debug(f"Skipping encryption for public endpoint: {path}")
+            return True
+        
+        # NEVER skip encryption for admin endpoints - they contain sensitive data
+        if path.startswith("/api/v1/admin/"):
+            return False
+            
+        # All other /api/v1/ endpoints require encryption by default
+        if path.startswith("/api/v1/"):
+            self.logger.debug(f"Requiring encryption for API endpoint: {path}")
+            return False
+            
         # Non-API paths can skip encryption (static files, etc.)
         return True
     

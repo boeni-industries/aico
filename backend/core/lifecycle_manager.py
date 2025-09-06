@@ -36,6 +36,8 @@ class BackendLifecycleManager:
     def __init__(self, config_manager: ConfigurationManager):
         self.config = config_manager
         self.logger = get_logger("backend", "core.lifecycle_manager")
+        import time
+        self.start_time = time.time()
         
         # Core components
         self.container = ServiceContainer(config_manager)
@@ -502,14 +504,87 @@ class BackendLifecycleManager:
         # Health endpoint
         @self.app.get("/api/v1/health")
         async def health_check():
-            return {"status": "healthy", "service": "aico-backend", "version": get_backend_version()}
+            from datetime import datetime, timezone
+            import time
+            return {
+                "status": "healthy", 
+                "service": "aico-backend", 
+                "version": get_backend_version(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "uptime_seconds": time.time() - self.start_time if hasattr(self, 'start_time') else 0
+            }
         
         # Container health endpoint
         @self.app.get("/api/v1/health/detailed")
         async def detailed_health_check(request: Request):
-            container = request.app.state.container
+            from datetime import datetime, timezone
+            import time
+            import psutil
+            import os
+            
+            container = request.app.state.service_container
             health_status = await container.health_check()
-            return health_status
+            
+            # Add comprehensive system information
+            try:
+                process = psutil.Process(os.getpid())
+                memory_info = process.memory_info()
+                cpu_percent = process.cpu_percent()
+                
+                # System metrics
+                system_memory = psutil.virtual_memory()
+                system_cpu = psutil.cpu_percent(interval=0.1)
+                # Cross-platform disk usage - use root drive
+                import platform
+                if platform.system() == 'Windows':
+                    disk_usage = psutil.disk_usage('C:\\')
+                else:
+                    disk_usage = psutil.disk_usage('/')
+                
+                # Network connections (count) - handle permission issues
+                try:
+                    connections = len(psutil.net_connections())
+                except (psutil.AccessDenied, OSError):
+                    connections = 0
+                
+                enhanced_status = {
+                    **health_status,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "uptime_seconds": time.time() - self.start_time if hasattr(self, 'start_time') else 0,
+                    "process": {
+                        "pid": os.getpid(),
+                        "memory_mb": round(memory_info.rss / 1024 / 1024, 2),
+                        "memory_percent": round(process.memory_percent(), 2),
+                        "cpu_percent": cpu_percent,
+                        "threads": process.num_threads(),
+                        "open_files": len(process.open_files()) if hasattr(process, 'open_files') and platform.system() != 'Windows' else 0
+                    },
+                    "system": {
+                        "cpu_percent": system_cpu,
+                        "memory_percent": system_memory.percent,
+                        "memory_available_gb": round(system_memory.available / 1024 / 1024 / 1024, 2),
+                        "disk_percent": disk_usage.percent,
+                        "disk_free_gb": round(disk_usage.free / 1024 / 1024 / 1024, 2),
+                        "network_connections": connections
+                    },
+                    "environment": {
+                        "python_version": f"{platform.python_version()}",
+                        "platform": platform.system(),
+                        "platform_release": platform.release(),
+                        "hostname": platform.node()
+                    }
+                }
+                
+                return enhanced_status
+                
+            except Exception as e:
+                # Fallback if psutil fails
+                return {
+                    **health_status,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "uptime_seconds": time.time() - self.start_time if hasattr(self, 'start_time') else 0,
+                    "error": f"Failed to collect system metrics: {str(e)}"
+                }
         
         # Gateway status endpoint (missing route causing 404)
         @self.app.get("/api/v1/gateway/status")
