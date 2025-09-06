@@ -3,7 +3,7 @@ ZeroMQ service for modelservice - replaces FastAPI/uvicorn HTTP server.
 
 This module implements the ZMQ message bus client that subscribes to modelservice
 topics and routes messages to appropriate handlers. It replaces the HTTP server
-with pure ZMQ communication using CurveZMQ encryption and Protocol Buffers.
+with pure ZMQ communication using Protocol Buffers.
 """
 
 import asyncio
@@ -62,13 +62,8 @@ class ModelserviceZMQService:
         try:
             logger.info("Starting modelservice ZMQ service (early mode)...")
             
-            # Initialize message bus client with correct constructor
-            from aico.core.config import ConfigurationManager
-            config_manager = ConfigurationManager()
-            self.bus_client = MessageBusClient(
-                client_id="modelservice",
-                config_manager=config_manager
-            )
+            # Initialize message bus client following AICO patterns
+            self.bus_client = MessageBusClient("modelservice")
             
             await self.bus_client.connect()
             
@@ -95,13 +90,8 @@ class ModelserviceZMQService:
         try:
             logger.info("Starting modelservice ZMQ service...")
             
-            # Initialize message bus client with CurveZMQ encryption
-            from aico.core.config import ConfigurationManager
-            config_manager = ConfigurationManager()
-            self.bus_client = MessageBusClient(
-                client_id="modelservice",
-                config_manager=config_manager
-            )
+            # Initialize message bus client following AICO patterns
+            self.bus_client = MessageBusClient("modelservice")
             
             await self.bus_client.connect()
             

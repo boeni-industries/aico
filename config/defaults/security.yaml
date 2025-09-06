@@ -46,11 +46,11 @@ file_encryption:
 # Transport security settings
 transport:
   # Message bus encryption using CurveZMQ
-  message_bus_encryption: false
+  message_bus_encryption: true
   
   # CurveZMQ settings for internal message bus
   curve_zmq:
-    enabled: false
+    enabled: true
     authentication_policy: "CURVE_ALLOW_ANY"  # Zero-config: any valid CURVE client can connect
     key_rotation_interval: 86400              # 24 hours
     

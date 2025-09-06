@@ -2,7 +2,7 @@
 Modelservice main application entry point - ZMQ Message Bus Implementation.
 
 This module implements a pure ZeroMQ message bus service that replaces the
-FastAPI/uvicorn HTTP server. All communication is via ZMQ with CurveZMQ encryption.
+FastAPI/uvicorn HTTP server. All communication is via ZMQ with encryption.
 """
 
 import sys
@@ -53,9 +53,9 @@ async def initialize_modelservice():
     print(startup_msg)
     logger.info("AICO Modelservice starting up")
     
-    server_info = f"[>] Communication: ZeroMQ Message Bus\n[>] Environment: {env}\n[>] Version: v{__version__}\n[>] Encryption: CurveZMQ Enabled"
+    server_info = f"[>] Communication: ZeroMQ Message Bus\n[>] Environment: {env}\n[>] Version: v{__version__}\n[>] Encryption: Enabled"
     print(server_info)
-    logger.info(f"Server configuration - Communication: ZMQ, Environment: {env}, Version: {__version__}, Encryption: CurveZMQ")
+    logger.info(f"Server configuration - Communication: ZMQ, Environment: {env}, Version: {__version__}, Encryption: Enabled")
     
     print("=" * 60)
     

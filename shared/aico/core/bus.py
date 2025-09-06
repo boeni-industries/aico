@@ -26,19 +26,13 @@ if platform.system() == "Windows":
 from .config import ConfigurationManager
 
 # Shared static keys for minimal CurveZMQ authentication
-_SHARED_BROKER_KEYS = None
+# Use fixed keys so all processes can authenticate with the same broker
+_SHARED_BROKER_PUBLIC = "Yne@$w-vo<fVvi]a<NY6T1ed:M$fCG*[IaLV{hID"
+_SHARED_BROKER_SECRET = "D:)Q[IlAW!ahhC2ac:9*A}h:p?([4%wOTJ%JR%cs"
 
 def _get_shared_broker_keys():
     """Get shared broker keypair for minimal authentication"""
-    global _SHARED_BROKER_KEYS
-    if _SHARED_BROKER_KEYS is None:
-        # Generate once and reuse - same approach as working test
-        broker_public, broker_secret = zmq.curve_keypair()
-        _SHARED_BROKER_KEYS = (
-            broker_public.decode('ascii'),
-            broker_secret.decode('ascii')
-        )
-    return _SHARED_BROKER_KEYS
+    return (_SHARED_BROKER_PUBLIC, _SHARED_BROKER_SECRET)
 
 def _get_shared_broker_public_key():
     """Get shared broker public key"""

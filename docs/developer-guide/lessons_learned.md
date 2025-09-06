@@ -124,3 +124,33 @@ def _send_log_to_zmq(self, log_data):
 - Recursion: Logger → ZMQ → Logger → ZMQ → Stack Overflow
 - Infrastructure logger pattern helps but doesn't eliminate recursion risk
 - Test logging infrastructure separately from application logging
+
+## CurveZMQ Multi-Process Authentication Keys
+
+**Problem**: After enabling CurveZMQ encryption, modelservice logs stopped reaching the database despite successful connection messages. Backend logs worked fine, but all modelservice logs were silently dropped.
+
+**Root Cause**: Each Python process generated different shared broker keys in memory. Backend process generated one set of CurveZMQ keys, modelservice process generated different keys. When modelservice tried to authenticate with the broker using mismatched keys, authentication failed silently and messages were dropped.
+
+**Debugging Challenge**: CurveZMQ authentication failures are silent - no error messages, connections appear successful, but messages are dropped at the protocol level.
+
+**Failed Approach**: Assuming `_SHARED_BROKER_KEYS = None` with runtime generation would work across processes. This only works within a single process.
+
+**Solution**: Replace runtime key generation with fixed static keys that all processes can use:
+```python
+# Before (broken across processes)
+_SHARED_BROKER_KEYS = None
+def _get_shared_broker_keys():
+    if _SHARED_BROKER_KEYS is None:
+        broker_public, broker_secret = zmq.curve_keypair()  # Different per process!
+
+# After (works across processes)  
+_SHARED_BROKER_PUBLIC = "Yne@$w-vo<fVvi]a<NY6T1ed:M$fCG*[IaLV{hID"
+_SHARED_BROKER_SECRET = "D:)Q[IlAW!ahhC2ac:9*A}h:p?([4%wOTJ%JR%cs"
+```
+
+**Key Lessons**:
+- CurveZMQ authentication failures are completely silent - no errors, just dropped messages
+- Shared keys must be truly shared across processes, not generated per-process
+- Multi-process systems need persistent/static keys for CurveZMQ authentication
+- Always test encryption with multiple separate processes, not just single-process tests
+- CurveZMQ debugging requires message-level tracing, connection success doesn't guarantee message delivery
