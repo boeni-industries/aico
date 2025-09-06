@@ -81,13 +81,32 @@ async def initialize_modelservice():
     if logger_factory._transport:
         print("[DEBUG] Logger factory has transport, marking broker ready...")
         logger_factory._transport.mark_broker_ready()
-        # Wait for LogConsumer to be ready before flushing buffer
+        
+        # Wait for client connection AND LogConsumer to be ready
+        print("[DEBUG] Waiting for ZMQ client connection...")
+        max_wait = 10  # 10 seconds max wait
+        wait_time = 0
+        while wait_time < max_wait:
+            await asyncio.sleep(0.1)
+            wait_time += 0.1
+            
+            # Check if client is connected
+            client = getattr(logger_factory._transport, '_message_bus_client', None)
+            if client and getattr(client, 'connected', False):
+                print(f"[DEBUG] ZMQ client connected after {wait_time:.1f}s")
+                break
+        else:
+            print(f"[DEBUG] ZMQ client connection timeout after {max_wait}s")
+        
+        # Additional wait for LogConsumer to be ready
         await asyncio.sleep(0.5)  # Give LogConsumer time to subscribe
-        logger_factory._transport._broker_available = True
-        # Flush buffer after LogConsumer is ready
+        
+        # Flush buffer after both client connection and LogConsumer are ready
         if hasattr(logger_factory, '_log_buffer'):
+            buffer_size = len(logger_factory._log_buffer._buffer)
+            print(f"[DEBUG] Flushing {buffer_size} buffered logs...")
             logger_factory._log_buffer.flush_to_transport(logger_factory._transport)
-        print("[DEBUG] Logger transport reinitialized and buffer flushed")
+        print("[DEBUG] Logger transport ready and buffer flushed")
     else:
         print("[DEBUG] Logger factory has no transport!")
     
