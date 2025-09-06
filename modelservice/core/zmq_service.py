@@ -62,11 +62,12 @@ class ModelserviceZMQService:
         try:
             logger.info("Starting modelservice ZMQ service (early mode)...")
             
-            # Initialize message bus client
-            bus_config = self.config.get('message_bus', {})
+            # Initialize message bus client with correct constructor
+            from aico.core.config import ConfigurationManager
+            config_manager = ConfigurationManager()
             self.bus_client = MessageBusClient(
                 client_id="modelservice",
-                broker_address=bus_config.get('broker_address', 'tcp://localhost:5555')
+                config_manager=config_manager
             )
             
             await self.bus_client.connect()
@@ -95,10 +96,11 @@ class ModelserviceZMQService:
             logger.info("Starting modelservice ZMQ service...")
             
             # Initialize message bus client with CurveZMQ encryption
-            bus_config = self.config.get('message_bus', {})
+            from aico.core.config import ConfigurationManager
+            config_manager = ConfigurationManager()
             self.bus_client = MessageBusClient(
                 client_id="modelservice",
-                broker_address=bus_config.get('broker_address', 'tcp://localhost:5555')
+                config_manager=config_manager
             )
             
             await self.bus_client.connect()

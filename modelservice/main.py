@@ -11,6 +11,10 @@ import asyncio
 import signal
 from pathlib import Path
 
+# Fix Windows asyncio event loop compatibility with ZMQ
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 # Initialize configuration and logging before any imports that get loggers
 from aico.core.config import ConfigurationManager
 from aico.core.logging import initialize_logging, get_logger
@@ -44,17 +48,14 @@ async def initialize_modelservice():
     modelservice_config = cfg.get("modelservice", {})
     env = os.getenv("AICO_ENV", "development")
 
-    # Import log buffer for early startup logging
-    from .core.log_buffer import buffer_log, flush_startup_logs
-    
-    # Startup: Display initial info and buffer early logs
+    # Startup: Display initial info and use standard AICO logging
     startup_msg = "\n" + "=" * 60 + "\n[*] AICO Modelservice (ZMQ)\n" + "=" * 60
     print(startup_msg)
-    buffer_log("INFO", "AICO Modelservice starting up")
+    logger.info("AICO Modelservice starting up")
     
     server_info = f"[>] Communication: ZeroMQ Message Bus\n[>] Environment: {env}\n[>] Version: v{__version__}\n[>] Encryption: CurveZMQ Enabled"
     print(server_info)
-    buffer_log("INFO", f"Server configuration - Communication: ZMQ, Environment: {env}, Version: {__version__}, Encryption: CurveZMQ")
+    logger.info(f"Server configuration - Communication: ZMQ, Environment: {env}, Version: {__version__}, Encryption: CurveZMQ")
     
     print("=" * 60)
     
@@ -63,14 +64,14 @@ async def initialize_modelservice():
     backend_available = await _check_backend_health(cfg)
     if not backend_available:
         print("⚠️  Backend not available - logs will use fallback storage")
-        buffer_log("WARNING", "Backend not available at startup - using fallback logging")
+        logger.warning("Backend not available at startup - using fallback logging")
     else:
         print("✅ Backend is available")
-        buffer_log("INFO", "Backend confirmed available at startup")
+        logger.info("Backend confirmed available at startup")
     
     # Start ZMQ service EARLY to capture all subsequent logs
     print("🔌 Starting ZMQ logging service...")
-    buffer_log("INFO", "Starting ZMQ service early for log capture")
+    logger.info("Starting ZMQ service early for log capture")
     
     zmq_service = ModelserviceZMQService(cfg, None)  # No ollama_manager yet
     await zmq_service.start_early()  # New method for early startup
@@ -80,13 +81,15 @@ async def initialize_modelservice():
     if logger_factory._transport:
         print("[DEBUG] Logger factory has transport, marking broker ready...")
         logger_factory._transport.mark_broker_ready()
-        logger_factory.reinitialize_loggers()
-        print("[DEBUG] Logger transport reinitialized")
+        # Wait for LogConsumer to be ready before flushing buffer
+        await asyncio.sleep(0.5)  # Give LogConsumer time to subscribe
+        logger_factory._transport._broker_available = True
+        # Flush buffer after LogConsumer is ready
+        if hasattr(logger_factory, '_log_buffer'):
+            logger_factory._log_buffer.flush_to_transport(logger_factory._transport)
+        print("[DEBUG] Logger transport reinitialized and buffer flushed")
     else:
         print("[DEBUG] Logger factory has no transport!")
-    
-    # Flush buffered logs now that ZMQ is available
-    flush_startup_logs()
     
     # Test logging to verify ZMQ transport is working
     print("[DEBUG] Testing logger.info call...")
