@@ -11,14 +11,14 @@ This guide covers current development patterns for AICO's backend service, inclu
 AICO uses a service container architecture with standardized plugin base classes:
 
 ```python
-from aico.core.logging import get_logger
+from aico.core.logging_context import create_infrastructure_logger
 from backend.core.plugin_base import BasePlugin, PluginMetadata, PluginPriority
 from backend.core.service_container import ServiceContainer
 
 class MyPlugin(BasePlugin):
     def __init__(self, name: str, container: ServiceContainer):
         super().__init__(name, container)
-        self.logger = get_logger("plugin", "my_plugin")
+        self.logger = create_infrastructure_logger("aico.infrastructure.plugin.my_plugin")
         
     @property
     def metadata(self):

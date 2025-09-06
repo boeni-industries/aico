@@ -26,7 +26,8 @@ sys.path.insert(0, str(backend_dir))
 
 # Import AICO modules
 from aico.core.config import ConfigurationManager
-from aico.core.logging import get_logger, initialize_logging
+from aico.core.logging import initialize_logging
+from aico.core.logging_context import create_infrastructure_logger
 
 # Initialize logging first before importing any modules that use loggers
 config_manager = ConfigurationManager()
@@ -39,7 +40,7 @@ from aico.core.version import get_backend_version
 __version__ = get_backend_version()
 
 # Global components - config_manager already initialized above
-logger = get_logger("backend", "main")
+logger = create_infrastructure_logger("aico.infrastructure.backend.main")
 process_manager = None
 shutdown_event = asyncio.Event()
 

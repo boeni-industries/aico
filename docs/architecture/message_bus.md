@@ -6,6 +6,8 @@ The Core Message Bus is the central nervous system of AICO, enabling modular, ev
 
 **🔒 Security First:** All message bus communication is encrypted using CurveZMQ with mandatory authentication. There is no plaintext fallback - the system enforces secure communication or fails completely.
 
+**⚠️ CRITICAL: Logging Recursion Prevention** - NEVER use standard logging (logger.info(), logger.error()) within message bus transport, send/receive operations, or message handling code. Use print() statements to avoid infinite recursion loops that crash the system.
+
 This architecture document describes the design, implementation, and integration patterns of AICO's central message bus system, which serves as the foundation for inter-module communication and coordination.
 
 ## Design Principles

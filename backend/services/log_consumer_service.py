@@ -11,7 +11,7 @@ import time
 import json
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
-from aico.core.logging import get_logger
+from aico.core.logging_context import create_infrastructure_logger
 from aico.core.topics import AICOTopics
 from aico.core.bus import MessageBusClient
 from aico.proto.aico_core_envelope_pb2 import AicoMessage
@@ -30,14 +30,13 @@ class LogConsumerService(BaseService):
     def __init__(self, name: str, container: ServiceContainer):
         super().__init__(name, container)
         
+        # Use infrastructure logger to prevent feedback loops
+        self.logger = create_infrastructure_logger("log_consumer")
+        
         # Configuration - use message_bus config for ZMQ settings
         self.log_config = self.get_config("core.logging", {})
         self.message_bus_config = self.get_config("core.message_bus", {})
         self.enabled = self.get_config("core.api_gateway.plugins.log_consumer.enabled", True)
-        
-        # Debug configuration access
-        self.logger.info(f"Log consumer config debug - message_bus_config: {self.message_bus_config}")
-        self.logger.info(f"Log consumer config debug - log_config: {self.log_config}")
         
         # Runtime state
         self.message_bus_client: Optional[MessageBusClient] = None
@@ -86,7 +85,7 @@ class LogConsumerService(BaseService):
             if self.state != ServiceState.INITIALIZED:
                 raise RuntimeError(f"Service not initialized (state: {self.state})")
             
-            self.logger = get_logger("backend", "services.log_consumer")
+            self.logger = create_infrastructure_logger("aico.infrastructure.log_consumer")
             print(f"[LOG CONSUMER] Starting log consumer service...")
             
             # Connect to message bus with encryption
@@ -208,9 +207,6 @@ class LogConsumerService(BaseService):
     
     def _handle_log_message(self, message: AicoMessage) -> None:
         """Handle incoming log message from message bus"""
-        print(f"[DEBUG] LOG CONSUMER: Callback invoked!")
-        print(f"[DEBUG] LOG CONSUMER: Message type: {type(message)}")
-        print(f"[DEBUG] LOG CONSUMER: Message has any_payload: {message.HasField('any_payload') if message else 'message is None'}")
         
         try:
             if message.HasField('any_payload'):

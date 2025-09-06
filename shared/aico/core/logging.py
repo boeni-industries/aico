@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from google.protobuf.timestamp_pb2 import Timestamp
 from .topics import AICOTopics
+from .logging_context import get_logging_context, create_infrastructure_logger
 
 # MessageBusClient will be imported lazily to avoid circular imports
 MessageBusClient = None
@@ -422,13 +423,15 @@ class DirectDatabaseTransport:
 
 
 class ZMQLogTransport:
-    """ZeroMQ transport for log messages using encrypted MessageBusClient"""
+    """ZeroMQ-based log transport for distributed logging"""
     
     def __init__(self, config: 'ConfigurationManager', zmq_context):
         self.config = config
+        self._zmq_context = zmq_context
         self._message_bus_client = None
         self._initialized = False
         self._broker_available = False
+        self._logger = create_infrastructure_logger("zmq_log_transport")
 
     def initialize(self):
         """Initialize the ZMQ transport"""
@@ -457,16 +460,37 @@ class ZMQLogTransport:
         print(f"[ZMQ TRANSPORT] MessageBusClient created successfully", file=sys.stderr, flush=True)
             
     def send_log(self, log_entry: LogEntry):
-        """Send a log entry via ZMQ transport"""
-        if not self._initialized or not ZMQ_AVAILABLE:
-            return
+        """Send log entry via ZMQ message bus"""
+        if not self._initialized:
+            return  # Skip if not initialized
         
-        # Construct topic with hierarchical structure
-        topic = AICOTopics.ZMQ_LOGS_PREFIX  # "logs/"
-        if log_entry.subsystem:
-            topic += log_entry.subsystem
-            if log_entry.module:
-                topic += "/" + log_entry.module
+        # Check if we should skip ZMQ transport due to logging context
+        context = get_logging_context()
+        if context.is_infrastructure_context and 'zmq' in context.excluded_transports:
+            return  # Skip ZMQ transport to prevent circular logging
+        
+        # Convert LogEntry to protobuf message
+        from ..proto.aico_core_envelope_pb2 import AicoMessage
+        from ..proto.aico_core_logging_pb2 import LogEntry
+        from google.protobuf.any_pb2 import Any as ProtoAny
+        
+        log_msg = LogEntry()
+        log_msg.timestamp.CopyFrom(log_entry.timestamp)
+        log_msg.level = log_entry.level
+        log_msg.subsystem = log_entry.subsystem
+        log_msg.module = log_entry.module
+        log_msg.message = log_entry.message
+        log_msg.metadata.update(log_entry.metadata)
+        
+        # Pack LogEntry into Any payload
+        any_payload = ProtoAny()
+        any_payload.Pack(log_msg)
+        
+        aico_msg = AicoMessage()
+        aico_msg.any_payload.CopyFrom(any_payload)
+        
+        # Determine topic based on subsystem and module
+        topic = AICOTopics.get_log_topic(log_entry.subsystem, log_entry.module)
         
         # Schedule async send
         try:

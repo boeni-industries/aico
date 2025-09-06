@@ -97,3 +97,30 @@
 - Always coordinate buffer flush with the actual message consumer, not just the broker
 - Brief delays after subscription establishment prevent race conditions
 - End-to-end message flow testing is essential for distributed logging systems
+
+## Logging Recursion Loops and Infrastructure Safety
+
+**Problem**: Logging systems can create infinite recursion loops when logging code attempts to log its own operations, causing stack overflow crashes.
+
+**Root Cause**: When ZMQ transport, message bus operations, database writes, or log consumers try to use standard logging (logger.info(), logger.error()), they create recursive loops where each log attempt generates another log message.
+
+**Critical Pattern**: Use `print()` statements instead of loggers within logging infrastructure code.
+
+**Solution**: 
+```python
+# CORRECT - debugging logging system itself
+def _send_log_to_zmq(self, log_data):
+    try:
+        self.socket.send_json(log_data)
+        print(f"[ZMQ TRANSPORT] Log sent successfully")  # ✅ Safe
+    except Exception as e:
+        print(f"[ZMQ TRANSPORT] Failed to send: {e}")    # ✅ Safe
+        # self.logger.error(f"Send failed: {e}")         # ❌ RECURSION!
+```
+
+**Key Lessons**: 
+- NEVER log within logging transport, message bus, database writes, or log handler code
+- Use print() statements for debugging logging infrastructure itself
+- Recursion: Logger → ZMQ → Logger → ZMQ → Stack Overflow
+- Infrastructure logger pattern helps but doesn't eliminate recursion risk
+- Test logging infrastructure separately from application logging

@@ -349,6 +349,16 @@ class AICOTopics:
         """Extract version from topic"""
         parts = topic.split('/')
         return parts[3] if len(parts) > 3 else None
+    
+    @staticmethod
+    def get_log_topic(subsystem: str, module: str) -> str:
+        """Generate log topic based on subsystem and module"""
+        # Clean subsystem and module names
+        clean_subsystem = subsystem.lower().replace(' ', '_') if subsystem else 'general'
+        clean_module = module.lower().replace(' ', '_') if module else 'default'
+        
+        # Build hierarchical log topic
+        return f"logs/{clean_subsystem}/{clean_module}/v1"
 
 
 # ===== TOPIC PERMISSIONS =====

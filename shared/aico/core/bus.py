@@ -6,13 +6,15 @@ using Protocol Buffers for all message serialization.
 """
 
 import asyncio
+from datetime import datetime
 import platform
 import threading
+from typing import Optional, Dict, Callable, Set
 import uuid
 import zmq
 import zmq.asyncio
-from datetime import datetime
-from typing import Dict, List, Callable, Optional, Any, Set
+from .topics import AICOTopics
+from .logging_context import get_logging_context, create_infrastructure_logger
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.any_pb2 import Any as ProtoAny
 from google.protobuf.message import Message as ProtobufMessage
@@ -45,6 +47,7 @@ def _get_shared_broker_public_key():
 def _get_shared_broker_secret_key():
     """Get shared broker secret key"""
     return _get_shared_broker_keys()[1]
+
 # Optional protobuf imports to avoid chicken/egg problem with CLI
 try:
     from ..proto.aico_core_envelope_pb2 import AicoMessage, MessageMetadata
@@ -89,20 +92,30 @@ class TopicAccessError(MessageBusError):
 class MessageBusClient:
     """Client interface for connecting to the message bus"""
     
-    def __init__(self, client_id: str, broker_address: str = "tcp://localhost:5555"):
+    def __init__(self, client_id: str, zmq_context=None, config_manager=None):
         self.client_id = client_id
-        self.broker_address = broker_address  # Keep for logging, but use config for actual connection
+        self.zmq_context = zmq_context or zmq.asyncio.Context()
+        self.config = config_manager
+        self.running = False
+        self.connected = False
+        self.subscriber = None
+        self.publisher = None
+        self.subscriptions = {}
+        self.encryption_enabled = True  # Default to encrypted
         
-        # Avoid circular dependency during logging initialization
-        try:
-            self.logger = get_logger("bus", f"client.{client_id}")
-        except RuntimeError:
-            # Logging not initialized yet - use fallback
-            import logging
-            self.logger = logging.getLogger(f"bus.client.{client_id}")
+        # Use infrastructure logger for logging transport components to prevent circular dependencies
+        if client_id in ["zmq_log_transport", "log_consumer"]:
+            self.logger = create_infrastructure_logger(f"bus.client.{client_id}")
+        else:
+            try:
+                self.logger = get_logger("bus", f"client.{client_id}")
+            except RuntimeError:
+                # Logging not initialized yet - use fallback
+                import logging
+                self.logger = logging.getLogger(f"bus.client.{client_id}")
         
         # ZeroMQ context and sockets
-        self.context = zmq.asyncio.Context()
+        self.context = self.zmq_context
         self.publisher = None
         self.subscriber = None
         self.subscriptions: Dict[str, Callable] = {}
@@ -114,7 +127,7 @@ class MessageBusClient:
         self.message_log = None
         
         # CurveZMQ encryption
-        self.encryption_enabled = False
+        self.encryption_enabled = True
         self.public_key = None
         self.secret_key = None
     
@@ -275,6 +288,7 @@ class MessageBusClient:
             metadata.attributes.update(attributes)
         
         # Create AICO message envelope
+        from ..proto.aico_core_envelope_pb2 import AicoMessage
         message = AicoMessage()
         message.metadata.CopyFrom(metadata)
         
@@ -293,7 +307,8 @@ class MessageBusClient:
         # encryption_status = "encrypted" if self.encryption_enabled else "plaintext"
         # self.logger.debug(f"Published {encryption_status} protobuf message to topic '{topic}': {metadata.message_id}")
         # self.logger.debug(f"Message data length: {len(message_data)} bytes")
-        if not self.encryption_enabled:
+        # Skip security warnings for infrastructure components to prevent feedback loops
+        if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
             self.logger.warning(f"[SECURITY] WARNING: Message {metadata.message_id} sent in plaintext to topic '{topic}'")
         
         # Persist message if enabled
@@ -333,28 +348,22 @@ class MessageBusClient:
                 topic, message_data = await self.subscriber.recv_multipart()
                 topic = topic.decode('utf-8')
                 
-                # Debug: Show message reception for log_consumer client
-                if self.client_id == "log_consumer":
-                    print(f"[DEBUG] MessageBusClient({self.client_id}): Received message on topic '{topic}', data length: {len(message_data)}")
+                # Debug: Show message reception for log_consumer client (disabled to reduce console spam)
+                # if self.client_id == "log_consumer":
+                #     print(f"[DEBUG] MessageBusClient({self.client_id}): Received message on topic '{topic}', data length: {len(message_data)}")
                 
-                # Security logging: Message reception (disabled to prevent feedback loop)
-                # encryption_status = "encrypted" if self.encryption_enabled else "plaintext"
-                # self.logger.debug(f"Received {encryption_status} message on topic: '{topic}', data length: {len(message_data)}")
-                if not self.encryption_enabled:
+                # Skip security warnings for infrastructure components to prevent feedback loops
+                if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
                     self.logger.warning(f"[SECURITY] WARNING: Client {self.client_id} received plaintext message on topic '{topic}'")
                 
                 # Deserialize protobuf message
+                from ..proto.aico_core_envelope_pb2 import AicoMessage
                 message = AicoMessage()
                 message.ParseFromString(message_data)
                 
                 # ZMQ already filtered messages at socket level, so invoke all callbacks
                 # No need for application-level pattern matching since ZMQ handles prefix filtering
-                if self.client_id == "log_consumer":
-                    print(f"[DEBUG] MessageBusClient({self.client_id}): Invoking {len(self.subscriptions)} callbacks for topic '{topic}'")
-                
                 for pattern, callback in self.subscriptions.items():
-                    if self.client_id == "log_consumer":
-                        print(f"[DEBUG] MessageBusClient({self.client_id}): Invoking callback for subscription '{pattern}'")
                     await self._invoke_callback(callback, message)
                         
             except Exception as e:
@@ -374,12 +383,31 @@ class MessageBusClient:
         return pattern
     
     
-    async def _invoke_callback(self, callback: Callable, message: AicoMessage):
-        """Invoke callback, handling both sync and async functions"""
-        if asyncio.iscoroutinefunction(callback):
-            await callback(message)
+    async def _invoke_callback(self, callback, message):
+        """Invoke callback with proper error handling"""
+        # Use infrastructure logging context for logging transport components
+        context = get_logging_context()
+        
+        # Check if this is an infrastructure component based on logger type
+        is_infrastructure = hasattr(self.logger, '__class__') and 'InfrastructureLogger' in str(type(self.logger))
+        
+        if is_infrastructure:
+            with context.infrastructure_logging(self.client_id):
+                try:
+                    if asyncio.iscoroutinefunction(callback):
+                        await callback(message)
+                    else:
+                        callback(message)
+                except Exception as e:
+                    self.logger.error(f"Error in message callback: {e}")
         else:
-            callback(message)
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(message)
+                else:
+                    callback(message)
+            except Exception as e:
+                self.logger.error(f"Error in message callback: {e}")
     
     async def _persist_message(self, message: AicoMessage):
         """Persist message using the provided handler (if persistence enabled)"""

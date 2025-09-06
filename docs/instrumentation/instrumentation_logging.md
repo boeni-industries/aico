@@ -124,6 +124,39 @@ logEvent(
   - Implement local buffering with a maximum size (e.g., 1000 logs) to handle temporary network failures.
   - Use a retry strategy with exponential backoff (e.g., 1s, 2s, 4s, 8s) for failed log sends.
   - Fallback to a local log file if all retry attempts fail.
+
+### ⚠️ CRITICAL WARNING: Logging Recursion Loops
+
+**🚨 DANGER: Improper logging implementations can create infinite recursion loops that crash the entire system.**
+
+**NEVER log within logging transport or handler code:**
+- ❌ **NEVER call `logger.info()`, `logger.error()`, etc. inside ZMQ transport methods**
+- ❌ **NEVER log inside message bus send/receive operations**  
+- ❌ **NEVER log inside database write operations for log storage**
+- ❌ **NEVER log inside log consumer or log handler methods**
+
+**Use print() statements for debugging logging infrastructure:**
+```python
+# CORRECT - debugging logging system itself
+def _send_log_to_zmq(self, log_data):
+    try:
+        self.socket.send_json(log_data)
+        print(f"[ZMQ TRANSPORT] Log sent successfully")  # ✅ Safe
+    except Exception as e:
+        print(f"[ZMQ TRANSPORT] Failed to send: {e}")    # ✅ Safe
+        # self.logger.error(f"Send failed: {e}")         # ❌ RECURSION!
+```
+
+**Why this matters:** When logging code tries to log its own operations, it creates infinite recursion:
+1. Logger tries to send message via ZMQ
+2. ZMQ transport logs the send operation  
+3. This creates another log message to send
+4. Loop continues until stack overflow crashes the system
+
+**Infrastructure logger pattern prevents this:**
+- ✅ **Use `create_infrastructure_logger()` from `aico.core.logging_context` for all backend services**
+- ❌ **NEVER mix `get_logger()` and `create_infrastructure_logger()` in the same service**
+- ❌ **NEVER import logging functions that may not be available in service contexts**
 - **Example:**
 
 ```python
