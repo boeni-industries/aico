@@ -130,12 +130,9 @@ class ProtocolAdapterManager:
         try:
             adapter = self.active_adapters.get(name)
             if not adapter:
-                #print(f"DEBUG: Adapter not found in active_adapters: {name}")
-                #print(f"DEBUG: Available adapters: {list(self.active_adapters.keys())}")
                 self.logger.error(f"Adapter not initialized: {name}")
                 return False
             
-            #print(f"DEBUG: Calling start() on {name} adapter")
             
             # Handle adapter-specific start parameters
             if name == "websocket":
@@ -146,25 +143,21 @@ class ProtocolAdapterManager:
                 # Other adapters use parameterless start()
                 await adapter.start()
                 
-            #print(f"DEBUG: {name} adapter start() completed")
             
             # For adapters that create background tasks, store them to keep alive
             if hasattr(adapter, 'server') and adapter.server:
                 # WebSocket adapter - keep server alive
                 self.adapter_tasks[name] = asyncio.create_task(adapter.server.wait_closed())
-                #print(f"DEBUG: Created task to keep {name} server alive")
             elif hasattr(adapter, 'message_task') and adapter.message_task:
                 # ZeroMQ adapter - keep message task alive
                 self.adapter_tasks[name] = adapter.message_task
-                #print(f"DEBUG: Stored {name} message task to keep alive")
             
             self.logger.info(f"Started protocol adapter: {name}")
             return True
             
         except Exception as e:
-            #print(f"DEBUG: Failed to start adapter {name}: {e}")
             import traceback
-            #print(f"DEBUG: Traceback: {traceback.format_exc()}")
+            self.logger.debug(f"Traceback: {traceback.format_exc()}")
             self.logger.error(f"Failed to start adapter {name}: {e}")
             return False
     

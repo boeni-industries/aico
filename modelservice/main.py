@@ -40,10 +40,7 @@ async def initialize_modelservice():
     cfg.initialize()
     
     # Initialize logging in lifespan context
-    print("[DEBUG] Initializing logging...")
     logger_factory = initialize_logging(cfg)
-    print(f"[DEBUG] Logger factory created: {logger_factory is not None}")
-    print(f"[DEBUG] Logger factory transport: {logger_factory._transport is not None if logger_factory else 'No factory'}")
     
     modelservice_config = cfg.get("modelservice", {})
     env = os.getenv("AICO_ENV", "development")
@@ -77,13 +74,10 @@ async def initialize_modelservice():
     await zmq_service.start_early()  # New method for early startup
     
     # Initialize ZMQ logging transport now that message bus is available
-    print("[DEBUG] Checking logger factory transport...")
     if logger_factory._transport:
-        print("[DEBUG] Logger factory has transport, marking broker ready...")
         logger_factory._transport.mark_broker_ready()
         
         # Wait for client connection AND LogConsumer to be ready
-        print("[DEBUG] Waiting for ZMQ client connection...")
         max_wait = 10  # 10 seconds max wait
         wait_time = 0
         while wait_time < max_wait:
@@ -93,10 +87,9 @@ async def initialize_modelservice():
             # Check if client is connected
             client = getattr(logger_factory._transport, '_message_bus_client', None)
             if client and getattr(client, 'connected', False):
-                print(f"[DEBUG] ZMQ client connected after {wait_time:.1f}s")
                 break
         else:
-            print(f"[DEBUG] ZMQ client connection timeout after {max_wait}s")
+            print(f"⚠️  ZMQ client connection timeout after {max_wait}s")
         
         # Additional wait for LogConsumer to be ready
         await asyncio.sleep(0.5)  # Give LogConsumer time to subscribe
@@ -104,25 +97,17 @@ async def initialize_modelservice():
         # Flush buffer after both client connection and LogConsumer are ready
         if hasattr(logger_factory, '_log_buffer'):
             buffer_size = len(logger_factory._log_buffer._buffer)
-            print(f"[DEBUG] Flushing {buffer_size} buffered logs...")
             logger_factory._log_buffer.flush_to_transport(logger_factory._transport)
-        print("[DEBUG] Logger transport ready and buffer flushed")
     else:
-        print("[DEBUG] Logger factory has no transport!")
+        print("⚠️  Logger factory has no transport!")
     
     # Test logging to verify ZMQ transport is working
-    print("[DEBUG] Testing logger.info call...")
     logger.info("ZMQ logging transport initialized and ready", extra={"topic": "logs/entry/v1"})
-    print("[DEBUG] Testing logger.warning call...")
     logger.warning("Testing modelservice log routing", extra={"topic": "logs/entry/v1"})
-    print("[DEBUG] Testing logger.error call...")
     logger.error("Testing modelservice error log", extra={"topic": "logs/entry/v1"})
-    print("[DEBUG] Log test calls completed")
     
     # Also test without the extra topic to see if that works
-    print("[DEBUG] Testing logger without extra topic...")
     logger.info("Testing modelservice log without extra topic")
-    print("[DEBUG] Logger test without topic completed")
     
     # Initialize OllamaManager (now that ZMQ logging is available)
     from .core.ollama_manager import OllamaManager
@@ -209,7 +194,6 @@ async def _check_backend_health(cfg: ConfigurationManager) -> bool:
             return response.status_code == 200
             
     except Exception as e:
-        print(f"[DEBUG] Backend health check failed: {e}")
         return False
 
 

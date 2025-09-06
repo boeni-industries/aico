@@ -370,12 +370,9 @@ class AICOLoggerFactory:
         if not self._transport and ZMQ_AVAILABLE:
             context = self.get_zmq_context()
             import sys
-            print(f"[DEBUG] Logger factory getting ZMQ context: {context is not None}", file=sys.stderr, flush=True)
             if context:
                 self._transport = ZMQLogTransport(self.config, context)
-                print(f"[DEBUG] Created ZMQ transport, initializing...", file=sys.stderr, flush=True)
                 self._transport.initialize()
-                print(f"[DEBUG] ZMQ transport initialization complete", file=sys.stderr, flush=True)
         return self._transport
     
     def reinitialize_loggers(self):
@@ -443,21 +440,21 @@ class ZMQLogTransport:
             try:
                 from aico.core.bus import MessageBusClient as _MessageBusClient
                 MessageBusClient = _MessageBusClient
-                print(f"[ZMQ TRANSPORT] Lazy import of MessageBusClient successful", file=sys.stderr, flush=True)
+                #print(f"[ZMQ TRANSPORT] Lazy import of MessageBusClient successful", file=sys.stderr, flush=True)
             except ImportError as e:
                 print(f"[ZMQ TRANSPORT] Failed to import MessageBusClient: {e}", file=sys.stderr, flush=True)
                 return
         
-        print(f"[ZMQ TRANSPORT] initialize() called, ZMQ_AVAILABLE={ZMQ_AVAILABLE}, MessageBusClient={MessageBusClient is not None}", file=sys.stderr, flush=True)
+        #print(f"[ZMQ TRANSPORT] initialize() called, ZMQ_AVAILABLE={ZMQ_AVAILABLE}, MessageBusClient={MessageBusClient is not None}", file=sys.stderr, flush=True)
         
         if not ZMQ_AVAILABLE or not MessageBusClient:
-            print(f"[ZMQ TRANSPORT] Skipping initialization - missing dependencies", file=sys.stderr, flush=True)
+            #print(f"[ZMQ TRANSPORT] Skipping initialization - missing dependencies", file=sys.stderr, flush=True)
             return
         
-        print(f"[ZMQ TRANSPORT] Creating MessageBusClient...", file=sys.stderr, flush=True)
+        #print(f"[ZMQ TRANSPORT] Creating MessageBusClient...", file=sys.stderr, flush=True)
         self._message_bus_client = MessageBusClient("zmq_log_transport")
         self._initialized = True
-        print(f"[ZMQ TRANSPORT] MessageBusClient created successfully", file=sys.stderr, flush=True)
+        #print(f"[ZMQ TRANSPORT] MessageBusClient created successfully", file=sys.stderr, flush=True)
             
     def send_log(self, log_entry: LogEntry):
         """Send log entry via ZMQ message bus"""
@@ -518,15 +515,10 @@ class ZMQLogTransport:
     
     def mark_broker_ready(self):
         """Mark the ZMQ broker as ready and attempt to connect client"""
-        import sys
-        print(f"[ZMQ TRANSPORT] mark_broker_ready() called", file=sys.stderr, flush=True)
         self._broker_available = True
         
-        # Debug the client state
-        if self._message_bus_client:
-            print(f"[ZMQ TRANSPORT] Client exists, connected={self._message_bus_client.connected}", file=sys.stderr, flush=True)
-        else:
-            print(f"[ZMQ TRANSPORT] No message bus client found", file=sys.stderr, flush=True)
+        # Check client state
+        if not self._message_bus_client:
             return
         
         # Immediately connect the client when broker becomes available
@@ -534,12 +526,8 @@ class ZMQLogTransport:
             try:
                 loop = asyncio.get_running_loop()
                 loop.create_task(self._connect_client())
-                print(f"[ZMQ TRANSPORT] Scheduled client connection task", file=sys.stderr, flush=True)
             except RuntimeError:
-                print(f"[ZMQ TRANSPORT] No event loop - will connect on first log", file=sys.stderr, flush=True)
                 pass  # Connection will be established lazily when first log is sent
-        else:
-            print(f"[ZMQ TRANSPORT] Client already connected", file=sys.stderr, flush=True)
         
         # Flush buffered logs from LogBuffer when broker becomes ready
         self._flush_log_buffer()
@@ -550,24 +538,15 @@ class ZMQLogTransport:
         if not _logger_factory or not _logger_factory._log_buffer:
             return
         
-        import sys
         buffer_size = len(_logger_factory._log_buffer._buffer)
         if buffer_size > 0:
-            print(f"[ZMQ TRANSPORT] Flushing {buffer_size} buffered logs to ZMQ transport", file=sys.stderr, flush=True)
             _logger_factory._log_buffer.flush_to_transport(self)
-            print(f"[ZMQ TRANSPORT] Successfully flushed buffered logs", file=sys.stderr, flush=True)
-        else:
-            print(f"[ZMQ TRANSPORT] No buffered logs to flush", file=sys.stderr, flush=True)
     
     async def _connect_client(self):
         """Helper method to connect the message bus client"""
         try:
             await self._message_bus_client.connect()
-            import sys
-            print(f"[ZMQ TRANSPORT] Client connected successfully", file=sys.stderr, flush=True)
-        except Exception as e:
-            import sys
-            print(f"[ZMQ TRANSPORT] Client connection failed: {e}", file=sys.stderr, flush=True)
+        except Exception:
             pass  # Silently fail
     
     def close(self):
@@ -828,9 +807,6 @@ def initialize_logging(config_manager) -> AICOLoggerFactory:
     global _logger_factory
     if _logger_factory is None:
         _logger_factory = AICOLoggerFactory(config_manager)
-        # Debug print for logger factory initialization
-        import sys
-        print(f"[LOGGING] Initialized new AICOLoggerFactory", file=sys.stderr, flush=True)
     else:
         # Debug print for existing logger factory
         # print(f"[LOGGING] Using existing AICOLoggerFactory")
@@ -847,7 +823,6 @@ def initialize_cli_logging(config_manager, db_connection) -> AICOLoggerFactory:
     """Initialize logging for CLI commands with direct database access"""
     global _cli_logger_factory
     
-    print(f"[DEBUG] CLI logging: Creating CLI factory with DirectDatabaseTransport")
     _cli_logger_factory = AICOLoggerFactory(config_manager)
     _cli_logger_factory._transport = DirectDatabaseTransport(config_manager, db_connection)
     _cli_logger_factory._cli_mode = True
@@ -857,8 +832,6 @@ def initialize_cli_logging(config_manager, db_connection) -> AICOLoggerFactory:
     try:
         test_logger = _cli_logger_factory.create_logger("cli", "init_test")
         test_logger.info("CLI logging factory initialized and verified")
-        print(f"[DEBUG] CLI logging: Factory verification successful")
-        print(f"[DEBUG] CLI logging: CLI factory set globally: {_cli_logger_factory is not None}")
     except Exception as e:
         print(f"[ERROR] CLI logging: Factory verification failed: {e}")
         import traceback

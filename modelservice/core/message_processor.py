@@ -71,28 +71,28 @@ class MessageProcessor:
             CompletionResponse with the generated completion
         """
         try:
-            self.logger.info(f"[DEBUG] Starting completion processing for model: {request.model}")
+            self.logger.debug(f"[DEBUG] Starting completion processing for model: {request.model}")
             
             # Step 1: Validate and preprocess request
-            self.logger.info("[DEBUG] Step 1: Validating request")
+            self.logger.debug("[DEBUG] Step 1: Validating request")
             await self._validate_request(request)
             processed_prompt = await self._preprocess_prompt(request.prompt, context)
             
             # Step 2: Ensure model is available and running
-            self.logger.info("[DEBUG] Step 2: Ensuring model ready")
+            self.logger.debug("[DEBUG] Step 2: Ensuring model ready")
             await self._ensure_model_ready(request.model)
             
             # Step 3: Generate completion via Ollama
-            self.logger.info("[DEBUG] Step 3: Generating completion")
+            self.logger.debug("[DEBUG] Step 3: Generating completion")
             ollama_response = await self._generate_completion(request, processed_prompt)
             
             # Step 4: Postprocess and format response
-            self.logger.info("[DEBUG] Step 4: Postprocessing response")
+            self.logger.debug("[DEBUG] Step 4: Postprocessing response")
             completion_response = await self._postprocess_response(
                 ollama_response, request, context
             )
             
-            self.logger.info("[DEBUG] Completion processing completed successfully")
+            self.logger.debug("[DEBUG] Completion processing completed successfully")
             return completion_response
             
         except Exception as e:

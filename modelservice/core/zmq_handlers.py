@@ -42,12 +42,10 @@ class ModelserviceZMQHandlers:
             response.success = True
             response.status = health_data["status"]
             
-            print("[DEBUG] About to log health check completion...")
             logger.info(
                 f"Health check completed: {health_data['status']}",
                 extra={"topic": AICOTopics.LOGS_ENTRY}
             )
-            print("[DEBUG] Health check log sent")
             
         except Exception as e:
             response.success = False

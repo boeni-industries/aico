@@ -66,9 +66,7 @@ async def submit_log(
             log_data['subsystem'] = 'frontend'
         
         # Process log entry in background to avoid blocking response
-        # print(f"[DEBUG ENDPOINT] About to add background task for log processing")
         background_tasks.add_task(process_log_entry, log_data)
-        # print(f"[DEBUG ENDPOINT] Background task added successfully")
         
         return LogSubmissionResponse(
             success=True,
@@ -224,9 +222,9 @@ async def process_log_entry(log_data: dict):
         
     except Exception as e:
         # Fallback logging if something goes wrong
-        print(f"[DEBUG] Exception in process_log_entry: {e}")
         import traceback
-        print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+        logger.debug(f"Exception in process_log_entry: {e}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
         logger.error(f"Failed to process frontend log entry: {e}", extra={'log_data': log_data})
 
 

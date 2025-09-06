@@ -342,10 +342,6 @@ class MessageBusClient:
                 topic, message_data = await self.subscriber.recv_multipart()
                 topic = topic.decode('utf-8')
                 
-                # Debug: Show message reception for log_consumer client (disabled to reduce console spam)
-                # if self.client_id == "log_consumer":
-                #     print(f"[DEBUG] MessageBusClient({self.client_id}): Received message on topic '{topic}', data length: {len(message_data)}")
-                
                 # Skip security warnings for infrastructure components to prevent feedback loops
                 if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
                     self.logger.warning(f"[SECURITY] WARNING: Client {self.client_id} received plaintext message on topic '{topic}'")

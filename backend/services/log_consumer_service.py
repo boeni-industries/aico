@@ -86,30 +86,23 @@ class LogConsumerService(BaseService):
                 raise RuntimeError(f"Service not initialized (state: {self.state})")
             
             self.logger = create_infrastructure_logger("aico.infrastructure.log_consumer")
-            print(f"[LOG CONSUMER] Starting log consumer service...")
             
             # Connect to message bus with encryption
             await self.message_bus_client.connect()
-            print(f"[LOG CONSUMER] Connected to message bus")
             
             # Subscribe to log messages with callback
             # ZMQ uses prefix matching, so "logs/" will match all topics starting with "logs/"
             subscription_topic = AICOTopics.ZMQ_LOGS_PREFIX  # This is "logs/"
-            print(f"[LOG CONSUMER] Subscribing to topic: {subscription_topic}")
-            print(f"[LOG CONSUMER] Callback function: {self._handle_log_message}")
             await self.message_bus_client.subscribe(
                 subscription_topic,
                 self._handle_log_message
             )
-            print(f"[LOG CONSUMER] Subscription complete")
             
             self.running = True
             self.logger.info("Log consumer service started successfully")
-            print(f"[LOG CONSUMER] Service started successfully")
             self.state = ServiceState.RUNNING
             
         except Exception as e:
-            print(f"[LOG CONSUMER] ERROR: Failed to start log consumer service: {e}")
             self.logger.error(f"Failed to start log consumer service: {e}")
             self.state = ServiceState.ERROR
             raise
@@ -137,7 +130,6 @@ class LogConsumerService(BaseService):
             #print(f"[LOG CONSUMER] Subscription complete - ready to receive log messages")
             
         except Exception as e:
-            print(f"[LOG CONSUMER] Failed to connect when broker ready: {e}")
             self.logger.error(f"Failed to connect when broker ready: {e}")
 
     async def stop(self) -> None:
@@ -217,19 +209,16 @@ class LogConsumerService(BaseService):
                     
                     if success:
                         # Process the log entry
-                        #print(f"[LOG CONSUMER] Successfully unpacked log entry")
                         self._process_log_entry(log_entry)
                     else:
-                        print(f"[LOG CONSUMER] ERROR: Unpack returned False - type mismatch")
+                        self.logger.error("Unpack returned False - type mismatch")
                         
                 except Exception as e:
-                    print(f"[LOG CONSUMER] ERROR: Failed to unpack Any payload to LogEntry: {e}")
+                    self.logger.error(f"Failed to unpack Any payload to LogEntry: {e}")
             else:
-                print(f"[LOG CONSUMER] ERROR: Message has no any_payload field")
+                self.logger.error("Message has no any_payload field")
         except Exception as e:
-            print(f"[LOG CONSUMER] ERROR: Failed to process message: {e}")
-            import traceback
-            traceback.print_exc()
+            self.logger.error(f"Failed to process message: {e}")
     
     def _process_log_entry(self, log_entry: LogEntry) -> None:
         """Process individual log entry"""
@@ -244,7 +233,6 @@ class LogConsumerService(BaseService):
             
                             
         except Exception as e:
-            print(f"[LOG CONSUMER] ERROR: Failed to process log entry: {e}")
             self.logger.warning(f"Failed to process log entry: {e}")
     
     def _insert_log_to_database(self, log_entry: LogEntry) -> None:

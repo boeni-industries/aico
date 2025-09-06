@@ -60,14 +60,15 @@ class InfrastructureLogger:
     def __init__(self, name: str):
         self.name = name
         self._python_logger = logging.getLogger(f"aico.infrastructure.{name}")
-        self._python_logger.setLevel(logging.INFO)
+        # Set to WARNING level to reduce console spam - only show warnings and errors
+        self._python_logger.setLevel(logging.WARNING)
         
         # Only add handler if none exists
         if not self._python_logger.handlers:
             handler = logging.StreamHandler()
             formatter = logging.Formatter(
-                '[%(asctime)s] [INFRA:%(name)s] %(levelname)s: %(message)s',
-                datefmt='%H:%M:%S'
+                '%(asctime)s %(levelname)s infrastructure.%(name)s %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
             )
             handler.setFormatter(formatter)
             self._python_logger.addHandler(handler)
