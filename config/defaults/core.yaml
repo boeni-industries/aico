@@ -248,3 +248,49 @@ service_auth:
       - "logs:write"
       - "health:read"
 
+# Conversation Engine Configuration
+conversation:
+  max_context_messages: 20
+  response_timeout_seconds: 30.0
+  default_response_mode: "multimodal"  # text-only, multimodal, proactive
+  
+  # Feature flags for AI components
+  features:
+    enable_emotion_integration: true
+    enable_personality_integration: true
+    enable_memory_integration: true
+    enable_embodiment: true
+    enable_agency: true
+
+# Embodiment Engine Configuration
+embodiment:
+  enable_avatar_system: true
+  enable_voice_synthesis: true
+  enable_cross_device_sync: true
+  default_voice_model: "default"
+  avatar_response_timeout_seconds: 10.0
+
+# Agency Engine Configuration
+agency:
+  enable_proactive_engagement: true
+  enable_autonomous_learning: true
+  enable_goal_generation: true
+  proactive_check_interval_minutes: 30
+  max_active_goals: 5
+
+# Emotion Engine Configuration
+emotion:
+  enable_appraisal_processing: true
+  enable_crisis_detection: true
+  emotion_decay_rate: 0.1
+  crisis_threshold: 0.8
+  max_emotion_history: 50
+
+# Personality Engine Configuration
+personality:
+  enable_trait_evolution: true
+  enable_context_adaptation: true
+  evolution_learning_rate: 0.01
+  consistency_weight: 0.7
+  adaptation_weight: 0.3
+
