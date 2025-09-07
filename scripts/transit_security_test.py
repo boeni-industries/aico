@@ -74,6 +74,7 @@ class EncryptedClient:
         
         # Authentication state
         self.jwt_token = None
+        self.test_user_uuid = None  # Track created test user for cleanup
         
         # Generate identity keys for signing
         self.signing_key = SigningKey.generate()
@@ -86,22 +87,87 @@ class EncryptedClient:
         
         print(f"🔑 Client identity generated: {self.verify_key.encode().hex()[:16]}...")
     
-    def authenticate_user(self) -> bool:
+    def ensure_test_user(self) -> Optional[str]:
         """
-        Authenticate with the backend using encrypted request
+        Ensure a test user exists for authentication testing
+        Returns the test user UUID if successful
         """
-        print("🔐 Authenticating with backend...")
+        print("👤 Ensuring test user exists...")
+        
+        # Try to create test user using CLI
+        import subprocess
+        import os
         
         try:
-            # Create authentication request with the provided user UUID and PIN
+            import platform
+            
+            # Handle Windows encoding issues
+            encoding = 'utf-8'
+            if platform.system() == 'Windows':
+                # Use UTF-8 on Windows to avoid CP1252 codec issues
+                env = os.environ.copy()
+                env['PYTHONIOENCODING'] = 'utf-8'
+            else:
+                env = None
+            
+            # Use subprocess to create test user via CLI
+            result = subprocess.run([
+                "uv", "run", "python", "-m", "cli.aico_main", 
+                "security", "user-create", 
+                "Transit Test User",
+                "--nickname", "TestUser",
+                "--pin", "1234"
+            ], 
+            cwd=Path(__file__).parent.parent,
+            capture_output=True, 
+            text=True,
+            encoding=encoding,
+            errors='replace',  # Replace problematic characters instead of failing
+            timeout=30,
+            env=env
+            )
+            
+            if result.returncode == 0:
+                # Extract UUID from output
+                output_lines = result.stdout.split('\n')
+                for line in output_lines:
+                    if line.startswith('UUID: '):
+                        test_uuid = line.replace('UUID: ', '').strip()
+                        print(f"✅ Test user created: {test_uuid}")
+                        self.test_user_uuid = test_uuid  # Track for cleanup
+                        return test_uuid
+                        
+                print("⚠️ Test user created but UUID not found in output")
+                return self._generate_deterministic_uuid("transit_test_user")
+            else:
+                # User might already exist, try deterministic UUID
+                print(f"⚠️ User creation failed (exit code {result.returncode}), trying existing user")
+                return self._generate_deterministic_uuid("transit_test_user")
+                
+        except Exception as e:
+            print(f"⚠️ CLI user creation failed: {e}")
+            return self._generate_deterministic_uuid("transit_test_user")
+    
+    def try_test_authentication(self) -> bool:
+        """
+        Try authentication with test user
+        Returns True if authentication succeeds
+        """
+        # First ensure we have a test user
+        test_uuid = self.ensure_test_user()
+        if not test_uuid:
+            print("❌ Could not create or determine test user")
+            return False
+        
+        print(f"🔄 Trying authentication with user: {test_uuid}")
+        
+        try:
             auth_request = {
-                "user_uuid": "1d12a38d-3e43-4e47-930a-16adffd97e1f",  # Use the provided user UUID with correct field name
-                "pin": "1234",  # Include the PIN for authentication
+                "user_uuid": test_uuid,
+                "pin": "1234",
                 "timestamp": int(time.time())
             }
             
-            # Send encrypted authentication request
-            print("📤 Sending encrypted authentication request...")
             response = self.send_encrypted_request(
                 "/api/v1/users/authenticate",
                 auth_request
@@ -110,15 +176,79 @@ class EncryptedClient:
             if response and response.get("success", False):
                 print("✅ Authentication successful")
                 self.jwt_token = response.get("jwt_token", "")
-                print(f"🔑 JWT token received: {self.jwt_token[:50]}..." if self.jwt_token else "❌ No token in response")
                 return True
             else:
-                print(f"❌ Authentication rejected: {response.get('message', 'Unknown error') if response else 'No response'}")
+                error_msg = response.get('message', 'Unknown error') if response else 'No response'
+                print(f"❌ Authentication failed: {error_msg}")
                 return False
                 
         except Exception as e:
             print(f"❌ Authentication error: {e}")
             return False
+    
+    def _generate_deterministic_uuid(self, seed: str) -> str:
+        """Generate a deterministic UUID from a seed string"""
+        import hashlib
+        hash_object = hashlib.md5(seed.encode())
+        hex_dig = hash_object.hexdigest()
+        return f"{hex_dig[:8]}-{hex_dig[8:12]}-{hex_dig[12:16]}-{hex_dig[16:20]}-{hex_dig[20:32]}"
+    
+    def cleanup_test_user(self):
+        """
+        Clean up the test user created during testing
+        """
+        if not self.test_user_uuid:
+            return
+            
+        print(f"🧹 Cleaning up test user: {self.test_user_uuid}")
+        
+        try:
+            import subprocess
+            import platform
+            
+            # Handle Windows encoding issues
+            encoding = 'utf-8'
+            if platform.system() == 'Windows':
+                # Use UTF-8 on Windows to avoid CP1252 codec issues
+                env = os.environ.copy()
+                env['PYTHONIOENCODING'] = 'utf-8'
+            else:
+                env = None
+            
+            result = subprocess.run([
+                "uv", "run", "python", "-m", "cli.aico_main", 
+                "security", "user-delete", 
+                self.test_user_uuid,
+                "--hard",  # Permanent deletion for test cleanup
+                "--confirm"  # Skip confirmation prompt
+            ], 
+            cwd=Path(__file__).parent.parent,
+            capture_output=True, 
+            text=True,
+            encoding=encoding,
+            errors='replace',  # Replace problematic characters instead of failing
+            timeout=30,
+            env=env
+            )
+            
+            if result.returncode == 0:
+                print("✅ Test user cleaned up successfully")
+            else:
+                print(f"⚠️ Test user cleanup failed (exit code {result.returncode})")
+                
+        except Exception as e:
+            print(f"⚠️ Test user cleanup error: {e}")
+        finally:
+            self.test_user_uuid = None
+
+    def authenticate_user(self) -> bool:
+        """
+        Authenticate with the backend using encrypted request
+        """
+        print("🔐 Authenticating with backend...")
+        
+        # Try multiple test user scenarios
+        return self.try_test_authentication()
     
     def perform_handshake(self) -> bool:
         """
@@ -446,6 +576,7 @@ def run_full_test():
     print("\n" + "=" * 50)
     
     # Check if we completed the handshake and authentication successfully
+    success = False
     if client.session_key and client.jwt_token and echo_success:
         # Echo test is successful if we got a response we could decrypt
         # even if it's a 403 with "Not authenticated" message
@@ -458,14 +589,19 @@ def run_full_test():
         print("  • End-to-end encrypted communication")
         
         print("\n🔐 Frontend-backend encryption is working correctly!")
-        return True
+        success = True
     else:
         print("❌ Transit Security Test FAILED")
         if not (client.session_key and client.jwt_token):
             print("\nHandshake or authentication failed. Please check the logs for details.")
         elif not echo_success:
             print("\nEcho test failed - could not decrypt response.")
-        return False
+        success = False
+    
+    # Clean up test user
+    client.cleanup_test_user()
+    
+    return success
 
 if __name__ == "__main__":
     try:
