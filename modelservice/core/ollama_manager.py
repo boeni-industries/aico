@@ -386,6 +386,10 @@ class OllamaManager:
             env["OLLAMA_HOST"] = f"{ollama_host}:{ollama_port}"
             env["OLLAMA_MODELS"] = str(self.models_dir)
             
+            # Configure model persistence - keep models loaded in memory
+            keep_alive = self.ollama_config.get("keep_alive", -1)
+            env["OLLAMA_KEEP_ALIVE"] = str(keep_alive)
+            
             # Configure Ollama logging
             ollama_log_file = self.logs_dir / "ollama.log"
             env["OLLAMA_LOGS"] = str(self.logs_dir)

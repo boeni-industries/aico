@@ -161,6 +161,9 @@ modelservice:
     auto_start: true    # Start Ollama server with modelservice
     auto_update: true   # Check for Ollama updates weekly
     
+    # Model persistence settings
+    keep_alive: -1      # Keep models in memory indefinitely (-1) or specify seconds
+    
     # Default models by capability role
     default_models:
       conversation:
