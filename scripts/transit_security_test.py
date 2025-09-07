@@ -205,6 +205,7 @@ class EncryptedClient:
         try:
             import subprocess
             import platform
+            import os
             
             # Handle Windows encoding issues
             encoding = 'utf-8'
@@ -235,6 +236,10 @@ class EncryptedClient:
                 print("✅ Test user cleaned up successfully")
             else:
                 print(f"⚠️ Test user cleanup failed (exit code {result.returncode})")
+                if result.stdout:
+                    print(f"   stdout: {result.stdout.strip()}")
+                if result.stderr:
+                    print(f"   stderr: {result.stderr.strip()}")
                 
         except Exception as e:
             print(f"⚠️ Test user cleanup error: {e}")
