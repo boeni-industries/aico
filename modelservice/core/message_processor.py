@@ -5,11 +5,15 @@ Handles the complex logic for processing user messages through the AI pipeline.
 This module centralizes all completion-related processing logic.
 """
 
+import asyncio
+import logging
 import time
 import httpx
-from typing import Dict, Any, Optional, List
-from dataclasses import dataclass
-from ..api.schemas import CompletionRequest, CompletionResponse, UsageStats
+from typing import Dict, Any, Optional, Callable, Awaitable
+from aico.core.message_bus import MessageBusClient
+from aico.core.logging import get_logger
+from aico.core.topics import AICOTopics
+from .protobuf_messages import ModelserviceMessageParser
 from .ollama_manager import OllamaManager
 from shared.aico.core.config import ConfigurationManager
 
@@ -55,6 +59,24 @@ class MessageProcessor:
         if not hasattr(self.ollama_manager, 'logger') or self.ollama_manager.logger is None:
             self.ollama_manager._ensure_logger()
         
+        self.message_bus = MessageBusClient()
+        # Subscribe to all modelservice topics
+        topics = [
+            AICOTopics.MODELSERVICE_HEALTH_REQUEST,
+            AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST,
+            AICOTopics.MODELSERVICE_MODELS_REQUEST,
+            AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST,
+            AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
+            AICOTopics.MODELSERVICE_STATUS_REQUEST,
+            AICOTopics.OLLAMA_STATUS_REQUEST,
+            AICOTopics.OLLAMA_MODELS_REQUEST,
+            AICOTopics.OLLAMA_MODELS_PULL_REQUEST,
+            AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST,
+            AICOTopics.OLLAMA_SERVE_REQUEST,
+            AICOTopics.OLLAMA_SHUTDOWN_REQUEST,
+        ]
+        self.message_bus.subscribe(topics, self._handle_message)
+    
     async def process_completion(
         self, 
         request: CompletionRequest,
@@ -93,6 +115,10 @@ class MessageProcessor:
             )
             
             self.logger.debug("[DEBUG] Completion processing completed successfully")
+            await self.message_bus.publish(
+                AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE,
+                completion_response.SerializeToString()
+            )
             return completion_response
             
         except Exception as e:
@@ -218,13 +244,20 @@ class MessageProcessor:
             completion_tokens=completion_tokens
         )
         
-        return CompletionResponse(
+        response_envelope = CompletionResponse(
             completion=filtered_completion,
             model=original_request.model,
             usage=usage,
             finish_reason="stop",
             created=int(time.time())
         )
+        
+        await self.message_bus.publish(
+            AICOTopics.OLLAMA_MODELS_PULL_RESPONSE,
+            response_envelope.SerializeToString()
+        )
+        
+        return response_envelope
     
     async def _filter_completion(self, completion_text: str) -> str:
         """

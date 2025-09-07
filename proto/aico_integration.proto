@@ -118,7 +118,7 @@ message ResponseGuidance {
 // Fields:
 // - personality_simulation: Trait/value emphasis
 // - emotion_simulation: Target emotional state, expression intensity
-// - chat_engine: Response type, avoid patterns
+// - conversation_engine: Response type, avoid patterns
 // - autonomous_agency: Goal priority override, proactive actions
 // See integration_msg.md for examples.
 message ModuleInstructions {
@@ -128,8 +128,8 @@ message ModuleInstructions {
   // Emotion simulation instructions
   EmotionInstructions emotion_simulation = 2;
   
-  // Chat engine instructions
-  ChatEngineInstructions chat_engine = 3;
+  // Conversation engine instructions
+  ConversationEngineInstructions conversation_engine = 3;
   
   // Autonomous agency instructions
   AgencyInstructions autonomous_agency = 4;
@@ -147,8 +147,8 @@ message EmotionInstructions {
   float expression_intensity = 2;      // Expression intensity (0.0-1.0)
 }
 
-// Chat engine instructions
-message ChatEngineInstructions {
+// Conversation engine instructions
+message ConversationEngineInstructions {
   string response_type = 1;            // Type of response to generate
   repeated string avoid_patterns = 2;  // Patterns to avoid in responses
 }

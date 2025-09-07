@@ -9,7 +9,7 @@ logging, path resolution, and message bus communication.
 from .config import ConfigurationManager
 from .logging import get_logger, AICOLogger
 from .paths import AICOPaths
-from .topics import AICOTopics, TopicPermissions, TopicMigration
+from .topics import AICOTopics, TopicPermissions
 from .bus import (
     MessageBusClient, 
     MessageBusBroker, 

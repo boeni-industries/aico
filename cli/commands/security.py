@@ -1248,7 +1248,7 @@ def role_show(
                 "config/*": "Configuration management",
                 "users/*": "User management operations",
                 "audit/*": "Audit log access",
-                AICOTopics.ALL_CONVERSATION: "Chat and conversation access",
+                AICOTopics.ALL_CONVERSATION: "Conversation access",
                 "memory/read": "Read memory data",
                 "personality/read": "Read personality data",
                 "profile/*": "Profile management",

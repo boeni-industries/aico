@@ -124,7 +124,7 @@ class CLIZMQClient:
         """Create Protocol Buffer request object based on topic (not envelope - MessageBusClient handles wrapping)."""
         # Import protobuf messages
         from aico.proto.aico_modelservice_pb2 import (
-            HealthRequest, StatusRequest, ModelsRequest, CompletionsRequest, ChatMessage
+            HealthRequest, StatusRequest, ModelsRequest, CompletionsRequest, ConversationMessage
         )
         
         # Map request topics to raw protobuf objects (not envelopes)
@@ -138,7 +138,7 @@ class CLIZMQClient:
             request = CompletionsRequest()
             request.model = data.get('model', '')
             for msg_data in data.get('messages', []):
-                message = ChatMessage()
+                message = ConversationMessage()
                 message.role = msg_data.get('role', 'user')
                 message.content = msg_data.get('content', '')
                 request.messages.append(message)

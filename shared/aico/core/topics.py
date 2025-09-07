@@ -403,109 +403,9 @@ class TopicPermissions:
     ]
 
 
-# ===== MIGRATION HELPERS =====
-
-class TopicMigration:
-    """Helpers for migrating from dot notation to slash notation"""
-    
-    # Mapping from old dot notation to new slash notation
-    DOT_TO_SLASH_MAPPING = {
-        # Emotion topics
-        "emotion.state.current": AICOTopics.EMOTION_STATE_CURRENT,
-        "emotion.state.update": AICOTopics.EMOTION_STATE_UPDATE,
-        "emotion.appraisal.event": AICOTopics.EMOTION_APPRAISAL_EVENT,
-        
-        # Personality topics
-        "personality.state.current": AICOTopics.PERSONALITY_STATE_CURRENT,
-        "personality.expression.communication": AICOTopics.PERSONALITY_EXPRESSION_COMMUNICATION,
-        "personality.expression.decision": AICOTopics.PERSONALITY_EXPRESSION_DECISION,
-        "personality.expression.emotional": AICOTopics.PERSONALITY_EXPRESSION_EMOTIONAL,
-        
-        # Agency topics
-        "agency.goals.current": AICOTopics.AGENCY_GOALS_CURRENT,
-        "agency.initiative": AICOTopics.AGENCY_INITIATIVE_START,
-        "agency.decision.request": AICOTopics.AGENCY_DECISION_REQUEST,
-        "agency.decision.response": AICOTopics.AGENCY_DECISION_RESPONSE,
-        
-        # Conversation topics
-        "conversation.context": AICOTopics.CONVERSATION_CONTEXT_CURRENT,
-        "conversation.history": AICOTopics.CONVERSATION_HISTORY_ADD,
-        "conversation.intent": AICOTopics.CONVERSATION_INTENT_DETECTED,
-        
-        # Memory topics
-        "memory.store": AICOTopics.MEMORY_STORE_REQUEST,
-        "memory.retrieve": AICOTopics.MEMORY_RETRIEVE_REQUEST,
-        "memory.consolidation": AICOTopics.MEMORY_CONSOLIDATION_START,
-        
-        # User topics
-        "user.interaction.history": AICOTopics.USER_INTERACTION_HISTORY,
-        "user.feedback": AICOTopics.USER_FEEDBACK_EXPLICIT,
-        "user.state": AICOTopics.USER_STATE_UPDATE,
-        
-        # LLM topics
-        "llm.conversation.events": AICOTopics.LLM_CONVERSATION_EVENTS,
-        "llm.prompt.conditioning.request": AICOTopics.LLM_PROMPT_CONDITIONING_REQUEST,
-        "llm.prompt.conditioning.response": AICOTopics.LLM_PROMPT_CONDITIONING_RESPONSE,
-        
-        # UI topics
-        "ui.state.update": AICOTopics.UI_STATE_UPDATE,
-        "ui.interaction": AICOTopics.UI_INTERACTION_EVENT,
-        "ui.notification": AICOTopics.UI_NOTIFICATION_SHOW,
-        "ui.command": AICOTopics.UI_COMMAND_EXECUTE,
-        "ui.preferences": AICOTopics.UI_PREFERENCES_UPDATE,
-        
-        # System topics
-        "system.bus.started": AICOTopics.SYSTEM_BUS_STARTED,
-        "system.bus.stopping": AICOTopics.SYSTEM_BUS_STOPPING,
-        "system.module.registered": AICOTopics.SYSTEM_MODULE_REGISTERED,
-        
-        # Logs
-        "logs": AICOTopics.LOGS_ENTRY,
-    }
-    
-    # Wildcard pattern mapping
-    WILDCARD_MAPPING = {
-        "emotion.*": AICOTopics.ALL_EMOTION,
-        "personality.*": AICOTopics.ALL_PERSONALITY,
-        "agency.*": AICOTopics.ALL_AGENCY,
-        "conversation.*": AICOTopics.ALL_CONVERSATION,
-        "memory.*": AICOTopics.ALL_MEMORY,
-        "user.*": AICOTopics.ALL_USER,
-        "llm.*": AICOTopics.ALL_LLM,
-        "ui.*": AICOTopics.ALL_UI,
-        "system.*": AICOTopics.ALL_SYSTEM,
-        "logs.*": AICOTopics.ALL_LOGS,
-        
-        # Nested wildcards
-        "personality.expression.*": "personality/expression/*",
-        "emotion.state.*": "emotion/state/*",
-        "agency.goals.*": "agency/goals/*",
-        "conversation.context.*": "conversation/context/*",
-        "memory.store.*": "memory/store/*",
-        "memory.retrieve.*": "memory/retrieve/*",
-        "llm.prompt.conditioning.*": "llm/prompt/conditioning/*",
-        "system.status.*": "system/status/*",
-    }
-    
-    @staticmethod
-    def migrate_topic(old_topic: str) -> str:
-        """Migrate old dot notation topic to new slash notation"""
-        # Direct mapping
-        if old_topic in TopicMigration.DOT_TO_SLASH_MAPPING:
-            return TopicMigration.DOT_TO_SLASH_MAPPING[old_topic]
-        
-        # Wildcard mapping
-        if old_topic in TopicMigration.WILDCARD_MAPPING:
-            return TopicMigration.WILDCARD_MAPPING[old_topic]
-        
-        # Fallback: convert dots to slashes and add v1
-        if '.' in old_topic:
-            converted = old_topic.replace('.', '/')
-            if not converted.endswith('/v1'):
-                converted += '/v1'
-            return converted
-        
-        return old_topic
+# ===== REMOVED MIGRATION HELPERS =====
+# TopicMigration class removed - no backward compatibility needed.
+# All code should use AICOTopics constants directly.
 
 
 # ===== TOPIC METADATA =====
@@ -532,7 +432,7 @@ class TopicMetadata:
         AICOTopics.EMOTION: 10,        # High frequency for real-time emotion
         AICOTopics.PERSONALITY: 1,     # Low frequency for stable personality
         AICOTopics.AGENCY: 5,          # Medium frequency for goals/planning
-        AICOTopics.CONVERSATION: 20,   # High frequency for real-time chat
+        AICOTopics.CONVERSATION: 20,   # High frequency for real-time conversation
         AICOTopics.MEMORY: 2,          # Low frequency for memory operations
         AICOTopics.USER: 10,           # Medium frequency for interactions
         AICOTopics.LLM: 5,             # Medium frequency for inference
@@ -604,7 +504,6 @@ def is_wildcard_topic(topic: str) -> bool:
 __all__ = [
     'AICOTopics',
     'TopicPermissions', 
-    'TopicMigration',
     'TopicMetadata',
     'build_topic',
     'parse_topic',

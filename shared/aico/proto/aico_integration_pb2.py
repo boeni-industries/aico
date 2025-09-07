@@ -26,7 +26,7 @@ from google.protobuf import descriptor_pb2 as google_dot_protobuf_dot_descriptor
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x61ico_integration.proto\x12\x10\x61ico.integration\x1a google/protobuf/descriptor.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x80\x03\n\x0f\x43risisDetection\x12-\n\ttimestamp\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x11\n\tcrisis_id\x18\x03 \x01(\t\x12\x10\n\x08severity\x18\x04 \x01(\x02\x12\x12\n\nconfidence\x18\x05 \x01(\x02\x12\x13\n\x0b\x63risis_type\x18\x06 \x01(\t\x12\x34\n\x0b\x64\x65tected_by\x18\x07 \x01(\x0b\x32\x1f.aico.integration.DetectionInfo\x12\x30\n\x07\x63ontext\x18\x08 \x01(\x0b\x32\x1f.aico.integration.CrisisContext\x12=\n\x11response_guidance\x18\t \x01(\x0b\x32\".aico.integration.ResponseGuidance\x12\x39\n\x0f\x65scalation_path\x18\n \x01(\x0b\x32 .aico.integration.EscalationPath\"w\n\rDetectionInfo\x12\x0e\n\x06module\x18\x01 \x01(\t\x12\x18\n\x10\x64\x65tection_method\x18\x02 \x01(\t\x12<\n\x11\x64\x65tection_signals\x18\x03 \x03(\x0b\x32!.aico.integration.DetectionSignal\"D\n\x0f\x44\x65tectionSignal\x12\x0e\n\x06signal\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x12\x12\n\nconfidence\x18\x03 \x01(\x02\"\x8b\x01\n\rCrisisContext\x12\x17\n\x0f\x63onversation_id\x18\x01 \x01(\t\x12\x11\n\tuser_uuid\x18\x02 \x01(\t\x12\x16\n\x0erecent_message\x18\x03 \x01(\t\x12\x1a\n\x12\x63onversation_topic\x18\x04 \x01(\t\x12\x1a\n\x12relationship_phase\x18\x05 \x01(\t\"\x92\x02\n\x10ResponseGuidance\x12=\n\x08priority\x18\x01 \x01(\x0e\x32+.aico.integration.ResponseGuidance.Priority\x12\x10\n\x08protocol\x18\x02 \x01(\t\x12\x18\n\x10required_actions\x18\x03 \x03(\t\x12J\n\x1cmodule_specific_instructions\x18\x04 \x01(\x0b\x32$.aico.integration.ModuleInstructions\"G\n\x08Priority\x12\x0b\n\x07UNKNOWN\x10\x00\x12\r\n\tIMMEDIATE\x10\x01\x12\x08\n\x04HIGH\x10\x02\x12\x0c\n\x08MODERATE\x10\x03\x12\x07\n\x03LOW\x10\x04\"\xa2\x02\n\x12ModuleInstructions\x12I\n\x16personality_simulation\x18\x01 \x01(\x0b\x32).aico.integration.PersonalityInstructions\x12\x41\n\x12\x65motion_simulation\x18\x02 \x01(\x0b\x32%.aico.integration.EmotionInstructions\x12=\n\x0b\x63hat_engine\x18\x03 \x01(\x0b\x32(.aico.integration.ChatEngineInstructions\x12?\n\x11\x61utonomous_agency\x18\x04 \x01(\x0b\x32$.aico.integration.AgencyInstructions\"I\n\x17PersonalityInstructions\x12\x16\n\x0etrait_emphasis\x18\x01 \x03(\t\x12\x16\n\x0evalue_emphasis\x18\x02 \x03(\t\"S\n\x13\x45motionInstructions\x12\x1e\n\x16target_emotional_state\x18\x01 \x01(\t\x12\x1c\n\x14\x65xpression_intensity\x18\x02 \x01(\x02\"G\n\x16\x43hatEngineInstructions\x12\x15\n\rresponse_type\x18\x01 \x01(\t\x12\x16\n\x0e\x61void_patterns\x18\x02 \x03(\t\"O\n\x12\x41gencyInstructions\x12\x1e\n\x16goal_priority_override\x18\x01 \x01(\t\x12\x19\n\x11proactive_actions\x18\x02 \x03(\t\"\x8a\x01\n\x0e\x45scalationPath\x12\x1b\n\x13internal_escalation\x18\x01 \x01(\x08\x12\x1b\n\x13\x65xternal_escalation\x18\x02 \x01(\x08\x12>\n\x12\x65xternal_resources\x18\x03 \x03(\x0b\x32\".aico.integration.ExternalResource\"l\n\x10\x45xternalResource\x12\x15\n\rresource_type\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x14\n\x0c\x63ontact_info\x18\x03 \x01(\t\x12\x1d\n\x15presentation_guidance\x18\x04 \x01(\t\"\x8b\x02\n\x10\x41gencyInitiative\x12-\n\ttimestamp\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x15\n\rinitiative_id\x18\x03 \x01(\t\x12\x17\n\x0finitiative_type\x18\x04 \x01(\t\x12\x10\n\x08priority\x18\x05 \x01(\x02\x12\x34\n\x07\x64\x65tails\x18\x06 \x01(\x0b\x32#.aico.integration.InitiativeDetails\x12@\n\x0c\x63oordination\x18\x07 \x01(\x0b\x32*.aico.integration.CoordinationRequirements\"e\n\x11InitiativeDetails\x12\x0c\n\x04goal\x18\x01 \x01(\t\x12\x11\n\trationale\x18\x02 \x01(\t\x12\x19\n\x11\x65xpected_outcomes\x18\x03 \x03(\t\x12\x14\n\x0cuser_context\x18\x04 \x01(\t\"\xd0\x01\n\x18\x43oordinationRequirements\x12>\n\x0bpersonality\x18\x01 \x01(\x0b\x32).aico.integration.PersonalityRequirements\x12\x36\n\x07\x65motion\x18\x02 \x01(\x0b\x32%.aico.integration.EmotionRequirements\x12<\n\nexpression\x18\x03 \x01(\x0b\x32(.aico.integration.ExpressionRequirements\"N\n\x17PersonalityRequirements\x12\x18\n\x10trait_activation\x18\x01 \x03(\t\x12\x19\n\x11interaction_style\x18\x02 \x01(\t\"@\n\x13\x45motionRequirements\x12\x16\n\x0e\x65motional_tone\x18\x01 \x01(\t\x12\x11\n\tintensity\x18\x02 \x01(\x02\"R\n\x16\x45xpressionRequirements\x12\x1b\n\x13\x63ommunication_style\x18\x01 \x01(\t\x12\x1b\n\x13\x65xpression_elements\x18\x02 \x03(\t\"\xf6\x01\n\x16\x45xpressionCoordination\x12-\n\ttimestamp\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x15\n\rexpression_id\x18\x03 \x01(\t\x12\x12\n\ncontext_id\x18\x04 \x01(\t\x12\x32\n\x06\x63onfig\x18\x05 \x01(\x0b\x32\".aico.integration.ExpressionConfig\x12>\n\x0c\x63oordination\x18\x06 \x01(\x0b\x32(.aico.integration.CrossModalCoordination\"\\\n\x10\x45xpressionConfig\x12\x17\n\x0fprimary_emotion\x18\x01 \x01(\t\x12\x11\n\tintensity\x18\x02 \x01(\x02\x12\x1c\n\x14\x63ommunication_intent\x18\x03 \x01(\t\"\xd4\x01\n\x16\x43rossModalCoordination\x12.\n\x06\x66\x61\x63ial\x18\x01 \x01(\x0b\x32\x1e.aico.integration.FacialConfig\x12,\n\x05voice\x18\x02 \x01(\x0b\x32\x1d.aico.integration.VoiceConfig\x12*\n\x04text\x18\x03 \x01(\x0b\x32\x1c.aico.integration.TextConfig\x12\x30\n\x07gesture\x18\x04 \x01(\x0b\x32\x1f.aico.integration.GestureConfig\"K\n\x0c\x46\x61\x63ialConfig\x12\x13\n\x0b\x65xpressions\x18\x01 \x03(\t\x12\x11\n\tintensity\x18\x02 \x01(\x02\x12\x13\n\x0b\x64uration_ms\x18\x03 \x01(\x05\"L\n\x0bVoiceConfig\x12\x13\n\x0bpitch_shift\x18\x01 \x01(\x02\x12\r\n\x05speed\x18\x02 \x01(\x02\x12\x19\n\x11\x65motional_quality\x18\x03 \x01(\t\"R\n\nTextConfig\x12\r\n\x05style\x18\x01 \x01(\t\x12\x1a\n\x12linguistic_markers\x18\x02 \x03(\t\x12\x19\n\x11\x65motional_content\x18\x03 \x01(\x02\"I\n\rGestureConfig\x12\x10\n\x08gestures\x18\x01 \x03(\t\x12\x11\n\tamplitude\x18\x02 \x01(\x02\x12\x13\n\x0b\x64uration_ms\x18\x03 \x01(\x05\x42_\n\'industries.boeni.aico.proto.integrationP\x01Z2github.com/boeni-industries/aico/proto/integrationb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x61ico_integration.proto\x12\x10\x61ico.integration\x1a google/protobuf/descriptor.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x80\x03\n\x0f\x43risisDetection\x12-\n\ttimestamp\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x11\n\tcrisis_id\x18\x03 \x01(\t\x12\x10\n\x08severity\x18\x04 \x01(\x02\x12\x12\n\nconfidence\x18\x05 \x01(\x02\x12\x13\n\x0b\x63risis_type\x18\x06 \x01(\t\x12\x34\n\x0b\x64\x65tected_by\x18\x07 \x01(\x0b\x32\x1f.aico.integration.DetectionInfo\x12\x30\n\x07\x63ontext\x18\x08 \x01(\x0b\x32\x1f.aico.integration.CrisisContext\x12=\n\x11response_guidance\x18\t \x01(\x0b\x32\".aico.integration.ResponseGuidance\x12\x39\n\x0f\x65scalation_path\x18\n \x01(\x0b\x32 .aico.integration.EscalationPath\"w\n\rDetectionInfo\x12\x0e\n\x06module\x18\x01 \x01(\t\x12\x18\n\x10\x64\x65tection_method\x18\x02 \x01(\t\x12<\n\x11\x64\x65tection_signals\x18\x03 \x03(\x0b\x32!.aico.integration.DetectionSignal\"D\n\x0f\x44\x65tectionSignal\x12\x0e\n\x06signal\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\x12\x12\n\nconfidence\x18\x03 \x01(\x02\"\x8b\x01\n\rCrisisContext\x12\x17\n\x0f\x63onversation_id\x18\x01 \x01(\t\x12\x11\n\tuser_uuid\x18\x02 \x01(\t\x12\x16\n\x0erecent_message\x18\x03 \x01(\t\x12\x1a\n\x12\x63onversation_topic\x18\x04 \x01(\t\x12\x1a\n\x12relationship_phase\x18\x05 \x01(\t\"\x92\x02\n\x10ResponseGuidance\x12=\n\x08priority\x18\x01 \x01(\x0e\x32+.aico.integration.ResponseGuidance.Priority\x12\x10\n\x08protocol\x18\x02 \x01(\t\x12\x18\n\x10required_actions\x18\x03 \x03(\t\x12J\n\x1cmodule_specific_instructions\x18\x04 \x01(\x0b\x32$.aico.integration.ModuleInstructions\"G\n\x08Priority\x12\x0b\n\x07UNKNOWN\x10\x00\x12\r\n\tIMMEDIATE\x10\x01\x12\x08\n\x04HIGH\x10\x02\x12\x0c\n\x08MODERATE\x10\x03\x12\x07\n\x03LOW\x10\x04\"\xb2\x02\n\x12ModuleInstructions\x12I\n\x16personality_simulation\x18\x01 \x01(\x0b\x32).aico.integration.PersonalityInstructions\x12\x41\n\x12\x65motion_simulation\x18\x02 \x01(\x0b\x32%.aico.integration.EmotionInstructions\x12M\n\x13\x63onversation_engine\x18\x03 \x01(\x0b\x32\x30.aico.integration.ConversationEngineInstructions\x12?\n\x11\x61utonomous_agency\x18\x04 \x01(\x0b\x32$.aico.integration.AgencyInstructions\"I\n\x17PersonalityInstructions\x12\x16\n\x0etrait_emphasis\x18\x01 \x03(\t\x12\x16\n\x0evalue_emphasis\x18\x02 \x03(\t\"S\n\x13\x45motionInstructions\x12\x1e\n\x16target_emotional_state\x18\x01 \x01(\t\x12\x1c\n\x14\x65xpression_intensity\x18\x02 \x01(\x02\"O\n\x1e\x43onversationEngineInstructions\x12\x15\n\rresponse_type\x18\x01 \x01(\t\x12\x16\n\x0e\x61void_patterns\x18\x02 \x03(\t\"O\n\x12\x41gencyInstructions\x12\x1e\n\x16goal_priority_override\x18\x01 \x01(\t\x12\x19\n\x11proactive_actions\x18\x02 \x03(\t\"\x8a\x01\n\x0e\x45scalationPath\x12\x1b\n\x13internal_escalation\x18\x01 \x01(\x08\x12\x1b\n\x13\x65xternal_escalation\x18\x02 \x01(\x08\x12>\n\x12\x65xternal_resources\x18\x03 \x03(\x0b\x32\".aico.integration.ExternalResource\"l\n\x10\x45xternalResource\x12\x15\n\rresource_type\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x14\n\x0c\x63ontact_info\x18\x03 \x01(\t\x12\x1d\n\x15presentation_guidance\x18\x04 \x01(\t\"\x8b\x02\n\x10\x41gencyInitiative\x12-\n\ttimestamp\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x15\n\rinitiative_id\x18\x03 \x01(\t\x12\x17\n\x0finitiative_type\x18\x04 \x01(\t\x12\x10\n\x08priority\x18\x05 \x01(\x02\x12\x34\n\x07\x64\x65tails\x18\x06 \x01(\x0b\x32#.aico.integration.InitiativeDetails\x12@\n\x0c\x63oordination\x18\x07 \x01(\x0b\x32*.aico.integration.CoordinationRequirements\"e\n\x11InitiativeDetails\x12\x0c\n\x04goal\x18\x01 \x01(\t\x12\x11\n\trationale\x18\x02 \x01(\t\x12\x19\n\x11\x65xpected_outcomes\x18\x03 \x03(\t\x12\x14\n\x0cuser_context\x18\x04 \x01(\t\"\xd0\x01\n\x18\x43oordinationRequirements\x12>\n\x0bpersonality\x18\x01 \x01(\x0b\x32).aico.integration.PersonalityRequirements\x12\x36\n\x07\x65motion\x18\x02 \x01(\x0b\x32%.aico.integration.EmotionRequirements\x12<\n\nexpression\x18\x03 \x01(\x0b\x32(.aico.integration.ExpressionRequirements\"N\n\x17PersonalityRequirements\x12\x18\n\x10trait_activation\x18\x01 \x03(\t\x12\x19\n\x11interaction_style\x18\x02 \x01(\t\"@\n\x13\x45motionRequirements\x12\x16\n\x0e\x65motional_tone\x18\x01 \x01(\t\x12\x11\n\tintensity\x18\x02 \x01(\x02\"R\n\x16\x45xpressionRequirements\x12\x1b\n\x13\x63ommunication_style\x18\x01 \x01(\t\x12\x1b\n\x13\x65xpression_elements\x18\x02 \x03(\t\"\xf6\x01\n\x16\x45xpressionCoordination\x12-\n\ttimestamp\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x15\n\rexpression_id\x18\x03 \x01(\t\x12\x12\n\ncontext_id\x18\x04 \x01(\t\x12\x32\n\x06\x63onfig\x18\x05 \x01(\x0b\x32\".aico.integration.ExpressionConfig\x12>\n\x0c\x63oordination\x18\x06 \x01(\x0b\x32(.aico.integration.CrossModalCoordination\"\\\n\x10\x45xpressionConfig\x12\x17\n\x0fprimary_emotion\x18\x01 \x01(\t\x12\x11\n\tintensity\x18\x02 \x01(\x02\x12\x1c\n\x14\x63ommunication_intent\x18\x03 \x01(\t\"\xd4\x01\n\x16\x43rossModalCoordination\x12.\n\x06\x66\x61\x63ial\x18\x01 \x01(\x0b\x32\x1e.aico.integration.FacialConfig\x12,\n\x05voice\x18\x02 \x01(\x0b\x32\x1d.aico.integration.VoiceConfig\x12*\n\x04text\x18\x03 \x01(\x0b\x32\x1c.aico.integration.TextConfig\x12\x30\n\x07gesture\x18\x04 \x01(\x0b\x32\x1f.aico.integration.GestureConfig\"K\n\x0c\x46\x61\x63ialConfig\x12\x13\n\x0b\x65xpressions\x18\x01 \x03(\t\x12\x11\n\tintensity\x18\x02 \x01(\x02\x12\x13\n\x0b\x64uration_ms\x18\x03 \x01(\x05\"L\n\x0bVoiceConfig\x12\x13\n\x0bpitch_shift\x18\x01 \x01(\x02\x12\r\n\x05speed\x18\x02 \x01(\x02\x12\x19\n\x11\x65motional_quality\x18\x03 \x01(\t\"R\n\nTextConfig\x12\r\n\x05style\x18\x01 \x01(\t\x12\x1a\n\x12linguistic_markers\x18\x02 \x03(\t\x12\x19\n\x11\x65motional_content\x18\x03 \x01(\x02\"I\n\rGestureConfig\x12\x10\n\x08gestures\x18\x01 \x03(\t\x12\x11\n\tamplitude\x18\x02 \x01(\x02\x12\x13\n\x0b\x64uration_ms\x18\x03 \x01(\x05\x42_\n\'industries.boeni.aico.proto.integrationP\x01Z2github.com/boeni-industries/aico/proto/integrationb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -47,43 +47,43 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_RESPONSEGUIDANCE_PRIORITY']._serialized_start=1035
   _globals['_RESPONSEGUIDANCE_PRIORITY']._serialized_end=1106
   _globals['_MODULEINSTRUCTIONS']._serialized_start=1109
-  _globals['_MODULEINSTRUCTIONS']._serialized_end=1399
-  _globals['_PERSONALITYINSTRUCTIONS']._serialized_start=1401
-  _globals['_PERSONALITYINSTRUCTIONS']._serialized_end=1474
-  _globals['_EMOTIONINSTRUCTIONS']._serialized_start=1476
-  _globals['_EMOTIONINSTRUCTIONS']._serialized_end=1559
-  _globals['_CHATENGINEINSTRUCTIONS']._serialized_start=1561
-  _globals['_CHATENGINEINSTRUCTIONS']._serialized_end=1632
-  _globals['_AGENCYINSTRUCTIONS']._serialized_start=1634
-  _globals['_AGENCYINSTRUCTIONS']._serialized_end=1713
-  _globals['_ESCALATIONPATH']._serialized_start=1716
-  _globals['_ESCALATIONPATH']._serialized_end=1854
-  _globals['_EXTERNALRESOURCE']._serialized_start=1856
-  _globals['_EXTERNALRESOURCE']._serialized_end=1964
-  _globals['_AGENCYINITIATIVE']._serialized_start=1967
-  _globals['_AGENCYINITIATIVE']._serialized_end=2234
-  _globals['_INITIATIVEDETAILS']._serialized_start=2236
-  _globals['_INITIATIVEDETAILS']._serialized_end=2337
-  _globals['_COORDINATIONREQUIREMENTS']._serialized_start=2340
-  _globals['_COORDINATIONREQUIREMENTS']._serialized_end=2548
-  _globals['_PERSONALITYREQUIREMENTS']._serialized_start=2550
-  _globals['_PERSONALITYREQUIREMENTS']._serialized_end=2628
-  _globals['_EMOTIONREQUIREMENTS']._serialized_start=2630
-  _globals['_EMOTIONREQUIREMENTS']._serialized_end=2694
-  _globals['_EXPRESSIONREQUIREMENTS']._serialized_start=2696
-  _globals['_EXPRESSIONREQUIREMENTS']._serialized_end=2778
-  _globals['_EXPRESSIONCOORDINATION']._serialized_start=2781
-  _globals['_EXPRESSIONCOORDINATION']._serialized_end=3027
-  _globals['_EXPRESSIONCONFIG']._serialized_start=3029
-  _globals['_EXPRESSIONCONFIG']._serialized_end=3121
-  _globals['_CROSSMODALCOORDINATION']._serialized_start=3124
-  _globals['_CROSSMODALCOORDINATION']._serialized_end=3336
-  _globals['_FACIALCONFIG']._serialized_start=3338
-  _globals['_FACIALCONFIG']._serialized_end=3413
-  _globals['_VOICECONFIG']._serialized_start=3415
-  _globals['_VOICECONFIG']._serialized_end=3491
-  _globals['_TEXTCONFIG']._serialized_start=3493
-  _globals['_TEXTCONFIG']._serialized_end=3575
-  _globals['_GESTURECONFIG']._serialized_start=3577
-  _globals['_GESTURECONFIG']._serialized_end=3650
+  _globals['_MODULEINSTRUCTIONS']._serialized_end=1415
+  _globals['_PERSONALITYINSTRUCTIONS']._serialized_start=1417
+  _globals['_PERSONALITYINSTRUCTIONS']._serialized_end=1490
+  _globals['_EMOTIONINSTRUCTIONS']._serialized_start=1492
+  _globals['_EMOTIONINSTRUCTIONS']._serialized_end=1575
+  _globals['_CONVERSATIONENGINEINSTRUCTIONS']._serialized_start=1577
+  _globals['_CONVERSATIONENGINEINSTRUCTIONS']._serialized_end=1656
+  _globals['_AGENCYINSTRUCTIONS']._serialized_start=1658
+  _globals['_AGENCYINSTRUCTIONS']._serialized_end=1737
+  _globals['_ESCALATIONPATH']._serialized_start=1740
+  _globals['_ESCALATIONPATH']._serialized_end=1878
+  _globals['_EXTERNALRESOURCE']._serialized_start=1880
+  _globals['_EXTERNALRESOURCE']._serialized_end=1988
+  _globals['_AGENCYINITIATIVE']._serialized_start=1991
+  _globals['_AGENCYINITIATIVE']._serialized_end=2258
+  _globals['_INITIATIVEDETAILS']._serialized_start=2260
+  _globals['_INITIATIVEDETAILS']._serialized_end=2361
+  _globals['_COORDINATIONREQUIREMENTS']._serialized_start=2364
+  _globals['_COORDINATIONREQUIREMENTS']._serialized_end=2572
+  _globals['_PERSONALITYREQUIREMENTS']._serialized_start=2574
+  _globals['_PERSONALITYREQUIREMENTS']._serialized_end=2652
+  _globals['_EMOTIONREQUIREMENTS']._serialized_start=2654
+  _globals['_EMOTIONREQUIREMENTS']._serialized_end=2718
+  _globals['_EXPRESSIONREQUIREMENTS']._serialized_start=2720
+  _globals['_EXPRESSIONREQUIREMENTS']._serialized_end=2802
+  _globals['_EXPRESSIONCOORDINATION']._serialized_start=2805
+  _globals['_EXPRESSIONCOORDINATION']._serialized_end=3051
+  _globals['_EXPRESSIONCONFIG']._serialized_start=3053
+  _globals['_EXPRESSIONCONFIG']._serialized_end=3145
+  _globals['_CROSSMODALCOORDINATION']._serialized_start=3148
+  _globals['_CROSSMODALCOORDINATION']._serialized_end=3360
+  _globals['_FACIALCONFIG']._serialized_start=3362
+  _globals['_FACIALCONFIG']._serialized_end=3437
+  _globals['_VOICECONFIG']._serialized_start=3439
+  _globals['_VOICECONFIG']._serialized_end=3515
+  _globals['_TEXTCONFIG']._serialized_start=3517
+  _globals['_TEXTCONFIG']._serialized_end=3599
+  _globals['_GESTURECONFIG']._serialized_start=3601
+  _globals['_GESTURECONFIG']._serialized_end=3674
 # @@protoc_insertion_point(module_scope)

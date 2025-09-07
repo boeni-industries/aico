@@ -48,7 +48,7 @@ def validate_module_name(module: str) -> str:
               for part in module.split('.')):
         raise HTTPException(
             status_code=400,
-            detail="Module name must follow dot notation (e.g., 'frontend.chat_ui')"
+            detail="Module name must follow dot notation (e.g., 'frontend.conversation_ui')"
         )
     
     return module.strip()

@@ -48,8 +48,8 @@ COMMON PITFALLS FOR NEW DEVELOPERS:
        All ZMQ operations are async. Don't forget await on client methods.
        
     ❌ PITFALL #6: Wrong topic names
-       Topics must match exactly: "modelservice/completions/request/v1"
-       and "modelservice/completions/response/v1" (note the /v1 suffix).
+       Use AICOTopics constants: AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST
+       and AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE (centralized management).
 
 ARCHITECTURE NOTES:
     - Uses CurveZMQ encryption for secure communication
@@ -61,15 +61,26 @@ ARCHITECTURE NOTES:
 CUSTOMIZATION:
     - Change the model: request.model = "your-model-name"
     - Change the prompt: modify the prompt variable in main()
-    - Add conversation history: append more ChatMessage objects to request.messages
+    - Add conversation history: append more ConversationMessage objects to request.messages
     - Adjust timeout: change the timeout value in asyncio.wait_for()
 """
 
 import asyncio
+import sys
 import uuid
+from pathlib import Path
 from aico.core.config import ConfigurationManager
 from aico.core.bus import MessageBusClient
-from aico.proto.aico_modelservice_pb2 import CompletionsRequest, ChatMessage
+from aico.core.topics import AICOTopics
+from aico.proto.aico_modelservice_pb2 import CompletionsRequest, ConversationMessage, CompletionsResponse
+from aico.proto.aico_core_envelope_pb2 import AicoMessage
+
+# Add modelservice path for message factory
+script_dir = Path(__file__).parent
+modelservice_path = script_dir.parent / "modelservice"
+sys.path.insert(0, str(modelservice_path))
+
+from core.protobuf_messages import ModelserviceMessageFactory, ModelserviceMessageParser
 
 
 async def send_completion_request(prompt: str) -> str:
@@ -96,7 +107,7 @@ async def send_completion_request(prompt: str) -> str:
         request.model = "hermes3:8b"  # Use your preferred model
         
         # Add the user message
-        message = ChatMessage()
+        message = ConversationMessage()
         message.role = "user"
         message.content = prompt
         request.messages.append(message)
@@ -105,7 +116,7 @@ async def send_completion_request(prompt: str) -> str:
         response_text = None
         response_received = asyncio.Event()
         
-        async def handle_response(envelope):
+        async def handle_response(envelope: AicoMessage):
             nonlocal response_text
             try:
                 print("📨 Received response from modelservice")
@@ -117,7 +128,6 @@ async def send_completion_request(prompt: str) -> str:
                     return  # Not our response
                 
                 # Parse the completions response directly from envelope payload
-                from aico.proto.aico_modelservice_pb2 import CompletionsResponse
                 response = CompletionsResponse()
                 envelope.any_payload.Unpack(response)
                 
@@ -139,14 +149,14 @@ async def send_completion_request(prompt: str) -> str:
                 response_received.set()
         
         # Subscribe to response topic BEFORE sending request
-        await client.subscribe("modelservice/completions/response/v1", handle_response)
+        await client.subscribe(AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE, handle_response)
         
         # Small delay to ensure subscription is active
         await asyncio.sleep(0.1)
         
         # Send the request
         await client.publish(
-            "modelservice/completions/request/v1",
+            AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST,
             request,
             correlation_id=correlation_id
         )

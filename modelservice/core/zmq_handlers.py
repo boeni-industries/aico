@@ -95,13 +95,13 @@ class ModelserviceZMQHandlers:
                 logger.info(f"[DEBUG] Ollama raw response: {data}")
                 
                 # Create Protocol Buffer response
-                from aico.proto.aico_modelservice_pb2 import CompletionResult, ChatMessage
+                from aico.proto.aico_modelservice_pb2 import CompletionResult, ConversationMessage
                 result = CompletionResult()
                 result.model = model
                 result.done = data.get("done", True)
                 
                 # Create response message
-                response_msg = ChatMessage()
+                response_msg = ConversationMessage()
                 response_msg.role = "assistant"
                 response_content = data.get("response", "")
                 logger.info(f"[DEBUG] Extracted response content: '{response_content}' (length: {len(response_content)})")

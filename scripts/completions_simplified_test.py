@@ -200,12 +200,12 @@ async def test_modelservice_completions() -> bool:
         # Create completions request using Protocol Buffer
         start_request_prep = time.time()
         correlation_id = str(uuid.uuid4())
-        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, ChatMessage
+        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, ConversationMessage
         completions_request = CompletionsRequest()
         completions_request.model = "hermes3:8b"
         
-        # Create chat message
-        message = ChatMessage()
+        # Create conversation message
+        message = ConversationMessage()
         message.role = "user"
         message.content = "Hello, how are you?"
         completions_request.messages.append(message)

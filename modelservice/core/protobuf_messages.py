@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any, Optional
 from google.protobuf.any_pb2 import Any as ProtoAny
 
+from aico.core.topics import AICOTopics
 from aico.proto.aico_core_envelope_pb2 import AicoMessage, MessageMetadata
 from aico.proto.aico_modelservice_pb2 import (
     # Request messages
@@ -21,7 +22,7 @@ from aico.proto.aico_modelservice_pb2 import (
     EmbeddingsResponse, StatusResponse, OllamaStatusResponse, OllamaModelsResponse,
     OllamaPullResponse, OllamaRemoveResponse, OllamaServeResponse, OllamaShutdownResponse,
     # Data structures
-    ChatMessage
+    ConversationMessage
 )
 
 
@@ -79,7 +80,7 @@ class ModelserviceMessageFactory:
         """Create a health check request."""
         request = HealthRequest()
         return ModelserviceMessageFactory.create_envelope(
-            request, "modelservice/health/request/v1", correlation_id
+            request, AICOTopics.MODELSERVICE_HEALTH_REQUEST, correlation_id
         )
     
     @staticmethod
@@ -93,17 +94,17 @@ class ModelserviceMessageFactory:
         system: Optional[str] = None,
         correlation_id: Optional[str] = None
     ) -> AicoMessage:
-        """Create a chat completions request."""
+        """Create a conversation completions request."""
         request = CompletionsRequest()
         request.model = model
         request.stream = stream
         
-        # Convert messages to ChatMessage protos
+        # Convert messages to ConversationMessage protos
         for msg in messages:
-            chat_msg = ChatMessage()
-            chat_msg.role = msg.get('role', 'user')
-            chat_msg.content = msg.get('content', '')
-            request.messages.append(chat_msg)
+            conv_msg = ConversationMessage()
+            conv_msg.role = msg.get('role', 'user')
+            conv_msg.content = msg.get('content', '')
+            request.messages.append(conv_msg)
         
         # Optional parameters
         if temperature is not None:
@@ -116,7 +117,7 @@ class ModelserviceMessageFactory:
             request.system = system
         
         return ModelserviceMessageFactory.create_envelope(
-            request, "modelservice/completions/request/v1", correlation_id
+            request, AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST, correlation_id
         )
     
     @staticmethod
@@ -124,7 +125,7 @@ class ModelserviceMessageFactory:
         """Create a models list request."""
         request = ModelsRequest()
         return ModelserviceMessageFactory.create_envelope(
-            request, "modelservice/models/request/v1", correlation_id
+            request, AICOTopics.MODELSERVICE_MODELS_REQUEST, correlation_id
         )
     
     @staticmethod
@@ -133,7 +134,7 @@ class ModelserviceMessageFactory:
         request = ModelInfoRequest()
         request.model = model
         return ModelserviceMessageFactory.create_envelope(
-            request, "modelservice/model_info/request/v1", correlation_id
+            request, AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST, correlation_id
         )
     
     @staticmethod
@@ -147,7 +148,7 @@ class ModelserviceMessageFactory:
         request.model = model
         request.prompt = prompt
         return ModelserviceMessageFactory.create_envelope(
-            request, "modelservice/embeddings/request/v1", correlation_id
+            request, AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST, correlation_id
         )
     
     @staticmethod
@@ -155,7 +156,7 @@ class ModelserviceMessageFactory:
         """Create a status request."""
         request = StatusRequest()
         return ModelserviceMessageFactory.create_envelope(
-            request, "modelservice/status/request/v1", correlation_id
+            request, AICOTopics.MODELSERVICE_STATUS_REQUEST, correlation_id
         )
     
     # Ollama management request factories
@@ -164,7 +165,7 @@ class ModelserviceMessageFactory:
         """Create an Ollama status request."""
         request = OllamaStatusRequest()
         return ModelserviceMessageFactory.create_envelope(
-            request, "ollama/status/request/v1", correlation_id
+            request, AICOTopics.OLLAMA_STATUS_REQUEST, correlation_id
         )
     
     @staticmethod
@@ -172,7 +173,7 @@ class ModelserviceMessageFactory:
         """Create an Ollama models request."""
         request = OllamaModelsRequest()
         return ModelserviceMessageFactory.create_envelope(
-            request, "ollama/models/request/v1", correlation_id
+            request, AICOTopics.OLLAMA_MODELS_REQUEST, correlation_id
         )
     
     @staticmethod
@@ -181,7 +182,7 @@ class ModelserviceMessageFactory:
         request = OllamaPullRequest()
         request.model = model
         return ModelserviceMessageFactory.create_envelope(
-            request, "ollama/models/pull/request/v1", correlation_id
+            request, AICOTopics.OLLAMA_MODELS_PULL_REQUEST, correlation_id
         )
     
     @staticmethod
@@ -190,7 +191,7 @@ class ModelserviceMessageFactory:
         request = OllamaRemoveRequest()
         request.model = model
         return ModelserviceMessageFactory.create_envelope(
-            request, "ollama/models/remove/request/v1", correlation_id
+            request, AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST, correlation_id
         )
     
     @staticmethod
@@ -198,7 +199,7 @@ class ModelserviceMessageFactory:
         """Create an Ollama serve request."""
         request = OllamaServeRequest()
         return ModelserviceMessageFactory.create_envelope(
-            request, "ollama/serve/request/v1", correlation_id
+            request, AICOTopics.OLLAMA_SERVE_REQUEST, correlation_id
         )
     
     @staticmethod
@@ -206,7 +207,7 @@ class ModelserviceMessageFactory:
         """Create an Ollama shutdown request."""
         request = OllamaShutdownRequest()
         return ModelserviceMessageFactory.create_envelope(
-            request, "ollama/shutdown/request/v1", correlation_id
+            request, AICOTopics.OLLAMA_SHUTDOWN_REQUEST, correlation_id
         )
     
 
@@ -246,18 +247,18 @@ class ModelserviceMessageParser:
         
         # Map message types to their corresponding protobuf classes
         request_types = {
-            "modelservice/health/request/v1": HealthRequest,
-            "modelservice/completions/request/v1": CompletionsRequest,
-            "modelservice/models/request/v1": ModelsRequest,
-            "modelservice/model_info/request/v1": ModelInfoRequest,
-            "modelservice/embeddings/request/v1": EmbeddingsRequest,
-            "modelservice/status/request/v1": StatusRequest,
-            "ollama/status/request/v1": OllamaStatusRequest,
-            "ollama/models/request/v1": OllamaModelsRequest,
-            "ollama/models/pull/request/v1": OllamaPullRequest,
-            "ollama/models/remove/request/v1": OllamaRemoveRequest,
-            "ollama/serve/request/v1": OllamaServeRequest,
-            "ollama/shutdown/request/v1": OllamaShutdownRequest,
+            AICOTopics.MODELSERVICE_HEALTH_REQUEST: HealthRequest,
+            AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST: CompletionsRequest,
+            AICOTopics.MODELSERVICE_MODELS_REQUEST: ModelsRequest,
+            AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: ModelInfoRequest,
+            AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: EmbeddingsRequest,
+            AICOTopics.MODELSERVICE_STATUS_REQUEST: StatusRequest,
+            AICOTopics.OLLAMA_STATUS_REQUEST: OllamaStatusRequest,
+            AICOTopics.OLLAMA_MODELS_REQUEST: OllamaModelsRequest,
+            AICOTopics.OLLAMA_MODELS_PULL_REQUEST: OllamaPullRequest,
+            AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST: OllamaRemoveRequest,
+            AICOTopics.OLLAMA_SERVE_REQUEST: OllamaServeRequest,
+            AICOTopics.OLLAMA_SHUTDOWN_REQUEST: OllamaShutdownRequest,
         }
         
         request_class = request_types.get(message_type)
@@ -275,18 +276,18 @@ class ModelserviceMessageParser:
         
         # Map message types to their corresponding protobuf classes
         response_types = {
-            "modelservice/health/response/v1": HealthResponse,
-            "modelservice/completions/response/v1": CompletionsResponse,
-            "modelservice/models/response/v1": ModelsResponse,
-            "modelservice/model_info/response/v1": ModelInfoResponse,
-            "modelservice/embeddings/response/v1": EmbeddingsResponse,
-            "modelservice/status/response/v1": StatusResponse,
-            "ollama/status/response/v1": OllamaStatusResponse,
-            "ollama/models/response/v1": OllamaModelsResponse,
-            "ollama/models/pull/response/v1": OllamaPullResponse,
-            "ollama/models/remove/response/v1": OllamaRemoveResponse,
-            "ollama/serve/response/v1": OllamaServeResponse,
-            "ollama/shutdown/response/v1": OllamaShutdownResponse,
+            AICOTopics.MODELSERVICE_HEALTH_RESPONSE: HealthResponse,
+            AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE: CompletionsResponse,
+            AICOTopics.MODELSERVICE_MODELS_RESPONSE: ModelsResponse,
+            AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE: ModelInfoResponse,
+            AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE: EmbeddingsResponse,
+            AICOTopics.MODELSERVICE_STATUS_RESPONSE: StatusResponse,
+            AICOTopics.OLLAMA_STATUS_RESPONSE: OllamaStatusResponse,
+            AICOTopics.OLLAMA_MODELS_RESPONSE: OllamaModelsResponse,
+            AICOTopics.OLLAMA_MODELS_PULL_RESPONSE: OllamaPullResponse,
+            AICOTopics.OLLAMA_MODELS_REMOVE_RESPONSE: OllamaRemoveResponse,
+            AICOTopics.OLLAMA_SERVE_RESPONSE: OllamaServeResponse,
+            AICOTopics.OLLAMA_SHUTDOWN_RESPONSE: OllamaShutdownResponse,
         }
         
         response_class = response_types.get(message_type)

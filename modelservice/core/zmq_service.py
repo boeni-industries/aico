@@ -294,18 +294,18 @@ class ModelserviceZMQService:
     def _get_response_message_type(self, request_topic: str) -> str:
         """Get response message type for request topic."""
         mapping = {
-            AICOTopics.MODELSERVICE_HEALTH_REQUEST: "modelservice/health/response/v1",
-            AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST: "modelservice/completions/response/v1",
-            AICOTopics.MODELSERVICE_MODELS_REQUEST: "modelservice/models/response/v1",
-            AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: "modelservice/model_info/response/v1",
-            AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: "modelservice/embeddings/response/v1",
-            AICOTopics.MODELSERVICE_STATUS_REQUEST: "modelservice/status/response/v1",
-            AICOTopics.OLLAMA_STATUS_REQUEST: "ollama/status/response/v1",
-            AICOTopics.OLLAMA_MODELS_REQUEST: "ollama/models/response/v1",
-            AICOTopics.OLLAMA_MODELS_PULL_REQUEST: "ollama/models/pull/response/v1",
-            AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST: "ollama/models/remove/response/v1",
-            AICOTopics.OLLAMA_SERVE_REQUEST: "ollama/serve/response/v1",
-            AICOTopics.OLLAMA_SHUTDOWN_REQUEST: "ollama/shutdown/response/v1",
+            AICOTopics.MODELSERVICE_HEALTH_REQUEST: AICOTopics.MODELSERVICE_HEALTH_RESPONSE,
+            AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST: AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE,
+            AICOTopics.MODELSERVICE_MODELS_REQUEST: AICOTopics.MODELSERVICE_MODELS_RESPONSE,
+            AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE,
+            AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
+            AICOTopics.MODELSERVICE_STATUS_REQUEST: AICOTopics.MODELSERVICE_STATUS_RESPONSE,
+            AICOTopics.OLLAMA_STATUS_REQUEST: AICOTopics.OLLAMA_STATUS_RESPONSE,
+            AICOTopics.OLLAMA_MODELS_REQUEST: AICOTopics.OLLAMA_MODELS_RESPONSE,
+            AICOTopics.OLLAMA_MODELS_PULL_REQUEST: AICOTopics.OLLAMA_MODELS_PULL_RESPONSE,
+            AICOTopics.OLLAMA_MODELS_REMOVE_REQUEST: AICOTopics.OLLAMA_MODELS_REMOVE_RESPONSE,
+            AICOTopics.OLLAMA_SERVE_REQUEST: AICOTopics.OLLAMA_SERVE_RESPONSE,
+            AICOTopics.OLLAMA_SHUTDOWN_REQUEST: AICOTopics.OLLAMA_SHUTDOWN_RESPONSE,
         }
         return mapping.get(request_topic, "unknown/response/v1")
     

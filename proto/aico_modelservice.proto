@@ -17,10 +17,10 @@ message HealthRequest {
   // Empty - no parameters needed
 }
 
-// Chat completions request
+// Conversation completions request
 message CompletionsRequest {
   string model = 1;
-  repeated ChatMessage messages = 2;
+  repeated ConversationMessage messages = 2;
   bool stream = 3;
   optional double temperature = 4;
   optional int32 max_tokens = 5;
@@ -85,7 +85,7 @@ message HealthResponse {
   optional string error = 3;
 }
 
-// Chat completions response
+// Conversation completions response
 message CompletionsResponse {
   bool success = 1;
   optional CompletionResult result = 2;
@@ -161,8 +161,8 @@ message OllamaShutdownResponse {
 // SHARED DATA STRUCTURES
 // ============================================================================
 
-// Chat message for completions
-message ChatMessage {
+// Conversation message for completions
+message ConversationMessage {
   string role = 1;     // "system", "user", "assistant"
   string content = 2;
 }
@@ -171,7 +171,7 @@ message ChatMessage {
 message CompletionResult {
   string model = 1;
   google.protobuf.Timestamp created_at = 2;
-  ChatMessage message = 3;
+  ConversationMessage message = 3;
   bool done = 4;
   optional int64 total_duration = 5;
   optional int64 load_duration = 6;

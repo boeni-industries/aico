@@ -30,7 +30,7 @@ class LogEntryRequest(BaseModel):
     """Single log entry submission from frontend"""
     timestamp: str = Field(..., description="ISO 8601 timestamp")
     level: LogLevel = Field(..., description="Log level")
-    module: str = Field(..., description="Module name (e.g., 'frontend.chat_ui')")
+    module: str = Field(..., description="Module name (e.g., 'frontend.conversation_ui')")
     function: str = Field(..., description="Function name")
     topic: str = Field(..., description="Log topic (e.g., 'ui.button.click')")
     message: str = Field(..., description="Log message")

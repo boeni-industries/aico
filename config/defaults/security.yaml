@@ -130,11 +130,11 @@ rbac:
       - "users.*"           # User management
       - "audit.*"           # Audit access
       - "subscribe.*"       # WebSocket subscriptions
-      - "conversation.*"    # Chat and conversation access
+      - "conversation.*"    # Conversation access
     
     # User role - standard user permissions
     user:
-      - "conversation.*"    # Chat and conversation
+      - "conversation.*"    # Conversation access
       - "memory.read"       # Read memory
       - "personality.read"  # Read personality
       - "profile.*"         # Own profile management

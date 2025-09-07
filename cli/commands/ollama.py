@@ -511,9 +511,9 @@ def run(model_name: str = typer.Argument(..., help="Name of the model to run")):
     """Run a model interactively."""
     console.print(f"\n✨ [bold cyan]Running Model: {model_name}[/bold cyan]")
     
-    console.print("[yellow]Note: Use the native Ollama command for interactive chat:[/yellow]")
+    console.print("[yellow]Note: Use the native Ollama command for interactive conversation:[/yellow]")
     console.print(f"[dim]$ ollama run {model_name}[/dim]")
-    console.print("[dim]This will start an interactive chat session with the model.[/dim]")
+    console.print("[dim]This will start an interactive conversation session with the model.[/dim]")
     console.print()
 
 
