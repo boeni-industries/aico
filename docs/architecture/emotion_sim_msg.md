@@ -50,7 +50,7 @@ Current conversation message with analysis metadata.
 ```json
 {
   "timestamp": "2025-07-29T15:34:48Z",
-  "source": "chat_engine",
+  "source": "conversation_engine",
   "message": {
     "text": "I'm having a really tough day at work",
     "type": "user_input",

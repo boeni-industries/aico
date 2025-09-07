@@ -20,10 +20,10 @@ AICO's testing strategy ensures reliable, maintainable code through comprehensiv
 Use `bloc_test` package to test state transitions with mock dependencies. Test success and error scenarios for each event, verify repository calls, and ensure proper state emissions.
 
 ```dart
-blocTest<ChatBloc, ChatState>(
+blocTest<ConversationBloc, ConversationState>(
   'emits [loading, success] when message sent',
   act: (bloc) => bloc.add(MessageSent(content: 'Hello')),
-  expect: () => [ChatState.loading(), ChatState.success()],
+  expect: () => [ConversationState.loading(), ConversationState.success()],
 );
 ```
 
@@ -56,7 +56,7 @@ Test rendering performance with large message lists (<1000ms render time). Verif
 
 ## Visual Regression Testing
 
-Use golden file testing with `matchesGoldenFile()` to detect unintended visual changes. Test key components like message bubbles and chat interface across light/dark themes.
+Use golden file testing with `matchesGoldenFile()` to detect unintended visual changes. Test key components like message bubbles and conversation interface across light/dark themes.
 
 ## Test Utilities
 

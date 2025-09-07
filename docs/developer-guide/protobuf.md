@@ -22,7 +22,7 @@ All Protocol Buffer definitions are located in the `/proto/` directory with the 
   │   ├── envelope.proto
   │   ├── common.proto
   │   └── api_gateway.proto
-  ├── conversation/   # Conversation and chat-related messages
+  ├── conversation/   # Conversation-related messages
   │   └── conversation.proto
   ├── emotion/        # Emotion simulation and recognition messages
   │   └── emotion.proto

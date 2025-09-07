@@ -45,7 +45,7 @@ flowchart TD
     style L fill:#fff3e0
 ```
 
-**Key**: 📱 Frontend | 🌐 Gateway | 🚌 Message Bus | 🎯 Processing | 😊 Emotion | 👥 Social | 🎭 Personality | 💬 Chat | 🧠 Memory/LLM
+**Key**: 📱 Frontend | 🌐 Gateway | 🚌 Message Bus | 🎯 Processing | 😊 Emotion | 👥 Social | 🎭 Personality | 💬 Conversation | 🧠 Memory/LLM
 
 > **Note**: All data structures, message formats, and API endpoints shown in this document are preliminary examples designed to illustrate the architectural flow. Actual implementation details may vary as the system evolves.
 

@@ -219,7 +219,7 @@ This document integrates all previous guidance—including your latest preferenc
 ```text
 [Avatar Centerpiece]
     | 
-[Primary Input (chat, voice, mood)]
+[Primary Input (conversation, voice, mood)]
     |
 [Emotion/Status Bar]     [Quick Actions Row]
     |

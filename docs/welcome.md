@@ -128,7 +128,7 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
     - Task scheduler, encrypted data storage, WebSocket communication
 
 2. **🤝 Companion** *(Next)* - MVP with basic companionship
-    - Text chat, voice interaction, basic avatar, memory system
+    - Text conversation, voice interaction, basic avatar, memory system
     - Local LLM integration, personality engine, emotion recognition
 
 3. **🛠️ Foundation II** - Advanced infrastructure for production

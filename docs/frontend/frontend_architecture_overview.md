@@ -66,7 +66,7 @@ The application implements WCAG 2.1 AA standards from the ground up, ensuring us
 │                    Presentation Layer                       │
 ├─────────────────────────────────────────────────────────────┤
 │  Screens & Widgets  │  BLoC/Cubit State Management         │
-│  - Chat Interface   │  - ChatBloc                          │
+│  - Conversation Interface │  - ConversationBloc                │
 │  - Avatar Display   │  - ConnectionBloc                    │
 │  - Settings UI      │  - SettingsBloc                      │
 │  - Admin Dashboard  │  - UpdateBloc                        │
@@ -82,7 +82,7 @@ The application implements WCAG 2.1 AA standards from the ground up, ensuring us
 │                      Data Layer                             │
 ├─────────────────────────────────────────────────────────────┤
 │  Repositories       │  Data Sources                        │
-│  - ChatRepository   │  - REST API Client                   │
+│  - ConversationRepository │  - REST API Client               │
 │  - UserRepository   │  - WebSocket Client                  │
 │  - ConfigRepository │  - Local Storage                     │
 │                     │  - Secure Storage                    │
@@ -100,7 +100,7 @@ The application uses the BLoC (Business Logic Component) pattern for all state m
 **State Persistence**: Critical BLoCs extend HydratedBloc to automatically persist state across app restarts, ensuring users never lose their work or preferences.
 
 **Key BLoCs**:
-- **ChatBloc**: Manages conversation state, message sending/receiving, and typing indicators
+- **ConversationBloc**: Manages conversation state, message sending/receiving, and typing indicators
 - **ConnectionBloc**: Handles backend connectivity, automatic reconnection, and offline mode
 - **SettingsBloc**: Persists user preferences, theme selection, and configuration changes
 - **UpdateBloc**: Manages update notifications, download progress, and installation coordination
@@ -217,7 +217,7 @@ The UI follows atomic design principles, building complex interfaces from simple
 
 **Molecules**: Simple component groups that combine atoms into functional units, such as search bars or message bubbles.
 
-**Organisms**: Complex components that combine molecules and atoms into distinct interface sections, like chat interfaces or navigation panels.
+**Organisms**: Complex components that combine molecules and atoms into distinct interface sections, like conversation interfaces or navigation panels.
 
 **Templates**: Layout structures that define page-level organization without specific content, establishing consistent spacing and arrangement patterns.
 

@@ -89,7 +89,7 @@ AICO's interaction endpoints are designed around **conversational AI patterns** 
 
 #### Conversation Management
 
-Conversation endpoints handle the **primary interaction loop** between user and AI. Unlike chatbots, AICO maintains conversational context and can initiate interactions.
+Conversation endpoints handle the **primary interaction loop** between user and AI. Unlike conversationbots, AICO maintains conversational context and can initiate interactions.
 
 ```
 POST /conversation/message  # Send message and receive AI response

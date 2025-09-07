@@ -16,9 +16,9 @@ Define a JSON structure for all log messages. Both frontend and backend MUST use
 {
   "timestamp": "2025-08-02T23:10:00Z",
   "level": "INFO",            // INFO, WARNING, ERROR, DEBUG
-  "module": "frontend.chat_ui", // e.g., frontend.chat_ui, backend.llm
+  "module": "frontend.conversation_ui", // e.g., frontend.conversation_ui, backend.llm
   "function": "sendMessage",     // Calling function or method name
-  "file": "chat_screen.dart",    // (optional) Source file
+  "file": "conversation_screen.dart",    // (optional) Source file
   "line": 42,                    // (optional) Line number
   "topic": "ui.button.click",   // Event/topic name
   "message": "User clicked Send",
@@ -45,7 +45,7 @@ Define a JSON structure for all log messages. Both frontend and backend MUST use
 
 - Create a Dart logging utility that formats logs per the shared schema.
 - **Always include:**
-  - `module`: e.g., `frontend.chat_ui`
+  - `module`: e.g., `frontend.conversation_ui`
   - `function`: Use Dart's `StackTrace.current` or pass the function name explicitly
   - `file`/`line`: Use a logging helper or macro if possible, or pass manually
 - Serialize logs to JSON.
@@ -99,11 +99,11 @@ void logEvent({
 // Usage
 logEvent(
   level: 'INFO',
-  module: 'frontend.chat_ui',
+  module: 'frontend.conversation_ui',
   functionName: 'sendMessage',
   topic: 'ui.button.click',
   message: 'User clicked Send',
-  file: 'chat_screen.dart',
+  file: 'conversation_screen.dart',
   line: 42,
 );
 ```

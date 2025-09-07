@@ -333,7 +333,7 @@ The Personality Simulation module consists of five core components that work tog
          │                       │                       │
          ▼                       ▼                       ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│ Chat            │    │ Emotion         │    │ Autonomous      │
+│ Conversation    │    │ Emotion         │    │ Autonomous      │
 │ Engine          │    │ Simulation      │    │ Agent           │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```

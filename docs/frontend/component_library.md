@@ -53,7 +53,7 @@ static final lightTheme = AicoTheme(
 
 **Atoms**: Fundamental UI elements (buttons, inputs, icons)
 **Molecules**: Simple combinations forming functional units (cards, message bubbles)
-**Organisms**: Complex components combining multiple elements (chat interface, settings panel)
+**Organisms**: Complex components combining multiple elements (conversation interface, settings panel)
 **Templates**: Page-level organization patterns with consistent spacing
 **Pages**: Complete interfaces with real content and state
 
@@ -116,7 +116,7 @@ Content container with consistent elevation and spacing.
 **Features**: Responsive padding, theme-aware shadows, interaction states, semantic container roles
 
 #### AicoMessageBubble
-Chat message display adapting visual treatment based on emotional context and sender through subtle color variations and animations.
+Conversation message display adapting visual treatment based on emotional context and sender through subtle color variations and animations.
 
 **Variants**: User, Assistant, System, Emotion
 **States**: Sending, Delivered, Read, Failed

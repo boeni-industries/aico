@@ -171,7 +171,7 @@ def synthesize_visual_context(self, vision_result, conversation_context):
         "spatial_relationships": vision_result.get('spatial_info')
     }
     
-    # Publish to emotion simulation and chat engine
+    # Publish to emotion simulation and conversation engine
     self.bus.publish("vision.context.emotional", {
         "emotional_indicators": visual_context["emotional_indicators"],
         "social_context": visual_context["social_context"]

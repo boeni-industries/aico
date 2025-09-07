@@ -387,7 +387,7 @@ All messages on the bus follow this common envelope structure:
   "metadata": {
     "message_id": "5a6b7c8d-9e0f-1g2h-3i4j-5k6l7m8n9o0p",
     "timestamp": "2025-07-29T14:48:00.000Z",
-    "source": "chat_engine",
+    "source": "conversation_engine",
     "message_type": "user.feedback",
     "version": "1.0"
   },

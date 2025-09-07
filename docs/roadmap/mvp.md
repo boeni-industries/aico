@@ -4,8 +4,8 @@
 
 ## Frontend MVP
 
-### Chat Interface
-- [ ] **Text Chat UI**: Flutter chat interface with message bubbles
+### Conversation Interface
+- [ ] **Text Conversation UI**: Flutter conversation interface with message bubbles
 - [ ] **Real-time Updates**: WebSocket connection for live conversation
 - [ ] **Typing Indicators**: Show when AICO is thinking/responding
 - [ ] **Message History**: Scrollable conversation history
@@ -80,7 +80,7 @@
 - [ ] **Proactive Timing**: Intelligent timing for initiatives (not intrusive)
 
 ### Core Services
-- [ ] **Chat API**: REST endpoints for sending/receiving messages
+- [ ] **Conversation API**: REST endpoints for sending/receiving messages
 - [ ] **Memory API**: Store and retrieve user memories
 - [ ] **Personality API**: Get/set personality configuration
 
@@ -106,7 +106,7 @@
 - [ ] Responds within 3-5 seconds
 
 ### User Experience
-- [ ] Smooth chat interface with real-time updates
+- [ ] Smooth conversation interface with real-time updates
 - [ ] Voice interaction works seamlessly with text
 - [ ] Avatar animations sync with conversation and emotions
 - [ ] Personality feels consistent and authentic

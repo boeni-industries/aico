@@ -28,7 +28,7 @@ Handles user preferences including theme, locale, notifications, voice settings,
 
 ### Feature State (Domain-Specific)
 
-#### ChatBloc
+#### ConversationBloc
 Manages conversation state including message history, draft messages, typing indicators, and suggested responses. Persists recent conversations and drafts for continuity across sessions.
 
 #### AvatarBloc

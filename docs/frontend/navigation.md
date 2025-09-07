@@ -43,7 +43,7 @@ AICO's navigation architecture implements an **adaptive hub-and-spoke** design t
 ├── System Status (subtle indicators)
 └── Quick Actions (contextual)
 
-💬 Chat (Active Conversations)
+💬 Conversation (Active Conversations)
 ├── Current Conversation
 ├── Conversation History (swipe/slide access)
 ├── Voice/Text Input Integration

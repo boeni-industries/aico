@@ -79,7 +79,7 @@ All messages on the bus follow this common envelope structure:
           "target_emotional_state": "calm_supportive",
           "expression_intensity": 0.7
         },
-        "chat_engine": {
+        "conversation_engine": {
           "response_type": "validation_and_support",
           "avoid_patterns": ["dismissive_language", "toxic_positivity"]
         },
@@ -389,7 +389,7 @@ All messages on the bus follow this common envelope structure:
           "suggestion_specificity": "increase"
         }
       },
-      "chat_engine": {
+      "conversation_engine": {
         "response_style_adjustments": {
           "validation_frequency": "increase",
           "question_frequency": "maintain",
@@ -577,7 +577,7 @@ The new message types should be integrated into the message bus with the followi
   "metadata": {
     "message_id": "f6g7h8i9-j0k1-l2m3-n4o5-p6q7r8s9t0u1",
     "timestamp": "2025-07-29T17:35:45.123Z",
-    "source": "chat_engine",
+    "source": "conversation_engine",
     "message_type": "llm.conversation.events",
     "version": "1.0"
   },
@@ -681,7 +681,7 @@ The new message types should be integrated into the message bus with the followi
   "metadata": {
     "message_id": "g7h8i9j0-k1l2-m3n4-o5p6-q7r8s9t0u1v2",
     "timestamp": "2025-07-29T17:35:35.456Z",
-    "source": "chat_engine",
+    "source": "conversation_engine",
     "message_type": "llm.prompt.conditioning.request",
     "version": "1.0"
   },

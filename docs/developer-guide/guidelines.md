@@ -74,7 +74,7 @@
   - Suggest improvements, but recognize different styles can be valid if they follow guidelines.
 
 ## When in Doubt
-- Ask questions! Use GitHub Discussions, issues, or project chat.
+- Ask questions! Use GitHub Discussions, issues, or project conversation.
 - If unsure about a pattern or approach, prefer what’s already established in the codebase.
 - Propose improvements, but keep changes incremental and well-documented.
 - When integrating with architecture, consult the appropriate documentation in `/docs/architecture/` for module-specific conventions.
