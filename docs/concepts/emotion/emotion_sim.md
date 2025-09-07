@@ -238,7 +238,7 @@ The generated emotional states coordinate expression across multiple modalities:
 - **Motivational Component** influences approach/avoidance body language and spatial positioning
 - **Subjective Component** ensures overall expression authenticity and emotional presence
 
-**To Chat Engine (LLM Context)**:
+**To Conversation Engine (LLM Context)**:
 - **Cognitive Component** provides appraisal context for LLM prompt injection
 - **Motivational Component** influences response directness and conversational approach
 - **Subjective Component** shapes writing tone, word choice, and emotional vocabulary

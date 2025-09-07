@@ -47,12 +47,12 @@ System automatically selects optimal protocol: IPC for local (lowest latency), W
 Abstract repository interfaces define domain contracts while concrete implementations handle protocol-specific details. Repositories provide consistent data access regardless of transport mechanism.
 
 ```dart
-abstract class ChatRepository {
+abstract class ConversationRepository {
   Stream<Message> get messageStream;
   Future<void> sendMessage(Message message);
 }
 
-class ApiChatRepository implements ChatRepository {
+class ApiConversationRepository implements ConversationRepository {
   // Optimistic updates with error handling
   Future<void> sendMessage(Message message) async {
     _messageController.add(message.copyWith(status: sending));

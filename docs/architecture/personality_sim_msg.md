@@ -380,7 +380,7 @@ All messages on the bus follow this common envelope structure:
 ### User Feedback
 
 **Topic**: `user.feedback`  
-**Description**: User feedback and reactions from the Chat Engine.
+**Description**: User feedback and reactions from the Conversation Engine.
 
 ```json
 {
@@ -556,7 +556,7 @@ All messages on the bus follow this common envelope structure:
 ### Communication Expression Parameters
 
 **Topic**: `personality.expression.communication`  
-**Description**: Communication style parameters for the Chat Engine.
+**Description**: Communication style parameters for the Conversation Engine.
 
 ```json
 {
@@ -873,13 +873,13 @@ All messages on the bus follow this common envelope structure:
 - emotion.state.current        # From Emotion Simulation
 - memory.consolidation         # From Memory System
 - agency.goals.current         # From Autonomous Agent
-- user.feedback                # From Chat Engine
+- user.feedback                # From Conversation Engine
 - crisis.detection             # From any module detecting crisis
 - agency.initiative            # From Autonomous Agency
 - expression.coordination      # From Emotion Simulation
 - learning.coordination        # From Memory System
-- llm.conversation.events      # From Chat Engine
-- llm.prompt.conditioning.request  # From Chat Engine
+- llm.conversation.events      # From Conversation Engine
+- llm.prompt.conditioning.request  # From Conversation Engine
 ```
 
 ### Output Topics (Publications)

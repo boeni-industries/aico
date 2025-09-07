@@ -77,7 +77,8 @@ AICO's multimodal capabilities enable visual understanding to enhance the compan
          ▼                       ▼                       ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │ Nous Hermes 3   │    │ Emotion         │    │ Avatar System   │
-│ (Chat Engine)   │    │ Simulation      │    │                 │
+│ (Conversation   │    │ Simulation      │    │                 │
+│ Engine)         │    │                 │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
@@ -280,7 +281,7 @@ self.bus.publish("avatar.context.visual", avatar_context)
 
 ### **Phase 1: Foundation (Weeks 1-2)**
 1. **Llama 3.2 Vision 11B Deployment**: Primary multimodal service setup
-2. **Basic Integration**: Connect with message bus and chat engine
+2. **Basic Integration**: Connect with message bus and Conversation Engine
 3. **Image Analysis Pipeline**: Core image understanding and captioning
 4. **Emotion Detection**: Basic visual emotion recognition
 

@@ -17,7 +17,7 @@ The Personality Simulation module participates in the following message bus topi
 - emotion.state.current       # From Emotion Simulation
 - memory.consolidation        # From Memory System
 - agency.goals.current        # From Autonomous Agent
-- user.feedback               # From Chat Engine
+- user.feedback               # From Conversation Engine
 ```
 
 #### Output Topics (Publications)
@@ -135,7 +135,7 @@ def publish_personality_outputs(self, personality_state: PersonalityState):
 
 ### Downstream Consumers
 
-#### Chat Engine
+#### Conversation Engine
 - **Subscribes to**: `personality.expression.communication`
 - **Uses**: Communication style, topic preferences, interaction patterns
 - **Integration**: LLM prompt injection with personality context
@@ -167,7 +167,7 @@ def publish_personality_outputs(self, personality_state: PersonalityState):
 - **Message Rate**: ~5Hz during active interaction
 - **Latency Requirement**: <100ms for emotional state updates
 
-#### Chat Engine
+#### Conversation Engine
 - **Provides**: User feedback and conversation context
 - **Message Rate**: Per conversation turn
 - **Latency Requirement**: <50ms for context updates

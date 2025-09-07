@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document defines additional message formats that facilitate enhanced integration between AICO's core modules, particularly focusing on Personality Simulation, Emotion Simulation, LLM-driven Chat Engine, and Autonomous Agency. These message formats address specific integration requirements for crisis handling, ethical decision-making, proactive agency coordination, cross-modal expression, and shared learning.
+This document defines additional message formats that facilitate enhanced integration between AICO's core modules, particularly focusing on Personality Simulation, Emotion Simulation, LLM-driven Conversation Engine, and Autonomous Agency. These message formats address specific integration requirements for crisis handling, ethical decision-making, proactive agency coordination, cross-modal expression, and shared learning.
 
 All messages follow the common envelope structure with standardized metadata fields as defined in other message format documents.
 
@@ -570,7 +570,7 @@ The new message types should be integrated into the message bus with the followi
 ### LLM Conversation Events
 
 **Topic**: `llm.conversation.events`  
-**Description**: Events and analysis from the LLM-driven Chat Engine for consumption by Personality and Emotion modules.
+**Description**: Events and analysis from the LLM-driven Conversation Engine for consumption by Personality and Emotion modules.
 
 ```json
 {
@@ -674,7 +674,7 @@ The new message types should be integrated into the message bus with the followi
 ### LLM Prompt Conditioning Request
 
 **Topic**: `llm.prompt.conditioning.request`  
-**Description**: Request from the Chat Engine to Personality and Emotion modules for prompt conditioning parameters.
+**Description**: Request from the Conversation Engine to Personality and Emotion modules for prompt conditioning parameters.
 
 ```json
 {

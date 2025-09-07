@@ -210,6 +210,7 @@ nav:
     - Testing: frontend/testing_strategy.md
   - Developer Guide:
     - Getting Started: developer-guide/getting_started.md
+    - Glossary: developer-guide/terminology_glossary.md
     - UV Commands Cheat Sheet: developer-guide/uv_cheatsheet.md
     - Guidelines: developer-guide/guidelines.md
     - Backend Patterns: developer-guide/backend_patterns.md

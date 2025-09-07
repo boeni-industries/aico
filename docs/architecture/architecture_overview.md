@@ -190,7 +190,7 @@ AICO System
 │   │   ├── Component: Model Management
 │   │   ├── Component: Inference Engine
 │   │   └── Component: Resource Coordination
-│   ├── Module: Chat Engine
+│   ├── Module: Conversation Engine
 │   │   ├── Component: Conversation Flow
 │   │   ├── Component: Prompt Conditioning
 │   │   └── Component: Response Processing
@@ -579,7 +579,7 @@ The Update System manages automatic updates for both frontend and backend compon
 - **Inference Engine:** Handles quantized model inference with resource-aware processing.
 - **Resource Coordination:** Integrates with Resource Monitor for CPU/memory/battery policy enforcement.
 
-#### Chat Engine
+#### Conversation Engine
 - **Conversation Flow:** Manages dialogue state, context, and multi-turn conversations.
 - **Prompt Conditioning:** Incorporates personality and emotional context into prompts via message bus.
 - **Response Processing:** Processes LLM responses and coordinates with other modules.

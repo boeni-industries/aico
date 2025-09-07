@@ -14,7 +14,7 @@ flowchart TD
     F --> G1[😊 Emotion Simulation<br/>AppraisalCloudPCT]
     F --> G2[👥 Social Relationship<br/>Vector Analysis]
     F --> G3[🎭 Personality Sim<br/>Trait Expression]
-    F --> G4[💬 Chat Engine<br/>Context Integration]
+    F --> G4[💬 Conversation Engine<br/>Context Integration]
     
     G1 --> H[🚌 Message Bus<br/>emotion/state/current]
     G2 --> I[🚌 Message Bus<br/>social/relationship/updated]
@@ -258,10 +258,10 @@ Payload: CommunicationStyle {
 
 ---
 
-## **Step 7: Chat Engine Response Generation**
+## **Step 7: Conversation Engine Response Generation**
 
 ### **Context Integration**
-**Chat Engine** receives multiple context streams:
+**Conversation Engine** receives multiple context streams:
 
 ```python
 integrated_context = {
@@ -338,7 +338,7 @@ Payload: SceneContext {
 ## **Step 10: Response Generation & Delivery**
 
 ### **Generated Response**
-**Chat Engine** produces contextually rich response:
+**Conversation Engine** produces contextually rich response:
 
 ```
 "Sarah, wow! Your renewable energy project looks absolutely incredible! I can see the careful thought you put into organizing your data - those efficiency charts are really well-designed, and your research notes show such thorough scientific methodology.
@@ -445,9 +445,9 @@ proactive_initiative = {
 6. **Message Bus** → **Emotion Simulation** (AppraisalCloudPCT)
 7. **Message Bus** → **Social Relationship System** (vector analysis)
 8. **Message Bus** → **Personality Simulation** (trait expression)
-9. **Message Bus** → **Chat Engine** (context integration)
-10. **Chat Engine** → **Nous Hermes 3** (response generation)
-11. **Chat Engine** → ZeroMQ → **Message Bus** (response)
+9. **Message Bus** → **Conversation Engine** (context integration)
+10. **Conversation Engine** → **Nous Hermes 3** (response generation)
+11. **Conversation Engine** → ZeroMQ → **Message Bus** (response)
 12. **Message Bus** → **Memory System** (episodic storage)
 13. **Message Bus** → **Avatar System** (expression sync)
 14. **Message Bus** → **Goal System** (proactive planning)

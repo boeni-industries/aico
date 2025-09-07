@@ -13,7 +13,7 @@ The Emotion Simulation module participates in the following message bus topics:
 #### Input Topics (Subscriptions)
 ```
 - user.emotion.detected      # From Emotion Recognition
-- conversation.message       # From Chat Engine
+- conversation.message       # From Conversation Engine
 - conversation.context       # From Context Manager
 - personality.state         # From Personality Engine
 - memory.relevant           # From Memory System
@@ -144,7 +144,7 @@ def publish_emotional_outputs(self, emotional_state: EmotionalState):
 - **Uses**: Facial expressions, body language, gaze behavior
 - **Integration**: Real-time animation parameter updates via WebView JavaScript bridge
 
-#### Chat Engine
+#### Conversation Engine
 - **Subscribes to**: `emotion.expression.text`
 - **Uses**: Emotional tone, response approach, content guidance
 - **Integration**: LLM prompt injection with emotional context
@@ -317,7 +317,8 @@ The Emotion Simulation module consists of four core components that work togethe
          │                       │                       │
          ▼                       ▼                       ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│ Voice & Audio   │    │ Avatar System   │    │ Chat Engine     │
+│ Voice & Audio   │    │ Avatar System   │    │ Conversation    │
+│ System          │    │                 │    │ Engine          │
 │ System          │    │                 │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
