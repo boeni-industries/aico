@@ -277,8 +277,11 @@ async def get_conversation_status(
     """
     Get status of a conversation thread
     
-    Returns current status, message count, and context information
-    for the specified conversation thread.
+    TODO: Implement real status logic by connecting to ConversationEngine service
+    - Access conversation_threads from ConversationEngine via service container
+    - Return actual message_count from thread.message_history
+    - Return real conversation_phase, current_topic, turn_number
+    - Return actual last_activity timestamp
     """
     try:
         logger.info(f"Getting status for thread: {thread_id}", extra={
@@ -286,24 +289,11 @@ async def get_conversation_status(
             "thread_id": thread_id
         })
         
-        # For now, return basic status (would query conversation engine in full implementation)
-        current_time = datetime.utcnow()
-        status_response = ConversationStatus(
-            thread_id=thread_id,
-            active=True,
-            message_count=0,  # Would be retrieved from conversation engine
-            last_activity=current_time.isoformat(),
-            context={"status": "active"},
-            user_id=current_user['user_uuid']
-        )
-        
-        logger.info(f"Status response created successfully for thread: {thread_id}")
-        logger.debug(f"Status response data: {status_response.dict()}")
-        
-        # Return in the format expected by test client
+        # Return placeholder response indicating not implemented
         return {
             "success": True,
-            "status": status_response.dict(),
+            "message": "Status endpoint logic not implemented yet.",
+            "thread_id": thread_id,
             "error": None
         }
         

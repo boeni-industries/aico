@@ -6,13 +6,15 @@ Tests the conversation endpoints using proper authentication and encryption.
 Leverages existing AICO security infrastructure for DRY compliance.
 """
 
-import sys
+import requests
 import json
-import time
+import sys
+import os
 import subprocess
+import time
 import platform
+from typing import Optional, Dict, Any, List, Tuple
 from pathlib import Path
-from typing import Dict, Any, Optional
 
 # Add shared module to path
 script_dir = Path(__file__).parent
@@ -59,6 +61,9 @@ class ConversationRESTTester:
         
         # Conversation state
         self.current_thread_id = None
+        
+        # Timing measurements
+        self.test_timings: List[Tuple[str, float]] = []
         
         print(f"🔧 Initialized conversation tester for {base_url}")
     
@@ -293,8 +298,8 @@ class ConversationRESTTester:
         response = self.send_encrypted_request("POST", f"/api/v1/conversation/status/{self.current_thread_id}", {})
         
         if response and response.get("success", False):
-            status = response.get("status", {})
-            print(f"✅ State: {status.get('state', 'unknown')}, Messages: {status.get('message_count', 0)}")
+            message = response.get("message", "No message")
+            print(f"✅ {message}")
             return True
         else:
             error_msg = response.get('error', 'Unknown error') if response else 'No response'
@@ -388,10 +393,15 @@ class ConversationRESTTester:
         
         for i, (test_name, test_func) in enumerate(tests, 1):
             print(f"\n{i}️⃣ {test_name}...")
+            start_time = time.time()
             try:
                 if test_func():
                     passed += 1
+                    elapsed = time.time() - start_time
+                    self.test_timings.append((test_name, elapsed))
                 else:
+                    elapsed = time.time() - start_time
+                    self.test_timings.append((test_name, elapsed))
                     # Skip dependent tests if core functionality fails
                     if test_name == "Start Conversation" and passed < 3:
                         print("⚠️ Skipping remaining conversation tests due to start failure")
@@ -406,9 +416,43 @@ class ConversationRESTTester:
         if passed < total:
             print(f"❌ {total - passed} tests failed")
         
+        # Display timing table
+        self._display_timing_table()
+        
         # Cleanup
         self.cleanup_test_user()
         return passed == total
+    
+    def _display_timing_table(self):
+        """Display timing results in a formatted table"""
+        if not self.test_timings:
+            return
+            
+        print("\n⏱️  TIMING RESULTS")
+        print("=" * 50)
+        print(f"{'Test Step':<20} {'Duration (ms)':<15} {'Status':<10}")
+        print("-" * 50)
+        
+        total_time = 0
+        for test_name, duration in self.test_timings:
+            duration_ms = int(duration * 1000)
+            total_time += duration
+            
+            # Determine status based on duration
+            if duration < 0.5:
+                status = "🟢 Fast"
+            elif duration < 2.0:
+                status = "🟡 OK"
+            elif duration < 10.0:
+                status = "🟠 Slow"
+            else:
+                status = "🔴 Very Slow"
+                
+            print(f"{test_name:<20} {duration_ms:<15} {status}")
+        
+        print("-" * 50)
+        print(f"{'TOTAL':<20} {int(total_time * 1000):<15} {len(self.test_timings)} steps")
+        print()
     
     def _test_message_sequence(self) -> bool:
         """Test sending multiple messages in sequence"""
