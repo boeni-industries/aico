@@ -363,7 +363,7 @@ def main():
     print("AICO Conversation Test")
     print("Testing /messages endpoint with auto-thread creation\n")
     try:
-        response = requests.get("http://127.0.0.1:8771/health", timeout=5)
+        response = requests.get("http://127.0.0.1:8771/api/v1/health", timeout=5)
         if response.status_code == 200:
             print("✅ Backend responding (status: 200)")
         else:
