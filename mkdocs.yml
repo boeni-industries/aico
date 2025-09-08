@@ -187,6 +187,8 @@ nav:
   - Technology Stack:
       - Overview: architecture/tech_stack.md
   - Concepts:
+    - Conversation:
+      - Conversation Architecture: architecture/conversations.md
     - Emotion:
       - Emotion Simulation: concepts/emotion/emotion_sim.md
     - Personality:
