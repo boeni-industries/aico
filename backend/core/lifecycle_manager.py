@@ -260,15 +260,15 @@ class BackendLifecycleManager:
         )
         
         # Conversation engine factory
-        def create_conversation_engine(container: ServiceContainer):
+        def create_conversation_engine(container: ServiceContainer, zmq_context=None):
             from backend.services.conversation_engine import ConversationEngine
             return ConversationEngine("conversation_engine", container)
         
         self.container.register_service(
             "conversation_engine",
             create_conversation_engine,
-            dependencies=[],
-            priority=30
+            dependencies=["zmq_context"],  # Ensure ZMQ is ready before conversation engine
+            priority=35  # Start after message_bus (20) and core plugins (25-30)
         )
         
         self.logger.debug("Core services registered")

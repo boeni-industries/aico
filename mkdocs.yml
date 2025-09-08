@@ -189,6 +189,7 @@ nav:
   - Concepts:
     - Conversation:
       - Conversation Architecture: architecture/conversations.md
+      - Thread Manager: architecture/conversations_thread_manager.md 
     - Emotion:
       - Emotion Simulation: concepts/emotion/emotion_sim.md
     - Personality:

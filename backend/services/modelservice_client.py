@@ -40,7 +40,7 @@ class ModelServiceClient:
         if config is None:
             bus_config = config_manager.get("message_bus", {})
             broker_address = bus_config.get("broker_address", "tcp://localhost:5555")
-            timeout = bus_config.get("timeout", 30.0)
+            timeout = bus_config.get("timeout", 60.0)
             self.config = ModelServiceConfig(broker_address=broker_address, timeout=timeout)
         else:
             self.config = config
@@ -52,9 +52,8 @@ class ModelServiceClient:
         """Ensure ZMQ connection is established."""
         if self.bus_client is None:
             self.bus_client = MessageBusClient(
-                broker_address=self.config.broker_address,
-                identity="backend_modelservice_client",
-                enable_curve=True
+                client_id="backend_modelservice_client",
+                config_manager=self.config_manager
             )
             await self.bus_client.connect()
             self.logger.info(
@@ -66,35 +65,112 @@ class ModelServiceClient:
         """Send a request via ZMQ and wait for response."""
         await self._ensure_connection()
         
-        # Generate correlation ID for request/response pattern
+        # Generate correlation ID for request/response matching
         correlation_id = str(uuid.uuid4())
-        request_message = {
-            'correlation_id': correlation_id,
-            'data': data,
-            'timestamp': asyncio.get_event_loop().time()
-        }
+        
+        # Create proper protobuf message based on request type
+        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest
+        
+        if "completions" in request_topic:
+            # Create CompletionsRequest protobuf
+            request_proto = CompletionsRequest()
+            request_proto.model = data.get("model", "")
+            if "prompt" in data:
+                # For simple prompt, convert to messages format
+                from aico.proto.aico_modelservice_pb2 import ConversationMessage
+                msg = request_proto.messages.add()
+                msg.role = "user"
+                msg.content = data["prompt"]
+            request_proto.stream = data.get("stream", False)
+            if "temperature" in data.get("options", {}):
+                request_proto.temperature = data["options"]["temperature"]
+            if "max_tokens" in data.get("options", {}):
+                request_proto.max_tokens = data["options"]["max_tokens"]
+        elif "health" in request_topic:
+            request_proto = HealthRequest()
+        elif "models" in request_topic:
+            request_proto = ModelsRequest()
+        elif "status" in request_topic:
+            request_proto = StatusRequest()
+        else:
+            # Fallback to HealthRequest for unknown types
+            request_proto = HealthRequest()
         
         # Set up response handler
         response_received = asyncio.Event()
         response_data = {}
         
-        async def handle_response(topic: str, message: dict):
+        async def handle_response(message):
             nonlocal response_data
-            if message.get('correlation_id') == correlation_id:
-                response_data = message
+            try:
+                # Check correlation ID match
+                message_correlation_id = None
+                if hasattr(message, 'metadata') and hasattr(message.metadata, 'attributes'):
+                    message_correlation_id = message.metadata.attributes.get('correlation_id')
+                
+                self.logger.debug(f"Received response with correlation_id: {message_correlation_id}, expected: {correlation_id}")
+                
+                # Only process if correlation IDs match
+                if message_correlation_id != correlation_id:
+                    self.logger.debug(f"Correlation ID mismatch, ignoring response")
+                    return
+                
+                self.logger.debug(f"Processing response for correlation_id: {correlation_id}")
+                
+                from aico.proto.aico_modelservice_pb2 import CompletionsResponse
+                if hasattr(message, 'any_payload'):
+                    # Unpack the Any payload
+                    completions_response = CompletionsResponse()
+                    if message.any_payload.Unpack(completions_response):
+                        self.logger.debug(f"Successfully unpacked CompletionsResponse: success={completions_response.success}")
+                        response_data = {
+                            'success': completions_response.success,
+                            'error': completions_response.error if completions_response.HasField('error') else None
+                        }
+                        if completions_response.HasField('result'):
+                            # Check if result has message field (actual field name from logs)
+                            if hasattr(completions_response.result, 'message'):
+                                response_data['response'] = completions_response.result.message.content
+                                self.logger.debug(f"Extracted message content: {completions_response.result.message.content[:100]}...")
+                            elif hasattr(completions_response.result, 'content'):
+                                response_data['response'] = completions_response.result.content
+                                self.logger.debug(f"Extracted content: {completions_response.result.content[:100]}...")
+                            elif hasattr(completions_response.result, 'text'):
+                                response_data['response'] = completions_response.result.text
+                                self.logger.debug(f"Extracted text: {completions_response.result.text[:100]}...")
+                            else:
+                                # Log available fields for debugging
+                                fields = [field.name for field in completions_response.result.DESCRIPTOR.fields]
+                                self.logger.debug(f"Available result fields: {fields}")
+                                response_data['response'] = str(completions_response.result)
+                        else:
+                            self.logger.debug("No result field in response")
+                        response_received.set()
+                    else:
+                        self.logger.error("Failed to unpack CompletionsResponse")
+                        response_data = {'success': False, 'error': 'Failed to unpack response'}
+                        response_received.set()
+                else:
+                    # Handle case where message doesn't have any_payload
+                    self.logger.debug(f"Message structure: {type(message)}, fields: {dir(message)}")
+                    response_data = {'success': False, 'error': 'Invalid message format'}
+                    response_received.set()
+            except Exception as e:
+                self.logger.error(f"Error parsing response: {e}")
+                response_data = {'success': False, 'error': str(e)}
                 response_received.set()
         
         # Subscribe to response topic
         await self.bus_client.subscribe(response_topic, handle_response)
         
         try:
-            # Send request
-            await self.bus_client.publish(request_topic, request_message)
+            # Send request with correlation ID
+            await self.bus_client.publish(request_topic, request_proto, correlation_id=correlation_id)
             
             # Wait for response with timeout
             await asyncio.wait_for(response_received.wait(), timeout=self.config.timeout)
             
-            return response_data.get('data', {})
+            return response_data
             
         except asyncio.TimeoutError:
             error_msg = f"Request timed out after {self.config.timeout}s"

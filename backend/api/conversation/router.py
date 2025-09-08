@@ -9,22 +9,25 @@ import asyncio
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, Query
 from fastapi.security import HTTPBearer
 
 from aico.core.logging import get_logger
-from aico.core.bus import MessageBusClient
-from aico.core.topics import AICOTopics
+from backend.api.conversation.dependencies import get_message_bus_client
+from backend.api.conversation.dependencies import get_current_user
+from backend.services.thread_manager import get_thread_manager
 from aico.proto.aico_conversation_pb2 import ConversationMessage, Message, MessageAnalysis
 from aico.proto.aico_conversation_pb2 import ConversationContext, Context, RecentHistory
 from aico.proto.aico_conversation_pb2 import ResponseRequest, ResponseParameters
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from .dependencies import get_current_user, verify_thread_access, get_message_bus_client
-from .schemas import (
-    ConversationStartRequest, ConversationMessageRequest, ConversationResponse,
-    ConversationStatus, ConversationHealthResponse, WebSocketAIResponse,
-    WebSocketError, WebSocketMessageType, MessageType
+from .dependencies import verify_thread_access
+from backend.api.conversation.schemas import (
+    ThreadCreateRequest, ThreadResponse,
+    MessageSendRequest, MessageResponse,
+    ThreadListResponse, MessageHistoryResponse,
+    UnifiedMessageRequest, UnifiedMessageResponse,
+    HealthResponse
 )
 from backend.api.conversation.exceptions import (
     ConversationNotFoundException, InvalidThreadException, ThreadAccessDeniedException,
@@ -40,234 +43,318 @@ security = HTTPBearer()
 active_connections: Dict[str, WebSocket] = {}
 
 
-@router.post("/start", response_model=ConversationResponse)
-async def start_conversation(
-    request: ConversationStartRequest,
+# Unified endpoint with automatic thread management
+@router.post("/messages", response_model=UnifiedMessageResponse)
+async def send_message_with_auto_thread(
+    request: UnifiedMessageRequest,
     current_user = Depends(get_current_user),
+    thread_manager = Depends(get_thread_manager),
     bus_client = Depends(get_message_bus_client)
 ):
-    """
-    Start a new conversation thread
-    
-    Creates a new conversation thread and optionally processes an initial message.
-    Returns the thread ID for subsequent message exchanges.
-    """
+    """Send message with automatic thread resolution (primary endpoint)"""
     try:
-        # Generate new thread ID
-        thread_id = str(uuid.uuid4())
+        user_id = current_user['user_uuid']
         
-        logger.info(f"Starting new conversation thread: {thread_id}", extra={
-            "user_id": current_user['user_uuid'],
-            "thread_id": thread_id
-        })
-        
-        # If initial message provided, process it
-        response_text = None
-        message_id = None
-        
-        if request.initial_message:
-            message_id = str(uuid.uuid4())
-            
-            # Create conversation message protobuf
-            conv_message = ConversationMessage()
-            conv_message.timestamp.GetCurrentTime()
-            conv_message.source = current_user['user_uuid']
-            
-            # Set message content
-            conv_message.message.text = request.initial_message
-            conv_message.message.type = Message.MessageType.USER_INPUT
-            conv_message.message.thread_id = thread_id
-            conv_message.message.turn_number = 1
-            
-            # Set message analysis
-            conv_message.analysis.intent = "conversation_start"
-            conv_message.analysis.urgency = MessageAnalysis.Urgency.MEDIUM
-            conv_message.analysis.requires_response = True
-            
-            # Set up response waiting mechanism
-            response_received = asyncio.Event()
-            actual_response_text = None
-            
-            async def handle_ai_response(envelope):
-                nonlocal actual_response_text
-                try:
-                    # Check if this response is for our thread
-                    from aico.proto.aico_conversation_pb2 import ConversationMessage
-                    ai_message = ConversationMessage()
-                    envelope.any_payload.Unpack(ai_message)
-                    
-                    if ai_message.message.thread_id == thread_id:
-                        actual_response_text = ai_message.message.text
-                        response_received.set()
-                except Exception as e:
-                    logger.error(f"Error handling AI response: {e}")
-                    actual_response_text = "Error processing AI response"
-                    response_received.set()
-            
-            # Subscribe to AI response topic before publishing
-            await bus_client.subscribe(AICOTopics.CONVERSATION_AI_RESPONSE, handle_ai_response)
-            
-            # Publish to message bus
-            await bus_client.publish(
-                AICOTopics.CONVERSATION_USER_INPUT,
-                conv_message
-            )
-            
-            logger.info(f"Published initial message to conversation bus", extra={
-                "thread_id": thread_id,
-                "message_id": message_id,
-                "topic": AICOTopics.CONVERSATION_USER_INPUT
-            })
-            
-            # Wait for actual AI response (12 second timeout - shorter than client's 15s)
-            try:
-                await asyncio.wait_for(response_received.wait(), timeout=12.0)
-                response_text = actual_response_text or "No response received"
-            except asyncio.TimeoutError:
-                response_text = "Response timeout - AI is processing your request"
-            finally:
-                # Unsubscribe to prevent memory leaks
-                try:
-                    await bus_client.unsubscribe(AICOTopics.CONVERSATION_AI_RESPONSE, handle_ai_response)
-                except Exception:
-                    pass
-        
-        return ConversationResponse(
-            success=True,
-            thread_id=thread_id,
-            message_id=message_id,
-            response=response_text
+        # Automatic thread resolution
+        thread_resolution = await thread_manager.resolve_thread_for_message(
+            user_id=user_id,
+            message=request.message,
+            context=request.context
         )
         
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        logger.error(f"Failed to start conversation: {e}", extra={
-            "user_id": current_user.get('user_uuid', 'unknown') if isinstance(current_user, dict) else getattr(current_user, 'user_uuid', 'unknown'),
-            "error": str(e),
-            "traceback": error_details
-        })
-        print(f"[CONVERSATION START ERROR] {e}")
-        print(f"[CONVERSATION START TRACEBACK] {error_details}")
-        raise MessageProcessingException(
-            message=request.initial_message or "[no initial message]",
-            user_id=current_user['user_uuid'] if isinstance(current_user, dict) else current_user.user_uuid,
-            processing_error=str(e)
-        )
-
-@router.post("/message/{thread_id}", response_model=ConversationResponse)
-async def send_message(
-    thread_id: str,
-    request: ConversationMessageRequest,
-    current_user = Depends(get_current_user),
-    bus_client = Depends(get_message_bus_client),
-    thread_access = Depends(verify_thread_access)
-):
-    """
-    Send a message in an existing conversation thread
-    
-    Processes the user message through the conversation engine and
-    returns acknowledgment. Real-time response delivered via WebSocket.
-    """
-    try:
+        # Generate message ID and timestamp
         message_id = str(uuid.uuid4())
+        timestamp = datetime.utcnow()
         
-        logger.info(f"Processing message in thread: {thread_id}", extra={
-            "user_id": current_user['user_uuid'],
-            "thread_id": thread_id,
-            "message_id": message_id
-        })
+        # Create conversation message for message bus
+        from google.protobuf.timestamp_pb2 import Timestamp
         
-        # Create conversation message protobuf
-        conv_message = ConversationMessage()
-        conv_message.timestamp.GetCurrentTime()
-        conv_message.source = current_user['user_uuid']
+        proto_timestamp = Timestamp()
+        proto_timestamp.FromDatetime(timestamp)
         
-        # Set message content
-        conv_message.message.text = request.message
-        # Convert schema enum to protobuf enum
-        if request.message_type == MessageType.USER_INPUT:
-            conv_message.message.type = Message.MessageType.USER_INPUT
-        elif request.message_type == MessageType.SYSTEM:
-            conv_message.message.type = Message.MessageType.SYSTEM
-        else:
-            conv_message.message.type = Message.MessageType.USER_INPUT
-            
-        conv_message.message.thread_id = thread_id
-        conv_message.message.turn_number = 0  # Will be set by conversation engine
+        conv_message = ConversationMessage(
+            timestamp=proto_timestamp,
+            source="conversation_api",
+            message_id=message_id,
+            user_id=user_id
+        )
         
-        # Set message analysis (basic for now)
-        conv_message.analysis.intent = "user_message"
-        conv_message.analysis.urgency = MessageAnalysis.Urgency.MEDIUM
-        conv_message.analysis.requires_response = True
-        
-        # Set up response waiting mechanism
-        response_received = asyncio.Event()
-        actual_response_text = None
-        
-        async def handle_ai_response(envelope):
-            nonlocal actual_response_text
-            try:
-                # Check if this response is for our thread
-                from aico.proto.aico_conversation_pb2 import ConversationMessage
-                ai_message = ConversationMessage()
-                envelope.any_payload.Unpack(ai_message)
-                
-                if ai_message.message.thread_id == thread_id:
-                    actual_response_text = ai_message.message.text
-                    response_received.set()
-            except Exception as e:
-                logger.error(f"Error handling AI response: {e}")
-                actual_response_text = "Error processing AI response"
-                response_received.set()
-        
-        # Subscribe to AI response topic before publishing
-        await bus_client.subscribe(AICOTopics.CONVERSATION_AI_RESPONSE, handle_ai_response)
-        
-        # Publish to message bus
+        # Publish to message bus for async processing
         await bus_client.publish(
-            AICOTopics.CONVERSATION_USER_INPUT,
+            "conversation/user/input",
             conv_message
         )
         
-        logger.info(f"Published message to conversation bus", extra={
-            "thread_id": thread_id,
-            "message_id": message_id,
-            "topic": AICOTopics.CONVERSATION_USER_INPUT
-        })
+        # Get modelservice client and generate LLM response
+        from backend.services.modelservice_client import get_modelservice_client
+        from aico.core.config import ConfigurationManager
         
-        # Wait for actual AI response (12 second timeout - shorter than client's 15s)
+        config_manager = ConfigurationManager()
+        config_manager.initialize(lightweight=True)
+        modelservice_client = get_modelservice_client(config_manager)
+        
+        # Get conversation model from configuration
+        modelservice_config = config_manager.get("modelservice", {})
+        ollama_config = modelservice_config.get("ollama", {})
+        default_models = ollama_config.get("default_models", {})
+        conversation_model = default_models.get("conversation", {}).get("name", "hermes3:8b")
+        
+        # Generate LLM response
         try:
-            await asyncio.wait_for(response_received.wait(), timeout=12.0)
-            response_text = actual_response_text or "No response received"
-        except asyncio.TimeoutError:
-            response_text = "Response timeout - AI is processing your request"
-        finally:
-            # Unsubscribe to prevent memory leaks
-            try:
-                await bus_client.unsubscribe(AICOTopics.CONVERSATION_AI_RESPONSE, handle_ai_response)
-            except Exception:
-                pass
+            llm_response = await modelservice_client.get_completions(
+                model=conversation_model,
+                prompt=request.message
+            )
+            
+            ai_response = "No response available"
+            logger.debug(f"LLM response received: {llm_response}")
+            if llm_response.get("success", False) and "response" in llm_response:
+                ai_response = llm_response["response"]
+                logger.debug(f"Extracted AI response: {ai_response[:100]}...")
+            elif "choices" in llm_response and len(llm_response["choices"]) > 0:
+                ai_response = llm_response["choices"][0].get("text", ai_response)
+            else:
+                logger.error(f"Unexpected LLM response format: {llm_response}")
+                ai_response = "LLM response received but format unexpected"
+        except Exception as e:
+            logger.error(f"LLM request failed: {e}")
+            ai_response = f"LLM request failed: {str(e)}"
         
-        return ConversationResponse(
+        logger.info(f"Auto-resolved message {message_id} to thread {thread_resolution.thread_id} (action: {thread_resolution.action})")
+        
+        # Return response with AI reply
+        response_data = UnifiedMessageResponse(
             success=True,
-            thread_id=thread_id,
             message_id=message_id,
-            response=response_text
+            thread_id=thread_resolution.thread_id,
+            thread_action=thread_resolution.action,
+            thread_reasoning=thread_resolution.reasoning,
+            status="completed",
+            timestamp=timestamp,
+            ai_response=ai_response
+        )
+        
+        return response_data
+        
+    except Exception as e:
+        logger.error(f"Failed to send message with auto-thread: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process message")
+
+
+@router.post("/threads", response_model=ThreadResponse)
+async def create_thread(
+    request: ThreadCreateRequest,
+    current_user = Depends(get_current_user),
+    thread_manager = Depends(get_thread_manager),
+    bus_client = Depends(get_message_bus_client)
+):
+    """Create a new conversation thread explicitly (advanced endpoint)"""
+    try:
+        user_id = current_user['user_uuid']
+        
+        # Create explicit thread via ThreadManager
+        thread_resolution = await thread_manager.create_explicit_thread(
+            user_id=user_id,
+            thread_type=request.thread_type,
+            initial_message=request.initial_message,
+            context=request.context
+        )
+        
+        # If initial message provided, send it to the thread
+        if request.initial_message:
+            message_id = str(uuid.uuid4())
+            
+            proto_timestamp = Timestamp()
+            proto_timestamp.FromDatetime(thread_resolution.created_at)
+            
+            conv_message = ConversationMessage(
+                timestamp=proto_timestamp,
+                source="conversation_api",
+                message_id=message_id,
+                user_id=user_id
+            )
+            
+            # Publish to message bus for async processing
+            await bus_client.publish(
+                "conversation/user/input",
+                conv_message
+            )
+            
+            logger.info(f"Published initial message {message_id} to explicit thread {thread_resolution.thread_id}")
+        
+        return ThreadResponse(
+            success=True,
+            thread_id=thread_resolution.thread_id,
+            status="created",
+            created_at=thread_resolution.created_at,
+            message_count=1 if request.initial_message else 0
         )
         
     except Exception as e:
-        logger.error(f"Failed to send message: {e}", extra={
-            "user_id": current_user['user_uuid'],
+        logger.error(f"Failed to create explicit thread: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create thread")
+
+
+@router.post("/threads/{thread_id}/messages", response_model=MessageResponse)
+async def send_message_to_thread(
+    thread_id: str,
+    request: MessageSendRequest,
+    current_user = Depends(get_current_user),
+    thread_manager = Depends(get_thread_manager),
+    bus_client = Depends(get_message_bus_client)
+):
+    """Send a message to a specific thread (advanced endpoint)"""
+    try:
+        user_id = current_user['user_uuid']
+        
+        # Validate thread access
+        if not await thread_manager.validate_thread_access(thread_id, user_id):
+            raise HTTPException(status_code=403, detail="Thread access denied")
+        
+        message_id = str(uuid.uuid4())
+        timestamp = datetime.utcnow()
+        
+        proto_timestamp = Timestamp()
+        proto_timestamp.FromDatetime(timestamp)
+        
+        conv_message = ConversationMessage(
+            timestamp=proto_timestamp,
+            source="conversation_api",
+            message_id=message_id,
+            user_id=user_id
+        )
+        
+        # Publish to message bus for async processing
+        await bus_client.publish(
+            "conversation/user/input",
+            conv_message
+        )
+        
+        logger.info(f"Published message {message_id} to explicit thread {thread_id}")
+        
+        return MessageResponse(
+            success=True,
+            message_id=message_id,
+            thread_id=thread_id,
+            status="processing",
+            timestamp=timestamp
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to send message to thread {thread_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send message")
+
+
+@router.get("/threads/{thread_id}", response_model=ThreadResponse)
+async def get_thread(
+    thread_id: str,
+    current_user = Depends(get_current_user),
+    thread_manager = Depends(get_thread_manager)
+):
+    """Get thread metadata and status"""
+    try:
+        user_id = current_user['user_uuid']
+        
+        # Validate thread access
+        if not await thread_manager.validate_thread_access(thread_id, user_id):
+            raise HTTPException(status_code=403, detail="Thread access denied")
+        
+        # Get thread info
+        thread_info = await thread_manager.get_thread_info(thread_id, user_id)
+        if not thread_info:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        
+        return ThreadResponse(
+            success=True,
+            thread_id=thread_info.thread_id,
+            status=thread_info.status,
+            created_at=datetime.utcnow(),  # TODO: Use actual creation time from thread_info
+            message_count=thread_info.message_count
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get thread {thread_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get thread")
+
+
+@router.get("/threads", response_model=ThreadListResponse)
+async def list_threads(
+    current_user = Depends(get_current_user),
+    thread_manager = Depends(get_thread_manager),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page")
+):
+    """List user's conversation threads"""
+    try:
+        user_id = current_user['user_uuid']
+        
+        # TODO: Implement actual thread listing via ThreadManager
+        # For now, return empty list
+        
+        return ThreadListResponse(
+            success=True,
+            threads=[],
+            total_count=0,
+            page=page,
+            page_size=page_size
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to list threads for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list threads")
+
+
+@router.get("/threads/{thread_id}/messages", response_model=MessageHistoryResponse)
+async def get_message_history(
+    thread_id: str,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=100, description="Messages per page"),
+    current_user = Depends(get_current_user)
+):
+    """
+    Get message history for a thread
+    
+    Returns paginated message history with metadata.
+    """
+    try:
+        # Validate thread ID format
+        try:
+            uuid.UUID(thread_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid thread ID format"
+            )
+        
+        # TODO: Retrieve messages from database with pagination
+        # For now, return mock data
+        
+        return MessageHistoryResponse(
+            success=True,
+            messages=[],
+            thread_id=thread_id,
+            total_count=0,
+            page=page,
+            page_size=page_size
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get message history: {e}", extra={
+            "user_id": current_user.get('user_uuid', 'unknown'),
             "thread_id": thread_id,
             "error": str(e)
         })
-        raise MessageProcessingException(
-            message=request.message,
-            thread_id=thread_id,
-            user_id=current_user['user_uuid'],
-            processing_error=str(e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get message history: {str(e)}"
         )
+
 
 @router.post("/status/{thread_id}")
 async def get_conversation_status(
@@ -304,6 +391,7 @@ async def get_conversation_status(
             "error": str(e)
         })
         raise ConversationNotFoundException(thread_id=thread_id, user_id=current_user['user_uuid'])
+
 
 @router.websocket("/ws/{thread_id}")
 async def conversation_websocket(websocket: WebSocket, thread_id: str):
@@ -413,11 +501,25 @@ async def conversation_websocket(websocket: WebSocket, thread_id: str):
             "connection_id": connection_id
         })
 
-@router.post("/health", response_model=ConversationHealthResponse)
-async def conversation_health():
-    """Health check endpoint for conversation API"""
-    return ConversationHealthResponse(
+
+@router.post("/health", response_model=HealthResponse)
+async def health_check():
+    """Health check endpoint for conversation service"""
+    return HealthResponse(
         status="healthy",
-        active_connections=len(active_connections),
-        active_threads=len(set(conn_id.split('_')[0] for conn_id in active_connections.keys()))
+        timestamp=datetime.utcnow(),
+        version="1.0.0"
     )
+
+
+# Legacy endpoint support (deprecated)
+@router.post("/start", response_model=UnifiedMessageResponse, deprecated=True)
+async def start_conversation_legacy(
+    request: UnifiedMessageRequest,
+    current_user = Depends(get_current_user),
+    thread_manager = Depends(get_thread_manager),
+    bus_client = Depends(get_message_bus_client)
+):
+    """Legacy start endpoint - redirects to unified messages endpoint"""
+    logger.warning("Using deprecated /start endpoint - use /messages instead")
+    return await send_message_with_auto_thread(request, current_user, thread_manager, bus_client)

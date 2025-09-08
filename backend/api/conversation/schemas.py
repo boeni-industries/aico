@@ -4,11 +4,12 @@ Conversation API Schemas
 Pydantic models for conversation API request/response validation and serialization.
 """
 
-from datetime import datetime
-from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field, validator
+from typing import Optional, Dict, Any, List
+from datetime import datetime
 import json
 from enum import Enum
+import uuid
 
 
 class MessageType(str, Enum):
@@ -19,18 +20,74 @@ class MessageType(str, Enum):
     PROACTIVE = "proactive"
 
 
-class ConversationStartRequest(BaseModel):
-    """Request to start a new conversation"""
-    initial_message: Optional[str] = Field(None, description="Optional initial message to start conversation")
-    context: Optional[Dict[str, Any]] = Field(None, description="Additional context for conversation")
-    response_mode: Optional[str] = Field("multimodal", description="Response mode: text_only, multimodal, proactive")
+class ThreadCreateRequest(BaseModel):
+    """Request schema for creating new conversation threads"""
+    initial_message: Optional[str] = Field(None, description="Optional first message")
+    context: Optional[Dict[str, Any]] = Field(None, description="Initial context metadata")
+    thread_type: str = Field("conversation", description="Thread type for categorization")
     
     @validator('initial_message')
     def validate_initial_message(cls, v):
-        if v is not None and len(v.strip()) == 0:
-            raise ValueError("Initial message cannot be empty")
-        if v is not None and len(v) > 10000:
-            raise ValueError("Initial message too long (max 10000 characters)")
+        if v is not None:
+            if not v.strip():
+                raise ValueError('Initial message cannot be empty if provided')
+            if len(v) > 10000:  # 10KB limit
+                raise ValueError('Initial message too long (max 10KB)')
+            return v.strip()
+        return v
+    
+    @validator('thread_type')
+    def validate_thread_type(cls, v):
+        valid_types = ['conversation', 'support', 'creative', 'technical']
+        if v not in valid_types:
+            raise ValueError(f'Invalid thread_type. Must be one of: {valid_types}')
+        return v
+
+
+class MessageSendRequest(BaseModel):
+    """Request schema for sending messages to threads"""
+    message: str = Field(..., description="Message content")
+    message_type: str = Field("text", description="Message type")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Message metadata")
+    
+    @validator('message')
+    def validate_message(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Message cannot be empty')
+        if len(v) > 10000:  # 10KB limit
+            raise ValueError('Message too long (max 10KB)')
+        return v.strip()
+    
+    @validator('message_type')
+    def validate_message_type(cls, v):
+        valid_types = ['text', 'audio', 'image', 'multimodal']
+        if v not in valid_types:
+            raise ValueError(f'Invalid message_type. Must be one of: {valid_types}')
+        return v
+
+
+class ConversationStartRequest(BaseModel):
+    """Request to start or continue a conversation"""
+    message: str = Field(..., description="Message to send (required)")
+    thread_id: Optional[str] = Field(None, description="Optional thread ID to continue existing conversation")
+    context: Optional[Dict[str, Any]] = Field(None, description="Additional context for conversation")
+    response_mode: Optional[str] = Field("text", description="Response mode: text, multimodal, proactive")
+    
+    @validator('message')
+    def validate_message(cls, v):
+        if not v or len(v.strip()) == 0:
+            raise ValueError("Message content is required")
+        if len(v) > 10000:
+            raise ValueError("Message too long (max 10000 characters)")
+        return v.strip()
+    
+    @validator('thread_id')
+    def validate_thread_id(cls, v):
+        if v is not None:
+            try:
+                uuid.UUID(v)
+            except ValueError:
+                raise ValueError("Invalid thread ID format")
         return v
 
 
@@ -50,14 +107,29 @@ class ConversationMessageRequest(BaseModel):
         return v.strip()
 
 
-class ConversationResponse(BaseModel):
-    """Response from conversation API"""
-    success: bool = Field(..., description="Whether the operation succeeded")
-    thread_id: Optional[str] = Field(None, description="Conversation thread ID")
-    message_id: Optional[str] = Field(None, description="Generated message ID")
-    response: Optional[str] = Field(None, description="Response message or acknowledgment")
-    error: Optional[str] = Field(None, description="Error message if operation failed")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Response timestamp")
+class ThreadResponse(BaseModel):
+    """Response schema for thread operations"""
+    success: bool = Field(..., description="Operation success status")
+    thread_id: str = Field(..., description="Thread identifier")
+    status: str = Field(..., description="Thread status")
+    created_at: datetime = Field(..., description="Thread creation timestamp")
+    message_count: int = Field(0, description="Number of messages in thread")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Thread metadata")
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class MessageResponse(BaseModel):
+    """Response schema for message operations"""
+    success: bool = Field(..., description="Operation success status")
+    message_id: str = Field(..., description="Message identifier")
+    thread_id: str = Field(..., description="Thread identifier")
+    status: str = Field(..., description="Message processing status")
+    timestamp: datetime = Field(..., description="Message timestamp")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Message metadata")
     
     class Config:
         json_encoders = {
@@ -83,11 +155,50 @@ class ConversationListRequest(BaseModel):
     since: Optional[datetime] = Field(None, description="Show conversations after timestamp")
 
 
-class ConversationListResponse(BaseModel):
-    """Response for conversation list"""
-    conversations: List[ConversationStatus] = Field(..., description="List of conversations")
-    total: int = Field(..., description="Total number of conversations")
-    has_more: bool = Field(..., description="Whether more conversations are available")
+class ThreadListResponse(BaseModel):
+    """Response schema for listing threads"""
+    success: bool = Field(..., description="Operation success status")
+    threads: List[Dict[str, Any]] = Field(..., description="List of thread summaries")
+    total_count: int = Field(..., description="Total number of threads")
+    page: int = Field(1, description="Current page number")
+    page_size: int = Field(20, description="Number of threads per page")
+
+
+class MessageHistoryResponse(BaseModel):
+    """Response for message history retrieval"""
+    success: bool
+    thread_id: str
+    messages: List[Dict[str, Any]]
+    total_count: int
+    page: int = 1
+    page_size: int = 50
+
+
+class HealthResponse(BaseModel):
+    """Health check response"""
+    status: str
+    timestamp: datetime
+    version: str = "1.0.0"
+
+
+class UnifiedMessageRequest(BaseModel):
+    """Request for unified message endpoint with automatic thread resolution"""
+    message: str = Field(..., description="Message content")
+    message_type: str = Field("text", description="Message type")
+    context: Optional[Dict[str, Any]] = Field(None, description="Optional context for thread resolution")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Message metadata")
+
+
+class UnifiedMessageResponse(BaseModel):
+    """Response for unified message endpoint"""
+    success: bool
+    message_id: str
+    thread_id: str
+    thread_action: str  # "continued", "created", "reactivated"
+    thread_reasoning: str
+    status: str  # "processing", "queued", "error"
+    timestamp: datetime
+    ai_response: Optional[str] = Field(None, description="AI response to the message")
 
 
 # WebSocket Message Schemas

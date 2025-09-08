@@ -2,215 +2,149 @@
 """
 AICO Conversation REST API Test Script
 
-Tests the conversation endpoints using proper authentication and encryption.
-Leverages existing AICO security infrastructure for DRY compliance.
+Simple test focusing on /messages endpoint with auto-thread creation.
+Sends user input and displays the AI response.
 """
 
-import requests
-import json
 import sys
-import os
-import subprocess
+import json
 import time
-import platform
-from typing import Optional, Dict, Any, List, Tuple
+import base64
+import requests
+import subprocess
 from pathlib import Path
+from typing import Dict, Any, Optional
 
 # Add shared module to path
 script_dir = Path(__file__).parent
 shared_path = script_dir.parent / "shared"
 sys.path.insert(0, str(shared_path))
 
-try:
-    import requests
-    from aico.core.config import ConfigurationManager
-    from aico.security.key_manager import AICOKeyManager
-    from aico.security.transport import SecureTransportChannel, ComponentIdentity
-    from aico.core.logging import AICOLoggerFactory
-    
-    # Initialize config manager
-    config_manager = ConfigurationManager()
-    config_manager.initialize(lightweight=False)
-    config_manager.set("logging.levels.default", "INFO")
-    
-    # Create logger factory
-    logger_factory = AICOLoggerFactory(config_manager)
-    logger = logger_factory.create_logger("test", "conversation_rest")
-    
-except ImportError as e:
-    print(f"❌ Import error: {e}")
-    print("Please ensure all required dependencies are installed")
-    sys.exit(1)
+from nacl.public import PrivateKey, PublicKey, Box
+from nacl.secret import SecretBox
+from nacl.signing import SigningKey
+from nacl.encoding import Base64Encoder
+from nacl.exceptions import CryptoError
+from nacl.utils import random
 
-
-class ConversationRESTTester:
-    """Test AICO conversation REST API using existing security infrastructure"""
-    
+class ConversationTester:
     def __init__(self, base_url: str = "http://127.0.0.1:8771"):
         self.base_url = base_url
-        self.session = requests.Session()
+        self.handshake_url = f"{base_url}/api/v1/handshake"
         
-        # Use existing AICO security infrastructure
-        self.identity = ComponentIdentity.generate("conversation_test_client")
-        self.key_manager = AICOKeyManager(config_manager)
-        self.transport = SecureTransportChannel(self.identity, self.key_manager)
+        # Encryption state
+        self.session_key = None
+        self.session_box = None
+        self.server_public_key = None
         
-        # Authentication
+        # Authentication state
         self.jwt_token = None
         self.test_user_uuid = None
         
-        # Conversation state
-        self.current_thread_id = None
-        
-        # Timing measurements
-        self.test_timings: List[Tuple[str, float]] = []
-        
-        print(f"🔧 Initialized conversation tester for {base_url}")
-    
+        # Generate identity keys for signing
+        self.signing_key = SigningKey.generate()
+        self.verify_key = self.signing_key.verify_key
+
     def perform_handshake(self) -> bool:
-        """Perform encrypted handshake using existing transport layer"""
+        """Perform encrypted handshake with backend"""
         try:
             print("🤝 Performing encrypted handshake...")
             
-            handshake_request = self.transport.create_handshake_request()
+            # Generate ephemeral X25519 keypair for session
+            client_private_key = PrivateKey.generate()
+            client_public_key = client_private_key.public_key
             
-            # Wrap in envelope like transit_security_test.py does
+            # Create handshake request with both keys
+            challenge_bytes = random(32)
+            handshake_request = {
+                "component": "conversation_test_client",
+                "identity_key": base64.b64encode(bytes(self.verify_key)).decode(),
+                "public_key": base64.b64encode(bytes(client_public_key)).decode(),
+                "timestamp": int(time.time()),
+                "challenge": base64.b64encode(challenge_bytes).decode()
+            }
+            
+            # Sign the challenge (not the entire request)
+            signature = self.signing_key.sign(challenge_bytes).signature
+            handshake_request["signature"] = base64.b64encode(signature).decode()
+            
             handshake_payload = {
                 "handshake_request": handshake_request
             }
             
-            response = self.session.post(
-                f"{self.base_url}/api/v1/handshake",
+            # Send handshake request
+            response = requests.post(
+                self.handshake_url,
                 json=handshake_payload,
-                timeout=10
+                headers={"Content-Type": "application/json"},
+                timeout=60
             )
             
-            if response.status_code == 200:
-                response_data = response.json()
-                if response_data.get("status") == "session_established":
-                    # Extract the actual handshake response from the envelope
-                    handshake_response = response_data.get("handshake_response", {})
-                    if self.transport.process_handshake_response(handshake_response):
-                        print("✅ Handshake successful")
-                        return True
-                    else:
-                        print("❌ Handshake processing failed")
-                        return False
-                else:
-                    print(f"❌ Handshake rejected: {response_data.get('error', 'Unknown error')}")
-                    return False
-            else:
-                print(f"❌ Handshake failed - HTTP {response.status_code}: {response.text}")
+            if response.status_code != 200:
+                print(f"❌ Handshake failed: HTTP {response.status_code}")
+                print(f"Response: {response.text}")
                 return False
-                
+            
+            # Process handshake response
+            handshake_response = response.json()
+            
+            if handshake_response.get("status") != "session_established":
+                print(f"❌ Handshake rejected: {handshake_response.get('error', 'Unknown error')}")
+                return False
+            
+            # Extract server public key and derive session key
+            response_data = handshake_response["handshake_response"]
+            server_public_key_b64 = response_data["public_key"]
+            self.server_public_key = PublicKey(base64.b64decode(server_public_key_b64))
+            
+            # Derive shared session key using X25519
+            shared_box = Box(client_private_key, self.server_public_key)
+            self.session_key = shared_box.shared_key()
+            self.session_box = SecretBox(self.session_key)
+            
+            print("✅ Handshake successful")
+            return True
+            
         except Exception as e:
             print(f"❌ Handshake error: {e}")
-            import traceback
-            traceback.print_exc()
             return False
-    
-    def send_encrypted_request(self, method: str, endpoint: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Send encrypted request using existing transport layer"""
-        if not self.transport.is_session_valid():
-            print("❌ No valid session established")
-            return None
-        
-        try:
-            # Encrypt using existing transport
-            encrypted_payload = self.transport.encrypt_json_payload(data)
-            
-            # Create request envelope like transit_security_test.py
-            request_envelope = {
-                "encrypted": True,
-                "payload": encrypted_payload,
-                "client_id": self.identity.verify_key.encode().hex()[:16]
-            }
-            
-            # Send encrypted request
-            headers = {"Content-Type": "application/json"}
-            if self.jwt_token:
-                headers["Authorization"] = f"Bearer {self.jwt_token}"
-            
-            # All encrypted requests are sent as POST with the envelope
-            # The backend will handle the actual method based on the endpoint
-            response = self.session.post(
-                f"{self.base_url}{endpoint}",
-                json=request_envelope,
-                headers=headers,
-                timeout=15
-            )
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                if response_data.get("encrypted"):
-                    # Decrypt response
-                    return self.transport.decrypt_json_payload(response_data["payload"])
-                else:
-                    return response_data
-            else:
-                print(f"❌ Request failed - HTTP {response.status_code}: {response.text}")
-                # Try to decrypt error response if it's encrypted
-                try:
-                    response_data = response.json()
-                    if response_data.get("encrypted") and "payload" in response_data:
-                        return self.transport.decrypt_json_payload(response_data["payload"])
-                except Exception:
-                    pass
-                return None
-                
-        except Exception as e:
-            print(f"❌ Encrypted request error: {e}")
-            return None
-    
+
     def ensure_test_user(self) -> Optional[str]:
-        """Create test user using CLI - reuse existing pattern"""
-        return self._create_test_user_via_cli("Conversation Test User", "ConvTestUser")
-    
-    def _create_test_user_via_cli(self, full_name: str, nickname: str) -> Optional[str]:
-        """Create test user via CLI - extracted from existing scripts"""
+        """Ensure a test user exists for authentication testing"""
         try:
-            print(f"👤 Creating test user: {nickname}...")
-            
             import os
-            
-            # Handle Windows encoding issues
-            encoding = 'utf-8'
-            if platform.system() == 'Windows':
-                env = os.environ.copy()
-                env['PYTHONIOENCODING'] = 'utf-8'
-            else:
-                env = None
+            env = os.environ.copy()
+            env['PYTHONIOENCODING'] = 'utf-8'
             
             result = subprocess.run([
-                "uv", "run", "python", "-m", "cli.aico_main",
+                "uv", "run", "python", "-m", "cli.aico_main", 
                 "security", "user-create", 
-                full_name,
-                "--nickname", nickname, 
+                "ConvTestUser",
+                "--nickname", "TestUser",
                 "--pin", "1234"
-            ],
-            cwd=script_dir.parent, capture_output=True, text=True,
-            encoding=encoding, errors='replace', timeout=30, env=env
+            ], 
+            cwd=Path(__file__).parent.parent,
+            capture_output=True, 
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            timeout=30,
+            env=env
             )
             
             if result.returncode == 0:
-                # Extract UUID from output
                 output_lines = result.stdout.split('\n')
                 for line in output_lines:
                     if line.startswith('UUID: '):
                         test_uuid = line.replace('UUID: ', '').strip()
-                        print(f"✅ Test user created: {test_uuid}")
                         self.test_user_uuid = test_uuid
                         return test_uuid
                         
-                print("⚠️ Test user created but UUID not found in output")
                 return self._generate_deterministic_uuid("conv_test_user")
             else:
-                # User might already exist, try deterministic UUID
-                print(f"⚠️ User creation failed (exit code {result.returncode}), trying existing user")
                 return self._generate_deterministic_uuid("conv_test_user")
                 
         except Exception as e:
-            print(f"⚠️ CLI user creation failed: {e}")
             return self._generate_deterministic_uuid("conv_test_user")
     
     def _generate_deterministic_uuid(self, seed: str) -> str:
@@ -235,7 +169,7 @@ class ConversationRESTTester:
             "timestamp": int(time.time())
         }
         
-        response = self.send_encrypted_request("POST", "/api/v1/users/authenticate", auth_request)
+        response = self.send_encrypted_request("/api/v1/users/authenticate", auth_request)
         
         if response and response.get("success", False):
             self.jwt_token = response.get("jwt_token", "")
@@ -245,88 +179,121 @@ class ConversationRESTTester:
             error_msg = response.get('message', 'Unknown error') if response else 'No response'
             print(f"❌ Authentication failed: {error_msg}")
             return False
+
+    def encrypt_message(self, payload: Dict[str, Any]) -> str:
+        """Encrypt JSON payload using session key"""
+        if not self.session_box:
+            raise RuntimeError("No active session - perform handshake first")
+        
+        plaintext = json.dumps(payload).encode()
+        encrypted = self.session_box.encrypt(plaintext)
+        return base64.b64encode(encrypted).decode()
     
-    def start_conversation(self, initial_message: str = None) -> bool:
-        """Start a new conversation thread"""
-        print("💬 Starting new conversation...")
+    def decrypt_message(self, encrypted_b64: str) -> Dict[str, Any]:
+        """Decrypt base64-encoded encrypted message"""
+        if not self.session_box:
+            raise RuntimeError("No active session - perform handshake first")
         
-        request_data = {}
-        if initial_message:
-            request_data["initial_message"] = initial_message
-            request_data["response_mode"] = "text"
-        
-        response = self.send_encrypted_request("POST", "/api/v1/conversation/start", request_data)
-        
-        if response and response.get("success", False):
-            self.current_thread_id = response.get("thread_id")
-            print(f"✅ Conversation started - Thread ID: {self.current_thread_id}")
-            if initial_message:
-                print(f"📝 Initial message: {initial_message}")
-                print(f"🤖 Response: {response.get('response', 'No response')}")
-            return True
-        else:
-            error_msg = response.get('error', 'Unknown error') if response else 'No response'
-            print(f"❌ Failed to start conversation: {error_msg}")
-            return False
+        encrypted = base64.b64decode(encrypted_b64)
+        plaintext = self.session_box.decrypt(encrypted)
+        return json.loads(plaintext.decode())
     
-    def send_message(self, message: str) -> bool:
-        """Send a message to the current conversation thread"""
-        if not self.current_thread_id:
-            print("❌ No active conversation thread")
-            return False
+    def send_encrypted_request(self, endpoint: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Send encrypted request to backend"""
+        if not self.session_box:
+            print("❌ No active session - perform handshake first")
+            return None
         
-        print(f"📤 {message}")
-        
-        request_data = {"message": message, "response_mode": "text"}
-        response = self.send_encrypted_request("POST", f"/api/v1/conversation/message/{self.current_thread_id}", request_data)
-        
-        if response and response.get("success", False):
-            print(f"🤖 {response.get('response', 'No response')}")
-            return True
-        else:
-            error_msg = response.get('error', 'Unknown error') if response else 'No response'
-            print(f"❌ Message failed: {error_msg}")
-            return False
-    
-    def get_conversation_status(self) -> bool:
-        """Get status of the current conversation"""
-        if not self.current_thread_id:
-            print("❌ No active conversation thread")
-            return False
-        
-        print("📊 Checking status...")
-        response = self.send_encrypted_request("POST", f"/api/v1/conversation/status/{self.current_thread_id}", {})
-        
-        if response and response.get("success", False):
-            message = response.get("message", "No message")
-            print(f"✅ {message}")
-            return True
-        else:
-            error_msg = response.get('error', 'Unknown error') if response else 'No response'
-            print(f"❌ Status failed: {error_msg}")
-            return False
-    
-    def test_conversation_health(self) -> bool:
+        try:
+            # Encrypt the payload
+            encrypted_payload = self.encrypt_message(payload)
+            
+            # Create encrypted request envelope
+            request_envelope = {
+                "encrypted": True,
+                "payload": encrypted_payload,
+                "client_id": self.verify_key.encode().hex()[:16]
+            }
+            
+            # Prepare headers with JWT token for authenticated endpoints
+            headers = {"Content-Type": "application/json"}
+            if self.jwt_token:
+                headers["Authorization"] = f"Bearer {self.jwt_token}"
+            
+            response = requests.post(
+                f"{self.base_url}{endpoint}",
+                json=request_envelope,
+                headers=headers,
+                timeout=60
+            )
+            
+            if response.status_code != 200:
+                # Try to parse and decrypt the response even if status code is not 200
+                try:
+                    response_data = response.json()
+                    if response_data.get("encrypted"):
+                        decrypted = self.decrypt_message(response_data["payload"])
+                        print(f"❌ Request failed - HTTP {response.status_code}: {decrypted.get('message', 'Unknown error')}")
+                        return decrypted
+                except:
+                    print(f"❌ Request failed - HTTP {response.status_code}: {response.text}")
+                return None
+            
+            # Parse successful response
+            response_data = response.json()
+            if response_data.get("encrypted"):
+                return self.decrypt_message(response_data["payload"])
+            else:
+                return response_data
+                
+        except Exception as e:
+            print(f"❌ Request error: {e}")
+            return None
+
+    def test_health_check(self) -> bool:
         """Test conversation health endpoint"""
         print("🏥 Health check...")
-        
-        # The conversation health endpoint is now POST and encrypted
         try:
-            response = self.send_encrypted_request("POST", "/api/v1/conversation/health", {})
-            
+            response = self.send_encrypted_request("/api/v1/conversation/health", {})
             if response and response.get("status") == "healthy":
                 print("✅ Service healthy")
                 return True
             else:
                 print("❌ Health check failed")
                 return False
-                
         except Exception as e:
             print(f"❌ Health check error: {e}")
             return False
-    
+
+    def send_unified_message(self, message: str) -> bool:
+        """Send message using unified endpoint with auto-thread resolution"""
+        request_data = {
+            "message": message,
+            "context": {"test_mode": True}
+        }
+        response = self.send_encrypted_request("/api/v1/conversation/messages", request_data)
+        if response and response.get("success", False):
+            # Use correct field names from UnifiedMessageResponse schema
+            thread_id = response.get("thread_id")
+            thread_action = response.get("thread_action", "unknown")
+            thread_reasoning = response.get("thread_reasoning", "No reasoning provided")
+            
+            print(f"✅ Message sent to thread: {thread_id[:8] if thread_id else 'unknown'}...")
+            print(f"🔄 Action: {thread_action}")
+            print(f"💭 {thread_reasoning}")
+            
+            # Display AI response and status
+            ai_response = response.get("ai_response", "No response available")
+            print(f"🤖 AI Response: {ai_response}")
+            print(f"📊 Status: {response.get('status', 'unknown')}")
+            return True
+        else:
+            error_msg = response.get('error', response.get('message', 'Unknown error')) if response else 'No response'
+            print(f"❌ Message failed: {error_msg}")
+            return False
+
     def cleanup_test_user(self):
-        """Clean up test user"""
+        """Clean up the test user created during testing"""
         if not self.test_user_uuid:
             return
             
@@ -334,26 +301,20 @@ class ConversationRESTTester:
         
         try:
             import os
-            
-            # Handle Windows encoding issues
-            encoding = 'utf-8'
-            if platform.system() == 'Windows':
-                env = os.environ.copy()
-                env['PYTHONIOENCODING'] = 'utf-8'
-            else:
-                env = None
+            env = os.environ.copy()
+            env['PYTHONIOENCODING'] = 'utf-8'
             
             result = subprocess.run([
                 "uv", "run", "python", "-m", "cli.aico_main", 
                 "security", "user-delete", 
                 self.test_user_uuid,
-                "--hard",  # Permanent deletion for test cleanup
-                "--confirm"  # Skip confirmation prompt
+                "--hard",
+                "--confirm"
             ], 
-            cwd=script_dir.parent,
+            cwd=Path(__file__).parent.parent,
             capture_output=True, 
             text=True,
-            encoding=encoding,
+            encoding='utf-8',
             errors='replace',
             timeout=30,
             env=env
@@ -363,124 +324,58 @@ class ConversationRESTTester:
                 print("✅ Test user cleaned up successfully")
             else:
                 print(f"⚠️ Test user cleanup failed (exit code {result.returncode})")
-                if result.stdout:
-                    print(f"   stdout: {result.stdout.strip()}")
-                if result.stderr:
-                    print(f"   stderr: {result.stderr.strip()}")
-                    
+                
         except Exception as e:
             print(f"⚠️ Test user cleanup error: {e}")
         finally:
             self.test_user_uuid = None
-    
-    def run_conversation_tests(self):
-        """Run complete conversation test suite - simplified and focused"""
-        print("🚀 AICO Conversation REST API Tests")
+
+    def run_conversation_test(self) -> bool:
+        """Run simple conversation test with /messages endpoint"""
+        print("🚀 AICO Conversation Test - Auto-Thread Management")
         print("=" * 50)
         
-        tests = [
-            ("Handshake", self.perform_handshake),
-            ("Authentication", self.authenticate_user),
-            ("Health Check", self.test_conversation_health),
-            ("Start Conversation", lambda: self.start_conversation("Hello! Testing conversation system.")),
-            ("Send Messages", lambda: self.send_message("How are you today?")),
-            ("Get Status", self.get_conversation_status),
-            ("New Thread", lambda: self.start_conversation())
+        if not self.perform_handshake():
+            return False
+        if not self.authenticate_user():
+            return False
+        if not self.test_health_check():
+            return False
+            
+        messages = [
+            "Hello! How are you today?"
         ]
         
-        passed = 0
-        total = len(tests)
-        
-        for i, (test_name, test_func) in enumerate(tests, 1):
-            print(f"\n{i}️⃣ {test_name}...")
-            start_time = time.time()
-            try:
-                if test_func():
-                    passed += 1
-                    elapsed = time.time() - start_time
-                    self.test_timings.append((test_name, elapsed))
-                else:
-                    elapsed = time.time() - start_time
-                    self.test_timings.append((test_name, elapsed))
-                    # Skip dependent tests if core functionality fails
-                    if test_name == "Start Conversation" and passed < 3:
-                        print("⚠️ Skipping remaining conversation tests due to start failure")
-                        break
-            except Exception as e:
-                print(f"❌ {test_name} error: {e}")
-                if test_name in ["Handshake", "Authentication"]:
-                    print("⚠️ Core functionality failed, stopping tests")
-                    break
-        
-        print(f"\n🎯 Results: {passed}/{total} tests passed")
-        if passed < total:
-            print(f"❌ {total - passed} tests failed")
-        
-        # Display timing table
-        self._display_timing_table()
-        
-        # Cleanup
+        success_count = 0
+        for i, message in enumerate(messages, 1):
+            print(f"\n💬 Message {i}: {message}")
+            if self.send_unified_message(message):
+                success_count += 1
+            time.sleep(1)
+            
+        print(f"\n🎯 Results: {success_count}/{len(messages)} messages processed successfully")
         self.cleanup_test_user()
-        return passed == total
-    
-    def _display_timing_table(self):
-        """Display timing results in a formatted table"""
-        if not self.test_timings:
-            return
-            
-        print("\n⏱️  TIMING RESULTS")
-        print("=" * 50)
-        print(f"{'Test Step':<20} {'Duration (ms)':<15} {'Status':<10}")
-        print("-" * 50)
-        
-        total_time = 0
-        for test_name, duration in self.test_timings:
-            duration_ms = int(duration * 1000)
-            total_time += duration
-            
-            # Determine status based on duration
-            if duration < 0.5:
-                status = "🟢 Fast"
-            elif duration < 2.0:
-                status = "🟡 OK"
-            elif duration < 10.0:
-                status = "🟠 Slow"
-            else:
-                status = "🔴 Very Slow"
-                
-            print(f"{test_name:<20} {duration_ms:<15} {status}")
-        
-        print("-" * 50)
-        print(f"{'TOTAL':<20} {int(total_time * 1000):<15} {len(self.test_timings)} steps")
-        print()
-    
-    def _test_message_sequence(self) -> bool:
-        """Test sending multiple messages in sequence"""
-        messages = ["How are you?", "Tell me about yourself", "What can you help with?"]
-        for msg in messages:
-            if not self.send_message(msg):
-                return False
-            time.sleep(0.5)
-        return True
+        return success_count == len(messages)
 
 
 def main():
-    """Main test function"""
-    print("AICO Conversation REST API Test")
-    print("Testing encrypted conversation flow")
-    print()
-    
-    # Quick backend check - use unencrypted health endpoint
+    """Main test execution"""
+    print("AICO Conversation Test")
+    print("Testing /messages endpoint with auto-thread creation\n")
     try:
-        import requests
-        response = requests.get("http://127.0.0.1:8771/api/v1/health", timeout=5)
-        print(f"✅ Backend responding (status: {response.status_code})")
-    except Exception as e:
-        print(f"❌ Backend connection failed: {e}")
-        print("Make sure the AICO backend is running on port 8771")
+        response = requests.get("http://127.0.0.1:8771/health", timeout=5)
+        if response.status_code == 200:
+            print("✅ Backend responding (status: 200)")
+        else:
+            print(f"⚠️ Backend responding but status: {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Backend not responding: {e}")
+        print("Please start the backend server first.")
         return False
-    
-    return ConversationRESTTester().run_conversation_tests()
+    tester = ConversationTester()
+    print(f"🔧 Initialized tester for {tester.base_url}")
+    success = tester.run_conversation_test()
+    return success
 
 
 if __name__ == "__main__":
