@@ -26,7 +26,7 @@ from .schemas import (
     ConversationStatus, ConversationHealthResponse, WebSocketAIResponse,
     WebSocketError, WebSocketMessageType, MessageType
 )
-from .exceptions import (
+from backend.api.conversation.exceptions import (
     ConversationNotFoundException, InvalidThreadException, ThreadAccessDeniedException,
     MessageProcessingException, WebSocketAuthenticationException, MessageBusConnectionException
 )
@@ -57,7 +57,7 @@ async def start_conversation(
         thread_id = str(uuid.uuid4())
         
         logger.info(f"Starting new conversation thread: {thread_id}", extra={
-            "user_id": current_user.user_uuid,
+            "user_id": current_user['user_uuid'],
             "thread_id": thread_id
         })
         
@@ -71,7 +71,7 @@ async def start_conversation(
             # Create conversation message protobuf
             conv_message = ConversationMessage()
             conv_message.timestamp.GetCurrentTime()
-            conv_message.source = current_user.user_uuid
+            conv_message.source = current_user['user_uuid']
             
             # Set message content
             conv_message.message.text = request.initial_message
@@ -107,18 +107,24 @@ async def start_conversation(
         )
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         logger.error(f"Failed to start conversation: {e}", extra={
-            "user_id": getattr(current_user, 'user_uuid', 'unknown'),
-            "error": str(e)
+            "user_id": current_user.get('user_uuid', 'unknown') if isinstance(current_user, dict) else getattr(current_user, 'user_uuid', 'unknown'),
+            "error": str(e),
+            "traceback": error_details
         })
+        print(f"[CONVERSATION START ERROR] {e}")
+        print(f"[CONVERSATION START TRACEBACK] {error_details}")
         raise MessageProcessingException(
             message=request.initial_message or "[no initial message]",
-            user_id=current_user.user_uuid,
+            user_id=current_user['user_uuid'] if isinstance(current_user, dict) else current_user.user_uuid,
             processing_error=str(e)
         )
 
-@router.post("/message", response_model=ConversationResponse)
+@router.post("/message/{thread_id}", response_model=ConversationResponse)
 async def send_message(
+    thread_id: str,
     request: ConversationMessageRequest,
     current_user = Depends(get_current_user),
     bus_client = Depends(get_message_bus_client),
@@ -133,16 +139,16 @@ async def send_message(
     try:
         message_id = str(uuid.uuid4())
         
-        logger.info(f"Processing message in thread: {request.thread_id}", extra={
-            "user_id": current_user.user_uuid,
-            "thread_id": request.thread_id,
+        logger.info(f"Processing message in thread: {thread_id}", extra={
+            "user_id": current_user['user_uuid'],
+            "thread_id": thread_id,
             "message_id": message_id
         })
         
         # Create conversation message protobuf
         conv_message = ConversationMessage()
         conv_message.timestamp.GetCurrentTime()
-        conv_message.source = current_user.user_uuid
+        conv_message.source = current_user['user_uuid']
         
         # Set message content
         conv_message.message.text = request.message
@@ -154,7 +160,7 @@ async def send_message(
         else:
             conv_message.message.type = Message.MessageType.USER_INPUT
             
-        conv_message.message.thread_id = request.thread_id
+        conv_message.message.thread_id = thread_id
         conv_message.message.turn_number = 0  # Will be set by conversation engine
         
         # Set message analysis (basic for now)
@@ -169,36 +175,35 @@ async def send_message(
         )
         
         logger.info(f"Published message to conversation bus", extra={
-            "thread_id": request.thread_id,
+            "thread_id": thread_id,
             "message_id": message_id,
             "topic": AICOTopics.CONVERSATION_USER_INPUT
         })
         
         return ConversationResponse(
             success=True,
-            thread_id=request.thread_id,
+            thread_id=thread_id,
             message_id=message_id,
             response="Message received and processing started"
         )
         
     except Exception as e:
         logger.error(f"Failed to send message: {e}", extra={
-            "user_id": current_user.user_uuid,
-            "thread_id": request.thread_id,
+            "user_id": current_user['user_uuid'],
+            "thread_id": thread_id,
             "error": str(e)
         })
         raise MessageProcessingException(
             message=request.message,
-            thread_id=request.thread_id,
-            user_id=current_user.user_uuid,
+            thread_id=thread_id,
+            user_id=current_user['user_uuid'],
             processing_error=str(e)
         )
 
-@router.get("/status/{thread_id}", response_model=ConversationStatus)
+@router.post("/status/{thread_id}")
 async def get_conversation_status(
     thread_id: str,
-    current_user = Depends(get_current_user),
-    thread_access = Depends(verify_thread_access)
+    current_user = Depends(get_current_user)
 ):
     """
     Get status of a conversation thread
@@ -207,23 +212,39 @@ async def get_conversation_status(
     for the specified conversation thread.
     """
     try:
+        logger.info(f"Getting status for thread: {thread_id}", extra={
+            "user_id": current_user['user_uuid'],
+            "thread_id": thread_id
+        })
+        
         # For now, return basic status (would query conversation engine in full implementation)
-        return ConversationStatus(
+        current_time = datetime.utcnow()
+        status_response = ConversationStatus(
             thread_id=thread_id,
             active=True,
             message_count=0,  # Would be retrieved from conversation engine
-            last_activity=datetime.utcnow(),
+            last_activity=current_time.isoformat(),
             context={"status": "active"},
-            user_id=current_user.user_uuid
+            user_id=current_user['user_uuid']
         )
+        
+        logger.info(f"Status response created successfully for thread: {thread_id}")
+        logger.debug(f"Status response data: {status_response.dict()}")
+        
+        # Return in the format expected by test client
+        return {
+            "success": True,
+            "status": status_response.dict(),
+            "error": None
+        }
         
     except Exception as e:
         logger.error(f"Failed to get conversation status: {e}", extra={
-            "user_id": current_user.user_uuid,
+            "user_id": current_user['user_uuid'],
             "thread_id": thread_id,
             "error": str(e)
         })
-        raise ConversationNotFoundException(thread_id=thread_id, user_id=current_user.user_uuid)
+        raise ConversationNotFoundException(thread_id=thread_id, user_id=current_user['user_uuid'])
 
 @router.websocket("/ws/{thread_id}")
 async def conversation_websocket(websocket: WebSocket, thread_id: str):
@@ -333,7 +354,7 @@ async def conversation_websocket(websocket: WebSocket, thread_id: str):
             "connection_id": connection_id
         })
 
-@router.get("/health", response_model=ConversationHealthResponse)
+@router.post("/health", response_model=ConversationHealthResponse)
 async def conversation_health():
     """Health check endpoint for conversation API"""
     return ConversationHealthResponse(

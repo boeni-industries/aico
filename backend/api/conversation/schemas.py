@@ -5,8 +5,9 @@ Pydantic models for conversation API request/response validation and serializati
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Union
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field, validator
+import json
 from enum import Enum
 
 
@@ -35,16 +36,10 @@ class ConversationStartRequest(BaseModel):
 
 class ConversationMessageRequest(BaseModel):
     """Request to send a message in conversation"""
-    thread_id: str = Field(..., description="Conversation thread ID")
     message: str = Field(..., description="User message content")
     message_type: MessageType = Field(MessageType.USER_INPUT, description="Message type")
+    response_mode: Optional[str] = Field("text", description="Response mode: text, multimodal")
     context: Optional[Dict[str, Any]] = Field(None, description="Additional message context")
-    
-    @validator('thread_id')
-    def validate_thread_id(cls, v):
-        if not v or len(v.strip()) == 0:
-            raise ValueError("Thread ID is required")
-        return v.strip()
     
     @validator('message')
     def validate_message(cls, v):
@@ -63,6 +58,11 @@ class ConversationResponse(BaseModel):
     response: Optional[str] = Field(None, description="Response message or acknowledgment")
     error: Optional[str] = Field(None, description="Error message if operation failed")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Response timestamp")
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
 
 
 class ConversationStatus(BaseModel):
@@ -70,7 +70,7 @@ class ConversationStatus(BaseModel):
     thread_id: str = Field(..., description="Conversation thread ID")
     active: bool = Field(..., description="Whether conversation is active")
     message_count: int = Field(..., description="Number of messages in conversation")
-    last_activity: datetime = Field(..., description="Timestamp of last activity")
+    last_activity: str = Field(..., description="Timestamp of last activity (ISO format)")
     context: Optional[Dict[str, Any]] = Field(None, description="Current conversation context")
     user_id: str = Field(..., description="Owner user ID")
 

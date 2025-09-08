@@ -4,13 +4,19 @@ Conversation API Dependencies
 Authentication and validation dependencies for conversation endpoints.
 """
 
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from aico.core.logging import get_logger
 from typing import Dict, Any
 import jwt
-from aico.core.logging import get_logger
+import uuid
+import re
 
+logger = get_logger("backend", "api.conversation.dependencies")
 security = HTTPBearer()
+
+# Module-level cache for message bus client to avoid re-registration warnings
+_message_bus_client_cache = None
 logger = get_logger("api", "conversation_dependencies")
 
 
@@ -129,7 +135,7 @@ def verify_thread_access(
     Raises:
         HTTPException: If thread doesn't exist or user doesn't have access
     """
-    from ..exceptions import ThreadAccessDeniedException, ConversationNotFoundException
+    from backend.api.conversation.exceptions import ThreadAccessDeniedException, ConversationNotFoundException
     
     # Validate thread ID format first
     validated_thread_id = validate_thread_id(thread_id)
@@ -158,10 +164,10 @@ def verify_thread_access(
         
     except Exception as e:
         logger.error(f"Thread access verification failed: {e}")
-        raise ThreadAccessDeniedException(f"Access denied for thread {thread_id}")
+        raise ThreadAccessDeniedException(thread_id=thread_id, user_id=current_user['user_uuid'])
 
 
-def get_message_bus_client(request: Request):
+async def get_message_bus_client(request: Request):
     """
     Get message bus client from service container.
     
@@ -184,13 +190,44 @@ def get_message_bus_client(request: Request):
         container = request.app.state.service_container
         message_bus_plugin = container.get_service("message_bus_plugin")
         
-        if not message_bus_plugin or not hasattr(message_bus_plugin, 'client'):
+        if not message_bus_plugin or not hasattr(message_bus_plugin, 'message_bus_host'):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Message bus client not available"
+                detail="Message bus plugin not available"
             )
         
-        return message_bus_plugin.client
+        if not message_bus_plugin.message_bus_host:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Message bus host not initialized"
+            )
+        
+        # Use cached client to avoid re-registration warnings
+        global _message_bus_client_cache
+        if _message_bus_client_cache:
+            return _message_bus_client_cache
+        
+        # Register the conversation API module once and cache the client
+        try:
+            client = await message_bus_plugin.register_module(
+                "conversation_api", 
+                ["conversation.*", "ai.response.*"]
+            )
+            _message_bus_client_cache = client
+        except Exception as reg_error:
+            # If registration fails due to already being registered, that's expected
+            if "already registered" in str(reg_error).lower():
+                logger.debug("Module conversation_api already registered, continuing with existing registration")
+                # For now, we'll proceed without caching since we can't get the existing client
+                # This will still work but may show warnings
+                client = await message_bus_plugin.register_module(
+                    "conversation_api", 
+                    ["conversation.*", "ai.response.*"]
+                )
+            else:
+                raise reg_error
+        
+        return client
         
     except HTTPException:
         raise
