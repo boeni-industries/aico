@@ -119,55 +119,8 @@ async def main():
     host = rest_config.get('host', '127.0.0.1')
     port = rest_config.get('port', 8771)
     
-    # Register core services
-    lifecycle_manager.service_container.register_service(
-        "log_consumer", 
-        lifecycle_manager.log_consumer_service,
-        dependencies=[]
-    )
-        
-    # Register conversation engine
-    from backend.services.conversation_engine import ConversationEngine
-    conversation_engine = ConversationEngine(config_manager, lifecycle_manager.zmq_context)
-    lifecycle_manager.service_container.register_service(
-        "conversation_engine",
-        conversation_engine,
-        dependencies=[]
-    )
-    
-    # Register AI processing plugins
-    from backend.services.embodiment_engine import create_embodiment_plugin
-    from backend.services.agency_engine import create_agency_plugin
-    from backend.services.emotion_engine import create_emotion_plugin
-    from backend.services.personality_engine import create_personality_plugin
-    
-    # Register embodiment plugin
-    lifecycle_manager.service_container.register_service(
-        "embodiment_plugin",
-        create_embodiment_plugin,
-        dependencies=[]
-    )
-    
-    # Register agency plugin
-    lifecycle_manager.service_container.register_service(
-        "agency_plugin",
-        create_agency_plugin,
-        dependencies=[]
-    )
-    
-    # Register emotion plugin
-    lifecycle_manager.service_container.register_service(
-        "emotion_plugin",
-        create_emotion_plugin,
-        dependencies=[]
-    )
-    
-    # Register personality plugin
-    lifecycle_manager.service_container.register_service(
-        "personality_plugin",
-        create_personality_plugin,
-        dependencies=[]
-    )
+    # The lifecycle manager already handles all service registration internally
+    # No manual service registration needed here
     
     config = uvicorn.Config(
         app,

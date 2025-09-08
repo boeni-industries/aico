@@ -668,12 +668,14 @@ class BackendLifecycleManager:
         from backend.api.users.router import router as users_router
         from backend.api.admin.router import router as admin_router
         from backend.api.logs.router import router as logs_router
+        from backend.api.conversation.router import router as conversation_router
         
         # Mount routers with prefixes
         self.app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])
         self.app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
         self.app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
         self.app.include_router(logs_router, prefix="/api/v1/logs", tags=["logs"])
+        self.app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
         
     
     def _display_routes(self) -> None:
