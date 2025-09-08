@@ -35,14 +35,15 @@ _zmq_service = None
 
 async def initialize_modelservice():
     """Initialize modelservice with Ollama and return configuration."""
-    # Load configuration
-    cfg = ConfigurationManager()
-    cfg.initialize()
+    # Use the already initialized global config manager
+    cfg = config_manager
     
     # Initialize logging in lifespan context
     logger_factory = initialize_logging(cfg)
     
-    modelservice_config = cfg.get("modelservice", {})
+    # The modelservice config is actually under the 'core' domain
+    core_config = cfg.get("core", {})
+    modelservice_config = core_config.get("modelservice", {})
     env = os.getenv("AICO_ENV", "development")
 
     # Startup: Display initial info and use standard AICO logging

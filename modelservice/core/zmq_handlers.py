@@ -60,13 +60,19 @@ class ModelserviceZMQHandlers:
         response = CompletionsResponse()
         
         try:
+            logger.info(f"[COMPLETIONS] Processing completion request: {type(request_payload)}")
+            
             # Extract data from Protocol Buffer request
             model = request_payload.model
             messages = request_payload.messages
             
+            logger.info(f"[COMPLETIONS] Request details - model: '{model}', messages count: {len(messages)}")
+            
             if not model or not messages:
+                error_msg = "Model and messages are required"
+                logger.error(f"[COMPLETIONS] Validation failed: {error_msg}")
                 response.success = False
-                response.error = "Model and messages are required"
+                response.error = error_msg
                 return response
             
             # Convert messages to prompt (simple implementation)
@@ -75,10 +81,16 @@ class ModelserviceZMQHandlers:
                 prompt_parts.append(f"{msg.role}: {msg.content}")
             prompt = "\n".join(prompt_parts)
             
-            # Forward to Ollama
-            ollama_url = f"http://{self.config.get('ollama', {}).get('host', 'localhost')}:{self.config.get('ollama', {}).get('port', 11434)}"
+            # Forward to Ollama - check config path
+            ollama_config = self.config.get('ollama', {})
+            logger.info(f"[COMPLETIONS] Ollama config from self.config: {ollama_config}")
+            logger.info(f"[COMPLETIONS] Full config keys: {list(self.config.keys())}")
+            ollama_url = f"http://{ollama_config.get('host', '127.0.0.1')}:{ollama_config.get('port', 11434)}"
+            logger.info(f"[COMPLETIONS] Forwarding to Ollama at {ollama_url}")
+            logger.info(f"[COMPLETIONS] Prompt: '{prompt[:100]}..." + ("'" if len(prompt) <= 100 else "' (truncated)"))
             
             async with httpx.AsyncClient(timeout=30.0) as client:
+                logger.info(f"[COMPLETIONS] Sending request to Ollama...")
                 ollama_response = await client.post(
                     f"{ollama_url}/api/generate",
                     json={
@@ -87,6 +99,7 @@ class ModelserviceZMQHandlers:
                         "stream": False
                     }
                 )
+                logger.info(f"[COMPLETIONS] Ollama response status: {ollama_response.status_code}")
                 
                 if ollama_response.status_code != 200:
                     raise Exception(f"Ollama error: {ollama_response.status_code} - {ollama_response.text}")
@@ -126,14 +139,21 @@ class ModelserviceZMQHandlers:
                 response.success = True
                 response.result.CopyFrom(result)
                 
+                logger.info(f"[COMPLETIONS] ✅ Success! Generated completion for model {model}")
+                logger.info(f"[COMPLETIONS] Response length: {len(response_content)} characters")
                 logger.info(
                     f"Completion generated for model {model}",
                     extra={"topic": AICOTopics.LOGS_ENTRY}
                 )
                 
         except Exception as e:
+            error_msg = f"Completion failed: {str(e)}"
+            logger.error(f"[COMPLETIONS] ❌ CRITICAL ERROR: {error_msg}")
+            logger.error(f"[COMPLETIONS] Exception type: {type(e).__name__}")
+            import traceback
+            logger.error(f"[COMPLETIONS] Full traceback: {traceback.format_exc()}")
             response.success = False
-            response.error = f"Completion failed: {str(e)}"
+            response.error = error_msg
             logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
         
         return response

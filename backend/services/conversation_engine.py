@@ -12,26 +12,25 @@ Design Principles:
 """
 
 import asyncio
+import logging
 import uuid
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 
-from aico.core.logging import get_logger
 from aico.core.bus import MessageBusClient
 from aico.core.topics import AICOTopics
-from aico.core.config import ConfigurationManager
-from aico.proto.aico_conversation_pb2 import (
-    ConversationMessage, Message, MessageAnalysis,
-    ConversationContext, Context, RecentHistory,
-    ResponseRequest, ResponseParameters
-)
-from aico.proto.aico_modelservice_pb2 import CompletionsRequest, ConversationMessage as ModelConversationMessage
+from aico.proto.aico_core_envelope_pb2 import AicoMessage
+from aico.proto.aico_conversation_pb2 import ConversationMessage, Message, MessageAnalysis
+from aico.proto.aico_modelservice_pb2 import CompletionsResponse, CompletionsRequest, ConversationMessage as ModelConversationMessage
+from aico.ai import ProcessingContext, ai_registry
+from backend.core.service_container import BaseService
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from backend.core.service_container import BaseService
-
+# ============================================================================
+# ENUMS & DATA CLASSES
+# ============================================================================
 
 class ResponseMode(Enum):
     """Response delivery modes"""
@@ -100,20 +99,26 @@ class ConversationEngine(BaseService):
     Design: Simple, maintainable, extensible
     """
     
-    def __init__(self, config: ConfigurationManager, zmq_context=None):
-        super().__init__()
-        self.config = config
-        self.zmq_context = zmq_context
-        self.logger = get_logger("backend", "conversation_engine")
+    def __init__(self, name: str, container):
+        super().__init__(name, container)
+        # Use AICO logging system instead of standard logging
+        # self.logger is already set by BaseService using get_logger("backend", f"service.{name}")
         
-        # Core components
+        # Message bus client
         self.bus_client: Optional[MessageBusClient] = None
-        self.user_contexts: Dict[str, UserContext] = {}  # user_id -> UserContext
-        self.active_threads: Dict[str, ConversationThread] = {}  # thread_id -> ConversationThread
+        
+        # AI Processing uses global registry
+        # Processors registered via: ai_registry.register("emotion", processor_instance)
+        
+        # Conversation state
+        self.user_contexts: Dict[str, UserContext] = {}
+        self.conversation_threads: Dict[str, ConversationThread] = {}
+        
+        # AI processing coordination
         self.pending_responses: Dict[str, Dict[str, Any]] = {}  # request_id -> response data
         
         # Configuration
-        engine_config = config.get("conversation_engine", {})
+        engine_config = self.config.get("conversation_engine", {})
         self.max_context_messages = engine_config.get("max_context_messages", 10)
         self.response_timeout = engine_config.get("response_timeout_seconds", 30.0)
         self.default_response_mode = ResponseMode(engine_config.get("default_response_mode", "text_only"))
@@ -125,50 +130,54 @@ class ConversationEngine(BaseService):
         self.enable_embodiment = engine_config.get("enable_embodiment", False)
         self.enable_agency = engine_config.get("enable_agency", False)
     
+    async def initialize(self) -> None:
+        """Initialize service resources - called once during startup"""
+        pass
+    
     async def start(self) -> None:
         """Start the conversation engine service"""
         try:
-            self.logger.info("Starting Conversation Engine...")
+            self.logger.info("Starting conversation engine...")
             
-            # Connect to message bus
+            # Initialize message bus client
             self.bus_client = MessageBusClient("conversation_engine")
             await self.bus_client.connect()
             
-            # Subscribe to conversation topics
-            await self._setup_subscriptions()
+            # AI processors will be registered here when implemented
+            # No initialization needed for empty registry
             
-            self.logger.info("Conversation Engine started successfully", extra={
-                "features": {
-                    "emotion": self.enable_emotion_integration,
-                    "personality": self.enable_personality_integration,
-                    "memory": self.enable_memory_integration,
-                    "embodiment": self.enable_embodiment,
-                    "agency": self.enable_agency
-                }
-            })
+            # Subscribe to conversation topics
+            await self.bus_client.subscribe(
+                AICOTopics.CONVERSATION_USER_INPUT,
+                self._handle_user_input
+            )
+            
+            # Subscribe to LLM response topics
+            await self.bus_client.subscribe(
+                AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE,
+                self._handle_llm_response
+            )
+            
+            self.logger.info("Conversation engine started successfully")
             
         except Exception as e:
-            self.logger.error(f"Failed to start Conversation Engine: {e}")
+            self.logger.error(f"Failed to start conversation engine: {e}")
             raise
     
     async def stop(self) -> None:
         """Stop the conversation engine service"""
         try:
-            self.logger.info("Stopping Conversation Engine...")
+            self.logger.info("Stopping conversation engine...")
+            
+            # No AI coordinator cleanup needed
             
             if self.bus_client:
                 await self.bus_client.disconnect()
-                self.bus_client = None
             
-            # Clear states
-            self.user_contexts.clear()
-            self.active_threads.clear()
-            self.pending_responses.clear()
-            
-            self.logger.info("Conversation Engine stopped")
+            self.logger.info("Conversation engine stopped")
             
         except Exception as e:
-            self.logger.error(f"Error stopping Conversation Engine: {e}")
+            self.logger.error(f"Error stopping conversation engine: {e}")
     
     # ============================================================================
     # MESSAGE BUS SETUP
@@ -218,16 +227,24 @@ class ConversationEngine(BaseService):
     # CORE MESSAGE HANDLERS
     # ============================================================================
     
-    async def _handle_user_input(self, topic: str, message: ConversationMessage) -> None:
+    async def _handle_user_input(self, message) -> None:
         """Handle incoming user input message"""
         try:
-            thread_id = message.message.thread_id
-            user_id = message.source
+            # The message is an AicoMessage envelope, need to unpack the ConversationMessage
+            from aico.proto.aico_conversation_pb2 import ConversationMessage
+            
+            # Unpack the ConversationMessage from the AicoMessage envelope
+            conv_message = ConversationMessage()
+            message.any_payload.Unpack(conv_message)
+            
+            # Extract data from the ConversationMessage protobuf
+            thread_id = conv_message.message.thread_id
+            user_id = conv_message.source
             
             self.logger.info(f"Processing user input", extra={
                 "thread_id": thread_id,
                 "user_id": user_id,
-                "message_type": message.message.type
+                "message_type": conv_message.message.type
             })
             
             # Get or create user context and conversation thread
@@ -237,22 +254,21 @@ class ConversationEngine(BaseService):
             # Update thread state
             thread.turn_number += 1
             thread.last_activity = datetime.utcnow()
-            thread.message_history.append(message)
+            thread.message_history.append(conv_message)
             
             # Keep history manageable
             if len(thread.message_history) > self.max_context_messages:
                 thread.message_history = thread.message_history[-self.max_context_messages:]
             
             # Analyze message and update context
-            await self._analyze_message(thread, message)
+            await self._analyze_message(thread, conv_message)
             
             # Generate response
-            await self._generate_response(thread, message)
+            await self._generate_response(thread, conv_message)
             
         except Exception as e:
             self.logger.error(f"Error handling user input: {e}", extra={
-                "topic": topic,
-                "thread_id": getattr(message.message, 'thread_id', 'unknown')
+                "error": str(e)
             })
     
     # ============================================================================
@@ -283,8 +299,8 @@ class ConversationEngine(BaseService):
     
     def _get_or_create_thread(self, thread_id: str, user_context: UserContext) -> ConversationThread:
         """Get or create conversation thread"""
-        if thread_id not in self.active_threads:
-            self.active_threads[thread_id] = ConversationThread(
+        if thread_id not in self.conversation_threads:
+            self.conversation_threads[thread_id] = ConversationThread(
                 thread_id=thread_id,
                 user_context=user_context
             )
@@ -294,7 +310,7 @@ class ConversationEngine(BaseService):
                 "user_id": user_context.user_id
             })
         
-        return self.active_threads[thread_id]
+        return self.conversation_threads[thread_id]
     
     # ============================================================================
     # MESSAGE ANALYSIS & RESPONSE GENERATION
@@ -376,54 +392,106 @@ class ConversationEngine(BaseService):
     # ============================================================================
     
     async def _request_emotion_analysis(self, request_id: str, thread: ConversationThread, message: ConversationMessage) -> None:
-        """Request emotion analysis (scaffolding for future implementation)"""
-        # Placeholder: Simulate emotion analysis
-        self.logger.debug(f"Requesting emotion analysis", extra={
-            "request_id": request_id,
-            "thread_id": thread.thread_id
-        })
+        """Request emotion analysis - ready for future AI processor integration"""
+        # Check if emotion processor is available
+        emotion_processor = ai_registry.get("emotion")
         
-        # Simulate response (will be real emotion engine later)
-        await asyncio.sleep(0.1)
-        await self._handle_emotion_response("emotion/analysis/response/v1", {
-            "request_id": request_id,
-            "emotion": "neutral",
-            "confidence": 0.8,
-            "valence": 0.0,
-            "arousal": 0.0
-        })
+        if emotion_processor:
+            # Create processing context for emotion analysis
+            context = ProcessingContext(
+                thread_id=thread.thread_id,
+                user_id=thread.user_context.user_id,
+                request_id=request_id,
+                message_content=message.content,
+                message_type="text",
+                turn_number=thread.turn_number,
+                conversation_phase=thread.conversation_phase,
+                user_name=thread.user_context.username,
+                relationship_type=thread.user_context.relationship_type,
+                conversation_style=thread.user_context.conversation_style
+            )
+            
+            try:
+                # Process emotion analysis
+                result = await emotion_processor.analyze_emotion(context)
+                if request_id in self.pending_responses:
+                    self.pending_responses[request_id]["emotion_data"] = result
+                    self.logger.debug(f"Emotion analysis completed for {request_id}")
+            except Exception as e:
+                self.logger.error(f"Emotion analysis failed for {request_id}: {e}")
+        
+        # Always mark as ready (no blocking)
+        if request_id in self.pending_responses:
+            self.pending_responses[request_id]["emotion_ready"] = True
+            await self._check_response_completion(request_id)
     
     async def _request_personality_expression(self, request_id: str, thread: ConversationThread, message: ConversationMessage) -> None:
-        """Request personality expression (scaffolding for future implementation)"""
-        self.logger.debug(f"Requesting personality expression", extra={
-            "request_id": request_id,
-            "thread_id": thread.thread_id
-        })
+        """Request personality expression - ready for future AI processor integration"""
+        # Check if personality processor is available
+        personality_processor = ai_registry.get("personality")
         
-        # Simulate response (will be real personality engine later)
-        await asyncio.sleep(0.1)
-        await self._handle_personality_response("personality/expression/response/v1", {
-            "request_id": request_id,
-            "personality_traits": {"openness": 0.7, "conscientiousness": 0.8},
-            "response_style": "warm_and_helpful",
-            "behavioral_parameters": {"formality": 0.3, "enthusiasm": 0.7}
-        })
+        if personality_processor:
+            # Create processing context for personality expression
+            context = ProcessingContext(
+                thread_id=thread.thread_id,
+                user_id=thread.user_context.user_id,
+                request_id=request_id,
+                message_content=message.content,
+                message_type="text",
+                turn_number=thread.turn_number,
+                conversation_phase=thread.conversation_phase,
+                user_name=thread.user_context.username,
+                relationship_type=thread.user_context.relationship_type,
+                conversation_style=thread.user_context.conversation_style
+            )
+            
+            try:
+                # Process personality expression
+                result = await personality_processor.express_personality(context)
+                if request_id in self.pending_responses:
+                    self.pending_responses[request_id]["personality_data"] = result
+                    self.logger.debug(f"Personality expression completed for {request_id}")
+            except Exception as e:
+                self.logger.error(f"Personality expression failed for {request_id}: {e}")
+        
+        # Always mark as ready (no blocking)
+        if request_id in self.pending_responses:
+            self.pending_responses[request_id]["personality_ready"] = True
+            await self._check_response_completion(request_id)
     
     async def _request_memory_retrieval(self, request_id: str, thread: ConversationThread, message: ConversationMessage) -> None:
-        """Request memory retrieval (scaffolding for future implementation)"""
-        self.logger.debug(f"Requesting memory retrieval", extra={
-            "request_id": request_id,
-            "thread_id": thread.thread_id
-        })
+        """Request memory retrieval - ready for future AI processor integration"""
+        # Check if memory processor is available
+        memory_processor = ai_registry.get("memory")
         
-        # Simulate response (will be real memory system later)
-        await asyncio.sleep(0.1)
-        await self._handle_memory_response("memory/retrieve/response/v1", {
-            "request_id": request_id,
-            "memories": [],
-            "context": "No relevant memories found",
-            "relevance_scores": []
-        })
+        if memory_processor:
+            # Create processing context for memory retrieval
+            context = ProcessingContext(
+                thread_id=thread.thread_id,
+                user_id=thread.user_context.user_id,
+                request_id=request_id,
+                message_content=message.content,
+                message_type="text",
+                turn_number=thread.turn_number,
+                conversation_phase=thread.conversation_phase,
+                user_name=thread.user_context.username,
+                relationship_type=thread.user_context.relationship_type,
+                conversation_style=thread.user_context.conversation_style
+            )
+            
+            try:
+                # Process memory retrieval
+                result = await memory_processor.retrieve_memories(context)
+                if request_id in self.pending_responses:
+                    self.pending_responses[request_id]["memory_data"] = result
+                    self.logger.debug(f"Memory retrieval completed for {request_id}")
+            except Exception as e:
+                self.logger.error(f"Memory retrieval failed for {request_id}: {e}")
+        
+        # Always mark as ready (no blocking)
+        if request_id in self.pending_responses:
+            self.pending_responses[request_id]["memory_ready"] = True
+            await self._check_response_completion(request_id)
     
     # ============================================================================
     # COMPONENT RESPONSE HANDLERS
@@ -505,26 +573,30 @@ class ConversationEngine(BaseService):
                 role = "user" if msg.message.type == Message.MessageType.USER_INPUT else "assistant"
                 messages.append(ModelConversationMessage(role=role, content=msg.message.text))
             
+            # Get conversation model from config
+            conversation_model = self.config.get("modelservice.ollama.default_models.conversation.name", "hermes3:8b")
+            
             # Create completions request
             completions_request = CompletionsRequest(
-                model="llama3.2:3b",
+                model=conversation_model,
                 messages=messages,
                 stream=False,
                 temperature=0.7,
                 max_tokens=512
             )
             
-            # Publish to modelservice
+            # Publish to modelservice with correlation ID for proper response matching
             await self.bus_client.publish(
                 AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST,
-                completions_request
+                completions_request,
+                correlation_id=request_id
             )
             
             # Mark LLM request sent
             self.pending_responses[request_id]["llm_request_sent"] = True
             
         except Exception as e:
-            self.logger.error(f"Error generating LLM response: {e}")
+            self.logger.error(f"Error generating LLM response: {e}", exc_info=True)
             await self._cleanup_request(request_id)
     
     def _build_system_prompt(self, thread: ConversationThread, context: Dict[str, Any]) -> str:
@@ -558,34 +630,63 @@ class ConversationEngine(BaseService):
         
         return "\n".join(prompt_parts)
     
-    async def _handle_llm_response(self, topic: str, response: Any) -> None:
+    async def _handle_llm_response(self, response) -> None:
         """Handle LLM completion response and deliver final response"""
         try:
-            # Find matching request (simplified correlation)
-            for request_id, pending_data in list(self.pending_responses.items()):
-                if pending_data.get("llm_request_sent"):
-                    thread = pending_data["thread"]
-                    
-                    # Extract response text
-                    response_text = "I'm here to help!"  # Default
-                    if hasattr(response, 'result') and hasattr(response.result, 'message'):
-                        response_text = response.result.message.content
-                    elif isinstance(response, dict) and "content" in response:
-                        response_text = response["content"]
-                    
-                    # Create response components
-                    response_components = ResponseComponents(
-                        text=response_text,
-                        avatar_actions=self._generate_avatar_actions(thread, response_text) if self.enable_embodiment else None,
-                        voice_synthesis=self._generate_voice_parameters(thread, response_text) if self.enable_embodiment else None
-                    )
-                    
-                    # Deliver response
-                    await self._deliver_response(thread, response_components)
-                    
-                    # Cleanup
-                    await self._cleanup_request(request_id)
-                    break
+            # Unpack the LLM response from AicoMessage envelope
+            from aico.proto.aico_modelservice_pb2 import CompletionsResponse
+            
+            # Debug the response structure
+            self.logger.debug(f"Received LLM response structure: {type(response)}")
+            
+            # Unpack the CompletionsResponse from the AicoMessage envelope
+            completions_response = CompletionsResponse()
+            response.any_payload.Unpack(completions_response)
+            
+            # Extract correlation ID from response for proper matching
+            correlation_id = None
+            try:
+                # Get correlation ID from envelope metadata
+                correlation_id = response.metadata.attributes.get("correlation_id")
+                self.logger.debug(f"Received LLM response with correlation_id: {correlation_id}")
+            except Exception as e:
+                self.logger.error(f"Failed to extract correlation_id from LLM response: {e}")
+                return
+            
+            # Find matching request using correlation ID
+            if correlation_id and correlation_id in self.pending_responses:
+                request_id = correlation_id
+                pending_data = self.pending_responses[request_id]
+                thread = pending_data["thread"]
+                
+                # Extract response text from the completion response
+                response_text = "I'm here to help!"  # Default fallback
+                
+                if completions_response.success and completions_response.result:
+                    # Get the message content from the result
+                    if completions_response.result.message and completions_response.result.message.content:
+                        response_text = completions_response.result.message.content
+                elif completions_response.error:
+                    self.logger.error(f"LLM error: {completions_response.error}")
+                    response_text = "I apologize, but I'm having trouble processing your request right now."
+                
+                self.logger.debug(f"Extracted response text: {response_text}")
+                
+                # Create response components
+                response_components = ResponseComponents(
+                    text=response_text,
+                    avatar_actions=await self._generate_avatar_actions(thread, response_text) if self.enable_embodiment else None,
+                    voice_synthesis=await self._generate_voice_parameters(thread, response_text) if self.enable_embodiment else None
+                )
+                
+                # Deliver response
+                await self._deliver_response(thread, response_components)
+                
+                # Cleanup
+                await self._cleanup_request(request_id)
+            else:
+                self.logger.warning(f"No matching request found for correlation_id: {correlation_id}")
+                self.logger.debug(f"Pending requests: {list(self.pending_responses.keys())}")
                     
         except Exception as e:
             self.logger.error(f"Error handling LLM response: {e}")
@@ -594,26 +695,65 @@ class ConversationEngine(BaseService):
     # EMBODIMENT SYSTEM (SCAFFOLDING)
     # ============================================================================
     
-    def _generate_avatar_actions(self, thread: ConversationThread, response_text: str) -> Dict[str, Any]:
-        """Generate avatar actions for embodied response (scaffolding)"""
-        # Placeholder for avatar system integration
-        return {
-            "facial_expression": "friendly",
-            "gesture": "subtle_nod",
-            "eye_contact": True,
-            "lip_sync_data": None  # Will be generated by TTS system
-        }
+    async def _generate_avatar_actions(self, thread: ConversationThread, response_text: str) -> Optional[Dict[str, Any]]:
+        """Generate avatar actions for embodied response"""
+        # Check if embodiment processor is available
+        embodiment_processor = self.ai_processors.get("embodiment")
+        
+        if embodiment_processor:
+            # Create processing context for avatar generation
+            context = ProcessingContext(
+                thread_id=thread.thread_id,
+                user_id=thread.user_context.user_id,
+                request_id=str(uuid.uuid4()),
+                message_content=response_text,
+                message_type="response",
+                turn_number=thread.turn_number,
+                conversation_phase=thread.conversation_phase,
+                user_name=thread.user_context.username,
+                relationship_type=thread.user_context.relationship_type,
+                conversation_style=thread.user_context.conversation_style
+            )
+            
+            try:
+                # Generate avatar actions
+                result = await embodiment_processor.generate_avatar_actions(context)
+                self.logger.debug(f"Avatar actions generated for thread {thread.thread_id}")
+                return result
+            except Exception as e:
+                self.logger.error(f"Avatar action generation failed: {e}")
+        
+        return None
     
-    def _generate_voice_parameters(self, thread: ConversationThread, response_text: str) -> Dict[str, Any]:
-        """Generate voice synthesis parameters (scaffolding)"""
-        # Placeholder for voice synthesis integration
-        return {
-            "voice_model": "default",
-            "emotion_tone": "neutral",
-            "speaking_rate": 1.0,
-            "pitch_variation": 0.1,
-            "emphasis_words": []
-        }
+    async def _generate_voice_parameters(self, thread: ConversationThread, response_text: str) -> Optional[Dict[str, Any]]:
+        """Generate voice synthesis parameters for embodied response"""
+        # Check if embodiment processor is available
+        embodiment_processor = self.ai_processors.get("embodiment")
+        
+        if embodiment_processor:
+            # Create processing context for voice generation
+            context = ProcessingContext(
+                thread_id=thread.thread_id,
+                user_id=thread.user_context.user_id,
+                request_id=str(uuid.uuid4()),
+                message_content=response_text,
+                message_type="response",
+                turn_number=thread.turn_number,
+                conversation_phase=thread.conversation_phase,
+                user_name=thread.user_context.username,
+                relationship_type=thread.user_context.relationship_type,
+                conversation_style=thread.user_context.conversation_style
+            )
+            
+            try:
+                # Generate voice parameters
+                result = await embodiment_processor.generate_voice_parameters(context)
+                self.logger.debug(f"Voice parameters generated for thread {thread.thread_id}")
+                return result
+            except Exception as e:
+                self.logger.error(f"Voice parameter generation failed: {e}")
+        
+        return None
     
     async def _deliver_response(self, thread: ConversationThread, response_components: ResponseComponents) -> None:
         """Deliver multimodal response to user"""

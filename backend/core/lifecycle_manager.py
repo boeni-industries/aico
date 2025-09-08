@@ -259,6 +259,18 @@ class BackendLifecycleManager:
             priority=25
         )
         
+        # Conversation engine factory
+        def create_conversation_engine(container: ServiceContainer):
+            from backend.services.conversation_engine import ConversationEngine
+            return ConversationEngine("conversation_engine", container)
+        
+        self.container.register_service(
+            "conversation_engine",
+            create_conversation_engine,
+            dependencies=[],
+            priority=30
+        )
+        
         self.logger.debug("Core services registered")
     
     def _register_plugin_classes(self) -> None:
@@ -639,7 +651,7 @@ class BackendLifecycleManager:
         print("\n[i] Core Service Status:")
         print("-" * 40)
         
-        core_services = ["database", "zmq_context", "user_service", "task_scheduler"]
+        core_services = ["database", "zmq_context", "user_service", "task_scheduler", "conversation_engine"]
         
         for service_name in core_services:
             try:
@@ -651,6 +663,12 @@ class BackendLifecycleManager:
                             print(f"[✓] {service_name}: Running")
                         else:
                             print(f"[!] {service_name}: Initialized but not started")
+                    elif service_name == "conversation_engine":
+                        # Check conversation engine status
+                        if hasattr(service, 'bus_client') and service.bus_client:
+                            print(f"[✓] {service_name}: Running (subscribed to conversation topics)")
+                        else:
+                            print(f"[!] {service_name}: Initialized but not connected to message bus")
                     else:
                         print(f"[✓] {service_name}: Running")
                 else:

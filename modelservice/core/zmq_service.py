@@ -26,7 +26,9 @@ class ModelserviceZMQService:
     
     def __init__(self, config: ConfigurationManager, ollama_manager=None):
         """Initialize the ZMQ service with configuration and optional Ollama manager."""
-        self.config = config.get("modelservice", {})
+        # Configuration is stored under 'core' domain in the config manager
+        core_config = config.get("core", {})
+        self.config = core_config.get("modelservice", {})
         self.ollama_manager = ollama_manager
         self.running = False
         self.bus_client = None
@@ -160,11 +162,13 @@ class ModelserviceZMQService:
     
     async def _handle_message(self, envelope):
         """Handle incoming Protocol Buffer ZMQ messages and route to appropriate handlers."""
-        logger.info(f"ZMQ message handler called with envelope: {type(envelope)}")
+        logger.info(f"[ZMQ_SERVICE] 📨 Message handler called with envelope: {type(envelope)}")
         try:
             # Extract information from AicoMessage envelope
+            logger.info(f"[ZMQ_SERVICE] Extracting correlation_id and message_type from envelope...")
             correlation_id = ModelserviceMessageParser.get_correlation_id(envelope)
             message_type = ModelserviceMessageParser.get_message_type(envelope)
+            logger.info(f"[ZMQ_SERVICE] Extracted - correlation_id: '{correlation_id}', message_type: '{message_type}'")
             
             # Check for duplicate correlation ID to prevent processing the same message multiple times
             if correlation_id in self.processed_correlation_ids:
@@ -183,43 +187,61 @@ class ModelserviceZMQService:
             
             # Use message type as topic (already includes /v1 suffix)
             topic = message_type
-            logger.info(f"Processing message: type={message_type}, topic={topic}, correlation_id={correlation_id}")
+            logger.info(f"[ZMQ_SERVICE] Processing message: type={message_type}, topic={topic}, correlation_id={correlation_id}")
             
+            logger.info(f"[ZMQ_SERVICE] Extracting request payload for topic: {topic}")
             request_payload = ModelserviceMessageParser.extract_request_payload(envelope, topic)
+            logger.info(f"[ZMQ_SERVICE] Request payload extracted: {type(request_payload)}")
             
-            logger.debug(f"Handling Protocol Buffer message on topic {topic} with correlation_id {correlation_id}")
+            logger.debug(f"[ZMQ_SERVICE] Handling Protocol Buffer message on topic {topic} with correlation_id {correlation_id}")
             
             # Route to appropriate handler
+            logger.info(f"[ZMQ_SERVICE] Looking up handler for topic: {topic}")
             handler = self.topic_handlers.get(topic)
             if not handler:
-                logger.warning(f"No handler found for topic: {topic}")
-                logger.info(f"Available handlers: {list(self.topic_handlers.keys())}")
+                logger.error(f"[ZMQ_SERVICE] ❌ CRITICAL: No handler found for topic: {topic}")
+                logger.error(f"[ZMQ_SERVICE] Available handlers: {list(self.topic_handlers.keys())}")
                 return
             
+            logger.info(f"[ZMQ_SERVICE] ✅ Handler found: {handler.__name__}")
+            
             # Execute handler with Protocol Buffer payload
+            logger.info(f"[ZMQ_SERVICE] Executing handler {handler.__name__} with payload type: {type(request_payload)}")
             response_payload = await handler(request_payload)
+            logger.info(f"[ZMQ_SERVICE] Handler completed, response type: {type(response_payload)}")
             
             # Send Protocol Buffer response if correlation_id is provided
             if correlation_id and self.bus_client:
                 response_topic = self._get_response_topic(topic)
+                logger.info(f"[ZMQ_SERVICE] Response topic for '{topic}': {response_topic}")
                 if response_topic:
+                    logger.info(f"[ZMQ_SERVICE] Publishing response to topic '{response_topic}' with correlation_id '{correlation_id}'")
                     # Pass raw response_payload to MessageBusClient, let it handle envelope wrapping
                     await self.bus_client.publish(response_topic, response_payload, correlation_id=correlation_id)
-                    logger.debug(f"Sent Protocol Buffer response on topic {response_topic}")
+                    logger.info(f"[ZMQ_SERVICE] ✅ Response published successfully to topic {response_topic}")
+                else:
+                    logger.error(f"[ZMQ_SERVICE] ❌ No response topic found for request topic: {topic}")
+            else:
+                logger.warning(f"[ZMQ_SERVICE] ⚠️ No response sent - correlation_id: {correlation_id}, bus_client: {self.bus_client is not None}")
             
         except Exception as e:
-            logger.error(f"Error handling Protocol Buffer message: {str(e)}")
+            logger.error(f"[ZMQ_SERVICE] ❌ CRITICAL ERROR handling Protocol Buffer message: {str(e)}")
+            logger.error(f"[ZMQ_SERVICE] Exception type: {type(e).__name__}")
+            import traceback
+            logger.error(f"[ZMQ_SERVICE] Full traceback: {traceback.format_exc()}")
             
             # Send error response if possible
             correlation_id = None
             try:
                 correlation_id = ModelserviceMessageParser.get_correlation_id(envelope)
-            except:
-                pass
+                logger.info(f"[ZMQ_SERVICE] Extracted correlation_id for error response: {correlation_id}")
+            except Exception as extract_error:
+                logger.error(f"[ZMQ_SERVICE] Failed to extract correlation_id for error response: {extract_error}")
                 
             if correlation_id and self.bus_client:
                 response_topic = self._get_response_topic(topic)
                 if response_topic:
+                    logger.info(f"[ZMQ_SERVICE] Sending error response to topic: {response_topic}")
                     if topic == AICOTopics.MODELSERVICE_HEALTH_REQUEST:
                         from aico.proto.aico_modelservice_pb2 import HealthResponse
                         error_response = HealthResponse()
@@ -227,6 +249,11 @@ class ModelserviceZMQService:
                         error_response.status = "error"
                         error_response.error = f"Handler error: {str(e)}"
                         await self.bus_client.publish(response_topic, error_response, correlation_id=correlation_id)
+                        logger.info(f"[ZMQ_SERVICE] Error response sent successfully")
+                else:
+                    logger.error(f"[ZMQ_SERVICE] No response topic available for error response")
+            else:
+                logger.error(f"[ZMQ_SERVICE] Cannot send error response - missing correlation_id or bus_client")
     
     def _get_response_topic(self, request_topic: str) -> Optional[str]:
         """Get the response topic for a given request topic."""

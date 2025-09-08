@@ -34,6 +34,7 @@ class AICOTopics:
     ZMQ_LEARNING_PREFIX = "learning/"
     ZMQ_OLLAMA_PREFIX = "ollama/"
     ZMQ_MODELSERVICE_PREFIX = "modelservice/"
+    ZMQ_AI_PREFIX = "ai/"
     # Wildcard constants for queries/filters
 
     """Central registry for all AICO message bus topics"""
@@ -54,6 +55,7 @@ class AICOTopics:
     LEARNING = "learning"
     OLLAMA = "ollama"
     MODELSERVICE = "modelservice"
+    AI = "ai"
     
     # ===== COMMON TOPIC PATTERNS =====
     
@@ -204,6 +206,46 @@ class AICOTopics:
     MODELSERVICE_STATUS_REQUEST = "modelservice/status/request/v1"
     MODELSERVICE_STATUS_RESPONSE = "modelservice/status/response/v1"
     
+    # AI Processing Domain (Message Bus Coordination)
+    # Emotion Analysis
+    AI_EMOTION_ANALYSIS_REQUEST = "ai/emotion/analysis/request/v1"
+    AI_EMOTION_ANALYSIS_RESPONSE = "ai/emotion/analysis/response/v1"
+    AI_EMOTION_FAST_ANALYSIS = "ai/emotion/fast/analyze/v1"
+    AI_EMOTION_DEEP_ANALYSIS = "ai/emotion/deep/analyze/v1"
+    
+    # Personality Expression
+    AI_PERSONALITY_EXPRESSION_REQUEST = "ai/personality/expression/request/v1"
+    AI_PERSONALITY_EXPRESSION_RESPONSE = "ai/personality/expression/response/v1"
+    AI_PERSONALITY_TRAIT_ANALYSIS = "ai/personality/trait/analyze/v1"
+    AI_PERSONALITY_BEHAVIOR_ANALYSIS = "ai/personality/behavior/analyze/v1"
+    
+    # Memory Operations
+    AI_MEMORY_RETRIEVAL_REQUEST = "ai/memory/retrieval/request/v1"
+    AI_MEMORY_RETRIEVAL_RESPONSE = "ai/memory/retrieval/response/v1"
+    AI_MEMORY_STORAGE_REQUEST = "ai/memory/storage/request/v1"
+    AI_MEMORY_STORAGE_RESPONSE = "ai/memory/storage/response/v1"
+    
+    # Embodiment (Avatar & Voice)
+    AI_EMBODIMENT_AVATAR_REQUEST = "ai/embodiment/avatar/request/v1"
+    AI_EMBODIMENT_AVATAR_RESPONSE = "ai/embodiment/avatar/response/v1"
+    AI_EMBODIMENT_VOICE_REQUEST = "ai/embodiment/voice/request/v1"
+    AI_EMBODIMENT_VOICE_RESPONSE = "ai/embodiment/voice/response/v1"
+    
+    # Agency & Proactive Behavior
+    AI_AGENCY_GOAL_GENERATION = "ai/agency/goal/generation/v1"
+    AI_AGENCY_OPPORTUNITY_DETECTION = "ai/agency/opportunity/detection/v1"
+    AI_AGENCY_PROACTIVE_TRIGGER = "ai/agency/proactive/trigger/v1"
+    
+    # Learning & Analytics (Non-blocking)
+    AI_LEARNING_PERSONALITY_UPDATE = "ai/learning/personality/update/v1"
+    AI_LEARNING_USER_PATTERN_UPDATE = "ai/learning/user_pattern/update/v1"
+    AI_ANALYTICS_INTERACTION_DATA = "ai/analytics/interaction/data/v1"
+    
+    # Context Management
+    AI_CONTEXT_THREAD_UPDATE = "ai/context/thread/update/v1"
+    AI_CONTEXT_USER_UPDATE = "ai/context/user/update/v1"
+    AI_CONTEXT_SHARED_STATE = "ai/context/shared/state/v1"
+    
     # ===== TOPIC BUILDERS =====
     
     @staticmethod
@@ -257,6 +299,16 @@ class AICOTopics:
         return f"logs/{type}/{version}"
     
     @staticmethod
+    def ai_processing(component: str, operation: str, action: str, version: str = "v1") -> str:
+        """Build AI processing topic: ai/<component>/<operation>/<action>/<version>"""
+        return f"ai/{component}/{operation}/{action}/{version}"
+    
+    @staticmethod
+    def ai_coordination(correlation_id: str, component: str, operation: str, version: str = "v1") -> str:
+        """Build AI coordination topic with correlation ID: ai/<component>/<operation>/<version>/<correlation_id>"""
+        return f"ai/{component}/{operation}/{version}/{correlation_id}"
+    
+    @staticmethod
     def build_logs_topic(topic: str) -> str:
         """Build full logs topic by prefixing with logs domain"""
         if topic.startswith("logs/"):
@@ -293,6 +345,7 @@ class AICOTopics:
     ALL_LOGS = "logs/*"
     ALL_AUTH = "auth/*"
     ALL_APP = "app/*"
+    ALL_AI = "ai/*"
     
     # State-specific wildcards
     ALL_CURRENT_STATE = "*/state/current/*"
@@ -399,7 +452,8 @@ class TopicPermissions:
     CLI_PERMISSIONS = [
         "system/*",
         "logs/*",
-        "admin/*"
+        "admin/*",
+        "ai/*"
     ]
 
 
@@ -425,6 +479,7 @@ class TopicMetadata:
         AICOTopics.UI: 1,              # 1 hour
         AICOTopics.SYSTEM: 8760,       # 1 year
         AICOTopics.LOGS: 720,          # 30 days
+        AICOTopics.AI: 24,              # 1 day
     }
     
     # Topic frequency limits (messages per second)
@@ -439,6 +494,7 @@ class TopicMetadata:
         AICOTopics.UI: 30,             # High frequency for UI updates
         AICOTopics.SYSTEM: 1,          # Low frequency for system events
         AICOTopics.LOGS: 100,          # Very high frequency for logging
+        AICOTopics.AI: 50,              # High frequency for AI processing
     }
     
     # Critical topics that require persistence
