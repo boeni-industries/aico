@@ -284,6 +284,17 @@ class BackendLifecycleManager:
         registry.register_plugin_class("log_consumer", LogConsumerPlugin)
         registry.register_plugin_class("encryption", EncryptionPlugin)
         
+        # Register AI plugin classes
+        from backend.services.embodiment_engine import EmbodimentPlugin
+        from backend.services.agency_engine import AgencyPlugin
+        from backend.services.emotion_engine import EmotionPlugin
+        from backend.services.personality_engine import PersonalityPlugin
+        
+        registry.register_plugin_class("embodiment", EmbodimentPlugin)
+        registry.register_plugin_class("agency", AgencyPlugin)
+        registry.register_plugin_class("emotion", EmotionPlugin)
+        registry.register_plugin_class("personality", PersonalityPlugin)
+        
         self.logger.debug("Plugin classes registered")
     
     async def _register_plugins(self) -> None:
@@ -311,7 +322,7 @@ class BackendLifecycleManager:
                     priority=self._get_plugin_priority(plugin_name)
                 )
                 
-                self.logger.debug(f"Plugin service registered: {plugin_name}")
+                self.logger.debug(f"Registered plugin service: {plugin_name}_plugin")
                 
             except Exception as e:
                 self.logger.error(f"Failed to register plugin '{plugin_name}': {e}")
@@ -331,6 +342,11 @@ class BackendLifecycleManager:
             "routing": [],
             "message_bus": ["zmq_context"],
             "log_consumer": ["database", "zmq_context"],
+            # AI plugins need message bus for inter-plugin communication
+            "embodiment": ["zmq_context"],
+            "agency": ["zmq_context"],
+            "emotion": ["zmq_context"],
+            "personality": ["zmq_context"],
         }
         
         return dependency_map.get(plugin_name, [])
@@ -345,6 +361,11 @@ class BackendLifecycleManager:
             "rate_limiting": 40,
             "validation": 45,
             "routing": 50,
+            # AI plugins start after core infrastructure
+            "embodiment": 60,
+            "agency": 61,
+            "emotion": 62,
+            "personality": 63,
         }
         
         return priority_map.get(plugin_name, 100)
@@ -660,6 +681,7 @@ class BackendLifecycleManager:
                 print(f"[!] {plugin_name}_plugin: Disabled")
         
         print("-" * 40)
+    
     
     def _mount_domain_routers(self) -> None:
         """Mount domain-specific API routers"""

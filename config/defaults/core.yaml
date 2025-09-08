@@ -139,6 +139,15 @@ api_gateway:
       enabled: true
     routing:
       enabled: true
+    # AI Processing Plugins for Conversation Engine
+    embodiment:
+      enabled: true
+    agency:
+      enabled: true
+    emotion:
+      enabled: true
+    personality:
+      enabled: true
 
 # Modelservice configuration
 modelservice:
