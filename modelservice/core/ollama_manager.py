@@ -16,6 +16,7 @@ import os
 import platform
 import shutil
 import subprocess
+import tarfile
 import zipfile
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -37,7 +38,7 @@ class OllamaManager:
     # Platform-specific binary mappings
     PLATFORM_BINARIES = {
         "Windows": "ollama-windows-amd64.zip",
-        "Darwin": "ollama-darwin",  # Universal binary
+        "Darwin": "ollama-darwin",  # Will be determined by architecture
         "Linux": "ollama-linux-amd64"
     }
     
@@ -68,6 +69,7 @@ class OllamaManager:
         
         # Platform detection
         self.platform = platform.system()
+        self.architecture = platform.machine()  # Get architecture (arm64, x86_64, etc.)
         self.ollama_binary = self._get_ollama_binary_path()
     
     def _ensure_logger(self):
@@ -278,8 +280,10 @@ class OllamaManager:
             pattern = "windows-amd64.zip"
             binary_name = "ollama-windows-amd64.zip"
         elif self.platform == "Darwin":
-            pattern = "darwin"
-            binary_name = "ollama-darwin"
+            # Darwin releases are universal binaries that work on both Intel and Apple Silicon
+            # Look for .tgz file (not .zip which is the GUI app)
+            pattern = "ollama-darwin.tgz"
+            binary_name = "ollama-darwin.tgz"
         elif self.platform == "Linux":
             pattern = "linux-amd64"
             binary_name = "ollama-linux-amd64"
@@ -314,6 +318,23 @@ class OllamaManager:
                     # Extract ollama.exe
                     zip_ref.extract("ollama.exe", self.bin_dir)
                 temp_file.unlink()  # Remove zip file
+                # Ensure the extracted binary is executable
+                self.ollama_binary.chmod(0o755)
+            elif binary_name.endswith(".tgz") or binary_name.endswith(".tar.gz"):
+                # macOS/Linux tar.gz file
+                with tarfile.open(temp_file, 'r:gz') as tar_ref:
+                    # Extract the ollama binary from the archive
+                    for member in tar_ref.getmembers():
+                        if member.name.endswith('/ollama') or member.name == 'ollama':
+                            # Extract to a temporary location first
+                            tar_ref.extract(member, self.bin_dir)
+                            # Move to final location
+                            extracted_path = self.bin_dir / member.name
+                            shutil.move(str(extracted_path), str(self.ollama_binary))
+                            break
+                    else:
+                        raise RuntimeError("Could not find 'ollama' binary in archive")
+                temp_file.unlink()  # Remove tar.gz file
                 # Ensure the extracted binary is executable
                 self.ollama_binary.chmod(0o755)
             else:
