@@ -84,6 +84,29 @@ async def start_conversation(
             conv_message.analysis.urgency = MessageAnalysis.Urgency.MEDIUM
             conv_message.analysis.requires_response = True
             
+            # Set up response waiting mechanism
+            response_received = asyncio.Event()
+            actual_response_text = None
+            
+            async def handle_ai_response(envelope):
+                nonlocal actual_response_text
+                try:
+                    # Check if this response is for our thread
+                    from aico.proto.aico_conversation_pb2 import ConversationMessage
+                    ai_message = ConversationMessage()
+                    envelope.any_payload.Unpack(ai_message)
+                    
+                    if ai_message.message.thread_id == thread_id:
+                        actual_response_text = ai_message.message.text
+                        response_received.set()
+                except Exception as e:
+                    logger.error(f"Error handling AI response: {e}")
+                    actual_response_text = "Error processing AI response"
+                    response_received.set()
+            
+            # Subscribe to AI response topic before publishing
+            await bus_client.subscribe(AICOTopics.CONVERSATION_AI_RESPONSE, handle_ai_response)
+            
             # Publish to message bus
             await bus_client.publish(
                 AICOTopics.CONVERSATION_USER_INPUT,
@@ -96,8 +119,18 @@ async def start_conversation(
                 "topic": AICOTopics.CONVERSATION_USER_INPUT
             })
             
-            # For now, return acknowledgment (real response will come via WebSocket)
-            response_text = "Message received and processing started"
+            # Wait for actual AI response (12 second timeout - shorter than client's 15s)
+            try:
+                await asyncio.wait_for(response_received.wait(), timeout=12.0)
+                response_text = actual_response_text or "No response received"
+            except asyncio.TimeoutError:
+                response_text = "Response timeout - AI is processing your request"
+            finally:
+                # Unsubscribe to prevent memory leaks
+                try:
+                    await bus_client.unsubscribe(AICOTopics.CONVERSATION_AI_RESPONSE, handle_ai_response)
+                except Exception:
+                    pass
         
         return ConversationResponse(
             success=True,
@@ -168,6 +201,29 @@ async def send_message(
         conv_message.analysis.urgency = MessageAnalysis.Urgency.MEDIUM
         conv_message.analysis.requires_response = True
         
+        # Set up response waiting mechanism
+        response_received = asyncio.Event()
+        actual_response_text = None
+        
+        async def handle_ai_response(envelope):
+            nonlocal actual_response_text
+            try:
+                # Check if this response is for our thread
+                from aico.proto.aico_conversation_pb2 import ConversationMessage
+                ai_message = ConversationMessage()
+                envelope.any_payload.Unpack(ai_message)
+                
+                if ai_message.message.thread_id == thread_id:
+                    actual_response_text = ai_message.message.text
+                    response_received.set()
+            except Exception as e:
+                logger.error(f"Error handling AI response: {e}")
+                actual_response_text = "Error processing AI response"
+                response_received.set()
+        
+        # Subscribe to AI response topic before publishing
+        await bus_client.subscribe(AICOTopics.CONVERSATION_AI_RESPONSE, handle_ai_response)
+        
         # Publish to message bus
         await bus_client.publish(
             AICOTopics.CONVERSATION_USER_INPUT,
@@ -180,11 +236,24 @@ async def send_message(
             "topic": AICOTopics.CONVERSATION_USER_INPUT
         })
         
+        # Wait for actual AI response (12 second timeout - shorter than client's 15s)
+        try:
+            await asyncio.wait_for(response_received.wait(), timeout=12.0)
+            response_text = actual_response_text or "No response received"
+        except asyncio.TimeoutError:
+            response_text = "Response timeout - AI is processing your request"
+        finally:
+            # Unsubscribe to prevent memory leaks
+            try:
+                await bus_client.unsubscribe(AICOTopics.CONVERSATION_AI_RESPONSE, handle_ai_response)
+            except Exception:
+                pass
+        
         return ConversationResponse(
             success=True,
             thread_id=thread_id,
             message_id=message_id,
-            response="Message received and processing started"
+            response=response_text
         )
         
     except Exception as e:

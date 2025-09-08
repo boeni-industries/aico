@@ -89,17 +89,29 @@ class ModelserviceZMQHandlers:
             logger.info(f"[COMPLETIONS] Forwarding to Ollama at {ollama_url}")
             logger.info(f"[COMPLETIONS] Prompt: '{prompt[:100]}..." + ("'" if len(prompt) <= 100 else "' (truncated)"))
             
+            logger.info(f"[COMPLETIONS] Creating HTTP client...")
             async with httpx.AsyncClient(timeout=30.0) as client:
-                logger.info(f"[COMPLETIONS] Sending request to Ollama...")
-                ollama_response = await client.post(
-                    f"{ollama_url}/api/generate",
-                    json={
-                        "model": model,
-                        "prompt": prompt,
-                        "stream": False
-                    }
-                )
-                logger.info(f"[COMPLETIONS] Ollama response status: {ollama_response.status_code}")
+                logger.info(f"[COMPLETIONS] HTTP client created, sending request to Ollama...")
+                request_data = {
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": False
+                }
+                logger.info(f"[COMPLETIONS] Request data prepared: model={model}, prompt_length={len(prompt)}")
+                
+                try:
+                    logger.info(f"[COMPLETIONS] Making POST request to {ollama_url}/api/generate")
+                    ollama_response = await client.post(
+                        f"{ollama_url}/api/generate",
+                        json=request_data
+                    )
+                    logger.info(f"[COMPLETIONS] Ollama response received with status: {ollama_response.status_code}")
+                except httpx.ConnectError as conn_err:
+                    raise Exception(f"Failed to connect to Ollama at {ollama_url}: {conn_err}")
+                except httpx.TimeoutException as timeout_err:
+                    raise Exception(f"Ollama request timed out after 30s: {timeout_err}")
+                except Exception as req_err:
+                    raise Exception(f"HTTP request to Ollama failed: {req_err}")
                 
                 if ollama_response.status_code != 200:
                     raise Exception(f"Ollama error: {ollama_response.status_code} - {ollama_response.text}")
