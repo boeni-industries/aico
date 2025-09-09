@@ -2452,6 +2452,8 @@
       
         
       
+        
+      
     
     
     
@@ -2498,6 +2500,29 @@
   
   <span class="md-ellipsis">
     Conversation Architecture
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../conversations_thread_manager/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Thread Manager
     
   </span>
   
@@ -4198,7 +4223,7 @@
 <p>This bidirectional communication happens without direct dependencies between the modules.</p>
 <h3 id="using-the-central-topic-registry">Using the Central Topic Registry<a class="headerlink" href="#using-the-central-topic-registry" title="Permanent link">&para;</a></h3>
 <p>All code should use the <code>AICOTopics</code> class instead of string literals:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.core.topics</span><span class="w"> </span><span class="kn">import</span> <span class="n">AICOTopics</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span> <span class="nn">aico.core.topics</span> <span class="kn">import</span> <span class="n">AICOTopics</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># Correct usage</span>
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">publish</span><span class="p">(</span><span class="n">AICOTopics</span><span class="o">.</span><span class="n">EMOTION_STATE_CURRENT</span><span class="p">,</span> <span class="n">emotion_data</span><span class="p">)</span>
@@ -4378,8 +4403,8 @@
 </ol>
 <h3 id="key-management">Key Management<a class="headerlink" href="#key-management" title="Permanent link">&para;</a></h3>
 <h4 id="master-key-integration">Master Key Integration<a class="headerlink" href="#master-key-integration" title="Permanent link">&para;</a></h4>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.security.key_manager</span><span class="w"> </span><span class="kn">import</span> <span class="n">AICOKeyManager</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.core.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfigurationManager</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span> <span class="nn">aico.security.key_manager</span> <span class="kn">import</span> <span class="n">AICOKeyManager</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span> <span class="nn">aico.core.config</span> <span class="kn">import</span> <span class="n">ConfigurationManager</span>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Initialize key manager</span>
 </span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">config</span> <span class="o">=</span> <span class="n">ConfigurationManager</span><span class="p">()</span>
@@ -4400,7 +4425,7 @@
 </ol>
 <h3 id="broker-configuration">Broker Configuration<a class="headerlink" href="#broker-configuration" title="Permanent link">&para;</a></h3>
 <h4 id="authentication-setup">Authentication Setup<a class="headerlink" href="#authentication-setup" title="Permanent link">&para;</a></h4>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.core.bus</span><span class="w"> </span><span class="kn">import</span> <span class="n">MessageBusBroker</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span> <span class="nn">aico.core.bus</span> <span class="kn">import</span> <span class="n">MessageBusBroker</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># Create encrypted broker</span>
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">broker</span> <span class="o">=</span> <span class="n">MessageBusBroker</span><span class="p">()</span>
@@ -4423,7 +4448,7 @@
 - <code>message_bus_client_backend_modules</code></p>
 <h3 id="client-configuration">Client Configuration<a class="headerlink" href="#client-configuration" title="Permanent link">&para;</a></h3>
 <h4 id="basic-usage">Basic Usage<a class="headerlink" href="#basic-usage" title="Permanent link">&para;</a></h4>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aico.core.bus</span><span class="w"> </span><span class="kn">import</span> <span class="n">MessageBusClient</span><span class="p">,</span> <span class="n">create_client</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span> <span class="nn">aico.core.bus</span> <span class="kn">import</span> <span class="n">MessageBusClient</span><span class="p">,</span> <span class="n">create_client</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># Create encrypted client (recommended)</span>
 </span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">client</span> <span class="o">=</span> <span class="n">create_client</span><span class="p">(</span><span class="s2">&quot;api_gateway&quot;</span><span class="p">)</span>
@@ -4447,7 +4472,7 @@
 </span></code></pre></div>
 <h4 id="message-subscription">Message Subscription<a class="headerlink" href="#message-subscription" title="Permanent link">&para;</a></h4>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Subscribe to encrypted messages</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">message_handler</span><span class="p">(</span><span class="n">topic</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">def</span> <span class="nf">message_handler</span><span class="p">(</span><span class="n">topic</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Received encrypted message on </span><span class="si">{</span><span class="n">topic</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
 </span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="s2">&quot;test.*&quot;</span><span class="p">,</span> <span class="n">message_handler</span><span class="p">)</span>
@@ -4560,7 +4585,7 @@
 <strong>Solution</strong>: Ensure broker is running and client public key is in authorized list.</p>
 <h4 id="debug-logging">Debug Logging<a class="headerlink" href="#debug-logging" title="Permanent link">&para;</a></h4>
 <p>Enable debug logging to see detailed CurveZMQ operations:
-<div class="language-python highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kn">import</span> <span class="nn">logging</span>
 </span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;aico.core.bus&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
 </span></code></pre></div></p>
 <h3 id="security-guarantees">Security Guarantees<a class="headerlink" href="#security-guarantees" title="Permanent link">&para;</a></h3>
