@@ -53,7 +53,7 @@ from aico.data.libsql import EncryptedLibSQLConnection
 
 # Create encrypted database connection
 conn = EncryptedLibSQLConnection(
-    db_path="secure_data.db",
+    db_path="data/aico.db",
     master_password="user_master_password",
     store_in_keyring=True  # Secure password storage
 )
@@ -75,13 +75,8 @@ with conn:
 # - SQLCipher-style PRAGMA key encryption
 # - System keyring integration for password storage
 
-# DuckDB encryption
-import duckdb
-
-def create_encrypted_duckdb(db_path, key_manager, master_key):
-    # Derive database-specific key
-    db_key = key_manager.derive_database_key(master_key, "duckdb")
-    return DuckDBConnection(db_path, encryption_key=db_key)
+# AICO uses a single encrypted LibSQL database
+# All data is stored in the main aico.db file
 
 # Generic File Encryption
 
@@ -91,11 +86,11 @@ For files without native encryption support, AICO provides a transparent encrypt
 from aico.security import EncryptedFile
 
 # Drop-in replacement for open()
-with EncryptedFile("sensitive_data.enc", "wb", key_manager=km) as f:
+with EncryptedFile("data/sensitive_data.enc", "wb", key_manager=km) as f:
     f.write(data)  # Automatically encrypted
 
-with EncryptedFile("sensitive_data.enc", "rb", key_manager=km) as f:
-    data = f.read()  # Automatically decrypted
+with EncryptedFile("data/sensitive_data.enc", "rb", key_manager=km) as f:
+    data = f.read()  # Automatically decrypted and audited
 ```
 
 ### LibSQL Encryption Implementation
@@ -162,17 +157,10 @@ connection.execute(f"PRAGMA key = 'x\"{key.hex()}\"'")
 **Usage Patterns:**
 ```python
 # Simple encrypted database
-conn = EncryptedLibSQLConnection("data.db", master_password="secret")
+conn = EncryptedLibSQLConnection("data/aico.db", master_password="secret")
 
 # With keyring storage
-conn = EncryptedLibSQLConnection("data.db", store_in_keyring=True)
-
-# Custom encryption parameters
-conn = EncryptedLibSQLConnection(
-    "data.db",
-    kdf_iterations=200000,  # Higher security
-    keyring_service="my_app"
-)
+conn = EncryptedLibSQLConnection("data/aico.db", store_in_keyring=True)
 
 # Verify encryption is working
 if conn.verify_encryption():
@@ -182,8 +170,8 @@ if conn.verify_encryption():
 **File Structure:**
 ```
 data/
-├── secure_data.db        # Encrypted LibSQL database
-├── secure_data.db.salt   # Salt file (0o600 permissions)
+├── aico.db        # Encrypted LibSQL database
+├── aico.db.salt   # Salt file (0o600 permissions)
 └── ...
 ```
 
@@ -192,17 +180,10 @@ data/
 AICO maintains organized encrypted storage with clear separation:
 
 ```
-/path/to/aico/
-└── data/
-    ├── libsql/
-    │   └── main.db          # SQLCipher encrypted
-    ├── duckdb/
-    │   └── analytics.db     # DuckDB native encryption
-    ├── chroma/
-    │   ├── index.enc        # Custom encrypted files
-    │   └── metadata.enc
-    └── rocksdb/
-        └── kvstore/         # RocksDB EncryptedEnv
+data/
+├── aico.db              # Single encrypted LibSQL database
+├── aico.db.salt         # Salt file for encryption
+└── logs/                # Log files (if separate from database)
 ```
 
 #### Advantages of Application-Level Encryption
@@ -247,110 +228,33 @@ AICO uses different key derivation functions optimized for specific use cases:
 - Recommended by security experts for password hashing
 
 ```python
-from cryptography.hazmat.primitives.kdf.argon2 import Argon2
-import os
-import keyring
-import getpass
+```python
+from aico.security.key_manager import AICOKeyManager
 
-class AICOKeyManager:
-    """Unified key management for all authentication scenarios"""
-    
-    def __init__(self, service_name="AICO"):
-        self.service_name = service_name
-        
-    def setup_or_retrieve_key(self, password=None, interactive=True):
-        """DRY method: handles setup, interactive, and service authentication"""
-        # Try to retrieve existing key first (service mode)
-        stored_key = keyring.get_password(self.service_name, "master_key")
-        
-        if stored_key:
-            return bytes.fromhex(stored_key)  # Service startup - no user interaction
-        elif password:
-            return self._derive_and_store(password)  # Setup mode
-        elif interactive:
-            password = getpass.getpass("Enter master password: ")
-            return self._derive_and_store(password)  # Interactive mode
-        else:
-            raise AuthenticationError("No stored key and no password provided")
-            
-    def _derive_and_store(self, password):
-        """Derive master key and store securely"""
-        # Use consistent Argon2id parameters for master key
-        salt = os.urandom(16)
-        argon2 = Argon2(
-            salt=salt,
-            time_cost=3,           # 3 iterations
-            memory_cost=1048576,   # 1GB memory
-            parallelism=4,         # 4 threads
-            hash_len=32,           # 256-bit key
-            type=2                 # Argon2id
-        )
-        
-        master_key = argon2.derive(password.encode())
-        
-        # Store derived key securely
-        keyring.set_password(self.service_name, "master_key", master_key.hex())
-        keyring.set_password(self.service_name, "salt", salt.hex())
-        
-        # Clear password from memory
-        password = None
-        
-        return master_key
-        
-    def derive_database_key(self, master_key, database_type):
-        """Derive database-specific key from master key"""
-        # Balanced parameters for database encryption
-        salt = os.urandom(16)
-        argon2 = Argon2(
-            salt=salt,
-            memory_cost=262144,     # 256 MB
-            iterations=2,
-            lanes=2,
-            type=2                 # Argon2id
-        )
-        # Derive using master key + database type identifier
-        context = master_key + f"aico-{database_type}".encode()
-        key = argon2.derive(context)
-        return key
-        
-    def derive_file_encryption_key(self, master_key, file_purpose):
-        """Derive file-specific encryption key from master key"""
-        salt = os.urandom(16)
-        argon2 = Argon2(
-            salt=salt,
-            memory_cost=131072,     # 128 MB for file operations
-            iterations=1,
-            lanes=2,
-            type=2                 # Argon2id
-        )
-        context = master_key + f"aico-file-{file_purpose}".encode()
-        key = argon2.derive(context)
-        return key
+# Key management is handled by existing AICOKeyManager
+key_manager = AICOKeyManager()
+master_key = key_manager.get_or_create_master_key()
+
+# Derive keys for the single AICO database
+db_key = key_manager.derive_key(master_key, "database", "aico")
+file_key = key_manager.derive_key(master_key, "file", "config")
+```
 ```
 
 #### Key Management Process
 
-The unified key management process supports three authentication scenarios:
-
-**1. Initial Setup (Interactive)**
 ```python
-key_manager = AICOKeyManager()
-master_key = key_manager.setup_master_password(password="user_password")
-# Derives and stores master key securely
-```
+# Unified key management via existing AICOKeyManager
+from aico.security.key_manager import AICOKeyManager
 
-**2. User Authentication (Interactive)**
-```python
 key_manager = AICOKeyManager()
-master_key = key_manager.authenticate(interactive=True)
-# Uses stored key if available, otherwise prompts for password
-```
+master_key = key_manager.get_or_create_master_key()
 
-**3. Service Startup (Automatic)**
-```python
-key_manager = AICOKeyManager()
-master_key = key_manager.authenticate(interactive=False)
-# Retrieves stored key without user interaction
+# Database encryption
+conn = EncryptedLibSQLConnection(
+    "data/aico.db",
+    key_manager=key_manager
+)
 ```
 
 #### Security Properties
@@ -402,106 +306,40 @@ flowchart TD
 
 ##### 1. Schema Definition Protection
 ```python
-# Schema definitions are immutable and version-locked
-CORE_SCHEMA_DEFINITIONS = {
-    1: SchemaVersion(
-        version=1,
-        name="Initial Schema",
-        # Cryptographic hash ensures integrity
-        checksum="sha256:a1b2c3d4...",
-        sql_statements=[...],
-        rollback_statements=[...]
-    )
-}
+# Schema definitions with integrity validation
+from aico.data.schema import SchemaManager
 
-# Runtime validation
-class SchemaManager:
-    def _validate_schema_integrity(self, schema_version: SchemaVersion):
-        """Validate schema definition hasn't been tampered with"""
-        computed_hash = self._compute_schema_hash(schema_version)
-        if computed_hash != schema_version.checksum:
-            raise SecurityError("Schema integrity violation detected")
+schema_manager = SchemaManager(connection)
+schema_manager.validate_and_apply_migrations()
 ```
 
 ##### 2. Migration History Protection
 ```python
-# Migration history with tamper detection
-CREATE TABLE schema_migration_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    component_name TEXT NOT NULL,
-    version INTEGER NOT NULL,
-    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    checksum TEXT NOT NULL,  -- Prevents replay attacks
-    migration_hash TEXT NOT NULL,  -- Validates migration content
-    rollback_hash TEXT  -- Validates rollback integrity
-)
+# Migration tracking with tamper detection
+from aico.data.schema import MigrationTracker
 
-# Checksum validation prevents replay attacks
-def apply_migration(self, version: int):
-    migration_hash = self._compute_migration_hash(version)
-    
-    # Check if already applied
-    existing = self.connection.fetch_one(
-        "SELECT checksum FROM schema_migration_history WHERE version = ?",
-        (version,)
-    )
-    
-    if existing and existing['checksum'] == migration_hash:
-        logger.warning(f"Migration {version} already applied, skipping")
-        return
-    
-    # Apply migration with integrity tracking
-    self._execute_migration(version, migration_hash)
+tracker = MigrationTracker(connection)
+tracker.apply_migration_if_needed(version, migration_sql)
 ```
 
 ##### 3. Plugin Schema Isolation
 ```python
-# Plugin schemas are sandboxed and isolated
-class PluginSchemaManager(SchemaManager):
-    def __init__(self, connection, plugin_name, schema_definitions):
-        self.plugin_name = plugin_name
-        self.table_prefix = f"{plugin_name}_"  # Namespace isolation
-        super().__init__(connection, schema_definitions)
-    
-    def _validate_table_access(self, table_name: str):
-        """Ensure plugin only accesses its own tables"""
-        if not table_name.startswith(self.table_prefix):
-            raise SecurityError(
-                f"Plugin {self.plugin_name} cannot access table {table_name}"
-            )
-    
-    def _validate_sql_statement(self, sql: str):
-        """Validate SQL doesn't access unauthorized resources"""
-        # Parse SQL and check table references
-        parsed = sqlparse.parse(sql)[0]
-        for token in parsed.flatten():
-            if token.ttype is sqlparse.tokens.Name:
-                if self._is_table_reference(token.value):
-                    self._validate_table_access(token.value)
+# Plugin schema isolation
+from aico.plugins.schema import PluginSchemaManager
+
+plugin_schema = PluginSchemaManager(connection, plugin_name)
+plugin_schema.create_isolated_tables(schema_definitions)
 ```
 
 ### Encryption Integration
 
 #### Schema Metadata Encryption
 ```python
-# Schema metadata is encrypted with user data
-class EncryptedSchemaManager(SchemaManager):
-    def __init__(self, encrypted_connection: EncryptedLibSQLConnection, schema_definitions):
-        super().__init__(encrypted_connection, schema_definitions)
-        self.encrypted_connection = encrypted_connection
-    
-    def _store_metadata(self, key: str, value: str):
-        """Store schema metadata in encrypted database"""
-        # Metadata automatically encrypted by EncryptedLibSQLConnection
-        self.connection.execute(
-            "INSERT OR REPLACE INTO schema_metadata (key, value) VALUES (?, ?)",
-            (key, value)
-        )
-    
-    def _verify_encryption_status(self):
-        """Ensure database is properly encrypted"""
-        if not self.encrypted_connection.verify_encryption():
-            raise SecurityError("Database encryption verification failed")
+# Schema metadata encryption
+from aico.data.schema import EncryptedSchemaManager
+
+schema_manager = EncryptedSchemaManager(encrypted_connection)
+schema_manager.store_metadata(key, value)  # Automatically encrypted
 ```
 
 #### Key Derivation for Schema Operations
@@ -510,7 +348,7 @@ class EncryptedSchemaManager(SchemaManager):
 class SecureSchemaOperations:
     def __init__(self, master_password: str):
         self.connection = EncryptedLibSQLConnection(
-            db_path="~/.aico/user.db",
+            db_path="data/aico.db",
             master_password=master_password  # Same key as user data
         )
     
@@ -528,44 +366,20 @@ class SecureSchemaOperations:
 
 #### Local-Only Operations
 ```python
-# Schema management is strictly local
-class LocalSchemaManager:
-    def __init__(self):
-        # No network access allowed
-        self.network_disabled = True
-        self.local_only = True
-    
-    def _validate_local_access(self):
-        """Ensure no remote schema operations"""
-        if self._detect_network_activity():
-            raise SecurityError("Network access detected during schema operation")
-    
-    def migrate_to_latest(self):
-        self._validate_local_access()
-        super().migrate_to_latest()
+# Local-only schema operations
+from aico.data.schema import LocalSchemaManager
+
+schema_manager = LocalSchemaManager(connection)
+schema_manager.migrate_to_latest()  # Network access blocked
 ```
 
 #### Permission Boundaries
 ```python
-# Strict permission model for schema operations
-class PermissionAwareSchemaManager:
-    ALLOWED_OPERATIONS = {
-        'core': ['CREATE TABLE', 'CREATE INDEX', 'ALTER TABLE'],
-        'plugin': ['CREATE TABLE', 'CREATE INDEX'],  # No ALTER on core tables
-        'test': ['CREATE TABLE', 'DROP TABLE', 'CREATE INDEX', 'DROP INDEX']
-    }
-    
-    def __init__(self, connection, schema_definitions, context: str):
-        self.context = context  # 'core', 'plugin', or 'test'
-        super().__init__(connection, schema_definitions)
-    
-    def _validate_sql_permission(self, sql: str):
-        """Validate SQL operation is allowed in current context"""
-        operation = self._extract_sql_operation(sql)
-        if operation not in self.ALLOWED_OPERATIONS[self.context]:
-            raise PermissionError(
-                f"Operation {operation} not allowed in {self.context} context"
-            )
+# Permission-aware schema operations
+from aico.data.schema import PermissionAwareSchemaManager
+
+schema_manager = PermissionAwareSchemaManager(connection, context='core')
+schema_manager.validate_and_execute(sql_statement)
 ```
 
 ### Security Best Practices
@@ -586,25 +400,13 @@ class PermissionAwareSchemaManager:
 
 #### Incident Response
 ```python
-# Security incident detection and response
-class SchemaSecurityMonitor:
-    def detect_tampering(self):
-        """Detect schema tampering attempts"""
-        current_checksums = self._compute_all_checksums()
-        stored_checksums = self._get_stored_checksums()
-        
-        if current_checksums != stored_checksums:
-            self._trigger_security_alert("Schema tampering detected")
-            self._lock_database_access()
-            return True
-        return False
-    
-    def _trigger_security_alert(self, message: str):
-        """Trigger security incident response"""
-        logger.critical(f"SECURITY ALERT: {message}")
-        # Additional alerting mechanisms
-        self._notify_security_team(message)
-        self._create_incident_report(message)
+# Schema security monitoring
+from aico.data.schema import SchemaSecurityMonitor
+
+monitor = SchemaSecurityMonitor(connection)
+if monitor.detect_tampering():
+    logger.critical("Schema tampering detected")
+    monitor.lock_database_access()
 ```
 
 ### Compliance Considerations
@@ -645,7 +447,7 @@ class SchemaSecurityMonitor:
    - Retrieves keys from secure storage
    - Mounts encrypted filesystem transparently
 
-For complete details on the overall key management system, see Security Architecture documentation (file does not exist).
+For complete details on the overall key management system, see the Security Overview documentation.
 
 ## Data Synchronization Security
 

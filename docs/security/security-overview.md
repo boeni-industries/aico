@@ -132,16 +132,22 @@ AICO employs comprehensive encryption strategies to protect data both at rest an
 
 #### Encryption at Rest
 - **Application-Level Encryption**: Database-native and file-level encryption for optimal performance
-  - **Database-Native**: SQLCipher (SQLite), DuckDB encryption, RocksDB EncryptedEnv
-  - **File-Level Wrapper**: AES-256-GCM for files without native encryption support
+  - **Database-Native Encryption**
+
+Each database uses its optimal encryption method for maximum performance and reliability:
+
+- **libSQL**: SQLCipher-style encryption via PRAGMA statements with PBKDF2 key derivation (✅ implemented)
+- **DuckDB**: Built-in AES-256 encryption via PRAGMA statements (🚧 planned)
+- **RocksDB**: Native EncryptedEnv for transparent key-value encryption (🚧 planned)
+- **ChromaDB**: Custom file-level encryption wrapper (🚧 planned)
   - **Forward Secrecy**: Ensures past data remains secure even if keys are compromised
 - **Memory Protection**: Sensitive data in memory is protected against unauthorized access
 - **Secure Storage**: Encryption keys stored using platform-specific secure storage mechanisms
 
 #### Encryption in Transit
 - **Local Communication**: 
-  - **ZeroMQ with CurveZMQ**: Elliptic curve cryptography for all internal communication
-  - **Authentication**: Certificate-based peer authentication
+  - **ZeroMQ with CurveZMQ**: Elliptic curve cryptography for message bus communication (✅ implemented)
+  - **Authentication**: Certificate-based peer authentication (✅ implemented)
   - **Implementation**:
     ```python
     # Example secure ZeroMQ setup
@@ -163,9 +169,9 @@ AICO employs comprehensive encryption strategies to protect data both at rest an
     ```
 
 - **Remote Communication**:
-  - **End-to-End Encryption**: TLS 1.3 with strong cipher suites
-  - **Certificate Pinning**: Prevents man-in-the-middle attacks
-  - **Perfect Forward Secrecy**: Ensures past communications remain secure
+  - **End-to-End Encryption**: TLS 1.3 with strong cipher suites (🚧 planned for detached mode)
+  - **Certificate Pinning**: Prevents man-in-the-middle attacks (🚧 planned)
+  - **Perfect Forward Secrecy**: Ensures past communications remain secure (🚧 planned)
 
 ### 2. Authentication & Authorization Layer
 
@@ -193,25 +199,20 @@ AICO employs a comprehensive approach to key management that combines secure key
 
 - **Implementation in AICO Backend**:
   ```python
-  # AICO backend implementation using Python-Cryptography
-  from cryptography.hazmat.primitives.kdf.argon2 import Argon2
-  import os
+  # AICO backend implementation using AICOKeyManager
+  from aico.security.key_manager import AICOKeyManager
   
-  # Generate a random salt for AICO master key
-  salt = os.urandom(16)
+  # Initialize key manager
+  key_manager = AICOKeyManager()
   
-  # Configure Argon2id for AICO master key derivation
-  argon2 = Argon2(
-      salt=salt,
-      time_cost=3,           # Iterations
-      memory_cost=1048576,   # 1GB in KB
-      parallelism=4,         # 4 threads
-      hash_len=32,           # 256-bit key
-      type=2                 # Argon2id
+  # Setup or retrieve master key (handles Argon2id derivation internally)
+  master_key = key_manager.setup_or_retrieve_key(
+      password=user_password,
+      interactive=True
   )
   
-  # Derive AICO master key from user password
-  master_key = argon2.derive(password.encode())
+  # Derive database-specific keys
+  db_key = key_manager.derive_database_key(master_key, "libsql")
   ```
 
 ### Key Management
@@ -297,9 +298,9 @@ AICO's key management system handles the lifecycle of cryptographic keys from cr
   ```
   
   This unified approach provides:
-  - **KISS**: Single class handles all authentication scenarios
-  - **DRY**: Common key derivation and storage logic
-  - **Maintainable**: Clear separation of concerns with simple state handling
+  - **KISS**: Single class handles all authentication scenarios (✅ implemented)
+  - **DRY**: Common key derivation and storage logic (✅ implemented)
+  - **Maintainable**: Clear separation of concerns with simple state handling (✅ implemented)
 
 - **Roaming Support**: 
   - **Coupled Roaming**: Secure key transfer between trusted devices

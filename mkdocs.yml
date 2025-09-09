@@ -167,7 +167,6 @@ nav:
   - Subsystems:
       - Backend:
           - API Gateway: subsystems/backend/api-gateway.md
-          - API Reference: subsystems/backend/api-reference.md
           - Plugin System: subsystems/backend/plugin-system.md
           - Log Consumer: subsystems/backend/log-consumer.md
           - Scheduling:

@@ -1,188 +1,140 @@
 # API Gateway Architecture
 
----
-
-## Admin Endpoints and Privileged Access
-
-The API Gateway is also responsible for securely exposing all **administrative endpoints** (web UI and API) required for backend operation and maintenance:
-- **Admin endpoints** (e.g., `/admin`, `/admin/config`, `/admin/logs`, etc.) are served as privileged, local-only interfaces by default.
-- **Authentication & Authorization:** Strong authentication and role-based access control are enforced for all admin actions.
-- **Routing:** Admin requests are routed to the corresponding backend admin modules in the Administration domain.
-- **Separation:** Admin endpoints are strictly separated from user-facing APIs and are never exposed to regular users.
-- **Extensibility:** As new admin modules are added to the backend, their endpoints become available via the gateway automatically.
-
-This ensures that all administrative functionality—configuration, logs, plugin management, updates, audit, etc.—is securely accessible to developers and operators, while protecting regular users and maintaining system integrity.
-
----
-
 ## Overview
 
-The API Gateway serves as the unified entry point for all external communication with the AICO backend services. It provides a consistent, secure, and protocol-agnostic interface that supports both coupled and detached roaming patterns while enforcing the system's security policies. Additionally, it plays a crucial role in AICO's federated device network, facilitating secure device-to-device communication and data synchronization.
+The API Gateway serves as the unified entry point for all external communication with the AICO backend services. It provides a consistent, secure interface supporting REST, WebSocket, and ZeroMQ protocols while enforcing security policies and managing device connections.
 
 ## Core Principles
 
-- **Single Entry Point**: All external requests to backend services must go through the API Gateway
-- **Protocol Flexibility**: Support for REST, WebSocket, and gRPC protocols to accommodate different client capabilities
-- **Security Enforcement**: Centralized authentication, authorization, and request validation
-- **Roaming Support**: Seamless support for both coupled and detached roaming patterns
-- **Local-First**: Designed to work in local-only environments without external dependencies
-- **Zero-Trust**: Enforce security boundaries even for local communication
-- **Federated Communication**: Support for P2P device communication in the federated device network
-- **Selective Sync**: Facilitate different synchronization policies for various data types
+- **Single Entry Point**: All external requests go through the API Gateway
+- **Protocol Support**: REST (primary), WebSocket (real-time), ZeroMQ (internal)
+- **Security Enforcement**: JWT authentication, ASGI-level encryption, role-based access
+- **Local-First**: Works in local-only environments without external dependencies
+- **Plugin Architecture**: Extensible via standardized plugin system
 
 ## Architecture Components
 
-### 1. Plugin-Based Architecture
+### 1. Plugin-Based Architecture ✅
 
-The API Gateway uses a service container architecture with standardized plugin base classes:
+**Current Implementation**:
+- **ServiceContainer**: Manages service registration and dependency injection
+- **BasePlugin**: Standardized base class with lifecycle management (`initialize()`, `start()`, `stop()`)
+- **Plugin Types**: InfrastructurePlugin, SecurityPlugin, MiddlewarePlugin
+- **Priority System**: Infrastructure (10) → Security (20) → Middleware (30) → Business (40)
 
-- **BackendLifecycleManager**: Central orchestrator managing service container, FastAPI lifecycle, and plugin coordination
-- **ServiceContainer**: Manages service registration, dependency injection, and lifecycle states
-- **BasePlugin**: Standardized plugin base class with metadata, lifecycle methods, and dependency injection
-- **Plugin System**: Extensible architecture using inheritance hierarchy (BasePlugin, SecurityPlugin, MiddlewarePlugin)
+**Active Plugins**:
+- Message Bus Plugin (infrastructure)
+- Encryption Plugin (security) 
+- Log Consumer Plugin (infrastructure)
+- Rate Limiting Plugin (middleware)
 
-### 2. Protocol Adapters (Plugin-Based)
+### 2. Protocol Support ✅
 
-Protocol adapters are implemented as plugins managed by the ProtocolAdapterManager:
+**REST API** (Primary):
+- FastAPI framework on port 8771
+- Domain-based routing: `/api/v1/{domain}/`
+- JWT authentication with admin role enforcement
+- OpenAPI documentation at `/docs`
 
-- **REST Adapter**: HTTP/JSON interface integrated with FastAPI
-  - Domain-based routing (`/api/v1/users/`, `/api/v1/admin/`, `/api/v1/logs/`)
-  - OpenAPI 3.1 documentation and validation
-  - Unified port design (single port 8771)
+**WebSocket** (Real-time):
+- Thread-specific connections: `/api/v1/conversation/ws/{thread_id}`
+- Real-time AI response delivery
+- Heartbeat support for connection management
 
-- **WebSocket Adapter**: Real-time bidirectional communication
-  - Persistent connections for UI updates
-  - Connection lifecycle management via plugin system
-  - Message framing and serialization
+**ZeroMQ** (Internal):
+- Message bus integration for backend communication
+- Protocol Buffers serialization
+- CurveZMQ encryption for security
 
-- **ZeroMQ Adapter**: High-performance local communication
-  - Cross-platform IPC transport with TCP fallback
-  - Message bus integration for internal communication
-  - Protocol Buffers for binary serialization
+### 3. Domain-Based API Organization ✅
 
-### 2. Domain-Based API Organization
+**Current Domains**:
+- **`/api/v1/conversation/`** - Thread and message management
+- **`/api/v1/admin/`** - Administrative endpoints
+- **`/api/v1/logs/`** - Log management and retrieval
+- **`/api/v1/scheduler/`** - Task scheduling operations
+- **`/api/v1/health`** - System health monitoring
 
-The API Gateway organizes endpoints using a **domain-based module-functionality** pattern for improved maintainability and scalability:
-
-- **Domain Separation**: Business functionality grouped by domain (users, admin, conversations, health)
-- **Self-Contained Modules**: Each domain contains its own routers, schemas, dependencies, and exceptions
-- **Consistent Structure**: Standardized file patterns across all domains following FastAPI best practices
-- **Clean Architecture**: Clear separation between API layer, business logic, and infrastructure
-
-**API Structure**:
+**Structure Pattern**:
 ```
-api/
-├── users/          # User management domain
-│   ├── router.py   # User API endpoints
-│   ├── schemas.py  # Pydantic request/response models
-│   ├── dependencies.py  # User-specific auth and validation
-│   └── exceptions.py    # User-specific error handling
-├── admin/          # Administrative domain
-│   ├── router.py   # Admin API endpoints
-│   ├── schemas.py  # Admin Pydantic models
-│   ├── dependencies.py  # Admin authentication
-│   └── exceptions.py    # Admin-specific errors
-├── conversations/ # Conversation management domain
-└── health/        # System health and monitoring
+api/{domain}/
+├── router.py      # FastAPI endpoints
+├── schemas.py     # Pydantic models
+├── dependencies.py # Auth and validation
+└── exceptions.py   # Domain-specific errors
 ```
 
-This organization provides:
-- **Scalability**: Easy addition of new domains (personality, emotion, etc.)
-- **Maintainability**: Related functionality grouped together
-- **Team Collaboration**: Clear ownership boundaries
-- **Professional Standards**: Follows established FastAPI patterns
+### 4. Middleware Stack ✅
 
-### 3. Middleware Stack (Plugin-Based)
+**ASGI Encryption Middleware**:
+- Wraps entire FastAPI application
+- AES-256-GCM encryption using `AICOKeyManager`
+- Unencrypted endpoints: `/health`, `/docs`, `/handshake`
 
-The gateway implements a comprehensive middleware stack as plugins:
+**Authentication**:
+- JWT token validation via `HTTPBearer`
+- Admin role enforcement for privileged endpoints
+- Token storage in `~/.aico/gateway_token`
 
-- **Encryption Middleware**: ASGI-level encryption wrapping the entire FastAPI app
-  - Transparent encryption/decryption for all endpoints
-  - Key management integration with `AICOKeyManager`
-  - Unencrypted endpoint handling for health checks and handshake
+**Request Logging**:
+- Structured logging via Protocol Buffers
+- ZMQ transport to log consumer service
+- Performance metrics and audit trails
 
-- **Authentication Plugin**: JWT token validation and session management
-  - Integration with backend authentication manager
-  - Admin role enforcement for privileged endpoints
-  - Device pairing and trust establishment
+### 5. Core Services Integration ✅
 
-- **Rate Limiting Plugin**: Traffic management and abuse prevention
-  - Per-client rate limiting with configurable policies
-  - Graduated response to excessive requests
-  - Integration with security monitoring
+**Message Bus Integration**:
+- ZeroMQ with CurveZMQ encryption
+- Protocol Buffers serialization
+- Topic-based routing (`logs.*`, `conversation.*`)
 
-- **Request Logging Plugin**: Comprehensive request/response logging
-  - Structured logging via Protocol Buffers
-  - ZMQ transport to log consumer service
-  - Performance metrics and audit trails
+**Database Access**:
+- Shared `EncryptedLibSQLConnection` (libSQL with AES-256-GCM)
+- Single database file: `data/aico.db`
+- Key derivation via `AICOKeyManager`
 
-### 4. Core Services Integration
+**Configuration Management**:
+- YAML-based configuration with schema validation
+- Plugin-specific sections in `core.yaml`
+- Runtime updates via `ConfigurationManager`
 
-- **Message Bus Integration**: ZeroMQ-based internal communication
-  - Protocol Buffers for high-performance binary serialization
-  - Topic-based pub/sub for module communication
-  - Log transport pipeline to database persistence
+**Process Management**:
+- PID file management for CLI integration
+- Signal-based graceful shutdown
+- Background task coordination
 
-- **Database Connection Sharing**: Unified database access
-  - Shared `EncryptedLibSQLConnection` across all plugins
-  - Connection pooling and lifecycle management
-  - Encrypted storage with key derivation
+### 6. Device Connection Support 🚧
 
-- **Configuration Management**: Centralized configuration system
-  - YAML-based configuration with schema validation
-  - Plugin-specific configuration sections
-  - Runtime configuration updates
+**Current Implementation**:
+- Local connections via REST/WebSocket on port 8771
+- JWT-based authentication for device trust
+- Single-device deployment model
 
-- **Process Management**: Service lifecycle coordination
-  - PID file management for CLI integration
-  - Graceful shutdown with signal handling
-  - Background task coordination
+**Planned Features**:
+- Multi-device federation with P2P sync
+- Device registry and trust management
+- mDNS/Bonjour device discovery
+- Selective sync policies
 
-### 5. Roaming and Federation Support
+## Communication Patterns ✅
 
-- **Device Registry**: Manages connected frontend devices
-  - Tracks active connections and their capabilities
-  - Maintains device trust relationships
-  - Supports device capability discovery
-  - Interfaces with the libSQL device registry database
+### Current Implementation (Local Mode)
 
-- **Connection Manager**: Handles different connection modes
-  - Local IPC connections for coupled mode
-  - Secure network connections for detached mode
-  - P2P connections for federated device communication
-  - Automatic protocol selection based on deployment
+**Frontend ↔ API Gateway**:
+- REST API on `localhost:8771`
+- WebSocket for real-time updates
+- JWT authentication
+- ASGI-level encryption
 
-- **Trust Establishment**: Manages secure device pairing
-  - Implements secure pairing protocols
-  - Manages trusted device certificates
-  - Handles key exchange for secure communication
-  - Supports device authorization and revocation
-
-- **Federated Sync Gateway**: Facilitates device-to-device synchronization
-  - Implements P2P encrypted mesh communication
-  - Supports selective sync policies for different data types
-  - Provides device discovery via mDNS/Bonjour and DHT
-  - Handles conflict detection and resolution strategies
-
-## Communication Patterns
-
-### Local (Coupled) Mode
-
-In coupled mode, where frontend and backend run on the same device:
-
-1. API Gateway uses ZeroMQ's cross-platform IPC transport with automatic fallback:
-   - Primary: ZeroMQ IPC using platform-appropriate mechanisms
-   - Fallback: Localhost REST/WebSocket when IPC is unavailable
-   - Automatic detection and switching between transport methods
-   - Consistent API regardless of transport mechanism
-2. Authentication leverages the device's security boundary
-3. Communication remains encrypted but avoids network overhead
-4. Connection manager optimizes for local performance
+**API Gateway ↔ Backend Services**:
+- ZeroMQ message bus with CurveZMQ encryption
+- Protocol Buffers serialization
+- Topic-based routing
 
 ```
-┌────────────┐      Local IPC      ┌────────────┐      ZeroMQ      ┌────────────┐
+┌────────────┐   REST/WebSocket   ┌────────────┐      ZeroMQ      ┌────────────┐
 │  Frontend  │ ─────────────────── │ API Gateway│ ─────────────────│  Backend   │
-│  (Flutter) │                     │            │                   │  Services  │
+│  (Flutter) │    localhost:8771   │            │   CurveZMQ+PB    │  Services  │
 └────────────┘                     └────────────┘                   └────────────┘
 ```
 
@@ -227,100 +179,76 @@ In federated mode, where multiple devices synchronize data across the network:
 
 ## Implementation Details
 
-### Current Technology Stack
+### Technology Stack
 
-- **Core Framework**: FastAPI with ASGI middleware architecture
-- **Plugin System**: Custom plugin registry with dependency injection
-- **Security**: 
-  - `AICOKeyManager` for key derivation and session management
-  - ASGI-level encryption middleware
-  - JWT authentication with admin role enforcement
-- **Message Bus**: ZeroMQ with Protocol Buffers
-  - Binary serialization for performance
-  - Topic-based routing (`logs.*`, `events.*`)
-  - Log consumer service for database persistence
-- **Database**: Encrypted libSQL with shared connection pooling
-- **Process Management**: 
-  - Signal-based graceful shutdown
-  - PID file management
-  - Background task coordination
-- **Configuration**: YAML-based with schema validation
-- **Logging**: Structured logging with ZMQ transport pipeline
+**Core Framework**:
+- FastAPI with ASGI middleware
+- Plugin system with `ServiceContainer`
+- Port 8771 (unified REST/WebSocket)
 
-### Request Flow
+**Security**:
+- `AICOKeyManager` for key derivation
+- ASGI-level AES-256-GCM encryption
+- JWT authentication with admin roles
+- CurveZMQ for internal communication
 
-#### Plugin-Based Request Processing
+**Data Layer**:
+- Encrypted libSQL database (`data/aico.db`)
+- Protocol Buffers for message serialization
+- ZeroMQ message bus (ports 5555/5556)
 
-The current implementation uses a plugin-based middleware stack:
+**Configuration**:
+- YAML-based configuration (`config/defaults/core.yaml`)
+- Schema validation
+- Runtime updates via `ConfigurationManager`
 
-1. **ASGI Encryption Middleware**: Wraps entire FastAPI app
-   - Handles encryption/decryption transparently
-   - Manages unencrypted endpoints (health, handshake)
-   - Key derivation and session management
+### Request Processing Flow ✅
 
-2. **FastAPI Application**: Domain-based routing
-   - `/api/v1/users/` - User management endpoints
-   - `/api/v1/admin/` - Administrative endpoints  
-   - `/api/v1/logs/` - Log management endpoints
-   - `/api/v1/health` - System health checks
+**Incoming Request Pipeline**:
+1. **ASGI Encryption Middleware** - Decrypt request if encrypted
+2. **FastAPI Router** - Route to domain-specific endpoint
+3. **JWT Authentication** - Validate token and extract user context
+4. **Domain Handler** - Process request (conversation, admin, logs, etc.)
+5. **Backend Integration** - Communicate via ZeroMQ message bus
+6. **Response Assembly** - Format response and encrypt if needed
 
-3. **Plugin Middleware Stack**: Applied via service container
-   - Authentication validation (JWT tokens)
-   - Rate limiting and abuse prevention
-   - Request logging and metrics
-   - Authorization enforcement
+**Example: Conversation Message Flow**:
+1. Client sends POST to `/api/v1/conversation/messages`
+2. Encryption middleware decrypts request
+3. JWT middleware validates authentication
+4. Conversation router processes message
+5. ThreadManager resolves appropriate thread
+6. Message published to `conversation/user/input` topic
+7. Response returned immediately with message ID
+8. AI response delivered via WebSocket when ready
 
-4. **Backend Integration**: Via shared services
-   - Database connection sharing
-   - Message bus communication
-   - Configuration management
-   - Process lifecycle coordination
+## Security Implementation ✅
 
-#### Local Client Flow (Adaptive Transport)
+**Authentication**:
+- JWT tokens with HS256 signing
+- Admin role enforcement for privileged endpoints
+- Token storage in `~/.aico/gateway_token`
 
-1. Local client attempts connection via preferred transport:
-   - First attempt: ZeroMQ IPC for optimal performance
-   - Fallback: Localhost REST/WebSocket if IPC unavailable
-2. Transport negotiation occurs automatically
-3. Client sends message using negotiated transport (already in correct format)
-4. Authentication uses local security context
-5. Authorization enforcer checks access permissions
-6. Request validator ensures message meets schema requirements
-7. Message is routed directly to the internal message bus (zero transformation)
-8. Response is received from message bus
-9. Response is sent back through the negotiated transport (zero transformation)
+**Encryption**:
+- ASGI-level AES-256-GCM for HTTP requests
+- CurveZMQ for internal ZeroMQ communication
+- Key derivation via `AICOKeyManager` with Argon2id
 
-## Security Considerations
+**Data Protection**:
+- Encrypted libSQL database with AES-256-GCM
+- Protocol Buffers for structured message serialization
+- Local-only processing (no external data transmission)
 
-### Authentication
+## Design Rationale ✅
 
-- **Token-based**: JWT tokens for REST and WebSocket authentication
-- **Certificate-based**: Mutual TLS for secure device communication
-- **Device Pairing**: Secure pairing protocol for establishing trust
+**Unified Entry Point**: Single port (8771) simplifies client integration and deployment
 
-### Authorization
+**Security-First**: ASGI-level encryption ensures all communication is protected by default
 
-- **Role-based**: Access control based on user roles
-- **Capability-based**: Fine-grained permissions for sensitive operations
-- **Context-aware**: Authorization decisions consider request context
+**Plugin Architecture**: Extensible design allows adding new capabilities without core changes
 
-### Data Protection
+**Local-First**: Designed for local deployment with encrypted storage and processing
 
-- **In Transit**: All communications encrypted using TLS 1.3
-- **At Rest**: All persistent data encrypted using gocryptfs (AES-256-GCM)
-- **Key Management**: Secure key derivation with Argon2id and platform keyrings
+**Performance**: ZeroMQ + Protocol Buffers provide high-performance internal communication
 
-## Rationale
-
-The API Gateway architecture is designed to provide:
-
-1. **Simplicity**: A single, unified entry point simplifies client integration
-2. **Security**: Centralized security enforcement ensures consistent policy application
-3. **Flexibility**: Multi-protocol support accommodates various client needs
-4. **Scalability**: Decoupled design allows independent scaling of components
-5. **Roaming Support**: Architecture works seamlessly in both coupled and detached modes
-6. **Federation Support**: Facilitates secure P2P communication in the federated device network
-7. **Selective Sync**: Enables different synchronization policies for various data types
-8. **Cross-Platform Compatibility**: Works across desktop, mobile, and embedded platforms
-
-This design aligns with AICO's core principles of local-first processing, privacy-focused security, flexible deployment across different device types, and federated device networking while maintaining a clean separation between frontend and backend components.
+**Maintainability**: Domain-based organization and standardized patterns improve code quality

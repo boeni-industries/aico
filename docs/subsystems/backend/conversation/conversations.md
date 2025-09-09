@@ -1,149 +1,113 @@
 # Conversation System Architecture
 
-## Overview
+## Overview ✅
 
-The AICO conversation system is designed to enable natural, persistent, multi-user conversations with emotional intelligence, personality consistency, and proactive agency. This document defines the complete architecture from user input to AI response, including thread management, context persistence, multi-user support, and extensibility patterns.
+The AICO conversation system provides REST API endpoints for managing conversation threads and processing user messages. It features automatic thread resolution, real-time WebSocket delivery, and integration with AI services for response generation.
 
-## Core Principles
+**Current Implementation**: Basic conversation API with ThreadManager for automatic thread resolution and direct LLM integration.
 
-1. **Thread-Based Persistence**: Every conversation exists within a persistent thread that maintains context across sessions
-2. **Multi-User Recognition**: Single AICO instance supports multiple family members with individual relationship contexts
-3. **Emotional Continuity**: AICO's emotional state and personality are managed at the system level, not within threads
-4. **Proactive Agency**: AICO can initiate conversations and maintain background awareness
-5. **Privacy by Design**: All conversation data remains local with user-controlled access
-6. **Extensible Architecture**: Plugin-based system allows for conversation capability extensions
+## Core Principles ✅
 
-## Thread Architecture
+1. **Thread-Based Organization**: Conversations organized into threads with automatic resolution
+2. **REST API Design**: Clean separation between thread management and message processing
+3. **Real-time Delivery**: WebSocket support for immediate AI response delivery
+4. **Local Processing**: All conversation data remains local with encrypted storage
+5. **Extensible Design**: Plugin architecture allows for conversation capability extensions
 
-### Thread Definition
+## Thread Architecture ✅
 
-A **Thread** is a logical grouping of related exchanges within a conversation containing:
-- **Unique Identifier**: UUID-based thread ID for system-wide reference
-- **Message History**: Complete chronological record of exchanges
-- **Conversation Metadata**: Topic, phase, turn count, activity timestamps
+### Current Implementation
 
-### Thread Lifecycle
+**ThreadManager Service**:
+- Simple time-based heuristics for thread resolution
+- In-memory storage for testing (no database persistence yet)
+- 2-hour dormancy threshold for creating new threads
+- UUID-based thread identifiers
 
-```mermaid
-stateDiagram-v2
-    [*] --> Created: /start endpoint
-    Created --> Active: First message exchange
-    Active --> Dormant: Extended inactivity
-    Dormant --> Active: User re-engagement
-    Active --> Archived: Explicit user action
-    Archived --> [*]: Data retention policy
-    
-    Active --> Active: Ongoing exchanges
-    Dormant --> Dormant: Background processing
-```
-
-### Thread Storage Schema
-
+**Thread Resolution Logic**:
 ```python
-@dataclass
-class ConversationThread:
-    thread_id: str                          # UUID identifier
-    message_history: List[ConversationMessage]  # Complete exchange history
-    conversation_metadata: ConversationMeta # Topic, phase, turn count
-    created_at: datetime
-    last_activity: datetime
-    status: ThreadStatus                    # Active, Dormant, Archived
+class ThreadResolution:
+    thread_id: str
+    action: str  # "continued", "created", "reactivated"
+    confidence: float
+    reasoning: str
+    created_at: Optional[datetime]
 ```
 
-## Multi-User Support
+**Thread States**:
+- **Active**: Recent activity within 2 hours
+- **Dormant**: No activity for 2+ hours
+- **Created**: New thread for user
 
-### User Recognition System
+## User Management 🚧
 
-AICO supports natural multi-user recognition without technical authentication barriers:
+### Current Implementation
 
-**Recognition Methods**:
-1. **Voice Biometrics**: Speaker identification through voice patterns
-2. **Behavioral Patterns**: Communication style and interaction preferences
-3. **Conversation Context**: Topic preferences and relationship dynamics
-4. **Explicit Identification**: "Hi AICO, it's Sarah" for disambiguation
+**JWT-Based Authentication**:
+- User identification via JWT tokens
+- `user_uuid` extracted from token for thread association
+- Single-user model (no multi-user recognition)
 
-**User Context Storage**:
+**Thread-User Association**:
+- Threads associated with `user_id` from JWT token
+- Basic access validation in ThreadManager
+- No complex user relationship modeling
+
+**Planned Features**:
+- Multi-user family recognition
+- Voice biometrics integration
+- Behavioral pattern analysis
+- Relationship context modeling
+
+## Current API Implementation ✅
+
+### REST Endpoints
+
+**Primary Endpoint**:
+- `POST /api/v1/conversation/messages` - Unified message processing with auto-thread resolution
+
+**Advanced Endpoints**:
+- `POST /api/v1/conversation/threads` - Explicit thread creation
+- `POST /api/v1/conversation/threads/{thread_id}/messages` - Send to specific thread
+- `GET /api/v1/conversation/threads/{thread_id}` - Get thread metadata
+- `GET /api/v1/conversation/threads` - List user threads
+
+**Real-time**:
+- `WebSocket /api/v1/conversation/ws/{thread_id}` - Real-time AI responses
+
+### Message Processing Flow ✅
+
+**Current Implementation**:
+1. **REST Endpoint** receives user message
+2. **ThreadManager** resolves appropriate thread (continue existing or create new)
+3. **Message Bus** publishes to `conversation/user/input` topic
+4. **ModelService Client** generates LLM response directly
+5. **Response** returned immediately with AI reply
+6. **WebSocket** delivers real-time updates (if connected)
+
+**LLM Integration**:
 ```python
-@dataclass
-class UserContext:
-    user_id: str                    # System identifier
-    display_name: str               # "Sarah", "Dad", "Mom"
-    relationship_type: str          # "daughter", "father", "mother"
-    relationship_vector: RelationshipVector  # Multi-dimensional relationship data
-    recognition_confidence: float   # Current identification confidence
-    conversation_style: str         # Communication preferences
-    last_interaction: datetime
-    voice_profile: VoiceProfile     # Biometric data (optional)
-    behavioral_profile: BehaviorProfile  # Interaction patterns
+# Direct modelservice integration
+modelservice_client = get_modelservice_client(config_manager)
+llm_response = await modelservice_client.get_completions(
+    model="hermes3:8b",
+    prompt=request.message
+)
 ```
 
-### Thread-User Relationship
+### AI Processing 🚧
 
-- **Thread Identification**: Threads are identified by unique ID, user identification happens at AICO system level
-- **Thread Isolation**: Each thread contains only message history and conversation metadata
-- **AICO State Management**: User relationships, emotional state, and personality are managed by AICO core systems, not threads
-- **Context Integration**: AICO systems provide context to threads during processing, but threads don't store this state
+**Current State**:
+- **Direct LLM Integration**: Simple prompt-response via modelservice
+- **No Complex AI Coordination**: Single LLM call without emotion/personality processing
+- **Basic Error Handling**: Fallback messages on LLM failures
 
-## Conversation Flow Architecture
-
-### Input Processing Pipeline
-
-```mermaid
-flowchart TD
-    A[User Input] --> B[Input Processor]
-    B --> C{Input Type}
-    C -->|Text| D[Text Processor]
-    C -->|Voice| E[Speech-to-Text]
-    C -->|Multimodal| F[Multimodal Processor]
-    
-    D --> G[Message Bus: user/input/text]
-    E --> H[Message Bus: user/input/voice]
-    F --> I[Message Bus: user/input/multimodal]
-    
-    G --> J[Conversation Engine]
-    H --> J
-    I --> J
-```
-
-### Conversation Engine Orchestration
-
-The Conversation Engine acts as the central coordinator for all conversation processing, managing the complete pipeline from user input to AI response delivery. It operates asynchronously, subscribing to message bus topics and coordinating multiple AI systems.
-
-**Core Responsibilities**:
-- **Thread Management**: Load existing threads or create new ones based on message context
-- **Context Assembly**: Integrate thread history, user context, emotional state, and environmental factors
-- **AI Coordination**: Orchestrate parallel processing across emotion, personality, memory, and LLM systems
-- **Response Synthesis**: Combine AI outputs into coherent, contextually appropriate responses
-- **State Persistence**: Update thread state and trigger memory formation
-- **Response Delivery**: Publish final responses to appropriate delivery channels
-
-**Processing Pipeline**:
-1. **Input Reception**: Subscribe to `conversation/user/input` messages from REST layer
-2. **Thread Resolution**: Load or create conversation thread based on thread_id
-3. **Context Integration**: Assemble comprehensive context from multiple sources
-4. **Parallel AI Processing**: Coordinate emotion analysis, personality expression, memory retrieval
-5. **LLM Generation**: Generate response using integrated context and AI insights
-6. **Response Enhancement**: Apply personality, emotional tone, and contextual refinements
-7. **State Updates**: Persist conversation state and form new memories
-8. **Response Publication**: Deliver final response via message bus
-
-### AI Processing Coordination
-
-The Conversation Engine coordinates multiple AI systems in parallel to create rich, contextually aware responses. Each AI system operates independently and contributes specialized insights to the final response.
-
-**AI System Integration**:
-- **Emotion Recognition**: Analyzes user emotional state and determines appropriate emotional response
-- **Personality Simulation**: Applies AICO's personality traits and relationship dynamics
-- **Memory Retrieval**: Searches episodic and semantic memory for relevant context
-- **LLM Processing**: Generates core response content using integrated context
-- **Proactive Agency**: Evaluates opportunities for follow-up questions or initiatives
-
-**Coordination Strategy**:
-- **Parallel Processing**: All AI systems process simultaneously to minimize latency
-- **Context Sharing**: Common context object shared across all AI systems
-- **Result Integration**: AI outputs combined using weighted importance and relevance
-- **Fallback Handling**: Graceful degradation if individual AI systems fail
-- **Performance Monitoring**: Track processing times and optimize pipeline efficiency
+**Planned Enhancements**:
+- **Emotion Recognition**: User emotional state analysis
+- **Personality Integration**: AICO personality traits application
+- **Memory Retrieval**: Context from conversation history
+- **Parallel Processing**: Multiple AI systems coordination
+- **Context Assembly**: Rich context from multiple sources
 
 ## Context Management
 

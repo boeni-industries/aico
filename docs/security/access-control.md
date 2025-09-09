@@ -1,7 +1,10 @@
-# Security Authorization & Access Control Architecture for AICO
+# Access Control Architecture
 
 ## Overview
-AICO’s security architecture enforces robust, modern access control across all modules, APIs, message bus topics, and plugin boundaries. The design is informed by OWASP best practices, NIST standards, and the unique requirements of a modular, message-driven, AI-first system.
+
+AICO implements comprehensive access control across all system components using modern security patterns. The architecture supports fine-grained permissions while maintaining simplicity and performance.
+
+**Current Status**: 🚧 Planned implementation - core authentication infrastructure exists, full access control system in development.
 
 ---
 
@@ -15,34 +18,36 @@ AICO’s security architecture enforces robust, modern access control across all
 ---
 
 ## Access Control Models
-- **Attribute-Based Access Control (ABAC):** Fine-grained decisions based on user, resource, environment, and context attributes (e.g., role, device, time, location, data sensitivity).
-- **Role-Based Access Control (RBAC):** Used for coarse-grained, system-wide roles (e.g., user, admin, developer, plugin).
-- **Relationship-Based Access Control (ReBAC):** Used for resource ownership and social graph scenarios (e.g., only the creator can edit/delete their resource).
+
+**Primary Model**: Role-Based Access Control (RBAC) with planned ABAC extensions
+
+- **RBAC**: System-wide roles (user, admin, plugin) ✅ Implemented
+- **ABAC**: Context-aware decisions (device, time, location) 🚧 Planned
+- **ReBAC**: Resource ownership patterns 🚧 Planned
 
 ---
 
 ## Architecture & Enforcement
-### Policy Components (NIST SP 800-162)
-- **Policy Administration Point (PAP):** Central UI/API for managing access policies.
-- **Policy Decision Point (PDP):** Evaluates policies against access requests (embedded in API gateway and core modules).
-- **Policy Enforcement Point (PEP):** Enforces PDP decisions at all entry points (API, message bus, plugin interface).
-- **Policy Information Point (PIP):** Supplies relevant attributes (user, resource, context) for policy evaluation.
 
-### Multi-Layer Enforcement
-- **API Gateway:** Coarse-grained access checks for all external requests (JWT, mTLS, device pairing).
-- **Message Bus:** Topic-level access control; modules and plugins are only allowed to publish/subscribe to authorized topics. All messages are validated and logged.
-- **Module/Service Level:** Fine-grained ABAC/ReBAC enforcement for sensitive operations and data.
-- **Plugin Sandbox:** Strict isolation and permission boundaries for plugins, enforced by the plugin manager.
-- **Static Resources:** Unified policy for static assets (avatars, config files, etc.), with data classification and access checks.
+### Current Implementation
+- **API Gateway**: JWT-based authentication ✅ Operational
+- **Session Management**: Token validation and renewal ✅ Operational  
+- **Admin Access**: CLI and backend admin endpoints ✅ Operational
+
+### Planned Components
+- **Policy Decision Point (PDP)**: Centralized policy evaluation
+- **Message Bus Access Control**: Topic-level permissions
+- **Plugin Sandbox**: Isolated plugin execution environment
+- **Resource-Level Permissions**: Fine-grained data access controls
 
 ---
 
-## Patterns & Best Practices
-- **Centralized Policy, Distributed Enforcement:** Policies are centrally managed but enforced at every entry and communication point.
-- **Externalized Policy Language:** Authorization rules are not hardcoded; they use a policy language (e.g., Rego, OPA, or similar).
-- **Continuous Review:** Regular privilege reviews and automated tests to prevent privilege creep.
-- **Server-Side Enforcement:** All critical checks are server-side; client-side checks are for UX only.
-- **Comprehensive Logging:** All access decisions (allow/deny) are logged with context for auditing.
+## Implementation Principles
+
+- **Server-Side Enforcement**: All security decisions made on backend ✅ Implemented
+- **Comprehensive Logging**: Access decisions logged for audit ✅ Implemented  
+- **Deny by Default**: No access without explicit permission ✅ Implemented
+- **Centralized Policy Management**: Single source of truth for permissions 🚧 Planned
 
 ---
 
@@ -50,6 +55,51 @@ AICO’s security architecture enforces robust, modern access control across all
 - **Versioned Policies:** All changes are tracked, reviewed, and testable.
 - **Automated Testing:** Unit and integration tests for all access control logic.
 - **Audit Trails:** Complete logs for policy changes and access decisions.
+
+---
+
+## Current Use Cases
+
+- **Admin Authentication**: CLI and backend admin operations require valid JWT tokens
+- **API Access Control**: All REST endpoints protected by authentication middleware
+- **Session Management**: Time-limited sessions with automatic renewal
+
+## Planned Use Cases
+
+- **Plugin Permissions**: Granular access control for third-party plugins
+- **Data-Level Security**: Row and column-level access controls
+- **Context-Aware Access**: Time, location, and device-based restrictions
+
+---
+
+## Implementation Examples
+
+### Current Authentication Flow
+```python
+# JWT token validation in API Gateway
+from aico.security.auth import AuthenticationManager
+
+auth_manager = AuthenticationManager()
+token_valid = auth_manager.validate_jwt_token(request.headers.get('Authorization'))
+if not token_valid:
+    raise HTTPException(status_code=401, detail="Authentication required")
+```
+
+### Planned Access Control
+```python
+# Future ABAC policy evaluation
+from aico.security.access_control import PolicyDecisionPoint
+
+pdp = PolicyDecisionPoint()
+decision = pdp.evaluate(
+    subject={'user_id': user.id, 'role': user.role},
+    resource={'type': 'conversation', 'owner': conversation.owner_id},
+    action='read',
+    context={'time': datetime.now(), 'device': request.device_id}
+)
+if decision != 'PERMIT':
+    raise HTTPException(status_code=403, detail="Access denied")
+```
 
 ---
 

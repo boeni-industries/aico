@@ -10,6 +10,8 @@ This document describes AICO's transparent file encryption system for files with
 
 AICO provides a transparent file encryption wrapper class `EncryptedFile` that serves as a drop-in replacement for Python's `open()` function. This enables encryption of arbitrary files while maintaining the familiar file I/O API.
 
+**Current Status**: ✅ Implemented and operational in the codebase with AES-256-GCM encryption.
+
 ## Architecture
 
 ### Design Principles
@@ -69,6 +71,8 @@ with EncryptedFile("config.enc", "w", key_manager=key_manager, purpose="config")
 with EncryptedFile("config.enc", "r", key_manager=key_manager, purpose="config") as f:
     data = f.read()
 ```
+
+**Note**: This implementation is currently active in the AICO codebase and used for encrypting configuration files and other sensitive data.
 
 ### Advanced Usage
 
@@ -349,10 +353,10 @@ with EncryptedFile("data.enc", "w", key_manager=key_manager, purpose="config") a
 ### Migrating Existing Files
 
 ```python
-def encrypt_existing_file(plain_path, encrypted_path, purpose):
+def encrypt_existing_file(plain_path, encrypted_path, purpose, key_manager):
     """Migrate plaintext file to encrypted format."""
     with open(plain_path, "rb") as src:
-        with EncryptedFile(encrypted_path, "wb", key_manager=km, purpose=purpose) as dst:
+        with EncryptedFile(encrypted_path, "wb", key_manager=key_manager, purpose=purpose) as dst:
             while chunk := src.read(64*1024):
                 dst.write(chunk)
     
@@ -363,14 +367,14 @@ def encrypt_existing_file(plain_path, encrypted_path, purpose):
 ### Batch Migration
 
 ```python
-def migrate_directory(source_dir, target_dir, purpose):
+def migrate_directory(source_dir, target_dir, purpose, key_manager):
     """Migrate entire directory to encrypted format."""
     for file_path in Path(source_dir).rglob("*"):
         if file_path.is_file():
             relative_path = file_path.relative_to(source_dir)
             encrypted_path = Path(target_dir) / f"{relative_path}.enc"
             encrypted_path.parent.mkdir(parents=True, exist_ok=True)
-            encrypt_existing_file(file_path, encrypted_path, purpose)
+            encrypt_existing_file(file_path, encrypted_path, purpose, key_manager)
 ```
 
 ### Version Compatibility

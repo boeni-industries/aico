@@ -1,58 +1,55 @@
-# Log Consumer Service Architecture
+# Log Consumer Service
 
 ## Overview
 
-The Log Consumer Service is a critical component of AICO's logging pipeline that bridges the gap between ZeroMQ log transport and database persistence. It runs as part of the backend service and ensures all log messages are reliably persisted to the encrypted database.
+The Log Consumer Service persists application logs from the ZeroMQ message bus to the encrypted database. It runs as a backend plugin and provides reliable log storage for the entire AICO system.
 
-## Architecture
+## Architecture ✅
 
-### Components
+### Core Components
 
-- **AICOLogConsumer**: Main service class managing ZMQ subscription and database persistence
-- **ZMQ Subscription**: Connects to message bus subscriber port (5556) with topic filtering
-- **Protobuf Processing**: Deserializes Protocol Buffer LogEntry messages
-- **Database Integration**: Persists logs to encrypted libSQL database
-- **Threading Model**: Runs in dedicated thread for non-blocking operation
+- **AICOLogConsumer**: Main service class with ZMQ subscription and database persistence
+- **Plugin Integration**: Runs as `log_consumer` plugin in backend service container
+- **Message Bus Subscription**: Connects to port 5556 with `logs.*` topic filtering
+- **Database Storage**: Persists to encrypted `aico.db` logs table
 
-### Message Flow
+### Message Flow ✅
 
 ```
-Logger → ZMQ Transport → Message Bus Broker → Log Consumer → Encrypted Database
+Application Logger → ZMQ Transport → Message Bus (5555/5556) → Log Consumer → Database
 ```
 
-1. **Log Generation**: Application loggers create structured log entries
-2. **ZMQ Transport**: Logs serialized as Protocol Buffers and sent via ZMQ
-3. **Message Bus**: Broker routes messages to subscriber port with topic filtering
-4. **Log Consumer**: Subscribes to `logs.*` topics and processes messages
-5. **Database Persistence**: Converts protobuf to SQL and inserts into logs table
+**Current Implementation**:
+1. **Logger** creates LogEntry protobuf message
+2. **ZMQ Transport** sends to message bus on `logs.*` topics
+3. **Message Bus Broker** routes to subscriber port 5556
+4. **Log Consumer** processes and inserts to encrypted database
 
-## Implementation Details
+## Implementation ✅
 
-### ZMQ Integration
+### ZMQ Subscription
 
 ```python
-# Connects to message bus subscriber port
-sub_port = self.config_manager.get("message_bus.sub_port", 5556)
+# Direct ZMQ subscription to message bus
 self.subscriber = self.context.socket(zmq.SUB)
-self.subscriber.connect(f"tcp://{host}:{sub_port}")
+self.subscriber.connect(f"tcp://localhost:5556")
 self.subscriber.setsockopt(zmq.SUBSCRIBE, b"logs.")
 ```
 
-### Protobuf Processing
+### LogEntry Processing
 
-The service processes `LogEntry` protobuf messages with these fields:
-- `timestamp`: ISO datetime with timezone
-- `level`: Log level enum (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-- `subsystem`: Component identifier (e.g., "api_gateway", "backend")
-- `module`: Module name within subsystem
-- `function`: Function name where log originated
-- `message`: Log message content
-- `extra`: JSON metadata for structured logging
+**Protobuf Fields**:
+- `timestamp`: ISO datetime string
+- `level`: LogLevel enum (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+- `subsystem`: Component name (e.g., "api_gateway", "backend")
+- `module`: Module identifier
+- `function`: Function name
+- `message`: Log message text
+- `extra`: JSON metadata (optional)
 
-### Database Schema
+### Database Schema ✅
 
-Logs are persisted to the `logs` table with encrypted storage:
-
+**Logs Table** (encrypted libSQL):
 ```sql
 CREATE TABLE logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,125 +58,92 @@ CREATE TABLE logs (
     subsystem TEXT NOT NULL,
     module TEXT NOT NULL,
     function_name TEXT,
-    file_path TEXT,
-    line_number INTEGER,
-    topic TEXT,
     message TEXT NOT NULL,
-    user_uuid TEXT,
-    session_id TEXT,
-    trace_id TEXT,
-    extra TEXT
+    extra TEXT  -- JSON metadata
 );
 ```
 
-### Threading and Lifecycle
+### Plugin Lifecycle ✅
 
-- **Threaded Operation**: Runs in daemon thread to avoid blocking main process
-- **Graceful Shutdown**: Responds to `running` flag for clean termination
-- **Error Handling**: Continues operation despite individual message failures
-- **Resource Cleanup**: Properly closes ZMQ sockets and database connections
+- **Plugin Loading**: Initialized via backend service container
+- **Background Thread**: Runs message processing loop in separate thread
+- **Graceful Shutdown**: Responds to plugin stop() method
+- **Error Recovery**: Continues processing despite individual message failures
 
-## Configuration
+## Configuration ✅
 
-The log consumer is configured via the message bus section:
-
+**Message Bus Settings** (`config/defaults/core.yaml`):
 ```yaml
-message_bus:
-  host: "localhost"
-  pub_port: 5555      # Publisher port (broker frontend)
-  sub_port: 5556      # Subscriber port (broker backend)
+core:
+  message_bus:
+    host: "localhost"
+    pub_port: 5555    # Publisher port
+    sub_port: 5556    # Subscriber port
 ```
 
-## Integration with Backend
+## Backend Integration ✅
 
-### Plugin System Integration
+### Plugin System
 
-The log consumer is started as part of the API Gateway plugin system:
+**Startup Sequence**:
+1. **Message Bus Plugin** starts ZMQ broker (ports 5555/5556)
+2. **Log Consumer Plugin** initializes and connects to subscriber port
+3. **Shared Resources** use same encrypted database connection
+4. **Coordinated Lifecycle** with other backend plugins
 
-1. **Message Bus Plugin**: Starts ZMQ broker on configured ports
-2. **Log Consumer Plugin**: Initializes and starts log consumer service
-3. **Shared Database**: Uses same encrypted connection as other components
-4. **Lifecycle Management**: Coordinated startup/shutdown with other plugins
+**Current Status**: Active plugin in production backend
 
-### Process Management
+## Performance ✅
 
-- **Foreground Mode**: Debug output enabled when `AICO_DETACH_MODE=false`
-- **Background Mode**: Silent operation for daemon/service deployment
-- **Signal Handling**: Responds to graceful shutdown signals
-- **Error Recovery**: Continues operation despite transient failures
+**Characteristics**:
+- **Throughput**: Handles typical application log volume efficiently
+- **Memory**: Minimal footprint with streaming message processing
+- **Error Handling**: Individual message failures don't stop service
+- **Database**: Efficient single-row insertions with proper error handling
 
-## Performance Characteristics
+## Monitoring ✅
 
-### Throughput
-- **High Volume**: Designed to handle 1000+ messages per second
-- **Batch Processing**: Processes all available messages in each poll cycle
-- **Low Latency**: Sub-100ms message processing under normal load
-
-### Resource Usage
-- **Memory**: Minimal memory footprint with streaming processing
-- **CPU**: Low CPU usage with efficient protobuf deserialization
-- **I/O**: Optimized database insertions with transaction management
-
-### Error Handling
-- **Message Failures**: Individual message failures don't stop processing
-- **Connection Issues**: Automatic reconnection on ZMQ socket errors
-- **Database Errors**: Proper rollback and error logging
-- **Shutdown Race**: Handles database connection closure during shutdown
-
-## Monitoring and Debugging
-
-### Debug Output
-When running in foreground mode (`AICO_DETACH_MODE=false`):
-- ZMQ context type and connection status
-- Message processing statistics
-- Database operation confirmations
-- Error details and recovery actions
-
-### Log Levels
-- **INFO**: Service lifecycle events (start, stop, connection status)
-- **WARNING**: Recoverable errors (message parsing failures)
-- **ERROR**: Serious issues (database connection problems)
-
-### Health Checks
-The service health can be monitored through:
-- Backend health endpoint status
-- Database log insertion verification
-- ZMQ connection status
-- Message processing metrics
-
-## Security Considerations
-
-### Data Protection
-- **Encrypted Storage**: All logs stored in encrypted libSQL database
-- **Key Management**: Uses derived keys from master key via AICOKeyManager
-- **Transport Security**: ZMQ messages can use CurveZMQ for encryption
-- **Access Control**: Database access restricted to backend service
-
-### Privacy
-- **Local Processing**: All log processing occurs locally
-- **No External Transmission**: Logs never leave the local system
-- **User Control**: Users control log retention and access policies
-- **Audit Trail**: Log consumer operations are themselves logged
-
-## Troubleshooting
-
-### Common Issues
-1. **No Logs Appearing**: Check ZMQ broker status and topic subscriptions
-2. **Database Errors**: Verify encryption key availability and database permissions
-3. **High Memory Usage**: Check for message processing backlogs
-4. **Connection Failures**: Verify message bus configuration and port availability
-
-### Diagnostic Commands
+### Service Status
 ```bash
-# Check backend service status
-aico gateway status
+# Check if log consumer is active
+aico gateway status  # Shows active plugins
 
 # View recent logs
 aico logs tail
 
-# Test database connectivity
-aico db status
-
-# Monitor message bus
+# Test message bus connectivity
 aico bus test
+```
+
+### Debug Information
+- **Plugin Status**: Visible in backend startup logs
+- **Message Processing**: Debug output shows successful insertions
+- **Database Health**: Verified via CLI log retrieval
+
+## Security ✅
+
+**Data Protection**:
+- **Encrypted Database**: All logs stored in encrypted `aico.db`
+- **Local Processing**: No external log transmission
+- **Access Control**: Database restricted to backend service
+- **CurveZMQ**: Message bus encryption for transport security
+
+**Privacy**:
+- **Local-First**: All processing on user device
+- **User Control**: Complete control over log retention
+- **No Telemetry**: Logs never transmitted externally
+
+## Troubleshooting ✅
+
+**Common Issues**:
+1. **No Logs**: Check if message bus plugin is active
+2. **Database Errors**: Verify encryption key and database initialization
+3. **Connection Issues**: Ensure backend service is running
+
+**Diagnostic Commands**:
+```bash
+aico gateway status    # Check plugin status
+aico logs tail         # View recent logs
+aico db status         # Database health
+aico bus test          # Message bus connectivity
 ```

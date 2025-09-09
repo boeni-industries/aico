@@ -13,6 +13,18 @@ AICO's ambient security system provides **augmented, zero-effort security** thro
 - **Adaptive Security Posture**: Dynamic adjustment based on real-time risk assessment
 - **Family-Centric Design**: Multi-generational usage with age-appropriate safeguards and parental oversight
 
+## Core Components
+
+### Device Identity (Planned)
+- **Hardware Fingerprinting**: Unique device characteristics
+- **Network Context**: IP address patterns and network behavior
+- **Platform Integration**: OS-level security features
+
+### Behavioral Biometrics (Future Expansion)
+- **Typing Patterns**: Keystroke dynamics analysis 🚧 Research phase
+- **Interaction Patterns**: UI navigation and usage flows 🚧 Research phase
+- **Voice Characteristics**: Speaking patterns and vocal fingerprints 🚧 Research phase
+
 ## Architecture Overview
 
 ### Multi-Layer Ambient Authentication
@@ -41,6 +53,12 @@ AICO's ambient security system provides **augmented, zero-effort security** thro
 **Multi-Factor Analysis**: Analyzes location patterns, network context, temporal behavior, and interaction styles against user baselines.
 
 **Weighted Scoring**: Location (25%), Network (20%), Temporal (25%), Behavioral (30%) factors combine for composite trust score (0.0-1.0).
+
+### Risk-Based Authentication (Planned)
+- **Low Risk**: Seamless access with device trust
+- **Medium Risk**: PIN or biometric confirmation
+- **High Risk**: Full re-authentication required
+- **Critical Risk**: Session lockout and security alerts
 
 ## Risk-Based Step-Up Authentication
 
@@ -119,7 +137,6 @@ AICO's ambient security system provides **augmented, zero-effort security** thro
 - **Progressive authentication UI** that adapts to risk levels
 - **Family-friendly security indicators** and controls
 
-
 ## Behavioral Biometric Authentication *(Future Expansion)*
 
 ### Continuous Behavioral Analysis
@@ -129,6 +146,4 @@ AICO's ambient security system provides **augmented, zero-effort security** thro
 **Voice Pattern Recognition**: Extracts fundamental frequency, formants, MFCC coefficients, and prosodic features (speech rate, pause patterns). Calculates weighted similarity scores across voice characteristics.
 
 *Note: Behavioral biometric authentication represents a future enhancement to the ambient security system. Initial implementation will focus on device binding, contextual trust scoring, and risk-based step-up authentication using existing platform capabilities.*
-
----
 

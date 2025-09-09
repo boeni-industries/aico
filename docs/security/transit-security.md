@@ -4,7 +4,9 @@ title: Transport Security Architecture
 
 # Transport Security Architecture
 
-AICO implements application-level transport security using libsodium for all inter-component communication. This approach provides strong cryptographic guarantees while maintaining compatibility with AICO's modular architecture and deployment flexibility.
+AICO implements transport security using CurveZMQ for message bus communication and plans application-level libsodium integration for enhanced security. The current implementation provides strong cryptographic guarantees while maintaining compatibility with AICO's modular architecture and deployment flexibility.
+
+**Current Status**: ZeroMQ message bus uses CurveZMQ encryption. Full libsodium application-level encryption is planned for future implementation.
 
 ## Architecture Overview
 
@@ -415,32 +417,6 @@ transport_config = {
     "security_level": "high"
 }
 ```
-
-## Implementation Roadmap
-
-### Phase 1: Core Infrastructure
-- [ ] Component identity management
-- [ ] Basic libsodium integration
-- [ ] Secure channel implementation
-- [ ] Message format specification
-
-### Phase 2: Protocol Integration
-- [ ] API Gateway security layer
-- [ ] ZeroMQ message bus encryption
-- [ ] WebSocket secure transport
-- [ ] REST API protection
-
-### Phase 3: Advanced Features
-- [ ] Session key rotation
-- [ ] Connection monitoring
-- [ ] Performance optimization
-- [ ] Security audit logging
-
-### Phase 4: Production Hardening
-- [ ] Threat model validation
-- [ ] Security testing
-- [ ] Performance benchmarking
-- [ ] Documentation completion
 
 ## Security Considerations
 
