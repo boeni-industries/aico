@@ -6,7 +6,7 @@ title: Telemetry Architecture
 
 ## Overview
 
-The AICO Telemetry System provides comprehensive, privacy-respecting observability capabilities designed specifically for AI researchers and developers to understand complex system interactions, diagnose issues, and improve system performance. It complements the existing [Instrumentation](instrumentation.md), [Logging](instrumentation_logging.md), and [Audit](../../security/audit.md) systems while focusing on the unique needs of AI system development.
+The AICO Telemetry System provides comprehensive, privacy-respecting observability capabilities designed specifically for AI researchers and developers to understand complex system interactions, diagnose issues, and improve system performance. It complements the existing [Instrumentation](instrumentation.md), [Logging](instrumentation-logging.md), and [Audit](../../security/audit.md) systems while focusing on the unique needs of AI system development.
 
 This document outlines the architecture, implementation, and best practices for AICO's telemetry system, which serves as the foundation for system understanding, performance optimization, and AI behavior analysis.
 
@@ -575,7 +575,7 @@ The time-series optimized storage ensures efficient querying of telemetry data, 
 
 - [AICO Architecture Overview](../../architecture/architecture-overview.md)
 - [AICO Instrumentation](instrumentation.md)
-- [AICO Instrumentation Logging](instrumentation_logging.md)
+- [AICO Instrumentation Logging](instrumentation-logging.md)
 - [AICO Audit System](../../security/audit.md)
 - [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
 - [Prometheus Best Practices](https://prometheus.io/docs/practices/naming/)

@@ -739,7 +739,7 @@ The tamper-evident storage ensures the integrity of audit records, while the fle
 
 - [OWASP Logging Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html)
 - [NIST SP 800-92: Guide to Computer Security Log Management](https://csrc.nist.gov/publications/detail/sp/800-92/final)
-- [AICO Security Architecture](./data_security.md)
+- [AICO Security Architecture](./data-security.md)
 - AICO Access Control (file does not exist)
 - [AICO Instrumentation](../operations/instrumentation/instrumentation.md)
-- [AICO Instrumentation Logging](../operations/instrumentation/instrumentation_logging.md)
+- [AICO Instrumentation Logging](../operations/instrumentation/instrumentation-logging.md)

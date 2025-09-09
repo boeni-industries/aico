@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the technical architecture for AICO's Personality Simulation module, focusing on its integration with the message bus system and data exchange formats. For conceptual information about the personality model, see [`/docs/concepts/personality/personality_sim.md`](./personality_sim.md).
+This document describes the technical architecture for AICO's Personality Simulation module, focusing on its integration with the message bus system and data exchange formats. For conceptual information about the personality model, see [`/docs/concepts/personality/personality-sim.md`](./personality-sim.md).
 
 ## Bus Integration Architecture
 

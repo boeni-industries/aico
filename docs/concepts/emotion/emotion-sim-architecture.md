@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the technical architecture for AICO's Emotion Simulation module, focusing on its integration with the message bus system and data exchange formats. For conceptual information about the emotion model, see [`/docs/concepts/emotion/emotion_sim.md`](./emotion_sim.md).
+This document describes the technical architecture for AICO's Emotion Simulation module, focusing on its integration with the message bus system and data exchange formats. For conceptual information about the emotion model, see [`/docs/concepts/emotion/emotion-sim.md`](./emotion-sim.md).
 
 ## Bus Integration Architecture
 

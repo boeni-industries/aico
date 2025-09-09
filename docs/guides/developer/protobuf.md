@@ -172,7 +172,7 @@ message Result {
 
 ## Integration with Message Bus
 
-The ZeroMQ message bus uses these Protocol Buffer definitions for serialization and deserialization of all messages. See the [Message Bus Architecture](../../architecture/message_bus.md) document for more details.
+The ZeroMQ message bus uses these Protocol Buffer definitions for serialization and deserialization of all messages. See the [Message Bus Architecture](../../architecture/message-bus.md) document for more details.
 
 ## Integration with API Gateway
 

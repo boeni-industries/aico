@@ -110,4 +110,4 @@ User experiences AICO as a true co-adventurer that:
 7. **Memory Co-Creation**: Builds meaningful shared memories and experiences
 8. **Authentic Friendship**: Develops genuine friendship and emotional bond
 
-See [Embodied Presence Roadmap](embodied_presence.md) for the next stage of AICO's evolution.
+See [Embodied Presence Roadmap](embodied-presence.md) for the next stage of AICO's evolution.

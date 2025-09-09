@@ -161,95 +161,106 @@ nav:
   - Welcome: welcome.md
   - Architecture:
       - Overview: architecture/architecture-overview.md
-      - Configuration Management: architecture/configuration_management.md
-      - Message Bus: architecture/message_bus.md
-      - Technology Stack: architecture/tech_stack.md
-  - Flows:
-      - End-to-End Conversation: flows/conversation_e2e.md
-  - Guides:
-      - User:
-          - Getting Started: guides/user/getting-started.md
-      - Developer:
-          - Getting Started: guides/developer/getting_started.md
-          - Guidelines: guides/developer/guidelines.md
-          - CLI Reference: guides/developer/cli_reference.md
-          - Contributing: guides/developer/contributing.md
-          - Schema Management: guides/developer/schema_management.md
-          - Protobuf: guides/developer/protobuf.md
-          - Namespaces: guides/developer/namespaces.md
-          - Lessons Learned: guides/developer/lessons_learned.md
-          - Versioning: guides/developer/versioning.md
-          - Terminology/Glossary: guides/developer/terminology_glossary.md
-          - Testing: guides/developer/testing.md
-          - UUID Standards: guides/developer/uuid_standards.md
-          - UV Cheatsheet: guides/developer/uv_cheatsheet.md
-      - Admin:
-          - Admin Guide: guides/admin/admin_guide.md
+      - Configuration Management: architecture/configuration-management.md
+      - Message Bus: architecture/message-bus.md
+      - Technology Stack: architecture/tech-stack.md
   - Subsystems:
       - Backend:
-          - API Gateway: subsystems/backend/api_gateway.md
-          - API Reference: subsystems/backend/api_reference.md
-          - Plugin System: subsystems/backend/plugin_system.md
-          - Log Consumer: subsystems/backend/log_consumer.md
+          - API Gateway: subsystems/backend/api-gateway.md
+          - API Reference: subsystems/backend/api-reference.md
+          - Plugin System: subsystems/backend/plugin-system.md
+          - Log Consumer: subsystems/backend/log-consumer.md
           - Scheduling:
               - Overview: subsystems/backend/scheduling/scheduling.md
           - Conversation:
               - Overview: subsystems/backend/conversation/conversations.md
-              - Thread Manager: subsystems/backend/conversation/conversations_thread_manager.md
+              - Thread Manager: subsystems/backend/conversation/conversations-thread-manager.md
       - CLI:
           - CLI: subsystems/cli/cli.md
       - Frontend:
-          - Overview: subsystems/frontend/frontend_architecture_overview.md
-          - API Integration: subsystems/frontend/api_integration.md
-          - Component Library: subsystems/frontend/component_library.md
-          - Design Principles: subsystems/frontend/design_principles.md
+          - Overview: subsystems/frontend/frontend-architecture-overview.md
+          - API Integration: subsystems/frontend/api-integration.md
+          - Component Library: subsystems/frontend/component-library.md
+          - Design Principles: subsystems/frontend/design-principles.md
           - Navigation: subsystems/frontend/navigation.md
           - Networking: subsystems/frontend/networking.md
-          - Performance Guidelines: subsystems/frontend/performance_guidelines.md
-          - State Management: subsystems/frontend/state_management.md
-          - Testing Strategy: subsystems/frontend/testing_strategy.md
-          - User Flows: subsystems/frontend/user_flows.md
+          - Performance Guidelines: subsystems/frontend/performance-guidelines.md
+          - State Management: subsystems/frontend/state-management.md
+          - Testing Strategy: subsystems/frontend/testing-strategy.md
+          - User Flows: subsystems/frontend/user-flows.md
       - Modelservice:
           - Model Service: subsystems/modelservice/modelservice.md
       - Studio:
-          - Admin UI: subsystems/studio/admin_ui.md
-          - Master Admin UI: subsystems/studio/admin_ui_master.md
+          - Admin UI: subsystems/studio/admin-ui.md
+          - Master Admin UI: subsystems/studio/admin-ui-master.md
   - Concepts:
       - Data:
-          - Data Layer: concepts/data/data_layer.md
-          - Data Federation: concepts/data/data_federation.md
+          - Data Layer: concepts/data/data-layer.md
+          - Data Federation: concepts/data/data-federation.md
       - Embodiment: concepts/embodiment/embodiment.md
       - Emotion:
           - Architecture: concepts/emotion/emotion-sim-architecture.md
           - Messaging: concepts/emotion/emotion-sim-msg.md
-          - Overview: concepts/emotion/emotion_sim.md
+          - Overview: concepts/emotion/emotion-sim.md
       - LLM:
-          - Foundation Model: concepts/llm/foundation_model.md
+          - Foundation Model: concepts/llm/foundation-model.md
           - Multimodality: concepts/llm/multimodality.md
       - Personality:
           - Architecture: concepts/personality/personality-sim-architecture.md
           - Messaging: concepts/personality/personality-sim-msg.md
-          - Definition: concepts/personality/personality_definition.md
-          - Overview: concepts/personality/personality_sim.md
+          - Definition: concepts/personality/personality-definition.md
+          - Overview: concepts/personality/personality-sim.md
       - Roaming:
-          - P2P Mesh: concepts/roaming/p2p_mesh.md
+          - P2P Mesh: concepts/roaming/p2p-mesh.md
           - Roaming: concepts/roaming/roaming.md
       - Social:
-          - Social Relationship Modeling: concepts/social/social_relationship_modeling.md
+          - Social Relationship Modeling: concepts/social/social-relationship-modeling.md
+  - Flows:
+      - End-to-End Conversation: flows/conversation-e2e.md
+  - Guides:
+      - User:
+          - Getting Started: guides/user/getting-started.md
+      - Developer:
+          - Getting Started: guides/developer/getting-started.md
+          - Guidelines: guides/developer/guidelines.md
+          - CLI Reference: guides/developer/cli-reference.md
+          - Contributing: guides/developer/contributing.md
+          - Schema Management: guides/developer/schema-management.md
+          - Protobuf: guides/developer/protobuf.md
+          - Namespaces: guides/developer/namespaces.md
+          - Lessons Learned: guides/developer/lessons-learned.md
+          - Versioning: guides/developer/versioning.md
+          - Terminology/Glossary: guides/developer/terminology-glossary.md
+          - Testing: guides/developer/testing.md
+          - UUID Standards: guides/developer/uuid-standards.md
+          - UV Cheatsheet: guides/developer/uv-cheatsheet.md
+          - Backend Patterns: guides/developer/backend-patterns.md
+      - Admin:
+          - Admin Guide: guides/admin/admin-guide.md
   - Security:
-      - Overview: security/security_overview.md
-      - Data Security: security/data_security.md
-      - Transport Security: security/transit_security.md
-      - Access Control: security/access_control.md
+      - Overview: security/security-overview.md
+      - Data Security: security/data-security.md
+      - Transport Security: security/transit-security.md
+      - Access Control: security/access-control.md
       - Consent Manager: security/consent.md
       - Audit System: security/audit.md
+      - Ambient Security: security/ambient-security.md
+      - Authentication: security/authentication.md
+      - Encryption: security/encryption.md
   - Operations:
-      - Update System: operations/update_system.md
-  # - Administration:
-  #     - Overview: admin/admin_overview.md
-  #     - Admin UI: admin/admin_ui.md
-  #     - Master Admin UI: admin/admin_ui_master.md
-  #     - CLI: admin/cli.md
-  # - Changelog: changelog.md  # Removed (404)
-  - Glossary: guides/developer/terminology_glossary.md
+      - Update System: operations/update-system.md
+      - Instrumentation:
+          - Overview: operations/instrumentation/instrumentation.md
+          - Logging: operations/instrumentation/instrumentation-logging.md
+          - Telemetry: operations/instrumentation/telemetry.md
+  - Roadmap:
+      - MVP: roadmap/mvp.md
+      - Foundation I: roadmap/foundation-I.md
+      - Foundation II: roadmap/foundation-II.md
+      - Sidekick: roadmap/sidekick.md
+      - Co-Adventurer: roadmap/co-adventurer.md
+      - Confidante: roadmap/confidante.md
+      - Embodied Presence: roadmap/embodied-presence.md
+      - Community: roadmap/community.md
+  - Glossary: guides/developer/terminology-glossary.md
   
