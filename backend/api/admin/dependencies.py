@@ -14,54 +14,47 @@ security = HTTPBearer()
 logger = get_logger("api", "admin_dependencies")
 
 
-# Global service managers - will be set during initialization
-_auth_manager = None
-_log_repository = None
-_config_manager = None
+# FastAPI dependency injection functions - no global state
+from fastapi import Request
 
-def set_auth_manager(auth_manager):
-    """Set the global auth manager for dependencies"""
-    global _auth_manager
-    _auth_manager = auth_manager
-
-def set_log_repository(log_repo):
-    """Set the global log repository for dependencies"""
-    global _log_repository
-    _log_repository = log_repo
-
-def set_config_manager(config_mgr):
-    """Set the global config manager for dependencies"""
-    global _config_manager
-    _config_manager = config_mgr
-
-def get_log_repository():
-    """Get the log repository dependency"""
-    if not _log_repository:
+def get_auth_manager(request: Request):
+    """Get auth manager from service container via FastAPI app state"""
+    if not hasattr(request.app.state, 'service_container'):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Log repository not initialized"
+            detail="Service container not initialized"
         )
-    return _log_repository
+    container = request.app.state.service_container
+    security_plugin = container.get_service("security_plugin")
+    return security_plugin.auth_manager
 
-def get_config_manager():
-    """Get the config manager dependency"""
-    if not _config_manager:
+def get_log_repository(request: Request):
+    """Get log repository from service container"""
+    if not hasattr(request.app.state, 'service_container'):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Configuration manager not initialized"
+            detail="Service container not initialized"
         )
-    return _config_manager
+    container = request.app.state.service_container
+    return container.get_service("log_consumer")
 
-def verify_admin_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+def get_config_manager(request: Request):
+    """Get config manager from service container"""
+    if not hasattr(request.app.state, 'service_container'):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Service container not initialized"
+        )
+    container = request.app.state.service_container
+    return container.get_service("config_manager")
+
+def verify_admin_token(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    auth_manager = Depends(get_auth_manager)
+):
     """
     Verify admin JWT token and require admin role.
     """
-    if not _auth_manager:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication manager not initialized"
-        )
-    
     try:
         token = credentials.credentials
         
@@ -69,8 +62,8 @@ def verify_admin_token(credentials: HTTPAuthorizationCredentials = Depends(secur
         try:
             payload = jwt.decode(
                 token,
-                _auth_manager._get_jwt_secret(),
-                algorithms=[_auth_manager.jwt_algorithm],
+                auth_manager._get_jwt_secret(),
+                algorithms=[auth_manager.jwt_algorithm],
                 options={"verify_aud": False}
             )
         except jwt.ExpiredSignatureError:
@@ -79,7 +72,7 @@ def verify_admin_token(credentials: HTTPAuthorizationCredentials = Depends(secur
             raise HTTPException(status_code=401, detail="Invalid token")
         
         # Check if token is revoked
-        if token in _auth_manager.revoked_tokens:
+        if token in auth_manager.revoked_tokens:
             raise HTTPException(status_code=401, detail="Token has been revoked")
         
         # Extract user information
@@ -104,13 +97,7 @@ def verify_admin_token(credentials: HTTPAuthorizationCredentials = Depends(secur
         logger.error(f"Admin token verification failed: {e}")
         raise HTTPException(status_code=401, detail="Authentication failed")
 
-def create_admin_auth_dependency(auth_manager):
-    """
-    Factory function to create admin auth dependency with injected auth_manager.
-    Requires admin role for administrative operations.
-    """
-    set_auth_manager(auth_manager)
-    return verify_admin_token
+# Removed create_admin_auth_dependency - using proper FastAPI DI
 
 
 def validate_ip_address(ip: str) -> str:

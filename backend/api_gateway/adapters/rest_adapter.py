@@ -59,7 +59,7 @@ class RESTAdapter:
                  rate_limiter: RateLimiter, validator: MessageValidator,
                  security_middleware: SecurityMiddleware, key_manager: AICOKeyManager):
         
-        self.logger = get_logger("api_gateway", "rest")
+        self.logger = get_logger("backend", "api_gateway.rest")
         self.config = config
         self.auth_manager = auth_manager
         self.authz_manager = authz_manager
@@ -177,6 +177,7 @@ class RESTAdapter:
                 "active_connections": getattr(self, '_active_connections', 0),
                 "uptime": getattr(self, '_uptime', 0)
             }
+        
     
     def mount_router(self, router: APIRouter, prefix: str = "", tags: Optional[list] = None):
         """Mount a domain router to the FastAPI app"""

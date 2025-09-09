@@ -58,7 +58,6 @@ class EncryptedRequest {
 @JsonSerializable()
 class EncryptedResponse {
   final bool encrypted;
-  @JsonKey(name: 'encrypted_payload')
   final String payload;
 
   const EncryptedResponse({

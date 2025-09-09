@@ -34,12 +34,12 @@ def _get_logger():
             
             # Try to initialize logging if not already done
             try:
-                _logger = get_logger("security", "key_manager")
+                _logger = get_logger("shared", "security.key_manager")
             except RuntimeError:
                 # Logging not initialized, initialize it
                 config = ConfigurationManager()
                 initialize_logging(config)
-                _logger = get_logger("security", "key_manager")
+                _logger = get_logger("shared", "security.key_manager")
         except Exception:
             # Fallback to standard logging if unified system fails
             import logging
@@ -949,3 +949,52 @@ class AICOKeyManager:
                 tokens[service] = False
                 
         return tokens
+    
+    def derive_curve_keypair(self, master_key: bytes, component_name: str) -> tuple[bytes, bytes]:
+        """
+        Derive CurveZMQ keypair for message bus encryption.
+        
+        Uses deterministic key derivation to ensure consistent keypairs across restarts
+        while maintaining security through master key dependency.
+        
+        Args:
+            master_key: Master key from authentication
+            component_name: Component name (e.g., "api_gateway", "log_consumer", "cli")
+            
+        Returns:
+            Tuple of (public_key, secret_key) as 32-byte values for CurveZMQ
+        """
+        # Use deterministic salt for consistent keypairs
+        import hashlib
+        salt = hashlib.sha256(f"aico-curve-salt-{component_name}".encode()).digest()[:16]
+        
+        # Derive 64 bytes (32 for secret key + 32 for validation)
+        argon2 = Argon2id(
+            salt=salt,
+            length=64,  # Need 64 bytes for CurveZMQ keypair generation
+            iterations=self._get_security_config("key_derivation.argon2id.transport_keys") or 1,
+            lanes=self._get_security_config("key_derivation.argon2id.lanes.transport_keys") or 2,
+            memory_cost=self._get_security_config("key_derivation.argon2id.memory_cost.transport_keys") or 65536,
+            ad=None,
+            secret=None
+        )
+        
+        context = master_key + f"aico-curve-{component_name}".encode()
+        key_material = argon2.derive(context)
+        
+        # Use first 32 bytes as secret key seed for CurveZMQ
+        secret_key_bytes = key_material[:32]
+        
+        # Generate deterministic keypair using ZMQ curve functions
+        import zmq
+        from zmq.utils import z85
+        
+        # Encode the 32-byte secret key as Z85 (40 characters)
+        secret_key = z85.encode(secret_key_bytes).decode('ascii')
+        
+        # Generate public key from the secret key
+        public_key = zmq.curve_public(secret_key.encode('ascii')).decode('ascii')
+        
+        _get_logger().debug(f"Derived CurveZMQ keypair for component: {component_name}")
+        
+        return public_key, secret_key

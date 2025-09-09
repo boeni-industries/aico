@@ -10,6 +10,7 @@ from .security_plugin import SecurityPlugin
 from .rate_limiting_plugin import RateLimitingPlugin
 from .validation_plugin import ValidationPlugin
 from .routing_plugin import RoutingPlugin
+from .encryption_plugin import EncryptionPlugin
 
 __all__ = [
     'LogConsumerPlugin',
@@ -17,5 +18,6 @@ __all__ = [
     'SecurityPlugin',
     'RateLimitingPlugin', 
     'ValidationPlugin',
-    'RoutingPlugin'
+    'RoutingPlugin',
+    'EncryptionPlugin'
 ]

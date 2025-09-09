@@ -9,11 +9,13 @@ rather than an external dependency injection.
 import asyncio
 from typing import Dict, Any, Optional
 
-from ..core.plugin_registry import PluginInterface, PluginMetadata, PluginPriority
+from backend.core.plugin_base import BasePlugin, PluginMetadata, PluginPriority
+from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
+from aico.core.topics import AICOTopics
 
 
-class LogConsumerPlugin(PluginInterface):
+class LogConsumerPlugin(BasePlugin):
     """
     Log consumer plugin for centralized log collection via ZMQ transport
     
@@ -21,8 +23,8 @@ class LogConsumerPlugin(PluginInterface):
     maintaining architectural consistency with the modular design.
     """
     
-    def __init__(self, config: Dict[str, Any], logger):
-        super().__init__(config, logger)
+    def __init__(self, name: str, container):
+        super().__init__(name, container)
         self.log_consumer: Optional[Any] = None
         self.db_connection: Optional[Any] = None
         
@@ -38,60 +40,49 @@ class LogConsumerPlugin(PluginInterface):
                 "enabled": {"type": "boolean", "default": True},
                 "zmq_sub_port": {"type": "integer", "default": 5556},
                 "zmq_host": {"type": "string", "default": "localhost"},
-                "topic_prefix": {"type": "string", "default": "logs."},
+                "topic_prefix": {"type": "string", "default": "logs/"},
                 "batch_size": {"type": "integer", "default": 100},
                 "flush_interval": {"type": "integer", "default": 5}
             }
         )
     
-    async def initialize(self, dependencies: Dict[str, Any]) -> None:
+    async def initialize(self) -> None:
         """Initialize log consumer with database connection"""
         try:
-            config_manager = dependencies.get('config')
-            self.db_connection = dependencies.get('db_connection')
+            # Create log consumer service using the service container pattern
+            from backend.services.log_consumer_service import LogConsumerService
             
-            if not config_manager:
-                raise ValueError("ConfigurationManager dependency required")
+            # Create the service with proper container dependency injection
+            self.log_consumer = LogConsumerService("log_consumer", self.container)
+            self.logger.info(f"Log consumer service created: {self.log_consumer is not None}")
             
-            if not self.db_connection:
-                self.logger.warning("No database connection provided - log consumer will not persist logs")
-                return
-            
-            # Import and initialize log consumer
-            from backend.log_consumer import AICOLogConsumer
-            from aico.core.logging import initialize_logging
-
-            # Get the shared ZMQ context from the global logger factory
-            logger_factory = initialize_logging(config_manager)
-            zmq_context = logger_factory.get_zmq_context()
-
-            if not zmq_context:
-                self.logger.error("Failed to get ZMQ context for LogConsumerPlugin")
-                return
-
-            self.log_consumer = AICOLogConsumer(
-                config_manager=config_manager,
-                db_connection=self.db_connection,
-                zmq_context=zmq_context
-            )
-            
-            self.logger.info("Log consumer plugin initialized", extra={
-                "db_connection": "provided" if self.db_connection else "none",
-                "zmq_enabled": True
-            })
+            # Initialize the service (this will resolve dependencies from container)
+            await self.log_consumer.initialize()
+            self.logger.info("Log consumer service initialized successfully")
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize log consumer plugin: {e}")
+            self.logger.error(f"Failed to initialize log consumer plugin: {e}", exc_info=True)
+            # Fail fast - raise the error to prevent silent failures
+            self.log_consumer = None
             raise
     
     async def start(self) -> None:
         """Start the log consumer service"""
-        if not self.enabled or not self.log_consumer:
-            self.logger.info("Log consumer plugin disabled or not initialized")
+        if not self.enabled:
+            self.logger.info("Log consumer plugin disabled")
             return
+            
+        if not self.log_consumer:
+            self.logger.warning("Log consumer not initialized - attempting to initialize now")
+            try:
+                await self.initialize()
+            except Exception as e:
+                self.logger.error(f"Failed to initialize log consumer during start: {e}")
+                return
         
         try:
             await self.log_consumer.start()
+            self.running = True
             self.logger.info("Log consumer plugin started - ZMQ log transport active")
             
         except Exception as e:
@@ -102,7 +93,7 @@ class LogConsumerPlugin(PluginInterface):
         """Stop the log consumer service"""
         if self.log_consumer:
             try:
-                await self.log_consumer.stop()
+                await self.log_consumer.stop()  # stop() is async in LogConsumerService
                 self.logger.info("Log consumer plugin stopped")
             except Exception as e:
                 self.logger.error(f"Error stopping log consumer plugin: {e}")

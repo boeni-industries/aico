@@ -21,10 +21,13 @@ logging:
       backend: "INFO" 
       frontend: "INFO"
       studio: "INFO"
+      modelservice: "INFO"
     modules:
       # Fine-grained control per module if needed
       security: "INFO"  # Security logs are important
       database: "INFO"
+    externals:
+      ollama: "INFO"    # Ollama server and model logs
       
   # Retention and cleanup
   retention:
@@ -38,6 +41,7 @@ logging:
     # Enables selective subscription (logs.* = all, logs.api_gateway.* = specific)
     # Will expand with more topics like "metrics", "events", "alerts" over time
     zmq_topic: "logs"  # Base topic for all log messages
+  
     
   # Bootstrap fallback configuration
   bootstrap:
@@ -60,10 +64,7 @@ api_gateway:
   rest:
     port: 8771
     host: "127.0.0.1"
-    cors_origins:
-      - "http://localhost:3000"
-      - "http://127.0.0.1:3000"
-  
+
   # Protocol adapters
   protocols:
     # REST endpoints handled by main FastAPI backend - no separate adapter needed
@@ -138,8 +139,167 @@ api_gateway:
       enabled: true
     routing:
       enabled: true
+    # AI Processing Plugins for Conversation Engine
+    embodiment:
+      enabled: true
+    agency:
+      enabled: true
+    emotion:
+      enabled: true
+    personality:
+      enabled: true
+
+# Modelservice configuration
+modelservice:
+  enabled: true
+  rest:
+    host: "127.0.0.1"
+    port: 8773
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+  # Ollama server configuration
+  ollama:
+    # Connection settings
+    host: "127.0.0.1"
+    port: 11434
+    url: "http://127.0.0.1:11434"
+    
+    # Auto-management settings
+    auto_install: true  # Automatically install Ollama binary if missing
+    auto_start: true    # Start Ollama server with modelservice
+    auto_update: true   # Check for Ollama updates weekly
+    
+    # Model persistence settings
+    keep_alive: -1      # Keep models in memory indefinitely (-1) or specify seconds
+    
+    # Default models by capability role
+    default_models:
+      conversation:
+        name: "hermes3:8b"
+        description: "Nous Hermes 3 - Primary foundation model for character consistency"
+        auto_pull: true
+        priority: 1
+      vision:
+        name: "llama3.2-vision:11b"
+        description: "Scene understanding and emotional context"
+        auto_pull: false
+        priority: 2
+      vision_extended:
+        name: "qwen2.5-vl:7b"
+        description: "Advanced vision - OCR, documents, and object detection"
+        auto_pull: false
+        priority: 3
+      lightweight:
+        name: "llama3.2:1b"
+        description: "Ultra-fast model for simple tasks"
+        auto_pull: false
+        priority: 4
+    
+    # Default model parameters
+    default_parameters:
+      temperature: 0.7
+      max_tokens: 2048
+      top_p: 0.9
+      top_k: 40
+      repeat_penalty: 1.1
+      stop: []
+    
+    # Resource management
+    resources:
+      # Unload models after inactivity to free memory
+      auto_unload_minutes: 30
+      # Maximum concurrent model instances
+      max_concurrent_models: 2
+      # Memory threshold to start unloading models (percentage)
+      memory_threshold_percent: 85
+    
+    # Update and maintenance
+    updates:
+      check_interval_hours: 168  # Weekly (7 * 24)
+      auto_update_binary: true
+      backup_models_before_update: true
+  
+
+# Task Scheduler configuration
+scheduler:
+  enabled: true
+  max_concurrent_tasks: 10
+  max_cpu_percent: 80
+  max_memory_percent: 80
+  scheduler_interval: 1.0  # seconds
+  default_retry_count: 3
+  default_retry_delay: 60  # seconds
+  max_retry_delay: 3600   # 1 hour
+  resource_check_interval: 30  # seconds
+  idle_threshold_cpu: 20      # percent
+  idle_threshold_memory: 70   # percent
 
 # User profile configuration
 user_profiles:
   default_user_type: "person"
+
+# Service Authentication Configuration
+# For automated service-to-service authentication (not user-based)
+service_auth:
+  # Default settings for all service tokens
+  defaults:
+    token_validity_hours: 8760  # 1 year
+    issuer: "aico-system"
+    require_component_identity: true
+    validate_audience: true
+    validate_expiry: true
+
+  # Service permissions for API Gateway access
+  # Note: All permissions relate to API Gateway endpoints
+  services:
+    modelservice:
+      - "logs:write"
+      - "health:read"
+
+# Conversation Engine Configuration
+conversation:
+  max_context_messages: 20
+  response_timeout_seconds: 30.0
+  default_response_mode: "multimodal"  # text-only, multimodal, proactive
+  
+  # Feature flags for AI components
+  features:
+    enable_emotion_integration: true
+    enable_personality_integration: true
+    enable_memory_integration: true
+    enable_embodiment: true
+    enable_agency: true
+
+# Embodiment Engine Configuration
+embodiment:
+  enable_avatar_system: true
+  enable_voice_synthesis: true
+  enable_cross_device_sync: true
+  default_voice_model: "default"
+  avatar_response_timeout_seconds: 10.0
+
+# Agency Engine Configuration
+agency:
+  enable_proactive_engagement: true
+  enable_autonomous_learning: true
+  enable_goal_generation: true
+  proactive_check_interval_minutes: 30
+  max_active_goals: 5
+
+# Emotion Engine Configuration
+emotion:
+  enable_appraisal_processing: true
+  enable_crisis_detection: true
+  emotion_decay_rate: 0.1
+  crisis_threshold: 0.8
+  max_emotion_history: 50
+
+# Personality Engine Configuration
+personality:
+  enable_trait_evolution: true
+  enable_context_adaptation: true
+  evolution_learning_rate: 0.01
+  consistency_weight: 0.7
+  adaptation_weight: 0.3
 

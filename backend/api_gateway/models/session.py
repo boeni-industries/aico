@@ -75,7 +75,7 @@ class SessionManager:
     """
     
     def __init__(self, config_manager=None):
-        self.logger = get_logger("api_gateway", "session")
+        self.logger = get_logger("backend", "api_gateway.session")
         self.sessions: Dict[str, SessionInfo] = {}
         
         # Configuration

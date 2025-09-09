@@ -67,7 +67,7 @@ def get_versions_path():
         return (Path(__file__).parent.parent.parent / "VERSIONS").resolve()
 
 VERSIONS_PATH = get_versions_path()
-SUBSYSTEMS = ["shared", "cli", "backend", "frontend", "studio"]
+SUBSYSTEMS = ["shared", "cli", "backend", "frontend", "studio", "modelservice"]
 
 
 def read_versions():
@@ -396,6 +396,25 @@ def update_studio_version(version: str):
     
     return False
 
+def update_modelservice_version(version: str):
+    """Update version in modelservice/main.py"""
+    main_file = get_project_root() / "modelservice" / "main.py"
+    if not main_file.exists():
+        return False
+    
+    content = main_file.read_text(encoding='utf-8')
+    import re
+    new_content = re.sub(
+        r'version="[^"]*"',
+        f'version="{version}"',
+        content
+    )
+    
+    if new_content != content:
+        main_file.write_text(new_content, encoding='utf-8')
+        return True
+    return False
+
 @app.command(
     help="""Sync canonical versions from VERSIONS file to all project files.
 
@@ -427,7 +446,8 @@ def sync():
         "cli": update_cli_version,
         "backend": update_backend_version,
         "frontend": update_frontend_version,
-        "studio": update_studio_version
+        "studio": update_studio_version,
+        "modelservice": update_modelservice_version
     }
     
     for element in SUBSYSTEMS:
@@ -498,7 +518,8 @@ def check(
         "cli": read_cli_version,
         "backend": read_backend_version,
         "frontend": read_frontend_version,
-        "studio": read_studio_version
+        "studio": read_studio_version,
+        "modelservice": read_modelservice_version
     }
     subsystems_to_check = SUBSYSTEMS if subsystem is None or subsystem == "all" else [subsystem]
     mismatches = []
@@ -622,6 +643,19 @@ def read_studio_version():
     except Exception:
         return None
 
+def read_modelservice_version():
+    """Read version from modelservice/main.py"""
+    main_file = get_project_root() / "modelservice" / "main.py"
+    if not main_file.exists():
+        return None
+    try:
+        content = main_file.read_text(encoding='utf-8')
+        import re
+        match = re.search(r'version="([^"]*)"', content)
+        return match.group(1) if match else None
+    except Exception:
+        return None
+
 @app.command(
     help="""
 Preview the next version number for a subsystem or all subsystems, using semantic versioning rules.
@@ -631,7 +665,7 @@ No changes are made.
 def next(
     subsystem: str = typer.Argument(
         None,
-        help="Which subsystem to preview (shared/cli/backend/frontend/studio/all). If omitted, previews all subsystems.",
+        help="Which subsystem to preview (shared/cli/backend/frontend/studio/modelservice/all). If omitted, previews all subsystems.",
         show_default=False
     ),
     level: str = typer.Argument(
@@ -780,7 +814,8 @@ def bump(
         "cli": update_cli_version,
         "backend": update_backend_version,
         "frontend": update_frontend_version,
-        "studio": update_studio_version
+        "studio": update_studio_version,
+        "modelservice": update_modelservice_version
     }
     update_func = update_functions[subsystem]
     updated = update_func(new_version)
@@ -804,6 +839,10 @@ def bump(
         # For cli, add cli/__version__.py
         cli_version_file = get_project_root() / "cli" / "__version__.py"
         subprocess.run(["git", "add", str(cli_version_file)], check=True)
+    elif subsystem == "modelservice":
+        # For modelservice, add modelservice/main.py
+        modelservice_main = get_project_root() / "modelservice" / "main.py"
+        subprocess.run(["git", "add", str(modelservice_main)], check=True)
     else:
         project_file = {
             "frontend": get_project_root() / "frontend" / "pubspec.yaml",

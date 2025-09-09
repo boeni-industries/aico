@@ -43,6 +43,7 @@ cli = [
     "typer>=0.12.3,<1.0.0",
     "rich>=13.7.0,<14.0.0",
     "requests>=2.31.0,<3.0.0",
+    "cron-descriptor>=1.4.3",
 ]
 
 test = [
@@ -53,9 +54,14 @@ test = [
 aico = "cli.aico_main:app"
 
 [tool.setuptools]
-packages = ["aico", "cli", "backend"]
+packages = ["aico", "cli", "backend", "modelservice"]
 
 [tool.setuptools.package-dir]
 aico = "shared/aico"
 cli = "cli"
 backend = "backend"
+
+[dependency-groups]
+test = [
+    "pytest-asyncio>=1.1.0",
+]

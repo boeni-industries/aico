@@ -1,19 +1,42 @@
 import 'dart:io';
+
+import 'package:aico_frontend/core/services/encryption_service.dart';
+import 'package:aico_frontend/core/services/unified_api_client.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
-
-
-/// Simple test script to verify Flutter logging integration
+/// Test script to verify Flutter logging integration with encryption
 /// This simulates the logs that would be sent by the Flutter app
 void main() async {
-  final dio = Dio();
-  final baseUrl = 'http://localhost:8771/api/v1';
-  
   debugPrint('🧪 Testing Flutter logging integration...');
   
+  // Initialize encryption service
+  final encryptionService = EncryptionService();
+  await encryptionService.initialize();
+  
+  // Create unified API client
+  final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8771/api/v1'));
+  final httpClient = http.Client();
+  final apiClient = UnifiedApiClient(
+    dio: dio,
+    httpClient: httpClient,
+    encryptionService: encryptionService,
+    baseUrl: 'http://localhost:8771/api/v1',
+  );
+  
+  try {
+    // Initialize encryption session
+    debugPrint('🔐 Initializing encryption session...');
+    await apiClient.initializeEncryption();
+    debugPrint('✅ Encryption session established');
+  } catch (e) {
+    debugPrint('❌ Failed to establish encryption: $e');
+    return;
+  }
+  
   // Test 1: App startup log
-  await testLog(dio, baseUrl, {
+  await testLog(apiClient, {
     'timestamp': DateTime.now().toIso8601String(),
     'level': 'INFO',
     'module': 'testmodule',
@@ -30,7 +53,7 @@ void main() async {
   }, 'App Startup');
   
   // Test 2: App initialization log
-  await testLog(dio, baseUrl, {
+  await testLog(apiClient, {
     'timestamp': DateTime.now().toIso8601String(),
     'level': 'INFO',
     'module': 'testmodule',
@@ -45,7 +68,7 @@ void main() async {
   }, 'App Initialization');
   
   // Test 3: Authentication attempt log
-  await testLog(dio, baseUrl, {
+  await testLog(apiClient, {
     'timestamp': DateTime.now().toIso8601String(),
     'level': 'INFO',
     'module': 'mobile.auth',
@@ -61,7 +84,7 @@ void main() async {
   }, 'Authentication Attempt');
   
   // Test 4: Authentication success log
-  await testLog(dio, baseUrl, {
+  await testLog(apiClient, {
     'timestamp': DateTime.now().toIso8601String(),
     'level': 'INFO',
     'module': 'mobile.auth',
@@ -80,7 +103,7 @@ void main() async {
   }, 'Authentication Success');
   
   // Test 5: Auto-login attempt log
-  await testLog(dio, baseUrl, {
+  await testLog(apiClient, {
     'timestamp': DateTime.now().toIso8601String(),
     'level': 'INFO',
     'module': 'mobile.auth',
@@ -93,7 +116,7 @@ void main() async {
   }, 'Auto-login Attempt');
   
   // Test 6: Logout log
-  await testLog(dio, baseUrl, {
+  await testLog(apiClient, {
     'timestamp': DateTime.now().toIso8601String(),
     'level': 'INFO',
     'module': 'mobile.auth',
@@ -108,32 +131,24 @@ void main() async {
   debugPrint('\n✅ All Flutter logging tests completed!');
   debugPrint('📋 Check logs with: aico logs tail');
   debugPrint('🔍 Filter frontend logs with: aico logs tail --subsystem frontend');
+  
+  // Clean up
+  apiClient.dispose();
+  encryptionService.dispose();
 }
 
-Future<void> testLog(Dio dio, String baseUrl, Map<String, dynamic> logData, String testName) async {
+Future<void> testLog(UnifiedApiClient apiClient, Map<String, dynamic> logData, String testName) async {
   try {
     debugPrint('\n🧪 Testing: $testName');
     
-    final response = await dio.post(
-      '$baseUrl/logs/',
-      data: logData,
-      options: Options(
-        headers: {'Content-Type': 'application/json'},
-        followRedirects: true,
-        validateStatus: (status) => status! < 400,
-      ),
-    );
+    final response = await apiClient.post<Map<String, dynamic>>('/logs/', logData);
     
-    if (response.statusCode == 200) {
-      debugPrint('✅ $testName: SUCCESS (${response.statusCode})');
-    } else {
-      debugPrint('❌ $testName: FAILED (${response.statusCode})');
+    debugPrint('✅ $testName: SUCCESS');
+    if (response.containsKey('message')) {
+      debugPrint('   Server response: ${response['message']}');
     }
   } catch (e) {
     debugPrint('❌ $testName: ERROR - $e');
-    if (e is DioException && e.response != null) {
-      debugPrint('   Response body: ${e.response?.data}');
-    }
   }
   
   // Small delay between tests

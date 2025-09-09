@@ -9,11 +9,11 @@ rather than external dependency injection.
 import asyncio
 from typing import Dict, Any, Optional
 
-from ..core.plugin_registry import PluginInterface, PluginMetadata, PluginPriority
+from backend.core.plugin_base import BasePlugin, PluginMetadata, PluginPriority
 from aico.core.logging import get_logger
 
 
-class MessageBusPlugin(PluginInterface):
+class MessageBusPlugin(BasePlugin):
     """
     Message bus plugin for centralized message broker and module coordination
     
@@ -21,10 +21,9 @@ class MessageBusPlugin(PluginInterface):
     maintaining architectural consistency with the modular design.
     """
     
-    def __init__(self, config: Dict[str, Any], logger):
-        super().__init__(config, logger)
+    def __init__(self, name: str, container):
+        super().__init__(name, container)
         self.message_bus_host: Optional[Any] = None
-        self.db_connection: Optional[Any] = None
         self.bind_address = "tcp://*:5555"
         
     @property
@@ -45,58 +44,50 @@ class MessageBusPlugin(PluginInterface):
             }
         )
     
-    async def initialize(self, dependencies: Dict[str, Any]) -> None:
-        """Initialize message bus with database connection"""
+    async def initialize(self) -> None:
+        """Initialize plugin with dependencies"""
+        # Get database connection from service container
+        self.db_connection = self.require_service('database')
+        #print(f"[MESSAGE BUS PLUGIN] initialize() - db_connection: {self.db_connection is not None}")
+    
+    async def process_request(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Process incoming request - required by PluginInterface"""
+        return context
+    
+    async def start(self) -> None:
+        """Start the message bus broker"""
         try:
-            config_manager = dependencies.get('config')
-            self.db_connection = dependencies.get('db_connection')
-            
-            if not config_manager:
-                raise ValueError("ConfigurationManager dependency required")
+            #print(f"[MESSAGE BUS PLUGIN] start() called")
             
             # Get message bus configuration
-            mb_config = config_manager.get("message_bus", {})
+            mb_config = self.get_config("message_bus", {})
             self.bind_address = mb_config.get("bind_address", "tcp://*:5555")
             
             # Import and initialize message bus host
             from backend.message_bus_host import AICOMessageBusHost
             
             self.message_bus_host = AICOMessageBusHost(self.bind_address)
+            #print(f"[MESSAGE BUS PLUGIN] Created message bus host on {self.bind_address}")
             
-            self.logger.info("Message bus plugin initialized", extra={
+            # Start message bus host directly in current async context
+            #print(f"[MESSAGE BUS PLUGIN] Starting message bus host...")
+            await self.message_bus_host.start(db_connection=self.db_connection)
+            #print(f"[MESSAGE BUS PLUGIN] Message bus host started successfully")
+            
+            self.logger.info("Message bus plugin started", extra={
                 "bind_address": self.bind_address,
                 "db_connection": "provided" if self.db_connection else "none",
                 "persistence": "enabled" if self.db_connection else "disabled"
             })
             
-        except Exception as e:
-            self.logger.error(f"Failed to initialize message bus plugin: {e}")
-            raise
-    
-    async def start(self) -> None:
-        """Start the message bus broker"""
-        print(f"[MESSAGE BUS PLUGIN] start() called - enabled: {self.enabled}, host: {self.message_bus_host is not None}")
-        
-        if not self.enabled or not self.message_bus_host:
-            self.logger.info("Message bus plugin disabled or not initialized")
-            print(f"[MESSAGE BUS PLUGIN] Not starting - enabled: {self.enabled}, host initialized: {self.message_bus_host is not None}")
-            return
-        
-        try:
-            print(f"[MESSAGE BUS PLUGIN] Starting message bus host on {self.bind_address}")
-            # Start message bus host with database connection
-            await self.message_bus_host.start(db_connection=self.db_connection)
-            print(f"[MESSAGE BUS PLUGIN] Message bus host started successfully")
-            self.logger.info("Message bus plugin started - broker active", extra={
-                "bind_address": self.bind_address,
-                "persistence": "enabled" if self.db_connection else "disabled"
-            })
+            # Notify ZMQ log transport that broker is ready
+            self._notify_log_transport_broker_ready()
             
         except Exception as e:
-            print(f"[MESSAGE BUS PLUGIN] Failed to start message bus plugin: {e}")
-            import traceback
-            print(f"[MESSAGE BUS PLUGIN] Traceback: {traceback.format_exc()}")
             self.logger.error(f"Failed to start message bus plugin: {e}")
+            print(f"[ERROR]: Failed to start message bus plugin: {e}")
+            import traceback
+            print(f"[ERROR] Traceback: {traceback.format_exc()}")
             raise
     
     async def stop(self) -> None:
@@ -108,9 +99,6 @@ class MessageBusPlugin(PluginInterface):
             except Exception as e:
                 self.logger.error(f"Error stopping message bus plugin: {e}")
     
-    async def process_request(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Message bus doesn't process requests - it's infrastructure"""
-        return context
     
     async def process_response(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Message bus doesn't process responses - it's infrastructure"""
@@ -174,6 +162,25 @@ class MessageBusPlugin(PluginInterface):
                 "status": "error", 
                 "message": f"Health check failed: {e}"
             }
+    
+    def _notify_log_transport_broker_ready(self):
+        """Notify ZMQ log transport that broker is ready to accept connections"""
+        try:
+            from aico.core.logging import get_logger_factory
+            
+            # Get the global logger factory instance
+            factory = get_logger_factory()
+            
+            if factory and hasattr(factory, '_transport') and factory._transport:
+                factory._transport.mark_broker_ready()
+                self.logger.info("Notified ZMQ log transport that broker is ready")
+            else:
+                self.logger.warning("Factory missing _transport or transport is None")
+            
+        except Exception as e:
+            # Don't fail startup if notification fails
+            self.logger.error(f"Exception in notification: {e}")
+            self.logger.warning(f"Failed to notify log transport broker ready: {e}")
     
     async def shutdown(self) -> None:
         """Cleanup message bus plugin resources"""

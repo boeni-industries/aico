@@ -15,6 +15,7 @@ encryption:
       database_operations: 2    # Balanced for database operations
       file_operations: 1        # Lighter for file operations  
       derived_keys: 2           # For derived keys
+      transport_keys: 1         # For CurveZMQ transport keys
       master_key: 3             # For master key derivation
       
       # Memory and parallelism settings (different for each use case)
@@ -22,12 +23,14 @@ encryption:
         database_operations: 262144   # 256MB in KiB (256*1024)
         file_operations: 131072       # 128MB in KiB (128*1024)
         derived_keys: 262144          # 256MB in KiB (256*1024)
+        transport_keys: 65536         # 64MB in KiB (64*1024) - lighter for transport
         master_key: 1048576           # 1GB in KiB (1024*1024)
       
       lanes:
         database_operations: 2        # 2 threads
         file_operations: 2            # 2 threads
         derived_keys: 2               # 2 threads
+        transport_keys: 2             # 2 threads
         master_key: 4                 # 4 threads (parallelism)
       
       length: 32                      # 256-bit output
@@ -40,39 +43,50 @@ file_encryption:
   tag_size: 16             # 128-bit auth tag
   header_magic: "AICO"     # File format identifier
 
-# Transport encryption settings (libsodium-based)
-transport_encryption:
-  enabled: true
-  algorithm: "XChaCha20-Poly1305"  # Authenticated encryption
+# Transport security settings
+transport:
+  # Message bus encryption using CurveZMQ
+  message_bus_encryption: true
   
-  # Component identity settings
-  identity:
-    key_type: "Ed25519"            # Signing keys for component identity
-    session_key_type: "X25519"     # Key exchange for session keys
+  # CurveZMQ settings for internal message bus
+  curve_zmq:
+    enabled: true
+    authentication_policy: "CURVE_ALLOW_ANY"  # Zero-config: any valid CURVE client can connect
+    key_rotation_interval: 86400              # 24 hours
     
-  # Session management
-  session:
-    timeout_seconds: 3600          # 1 hour session timeout
-    handshake_timeout_seconds: 30  # Handshake must complete within 30s
-    max_sessions_per_client: 5     # Maximum concurrent sessions per client
+  # Transport encryption settings (libsodium-based for HTTP/WebSocket)
+  encryption:
+    enabled: true
+    algorithm: "XChaCha20-Poly1305"  # Authenticated encryption
     
-  # Handshake protocol settings
-  handshake:
-    challenge_size: 32             # 256-bit challenge
-    nonce_size: 24                 # 192-bit nonce for XChaCha20
-    signature_algorithm: "Ed25519" # Digital signatures
-    
-  # Message encryption
-  message:
-    max_payload_size: 1048576      # 1MB maximum payload
-    compression_enabled: true      # Compress before encryption
-    compression_threshold: 1024    # Compress payloads > 1KB
-    
-  # Client identification
-  client_identification:
-    use_ip_address: true           # Include IP in client fingerprint
-    use_user_agent: true           # Include User-Agent in fingerprint
-    session_binding: true          # Bind sessions to client fingerprint
+    # Component identity settings
+    identity:
+      key_type: "Ed25519"            # Signing keys for component identity
+      session_key_type: "X25519"     # Key exchange for session keys
+      
+    # Session management
+    session:
+      timeout_seconds: 3600          # 1 hour session timeout
+      handshake_timeout_seconds: 30  # Handshake must complete within 30s
+      max_sessions_per_client: 5     # Maximum concurrent sessions per client
+      
+    # Handshake protocol settings
+    handshake:
+      challenge_size: 32             # 256-bit challenge
+      nonce_size: 24                 # 192-bit nonce for XChaCha20
+      signature_algorithm: "Ed25519" # Digital signatures
+      
+    # Message encryption
+    message:
+      max_payload_size: 1048576      # 1MB maximum payload
+      compression_enabled: true      # Compress before encryption
+      compression_threshold: 1024    # Compress payloads > 1KB
+      
+    # Client identification
+    client_identification:
+      use_ip_address: true           # Include IP in client fingerprint
+      use_user_agent: true           # Include User-Agent in fingerprint
+      session_binding: true          # Bind sessions to client fingerprint
 
 password_policy:
   min_length: 12
@@ -116,11 +130,11 @@ rbac:
       - "users.*"           # User management
       - "audit.*"           # Audit access
       - "subscribe.*"       # WebSocket subscriptions
-      - "conversation.*"    # Chat and conversation access
+      - "conversation.*"    # Conversation access
     
     # User role - standard user permissions
     user:
-      - "conversation.*"    # Chat and conversation
+      - "conversation.*"    # Conversation access
       - "memory.read"       # Read memory
       - "personality.read"  # Read personality
       - "profile.*"         # Own profile management

@@ -48,7 +48,9 @@ chars = get_platform_chars()
 def _get_jwt_token() -> Optional[str]:
     """Get stored JWT token for CLI authentication from secure keyring"""
     try:
-        key_manager = AICOKeyManager()
+        from aico.core.config import ConfigurationManager
+        config = ConfigurationManager()
+        key_manager = AICOKeyManager(config)
         return key_manager.get_jwt_token("api_gateway")
     except Exception:
         return None
@@ -56,7 +58,9 @@ def _get_jwt_token() -> Optional[str]:
 def _store_jwt_token(token: str) -> None:
     """Store JWT token for CLI authentication in secure keyring"""
     try:
-        key_manager = AICOKeyManager()
+        from aico.core.config import ConfigurationManager
+        config = ConfigurationManager()
+        key_manager = AICOKeyManager(config)
         key_manager.store_jwt_token("api_gateway", token)
     except Exception as e:
         console.print(f"[yellow]Warning: Failed to store JWT token in keyring: {e}[/yellow]")
@@ -423,7 +427,9 @@ def start(
                 
                 console.print(f"[yellow]Backend process exited with code {result.returncode}[/yellow]")
                 
-                if result.returncode != 0:
+                # On Windows, exit code 15 is SIGTERM, which is a graceful shutdown.
+                # We should not treat it as an error.
+                if result.returncode != 0 and result.returncode != 15:
                     console.print(f"[red]{chars['cross']} Gateway exited with code {result.returncode}[/red]")
                     raise typer.Exit(result.returncode)
                 else:
@@ -682,7 +688,9 @@ def status():
                 import jwt
                 from aico.security.key_manager import AICOKeyManager
                 
-                key_manager = AICOKeyManager()
+                from aico.core.config import ConfigurationManager
+                config = ConfigurationManager()
+                key_manager = AICOKeyManager(config)
                 jwt_secret = key_manager.get_jwt_secret("api_gateway")
                 
                 # Decode and validate the token (skip audience validation for CLI)
@@ -1059,7 +1067,9 @@ def auth_login():
     """Generate and store JWT token for CLI authentication (zero-effort security)"""
     try:
         # Check if master password is set up first
-        key_manager = AICOKeyManager()
+        from aico.core.config import ConfigurationManager
+        config = ConfigurationManager()
+        key_manager = AICOKeyManager(config)
         if not key_manager.has_stored_key():
             console.print("[red]✗ Master password not set up. Run 'aico security setup' first.[/red]")
             raise typer.Exit(1)
@@ -1120,7 +1130,9 @@ def auth_login():
 def auth_logout():
     """Remove stored JWT token"""
     try:
-        key_manager = AICOKeyManager()
+        from aico.core.config import ConfigurationManager
+        config = ConfigurationManager()
+        key_manager = AICOKeyManager(config)
         if key_manager.remove_jwt_token("api_gateway"):
             console.print("[green]✓ Authentication token removed from secure keyring[/green]")
         else:
@@ -1141,7 +1153,9 @@ def auth_status():
                 import jwt
                 from aico.security.key_manager import AICOKeyManager
                 
-                key_manager = AICOKeyManager()
+                from aico.core.config import ConfigurationManager
+                config = ConfigurationManager()
+                key_manager = AICOKeyManager(config)
                 jwt_secret = key_manager.get_jwt_secret("api_gateway")
                 
                 # Decode and validate the token (skip audience validation for CLI)

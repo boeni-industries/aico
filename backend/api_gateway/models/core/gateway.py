@@ -23,7 +23,6 @@ from .transport import AdaptiveTransport
 from .message_router import MessageRouter
 from ...adapters.rest_adapter import RESTAdapter
 from ...adapters.websocket_adapter import WebSocketAdapter
-from ...adapters.zeromq_adapter import ZeroMQAdapter
 from ...middleware.rate_limiter import RateLimiter
 from ...middleware.validator import MessageValidator
 from ...middleware.security import SecurityMiddleware
@@ -58,7 +57,7 @@ class AICOAPIGateway:
     
     def __init__(self, config_manager: Optional[ConfigurationManager] = None, db_connection=None):
         # Initialize logger for this instance
-        self.logger = get_logger("api_gateway", "gateway")
+        self.logger = get_logger("backend", "api_gateway.gateway")
         
         # Configuration
         self.config_manager = config_manager or ConfigurationManager()
@@ -276,18 +275,7 @@ class AICOAPIGateway:
             self.adapters["websocket"] = ws_adapter
             self.logger.info(f"WebSocket adapter started on {self.config.get('host', '127.0.0.1')}:{protocols['websocket']['port']}")
         
-        # ZeroMQ IPC Adapter
-        if protocols.get("zeromq_ipc", {}).get("enabled", False):
-            zmq_adapter = ZeroMQAdapter(
-                config=protocols["zeromq_ipc"],
-                auth_manager=self.auth_manager,
-                authz_manager=self.authz_manager,
-                message_router=self.message_router,
-                adaptive_transport=self.adaptive_transport
-            )
-            await zmq_adapter.start()
-            self.adapters["zeromq_ipc"] = zmq_adapter
-            self.logger.info("ZeroMQ IPC adapter started")
+        # ZeroMQ IPC Adapter - REMOVED (was unused)
         
         # gRPC Adapter (optional)
         if protocols.get("grpc", {}).get("enabled", False):

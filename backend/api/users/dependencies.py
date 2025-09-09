@@ -4,18 +4,23 @@ User Management API Dependencies
 User-specific authentication and validation dependencies.
 """
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Dict, Any, Optional
-import uuid as uuid_module
+from fastapi import HTTPException, Depends, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 import re
 import uuid
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
+from aico.data.user import UserService
+from backend.core.lifecycle_manager import get_service_container, get_user_service, get_auth_manager
 
 security = HTTPBearer()
 logger = get_logger("api", "users_dependencies")
+
+
+# Use the proper dependency injection functions from lifecycle_manager
+# These are already imported above
 
 
 def create_user_auth_dependency(auth_manager):
@@ -92,7 +97,7 @@ def validate_uuid(uuid_str: str) -> str:
     """
     try:
         # Validate and normalize UUID
-        uuid_obj = uuid_module.UUID(uuid_str)
+        uuid_obj = uuid.UUID(uuid_str)
         return str(uuid_obj)
     except ValueError:
         raise HTTPException(

@@ -30,7 +30,7 @@ class EncryptionMiddleware:
     def __init__(self, app: ASGIApp, key_manager: AICOKeyManager):
         self.app = app
         self.key_manager = key_manager
-        self.logger = get_logger("api_gateway", "encryption")
+        self.logger = get_logger("backend", "api_gateway.encryption")
         
         # Load transport encryption configuration
         from aico.core.config import ConfigurationManager
@@ -90,7 +90,6 @@ class EncryptionMiddleware:
         client_ip = request.client.host if request.client else "unknown"
         
         # Log all requests that reach encryption middleware
-        print(f"[ENCRYPTION MIDDLEWARE] Processing {request.method} {path} from {client_ip}")
         self.logger.debug(f"Processing request: {request.method} {path}")
         self.logger.info(f"ENCRYPTION MIDDLEWARE: {request.method} {path} from {client_ip}", extra={
             "event_type": "encryption_middleware_entry",
@@ -148,7 +147,6 @@ class EncryptionMiddleware:
             self.logger.debug(f"Available channels: {list(self.channels.keys())}")
             self.logger.debug(f"Client ID: {client_id}")
             self.logger.debug(f"Channel found: {channel is not None}")
-            self.logger.debug(f"Available channels: {list(self.channels.keys())}")
             
             if not channel or not channel.is_session_valid():
                 if self.require_encryption:
@@ -179,6 +177,56 @@ class EncryptionMiddleware:
                     await self.app(scope, receive, send)
                     return
             
+            # Create response interceptor for encryption (for all requests with valid session)
+            response_start_sent = False
+            cached_start_message = None
+            
+            async def encrypt_send(message):
+                nonlocal response_start_sent, cached_start_message
+                
+                if message["type"] == "http.response.start":
+                    # Cache the start message, we'll send it after we know the body size
+                    cached_start_message = message
+                elif message["type"] == "http.response.body":
+                    # Encrypt response body if it's JSON
+                    body = message.get("body", b"")
+                    encrypted_body = body  # Default to original body
+                    
+                    try:
+                        if body:
+                            response_data = json.loads(body.decode())
+                            encrypted_payload = channel.encrypt_json_payload(response_data)
+                            encrypted_response = {
+                                "encrypted": True,
+                                "payload": encrypted_payload,
+                                "encryption": "xchacha20poly1305"
+                            }
+                            encrypted_body = json.dumps(encrypted_response).encode()
+                    except (json.JSONDecodeError, Exception):
+                        # Not JSON or encryption failed, use original body
+                        pass
+                    
+                    # Update Content-Length in cached start message if we have one
+                    if cached_start_message and not response_start_sent:
+                        headers = list(cached_start_message.get("headers", []))
+                        updated_headers = []
+                        
+                        for name, value in headers:
+                            if name.lower() == b"content-length":
+                                updated_headers.append((name, str(len(encrypted_body or b"")).encode()))
+                            else:
+                                updated_headers.append((name, value))
+                        
+                        cached_start_message["headers"] = updated_headers
+                        await send(cached_start_message)
+                        response_start_sent = True
+                    
+                    # Send the body (ensure it's not None)
+                    message["body"] = encrypted_body or b""
+                    await send(message)
+                else:
+                    await send(message)
+            
             # Check if request is encrypted and decrypt if needed
             if body:
                 try:
@@ -192,10 +240,30 @@ class EncryptionMiddleware:
                         
                         try:
                             decrypted_data = channel.decrypt_json_payload(encrypted_payload)
-                            self.logger.info(f"Successfully decrypted payload: {decrypted_data}")
+                            self.logger.info(f"Successfully decrypted request payload: {decrypted_data}")
                             
                             # Replace the request body with decrypted data
                             decrypted_body = json.dumps(decrypted_data).encode()
+                            
+                            # Create new scope with updated content-length but preserve all headers
+                            new_scope = scope.copy()
+                            headers = list(scope.get("headers", []))
+                            
+                            # Update content-length header
+                            updated_headers = []
+                            content_length_updated = False
+                            for name, value in headers:
+                                if name.lower() == b"content-length":
+                                    updated_headers.append((name, str(len(decrypted_body)).encode()))
+                                    content_length_updated = True
+                                else:
+                                    updated_headers.append((name, value))
+                            
+                            # Add content-length if not present
+                            if not content_length_updated:
+                                updated_headers.append((b"content-length", str(len(decrypted_body)).encode()))
+                            
+                            new_scope["headers"] = updated_headers
                             
                             # Create a new receive callable with the decrypted body
                             async def new_receive():
@@ -205,8 +273,8 @@ class EncryptionMiddleware:
                                     "more_body": False
                                 }
                             
-                            # Forward the request with decrypted body
-                            await self.app(scope, new_receive, send)
+                            # Forward the request with decrypted body and encrypted response
+                            await self.app(new_scope, new_receive, encrypt_send)
                             return
                             
                         except Exception as e:
@@ -219,8 +287,8 @@ class EncryptionMiddleware:
                     # Not JSON, pass through
                     pass
             
-            # Pass through unencrypted requests
-            await self.app(scope, receive, send)
+            # Pass through unencrypted requests but encrypt responses for valid sessions
+            await self.app(scope, receive, encrypt_send)
             
         except (EncryptionError, DecryptionError) as e:
             self.logger.error(f"Encryption middleware error: {e}")
@@ -246,11 +314,17 @@ class EncryptionMiddleware:
             "/docs",
             "/redoc", 
             "/openapi.json",
-            "/api/v1/health"      # Public gateway health check only
+            "/api/v1/health",         # Public gateway health check
+            "/api/v1/health/",        # Public gateway health check (with trailing slash)
+            "/api/v1/health/detailed", # Detailed health check
+            "/api/v1/health/detailed/", # Detailed health check (with trailing slash)
+            "/api/v1/handshake",      # Encryption session establishment
+            "/api/v1/handshake/"      # Encryption session establishment (with trailing slash)
         ]
         
         # Check exact matches for public endpoints
         if path in public_endpoints:
+            self.logger.debug(f"Skipping encryption for public endpoint: {path}")
             return True
         
         # NEVER skip encryption for admin endpoints - they contain sensitive data
@@ -259,6 +333,7 @@ class EncryptionMiddleware:
             
         # All other /api/v1/ endpoints require encryption by default
         if path.startswith("/api/v1/"):
+            self.logger.debug(f"Requiring encryption for API endpoint: {path}")
             return False
             
         # Non-API paths can skip encryption (static files, etc.)
@@ -294,18 +369,14 @@ class EncryptionMiddleware:
                 if 'timestamp' not in handshake_request:
                     handshake_request['timestamp'] = time.time()
                 
-                # Create secure channel and process handshake
-                channel = self.identity_manager.create_secure_channel("backend")
-                response_data = channel.process_handshake_request(handshake_request)
+                # Process handshake and get client_id and response data
+                client_id, response_data, channel = self.identity_manager.process_handshake_and_create_channel(
+                    handshake_request, "backend"
+                )
                 
-                # Store channel with client identity key (first 16 chars of identity key hex)
-                if "identity_key" in handshake_request:
-                    import base64
-                    identity_key_b64 = handshake_request["identity_key"]
-                    identity_key_bytes = base64.b64decode(identity_key_b64)
-                    client_verify_key_id = identity_key_bytes.hex()[:16]
-                    self.channels[client_verify_key_id] = channel
-                    self.logger.info(f"Stored channel with client_verify_key_id: {client_verify_key_id}")
+                # Store the channel for the client
+                self.channels[client_id] = channel
+                self.logger.info(f"Stored channel for client_id: {client_id}")
                 
                 # Return handshake response in transit security test format
                 return JSONResponse(
@@ -437,7 +508,7 @@ class WebSocketEncryptionHandler:
     def __init__(self, key_manager: AICOKeyManager):
         self.key_manager = key_manager
         self.identity_manager = TransportIdentityManager(key_manager)
-        self.logger = get_logger("api_gateway", "websocket_encryption")
+        self.logger = get_logger("backend", "api_gateway.websocket_encryption")
         
         # Active channels per WebSocket connection
         self.channels: Dict[str, SecureTransportChannel] = {}

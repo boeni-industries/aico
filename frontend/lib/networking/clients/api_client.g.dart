@@ -9,9 +9,7 @@ part of 'api_client.dart';
 // ignore_for_file: unnecessary_brace_in_string_interps,no_leading_underscores_for_local_identifiers,unused_element,unnecessary_string_interpolations,unused_element_parameter
 
 class _AicoApiClient implements AicoApiClient {
-  _AicoApiClient(this._dio, {this.baseUrl, this.errorLogger}) {
-    baseUrl ??= 'http://localhost:8771/api/v1';
-  }
+  _AicoApiClient(this._dio, {this.baseUrl, this.errorLogger});
 
   final Dio _dio;
 
@@ -165,7 +163,7 @@ class _AicoApiClient implements AicoApiClient {
       Options(method: 'POST', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
-            '/users/authenticate',
+            '/users/authenticate/',
             queryParameters: queryParameters,
             data: _data,
           )

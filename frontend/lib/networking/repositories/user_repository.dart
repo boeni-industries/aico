@@ -12,6 +12,7 @@ abstract class UserRepository {
   Future<User> updateUser(String uuid, UpdateUserRequest request);
   Future<void> deleteUser(String uuid);
   Future<AuthenticationResponse> authenticate(AuthenticateRequest request);
+  Future<void> initializeEncryption();
 }
 
 class ApiUserRepository implements UserRepository {
@@ -183,6 +184,11 @@ class ApiUserRepository implements UserRepository {
       await clearStoredCredentials();
       return null;
     }
+  }
+
+  @override
+  Future<void> initializeEncryption() async {
+    await _apiService.initialize();
   }
 
   @override

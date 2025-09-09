@@ -36,6 +36,7 @@ backend = [
     { name = "uvicorn" },
 ]
 cli = [
+    { name = "cron-descriptor" },
     { name = "requests" },
     { name = "rich" },
     { name = "typer" },
@@ -44,10 +45,16 @@ test = [
     { name = "pytest" },
 ]
 
+[package.dev-dependencies]
+test = [
+    { name = "pytest-asyncio" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "bcrypt", specifier = ">=4.0.1" },
     { name = "chromadb", marker = "extra == 'backend'", specifier = ">=1.0.16" },
+    { name = "cron-descriptor", marker = "extra == 'cli'", specifier = ">=1.4.3" },
     { name = "cryptography" },
     { name = "duckdb", marker = "extra == 'backend'", specifier = ">=1.3.2" },
     { name = "fastapi", marker = "extra == 'backend'", specifier = ">=0.116.1" },
@@ -75,6 +82,9 @@ requires-dist = [
     { name = "watchdog" },
 ]
 provides-extras = ["backend", "cli", "test"]
+
+[package.metadata.requires-dev]
+test = [{ name = "pytest-asyncio", specifier = ">=1.1.0" }]
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -397,6 +407,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/cc/c7/eed8f27100517e8c0e6b923d5f0845d0cb99763da6fdee00478f91db7325/coloredlogs-15.0.1.tar.gz", hash = "sha256:7c991aa71a4577af2f82600d8f8f3a89f936baeaf9b50a9c197da014e5bf16b0", size = 278520, upload_time = "2021-06-11T10:22:45.202Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a7/06/3d6badcf13db419e25b07041d9c7b4a2c331d3f4e7134445ec5df57714cd/coloredlogs-15.0.1-py2.py3-none-any.whl", hash = "sha256:612ee75c546f53e92e70049c9dbfcc18c935a2b9a53b66085ce9ef6a6e5c0934", size = 46018, upload_time = "2021-06-11T10:22:42.561Z" },
+]
+
+[[package]]
+name = "cron-descriptor"
+version = "2.0.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/30/ec/997bf9ca9392fce1cec2e25241fdd538c50bb405efd103cb1e6119296709/cron_descriptor-2.0.5.tar.gz", hash = "sha256:443ccd21a36a7fc9464a42472199cbdbc0d86b09021af1a8dd1595e4c391d85e", size = 48545, upload_time = "2025-08-26T11:10:24.907Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/55/d6/7ebad906dbe4092af6c63f85f30d15544698eb524db53bddfc6a5e010f2b/cron_descriptor-2.0.5-py3-none-any.whl", hash = "sha256:386a1d75c57410cf5cb719e08eefbea2c0c076c4a798aa6d7bf51816112fbbd1", size = 73957, upload_time = "2025-08-26T11:10:23.559Z" },
 ]
 
 [[package]]
@@ -1648,6 +1670,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/08/ba/45911d754e8eba3d5a841a5ce61a65a685ff1798421ac054f85aa8747dfb/pytest-8.4.1.tar.gz", hash = "sha256:7c67fd69174877359ed9371ec3af8a3d2b04741818c51e5e99cc1742251fa93c", size = 1517714, upload_time = "2025-06-18T05:48:06.109Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/29/16/c8a903f4c4dffe7a12843191437d7cd8e32751d5de349d45d3fe69544e87/pytest-8.4.1-py3-none-any.whl", hash = "sha256:539c70ba6fcead8e78eebbf1115e8b589e7565830d7d006a8723f19ac8a0afb7", size = 365474, upload_time = "2025-06-18T05:48:03.955Z" },
+]
+
+[[package]]
+name = "pytest-asyncio"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4e/51/f8794af39eeb870e87a8c8068642fc07bce0c854d6865d7dd0f2a9d338c2/pytest_asyncio-1.1.0.tar.gz", hash = "sha256:796aa822981e01b68c12e4827b8697108f7205020f24b5793b3c41555dab68ea", size = 46652, upload_time = "2025-07-16T04:29:26.393Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c7/9d/bf86eddabf8c6c9cb1ea9a869d6873b46f105a5d292d3a6f7071f5b07935/pytest_asyncio-1.1.0-py3-none-any.whl", hash = "sha256:5fe2d69607b0bd75c656d1211f969cadba035030156745ee09e7d71740e58ecf", size = 15157, upload_time = "2025-07-16T04:29:24.929Z" },
 ]
 
 [[package]]

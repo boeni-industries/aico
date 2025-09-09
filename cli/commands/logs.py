@@ -162,10 +162,8 @@ def ls(
     
     repo = _get_log_repository()
     
-    # Build filters
+    # Build filters (exclude level - we'll filter after retrieval to show level and UP)
     filters = {}
-    if level:
-        filters["level"] = level.upper()
     if subsystem:
         filters["subsystem"] = subsystem
     if module:
@@ -187,6 +185,21 @@ def ls(
     
     # Get logs
     logs = repo.get_logs(limit=limit, **filters)
+    
+    # Apply level filtering (show specified level and UP)
+    from aico.core.config import ConfigurationManager
+    config_manager = ConfigurationManager()
+    config_manager.initialize()
+    
+    # Determine which level to filter by
+    filter_level = level.upper() if level else config_manager.get("logging.levels.default", "INFO")
+    
+    # Level hierarchy for filtering
+    level_hierarchy = {'DEBUG': 10, 'INFO': 20, 'WARNING': 30, 'ERROR': 40, 'CRITICAL': 50}
+    filter_level_value = level_hierarchy.get(filter_level, 20)
+    
+    # Filter logs to show specified level and UP
+    logs = [log for log in logs if level_hierarchy.get(log['level'], 20) >= filter_level_value]
     
     if not logs:
         console.print("[yellow]No logs found matching criteria[/yellow]")
@@ -443,15 +456,28 @@ def tail(
     # Determine number of entries to show (--limit takes precedence over --lines)
     num_entries = limit if limit is not None else lines
     
-    # Build filters
+    # Build filters (exclude level - we'll filter after retrieval to show level and UP)
     filters = {}
-    if level:
-        filters["level"] = level.upper()
     if subsystem:
         filters["subsystem"] = subsystem
     
     # Get recent logs
     logs = repo.get_logs(limit=num_entries, **filters)
+    
+    # Apply level filtering (show specified level and UP)
+    from aico.core.config import ConfigurationManager
+    config_manager = ConfigurationManager()
+    config_manager.initialize()
+    
+    # Determine which level to filter by
+    filter_level = level.upper() if level else config_manager.get("logging.levels.default", "INFO")
+    
+    # Level hierarchy for filtering
+    level_hierarchy = {'DEBUG': 10, 'INFO': 20, 'WARNING': 30, 'ERROR': 40, 'CRITICAL': 50}
+    filter_level_value = level_hierarchy.get(filter_level, 20)
+    
+    # Filter logs to show specified level and UP
+    logs = [log for log in logs if level_hierarchy.get(log['level'], 20) >= filter_level_value]
     
     # Display logs
     for log in reversed(logs):  # Show oldest first
@@ -462,34 +488,25 @@ def tail(
                      f"[bold {level_color}]{log['level']}[/bold {level_color}] "
                      f"[cyan]{log['subsystem']}.{log['module']}[/cyan] {log['message']}")
         
-        # Show all extra data as indented sub-lines
+        # Show all extra data with beautiful tree-style formatting
         if log['extra']:
             try:
                 extra_data = json.loads(log['extra']) if isinstance(log['extra'], str) else log['extra']
                 if isinstance(extra_data, dict) and extra_data:
-                    # Show all fields in a clean format
-                    all_fields = []
-                    for field, value in extra_data.items():
-                        # Truncate very long values for readability
-                        if len(str(value)) > 80:
-                            value = str(value)[:77] + "..."
-                        all_fields.append(f"[yellow]{field}[/yellow]=[green]{value}[/green]")
-                    
-                    # Display fields in rows of 3 for better readability
-                    for i in range(0, len(all_fields), 3):
-                        row_fields = all_fields[i:i+3]
-                        if i == len(all_fields) - len(row_fields) and len(all_fields) > 3:
-                            # Last row
-                            console.print(f"    [dim]└─[/dim] {' [dim]│[/dim] '.join(row_fields)}")
+                    # Get list of items for proper tree formatting
+                    items = list(extra_data.items())
+                    for i, (key, value) in enumerate(items):
+                        # Use proper tree characters for last item
+                        if i == len(items) - 1:
+                            tree_char = "└─"
                         else:
-                            # Not last row or single row
-                            console.print(f"    [dim]├─[/dim] {' [dim]│[/dim] '.join(row_fields)}")
+                            tree_char = "├─"
+                        
+                        # Format with proper spacing and colors
+                        console.print(f"    [dim]{tree_char}[/dim] [yellow]{key}[/yellow]: [bright_green]{value}[/bright_green]")
             except:
-                # Fallback for non-JSON extra data
-                extra_str = str(log['extra'])
-                if len(extra_str) > 100:
-                    extra_str = extra_str[:97] + "..."
-                console.print(f"    [dim]└─[/dim] [yellow]extra:[/yellow] [green]{extra_str}[/green]")
+                # Fallback for non-JSON extra data - show full content
+                console.print(f"    [dim]└─[/dim] [yellow]extra[/yellow]: [bright_green]{log['extra']}[/bright_green]")
     
     if follow:
         console.print("[yellow]Real-time following not implemented yet[/yellow]")
@@ -508,15 +525,28 @@ def grep(
     
     repo = _get_log_repository()
     
-    # Build base filters
+    # Build base filters (exclude level - we'll filter after retrieval to show level and UP)
     filters = {}
-    if level:
-        filters["level"] = level.upper()
     if subsystem:
         filters["subsystem"] = subsystem
     
     # Get logs and filter by pattern
     all_logs = repo.get_logs(limit=limit * 2, **filters)  # Get more to account for filtering
+    
+    # Apply level filtering (show specified level and UP)
+    from aico.core.config import ConfigurationManager
+    config_manager = ConfigurationManager()
+    config_manager.initialize()
+    
+    # Determine which level to filter by
+    filter_level = level.upper() if level else config_manager.get("logging.levels.default", "INFO")
+    
+    # Level hierarchy for filtering
+    level_hierarchy = {'DEBUG': 10, 'INFO': 20, 'WARNING': 30, 'ERROR': 40, 'CRITICAL': 50}
+    filter_level_value = level_hierarchy.get(filter_level, 20)
+    
+    # Filter logs to show specified level and UP
+    all_logs = [log for log in all_logs if level_hierarchy.get(log['level'], 20) >= filter_level_value]
     matching_logs = []
     pattern_lower = pattern.lower()
     

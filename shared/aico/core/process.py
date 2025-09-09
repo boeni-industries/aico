@@ -165,12 +165,21 @@ class ProcessManager:
             
             proc = psutil.Process(pid)
             logger.info(f"Terminating process {pid} gracefully...")
-            print(f"🔫 ProcessManager: Sending SIGTERM to PID {pid}")
-            
-            # Step 1: Graceful shutdown (SIGTERM on all platforms)
-            # Use SIGTERM consistently across platforms for proper signal handler compatibility
-            proc.send_signal(signal.SIGTERM)
-            print(f"✅ ProcessManager: SIGTERM sent to PID {pid}")
+            # Step 1: Graceful shutdown with platform-specific signals
+            if sys.platform == "win32":
+                # On Windows, use a shutdown file for reliable graceful termination.
+                logger.info(f"Creating shutdown file for process {pid}")
+                shutdown_file = self.paths.get_runtime_path() / f"{self.service_name}.shutdown"
+                shutdown_file.touch()
+            else:
+                # On Unix-like systems, SIGTERM is the standard for graceful shutdown
+                logger.info(f"Sending SIGTERM to process {pid}")
+                proc.send_signal(signal.SIGTERM)
+
+            if sys.platform == "win32":
+                logger.info(f"Shutdown file created for process {pid}")
+            else:
+                logger.info(f"Graceful shutdown signal sent to process {pid}")
             
             # Step 2: Wait for graceful shutdown
             try:
@@ -271,6 +280,13 @@ class ProcessManager:
                                 'uvicorn',
                                 'AICO_SERVICE_MODE=gateway'
                             ]):
+                                processes.append(proc.info)
+                        elif self.service_name == "modelservice":
+                            if any(pattern in cmdline_str for pattern in [
+                                'modelservice.main',
+                                'modelservice/main.py',
+                                'AICO_SERVICE_MODE=modelservice'
+                            ]) or ('uvicorn' in cmdline_str and 'modelservice' in cmdline_str):
                                 processes.append(proc.info)
                         
                 except (psutil.NoSuchProcess, psutil.AccessDenied):

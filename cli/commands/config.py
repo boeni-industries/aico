@@ -324,6 +324,8 @@ def domains():
         table.add_column("Schema", style="green")
         
         for domain in sorted(available_domains):
+            if domain not in ("backend", "shared", "modelservice"):
+                continue
             schema_path = config_manager.config_dir / "schemas" / f"{domain}.schema.json"
             schema_status = "✓ Available" if schema_path.exists() else "✗ Missing"
             table.add_row(domain, schema_status)

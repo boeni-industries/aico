@@ -24,6 +24,8 @@ from passlib.context import CryptContext
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
 from aico.security.key_manager import AICOKeyManager
+from aico.security.service_auth import ServiceAuthManager
+from aico.security.transport import TransportIdentityManager
 
 # Import session management
 from aico.security import SessionService, SessionInfo
@@ -36,6 +38,7 @@ class AuthMethod(Enum):
     JWT = "jwt"
     API_KEY = "api_key"
     SESSION = "session"
+    SERVICE_TOKEN = "service_token"
     NONE = "none"
 
 
@@ -85,10 +88,12 @@ class AuthenticationManager:
     
     def __init__(self, config: ConfigurationManager, db_connection=None):
         self.config = config
-        self.logger = get_logger("api_gateway", "auth")
+        self.logger = get_logger("backend", "api_gateway.auth")
         
         # Use AICO security infrastructure
         self.key_manager = AICOKeyManager(config)
+        self.identity_manager = TransportIdentityManager(self.key_manager)
+        self.service_auth = ServiceAuthManager(self.key_manager, self.identity_manager)
         
         # JWT configuration - secrets managed by AICOKeyManager
         self.jwt_algorithm = config.get("api_gateway.security.auth.jwt.algorithm", "HS256")
@@ -301,12 +306,18 @@ class AuthenticationManager:
         # JWT from Authorization header
         auth_header = headers.get("authorization", "")
         if auth_header.startswith("Bearer "):
-            auth_data[AuthMethod.JWT] = auth_header[7:]
+            token = auth_header[7:]
+            if self._is_jwt_token(token):
+                auth_data[AuthMethod.JWT] = token
+            else:
+                # Non-JWT Bearer token - treat as service token
+                auth_data[AuthMethod.SERVICE_TOKEN] = token
         
         # API Key from custom header
         api_key = headers.get(self.api_key_header.lower(), "")
         if api_key:
             auth_data[AuthMethod.API_KEY] = api_key
+        
         
         # Session from cookies
         cookies = client_info.get("cookies", {})
@@ -321,6 +332,15 @@ class AuthenticationManager:
         
         return auth_data
     
+    def _is_jwt_token(self, token: str) -> bool:
+        """Check if token is a JWT format"""
+        try:
+            # JWT has 3 parts separated by dots
+            parts = token.split('.')
+            return len(parts) == 3
+        except:
+            return False
+    
     async def _authenticate_method(self, method: AuthMethod, data: str, client_info: Dict[str, Any]) -> AuthResult:
         """Authenticate using specific method"""
         
@@ -330,6 +350,8 @@ class AuthenticationManager:
             return await self._authenticate_api_key(data, client_info)
         elif method == AuthMethod.SESSION:
             return await self._authenticate_session(data, client_info)
+        elif method == AuthMethod.SERVICE_TOKEN:
+            return await self._authenticate_service_token(data, client_info)
         elif method == AuthMethod.NONE:
             return await self._authenticate_local(data, client_info)
         else:
@@ -411,6 +433,40 @@ class AuthenticationManager:
             
         except Exception as e:
             return AuthResult(success=False, error=f"Session authentication error: {e}")
+    
+    async def _authenticate_service_token(self, token: str, client_info: Dict[str, Any]) -> AuthResult:
+        """Authenticate service identity token"""
+        try:
+            # Validate service token using ServiceAuthManager
+            service_token = self.service_auth.validate_service_token(token)
+            
+            # Create service user with appropriate permissions
+            user = User(
+                user_uuid=f"service_{service_token.service_name}",
+                username=service_token.service_name,
+                roles=["service"],
+                permissions=set(service_token.permissions),
+                metadata={
+                    "type": "service_account",
+                    "service_name": service_token.service_name,
+                    "component_id": service_token.component_id,
+                    "expires_at": service_token.expires_at.isoformat()
+                }
+            )
+            
+            return AuthResult(
+                success=True,
+                user=user,
+                method=AuthMethod.SERVICE_TOKEN,
+                metadata={
+                    "service_name": service_token.service_name,
+                    "permissions": service_token.permissions
+                }
+            )
+            
+        except Exception as e:
+            self.logger.warning(f"Service token authentication failed: {e}")
+            return AuthResult(success=False, error=f"Invalid service token: {e}")
     
     async def _authenticate_local(self, data: str, client_info: Dict[str, Any]) -> AuthResult:
         """Authenticate local IPC connection"""
@@ -542,7 +598,7 @@ class AuthorizationManager:
     """
     
     def __init__(self, authz_config: Dict[str, Any]):
-        self.logger = get_logger("api_gateway", "authz")
+        self.logger = get_logger("backend", "api_gateway.authz")
         self.config = authz_config
         
         # RBAC configuration

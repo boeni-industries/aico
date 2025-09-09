@@ -68,7 +68,7 @@ class WebSocketAdapter:
                  authz_manager: AuthorizationManager, message_router: MessageRouter,
                  rate_limiter: RateLimiter, validator: MessageValidator):
         
-        self.logger = get_logger("api_gateway", "websocket")
+        self.logger = get_logger("backend", "api_gateway.websocket")
         self.config = config
         self.auth_manager = auth_manager
         self.authz_manager = authz_manager
@@ -84,7 +84,7 @@ class WebSocketAdapter:
         self.server = None
         
         # Configuration
-        self.port = config.get("port", 8081)
+        self.port = config.get("port", 8772)
         self.path = config.get("path", "/ws")
         self.heartbeat_interval = config.get("heartbeat_interval", 30)
         self.max_connections = config.get("max_connections", 1000)

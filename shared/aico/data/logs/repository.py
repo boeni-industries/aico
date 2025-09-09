@@ -3,7 +3,7 @@ Log Repository for database operations
 """
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from aico.core.logging import get_logger
 from aico.data import LibSQLConnection
 
@@ -154,7 +154,7 @@ class LogRepository:
             cursor = self.db.execute("""
                 SELECT COUNT(*) 
                 FROM logs 
-                WHERE datetime(timestamp) >= datetime('now', '-1 day')
+                WHERE timestamp >= datetime('now', '-1 day', 'utc')
             """)
             recent_logs = cursor.fetchone()[0]
             
@@ -180,7 +180,7 @@ class LogRepository:
                 INSERT INTO logs (timestamp, level, subsystem, module, message, extra_data)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, [
-                datetime.now().isoformat(),
+                datetime.utcnow().replace(tzinfo=timezone.utc).isoformat(),
                 level,
                 subsystem,
                 module,

@@ -245,7 +245,7 @@ api_port = config_manager.get("api.port", 8770)
 final isDarkMode = ConfigManager.instance.get<bool>('theme.mode', false);
 
 // Update user preference
-await ConfigManager.instance.set('chat.sound_notifications', false);
+await ConfigManager.instance.set('conversation.sound_notifications', false);
 ```
 
 This configuration management system provides a robust, secure, and flexible foundation for managing AICO's complex configuration needs across all subsystems while maintaining the privacy-first, local-first principles of the project.

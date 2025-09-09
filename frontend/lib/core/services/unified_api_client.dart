@@ -54,8 +54,11 @@ class UnifiedApiClient {
       final handshakeData = await _encryptionService.createHandshakeRequest();
       final request = HandshakeRequest(handshakeRequest: handshakeData['handshake_request']);
       
-      debugPrint('🔐 UnifiedApiClient: Sending handshake to $_baseUrl/handshake');
-      final response = await _dio.post('/handshake', data: request.toJson());
+      final handshakeUrl = '$_baseUrl/handshake';
+      debugPrint('🔐 UnifiedApiClient: _baseUrl = $_baseUrl');
+      debugPrint('🔐 UnifiedApiClient: Full handshake URL = $handshakeUrl');
+      debugPrint('🔐 UnifiedApiClient: Sending handshake request...');
+      final response = await _dio.post(handshakeUrl, data: request.toJson());
       debugPrint('🔐 UnifiedApiClient: Handshake response received: ${response.statusCode}');
       
       debugPrint('🔐 UnifiedApiClient: Processing handshake response...');
@@ -92,7 +95,7 @@ class UnifiedApiClient {
       final encryptedRequest = {
         'encrypted': true,
         'payload': encryptedPayload,
-        'clientId': _encryptionService.clientId,
+        'client_id': _encryptionService.clientId, // Match backend expectation
       };
       try {
         final response = await _dio.request(
@@ -102,8 +105,8 @@ class UnifiedApiClient {
         );
         // Decrypt response if needed
         final responseData = response.data;
-        if (responseData is Map<String, dynamic> && responseData['encrypted'] == true && responseData.containsKey('encrypted_payload')) {
-          final decrypted = _encryptionService.decryptPayload(responseData['encrypted_payload']);
+        if (responseData is Map<String, dynamic> && responseData['encrypted'] == true && responseData.containsKey('payload')) {
+          final decrypted = _encryptionService.decryptPayload(responseData['payload']);
           if (fromJson != null) return fromJson(decrypted);
           return decrypted as T;
         } else {

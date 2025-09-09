@@ -15,6 +15,7 @@ from google.protobuf.any_pb2 import Any as ProtoAny
 from aico.core.config import ConfigurationManager
 from aico.core.bus import MessageBusBroker, MessageBusClient
 from aico.core.logging import get_logger
+from aico.core.topics import AICOTopics
 from aico.proto.aico_core_api_gateway_pb2 import ApiEvent
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.security.key_manager import AICOKeyManager
@@ -37,6 +38,11 @@ class AICOMessageBusHost:
         # Module registry
         self.modules: Dict[str, MessageBusClient] = {}
         self.running = False
+        
+        # Shutdown coordination
+        self.shutdown_initiated = False
+        self.pending_messages = []
+        self.shutdown_timeout = 3.0  # Max time to wait for message draining
     
     async def start(self, db_connection: Optional[EncryptedLibSQLConnection] = None):
         """Start the message bus host"""
@@ -64,7 +70,7 @@ class AICOMessageBusHost:
             # Publish system startup event with proper protobuf message
             startup_event = ApiEvent()
             startup_event.event_id = str(uuid.uuid4())
-            startup_event.event_type = "system.bus.started"
+            startup_event.event_type = AICOTopics.SYSTEM_BUS_STARTED
             startup_event.client_id = "system.message_bus_host"
             startup_event.session_id = "system"
             
@@ -78,7 +84,7 @@ class AICOMessageBusHost:
             startup_event.metadata["status"] = "started"
             
             await self.internal_client.publish(
-                "system.bus.started",
+                AICOTopics.SYSTEM_BUS_STARTED,
                 startup_event
             )
             
@@ -89,19 +95,19 @@ class AICOMessageBusHost:
             raise
     
     async def stop(self):
-        """Stop the message bus host"""
+        """Stop the message bus host with graceful message draining"""
         if not self.running:
             return
         
-        self.running = False
-        
         try:
+            # PHASE 1: Signal shutdown but keep persistence active
+            self.shutdown_initiated = True
+            
             # Publish system shutdown event
-            # Publish system shutdown event with proper protobuf message
             if self.internal_client:
                 shutdown_event = ApiEvent()
                 shutdown_event.event_id = str(uuid.uuid4())
-                shutdown_event.event_type = "system.bus.stopping"
+                shutdown_event.event_type = AICOTopics.SYSTEM_BUS_STOPPING
                 shutdown_event.client_id = "system.message_bus_host"
                 shutdown_event.session_id = "system"
                 
@@ -115,10 +121,15 @@ class AICOMessageBusHost:
                 shutdown_event.metadata["status"] = "stopping"
                 
                 await self.internal_client.publish(
-                    "system.bus.stopping",
+                    AICOTopics.SYSTEM_BUS_STOPPING,
                     shutdown_event
                 )
             
+            # PHASE 2: Drain pending messages with timeout
+            await self._drain_pending_messages()
+            
+            # PHASE 3: Now safe to stop persistence and continue shutdown
+            self.running = False
             self.logger.info("Message bus host stopping")
             
             # Stop all module clients
@@ -168,7 +179,7 @@ class AICOMessageBusHost:
             # Publish module registration event
             registration_event = ApiEvent()
             registration_event.event_id = str(uuid.uuid4())
-            registration_event.event_type = "system.module.registered"
+            registration_event.event_type = AICOTopics.SYSTEM_MODULE_REGISTERED
             registration_event.client_id = f"backend.{module_name}"
             registration_event.session_id = "system"
             
@@ -183,7 +194,7 @@ class AICOMessageBusHost:
             registration_event.metadata["status"] = "registered"
             
             await self.internal_client.publish(
-                "system.module.registered",
+                AICOTopics.SYSTEM_MODULE_REGISTERED,
                 registration_event
             )
             
@@ -218,11 +229,11 @@ class AICOMessageBusHost:
         
         # API Gateway permissions
         api_gateway_topics = [
-            "conversation.*",
-            "emotion.*", 
-            "personality.*",
-            "system.status.*",
-            "admin.*"
+            AICOTopics.ALL_CONVERSATION,
+            AICOTopics.ALL_EMOTION,
+            AICOTopics.ALL_PERSONALITY,
+            "system/status/*",
+            "admin/*"
         ]
         
         for topic in system_topics:
@@ -272,35 +283,71 @@ class AICOMessageBusHost:
         
         async def persist_message(message):
             """Persist a message to the database"""
-            try:
-                # Serialize payload for storage
-                if isinstance(message.payload, ProtobufMessage):
-                    payload_data = message.payload.SerializeToString()
-                elif isinstance(message.payload, bytes):
-                    payload_data = message.payload
-                else:
-                    payload_data = json.dumps(message.payload).encode('utf-8')
+            # During shutdown, queue messages for draining instead of skipping
+            if self.shutdown_initiated and not self.running:
+                return  # Shutdown complete, no more persistence
+            elif self.shutdown_initiated:
+                # Queue message for draining phase
+                self.pending_messages.append(message)
+                return
                 
-                # Prepare metadata as JSON
+            try:
+                # Handle AicoMessage protobuf structure
+                if hasattr(message, 'any_payload'):
+                    # This is an AicoMessage protobuf
+                    payload = message.any_payload
+                elif hasattr(message, 'payload'):
+                    payload = message.payload
+                else:
+                    payload = message
+                
+                # Serialize payload for storage
+                if isinstance(payload, ProtobufMessage):
+                    payload_data = payload.SerializeToString()
+                elif isinstance(payload, bytes):
+                    payload_data = payload
+                elif payload is None:
+                    payload_data = b''
+                else:
+                    try:
+                        payload_data = json.dumps(payload).encode('utf-8')
+                    except (TypeError, ValueError):
+                        payload_data = str(payload).encode('utf-8')
+                
+                # Handle protobuf timestamp conversion
+                from datetime import datetime
+                if hasattr(message.metadata.timestamp, 'ToDatetime'):
+                    timestamp = message.metadata.timestamp.ToDatetime().isoformat()
+                else:
+                    timestamp = datetime.utcnow().isoformat()
+                
+                # Extract actual protobuf fields (based on aico_core_envelope.proto)
+                message_id = message.metadata.message_id
+                source = message.metadata.source  
+                message_type = message.metadata.message_type
+                version = message.metadata.version
+                
+                # Convert attributes map to dict for JSON storage
+                attributes_dict = dict(message.metadata.attributes) if message.metadata.attributes else {}
                 metadata_json = json.dumps({
-                    'attributes': message.metadata.attributes or {},
-                    'version': message.metadata.version
+                    'version': version,
+                    'attributes': attributes_dict
                 })
                 
-                # Insert message into database
-                await db_connection.execute("""
+                # Insert message into database (using actual protobuf fields)
+                db_connection.execute("""
                     INSERT INTO events (
                         timestamp, topic, source, message_type, message_id,
                         priority, correlation_id, payload, metadata
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    message.metadata.timestamp.isoformat(),
-                    message.metadata.message_type,
-                    message.metadata.source,
-                    message.metadata.message_type,
-                    message.metadata.message_id,
-                    message.metadata.priority.value,
-                    message.metadata.correlation_id,
+                    timestamp,
+                    message_type,  # topic field
+                    source,
+                    message_type,
+                    message_id,
+                    0,  # priority - not in protobuf, use default
+                    '',  # correlation_id - not in protobuf, use empty
                     payload_data,
                     metadata_json
                 ))
@@ -309,6 +356,124 @@ class AICOMessageBusHost:
                 self.logger.error(f"Failed to persist message {message.metadata.message_id}: {e}")
         
         return persist_message
+    
+    async def _drain_pending_messages(self):
+        """Drain all pending messages with timeout to ensure zero loss"""
+        if not self.pending_messages:
+            return
+        
+        self.logger.info(f"Draining {len(self.pending_messages)} pending messages...")
+        
+        try:
+            # Process all pending messages with timeout
+            await asyncio.wait_for(
+                self._process_pending_messages(),
+                timeout=self.shutdown_timeout
+            )
+            self.logger.info("All pending messages processed successfully")
+        except asyncio.TimeoutError:
+            self.logger.warning(f"Message draining timed out after {self.shutdown_timeout}s, "
+                              f"{len(self.pending_messages)} messages may be lost")
+        except Exception as e:
+            self.logger.error(f"Error during message draining: {e}")
+    
+    async def _process_pending_messages(self):
+        """Process all messages in the pending queue"""
+        import json
+        from google.protobuf.message import Message as ProtobufMessage
+        
+        for message in self.pending_messages:
+            try:
+                # Debug: Check message structure
+                # self.logger.info(f"Processing pending message: {type(message)}")
+                # self.logger.info(f"Message attributes: {dir(message)}")
+                
+                # Handle different message structures - AicoMessage protobuf
+                if hasattr(message, 'any_payload'):
+                    # This is an AicoMessage protobuf with any_payload field
+                    payload = message.any_payload
+                elif hasattr(message, 'payload'):
+                    payload = message.payload
+                else:
+                    payload = message  # Message might be the payload itself
+                
+                # Serialize payload for storage
+                if isinstance(payload, ProtobufMessage):
+                    payload_data = payload.SerializeToString()
+                elif isinstance(payload, bytes):
+                    payload_data = payload
+                elif payload is None:
+                    payload_data = b''
+                else:
+                    try:
+                        payload_data = json.dumps(payload).encode('utf-8')
+                    except (TypeError, ValueError):
+                        # Fallback: convert to string
+                        payload_data = str(payload).encode('utf-8')
+                
+                # Handle metadata safely
+                if hasattr(message, 'metadata') and message.metadata:
+                    metadata = message.metadata
+                    metadata_json = json.dumps({
+                        'attributes': getattr(metadata, 'attributes', {}) or {},
+                        'version': getattr(metadata, 'version', '1.0')
+                    })
+                    
+                    # Extract metadata fields safely
+                    timestamp = getattr(metadata, 'timestamp', None)
+                    if timestamp and hasattr(timestamp, 'isoformat'):
+                        timestamp_str = timestamp.isoformat()
+                    else:
+                        from datetime import datetime
+                        timestamp_str = datetime.utcnow().isoformat()
+                    
+                    message_type = getattr(metadata, 'message_type', 'unknown')
+                    source = getattr(metadata, 'source', 'unknown')
+                    message_id = getattr(metadata, 'message_id', str(uuid.uuid4()))
+                    priority = getattr(metadata, 'priority', None)
+                    priority_value = priority.value if priority and hasattr(priority, 'value') else 1
+                    correlation_id = getattr(metadata, 'correlation_id', None)
+                else:
+                    # Fallback metadata
+                    from datetime import datetime
+                    timestamp_str = datetime.utcnow().isoformat()
+                    message_type = 'shutdown_event'
+                    source = 'message_bus_host'
+                    message_id = str(uuid.uuid4())
+                    priority_value = 1
+                    correlation_id = None
+                    metadata_json = json.dumps({'attributes': {}, 'version': '1.0'})
+                
+                # Insert message into database synchronously for reliability
+                self.db_connection.execute("""
+                    INSERT INTO events (
+                        timestamp, topic, source, message_type, message_id,
+                        priority, correlation_id, payload, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    timestamp_str,
+                    message_type,
+                    source,
+                    message_type,
+                    message_id,
+                    priority_value,
+                    correlation_id,
+                    payload_data,
+                    metadata_json
+                ))
+                
+                # Commit immediately for each message during shutdown
+                self.db_connection.commit()
+                
+            except Exception as e:
+                # Use safe message ID extraction for error logging
+                msg_id = getattr(getattr(message, 'metadata', None), 'message_id', 'unknown')
+                self.logger.error(f"Failed to persist pending message {msg_id}: {e}")
+                import traceback
+                self.logger.error(f"Full error traceback: {traceback.format_exc()}")
+        
+        # Clear the pending messages queue
+        self.pending_messages.clear()
 
 
 # Example usage and integration patterns
@@ -318,9 +483,8 @@ async def example_emotion_module(bus_host: AICOMessageBusHost):
     
     # Register the module with appropriate permissions
     client = await bus_host.register_module("emotion_simulation", [
-        "emotion.*",
-        "personality.expression.*",
-        "conversation.context"
+        AICOTopics.ALL_EMOTION,
+        AICOTopics.CONVERSATION_CONTEXT_CURRENT
     ])
     
     # Subscribe to relevant topics
@@ -330,7 +494,7 @@ async def example_emotion_module(bus_host: AICOMessageBusHost):
         
         # Publish emotional state update
         await client.publish(
-            "emotion.state.current",
+            AICOTopics.EMOTION_STATE_CURRENT,
             {
                 "valence": 0.7,
                 "arousal": 0.5,
@@ -340,7 +504,7 @@ async def example_emotion_module(bus_host: AICOMessageBusHost):
             
         )
     
-    await client.subscribe("conversation.*", handle_conversation_event)
+    await client.subscribe(AICOTopics.ALL_CONVERSATION, handle_conversation_event)
     
     return client
 
@@ -349,9 +513,9 @@ async def example_personality_module(bus_host: AICOMessageBusHost):
     """Example of how a personality module would integrate"""
     
     client = await bus_host.register_module("personality_simulation", [
-        "personality.*",
-        "emotion.state.*",
-        "conversation.context"
+        AICOTopics.ALL_PERSONALITY,
+        "emotion/state/*",
+        AICOTopics.CONVERSATION_CONTEXT_CURRENT
     ])
     
     # Subscribe to emotional state changes
@@ -360,7 +524,7 @@ async def example_personality_module(bus_host: AICOMessageBusHost):
         
         # Publish personality expression parameters
         await client.publish(
-            "personality.expression.communication",
+            AICOTopics.PERSONALITY_EXPRESSION_COMMUNICATION,
             {
                 "warmth": 0.8,
                 "formality": 0.3,
@@ -368,7 +532,7 @@ async def example_personality_module(bus_host: AICOMessageBusHost):
             }
         )
     
-    await client.subscribe("emotion.state.*", handle_emotion_update)
+    await client.subscribe("emotion/state/*", handle_emotion_update)
     
     return client
 

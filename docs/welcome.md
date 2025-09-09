@@ -87,7 +87,7 @@ AICO is engineered to deliver a truly companionable, proactive, and privacy-firs
 - Synchronized presence and attention management across devices
 
 ### 🔒 **Privacy & Security**
-- Local-first, encrypted data storage (libSQL, SQLCipher, gocryptfs)
+- Local-first, encrypted data storage (libSQL with SQLCipher, transparent AES-256-GCM file encryption)
 - End-to-end encryption, granular consent management, and permission controls
 - Homomorphic encryption for privacy-preserving cloud computations (optional, post-MVP)
 - Transparent audit logging and zero-knowledge authentication
@@ -119,39 +119,36 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 ## 🛤️ Development Roadmap
 
 !!! info "Current Phase: Foundation"
-    We're currently building the core infrastructure scaffolding. See our [detailed roadmaps](roadmap/foundation.md) for the complete development journey.
+    We're currently building the core infrastructure scaffolding. See our roadmap for the complete development journey.
 
 ### **Development Stages**
 
-1. **🛠️ Foundation** *(Current)* - Core infrastructure scaffolding
-    - ZeroMQ message bus, plugin system, FastAPI backend
-    - Resource management, security framework, development pipeline
-    - [View Foundation Roadmap](roadmap/foundation.md)
+1. **🛠️ Foundation I** *(Current)* - Essential infrastructure for MVP
+    - ZeroMQ message bus, FastAPI backend, basic security framework
+    - Task scheduler, encrypted data storage, WebSocket communication
 
 2. **🤝 Companion** *(Next)* - MVP with basic companionship
-    - Text chat, voice interaction, basic avatar, memory system
+    - Text conversation, voice interaction, basic avatar, memory system
     - Local LLM integration, personality engine, emotion recognition
-    - [View MVP Roadmap](roadmap/mvp.md)
 
-3. **💭 Confidante** - Deep emotional intelligence
+3. **🛠️ Foundation II** - Advanced infrastructure for production
+    - Plugin system, advanced resource management, update system
+    - CI/CD pipeline, monitoring, production deployment
+
+4. **💭 Confidante** - Deep emotional intelligence
     - Advanced emotion simulation, crisis support, empathy modeling
-    - [View Confidante Roadmap](roadmap/confidante.md)
 
-4. **🦾 Sidekick** - Advanced autonomous agency
+5. **🦾 Sidekick** - Advanced autonomous agency
     - MCTS planning, curiosity-driven learning, proactive assistance
-    - [View Sidekick Roadmap](roadmap/sidekick.md)
 
-5. **🌟 Co-Adventurer** - Collaborative learning and growth
+6. **🌟 Co-Adventurer** - Collaborative learning and growth
     - Shared goal pursuit, collaborative problem-solving, meta-learning
-    - [View Co-Adventurer Roadmap](roadmap/co_adventurer.md)
 
-6. **🌐 Embodied Presence** - Multi-modal integration
+7. **🌐 Embodied Presence** - Multi-modal integration
     - Federated device roaming, AR/VR, IoT, robotics, spatial computing
-    - [View Embodied Presence Roadmap](roadmap/embodied_presence.md)
 
-7. **🤝 Community** - Collective intelligence
+8. **🤝 Community** - Collective intelligence
     - Privacy-preserving social features, federated learning
-    - [View Community Roadmap](roadmap/community.md)
 
 ## 🤝 Who's This For?
 
@@ -191,6 +188,7 @@ AICO is an open experiment—all code and progress are public. Whether you want 
 - **Key Technologies:**
   - **Backend:** Python, FastAPI, ZeroMQ, Protocol Buffers, libSQL, DuckDB, ChromaDB, RocksDB
   - **Frontend:** Flutter (UI), WebView (Three.js/Ready Player Me/TalkingHead.js for avatar)
+  - **Modelservice:** REST API gateway for LLM inference (Ollama integration)
   - **Admin Tools:** React-based Admin UI, Python CLI (Typer, Rich)
   - **Security:** End-to-end encryption, consent management, audit logging
 

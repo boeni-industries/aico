@@ -15,9 +15,11 @@ import "google/protobuf/timestamp.proto";
 message ConversationMessage {
   google.protobuf.Timestamp timestamp = 1;
   string source = 2;
+  string message_id = 3;              // Unique message identifier
+  string user_id = 4;                 // User identifier for message tracking
   
-  Message message = 3;
-  MessageAnalysis analysis = 4;
+  Message message = 5;
+  MessageAnalysis analysis = 6;
 }
 
 // Message content and metadata

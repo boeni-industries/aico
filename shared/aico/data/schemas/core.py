@@ -153,10 +153,11 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "CREATE INDEX IF NOT EXISTS idx_user_relationships_user ON user_relationships(user_uuid)",
             "CREATE INDEX IF NOT EXISTS idx_user_relationships_related ON user_relationships(related_user_uuid)",
             "CREATE INDEX IF NOT EXISTS idx_logs_user_timestamp ON logs(user_id, timestamp)",
-            "CREATE INDEX IF NOT EXISTS idx_events_message_id ON events(message_id)"
+            "CREATE INDEX IF NOT EXISTS idx_events_message_id ON events(message_id)",
+            
         ],
         rollback_statements=[
-            # Drop indexes first (reverse order)
+            # Drop other indexes (reverse order)
             "DROP INDEX IF EXISTS idx_events_message_id",
             "DROP INDEX IF EXISTS idx_events_correlation",
             "DROP INDEX IF EXISTS idx_events_source",
@@ -224,6 +225,59 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             # 3. Drop old table
             # 4. Rename new table
             # For now, log a warning or leave as a no-op if not supported
+        ]
+    ),
+    
+    4: SchemaVersion(
+        version=4,
+        name="Task Scheduler Tables",
+        description="Add scheduler tables for task management: scheduled_tasks, task_executions, task_locks",
+        sql_statements=[
+            # Task Scheduler tables
+            """CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                task_id TEXT PRIMARY KEY,
+                task_class TEXT NOT NULL,
+                schedule TEXT NOT NULL,
+                config TEXT,  -- JSON configuration
+                enabled BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            
+            """CREATE TABLE IF NOT EXISTS task_executions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL,
+                execution_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at TIMESTAMP NOT NULL,
+                completed_at TIMESTAMP,
+                result TEXT,  -- JSON TaskResult
+                error_message TEXT,
+                duration_seconds REAL,
+                FOREIGN KEY (task_id) REFERENCES scheduled_tasks (task_id)
+            )""",
+            
+            """CREATE TABLE IF NOT EXISTS task_locks (
+                task_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                locked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                FOREIGN KEY (task_id) REFERENCES scheduled_tasks (task_id)
+            )""",
+            
+            # Task Scheduler indexes
+            "CREATE INDEX IF NOT EXISTS idx_task_executions_task_id ON task_executions (task_id)",
+            "CREATE INDEX IF NOT EXISTS idx_task_executions_started_at ON task_executions (started_at)",
+            "CREATE INDEX IF NOT EXISTS idx_task_locks_expires_at ON task_locks (expires_at)"
+        ],
+        rollback_statements=[
+            # Drop task scheduler indexes and tables
+            "DROP INDEX IF EXISTS idx_task_locks_expires_at",
+            "DROP INDEX IF EXISTS idx_task_executions_started_at", 
+            "DROP INDEX IF EXISTS idx_task_executions_task_id",
+            "DROP TABLE IF EXISTS task_locks",
+            "DROP TABLE IF EXISTS task_executions",
+            "DROP TABLE IF EXISTS scheduled_tasks"
         ]
     )
 })

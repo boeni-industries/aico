@@ -17,7 +17,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     
     def __init__(self, app, **kwargs):
         super().__init__(app)
-        self.logger = get_logger("api_gateway", "request_logging")
+        self.logger = get_logger("backend", "api_gateway.request_logging")
         print("[REQUEST LOGGING MIDDLEWARE] Initialized successfully")
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:

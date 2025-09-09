@@ -188,7 +188,7 @@ class LibSQLConnection:
                 else:
                     result = self._connection.execute(query)
                 
-                _get_logger().debug(f"Executed query: {query[:100]}...")
+                #_get_logger().debug(f"Executed query: {query[:100]}...")
                 return result
                     
             except Exception as e:
@@ -282,7 +282,7 @@ class LibSQLConnection:
         """Commit current transaction."""
         if self._connection:
             self._connection.commit()
-            _get_logger().debug("Transaction committed")
+            #_get_logger().debug("Transaction committed")
     
     def rollback(self) -> None:
         """Rollback current transaction."""

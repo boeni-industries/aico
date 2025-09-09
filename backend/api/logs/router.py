@@ -46,6 +46,7 @@ async def submit_log(
     This endpoint accepts log entries from the frontend application
     and forwards them to the AICO logging infrastructure via the message bus.
     """
+    # Process log entry through the logging infrastructure
     try:
         # Validate required fields
         validate_module_name(log_entry.module)
@@ -65,9 +66,7 @@ async def submit_log(
             log_data['subsystem'] = 'frontend'
         
         # Process log entry in background to avoid blocking response
-        # print(f"[DEBUG ENDPOINT] About to add background task for log processing")
         background_tasks.add_task(process_log_entry, log_data)
-        # print(f"[DEBUG ENDPOINT] Background task added successfully")
         
         return LogSubmissionResponse(
             success=True,
@@ -175,8 +174,21 @@ async def process_log_entry(log_data: dict):
             'ERROR': 'error'
         }
         
+        # Handle enum objects from frontend (convert to string)
         log_level = log_data.get('level', 'INFO')
+        if hasattr(log_level, 'value'):
+            log_level = log_level.value
+        elif not isinstance(log_level, str):
+            log_level = str(log_level)
+        
         log_method = getattr(subsystem_logger, level_mapping.get(log_level, 'info'))
+        
+        # Handle severity enum objects from frontend
+        severity = log_data.get('severity')
+        if hasattr(severity, 'value'):
+            severity = severity.value
+        elif severity is not None and not isinstance(severity, str):
+            severity = str(severity)
         
         # Create extra context for structured logging with correct field names for database
         extra_context = {
@@ -187,7 +199,7 @@ async def process_log_entry(log_data: dict):
             'trace_id': log_data.get('trace_id'),
             'frontend_timestamp': log_data.get('timestamp'),
             'source': log_data.get('source'),
-            'severity': log_data.get('severity'),
+            'severity': severity,
             'environment': log_data.get('environment'),
             'origin': log_data.get('origin'),
             'file': log_data.get('file'),
@@ -210,9 +222,9 @@ async def process_log_entry(log_data: dict):
         
     except Exception as e:
         # Fallback logging if something goes wrong
-        print(f"[DEBUG] Exception in process_log_entry: {e}")
         import traceback
-        print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+        logger.debug(f"Exception in process_log_entry: {e}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
         logger.error(f"Failed to process frontend log entry: {e}", extra={'log_data': log_data})
 
 

@@ -91,7 +91,7 @@ class SecureTransportChannel:
     def __init__(self, identity: ComponentIdentity, key_manager: AICOKeyManager):
         self.identity = identity
         self.key_manager = key_manager
-        self.logger = get_logger("security", "transport")
+        self.logger = get_logger("shared", "security.transport")
         
         # Session state
         self.peer_identity: Optional[ComponentIdentity] = None
@@ -108,9 +108,14 @@ class SecureTransportChannel:
         challenge = random(32)
         timestamp = time.time()
         
+        # Generate ephemeral X25519 keypair for session
+        self.session_private_key = PrivateKey.generate()
+        session_public_key = self.session_private_key.public_key
+        
         message = HandshakeMessage(
             component=self.identity.component_name,
-            public_key=base64.b64encode(self.identity.public_key_bytes()).decode(),
+            public_key=base64.b64encode(bytes(session_public_key)).decode(),
+            identity_key=base64.b64encode(bytes(self.identity.verify_key)).decode(),
             timestamp=timestamp,
             challenge=base64.b64encode(challenge).decode()
         )
@@ -177,6 +182,7 @@ class SecureTransportChannel:
             response = HandshakeMessage(
                 component=self.identity.component_name,
                 public_key=base64.b64encode(bytes(session_public_key)).decode(),
+                identity_key=base64.b64encode(bytes(self.identity.verify_key)).decode(),
                 timestamp=time.time(),
                 challenge=base64.b64encode(response_challenge).decode()
             )
@@ -204,12 +210,15 @@ class SecureTransportChannel:
         try:
             response = HandshakeMessage.from_dict(response_data)
             
+            # Store response for session key establishment
+            self.peer_handshake_response = response
+            
             # Verify timestamp freshness
             if abs(time.time() - response.timestamp) > self.handshake_timeout:
                 raise EncryptionError("Handshake response timestamp too old")
             
-            # Verify signature
-            peer_verify_key = VerifyKey(base64.b64decode(response.public_key))
+            # Verify signature using identity key (Ed25519), not public key (X25519)
+            peer_verify_key = VerifyKey(base64.b64decode(response.identity_key))
             challenge = base64.b64decode(response.challenge)
             signature = base64.b64decode(response.signature)
             
@@ -249,12 +258,12 @@ class SecureTransportChannel:
             if not hasattr(self, 'session_private_key'):
                 raise EncryptionError("No session private key - handshake not completed")
             
-            # Get peer's X25519 public key from handshake request
+            # Get peer's X25519 public key from handshake response
             if hasattr(self, 'peer_session_key'):
                 peer_public_key = PublicKey(self.peer_session_key)
             else:
-                # Fallback for old format
-                peer_public_key = PublicKey(self.peer_identity.public_key_bytes())
+                # Use the public_key from handshake response (X25519 session key)
+                peer_public_key = PublicKey(base64.b64decode(self.peer_handshake_response.public_key))
             
             # Create Box for encryption using the consistent keypair
             self.session_box = Box(self.session_private_key, peer_public_key)
@@ -345,7 +354,7 @@ class TransportIdentityManager:
     
     def __init__(self, key_manager: AICOKeyManager):
         self.key_manager = key_manager
-        self.logger = get_logger("security", "transport_identity")
+        self.logger = get_logger("shared", "security.transport_identity")
         self._identities: Dict[str, ComponentIdentity] = {}
     
     def get_component_identity(self, component_name: str) -> ComponentIdentity:
@@ -379,3 +388,19 @@ class TransportIdentityManager:
         """Create secure transport channel for component"""
         identity = self.get_component_identity(component_name)
         return SecureTransportChannel(identity, self.key_manager)
+
+    def process_handshake_and_create_channel(self, handshake_request: Dict[str, Any], component_name: str) -> Tuple[str, Dict[str, Any], SecureTransportChannel]:
+        """Process handshake, create channel, and return client_id, response, and channel."""
+        channel = self.create_secure_channel(component_name)
+        response_data = channel.process_handshake_request(handshake_request)
+
+        if "identity_key" not in handshake_request:
+            raise EncryptionError("Handshake request missing 'identity_key'")
+
+        identity_key_b64 = handshake_request["identity_key"]
+        identity_key_bytes = base64.b64decode(identity_key_b64)
+        client_id = identity_key_bytes.hex()[:16]
+
+        self.logger.info(f"Processed handshake for client_id: {client_id}")
+
+        return client_id, response_data, channel

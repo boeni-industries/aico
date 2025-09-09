@@ -471,7 +471,7 @@ EVE's personality definition initializes the Personality Simulation module, whic
 The Personality Simulation module publishes the following messages based on EVE's configuration:
 
 - `personality.state.current`: Current state of EVE's personality traits and values
-- `personality.expression.communication`: Parameters for the Chat Engine
+- `personality.expression.communication`: Parameters for the Conversation Engine
 - `personality.expression.decision`: Parameters for the Autonomous Agent
 - `personality.expression.emotional`: Parameters for the Emotion Simulation module
 

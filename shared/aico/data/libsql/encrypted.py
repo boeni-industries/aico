@@ -116,6 +116,10 @@ class EncryptedLibSQLConnection(LibSQLConnection):
                 "Provide encryption_key parameter or ensure master password is available."
             ) from e
     
+    def close(self) -> None:
+        """Close the encrypted database connection."""
+        self.disconnect()
+    
     def _setup_encryption(self) -> bytes:
         """
         Set up database encryption key.
@@ -342,7 +346,12 @@ def create_encrypted_database(
     
     try:
         # Initialize key manager and derive key
-        km = key_manager or AICOKeyManager()
+        if key_manager:
+            km = key_manager
+        else:
+            from aico.core.config import ConfigurationManager
+            config = ConfigurationManager()
+            km = AICOKeyManager(config)
         
         # Set up master password if this is first time
         if not km.has_stored_key():
