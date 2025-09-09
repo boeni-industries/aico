@@ -172,11 +172,11 @@ message Result {
 
 ## Integration with Message Bus
 
-The ZeroMQ message bus uses these Protocol Buffer definitions for serialization and deserialization of all messages. See the [Message Bus Architecture](../architecture/message_bus.md) document for more details.
+The ZeroMQ message bus uses these Protocol Buffer definitions for serialization and deserialization of all messages. See the [Message Bus Architecture](../../architecture/message_bus.md) document for more details.
 
 ## Integration with API Gateway
 
-The API Gateway performs minimal transformation between external formats (JSON, gRPC) and internal Protocol Buffer messages. See the [API Gateway Architecture](../architecture/api_gateway.md) document for more details.
+The API Gateway performs minimal transformation between external formats (JSON, gRPC) and internal Protocol Buffer messages. See the API Gateway Architecture document for more details.
 
 ## Local-First and Federated Architecture Considerations
 

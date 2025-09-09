@@ -136,4 +136,4 @@ User experiences AICO as truly embodied presence that:
 8. **Device Roaming**: Seamlessly follows you between trusted devices with zero-knowledge privacy
 9. **Comfortable Embodiment**: Presence feels natural and enhances daily life
 
-See [Community Roadmap](community.md) for the next stage of AICO's evolution.
+See Community Roadmap (file does not exist) for the next stage of AICO's evolution.

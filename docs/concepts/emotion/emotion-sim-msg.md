@@ -8,7 +8,7 @@ This document defines the message schemas used by the Emotion Simulation module 
 
 ## Input Message Formats
 
-> **Note**: In addition to the message formats described below, the Emotion Simulation module also consumes integration-specific messages such as `crisis.detection`, `agency.initiative`, `expression.coordination`, and `learning.coordination`. These formats are defined in [`integration_msg.md`](./integration_msg.md).
+> **Note**: In addition to the message formats described below, the Emotion Simulation module also consumes integration-specific messages such as `crisis.detection`, `agency.initiative`, `expression.coordination`, and `learning.coordination`. These formats are defined in integration documentation.
 
 ### `user.emotion.detected`
 

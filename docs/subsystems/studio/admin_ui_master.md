@@ -147,8 +147,8 @@ const authProvider = {
 
 ## 9. References
 - [React-Admin Documentation](https://marmelab.com/react-admin/)
-- [Admin UI Plugin Architecture](admin_ui.md)
-- [Admin Domain & Modules](admin.md)
+- Admin UI Plugin Architecture (file does not exist)
+- Admin Domain & Modules (file does not exist)
 
 ---
 

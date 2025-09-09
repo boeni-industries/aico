@@ -248,7 +248,7 @@ graph TB
 
 ## Federated Device Sync
 
-The data layer is designed to support AICO's federated device roaming capability. For detailed information about the federated device network architecture, synchronization protocols, and conflict resolution strategies, see [Data Federation](data_federation.md).
+The data layer is designed to support AICO's federated device roaming capability. For detailed information about the federated device network architecture, synchronization protocols, and conflict resolution strategies, see Data Federation documentation (file does not exist).
 
 **Key Integration Points**:
 - Device registry stored in libSQL primary database

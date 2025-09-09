@@ -343,7 +343,7 @@ AICO's Personality Simulation represents a sophisticated approach to AI companio
 
 The modular architecture ensures seamless integration with other AICO components, particularly the Emotion Simulation and Agency modules, while preserving the local-first processing philosophy. Success will be measured through character authenticity, relationship development, and user experience rather than purely technical metrics.
 
-For implementation details, technical specifications, and architectural diagrams, see the companion [Architecture Documentation](../../architecture/personality_sim.md).
+For implementation details, technical specifications, and architectural diagrams, see the companion architecture documentation.
 
 ## References
 

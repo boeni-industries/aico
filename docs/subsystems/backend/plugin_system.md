@@ -101,7 +101,7 @@ The Plugin SDK provides developers with tools for creating plugins:
 
 ## Plugin Integration with Message Bus
 
-Plugins integrate with AICO's core functionality primarily through the message bus, as described in the [Message Bus Architecture](message_bus.md) document. The Plugin Manager mediates this integration through:
+Plugins integrate with AICO's core functionality primarily through the message bus, as described in the Message Bus Architecture documentation. The Plugin Manager mediates this integration through:
 
 ### 1. Topic Access Control
 

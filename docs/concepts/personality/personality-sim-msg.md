@@ -27,7 +27,7 @@ All messages on the bus follow this common envelope structure:
 
 ## Input Message Formats
 
-> **Note**: In addition to the message formats described below, the Personality Simulation module also consumes integration-specific messages such as `crisis.detection`, `agency.initiative`, `expression.coordination`, and `learning.coordination`. These formats are defined in [`integration_msg.md`](./integration_msg.md).
+> **Note**: In addition to the message formats described below, the Personality Simulation module also consumes integration-specific messages such as `crisis.detection`, `agency.initiative`, `expression.coordination`, and `learning.coordination`. These formats are defined in integration documentation.
 
 ### User Interaction History
 
@@ -632,7 +632,7 @@ All messages on the bus follow this common envelope structure:
 **Topic**: `personality.expression.decision`  
 **Description**: Decision-making parameters for Autonomous Agency module.
 
-> **Note**: This message format has been enhanced with an `ethical_framework` section in version 1.1. See [`integration_msg.md`](./integration_msg.md) for details on the enhanced format.
+> **Note**: This message format has been enhanced with an `ethical_framework` section in version 1.1. See integration documentation for details on the enhanced format.
 
 ```json
 {

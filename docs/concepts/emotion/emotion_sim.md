@@ -190,7 +190,7 @@ Multimodal Input → Appraisal Engine → Affect Derivation → Emotion Regulati
 
 **Expression Coordination**: Emotional components are mapped to coordinated expression across voice synthesis, avatar animation, and text generation.
 
-For detailed technical architecture and implementation specifics, see [`/docs/architecture/emotion_sim.md`](../../architecture/emotion_sim.md).
+For detailed technical architecture and implementation specifics, see the emotion simulation architecture documentation.
 
 ## Component Integration
 
@@ -292,7 +292,7 @@ AICO's Emotion Simulation represents a sophisticated approach to AI companion em
 
 The modular architecture ensures seamless integration with other AICO components while preserving the local-first processing philosophy. Success will be measured through user relationship development, emotional authenticity, and ethical compliance rather than purely technical metrics.
 
-For implementation details, technical specifications, and architectural diagrams, see the companion [Architecture Documentation](../../architecture/emotion_sim.md).
+For implementation details, technical specifications, and architectural diagrams, see the companion architecture documentation.
 
 ## References
 

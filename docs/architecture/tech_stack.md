@@ -40,7 +40,7 @@ This document centralizes all technology decisions for the AICO system. It provi
 
 ## Data & Storage Layer
 
-AICO employs a specialized multi-database architecture optimized for local-first operation. See [Data Layer](data_layer.md) for comprehensive details.
+AICO employs a specialized multi-database architecture optimized for local-first operation. See [Data Layer](../concepts/data/data_layer.md) for comprehensive details.
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|

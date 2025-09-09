@@ -150,5 +150,5 @@ Build **advanced infrastructure** for production deployment and extensibility. *
 - [ ] Performance optimization and resource management
 - [ ] Compliance and audit capabilities
 
-**Previous**: [MVP Roadmap](mvp.md) validates core companion features  
+**Previous**: MVP Roadmap (file does not exist) validates core companion features  
 **Next**: See [PoCs](confidante.md) for advanced AI capabilities

@@ -645,7 +645,7 @@ class SchemaSecurityMonitor:
    - Retrieves keys from secure storage
    - Mounts encrypted filesystem transparently
 
-For complete details on the overall key management system, see [Security Architecture](security_overview.md).
+For complete details on the overall key management system, see Security Architecture documentation (file does not exist).
 
 ## Data Synchronization Security
 

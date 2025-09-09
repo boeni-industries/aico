@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the technical architecture for AICO's Personality Simulation module, focusing on its integration with the message bus system and data exchange formats. For conceptual information about the personality model, see [`/docs/concepts/personality/personality_sim.md`](../concepts/personality/personality_sim.md).
+This document describes the technical architecture for AICO's Personality Simulation module, focusing on its integration with the message bus system and data exchange formats. For conceptual information about the personality model, see [`/docs/concepts/personality/personality_sim.md`](./personality_sim.md).
 
 ## Bus Integration Architecture
 
@@ -31,7 +31,7 @@ The Personality Simulation module participates in the following message bus topi
 
 ## Message Schemas
 
-Detailed message format specifications are documented in [`personality_sim_msg.md`](./personality_sim_msg.md). These include illustrative JSON structures for all input and output message types used by the Personality Simulation module.
+Detailed message format specifications are documented in [`personality_sim_msg.md`](./personality-sim-msg.md). These include illustrative JSON structures for all input and output message types used by the Personality Simulation module.
 
 **Key Message Types:**
 - **Input**: `user.interaction.history`, `conversation.context`, `emotion.state.current`

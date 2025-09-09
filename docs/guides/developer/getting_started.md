@@ -451,7 +451,7 @@ aico security status  # Check security setup
 aico security test    # Verify keyring access
 ```
 
-For detailed architecture and configuration options, see [Data Layer Documentation](../architecture/data_layer.md).
+For detailed architecture and configuration options, see [Data Layer Documentation](../../concepts/data/data_layer.md).
 
 ---
 
@@ -520,14 +520,14 @@ For detailed protobuf development guidelines, see [Protocol Buffers & API Contra
 ## Further Reading
 
 - [Contributing](./contributing.md)
-- [Architecture Overview](../architecture/architecture_overview.md)
+- [Architecture Overview](../../architecture/architecture-overview.md)
 - Modules & Components (file does not exist)
 - [Developer Guidelines & Conventions](./guidelines.md)
-- [Plugin System Overview](../architecture/plugin_system.md)
-- [Data Layer & Storage](../architecture/data_layer.md)
-- [Admin UI Architecture](../admin/admin_ui_master.md)
+- [Plugin System Overview](../../subsystems/backend/plugin_system.md)
+- [Data Layer & Storage](../../concepts/data/data_layer.md)
+- [Admin UI Architecture](../../subsystems/studio/admin_ui_master.md)
 - [Protocol Buffers & API Contracts](./protobuf.md)
-- [Privacy & Security](../security/security_overview.md)
+- [Privacy & Security](../../security/data_security.md)
 
 ---
 

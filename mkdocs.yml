@@ -183,6 +183,8 @@ nav:
           - Testing: guides/developer/testing.md
           - UUID Standards: guides/developer/uuid_standards.md
           - UV Cheatsheet: guides/developer/uv_cheatsheet.md
+      - Admin:
+          - Admin Guide: guides/admin/admin_guide.md
   - Subsystems:
       - Backend:
           - API Gateway: subsystems/backend/api_gateway.md

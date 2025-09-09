@@ -122,4 +122,4 @@ Build the **essential** system infrastructure required for MVP companion feature
 - [ ] **Privacy-First**: Encryption and consent management operational
 - [ ] **Agency-Ready**: Infrastructure supports autonomous behavior
 
-**Next**: See [MVP Roadmap](mvp.md) for companion AI features, then [Foundation II](foundation_II.md) for advanced infrastructure.
+**Next**: See MVP Roadmap (file does not exist) for companion AI features, then [Foundation II](foundation_II.md) for advanced infrastructure.
