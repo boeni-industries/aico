@@ -222,7 +222,7 @@ nav:
     - Protocol Buffers: developer-guide/protobuf.md
     - Versioning: developer-guide/versioning.md
     - Namespaces: developer-guide/namespaces.md
-    - CLI Handbook: developer-guide/cli_handbook.md
+    - CLI Reference: developer-guide/cli_reference.md
     - Schema Management: developer-guide/schema_management.md
     - UUID Standards: developer-guide/uuid_standards.md
     - Lessons Learned: developer-guide/lessons_learned.md

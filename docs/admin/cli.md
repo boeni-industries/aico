@@ -50,20 +50,13 @@ The `aico` CLI provides a professional, cross-platform, and high-performance com
     - CLI may offer commands to launch or interact with the admin UI (e.g., `aico admin open`), but does not duplicate UI logic.
     - Main CLI use cases are backend/admin-focused.
 
-## Command Structure (Example)
+## Command Structure
 
 ```
 aico [command] [options]
-
-Commands:
-  version        Manage and synchronize versions across all AICO system parts
-  security       Master password setup and security management
-  db             Database initialization, status, and management
-  ...            (future: plugin, logs, config, admin, etc.)
 ```
 
-- Each command is implemented as a Typer sub-app, allowing modular growth.
-- All output uses Rich for tables, markdown, progress bars, and error highlighting.
+Each command is implemented as a Typer sub-app with Rich output formatting.
 
 ## CLI Architecture
 
@@ -223,45 +216,11 @@ This style guide ensures all CLI commands maintain the same professional, clean,
 - **Fast & User-Friendly**: Instant startup, rich output, robust error handling, and autocompletion.
 - **Self-Documenting**: Any incomplete or ambiguous command invocation yields a helpful, predictive help text to guide the user to the next step.
 
-### CLI Directory Structure (Suggested)
+### Architecture
 
-```text
-/cli  
-    /commands  
-        status.py  
-        user.py  
-        db.py  
-        plugin.py  
-        logs.py  
-        config.py  
-        admin.py  
-        version.py   # (First: versioning automation)  
-    main.py  
-    utils.py  
-    ...
-```
-- Each command is implemented as a sub-app (using Typer) and registered in `main.py`.
-- Shared utilities, config, and backend integration in `utils.py` or `/lib`.
-
-### Command Registration Pattern
-
-```python
-# main.py
-import typer
-from commands import status, user, db, plugin, logs, config, admin, version
-
-app = typer.Typer()
-app.add_typer(version.app, name="version")
-# ...add other sub-apps
-
-if __name__ == "__main__":
-    app()
-```
-
-### Growth & Extensibility
-- Each new domain (e.g., plugin, agent, emotion, vector) gets its own command module.
-- The sub-app pattern keeps the CLI scalable and organized as it grows.
-- Future plugin discovery (dynamic loading) can be added as CLI matures.
+- **Modular Design**: Each command group is a separate Typer sub-app
+- **Shared Infrastructure**: Common utilities for authentication, configuration, and output
+- **Extensible**: New command groups can be easily added as the system grows
 
 ---
 
@@ -274,17 +233,10 @@ if __name__ == "__main__":
 - **Graceful error handling** and actionable messages
 - **Consistent cross-platform behavior**
 
-## Building the Universal Executable
+## Distribution
 
-1. **Install dependencies:**
-    - All CLI dependencies are specified in `requirements-cli.txt`.
-2. **Build with PyInstaller:**
-    - Example: `pyinstaller --onefile aico_cli/main.py --name aico`
-    - Produces `aico.exe` (Windows), `aico` (Linux/macOS)
-    - Test on all platforms for startup speed and compatibility
-3. **Distribution:**
-    - Distribute the single executable via release, package manager, or installer
-    - No Python or .venv required on user system
+**Primary**: PyPI package via `uv tool install aico-cli` or `pipx install aico-cli`
+**Legacy**: PyInstaller executable (deprecated due to slow startup)
 
 ## Security Considerations
 
@@ -298,16 +250,12 @@ if __name__ == "__main__":
 - Easy to add new commands as backend expands
 - Consistent with AICO's local-first, privacy-preserving philosophy
 
-## Best Practices for CLI Speed & Responsiveness
+## Performance Optimization
 
-- **Minimize startup imports:** Import heavy libraries only inside functions/commands, not at the top-level.
-- **Lazy-load features:** Only load modules and data when a command is actually invoked.
-- **Avoid unnecessary I/O:** Defer config, network, or database access until needed.
-- **Keep main() lightweight:** The entrypoint should do as little as possible before dispatching to commands.
-- **Profile regularly:** Use timing tools to identify and fix slow paths.
-- **Batch backend/API calls:** Where possible, reduce round-trips and use bulk operations.
-- **Cache where safe:** Cache static or infrequently changing data in memory for the session.
-- **Test on all platforms:** Verify speed and behavior on Windows, macOS, and Linux.
+- **Lazy imports**: Heavy libraries loaded only when needed
+- **Minimal startup**: Lightweight entrypoint with deferred initialization
+- **Session caching**: Reduces authentication overhead
+- **Cross-platform testing**: Consistent performance across all platforms
 
 
 - [Typer documentation](https://typer.tiangolo.com/)
@@ -320,56 +268,41 @@ AICO's CLI combines the power of Python's ecosystem with best-in-class UX, deliv
 
 ---
 
-## Command Groups
+## Available Commands
 
-### Version Commands (`aico version`)
-Manages and synchronizes versioning across all major AICO system parts from a single source of truth.
+The AICO CLI provides the following command groups:
 
-**Architecture**: Uses centralized `VERSIONS` file as canonical source, with automatic propagation to individual component version files and git tagging.
+### Core System Commands
+- **`aico version`** - Version management and synchronization
+- **`aico security`** - Master password and security operations
+- **`aico db`** - Database management and operations
+- **`aico config`** - Configuration management
+- **`aico logs`** - Log management and analysis
 
-### Security Commands (`aico security`)
-Manages master password setup and security operations for AICO's encrypted data layer.
+### Service Management Commands
+- **`aico gateway`** - API Gateway management
+- **`aico scheduler`** - Task scheduler management
+- **`aico modelservice`** - Model service management
+- **`aico ollama`** - Ollama model management
+- **`aico bus`** - Message bus testing and monitoring
 
-**Architecture**: Uses `AICOKeyManager` for unified key management across all database types with secure keyring integration. Session-based authentication with decorator-enforced security for sensitive operations.
+### Development Commands
+- **`aico dev`** - Development utilities and cleanup tools
 
-#### Decorator-Based Security Classification
+### Command Architecture
 
-The CLI uses decorators to automatically enforce authentication requirements:
+**Security Model**: Commands use decorator-based security classification:
+- `@sensitive` - Requires fresh authentication (password changes, data export)
+- `@destructive` - Requires fresh authentication (database operations with data loss risk)
+- Regular commands use session-based authentication with 30-minute timeout
 
-**🔐 Sensitive Commands** (`@sensitive` decorator - require fresh authentication):
-- `security passwd` - Change master password
-- `security clear` - Clear credentials  
-- `logs export` - Export sensitive log data
-- `config export` - Export sensitive configuration
+**Integration**: All commands share common infrastructure:
+- `AICOKeyManager` for unified security and encryption
+- `ConfigurationManager` for cross-platform configuration
+- Rich console output with consistent styling
+- Session-based authentication with secure keyring storage
 
-**⚠️ Dangerous Commands** (`@destructive` decorator - require fresh authentication):
-- `db exec` - Execute arbitrary SQL (allows DROP, DELETE, UPDATE)
-- `db vacuum` - Rebuild database structure (risk of data loss if interrupted)
-
-**✅ Regular Commands** (no decorators - use session cache):
-- `db status`, `db ls`, `db test` - Read-only database operations
-- `security session` - Show session information
-- `config show` - Display configuration
-
-**🚀 Setup Commands** (no decorators - no authentication required):
-- `security setup` - Initial password creation
-- `db init` - Database initialization
-
-This decorator approach provides:
-- **Zero developer hell**: Easy to add/remove security requirements
-- **Automatic enforcement**: Authentication handled transparently
-- **Clear semantics**: Command purpose obvious from decorator
-- **Audit logging**: Sensitive operations automatically logged
-
-### Database Commands (`aico db`)
-Manages encrypted database initialization and operations.
-
-**Architecture**: Supports multiple database types with type-specific encryption (PBKDF2 for LibSQL, Argon2id for others). Automatic salt management and transparent encryption. Includes comprehensive CRUD testing with proper transaction management to prevent libSQL safety conflicts.
-
-### Integration Pattern
-Security and database commands integrate through `AICOKeyManager` providing derived keys to database connections. Master password affects all databases; database operations are type-specific.
-
-**For detailed usage examples and workflows, see the [CLI Handbook](../developer-guide/cli_handbook.md).**
+**For detailed usage examples and workflows, see the [CLI Reference](../developer-guide/cli_reference.md).**
 
 ## Performance Characteristics
 
