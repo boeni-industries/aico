@@ -122,138 +122,132 @@ markdown_extensions:
   - pymdownx.tilde
 
 # Page tree
-nav:
-  - Home:
-      - Welcome: welcome.md
-  - User Guide:
-    - Overview: user-guide/getting_started.md
-    - Installation: user-guide/installation.md
-    - Quick Start: user-guide/quick_start.md
-  - Architecture:
-      - Overview: architecture/architecture_overview.md
-  - Conversation Flows:
-      - End-to-End Multimodal: flow/conversation_e2e.md
-  - Core Infrastructure:
-    - Message Bus: architecture/message_bus.md
-    - Plugin Manager: architecture/plugin_system.md
-    - API Gateway: architecture/api_gateway.md
-    - API Reference: architecture/api_reference.md
-    - Model Service: architecture/modelservice.md
-    - P2P Mesh Network: architecture/p2p_mesh.md
-    - Device Roaming: architecture/roaming.md
-    - Update System: architecture/update_system.md
-    - Data Layer: architecture/data_layer.md
-    - Data Federation: architecture/data_federation.md
-    - Instrumentation: instrumentation/instrumentation.md
-    - Logging: instrumentation/instrumentation_logging.md
-    - Log Consumer: architecture/log_consumer.md
-    - Telemetry: instrumentation/telemetry.md
-  - Administration:
-    - Overview: admin/admin_overview.md
-    - Admin UI: admin/admin_ui.md
-    - Master Admin UI: admin/admin_ui_master.md
-    - CLI: admin/cli.md
-  - Privacy & Security:
-    - Overview: security/security_overview.md
-    - Data Security: security/data_security.md
-    - Transport Security: security/transit_security.md
-    - Access Control: security/access_control.md
-    - Consent Manager: security/consent.md
-    - Audit System: security/audit.md  
-  - Autonomous Agency:
-    - Goal System: '#'
-    - Planning System: '#'
-    - Curiosity Engine: '#'
-    - Initiative Manager: '#'
-  - Personality & Emotion:
-    - Personality Simulation: architecture/personality_sim.md
-    - Emotion Simulation: architecture/emotion_sim.md
-    - Emotion Recognition: '#'
-    - Social Relationship Modeling: concepts/social/social_relationship_modeling.md
-  - Self-Awareness:
-    - State Monitoring: '#'
-    - Meta-Cognition: '#'
-  - Intelligence & Memory:
-    - Conversation Engine: '#'
-    - Memory System: '#'
-    - Learning System: '#'
-  - User Interface:
-    - Context Manager: '#'
-    - Presentation Layer: '#'
-  - Message Formats:
-    - Core Integration: architecture/integration_msg.md
-    - Emotion Simulation: architecture/emotion_sim_msg.md
-    - Personality Simulation: architecture/personality_sim_msg.md
-  - Technology Stack:
-      - Overview: architecture/tech_stack.md
-  - Concepts:
-    - Conversation:
-      - Conversation Architecture: architecture/conversations.md
-      - Thread Manager: architecture/conversations_thread_manager.md 
-    - Emotion:
-      - Emotion Simulation: concepts/emotion/emotion_sim.md
-    - Personality:
-      - Personality Simulation: concepts/personality/personality_sim.md
-      - Personality Definition: concepts/personality/personality_definition.md
-    - LLM:
-      - Foundation Model: concepts/llm/foundation_model.md
-      - Multimodality: concepts/llm/multimodality.md
-  - Flows:
-    - Conversation Multimodal: flow/conversation_e2e.md
-  - Frontend:
-    - Architecture Overview: frontend/frontend_architecture_overview.md
-    - UI/UX Design Principles: frontend/design_principles.md
-    - State Management: frontend/state_management.md
-    - Navigation: frontend/navigation.md
-    - User Flows: frontend/user_flows.md
-    - Networking: frontend/networking.md
-    - API Integration: frontend/api_integration.md
-    - Component Library: frontend/component_library.md
-    - Performance: frontend/performance_guidelines.md
-    - Testing: frontend/testing_strategy.md
-  - Developer Guide:
-    - Getting Started: developer-guide/getting_started.md
-    - Glossary: developer-guide/terminology_glossary.md
-    - UV Commands Cheat Sheet: developer-guide/uv_cheatsheet.md
-    - Guidelines: developer-guide/guidelines.md
-    - Backend Patterns: developer-guide/backend_patterns.md
-    - Contributing: developer-guide/contributing.md
-    - Testing: developer-guide/testing.md
-    - Protocol Buffers: developer-guide/protobuf.md
-    - Versioning: developer-guide/versioning.md
-    - Namespaces: developer-guide/namespaces.md
-    - CLI Reference: developer-guide/cli_reference.md
-    - Schema Management: developer-guide/schema_management.md
-    - UUID Standards: developer-guide/uuid_standards.md
-    - Lessons Learned: developer-guide/lessons_learned.md
-  - Roadmap:
-    - Foundation I: roadmap/foundation_I.md
-    - MVP: roadmap/mvp.md
-    - Foundation II: roadmap/foundation_II.md
-    - Confidante: roadmap/confidante.md
-    - Sidekick: roadmap/sidekick.md
-    - Co-Adventurer: roadmap/co_adventurer.md
-    - Embodied Presence: roadmap/embodied_presence.md
-    - Community: roadmap/community.md
-  # Additional sections will be added as features are implemented:
-  # - Features:
-  # - API Reference:
-  # - Ethics & Privacy:
-  # - Community:
 
-# Extra
-extra:
-  social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/boeni-industries/aico
-    - icon: fontawesome/solid/globe
-      link: https://boeni.industries
-  
+# Enable collapsible navigation for all levels
+# mkdocs-material: use navigation.tabs and navigation.sections options
+
+theme:
+  name: material
+  logo: assets/images/logo.png
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.collapse
+    - navigation.instant
+    - navigation.tracking
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
 # Custom CSS and JavaScript
 extra_css:
   - assets/stylesheets/extra.css
-  - assets/stylesheets/disable-logo.css
+  - assets/stylesheets/nav-custom.css
 extra_javascript:
   - assets/javascripts/extra.js
-# version:
-    # provider: mike
+nav:
+  - Welcome: welcome.md
+  - Architecture:
+      - Overview: architecture/architecture-overview.md
+      - Configuration Management: architecture/configuration_management.md
+      - Message Bus: architecture/message_bus.md
+      - Technology Stack: architecture/tech_stack.md
+  - Flows:
+      - End-to-End Conversation: flows/conversation_e2e.md
+  - Guides:
+      - User:
+          - Getting Started: guides/user/getting-started.md
+      - Developer:
+          - Getting Started: guides/developer/getting_started.md
+          - Guidelines: guides/developer/guidelines.md
+          - CLI Reference: guides/developer/cli_reference.md
+          - Contributing: guides/developer/contributing.md
+          - Schema Management: guides/developer/schema_management.md
+          - Protobuf: guides/developer/protobuf.md
+          - Namespaces: guides/developer/namespaces.md
+          - Lessons Learned: guides/developer/lessons_learned.md
+          - Versioning: guides/developer/versioning.md
+          - Terminology/Glossary: guides/developer/terminology_glossary.md
+          - Testing: guides/developer/testing.md
+          - UUID Standards: guides/developer/uuid_standards.md
+          - UV Cheatsheet: guides/developer/uv_cheatsheet.md
+  - Subsystems:
+      - Backend:
+          - API Gateway: subsystems/backend/api_gateway.md
+          - API Reference: subsystems/backend/api_reference.md
+          - Plugin System: subsystems/backend/plugin_system.md
+          - Log Consumer: subsystems/backend/log_consumer.md
+          - Scheduling:
+              - Overview: subsystems/backend/scheduling/scheduling.md
+          - Conversation:
+              - Overview: subsystems/backend/conversation/conversations.md
+              - Thread Manager: subsystems/backend/conversation/conversations_thread_manager.md
+      - CLI:
+          - CLI: subsystems/cli/cli.md
+      - Frontend:
+          - Overview: subsystems/frontend/frontend_architecture_overview.md
+          - API Integration: subsystems/frontend/api_integration.md
+          - Component Library: subsystems/frontend/component_library.md
+          - Design Principles: subsystems/frontend/design_principles.md
+          - Navigation: subsystems/frontend/navigation.md
+          - Networking: subsystems/frontend/networking.md
+          - Performance Guidelines: subsystems/frontend/performance_guidelines.md
+          - State Management: subsystems/frontend/state_management.md
+          - Testing Strategy: subsystems/frontend/testing_strategy.md
+          - User Flows: subsystems/frontend/user_flows.md
+      - Modelservice:
+          - Model Service: subsystems/modelservice/modelservice.md
+      - Studio:
+          - Admin UI: subsystems/studio/admin_ui.md
+          - Master Admin UI: subsystems/studio/admin_ui_master.md
+  - Concepts:
+      - Data:
+          - Data Layer: concepts/data/data_layer.md
+          - Data Federation: concepts/data/data_federation.md
+      - Embodiment: concepts/embodiment/embodiment.md
+      - Emotion:
+          - Architecture: concepts/emotion/emotion-sim-architecture.md
+          - Messaging: concepts/emotion/emotion-sim-msg.md
+          - Overview: concepts/emotion/emotion_sim.md
+      - LLM:
+          - Foundation Model: concepts/llm/foundation_model.md
+          - Multimodality: concepts/llm/multimodality.md
+      - Personality:
+          - Architecture: concepts/personality/personality-sim-architecture.md
+          - Messaging: concepts/personality/personality-sim-msg.md
+          - Definition: concepts/personality/personality_definition.md
+          - Overview: concepts/personality/personality_sim.md
+      - Roaming:
+          - P2P Mesh: concepts/roaming/p2p_mesh.md
+          - Roaming: concepts/roaming/roaming.md
+      - Social:
+          - Social Relationship Modeling: concepts/social/social_relationship_modeling.md
+  - Security:
+      - Overview: security/security_overview.md
+      - Data Security: security/data_security.md
+      - Transport Security: security/transit_security.md
+      - Access Control: security/access_control.md
+      - Consent Manager: security/consent.md
+      - Audit System: security/audit.md
+  - Operations:
+      - Update System: operations/update_system.md
+  # - Administration:
+  #     - Overview: admin/admin_overview.md
+  #     - Admin UI: admin/admin_ui.md
+  #     - Master Admin UI: admin/admin_ui_master.md
+  #     - CLI: admin/cli.md
+  # - Changelog: changelog.md  # Removed (404)
+  - Glossary: guides/developer/terminology_glossary.md
+  
