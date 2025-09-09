@@ -118,7 +118,7 @@ You should see `Python 3.13.5`.
 
 > **ℹ️ Data Encryption Approach**
 > 
-> AICO uses application-level encryption with database-native features (SQLCipher, DuckDB encryption, RocksDB EncryptedEnv) rather than filesystem-level encryption. This provides better cross-platform compatibility and performance without requiring additional system dependencies.
+> AICO uses application-level encryption with libSQL (SQLite with encryption). Additional databases (DuckDB, ChromaDB, RocksDB) are planned but not yet implemented. This approach provides better cross-platform compatibility and performance without requiring additional system dependencies.
 
 ### 3. UV Workspace Setup (Single Virtual Environment)
 AICO uses UV workspace management with a unified `pyproject.toml` at the root and a single shared virtual environment for all Python components.
@@ -325,34 +325,19 @@ Below are the build and run commands for each major part of the system. Substitu
 
 ---
 
-## Maintainer Note: Dependency Management and Project Scaffolding
+## Development Notes
 
-!!! warning 
-    This section is for maintainers only. Regular contributors do NOT need to run these commands. The following steps were performed during initial project setup and are preserved for reference.
+### Dependency Management
+AICO uses UV workspace management with a unified `pyproject.toml` and shared virtual environment:
 
-#### Python Dependency Management
-- **Previous approach:** Each Python component (`cli/`, `backend/`) used separate `pyproject.toml` files and virtual environments. This created complexity with environment activation and dependency conflicts.
-- **Current approach:** Unified UV workspace with single `pyproject.toml` at project root and shared `.venv`. [UV](https://github.com/astral-sh/uv) provides workspace management with optional dependency groups.
+- Add dependencies: `uv add <package>` or `uv add --group <group> <package>`
+- Python version: `>=3.13` (PyInstaller compatibility)
+- Sync dependencies: `uv sync` after changes
+- Optional groups: `cli`, `backend`, `test`
 
-- Add dependencies using `uv add <package>` or `uv add --group <group> <package>` for group-specific deps.
-- The supported Python version is pinned to `>=3.13` due to PyInstaller compatibility.
-- Use `uv sync` to install/update all dependencies after `pyproject.toml` changes.
-- Optional dependency groups: `cli`, `backend`, `test` for component-specific requirements.
-- PyInstaller is included in the CLI group for building distributable executables.
+### Project Structure
+The project follows a monorepo structure with shared libraries and unified tooling across all components.
 
-#### Flutter Frontend Project Creation
-```sh
-flutter create frontend --project-name aico_ui --platforms=windows,macos,linux,android,ios,web
-```
-
-#### React Admin Studio Project Creation
-```sh
-npx create-react-app studio --template typescript
-cd studio
-npm install react-admin ra-data-simple-rest @mui/material @mui/icons-material @emotion/react @emotion/styled react-router-dom
-```
-
----
 
 ## Database Setup
 
@@ -407,8 +392,8 @@ aico/
 ├── data/
 │   ├── aico.db              # Main libSQL database (encrypted)
 │   ├── aico.db.salt         # Encryption salt
-│   ├── analytics.duckdb     # Analytics database (encrypted)
-│   └── chroma/              # Vector database directory (encrypted)
+│   ├── analytics.duckdb     # Analytics database (planned)
+│   └── chroma/              # Vector database directory (planned)
 ├── config/
 │   ├── defaults/            # Default configuration files
 │   └── environments/        # Environment-specific overrides

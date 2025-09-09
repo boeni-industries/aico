@@ -6,15 +6,17 @@ title: Update System
 
 ## Overview
 
-The AICO Update System is a critical infrastructure component that enables secure, reliable, and user-friendly updates for both the frontend (Flutter) and backend (Python) components. It supports configurations where frontend and backend may be on the same device or separated, while ensuring minimal disruption to the user experience.
+The AICO Update System enables secure, reliable updates for frontend (Flutter) and backend (Python) components. It supports both coupled and separated deployment configurations.
 
-The Update System is designed with the following core principles:
+**Status:** Architecture design - implementation planned.
 
-- **Security**: All updates are cryptographically verified to ensure authenticity and integrity
-- **Reliability**: Updates are atomic with rollback capabilities to prevent system corruption
-- **User Control**: Users can define update schedules while critical security updates can be prioritized
-- **Minimal Disruption**: Updates occur with minimal interruption to the user experience
-- **Flexibility**: Supports various deployment scenarios including separated frontend/backend
+## Core Principles
+
+- **Security**: Cryptographically verified updates
+- **Reliability**: Atomic updates with rollback capabilities
+- **User Control**: Configurable update schedules
+- **Minimal Disruption**: Background updates with graceful restarts
+- **Flexibility**: Supports coupled/separated deployments
 
 ## Architecture
 
@@ -137,27 +139,31 @@ The Update System implements robust security measures:
 
 ## Technical Implementation
 
-### Backend (Python) Update System
+### Backend (Python) Update System (Planned)
 
-The backend update system uses **TUFup** as the core update framework, which provides:
+Will use **TUFup** framework providing:
 
 - Strong security through The Update Framework (TUF)
-- Support for delta updates to minimize bandwidth usage
-- Cryptographic verification of updates
-- Compatibility with any type of application bundle
-- Support for different release channels (stable, beta, etc.)
+- Delta updates for bandwidth efficiency
+- Cryptographic verification
+- Application bundle compatibility
+- Multiple release channels (stable, beta, dev)
 
-### Frontend (Flutter) Update System
+**Note:** TUFup integration is planned but not yet implemented.
 
-The frontend update system uses a hybrid approach:
+### Frontend (Flutter) Update System (Planned)
 
-- For mobile platforms:
-  - `upgrader` package for iOS and Android app store updates
-  - Custom update logic for sideloaded apps
+Hybrid approach:
 
-- For desktop platforms:
-  - Custom update mechanism using the backend update service
-  - Platform-specific packaging (MSIX for Windows, DMG for macOS)
+- **Mobile platforms:**
+  - `upgrader` package for app store updates
+  - Custom logic for sideloaded apps
+
+- **Desktop platforms:**
+  - Custom mechanism via backend service
+  - Platform-specific packaging (MSIX, DMG)
+
+**Note:** Frontend update system is planned but not yet implemented.
 
 ## Configuration Options
 

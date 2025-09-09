@@ -52,7 +52,7 @@
   - Ensure cross-device and cross-environment compatibility where possible.
 
 - **Data Layer Best Practices:**
-  - Use the appropriate storage for each data type (libSQL for structured, DuckDB for analytics, ChromaDB for embeddings, RocksDB for cache).
+  - Currently uses libSQL for all structured data with encryption. Additional databases (DuckDB for analytics, ChromaDB for embeddings, RocksDB for cache) are planned but not yet implemented.
   - Optimize for local-first, file-based operation. Plan for future federated sync but do not assume cloud dependencies.
 
 - **Plugin System:**

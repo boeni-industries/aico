@@ -1,43 +1,38 @@
 # AICO Terminology Glossary
 
-## Core Conversation & Communication Terms
+## Core Terms
 
-### Input & Processing
-- **User Input**: Raw input from user (text, voice, image, multimodal)
-- **User Message**: Processed, structured user input ready for system processing
+### Communication
+- **User Input**: Raw input (text, voice, image, multimodal)
+- **User Message**: Processed, structured input ready for system processing
 - **Request**: API-level HTTP/WebSocket request from frontend to backend
-- **Query**: Specific information request or question within user input
-
-### Conversation Flow
-- **Conversation**: Complete ongoing relationship/communication context between user and AICO
-- **Session**: Technical connection/authentication period (may span multiple conversations)
-- **Thread**: Logical grouping of related exchanges within a conversation
-- **Turn**: One side of communication - either user speaks OR AICO responds
-- **Exchange**: Complete back-and-forth unit (user turn + AICO turn)
-- **Interaction**: General term for any user-AICO communication event
+- **Query**: Specific information request within user input
+- **Conversation**: Complete ongoing relationship/communication context
+- **Session**: Technical connection/authentication period
+- **Thread**: Logical grouping of related exchanges
+- **Turn**: One side of communication (user OR AICO)
+- **Exchange**: Complete back-and-forth (user turn + AICO turn)
+- **Response**: AICO's reply (text, voice, multimodal)
+- **Reaction**: AICO's behavioral/emotional response
 
 ### System Components
-- **Conversation Engine**: Core orchestration component responsible for conversation flow, context integration, multimodal processing, emotion/personality coordination, and response generation
-- **Conversation Manager**: Handles conversation state, thread management, and context switching
-- **Response Generator**: LLM-based component that produces AICO's textual responses
-- **Input Processor**: Component that handles and routes different types of user input
-
-### Response & Output
-- **Response**: AICO's reply to user input (text, voice, multimodal)
-- **Reaction**: AICO's behavioral/emotional response (separate from textual response)
+- **Conversation Engine**: Core orchestration for conversation flow, context integration, multimodal processing
+- **Conversation Manager**: Handles conversation state, thread management, context switching
+- **Response Generator**: LLM-based component producing textual responses
+- **Input Processor**: Handles and routes different input types
 
 ### Context & Memory
 - **Context**: Current situational information influencing conversation
-- **Conversation Context**: Historical and current state of ongoing conversation
-- **User Context**: Information about user's current situation, mood, preferences
-- **Thread Context**: Specific context within a conversation thread
-- **Memory**: Persistent information stored about conversations and user
+- **Conversation Context**: Historical and current conversation state
+- **User Context**: User's situation, mood, preferences
+- **Thread Context**: Specific context within conversation thread
+- **Memory**: Persistent conversation and user information
 
-### Message Bus Topics (Standardized)
-- **Input Topics**: `user/input/{type}` (text, voice, multimodal)
-- **Conversation Topics**: `conversation/{action}` (start, message, response, end)
-- **Context Topics**: `context/{type}` (user, emotional, social, personality)
-- **Response Topics**: `response/{stage}` (generated, enhanced, delivered)
+### Message Bus Topics
+- **Input**: `user/input/{type}` (text, voice, multimodal)
+- **Conversation**: `conversation/{action}` (start, message, response, end)
+- **Context**: `context/{type}` (user, emotional, social, personality)
+- **Response**: `response/{stage}` (generated, enhanced, delivered)
 
 ## Usage Guidelines
 

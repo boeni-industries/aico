@@ -2,59 +2,45 @@
 title: Unified Logging Implementation Guide
 ---
 
-# Unified Logging: Frontend (Flutter) & Backend (Python)
+# Unified Logging Implementation
 
-This document provides a step-by-step, directly usable guide for implementing unified, privacy-first logging across both the frontend (Flutter) and backend (Python) in AICO. It covers schema, transport, integration patterns, and best practices to ensure all logs are collected, stored, and visualized together.
+This guide covers implementing unified, privacy-first logging across frontend (Flutter) and backend (Python) components in AICO.
 
 ---
 
-## Log Envelope Schema
+## Log Schema
 
-Define a JSON structure for all log messages. Both frontend and backend MUST use this schema:
+Standardized JSON structure for all log messages:
 
 ```json
 {
   "timestamp": "2025-08-02T23:10:00Z",
-  "level": "INFO",            // INFO, WARNING, ERROR, DEBUG
-  "module": "frontend.conversation_ui", // e.g., frontend.conversation_ui, backend.llm
-  "function": "sendMessage",     // Calling function or method name
-  "file": "conversation_screen.dart",    // (optional) Source file
-  "line": 42,                    // (optional) Line number
-  "topic": "ui.button.click",   // Event/topic name
+  "level": "INFO",
+  "module": "frontend.conversation_ui",
+  "function": "sendMessage",
+  "file": "conversation_screen.dart",
+  "line": 42,
+  "topic": "ui.button.click",
   "message": "User clicked Send",
-  "user_id": "local-user-123", // optional, if available
-  "trace_id": "abc123",         // optional, for tracing
-  "extra": { ... },               // optional, any additional context
-  "severity": "low",             // optional, severity level (low, medium, high)
-  "origin": "frontend",          // optional, log origin (frontend, backend)
-  "environment": "dev",         // optional, environment (dev, prod, staging)
-  "session_id": "session-123",  // optional, session ID
-  "error_details": { ... }       // optional, error details if applicable
+  "trace_id": "abc123",
+  "session_id": "session-123"
 }
 ```
 
-- **Required fields:** `timestamp`, `level`, `module`, `function`, `topic`, `message`
-- **Recommended fields:** `file`, `line` (if available)
-- **Optional fields:** `user_id`, `trace_id`, `extra`, `severity`, `origin`, `environment`, `session_id`, `error_details`
-
-**Why?** Including the calling function, and optionally file/class/line, makes it much easier to pinpoint the source of issues during debugging, especially in a distributed system.
+**Required:** `timestamp`, `level`, `module`, `function`, `topic`, `message`  
+**Optional:** `file`, `line`, `trace_id`, `session_id`, `extra`, `error_details`
 
 ---
 
 ## Frontend (Flutter)
 
-- Create a Dart logging utility that formats logs per the shared schema.
-- **Always include:**
-  - `module`: e.g., `frontend.conversation_ui`
-  - `function`: Use Dart's `StackTrace.current` or pass the function name explicitly
-  - `file`/`line`: Use a logging helper or macro if possible, or pass manually
-- Serialize logs to JSON.
-- **Transport:** Send logs to the backend via WebSocket or HTTP POST.
-- **Failure Handling:**
-  - Implement local buffering with a maximum size (e.g., 1000 logs) to handle temporary network failures.
-  - Use a retry strategy with exponential backoff (e.g., 1s, 2s, 4s, 8s) for failed log sends.
-  - Fallback to a local log file if all retry attempts fail.
-- **Example:**
+**Implementation:**
+- Create Dart logging utility using shared schema
+- Include `module`, `function`, `file`/`line` in all logs
+- Send to backend via WebSocket/HTTP POST
+- Local buffering with retry strategy and fallback
+
+**Example:**
 
 ```dart
 void logEvent({
@@ -65,34 +51,21 @@ void logEvent({
   required String message,
   String? file,
   int? line,
-  String? userId,
   String? traceId,
-  Map<String, dynamic>? extra,
-  String? severity,
-  String? origin,
-  String? environment,
   String? sessionId,
-  Map<String, dynamic>? errorDetails,
 }) {
   final log = {
     'timestamp': DateTime.now().toIso8601String(),
     'level': level,
     'module': module,
     'function': functionName,
-    'file': file,
-    'line': line,
     'topic': topic,
     'message': message,
-    'user_id': userId,
-    'trace_id': traceId,
-    'extra': extra,
-    'severity': severity,
-    'origin': origin,
-    'environment': environment,
-    'session_id': sessionId,
-    'error_details': errorDetails,
+    if (file != null) 'file': file,
+    if (line != null) 'line': line,
+    if (traceId != null) 'trace_id': traceId,
+    if (sessionId != null) 'session_id': sessionId,
   };
-  // Send via WebSocket/HTTP with retry and fallback
   _sendLog(log);
 }
 
@@ -103,27 +76,23 @@ logEvent(
   functionName: 'sendMessage',
   topic: 'ui.button.click',
   message: 'User clicked Send',
-  file: 'conversation_screen.dart',
-  line: 42,
 );
 ```
-
-- **Best Practice:** Tag all frontend logs with `module: frontend.*` and always specify the function.
 
 ---
 
 ## Backend (Python)
 
-- Use Python logging or a custom logger to emit logs in the same envelope format.
-- **Always include:**
-  - `module`: e.g., `backend.llm`
-  - `function`: Use `inspect.currentframe()` or a logging helper to capture the calling function
-  - `file`/`line`: Use `__file__` and `inspect` to capture file and line number
-- **Transport:** Publish logs directly to the ZeroMQ message bus under topic `logs.frontend.*` or `logs.backend.*`.
-- **Failure Handling:**
-  - Implement local buffering with a maximum size (e.g., 1000 logs) to handle temporary network failures.
-  - Use a retry strategy with exponential backoff (e.g., 1s, 2s, 4s, 8s) for failed log sends.
-  - Fallback to a local log file if all retry attempts fail.
+**Implementation:**
+- Use `create_infrastructure_logger()` from `aico.core.logging_context` for infrastructure components
+- Use standard Python `logging` for components that must avoid circular dependencies
+- Include `module`, `function`, `file`/`line` in all logs
+- Publish to ZeroMQ message bus under `logs.*` topics
+- Local buffering with retry strategy and fallback
+
+**Infrastructure vs Standard Logging:**
+- **Infrastructure Logger**: For most backend services (prevents circular dependencies with core logging system)
+- **Standard Logger**: For logging transport, message bus, and database components that support the logging infrastructure itself
 
 ### ⚠️ CRITICAL WARNING: Logging Recursion Loops
 
@@ -153,52 +122,26 @@ def _send_log_to_zmq(self, log_data):
 3. This creates another log message to send
 4. Loop continues until stack overflow crashes the system
 
-**Infrastructure logger pattern prevents this:**
-- ✅ **Use `create_infrastructure_logger()` from `aico.core.logging_context` for all backend services**
-- ❌ **NEVER mix `get_logger()` and `create_infrastructure_logger()` in the same service**
-- ❌ **NEVER import logging functions that may not be available in service contexts**
-- **Example:**
+**Safe logging pattern:**
+- ✅ Use `create_infrastructure_logger()` for all backend services
+- ❌ Never mix different logger types in the same service
+- ❌ Never log inside logging transport code
 
+**Example:**
 ```python
-import json
-import zmq
-import inspect
-from datetime import datetime
+from aico.core.logging_context import create_infrastructure_logger
 
-def log_event(level, module, topic, message, extra=None, severity=None, origin=None, environment=None, session_id=None, error_details=None):
-    frame = inspect.currentframe().f_back
-    function = frame.f_code.co_name
-    file = frame.f_code.co_filename
-    line = frame.f_lineno
-    log_event = {
-        "timestamp": datetime.utcnow().isoformat() + 'Z',
-        "level": level,
-        "module": module,
-        "function": function,
-        "file": file,
-        "line": line,
-        "topic": topic,
-        "message": message,
-        "extra": extra,
-        "severity": severity,
-        "origin": origin,
-        "environment": environment,
-        "session_id": session_id,
-        "error_details": error_details,
-    }
-    # Send to ZeroMQ with retry and fallback
-    _send_log(log_event)
-
-# Usage
-log_event(
-    level="INFO",
-    module="backend.llm",
-    topic="llm.inference",
-    message="LLM generated response"
-)
+class MyService:
+    def __init__(self):
+        self.logger = create_infrastructure_logger("my_service")
+    
+    def process_request(self):
+        self.logger.info("Processing request", extra={
+            "module": "backend.my_service",
+            "function": "process_request",
+            "topic": "service.request"
+        })
 ```
-
-- **Best Practice:** Tag all backend logs with `module: backend.*` and always specify the function.
 
 ---
 
@@ -212,10 +155,8 @@ log_event(
 
 ## Backend Bridge
 
-- The backend bridge is a lightweight service (e.g., Python Flask app) that receives logs from the Flutter frontend via HTTP or WebSocket and republishes them to ZeroMQ under `logs.frontend.*`.
-- The bridge can enrich logs with function/file/line info if needed.
+Lightweight service receiving logs from Flutter frontend and republishing to ZeroMQ:
 
-**Example Flask Bridge:**
 ```python
 from flask import Flask, request
 import zmq
@@ -227,30 +168,25 @@ socket.connect("tcp://127.0.0.1:5555")
 @app.route('/log', methods=['POST'])
 def receive_log():
     log_event = request.get_json()
-    # Optionally enrich with backend info here
     socket.send_json(log_event)
     return '', 204
 ```
 
-- Point the Flutter HTTP log sender to the `/log` endpoint of this bridge.
-
-**Summary:**
-- The backend bridge is **mandatory** for reliable, cross-platform logging from Flutter to ZeroMQ.
-- Do **not** attempt direct ZeroMQ publishing from Flutter in production, regardless of platform.
+**Note:** Backend bridge is mandatory for reliable Flutter-to-ZeroMQ logging.
 
 
 ---
 
 ## Central Log Collector & Storage
 
-- Subscribe to `logs.*` topics on the ZeroMQ bus.
-- **Store logs in a dedicated `logs` table in libSQL** (AICO’s structured, encrypted database).
-    - This enables fast search, filtering, and correlation by timestamp, user, session, etc.
-    - Supports privacy, retention, and deletion policies directly at the database level.
-    - Integrates with the repository/data access pattern used throughout AICO.
-- Optionally, mirror recent logs to file for redundancy or debugging (not the primary store).
-- Provide CLI or dashboard for unified log viewing and querying.
-- **Pinpointing Issues:** With `module`, `function`, `file`, and `line`, you can quickly trace the source of any problem.
+**Implementation:**
+- Subscribe to `logs.*` topics on ZeroMQ bus
+- Store in dedicated `logs` table in libSQL (encrypted)
+- Enable fast search, filtering, correlation
+- Support privacy and retention policies
+- Provide CLI/dashboard for log viewing
+
+**Benefits:** Fast issue tracing with `module`, `function`, `file`, `line` context
 
 **Example: Log Table Schema (libSQL)**
 ```sql
@@ -282,10 +218,11 @@ CREATE TABLE logs (
 
 ## ETL to Analytics Engine
 
-For advanced analytics, periodic ETL (Extract-Transform-Load) moves log data from libSQL to DuckDB. This process is not just a copy—it prepares logs for observability, dashboards, and automated insights:
+For advanced analytics, periodic ETL (Extract-Transform-Load) can move log data from libSQL to analytical databases (DuckDB planned). This process prepares logs for observability, dashboards, and automated insights:
 
-- **Why?** DuckDB is optimized for analytical queries, aggregations, and dashboarding on large datasets.
+- **Why?** Analytical databases are optimized for queries, aggregations, and dashboarding on large datasets.
 - **When?** Run ETL on a schedule (e.g., hourly, daily) or trigger on demand.
+- **Status:** Currently uses libSQL only; DuckDB integration planned.
 
 ### What Happens During ETL?
 
@@ -333,14 +270,14 @@ def transform_log(row):
     return row
 ```
 
-### Example: Aggregation in DuckDB
+### Example: Aggregation in libSQL (Current)
 ```sql
 -- Daily error counts by module
 SELECT
-  date_trunc('day', timestamp) AS day,
+  date(timestamp) AS day,
   module,
   COUNT(*) AS error_count
-FROM logs_analytics
+FROM logs
 WHERE level = 'ERROR'
 GROUP BY day, module
 ORDER BY day DESC, error_count DESC;
@@ -356,21 +293,18 @@ ORDER BY day DESC, error_count DESC;
 
 ## Privacy & Best Practices
 
-- Never log sensitive data (PII, secrets, etc.).
-- Respect user privacy settings and retention policies.
-- Tag logs clearly by origin (`frontend` or `backend`).
-- Use log rotation and local-first storage.
-- Document all log topics and schemas in code and docs.
-- **Always include function and file/line for actionable logs.**
+- Never log sensitive data (PII, secrets)
+- Respect user privacy and retention policies
+- Tag logs by origin (`frontend`/`backend`)
+- Use log rotation and local-first storage
+- Always include function and file/line context
 
----
+## End-to-End Flow
 
-## Example End-to-End Flow
-
-1. Flutter emits log as JSON (with module/function/file/line) → sends to backend via WebSocket/HTTP.
-2. Backend bridge receives log → republishes to ZeroMQ.
-3. Backend modules emit logs directly to ZeroMQ (with full context).
-4. Central collector subscribes to `logs.*` → stores, rotates, and serves logs for dashboards or CLI.
+1. **Flutter** → JSON log → WebSocket/HTTP → Backend bridge
+2. **Backend bridge** → ZeroMQ republish
+3. **Backend modules** → Direct ZeroMQ logging
+4. **Central collector** → Subscribe `logs.*` → Store in libSQL
 
 ---
 

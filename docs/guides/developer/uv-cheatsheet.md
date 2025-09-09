@@ -161,7 +161,7 @@ uv sync --extra cli --extra backend --extra test  # Reinstall everything
 
 - **Core (shared)**: cryptography, keyring, libsql-client, pyyaml, jsonschema, watchdog, pyzmq, protobuf, platformdirs, psutil, passlib, bcrypt
 - **CLI group**: typer, rich, requests
-- **Backend group**: chromadb, duckdb, fastapi, httpx, pydantic, pyjwt, uvicorn
+- **Backend group**: fastapi, httpx, pydantic, pyjwt, uvicorn (chromadb, duckdb planned)
 - **Test group**: pytest
 
 ## Best Practices

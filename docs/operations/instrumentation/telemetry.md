@@ -6,9 +6,9 @@ title: Telemetry Architecture
 
 ## Overview
 
-The AICO Telemetry System provides comprehensive, privacy-respecting observability capabilities designed specifically for AI researchers and developers to understand complex system interactions, diagnose issues, and improve system performance. It complements the existing [Instrumentation](instrumentation.md), [Logging](instrumentation-logging.md), and [Audit](../../security/audit.md) systems while focusing on the unique needs of AI system development.
+The AICO Telemetry System provides comprehensive, privacy-respecting observability for AI researchers and developers. It complements existing [Instrumentation](instrumentation.md), [Logging](instrumentation-logging.md), and [Audit](../../security/audit.md) systems while focusing on AI system development needs.
 
-This document outlines the architecture, implementation, and best practices for AICO's telemetry system, which serves as the foundation for system understanding, performance optimization, and AI behavior analysis.
+**Status:** Architecture design - implementation planned.
 
 ## Core Principles
 
@@ -67,7 +67,7 @@ The AICO Telemetry System captures data across six primary categories:
 - Personality trait expression patterns
 - Goal generation and completion metrics
 - Planning system decision trees
-- Curiosity engine exploration patterns
+- Curiosity engine exploration patterns (planned)
 
 ### 3. User Interaction Patterns
 
@@ -325,93 +325,58 @@ The Telemetry System implements several privacy safeguards:
 
 ## Implementation Components
 
-### 1. OpenTelemetry Integration
+### 1. OpenTelemetry Integration (Planned)
 
-AICO leverages OpenTelemetry as the standard framework for all telemetry needs:
+AICO will leverage OpenTelemetry as the standard framework:
 
 ```python
+# Planned implementation
 from opentelemetry import trace, metrics
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
-# Configure OpenTelemetry with AICO-specific resources
-resource = Resource.create({"service.name": "aico"})
-
-# Set up trace provider
-tracer_provider = TracerProvider(resource=resource)
-trace.set_tracer_provider(tracer_provider)
-
-# Set up metrics provider
-meter_provider = MeterProvider(resource=resource)
-metrics.set_meter_provider(meter_provider)
-
-# Get tracers and meters for components
+# Configure AICO-specific resources
 tracer = trace.get_tracer("aico.emotion_engine")
 meter = metrics.get_meter("aico.system_metrics")
 ```
 
-### 2. ZeroMQ Message Bus Integration
+**Note:** OpenTelemetry integration is planned but not yet implemented.
 
-Integrates with the existing message bus using an OpenTelemetry processor:
+### 2. ZeroMQ Message Bus Integration (Planned)
+
+Will integrate with existing message bus:
 
 ```python
+# Planned implementation
 class ZeroMQSpanProcessor:
-    def __init__(self, zmq_context):
-        self.socket = zmq_context.socket(zmq.PUB)
-        self.socket.connect("tcp://localhost:5555")
-    
     def on_end(self, span):
-        # Convert span to telemetry event and publish to ZeroMQ
         topic = f"telemetry.{span.name}"
-        message = json.dumps({
-            "timestamp": span.start_time,
-            "duration": span.end_time - span.start_time,
-            "attributes": span.attributes
-        })
         self.socket.send_multipart([topic.encode(), message.encode()])
 ```
 
-### 3. Unified Storage
+### 3. Unified Storage (Planned)
 
-Reuses the existing libSQL database with a simplified schema:
+Will use existing libSQL database:
 
-```python
-# Using the main AICO database instead of a separate telemetry DB
-conn = libsql.connect("aico.db")
-
-# Create a time-series optimized table
-conn.execute("""
-    CREATE TABLE IF NOT EXISTS telemetry (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT NOT NULL,
-        name TEXT NOT NULL,
-        attributes JSON NOT NULL
-    )
-""")
-
-# Create indexes for common query patterns
-conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry(timestamp)")
-conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_name ON telemetry(name)")
+```sql
+CREATE TABLE telemetry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    name TEXT NOT NULL,
+    attributes JSON NOT NULL
+);
 ```
 
-### 4. Simplified Query API
+### 4. Query API (Planned)
 
-Leverages OpenTelemetry's query capabilities with libSQL integration:
+Will provide telemetry query capabilities integrated with libSQL.
 
-```python
-# Get time series data for a specific metric
-```
-
-### 5. Visualization Components
+### 5. Visualization Components (Planned)
 
 - Real-time dashboards for system monitoring
-- Interactive visualizations for AI behavior analysis
-- Time-series charts for performance metrics
-- Network diagrams for component interactions
-- Heat maps for error patterns
-- Custom views for AI research metrics
+- Interactive AI behavior analysis
+- Time-series performance charts
+- Component interaction diagrams
+- Error pattern heat maps
+- Custom AI research views
 
 ## Deployment Considerations
 
@@ -443,43 +408,30 @@ When multiple AICO instances synchronize:
 
 ## Developer Tools and Interfaces
 
-### 1. CLI Interface
-
-Command-line tools for telemetry management:
+### 1. CLI Interface (Planned)
 
 ```bash
-# Query telemetry events
-aico telemetry query --category=ai_behavior --component=emotion_engine --last=24h
-
-# Export telemetry data
-aico telemetry export --format=json --output=telemetry_export.json --last=7d
-
-# View real-time telemetry
+# Planned telemetry commands
+aico telemetry query --category=ai_behavior --last=24h
+aico telemetry export --format=json --last=7d
 aico telemetry watch --category=system_performance
-
-# Manage retention policies
-aico telemetry retention --set --category=ai_behavior --days=60
 ```
 
-### 2. Admin UI
+### 2. Admin UI (Planned)
 
-Dedicated section in the Admin UI for telemetry visualization and management:
-
-- Dashboard with key metrics and system health
-- Interactive visualizations of AI behavior
+- Telemetry dashboard with key metrics
+- Interactive AI behavior visualizations
 - Component interaction diagrams
 - Performance profiling tools
-- Query builder for custom telemetry analysis
-- Configuration panel for telemetry settings
+- Custom telemetry query builder
+- Telemetry configuration panel
 
-### 3. Developer SDK
+### 3. Developer SDK (Planned)
 
-SDK for custom telemetry integration:
-
-- Telemetry API clients for multiple languages
-- Visualization components for custom dashboards
-- Query builders for telemetry analysis
-- Export/import utilities for offline analysis
+- Multi-language telemetry API clients
+- Custom dashboard visualization components
+- Telemetry analysis query builders
+- Offline analysis export/import utilities
 
 ## Relationship to Audit System
 
