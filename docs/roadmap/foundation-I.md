@@ -70,9 +70,9 @@ Build the **essential** system infrastructure required for MVP companion feature
 ## Phase 3: MVP-Critical Infrastructure
 
 ### Basic Model Service (Required for text-based conversations)
-- [ ] **Model Service**: Basic abstraction layer to LLM providers via Ollama
-- [ ] **Model Configuration**: Basic model configuration for text-based conversations
-- [ ] **Model Execution**: Basic model execution for text-based conversations
+- [x] **Model Service**: Basic abstraction layer to LLM providers via Ollama
+- [x] **Model Configuration**: Basic model configuration for text-based conversations
+- [x] **Model Execution**: Basic model execution for text-based conversations
 
 ### WebView Avatar Integration (Required for MVP Embodiment)
 - [ ] **WebView Widget**: Flutter WebView setup for avatar rendering
@@ -115,11 +115,11 @@ Build the **essential** system infrastructure required for MVP companion feature
 - [x] Cross-platform deployment (Windows/macOS/Linux)
 
 ### Architecture Compliance
-- [ ] **Message-Driven**: All module communication via ZeroMQ pub/sub
-- [ ] **Modular Design**: Independent modules with clear boundaries
-- [ ] **Loose Coupling**: Modules only depend on message contracts
-- [ ] **Local-First**: All core functionality works offline
-- [ ] **Privacy-First**: Encryption and consent management operational
-- [ ] **Agency-Ready**: Infrastructure supports autonomous behavior
+- [x] **Message-Driven**: All module communication via ZeroMQ pub/sub
+- [x] **Modular Design**: Independent modules with clear boundaries
+- [x] **Loose Coupling**: Modules only depend on message contracts
+- [x] **Local-First**: All core functionality works offline
+- [x] **Privacy-First**: Encryption and consent management operational
+- [x] **Agency-Ready**: Infrastructure supports autonomous behavior
 
 **Next**: See MVP Roadmap (file does not exist) for companion AI features, then [Foundation II](foundation-II.md) for advanced infrastructure.

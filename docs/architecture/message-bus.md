@@ -6,7 +6,7 @@ The Core Message Bus is the central nervous system of AICO, enabling modular, ev
 
 **🔒 Security First:** All message bus communication is encrypted using CurveZMQ with mandatory authentication. There is no plaintext fallback - the system enforces secure communication or fails completely.
 
-**⚠️ CRITICAL: Logging Recursion Prevention** - NEVER use standard logging (logger.info(), logger.error()) within message bus transport, send/receive operations, or message handling code. Use print() statements to avoid infinite recursion loops that crash the system.
+**⚠️ CRITICAL: Logging Recursion Prevention** - Avoid standard logging within message bus operations to prevent infinite recursion loops.
 
 This architecture document describes the design, implementation, and integration patterns of AICO's central message bus system, which serves as the foundation for inter-module communication and coordination.
 
@@ -85,24 +85,44 @@ The Core Message Bus implements a **hybrid broker pattern** with the backend ser
 
 ### Message Bus Technology
 
-The Core Message Bus uses **ZeroMQ** as the standard internal messaging system:
+The Core Message Bus uses **ZeroMQ** with **CurveZMQ encryption**:
 
-- High-performance, asynchronous messaging library
-- Lightweight and embedded within the application
-- Supports multiple messaging patterns (pub/sub, request/reply)
-- Provides reliable message delivery with minimal overhead
-- Proven architecture pattern (similar to ROS robotics framework)
+```python
+# Example: Creating encrypted message bus client
+from aico.core.bus import create_client
 
-ZeroMQ is chosen for its performance, flexibility, and suitability for all local and internal communication needs in AICO.
+client = create_client("api_gateway")
+await client.connect()  # Automatically sets up CurveZMQ encryption
+```
+
+- **High-performance:** Asynchronous messaging with minimal overhead
+- **Secure by default:** Mandatory CurveZMQ encryption for all communication
+- **Flexible patterns:** Pub/sub with hierarchical topic routing
+- **Embedded:** No external message broker dependencies
 
 ### Message Format
 
-All messages use Protocol Buffers for serialization, providing:
-- High-performance binary serialization
-- Strong typing and schema validation
-- Cross-language code generation
-- Efficient size (smaller than JSON)
-- Backward compatibility through versioning
+```protobuf
+// Example: Core message envelope
+message AicoMessage {
+  MessageMetadata metadata = 1;
+  google.protobuf.Any any_payload = 2;
+}
+
+message MessageMetadata {
+  string message_id = 1;
+  string timestamp = 2;
+  string source = 3;
+  string message_type = 4;
+  string version = 5;
+}
+```
+
+Protocol Buffers provide:
+- **Binary serialization:** Compact, fast encoding/decoding
+- **Strong typing:** Compile-time validation and code generation
+- **Versioning:** Backward compatibility through schema evolution
+- **Cross-language:** Python, Dart, and other language bindings
 
 ### Message Validation
 
@@ -133,46 +153,52 @@ The message bus uses a hierarchical topic structure that organizes messages by f
    - After ZeroMQ delivers messages based on prefix, AICO performs application-level pattern matching
    - This is where wildcard semantics are applied
 
-#### Wildcard Patterns
+#### ZeroMQ Prefix Matching
 
-AICO supports two types of wildcards:
+ZeroMQ uses simple prefix matching (no wildcards):
 
-| Pattern | Description | Example | Matches | Doesn't Match |
-|---------|-------------|---------|---------|---------------|
-| `*` | Matches exactly one segment | `logs/*` | `logs/backend` | `logs/backend/main` |
-| `**` | Matches any number of segments | `logs/**` | `logs/backend`, `logs/backend/main` | N/A |
+| Pattern | ZMQ Filter | Behavior | Matches |
+|---------|------------|----------|----------|
+| `logs/backend` | `logs/backend` | Exact prefix match | `logs/backend`, `logs/backend/main`, `logs/backend/api` |
+| `logs/` | `logs/` | Prefix match | All topics starting with `logs/` |
+| `*` or `**` | `""` (empty) | Match all | Every message on the bus |
 
 #### Common Subscription Patterns
 
 | Use Case | Pattern | ZMQ Filter | Matches |
-|----------|---------|------------|---------|
-| All logs | `logs/**` | `logs/` | All logs from any subsystem and module |
-| Specific subsystem | `logs/backend/**` | `logs/backend/` | All logs from backend subsystem |
-| Specific module | `logs/backend/main` | `logs/backend/main` | Only logs from backend.main |
+|----------|---------|------------|----------|
+| All logs | `logs/` | `logs/` | All topics starting with `logs/` |
+| Backend logs | `logs/backend/` | `logs/backend/` | All topics starting with `logs/backend/` |
+| Specific module | `logs/backend/main` | `logs/backend/main` | Topics starting with `logs/backend/main` |
+| All messages | `*` or `**` | `""` (empty) | Every message on the bus |
 
 #### Best Practices
 
-1. **Always use `**` for multi-level wildcards**
-   - When subscribing to hierarchical topics, use `**` instead of `*` to match multiple levels
-   - Example: Use `logs/**` instead of `logs/*` to capture all logs
+1. **Use prefix patterns for hierarchical subscriptions**
+   - Subscribe to `logs/` to receive all log messages
+   - Subscribe to `logs/backend/` to receive all backend logs
+   - Be specific with prefixes to avoid unnecessary message delivery
 
-2. **Debug topic matching issues**
-   - Use `_pattern_to_zmq_filter()` to see what ZMQ filter is being used
-   - Use `_topic_matches_pattern()` to test if topics match patterns
+2. **Understand ZeroMQ's prefix behavior**
+   - ZeroMQ delivers ANY message whose topic starts with your filter
+   - No application-level filtering is implemented
+   - Design topics carefully to leverage prefix matching effectively
 
 #### Common Pitfalls
 
-1. **Using `*` when `**` is needed**
-   - `logs/*` only matches `logs/backend` but not `logs/backend/main`
-   - Use `logs/**` to match all log topics regardless of depth
+1. **Expecting wildcard behavior**
+   - ZeroMQ does NOT support `*` or `**` wildcards
+   - `logs/*` is treated as literal prefix `logs/*`, not a wildcard
+   - Use proper prefixes like `logs/` instead
 
-2. **Forgetting ZeroMQ's prefix matching behavior**
-   - ZeroMQ doesn't understand wildcards - it only does prefix matching
-   - The application handles the actual wildcard semantics
+2. **Over-subscribing with broad prefixes**
+   - Subscribing to `logs/` delivers ALL log messages
+   - This can cause performance issues with high message volume
+   - Use specific prefixes when possible
 
 3. **Inconsistent topic structure**
-   - Always follow the hierarchical structure with proper slashes
-   - Never use underscores to flatten hierarchical topics
+   - Design hierarchical topics to work well with prefix matching
+   - Use consistent separators (slashes) for topic hierarchy
 
 - **emotion/** - Emotion simulation related messages
   - `emotion/state/current` - Current emotional state

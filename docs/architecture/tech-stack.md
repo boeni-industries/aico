@@ -66,7 +66,7 @@ AICO employs a specialized multi-database architecture optimized for local-first
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **gocryptfs** | Filesystem-level encryption | Transparent encryption for all database files with zero functionality loss |
+| **SQLCipher/libSQL** | Database-level encryption | Native database encryption with AES-256-GCM for all structured data |
 | **AES-256-GCM** | Authenticated encryption | Industry standard encryption with integrity verification |
 | **Argon2id** | Key derivation | Industry-leading memory-hard KDF, winner of Password Hashing Competition |
 | **Python-Cryptography** | Cryptographic library | Comprehensive, well-maintained cryptographic primitives with Argon2id support |
@@ -130,7 +130,7 @@ AICO employs a specialized multi-database architecture optimized for local-first
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **TraitEmergence** | Personality architecture | Multi-dimensional trait-based modeling |
+| **Personality System** | Personality architecture | Big Five and HEXACO trait-based personality modeling |
 | **Big Five & HEXACO** | Trait models | Comprehensive personality representation |
 
 ### Emotion Simulation

@@ -290,22 +290,33 @@ The AICO system consists of the following main parts:
 - Admin UI
 - CLI
 
-**Backend Service**
-The backend service is a Python application that provides the core functionality of AICO. It uses a plugin-based architecture with FastAPI, ZeroMQ message bus, and encrypted data storage. The service runs continuously as a system daemon, coordinating autonomous agency, AI processing, and real-time communication through a modular plugin system.
+### Backend Service
+Python-based persistent service providing core AICO functionality:
+- **Plugin-based architecture** with FastAPI and ZeroMQ message bus
+- **Encrypted data storage** using libSQL with SQLCipher
+- **Continuous operation** enabling autonomous agency and background processing
+- **Modular design** with lifecycle management and dependency injection
 
-**Frontend App**
+### Frontend App
+Flutter-based cross-platform user interface:
+- **Thin client design** connecting to backend via REST/WebSocket
+- **Real-time communication** for notifications and status updates
+- **Cross-platform support** for desktop, mobile, and web
+- **Responsive interface** with avatar integration via WebView
 
-The frontend app is a Flutter application that provides a user interface for interacting with AICO. It is built using the Flutter framework and the Dart programming language and provides a responsive and intuitive interface for users to interact with AICO.
+### Modelservice
+Lightweight LLM inference service:
+- **Ollama integration** with automatic binary management
+- **REST API gateway** for model inference requests
+- **Cross-platform deployment** with native binary handling
+- **Resource coordination** with backend monitoring systems
 
-**Modelservice**
-
-The modelservice is a minimal REST-based subsystem that provides a unified API gateway to foundational large language model (LLM) inference, initially integrating with Ollama. It abstracts direct model runner access, ensuring modularity, security, and future extensibility for additional foundational models. The service manages Ollama as a native binary subprocess with automatic installation and lifecycle management.
-
-**Admin UI**
-The admin UI is a web application that provides a user interface for managing the system. It is built using the React framework and provides a responsive and intuitive interface for developers and advanced users to manage the system.
-
-**CLI**
-The CLI is a Python application that provides a command-line interface for interacting with AICO. It provides a simple and intuitive interface for developers and advanced users to interact with AICO.
+### CLI
+Professional command-line interface:
+- **Rich output formatting** with tables and colors
+- **Cross-platform executables** via PyInstaller
+- **Direct backend integration** through ZeroMQ and REST APIs
+- **Administrative functions** for system management
 
 ## Architecture Patterns
 
@@ -471,14 +482,21 @@ This approach maintains architectural consistency, simplifies deployment, and en
 
 ### Core Backend Components
 
-#### Plugin-Based API Gateway
-The API Gateway (`AICOAPIGatewayV2`) provides a unified, encrypted entry point using a modular plugin architecture:
+#### API Gateway
+The API Gateway provides a unified, secure entry point:
 
-- **Single Port Design:** All endpoints served on port 8771 with unified FastAPI application
-- **ASGI Encryption Middleware:** Transparent encryption wrapping the entire application
-- **Domain-Based Routing:** Organized endpoints (`/api/v1/users/`, `/api/v1/admin/`, `/api/v1/logs/`)
-- **Plugin System:** Extensible middleware stack for authentication, rate limiting, and logging
-- **Protocol Adapters:** REST, WebSocket, and ZeroMQ adapters managed as plugins
+```python
+# Example: API Gateway initialization
+from backend.core.lifecycle_manager import BackendLifecycleManager
+
+lifecycle_manager = BackendLifecycleManager(config_manager)
+app = await lifecycle_manager.startup()
+```
+
+- **Single Port Design:** All endpoints on port 8771 with FastAPI
+- **Encryption Middleware:** Request/response encryption with selective bypass
+- **Domain Routing:** `/api/v1/admin/`, `/api/v1/scheduler/`, `/api/v1/logs/`
+- **Plugin Architecture:** Modular middleware and protocol adapters
 
 #### Job Scheduler & Task Queue
 - **Task Management:** Internal job/task queue manages all long-running, background, or proactive jobs (skill brushing, summarization, research).
@@ -496,11 +514,28 @@ The API Gateway (`AICOAPIGatewayV2`) provides a unified, encrypted entry point u
 - **User-Configurable Limits:** Users control which activities are allowed and resource limits.
 
 #### Message Bus & Log Consumer
-- **ZeroMQ Broker:** High-performance message routing with Protocol Buffers serialization
-- **Topic-Based Routing:** Structured topics (`logs.*`, `events.*`) for module communication
-- **Log Consumer Service:** Dedicated service for persisting logs from ZMQ transport to encrypted database
-- **Protobuf Pipeline:** Binary message serialization for performance and type safety
-- **Plugin Integration:** Plugins communicate via standardized message bus topics
+
+```python
+# Example: Message bus usage
+from aico.core.bus import MessageBusClient, create_client
+
+client = create_client("api_gateway")
+await client.connect()
+
+# Publish encrypted message
+await client.publish("logs/backend/main", {"level": "INFO", "message": "Service started"})
+
+# Subscribe to topics
+def log_handler(topic: str, message: dict):
+    print(f"Received: {topic} - {message}")
+
+await client.subscribe("logs/", log_handler)
+```
+
+- **ZeroMQ Broker:** High-performance routing with CurveZMQ encryption
+- **Topic Hierarchy:** Structured topics (`logs/`, `events/`) with prefix matching
+- **Log Consumer:** Dedicated service persisting logs to encrypted libSQL database
+- **Protobuf Serialization:** Binary format for performance and type safety
 
 #### Plugin Manager
 - **Plugin Discovery:** Automatically discovers and loads available plugins.
@@ -591,12 +626,25 @@ The Update System manages automatic updates for both frontend and backend compon
 - **Memory Consolidation:** Long-term memory formation and optimization.
 
 #### Data & Storage Layer
-- **Multi-Database Architecture:** Specialized databases for different workloads.
-- **Primary Storage (libSQL):** Core structured data with built-in encryption.
-- **Vector Database (ChromaDB):** Embedding storage and similarity search.
-- **Analytical Engine (DuckDB):** Fast analytical processing for complex queries.
-- **Key-Value Store (RocksDB):** Optional high-performance caching layer.
-- **Federated Sync:** P2P encrypted device synchronization.
+
+```python
+# Example: Encrypted database usage
+from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+from aico.security import AICOKeyManager
+
+key_manager = AICOKeyManager(config_manager)
+master_key = key_manager.authenticate()
+db_key = key_manager.derive_database_key(master_key, "libsql", "aico.db")
+
+conn = EncryptedLibSQLConnection("aico.db", encryption_key=db_key)
+with conn:
+    conn.execute("INSERT INTO logs (message) VALUES (?)", ["Hello World"])
+```
+
+- **Primary Storage (libSQL):** Encrypted SQLite with SQLCipher integration
+- **Vector Database (ChromaDB):** Embedding storage for semantic search
+- **Analytical Engine (DuckDB):** Fast OLAP queries and analytics
+- **Unified Schema:** Single core schema with atomic migrations
 
 #### Learning System
 - **Continual Learning:** Ongoing learning from interactions and experiences.

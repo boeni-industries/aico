@@ -155,21 +155,30 @@ The system manages configuration across five primary domains:
 
 ## Configuration Management API
 
-The system provides a unified `ConfigurationManager` class that handles all configuration operations:
+```python
+# Example: Using ConfigurationManager
+from aico.core.config import ConfigurationManager
+
+config = ConfigurationManager()
+config.initialize()
+
+# Get configuration with fallback
+api_port = config.get("api.port", 8771)
+db_path = config.get("database.libsql.path", "aico.db")
+
+# Set configuration values
+config.set("personality.traits.openness", 0.8, persist=True)
+
+# Validate configuration
+config.validate("security", security_config)
+```
 
 ### Core Operations
-- **Initialization**: Loads schemas, configurations, and sets up file watchers
-- **Get/Set**: Dot-notation access to configuration values (`api.port`, `personality.traits.openness`)
-- **Validation**: Schema-based validation against JSON Schema definitions
-- **Persistence**: Encrypted storage of runtime configuration changes
-- **Hot Reloading**: Automatic reload when configuration files change
-
-### Key Methods
-- `get(key, default)` - Retrieve configuration values with fallback
-- `set(key, value, persist)` - Update configuration with optional persistence
-- `validate(domain, config)` - Validate configuration against schema
-- `export_config(domains)` - Export configuration for backup/migration
-- `import_config(config)` - Import configuration with validation
+- **Initialization**: Loads schemas and configurations with file watchers
+- **Dot-notation access**: `api.port`, `personality.traits.openness`
+- **Schema validation**: JSON Schema-based validation
+- **Hot reloading**: Automatic reload on file changes
+- **Encrypted persistence**: Runtime changes stored securely
 
 ## Subsystem Integration
 
@@ -236,16 +245,7 @@ aico config validate
 db_config = config_manager.get("database.libsql")
 
 # Get API settings with fallback
-api_port = config_manager.get("api.port", 8770)
-```
-
-### Frontend Configuration Usage
-```dart
-// Get theme configuration
-final isDarkMode = ConfigManager.instance.get<bool>('theme.mode', false);
-
-// Update user preference
-await ConfigManager.instance.set('conversation.sound_notifications', false);
+api_port = config_manager.get("api.port", 8771)
 ```
 
 This configuration management system provides a robust, secure, and flexible foundation for managing AICO's complex configuration needs across all subsystems while maintaining the privacy-first, local-first principles of the project.

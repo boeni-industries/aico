@@ -254,8 +254,8 @@ nav:
           - Logging: operations/instrumentation/instrumentation-logging.md
           - Telemetry: operations/instrumentation/telemetry.md
   - Roadmap:
-      - MVP: roadmap/mvp.md
       - Foundation I: roadmap/foundation-I.md
+      - MVP: roadmap/mvp.md
       - Foundation II: roadmap/foundation-II.md
       - Sidekick: roadmap/sidekick.md
       - Co-Adventurer: roadmap/co-adventurer.md
