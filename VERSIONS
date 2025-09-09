@@ -3,4 +3,4 @@ cli: 0.7.0
 backend: 0.6.0
 frontend: 0.2.2
 studio: 0.0.1
-modelservice: 0.0.2
+modelservice: 0.1.0
