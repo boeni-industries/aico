@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:aico_frontend/core/logging/aico_log.dart';
 
 class TokenManager {
   static const FlutterSecureStorage _secureStorage = FlutterSecureStorage(
@@ -76,6 +77,9 @@ class TokenManager {
       return false; // Placeholder - implement when refresh endpoint is available
     } catch (e) {
       debugPrint('Token refresh failed: $e');
+      AICOLog.error('Token refresh failed', 
+        topic: 'network/token/refresh/error',
+        extra: {'error': e.toString()});
       return false;
     }
   }

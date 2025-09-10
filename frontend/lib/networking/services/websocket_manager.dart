@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -56,8 +57,14 @@ class WebSocketManager {
       _startHeartbeat();
       
       debugPrint('[WebSocket] Connected to $url');
+      AICOLog.info('WebSocket connected', 
+        topic: 'network/websocket/connect/success',
+        extra: {'url': url});
     } catch (e) {
       debugPrint('[WebSocket] Connection failed: $e');
+      AICOLog.error('WebSocket connection failed', 
+        topic: 'network/websocket/connect/error',
+        extra: {'url': url, 'error': e.toString()});
       _updateState(WebSocketState.disconnected);
       _scheduleReconnect(url);
     }
@@ -73,12 +80,17 @@ class WebSocketManager {
     
     _updateState(WebSocketState.disconnected);
     debugPrint('[WebSocket] Disconnected');
+    AICOLog.info('WebSocket disconnected', 
+      topic: 'network/websocket/disconnect');
   }
 
   /// Send message to WebSocket server
   void sendMessage(Map<String, dynamic> message) {
     if (_currentState != WebSocketState.connected || _channel == null) {
       debugPrint('[WebSocket] Cannot send message - not connected');
+      AICOLog.warn('WebSocket message send failed - not connected', 
+        topic: 'network/websocket/send/error',
+        extra: {'state': _currentState.toString()});
       return;
     }
 

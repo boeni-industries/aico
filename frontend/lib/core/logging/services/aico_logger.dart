@@ -78,6 +78,11 @@ class AICOLogger {
   }
 
   /// Get the global logger instance
+  static AICOLogger? get instanceOrNull {
+    return _instance;
+  }
+
+  /// Get the global logger instance
   static AICOLogger get instance {
     if (_instance == null) {
       throw StateError('AICOLogger not initialized. Call AICOLogger.initialize() first.');

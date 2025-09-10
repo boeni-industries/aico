@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aico_frontend/networking/clients/websocket_client.dart';
 import 'package:aico_frontend/networking/models/error_models.dart';
+import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:flutter/foundation.dart';
 
 enum ConnectionMode {
@@ -38,6 +39,9 @@ class ConnectionManager {
 
     _isInitialized = true;
     debugPrint('Connection manager initialized with mode: $_currentMode');
+    AICOLog.info('Connection manager initialized', 
+      topic: 'network/connection/init',
+      extra: {'mode': _currentMode.toString()});
   }
 
   Future<T> execute<T>(Future<T> Function() operation) async {

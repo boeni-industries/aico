@@ -5,6 +5,8 @@ import 'package:aico_frontend/core/topics/aico_topics.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/widgets/auth/auth_gate.dart';
+import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/core/logging/providers/logging_providers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,6 +39,10 @@ void main() async {
   } catch (e) {
     // Window manager not available on this platform, continue without it
     debugPrint('Window manager not available: $e');
+    AICOLog.warn('Window manager not available on platform', 
+      topic: 'app/startup/window_manager', 
+      error: e,
+      extra: {'platform': Platform.operatingSystem});
   }
   
   // Initialize SharedPreferences for Riverpod
@@ -44,6 +50,9 @@ void main() async {
   
   // TODO: Replace with proper unified logging that sends to backend
   debugPrint('[app:${AICOTopics.appStartup}] AICO Flutter application starting');
+  AICOLog.info('AICO Flutter application starting', 
+    topic: 'app/startup/init', 
+    extra: {'startup_topic': AICOTopics.appStartup});
   
   runApp(
     ProviderScope(
@@ -69,8 +78,16 @@ class _AicoAppState extends ConsumerState<AicoApp> {
   void initState() {
     super.initState();
     
+    // Initialize the logger provider to trigger initialization
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(aicoLoggerProvider);
+    });
+    
     // TODO: Replace with proper unified logging that sends to backend
     debugPrint('[app:${AICOTopics.appInitialization}] App widget initialized with Riverpod');
+    AICOLog.info('App widget initialized with Riverpod', 
+      topic: 'app/lifecycle/init', 
+      extra: {'initialization_topic': AICOTopics.appInitialization});
     
     // Initialize auth status check
     WidgetsBinding.instance.addPostFrameCallback((_) {

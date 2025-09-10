@@ -2,6 +2,7 @@ import 'package:aico_frontend/core/services/api_service.dart';
 import 'package:aico_frontend/networking/models/user_models.dart';
 import 'package:aico_frontend/networking/services/secure_credential_manager.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
+import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
@@ -20,9 +21,18 @@ class ApiUserService {
 
   Future<List<User>> getUsers({String? userType, int limit = 100}) async {
     try {
+      AICOLog.info('Fetching users', 
+        topic: 'network/user/fetch/start',
+        extra: {'user_type': userType, 'limit': limit});
       final response = await _apiService.getUsers(userType: userType, limit: limit);
+      AICOLog.info('Users fetched successfully', 
+        topic: 'network/user/fetch/success',
+        extra: {'count': response.users.length});
       return response.users;
     } catch (e) {
+      AICOLog.error('Failed to fetch users', 
+        topic: 'network/user/fetch/error',
+        extra: {'error': e.toString(), 'user_type': userType, 'limit': limit});
       if (e is DioException) {
         throw Exception('Network error: ${e.message}');
       }
@@ -32,8 +42,18 @@ class ApiUserService {
 
   Future<User> createUser(CreateUserRequest request) async {
     try {
-      return await _apiService.createUser(request);
+      AICOLog.info('Creating user', 
+        topic: 'network/user/create/start',
+        extra: {'full_name': request.fullName});
+      final user = await _apiService.createUser(request);
+      AICOLog.info('User created successfully', 
+        topic: 'network/user/create/success',
+        extra: {'user_id': user.uuid, 'full_name': user.fullName});
+      return user;
     } catch (e) {
+      AICOLog.error('Failed to create user', 
+        topic: 'network/user/create/error',
+        extra: {'error': e.toString(), 'full_name': request.fullName});
       if (e is DioException) {
         throw Exception('Network error: ${e.message}');
       }
@@ -43,8 +63,18 @@ class ApiUserService {
 
   Future<User> getUser(String uuid) async {
     try {
-      return await _apiService.getUser(uuid);
+      AICOLog.info('Fetching user by ID', 
+        topic: 'network/user/get/start',
+        extra: {'user_id': uuid});
+      final user = await _apiService.getUser(uuid);
+      AICOLog.info('User fetched successfully', 
+        topic: 'network/user/get/success',
+        extra: {'user_id': uuid, 'full_name': user.fullName});
+      return user;
     } catch (e) {
+      AICOLog.error('Failed to fetch user', 
+        topic: 'network/user/get/error',
+        extra: {'error': e.toString(), 'user_id': uuid});
       if (e is DioException) {
         throw Exception('Network error: ${e.message}');
       }

@@ -12,7 +12,9 @@ import 'package:aico_frontend/core/logging/services/aico_logger.dart';
 /// AICOLog.debug('Processing user data', extra: {'userId': user.id});
 /// ```
 class AICOLog {
-  static AICOLogger? get _logger => AICOLogger.instance;
+  static AICOLogger? get _logger {
+    return AICOLogger.instanceOrNull;
+  }
 
   /// Log a debug message
   /// Used for detailed diagnostic information, typically only of interest when diagnosing problems
@@ -87,12 +89,18 @@ class AICOLog {
     if (logger == null) {
       // Fallback to debug print if logger not initialized
       if (kDebugMode) {
-        debugPrint('[${level.name.toUpperCase()}] $message');
+        debugPrint('[AICO-FALLBACK][${level.name.toUpperCase()}] $message');
+        if (topic != null) {
+          debugPrint('[AICO-FALLBACK] Topic: $topic');
+        }
+        if (extra != null) {
+          debugPrint('[AICO-FALLBACK] Extra: $extra');
+        }
         if (error != null) {
-          debugPrint('Error: $error');
+          debugPrint('[AICO-FALLBACK] Error: $error');
         }
         if (stackTrace != null) {
-          debugPrint('Stack trace: $stackTrace');
+          debugPrint('[AICO-FALLBACK] Stack trace: $stackTrace');
         }
       }
       return;
