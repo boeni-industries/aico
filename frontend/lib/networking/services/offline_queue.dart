@@ -151,19 +151,22 @@ class OfflineQueue {
 
   Future<void> _saveQueue() async {
     try {
-      final storageService = _ref.read(storageServiceProvider);
-      
-      final serializedOps = _operations.map((op) => {
-        'id': op.id,
-        'type': op.type,
-        'data': op.data,
-        'createdAt': op.createdAt.toIso8601String(),
-        'retryCount': op.retryCount,
-      }).toList();
-      
-      final jsonString = {'operations': serializedOps}.toString();
-      await storageService.setStringValue('offline_queue', jsonString);
-      debugPrint('Saved ${serializedOps.length} operations to storage');
+      final storageServiceAsync = _ref.read(storageServiceProvider);
+      if (storageServiceAsync is AsyncData<StorageService>) {
+        final storageService = storageServiceAsync.value;
+        
+        final serializedOps = _operations.map((op) => {
+          'id': op.id,
+          'type': op.type,
+          'data': op.data,
+          'createdAt': op.createdAt.toIso8601String(),
+          'retryCount': op.retryCount,
+        }).toList();
+        
+        final jsonString = {'operations': serializedOps}.toString();
+        await storageService.setStringValue('offline_queue', jsonString);
+        debugPrint('Saved ${serializedOps.length} operations to storage');
+      }
     } catch (e) {
       debugPrint('Failed to save queue to storage: $e');
     }
@@ -171,14 +174,17 @@ class OfflineQueue {
 
   Future<void> _loadQueue() async {
     try {
-      final storageService = _ref.read(storageServiceProvider);
-      final queueDataString = storageService.getStringValue('offline_queue');
-      
-      if (queueDataString != null) {
-        // TODO: Implement proper JSON parsing when needed
-        debugPrint('Queue data found in storage: ${queueDataString.length} chars');
-      } else {
-        debugPrint('No queue data found in storage');
+      final storageServiceAsync = _ref.read(storageServiceProvider);
+      if (storageServiceAsync is AsyncData<StorageService>) {
+        final storageService = storageServiceAsync.value;
+        final queueDataString = await storageService.getStringValue('offline_queue');
+        
+        if (queueDataString != null) {
+          // TODO: Implement proper JSON parsing when needed
+          debugPrint('Queue data found in storage: ${queueDataString.length} chars');
+        } else {
+          debugPrint('No queue data found in storage');
+        }
       }
       
       _notifyQueueChanged();

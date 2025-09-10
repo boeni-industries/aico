@@ -21,12 +21,22 @@ class LogCache {
   Future<void> initialize() async {
     try {
       // Try to load cached logs from storage
-      final storageService = _ref.read(storageServiceProvider);
-      final cachedData = storageService.getStringValue('pending_logs');
-      if (cachedData != null) {
-        final List<dynamic> jsonList = jsonDecode(cachedData);
-        final cachedLogs = jsonList.map((json) => LogEntry.fromJson(json)).toList();
-        _memoryBuffer.addAll(cachedLogs);
+      try {
+        final storageServiceAsync = _ref.read(storageServiceProvider);
+        if (storageServiceAsync is AsyncData<StorageService>) {
+          final storageService = storageServiceAsync.value;
+          final cachedData = storageService.getStringValue('pending_logs');
+          if (cachedData != null) {
+            final List<dynamic> jsonList = jsonDecode(cachedData);
+            final cachedLogs = jsonList.map((json) => LogEntry.fromJson(json)).toList();
+            _memoryBuffer.addAll(cachedLogs);
+          }
+        } else {
+          debugPrint('Storage service not ready, using in-memory cache only');
+        }
+      } catch (storageError) {
+        // Storage service not available, continue with in-memory only
+        debugPrint('Storage service not available, using in-memory cache only: $storageError');
       }
     } catch (e) {
       debugPrint('Failed to load cached logs: $e');
@@ -115,10 +125,20 @@ class LogCache {
   /// Persist cache to storage
   Future<void> _persistToStorage() async {
     try {
-      final storageService = _ref.read(storageServiceProvider);
-      final jsonList = _memoryBuffer.map((entry) => entry.toJson()).toList();
-      final jsonString = jsonEncode(jsonList);
-      await storageService.setStringValue('pending_logs', jsonString);
+      try {
+        final storageServiceAsync = _ref.read(storageServiceProvider);
+        if (storageServiceAsync is AsyncData<StorageService>) {
+          final storageService = storageServiceAsync.value;
+          final jsonList = _memoryBuffer.map((entry) => entry.toJson()).toList();
+          final jsonString = jsonEncode(jsonList);
+          await storageService.setStringValue('pending_logs', jsonString);
+        } else {
+          debugPrint('Storage service not ready, skipping persistence');
+        }
+      } catch (storageError) {
+        // Storage service not available, continue with in-memory only
+        debugPrint('Storage service not available, skipping persistence: $storageError');
+      }
     } catch (e) {
       debugPrint('Failed to persist logs to storage: $e');
     }

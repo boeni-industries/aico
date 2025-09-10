@@ -30,7 +30,7 @@ class UserService:
     
     def __init__(self, db_connection: LibSQLConnection):
         self.db = db_connection
-        self.logger = get_logger("user_service", "core")
+        self.logger = get_logger("shared", "user_service.core")
         
         # Load configuration
         self.config = ConfigurationManager()

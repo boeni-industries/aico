@@ -10,8 +10,8 @@ final flutterSecureStorageProvider = Provider<FlutterSecureStorage>((ref) {
 });
 
 /// SharedPreferences provider
-final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError('SharedPreferences must be overridden in main.dart');
+final sharedPreferencesProvider = FutureProvider<SharedPreferences>((ref) async {
+  return await SharedPreferences.getInstance();
 });
 
 /// Encryption service provider
@@ -27,9 +27,9 @@ final tokenManagerProvider = Provider<TokenManager>((ref) {
 });
 
 /// Storage service provider
-final storageServiceProvider = Provider<StorageService>((ref) {
+final storageServiceProvider = FutureProvider<StorageService>((ref) async {
   final secureStorage = ref.watch(flutterSecureStorageProvider);
-  final sharedPrefs = ref.watch(sharedPreferencesProvider);
+  final sharedPrefs = await ref.watch(sharedPreferencesProvider.future);
   return StorageService(secureStorage, sharedPrefs);
 });
 

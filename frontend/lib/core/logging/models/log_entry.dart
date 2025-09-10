@@ -82,7 +82,7 @@ class LogEntry {
     );
   }
 
-  /// Convert LogEntry to JSON
+  /// Convert LogEntry to JSON for backend API
   Map<String, dynamic> toJson() {
     return {
       'timestamp': timestamp,
@@ -97,6 +97,9 @@ class LogEntry {
       if (sessionId != null) 'session_id': sessionId,
       if (extra != null) 'extra': extra,
       if (errorDetails != null) 'error_details': errorDetails,
+      // Backend expects these fields
+      'origin': 'frontend',
+      'environment': 'development', // TODO: Get from config
     };
   }
 

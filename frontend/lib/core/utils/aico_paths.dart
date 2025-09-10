@@ -47,7 +47,8 @@ class AICOPaths {
       final configFile = File(path.join(_baseDataDir!, 'config', 'defaults', 'core.yaml'));
       if (await configFile.exists()) {
         final yamlString = await configFile.readAsString();
-        _config = loadYaml(yamlString) as Map<String, dynamic>;
+        final yamlData = loadYaml(yamlString);
+        _config = Map<String, dynamic>.from(yamlData);
       } else {
         // Fallback to default configuration
         _config = _getDefaultConfig();

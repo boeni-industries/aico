@@ -1,5 +1,8 @@
 import 'package:aico_frontend/presentation/screens/admin/encryption_test_screen.dart';
+import 'package:aico_frontend/core/logging/services/aico_logger.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:aico_frontend/core/logging/providers/logging_providers.dart';
 
 /// Admin screen for system administration and developer tools.
 /// Uses main content area following three-pane layout design principles.
@@ -223,6 +226,44 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
               Icons.bug_report,
               () => _showLogs(context),
             ),
+            Consumer(
+              builder: (context, ref, _) {
+                final AsyncValue<AICOLogger> loggerAsync = ref.watch(aicoLoggerProvider);
+                
+                return loggerAsync.when(
+                  data: (logger) => _buildDeveloperToolCard(
+                    context,
+                    theme,
+                    'Send Test Log',
+                    'Trigger a test log entry at the backend',
+                    Icons.send,
+                    () => _sendTestLog(context, logger),
+                    enabled: true,
+                    loading: false,
+                  ),
+                  loading: () => _buildDeveloperToolCard(
+                    context,
+                    theme,
+                    'Send Test Log',
+                    'Trigger a test log entry at the backend',
+                    Icons.send,
+                    null,
+                    enabled: false,
+                    loading: true,
+                  ),
+                  error: (error, stack) => _buildDeveloperToolCard(
+                    context,
+                    theme,
+                    'Send Test Log',
+                    'Logger initialization failed',
+                    Icons.send,
+                    null,
+                    enabled: false,
+                    loading: false,
+                  ),
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -298,6 +339,28 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     );
   }
 
+  // Method to send a test log entry to the backend
+  Future<void> _sendTestLog(BuildContext context, AICOLogger logger) async {
+    try {
+      AICOLogger.info(
+        'Test log entry from Developer Tools',
+        topic: 'devtools/test/send',
+        extra: {'source': 'SendTestLogCard', 'timestamp': DateTime.now().toIso8601String()},
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Test log entry sent!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send test log: $e')),
+        );
+      }
+    }
+  }
+
   // Method to show logs placeholder
   void _showLogs(BuildContext context) {
     showDialog(
@@ -321,15 +384,17 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     String title,
     String description,
     IconData icon,
-    VoidCallback onTap,
-  ) {
+    VoidCallback? onTap, {
+    bool enabled = true,
+    bool loading = false,
+  }) {
     return SizedBox(
       width: 280,
       height: 140,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: enabled ? onTap : null,
           borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: const EdgeInsets.all(20),
@@ -346,25 +411,28 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
                 Icon(
                   icon,
                   size: 28,
-                  color: theme.colorScheme.primary,
+                  color: enabled ? theme.colorScheme.primary : theme.disabledColor,
                 ),
                 const SizedBox(height: 8),
                 Text(
                   title,
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
+                    color: enabled ? null : theme.disabledColor,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Expanded(
-                  child: Text(
-                    description,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  child: loading
+                      ? Center(child: CircularProgressIndicator(strokeWidth: 2))
+                      : Text(
+                          description,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                 ),
               ],
             ),
