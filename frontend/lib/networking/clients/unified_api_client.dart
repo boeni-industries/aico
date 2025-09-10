@@ -32,6 +32,8 @@ class UnifiedApiClient {
 
   /// Initialize the client with proper configuration
   Future<void> initialize() async {
+    if (_isInitialized) return;
+    
     // Initialize Dio
     _dio = Dio(BaseOptions(
       baseUrl: _baseUrl,
@@ -55,6 +57,7 @@ class UnifiedApiClient {
     _httpClient = http.Client();
     
     _isInitialized = true;
+    debugPrint('UnifiedApiClient initialized with base URL: $_baseUrl');
   }
 
   /// Make a request with automatic encryption detection
@@ -215,6 +218,36 @@ class UnifiedApiClient {
     } else {
       throw HttpException('HTTP ${response.statusCode}: ${response.body}');
     }
+  }
+
+  /// Convenience method for GET requests
+  Future<T?> get<T>(
+    String endpoint, {
+    Map<String, String>? queryParameters,
+    T Function(Map<String, dynamic>)? fromJson,
+  }) async {
+    return request<T>(
+      'GET',
+      endpoint,
+      queryParameters: queryParameters,
+      fromJson: fromJson,
+    );
+  }
+
+  /// Convenience method for POST requests
+  Future<T?> post<T>(
+    String endpoint, {
+    Map<String, dynamic>? data,
+    Map<String, String>? queryParameters,
+    T Function(Map<String, dynamic>)? fromJson,
+  }) async {
+    return request<T>(
+      'POST',
+      endpoint,
+      data: data,
+      queryParameters: queryParameters,
+      fromJson: fromJson,
+    );
   }
 
   /// Process response and handle decryption if needed

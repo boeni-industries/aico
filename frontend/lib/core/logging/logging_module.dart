@@ -1,14 +1,19 @@
+import 'package:aico_frontend/core/di/modules/di_module.dart';
 import 'package:aico_frontend/core/logging/models/log_entry.dart';
 import 'package:aico_frontend/core/logging/repositories/http_log_repository.dart';
 import 'package:aico_frontend/core/logging/repositories/log_repository.dart';
 import 'package:aico_frontend/core/logging/services/logging_service.dart';
-import 'package:aico_frontend/core/services/unified_api_client.dart';
+import 'package:aico_frontend/networking/clients/unified_api_client.dart';
 import 'package:get_it/get_it.dart';
 // import 'package:aico_frontend/core/logging/repositories/websocket_log_repository.dart'; // Available for future use
 
 /// Dependency injection setup for logging module
-class LoggingModule {
-  static Future<void> register(GetIt getIt) async {
+class LoggingModule implements DIModule {
+  @override
+  String get name => 'LoggingModule';
+
+  @override
+  Future<void> register(GetIt getIt) async {
     // Register repository based on configuration
     getIt.registerLazySingleton<LogRepository>(() {
       final apiClient = getIt<UnifiedApiClient>();
@@ -35,7 +40,8 @@ class LoggingModule {
     });
   }
 
-  static Future<void> dispose(GetIt getIt) async {
+  @override
+  Future<void> dispose(GetIt getIt) async {
     if (getIt.isRegistered<LoggingService>()) {
       await getIt<LoggingService>().dispose();
     }

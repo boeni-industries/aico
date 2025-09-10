@@ -1,6 +1,6 @@
 import 'package:aico_frontend/domain/entities/user.dart';
 import 'package:aico_frontend/domain/repositories/user_repository.dart';
-import 'package:aico_frontend/networking/repositories/user_repository.dart';
+import 'package:aico_frontend/networking/services/user_service.dart';
 import 'package:aico_frontend/networking/models/user_models.dart' as NetworkingModels;
 
 /// Clean architecture implementation of UserRepository using networking services
@@ -11,9 +11,16 @@ class UserDataRepository implements UserRepository {
 
   @override
   Future<User?> getCurrentUser() async {
-    // For now, return null - this would need to be implemented based on authentication state
-    // The networking layer doesn't have a direct getCurrentUser method
-    return null;
+    try {
+      final networkingUser = await _apiUserService.getCurrentUserFromToken();
+      return networkingUser != null ? _convertNetworkingUserToDomainUser(networkingUser) : null;
+    } catch (e) {
+      if (e is UnimplementedError) {
+        rethrow; // Preserve UnimplementedError for WIP features
+      }
+      // Network or other errors should return null for graceful degradation
+      return null;
+    }
   }
 
   @override
@@ -22,14 +29,33 @@ class UserDataRepository implements UserRepository {
       final networkingUser = await _apiUserService.getUser(id);
       return _convertNetworkingUserToDomainUser(networkingUser);
     } catch (e) {
+      if (e is UnimplementedError) {
+        rethrow; // Preserve UnimplementedError for WIP features
+      }
+      // Network or other errors should return null for graceful degradation
       return null;
     }
   }
 
   @override
   Future<User> updateUser(User user) async {
-    // This would need proper implementation with request/response conversion
-    throw UnimplementedError('updateUser needs proper request/response conversion');
+    try {
+      // Convert domain User to networking UpdateUserRequest
+      final updateRequest = NetworkingModels.UpdateUserRequest(
+        fullName: user.username, // Using username as fullName for now
+        nickname: user.username,
+        userType: _convertRoleToUserType(user.role),
+      );
+      
+      final updatedNetworkingUser = await _apiUserService.updateUser(user.id, updateRequest);
+      return _convertNetworkingUserToDomainUser(updatedNetworkingUser);
+    } catch (e) {
+      if (e is UnimplementedError) {
+        rethrow; // Preserve UnimplementedError for WIP features
+      }
+      // Re-throw other exceptions for proper error handling
+      rethrow;
+    }
   }
 
   @override
@@ -55,14 +81,28 @@ class UserDataRepository implements UserRepository {
 
   @override
   Future<bool> isUsernameAvailable(String username) async {
-    // This would need to be implemented in the API service
-    throw UnimplementedError('isUsernameAvailable not implemented in API service');
+    try {
+      return await _apiUserService.checkUsernameAvailability(username);
+    } catch (e) {
+      if (e is UnimplementedError) {
+        rethrow; // Preserve UnimplementedError for WIP features
+      }
+      // Network errors should be treated as unavailable for safety
+      return false;
+    }
   }
 
   @override
   Future<bool> isEmailAvailable(String email) async {
-    // This would need to be implemented in the API service
-    throw UnimplementedError('isEmailAvailable not implemented in API service');
+    try {
+      return await _apiUserService.checkEmailAvailability(email);
+    } catch (e) {
+      if (e is UnimplementedError) {
+        rethrow; // Preserve UnimplementedError for WIP features
+      }
+      // Network errors should be treated as unavailable for safety
+      return false;
+    }
   }
 
   /// Converts networking layer User model to domain layer User entity
@@ -88,6 +128,18 @@ class UserDataRepository implements UserRepository {
         return UserRole.superAdmin;
       default:
         return UserRole.user;
+    }
+  }
+
+  /// Converts domain UserRole enum to networking userType string
+  String _convertRoleToUserType(UserRole role) {
+    switch (role) {
+      case UserRole.admin:
+        return 'admin';
+      case UserRole.superAdmin:
+        return 'superadmin';
+      case UserRole.user:
+        return 'user';
     }
   }
 }

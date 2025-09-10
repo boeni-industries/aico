@@ -39,7 +39,7 @@ Future<void> setupDependencies() async {
   });
   
   // Register logging module
-  await LoggingModule.register(getIt);
+  await LoggingModule().register(GetIt.instance);
   
   // Log successful setup
   Log.i('frontend.app', 'app/setup/complete', 'Dependency injection setup complete');

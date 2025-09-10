@@ -1,10 +1,9 @@
 import 'package:aico_frontend/core/di/service_locator.dart';
 import 'package:aico_frontend/core/services/encryption_service.dart';
 import 'package:aico_frontend/core/services/local_storage.dart';
-import 'package:aico_frontend/core/services/unified_api_client.dart';
-import 'package:dio/dio.dart';
+import 'package:aico_frontend/networking/clients/unified_api_client.dart';
+import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:get_it/get_it.dart';
-import 'package:http/http.dart' as http;
 
 /// Factory for creating repositories with unified error handling and dependency injection
 /// Provides consistent patterns for data layer instantiation
@@ -97,9 +96,8 @@ class RepositoryFactory {
       return _getIt.get<UnifiedApiClient>();
     }
     final client = UnifiedApiClient(
-      dio: ServiceLocator.get<Dio>(),
-      httpClient: http.Client(),
       encryptionService: ServiceLocator.get<EncryptionService>(),
+      tokenManager: ServiceLocator.get<TokenManager>(),
       baseUrl: 'http://localhost:8771/api/v1',
     );
     _getIt.registerSingleton<UnifiedApiClient>(client);

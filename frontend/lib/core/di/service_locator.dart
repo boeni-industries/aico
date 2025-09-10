@@ -3,6 +3,7 @@ import 'package:aico_frontend/core/di/modules/di_module.dart';
 import 'package:aico_frontend/core/di/modules/domain_module.dart';
 import 'package:aico_frontend/core/di/modules/networking_module.dart';
 import 'package:aico_frontend/core/di/modules/presentation_module.dart';
+import 'package:aico_frontend/core/logging/logging_module.dart';
 import 'package:get_it/get_it.dart';
 
 /// Environment configuration for dependency injection
@@ -21,6 +22,7 @@ class ServiceLocator {
     // Initialize modules in dependency order
     _modules.addAll([
       CoreModule(),
+      LoggingModule(),
       NetworkingModule(),
       DomainModule(),
       PresentationModule(),

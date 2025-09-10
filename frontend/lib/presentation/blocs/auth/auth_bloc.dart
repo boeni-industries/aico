@@ -4,7 +4,7 @@ import 'package:aico_frontend/core/topics/aico_topics.dart';
 import 'package:aico_frontend/core/utils/platform_utils.dart';
 import 'package:aico_frontend/networking/models/error_models.dart';
 import 'package:aico_frontend/networking/models/user_models.dart';
-import 'package:aico_frontend/networking/repositories/user_repository.dart';
+import 'package:aico_frontend/networking/services/user_service.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';

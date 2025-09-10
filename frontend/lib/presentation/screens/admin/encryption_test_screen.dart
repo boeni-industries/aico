@@ -1,5 +1,6 @@
 import 'package:aico_frontend/core/di/service_locator.dart';
-import 'package:aico_frontend/core/services/unified_api_client.dart';
+import 'package:aico_frontend/core/services/encryption_service.dart';
+import 'package:aico_frontend/networking/clients/unified_api_client.dart';
 import 'package:flutter/material.dart';
 
 class EncryptionTestScreen extends StatefulWidget {
@@ -11,6 +12,7 @@ class EncryptionTestScreen extends StatefulWidget {
 
 class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
   final UnifiedApiClient _apiService = ServiceLocator.get<UnifiedApiClient>();
+  final EncryptionService _encryptionService = ServiceLocator.get<EncryptionService>();
   final List<String> _logs = [];
   bool _isLoading = false;
 
@@ -18,7 +20,8 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
   void initState() {
     super.initState();
     _log('Encryption Test Screen Initialized.');
-    _log('Current Status: ${_apiService.encryptionStatus}');
+    _log('Encryption Service Initialized: ${_encryptionService.isInitialized}');
+    _log('Encryption Session Active: ${_encryptionService.isSessionActive}');
   }
 
   void _log(String message) {
@@ -29,27 +32,28 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
 
   Future<void> _runHandshake() async {
     setState(() => _isLoading = true);
-    _log('Attempting handshake...');
+    _log('Attempting to initialize API client...');
     try {
-      await _apiService.initializeEncryption();
-      _log('✅ Handshake successful!');
-      _log('New Status: ${_apiService.encryptionStatus}');
+      await _apiService.initialize();
+      _log('✅ API client initialized!');
+      _log('Encryption Service Initialized: ${_encryptionService.isInitialized}');
+      _log('Encryption Session Active: ${_encryptionService.isSessionActive}');
     } catch (e) {
-      _log('❌ Handshake failed: $e');
+      _log('❌ API client initialization failed: $e');
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
   Future<void> _runEchoTest() async {
-    if (!_apiService.isEncryptionActive) {
-      _log('⚠️ Cannot run echo test: Handshake not completed.');
+    if (!_encryptionService.isSessionActive) {
+      _log('⚠️ Cannot run echo test: Encryption session not active.');
       return;
     }
     setState(() => _isLoading = true);
     _log('Sending encrypted echo request...');
     try {
-      final response = await _apiService.post('/echo/', {'message': 'Hello from the AICO app!'});
+      final response = await _apiService.post('/echo', data: {'message': 'Hello from the AICO app!'});
       _log('✅ Echo successful!');
       _log('Server response: ${response.toString()}');
     } catch (e) {
@@ -70,7 +74,7 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Status: ${_apiService.encryptionStatus}', style: Theme.of(context).textTheme.titleMedium),
+            Text('Encryption Status: ${_encryptionService.isSessionActive ? "Active" : "Inactive"}', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
             if (_isLoading)
               const Center(child: CircularProgressIndicator())
@@ -81,7 +85,7 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
               ),
               const SizedBox(height: 8),
               ElevatedButton(
-                onPressed: _apiService.isEncryptionActive ? _runEchoTest : null,
+                onPressed: _encryptionService.isSessionActive ? _runEchoTest : null,
                 child: const Text('2. Send Encrypted Echo'),
               ),
             ],

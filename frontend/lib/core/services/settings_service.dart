@@ -176,19 +176,22 @@ class SettingsService {
 
   /// Set stored value with type handling
   Future<bool> _setStoredValue<T>(String key, T value) async {
-    if (T == String) {
-      return await _storageService.setString(key, value as String);
-    } else if (T == int) {
-      return await _storageService.setInt(key, value as int);
-    } else if (T == bool) {
-      return await _storageService.setBool(key, value as bool);
-    } else if (T == double) {
-      return await _storageService.setDouble(key, value as double);
-    } else if (T == List<String>) {
-      return await _storageService.setStringList(key, value as List<String>);
-    } else {
+    if (value is String) {
+      return await _storageService.setString(key, value);
+    } else if (value is int) {
+      return await _storageService.setInt(key, value);
+    } else if (value is bool) {
+      return await _storageService.setBool(key, value);
+    } else if (value is double) {
+      return await _storageService.setDouble(key, value);
+    } else if (value is List<String>) {
+      return await _storageService.setStringList(key, value);
+    } else if (value is Map<String, dynamic>) {
       // Store as JSON for complex types
-      return await _storageService.setJson(key, value as Map<String, dynamic>);
+      return await _storageService.setJson(key, value);
+    } else {
+      // For other types, convert to string
+      return await _storageService.setString(key, value.toString());
     }
   }
 

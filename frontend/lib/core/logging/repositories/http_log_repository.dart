@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:aico_frontend/core/logging/models/log_entry.dart';
 import 'package:aico_frontend/core/logging/repositories/log_repository.dart';
-import 'package:aico_frontend/core/services/unified_api_client.dart';
+import 'package:aico_frontend/networking/clients/unified_api_client.dart';
 import 'package:flutter/foundation.dart';
 
 /// HTTP-based log repository implementation
@@ -48,7 +48,7 @@ class HttpLogRepository implements LogRepository {
       };
 
       debugPrint('📤 HttpLogRepository: Batch data prepared, making API call...');
-      await _apiClient.post<Map<String, dynamic>>(_logEndpoint, batchData);
+      await _apiClient.post<Map<String, dynamic>>(_logEndpoint, data: batchData);
 
       // If we reach here, the request was successful
       debugPrint('✅ HttpLogRepository: Successfully sent ${logEntries.length} log entries');
