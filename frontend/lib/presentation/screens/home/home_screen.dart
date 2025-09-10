@@ -121,11 +121,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                       IconButton(
                         onPressed: () async {
-                          debugPrint('Contrast toggle pressed - feature disabled for now');
+                          debugPrint('Contrast toggle pressed');
+                          final currentState = ref.read(themeControllerProvider);
+                          await ref.read(themeControllerProvider.notifier).setHighContrastEnabled(!currentState.isHighContrast);
+                          debugPrint('High contrast toggled to: ${!currentState.isHighContrast}');
                         },
-                        icon: Icon(
-                          Icons.contrast,
-                          color: theme.colorScheme.onSurface,
+                        icon: Consumer(
+                          builder: (context, ref, child) {
+                            final themeState = ref.watch(themeControllerProvider);
+                            return Icon(
+                              Icons.contrast,
+                              color: themeState.isHighContrast 
+                                  ? theme.colorScheme.primary 
+                                  : theme.colorScheme.onSurface,
+                            );
+                          },
                         ),
                         tooltip: 'Toggle high contrast',
                         style: IconButton.styleFrom(

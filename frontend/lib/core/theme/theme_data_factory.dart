@@ -8,10 +8,34 @@ class AicoThemeDataFactory {
 
   /// Generate light theme with AICO branding
   static ThemeData generateLightTheme() {
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: AicoDesignTokens.softLavender,
-      brightness: Brightness.light,
-      surface: AicoDesignTokens.pureWhite,
+    // Create custom color scheme following AICO design principles
+    const colorScheme = ColorScheme.light(
+      // Brand & Accents - Soft Lavender as primary
+      primary: Color(0xFFB8A1EA), // Soft Lavender from design principles
+      onPrimary: Colors.white,
+      
+      // Secondary accents
+      secondary: Color(0xFF8DD6B8), // Mint
+      onSecondary: Colors.black,
+      
+      // Surface colors - Pure white for cards/panels
+      surface: Color(0xFFFFFFFF), // Pure white
+      onSurface: Color(0xFF1A1C1E), // Dark text
+      
+      // Background - Soft white-neutral
+      background: Color(0xFFF5F6FA), // Soft white-neutral from design principles
+      onBackground: Color(0xFF1A1C1E),
+      
+      // Error states
+      error: Color(0xFFED7867), // Coral
+      onError: Colors.white,
+      
+      // Outline colors
+      outline: Color(0xFFE0E3E7),
+      outlineVariant: Color(0xFFE0E3E7),
+      
+      // Shadow
+      shadow: Color.fromRGBO(36, 52, 85, 0.09),
     );
 
     return _createBaseTheme(colorScheme);
@@ -19,10 +43,34 @@ class AicoThemeDataFactory {
 
   /// Generate dark theme with AICO branding
   static ThemeData generateDarkTheme() {
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: AicoDesignTokens.darkAccent,
-      brightness: Brightness.dark,
-      surface: AicoDesignTokens.darkSurface,
+    // Create custom dark color scheme following AICO design principles
+    const colorScheme = ColorScheme.dark(
+      // Brand & Accents - Soft Lavender variant for dark mode
+      primary: Color(0xFFB9A7E6), // Dark mode equivalent from design principles
+      onPrimary: Colors.black,
+      
+      // Secondary accents
+      secondary: Color(0xFF8DD6B8), // Mint
+      onSecondary: Colors.black,
+      
+      // Surface colors
+      surface: Color(0xFF21242E), // Dark surface from design principles
+      onSurface: Color(0xFFE6E1E5), // Light text
+      
+      // Background
+      background: Color(0xFF181A21), // Dark background from design principles
+      onBackground: Color(0xFFE6E1E5),
+      
+      // Error states
+      error: Color(0xFFED7867), // Coral
+      onError: Colors.black,
+      
+      // Outline colors
+      outline: Color(0xFF49454F),
+      outlineVariant: Color(0xFF49454F),
+      
+      // Shadow
+      shadow: Color.fromRGBO(0, 0, 0, 0.33),
     );
 
     return _createBaseTheme(colorScheme);
@@ -124,6 +172,9 @@ class AicoThemeDataFactory {
       bottomNavigationBarTheme: _createBottomNavigationBarTheme(colorScheme),
       navigationBarTheme: _createNavigationBarTheme(colorScheme),
       floatingActionButtonTheme: _createFABTheme(colorScheme),
+      
+      // Set scaffold background color to match design principles
+      scaffoldBackgroundColor: colorScheme.background,
       
       // Shape themes
       

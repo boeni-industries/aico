@@ -1,4 +1,3 @@
-import 'package:aico_frontend/core/theme/aico_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -58,7 +57,6 @@ class _AicoTextFieldState extends State<AicoTextField>
   late final AnimationController _animationController;
   // Animation for future focus effects - currently unused
   // late Animation<double> _focusAnimation;
-  late Animation<Color?> _borderColorAnimation;
 
   bool _isFocused = false;
   String? _errorText;
@@ -87,13 +85,7 @@ class _AicoTextFieldState extends State<AicoTextField>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final theme = Theme.of(context);
-    final aicoTheme = theme.extension<AicoThemeExtension>()!;
-    
-    _borderColorAnimation = ColorTween(
-      begin: aicoTheme.colors.outline,
-      end: aicoTheme.colors.primary,
-    ).animate(_animationController);
+    // Animation setup removed - using standard Material 3 borders now
   }
 
   @override
@@ -130,7 +122,7 @@ class _AicoTextFieldState extends State<AicoTextField>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final aicoTheme = theme.extension<AicoThemeExtension>()!;
+    final colorScheme = theme.colorScheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -140,10 +132,10 @@ class _AicoTextFieldState extends State<AicoTextField>
             onTap: () => _focusNode.requestFocus(),
             child: Text(
               widget.label!,
-              style: aicoTheme.textTheme.labelMedium?.copyWith(
+              style: theme.textTheme.labelMedium?.copyWith(
                 color: _isFocused 
-                  ? aicoTheme.colors.primary 
-                  : aicoTheme.colors.onSurface.withValues(alpha: 0.12),
+                  ? colorScheme.primary 
+                  : colorScheme.onSurface.withValues(alpha: 0.7),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -154,61 +146,92 @@ class _AicoTextFieldState extends State<AicoTextField>
         AnimatedBuilder(
           animation: _animationController,
           builder: (context, child) {
-            return Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: _errorText != null 
-                    ? aicoTheme.colors.error
-                    : _borderColorAnimation.value ?? aicoTheme.colors.outline,
-                  width: _isFocused ? 2 : 1,
-                ),
+            return TextFormField(
+              controller: widget.controller,
+              focusNode: _focusNode,
+              obscureText: widget.obscureText,
+              keyboardType: widget.keyboardType,
+              textInputAction: widget.textInputAction,
+              onChanged: widget.onChanged,
+              onFieldSubmitted: widget.onSubmitted,
+              onTap: widget.onTap,
+              readOnly: widget.readOnly,
+              enabled: widget.enabled,
+              maxLines: widget.maxLines,
+              minLines: widget.minLines,
+              maxLength: widget.maxLength,
+              inputFormatters: widget.inputFormatters,
+              style: theme.textTheme.bodyLarge?.copyWith(
                 color: widget.enabled 
-                  ? aicoTheme.colors.surface 
-                  : aicoTheme.colors.surface.withValues(alpha: 0.5),
+                  ? colorScheme.onSurface 
+                  : colorScheme.onSurface.withValues(alpha: 0.5),
               ),
-              child: TextFormField(
-                controller: widget.controller,
-                focusNode: _focusNode,
-                obscureText: widget.obscureText,
-                keyboardType: widget.keyboardType,
-                textInputAction: widget.textInputAction,
-                onChanged: widget.onChanged,
-                onFieldSubmitted: widget.onSubmitted,
-                onTap: widget.onTap,
-                readOnly: widget.readOnly,
-                enabled: widget.enabled,
-                maxLines: widget.maxLines,
-                minLines: widget.minLines,
-                maxLength: widget.maxLength,
-                inputFormatters: widget.inputFormatters,
-                style: aicoTheme.textTheme.bodyLarge?.copyWith(
-                  color: widget.enabled 
-                    ? aicoTheme.colors.onSurface 
-                    : aicoTheme.colors.onSurface.withValues(alpha: 0.5),
+              decoration: InputDecoration(
+                hintText: widget.hint,
+                hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                  color: colorScheme.onSurface.withValues(alpha: 0.5),
                 ),
-                decoration: InputDecoration(
-                  hintText: widget.hint,
-                  hintStyle: aicoTheme.textTheme.bodyLarge?.copyWith(
-                    color: aicoTheme.colors.onSurface.withValues(alpha: 0.5),
+                prefixIcon: widget.prefixIcon != null
+                  ? Icon(
+                      widget.prefixIcon,
+                      color: _isFocused 
+                        ? colorScheme.primary 
+                        : colorScheme.onSurface.withValues(alpha: 0.6),
+                      size: 20,
+                    )
+                  : null,
+                suffixIcon: widget.suffixIcon,
+                filled: true,
+                fillColor: widget.enabled 
+                  ? colorScheme.surface 
+                  : colorScheme.surface.withValues(alpha: 0.5),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16), // Following design principles - rounded
+                  borderSide: BorderSide(
+                    color: colorScheme.outline,
+                    width: 1,
                   ),
-                  prefixIcon: widget.prefixIcon != null
-                    ? Icon(
-                        widget.prefixIcon,
-                        color: _isFocused 
-                          ? aicoTheme.colors.primary 
-                          : aicoTheme.colors.onSurface.withValues(alpha: 0.6),
-                        size: 20,
-                      )
-                    : null,
-                  suffixIcon: widget.suffixIcon,
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 16,
-                  ),
-                  counterText: '', // Hide character counter
                 ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: colorScheme.outline,
+                    width: 1,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: colorScheme.primary, // Soft purple focus from design principles
+                    width: 2,
+                  ),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: colorScheme.error, // Coral for errors
+                    width: 1,
+                  ),
+                ),
+                focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: colorScheme.error,
+                    width: 2,
+                  ),
+                ),
+                disabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: colorScheme.outline.withValues(alpha: 0.5),
+                    width: 1,
+                  ),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
+                counterText: '', // Hide character counter
               ),
             );
           },
@@ -221,14 +244,14 @@ class _AicoTextFieldState extends State<AicoTextField>
               Icon(
                 Icons.error_outline,
                 size: 16,
-                color: aicoTheme.colors.error,
+                color: colorScheme.error,
               ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   _errorText!,
-                  style: aicoTheme.textTheme.bodySmall?.copyWith(
-                    color: aicoTheme.colors.error,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.error,
                   ),
                 ),
               ),

@@ -1,4 +1,3 @@
-import 'package:aico_frontend/core/theme/aico_theme.dart';
 import 'package:flutter/material.dart';
 
 class CompanionAvatar extends StatefulWidget {
@@ -71,7 +70,7 @@ class _CompanionAvatarState extends State<CompanionAvatar>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final aicoTheme = theme.extension<AicoThemeExtension>()!;
+    final colorScheme = theme.colorScheme;
     
     return AnimatedBuilder(
       animation: Listenable.merge([_breathingController, _pulseController]),
@@ -86,7 +85,7 @@ class _CompanionAvatarState extends State<CompanionAvatar>
               // Mood ring with pulsing glow
               boxShadow: [
                 BoxShadow(
-                  color: aicoTheme.colors.primary.withValues(alpha: _glowAnimation.value),
+                  color: colorScheme.primary.withValues(alpha: _glowAnimation.value),
                   blurRadius: 20 * _pulseAnimation.value,
                   spreadRadius: 5 * _pulseAnimation.value,
                 ),
@@ -97,14 +96,14 @@ class _CompanionAvatarState extends State<CompanionAvatar>
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    aicoTheme.colors.primary.withValues(alpha: 0.9),
-                    aicoTheme.colors.primary.withValues(alpha: 0.6),
-                    aicoTheme.colors.primary.withValues(alpha: 0.3),
+                    colorScheme.primary.withValues(alpha: 0.9),
+                    colorScheme.primary.withValues(alpha: 0.6),
+                    colorScheme.primary.withValues(alpha: 0.3),
                   ],
                   stops: const [0.0, 0.7, 1.0],
                 ),
                 border: Border.all(
-                  color: aicoTheme.colors.primary.withValues(alpha: 0.4),
+                  color: colorScheme.primary.withValues(alpha: 0.4),
                   width: 2,
                 ),
               ),
@@ -112,7 +111,7 @@ class _CompanionAvatarState extends State<CompanionAvatar>
                 child: Icon(
                   Icons.psychology_outlined,
                   size: 50,
-                  color: aicoTheme.colors.onPrimary,
+                  color: colorScheme.onPrimary,
                 ),
               ),
             ),

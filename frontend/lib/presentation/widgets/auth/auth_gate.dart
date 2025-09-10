@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/screens/auth/login_screen.dart';
 import 'package:aico_frontend/presentation/screens/home/home_screen.dart' as presentation;
@@ -23,50 +24,70 @@ class LoginOverlay extends StatelessWidget {
     
     return Container(
       constraints: const BoxConstraints(
-        maxWidth: 400,
-        maxHeight: 650, // Increased to accommodate message
+        maxWidth: 380,
+        maxHeight: 560,
       ),
-      margin: const EdgeInsets.all(24),
-      child: Card(
-        elevation: 8,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (message != null) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: (messageColor ?? theme.colorScheme.primary).withValues(alpha: 0.1),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(12),
-                    topRight: Radius.circular(12),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      messageIcon ?? Icons.info_outline,
-                      color: messageColor ?? theme.colorScheme.primary,
-                      size: 20,
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Material(
+        elevation: 16,
+        shadowColor: theme.colorScheme.shadow.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: theme.colorScheme.surface,
+            border: Border.all(
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (message != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: (messageColor ?? theme.colorScheme.primary).withValues(alpha: 0.06),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        message!,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: messageColor ?? theme.colorScheme.primary,
-                        ),
+                    border: Border(
+                      bottom: BorderSide(
+                        color: theme.colorScheme.outline.withValues(alpha: 0.06),
+                        width: 1,
                       ),
                     ),
-                  ],
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        messageIcon ?? Icons.info_outline,
+                        color: messageColor ?? theme.colorScheme.primary,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          message!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: messageColor ?? theme.colorScheme.primary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+              ],
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: const LoginScreen(),
               ),
             ],
-            const Flexible(
-              child: LoginScreen(),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -203,12 +224,22 @@ class _AuthGateState extends ConsumerState<AuthGate> {
         children: [
           const presentation.HomeScreen(),
           Container(
-            color: Colors.black.withValues(alpha: 0.9),
-            child: Center(
-              child: LoginOverlay(
-                message: _loginMessage,
-                messageIcon: _loginMessageIcon,
-                messageColor: _loginMessageColor,
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.95),
+            ),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.3),
+                ),
+                child: Center(
+                  child: LoginOverlay(
+                    message: _loginMessage,
+                    messageIcon: _loginMessageIcon,
+                    messageColor: _loginMessageColor,
+                  ),
+                ),
               ),
             ),
           ),

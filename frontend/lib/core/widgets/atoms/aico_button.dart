@@ -1,4 +1,3 @@
-import 'package:aico_frontend/core/theme/aico_theme.dart';
 import 'package:flutter/material.dart';
 
 enum AicoButtonType {
@@ -126,21 +125,21 @@ class _AicoButtonState extends State<AicoButton>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final aicoTheme = theme.extension<AicoThemeExtension>()!;
+    final colorScheme = theme.colorScheme;
 
     return AnimatedBuilder(
       animation: _animationController,
       builder: (context, child) {
         return Transform.scale(
           scale: _scaleAnimation.value,
-          child: _buildButton(context, aicoTheme),
+          child: _buildButton(context, colorScheme),
         );
       },
     );
   }
 
-  Widget _buildButton(BuildContext context, AicoThemeExtension aicoTheme) {
-    final buttonStyle = _getButtonStyle(aicoTheme);
+  Widget _buildButton(BuildContext context, ColorScheme colorScheme) {
+    final buttonStyle = _getButtonStyle(colorScheme);
     
     return SizedBox(
       width: widget.width,
@@ -152,7 +151,7 @@ class _AicoButtonState extends State<AicoButton>
         child: Material(
           color: buttonStyle.backgroundColor,
           elevation: _elevationAnimation.value,
-          shadowColor: aicoTheme.colors.shadow,
+          shadowColor: colorScheme.shadow,
           borderRadius: BorderRadius.circular(16),
           child: InkWell(
             onTap: widget.isLoading ? null : widget.onPressed,
@@ -205,24 +204,24 @@ class _AicoButtonState extends State<AicoButton>
     );
   }
 
-  _ButtonStyle _getButtonStyle(AicoThemeExtension aicoTheme) {
+  _ButtonStyle _getButtonStyle(ColorScheme colorScheme) {
     switch (widget.type) {
       case AicoButtonType.primary:
         return _ButtonStyle(
-          backgroundColor: aicoTheme.colors.primary,
-          contentColor: aicoTheme.colors.onPrimary,
-          splashColor: aicoTheme.colors.onPrimary.withValues(alpha: 0.1),
-          highlightColor: aicoTheme.colors.onPrimary.withValues(alpha: 0.05),
+          backgroundColor: colorScheme.primary,
+          contentColor: colorScheme.onPrimary,
+          splashColor: colorScheme.onPrimary.withValues(alpha: 0.1),
+          highlightColor: colorScheme.onPrimary.withValues(alpha: 0.05),
         );
 
       case AicoButtonType.secondary:
         return _ButtonStyle(
-          backgroundColor: aicoTheme.colors.surface,
-          contentColor: aicoTheme.colors.primary,
-          splashColor: aicoTheme.colors.primary.withValues(alpha: 0.1),
-          highlightColor: aicoTheme.colors.primary.withValues(alpha: 0.05),
+          backgroundColor: colorScheme.surface,
+          contentColor: colorScheme.primary,
+          splashColor: colorScheme.primary.withValues(alpha: 0.1),
+          highlightColor: colorScheme.primary.withValues(alpha: 0.05),
           border: Border.all(
-            color: aicoTheme.colors.primary.withValues(alpha: 0.2),
+            color: colorScheme.primary.withValues(alpha: 0.2),
             width: 1,
           ),
         );
@@ -230,17 +229,17 @@ class _AicoButtonState extends State<AicoButton>
       case AicoButtonType.minimal:
         return _ButtonStyle(
           backgroundColor: Colors.transparent,
-          contentColor: aicoTheme.colors.primary,
-          splashColor: aicoTheme.colors.primary.withValues(alpha: 0.1),
-          highlightColor: aicoTheme.colors.primary.withValues(alpha: 0.05),
+          contentColor: colorScheme.primary,
+          splashColor: colorScheme.primary.withValues(alpha: 0.1),
+          highlightColor: colorScheme.primary.withValues(alpha: 0.05),
         );
 
       case AicoButtonType.destructive:
         return _ButtonStyle(
-          backgroundColor: aicoTheme.colors.error,
-          contentColor: aicoTheme.colors.onError,
-          splashColor: aicoTheme.colors.onError.withValues(alpha: 0.1),
-          highlightColor: aicoTheme.colors.onError.withValues(alpha: 0.05),
+          backgroundColor: colorScheme.error,
+          contentColor: colorScheme.onError,
+          splashColor: colorScheme.onError.withValues(alpha: 0.1),
+          highlightColor: colorScheme.onError.withValues(alpha: 0.05),
         );
     }
   }

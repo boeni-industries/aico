@@ -1,10 +1,9 @@
 import 'dart:io';
 
 import 'package:aico_frontend/core/providers.dart';
-import 'package:aico_frontend/core/theme/aico_theme.dart';
 import 'package:aico_frontend/core/topics/aico_topics.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
-import 'package:aico_frontend/presentation/providers/settings_provider.dart';
+import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/widgets/auth/auth_gate.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -81,14 +80,23 @@ class _AicoAppState extends ConsumerState<AicoApp> {
 
   @override
   Widget build(BuildContext context) {
-    final themeMode = ref.watch(themeModeProvider);
+    final themeState = ref.watch(themeControllerProvider);
+    final themeManager = ref.watch(themeManagerProvider);
+    
+    // Get appropriate themes based on high contrast setting
+    final lightTheme = themeState.isHighContrast 
+        ? themeManager.generateHighContrastLightTheme()
+        : themeManager.generateLightTheme();
+    final darkTheme = themeState.isHighContrast 
+        ? themeManager.generateHighContrastDarkTheme()
+        : themeManager.generateDarkTheme();
     
     return MaterialApp(
       title: 'AICO',
       debugShowCheckedModeBanner: false,
-      theme: AicoTheme.light(),
-      darkTheme: AicoTheme.dark(),
-      themeMode: themeMode,
+      theme: lightTheme,
+      darkTheme: darkTheme,
+      themeMode: themeState.themeMode,
       home: const AuthGate(),
     );
   }
