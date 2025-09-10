@@ -8,25 +8,32 @@ import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:aico_frontend/networking/services/user_service.dart';
 import 'package:aico_frontend/networking/services/websocket_manager.dart';
 
-/// Encryption service provider for networking
+/// Encryption service provider for networking - singleton
 final networkingEncryptionServiceProvider = Provider<EncryptionService>((ref) {
   return EncryptionService();
 });
 
-/// Token manager provider for networking
+/// Token manager provider for networking - singleton  
 final networkingTokenManagerProvider = Provider<TokenManager>((ref) {
   return TokenManager();
 });
 
-/// Unified API client provider
+/// Unified API client provider - singleton to ensure single encryption session
 final unifiedApiClientProvider = Provider<UnifiedApiClient>((ref) {
   final encryptionService = ref.watch(networkingEncryptionServiceProvider);
   final tokenManager = ref.watch(networkingTokenManagerProvider);
   
-  return UnifiedApiClient(
+  final client = UnifiedApiClient(
     encryptionService: encryptionService,
     tokenManager: tokenManager,
   );
+  
+  // Ensure the client is disposed when the provider is disposed
+  ref.onDispose(() {
+    client.dispose();
+  });
+  
+  return client;
 });
 
 /// WebSocket manager provider
