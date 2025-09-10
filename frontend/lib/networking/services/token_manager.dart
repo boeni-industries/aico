@@ -29,6 +29,11 @@ class TokenManager {
   String? _cachedRefreshToken;
   DateTime? _tokenExpiry;
 
+  /// Get access token (alias for getValidToken for compatibility)
+  Future<String?> getAccessToken() async {
+    return await getValidToken();
+  }
+
   /// Get a valid token, refreshing if necessary
   Future<String?> getValidToken() async {
     // Return cached token if still valid

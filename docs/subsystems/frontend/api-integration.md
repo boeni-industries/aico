@@ -20,18 +20,24 @@ AICO's frontend integrates with the backend through multi-protocol API Gateway s
 
 ### Communication Protocols
 
-- **REST API (HTTP/JSON)**: Foundation protocol for stateful operations requiring confirmation
-- **WebSocket (JSON)**: Real-time bidirectional communication for live updates and notifications  
+**Currently Implemented**:
+- **REST API (HTTP/JSON)**: Primary protocol via Dio with comprehensive error handling and encryption support
+- **HTTP Fallback**: Secondary client using `http` package for maximum reliability
+- **WebSocket (JSON)**: Basic real-time communication (limited implementation)
+
+**Planned for Future**:
 - **ZeroMQ IPC (JSON)**: High-performance local communication for coupled deployments
 
-System automatically selects optimal protocol: IPC for local (lowest latency), WebSocket for real-time, HTTP for reliability.
+**Current Protocol Selection**: The system uses HTTP-first approach with dual client architecture. Future versions will implement automatic protocol selection: IPC for local (lowest latency), WebSocket for real-time, HTTP for reliability.
 
 ### Security Architecture
 
-- **JWT Authentication**: Stateless token-based security across all protocols with automatic refresh
-- **RBAC**: Granular permissions mapping user roles to specific endpoints and operations
-- **Transport Security**: TLS encryption for network, OS-level security for IPC
-- **Zero-Effort Security**: Transparent operation using platform-native secure storage
+- **End-to-End Encryption**: Automatic encryption for sensitive endpoints using X25519 + XSalsa20Poly1305
+- **JWT Authentication**: Stateless token-based security with automatic refresh and secure storage
+- **Handshake Protocol**: Secure session establishment with perfect forward secrecy
+- **Platform Integration**: Native Keychain/Credential Manager for secure key storage
+- **Smart Routing**: Automatic detection of encrypted vs unencrypted endpoints
+- **Zero-Effort Security**: Transparent operation with comprehensive error handling
 
 ## Frontend Integration
 
@@ -53,14 +59,23 @@ abstract class ConversationRepository {
 }
 
 class ApiConversationRepository implements ConversationRepository {
-  // Optimistic updates with error handling
+  final UnifiedApiClient _apiClient;
+  final StreamController<Message> _messageController = StreamController.broadcast();
+  
+  // Optimistic updates with automatic encryption
   Future<void> sendMessage(Message message) async {
-    _messageController.add(message.copyWith(status: sending));
+    _messageController.add(message.copyWith(status: MessageStatus.sending));
     try {
-      final response = await _apiClient.post('/messages', data: message.toJson());
-      _messageController.add(Message.fromJson(response.data));
+      // UnifiedApiClient automatically handles encryption for /messages endpoint
+      final response = await _apiClient.post<Map<String, dynamic>>(
+        '/messages', 
+        message.toJson(),
+        fromJson: (json) => json,
+      );
+      _messageController.add(Message.fromJson(response));
     } catch (e) {
-      _messageController.add(message.copyWith(status: failed));
+      _messageController.add(message.copyWith(status: MessageStatus.failed));
+      rethrow;
     }
   }
 }
@@ -81,23 +96,35 @@ System attempts connections in preference order: IPC (local), WebSocket (real-ti
 
 ```dart
 class ConnectionManager {
+  final UnifiedApiClient _apiClient;
+  final WebSocketClient _wsClient;
+  ConnectionMode _currentMode = ConnectionMode.http;
+  
   Future<void> establishConnection() async {
+    // Phase 1: Initialize encryption for HTTP
     try {
-      if (_ipcClient != null) {
-        await _ipcClient!.connect();
-        _currentMode = ConnectionMode.ipc;
-        return;
-      }
+      await _apiClient.initializeEncryption();
+      _currentMode = ConnectionMode.http;
+      debugPrint('✅ HTTP connection with encryption established');
     } catch (e) {
-      // Fallback to WebSocket/HTTP
+      debugPrint('⚠️ Encryption failed, using unencrypted HTTP: $e');
+      _currentMode = ConnectionMode.httpFallback;
     }
     
+    // Phase 2: Enhance with WebSocket (if available)
     try {
       await _wsClient.connect();
       _currentMode = ConnectionMode.websocket;
+      debugPrint('✅ WebSocket connection established');
     } catch (e) {
-      _currentMode = ConnectionMode.http;
+      debugPrint('⚠️ WebSocket unavailable, using HTTP: $e');
     }
+    
+    // Phase 3: Future IPC integration
+    // if (_ipcClient?.isAvailable == true) {
+    //   await _ipcClient!.connect();
+    //   _currentMode = ConnectionMode.ipc;
+    // }
   }
 }
 ```

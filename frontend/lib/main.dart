@@ -6,8 +6,6 @@ import 'package:aico_frontend/core/logging/logging_module.dart';
 import 'package:aico_frontend/core/theme/aico_theme.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
 import 'package:aico_frontend/core/topics/aico_topics.dart';
-import 'package:aico_frontend/networking/repositories/user_repository.dart';
-import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:aico_frontend/presentation/blocs/auth/auth_bloc.dart';
 import 'package:aico_frontend/presentation/blocs/connection/connection_bloc.dart';
 import 'package:aico_frontend/presentation/blocs/settings/settings_bloc.dart';
@@ -107,10 +105,7 @@ class _AicoAppState extends State<AicoApp> {
           create: (context) => ServiceLocator.get<ConnectionBloc>(),
         ),
         BlocProvider<AuthBloc>(
-          create: (context) => AuthBloc(
-            userRepository: ServiceLocator.get<UserRepository>(),
-            tokenManager: ServiceLocator.get<TokenManager>(),
-          )..add(const AuthStatusChecked()),
+          create: (context) => ServiceLocator.get<AuthBloc>()..add(const AuthStatusChecked()),
         ),
       ],
       child: MaterialApp(

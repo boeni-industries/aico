@@ -216,8 +216,19 @@ class EncryptionService {
   /// Check if encryption session is active
   bool get isSessionActive => _sessionEstablished && _precalculatedBox != null;
   
+  /// Check if encryption service is initialized
+  bool get isInitialized => _sodium != null && _identityPrivateKey != null;
+  
   /// Get client ID for this session
   String? get clientId => _clientId;
+  
+  /// Get public key for handshake (base64 encoded)
+  String? getPublicKey() {
+    if (_sessionPublicKey != null) {
+      return base64Encode(_sessionPublicKey!);
+    }
+    return null;
+  }
   
   /// Reset session (for new handshake)
   void resetSession() {

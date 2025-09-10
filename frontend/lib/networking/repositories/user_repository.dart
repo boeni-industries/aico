@@ -5,29 +5,19 @@ import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
-abstract class UserRepository {
-  Future<List<User>> getUsers({String? userType, int limit = 100});
-  Future<User> createUser(CreateUserRequest request);
-  Future<User> getUser(String uuid);
-  Future<User> updateUser(String uuid, UpdateUserRequest request);
-  Future<void> deleteUser(String uuid);
-  Future<AuthenticationResponse> authenticate(AuthenticateRequest request);
-  Future<void> initializeEncryption();
-}
-
-class ApiUserRepository implements UserRepository {
+/// API service for user operations - NOT a repository interface
+class ApiUserService {
   final ApiService _apiService;
   final TokenManager _tokenManager;
   final SecureCredentialManager _credentialManager;
 
-  ApiUserRepository({
+  ApiUserService({
     required ApiService apiService,
     required TokenManager tokenManager,
   })  : _apiService = apiService,
         _tokenManager = tokenManager,
         _credentialManager = SecureCredentialManager();
 
-  @override
   Future<List<User>> getUsers({String? userType, int limit = 100}) async {
     try {
       final response = await _apiService.getUsers(userType: userType, limit: limit);
@@ -40,7 +30,6 @@ class ApiUserRepository implements UserRepository {
     }
   }
 
-  @override
   Future<User> createUser(CreateUserRequest request) async {
     try {
       return await _apiService.createUser(request);
@@ -52,7 +41,6 @@ class ApiUserRepository implements UserRepository {
     }
   }
 
-  @override
   Future<User> getUser(String uuid) async {
     try {
       return await _apiService.getUser(uuid);
@@ -64,7 +52,6 @@ class ApiUserRepository implements UserRepository {
     }
   }
 
-  @override
   Future<User> updateUser(String uuid, UpdateUserRequest request) async {
     try {
       return await _apiService.updateUser(uuid, request);
@@ -76,7 +63,6 @@ class ApiUserRepository implements UserRepository {
     }
   }
 
-  @override
   Future<void> deleteUser(String uuid) async {
     try {
       await _apiService.deleteUser(uuid);
@@ -186,12 +172,10 @@ class ApiUserRepository implements UserRepository {
     }
   }
 
-  @override
   Future<void> initializeEncryption() async {
     await _apiService.initialize();
   }
 
-  @override
   Future<AuthenticationResponse> authenticate(AuthenticateRequest request) async {
     debugPrint('UserRepository: Starting authentication for user UUID: ${request.uuid}');
     debugPrint('UserRepository: Authentication request - PIN provided: ${request.pin.isNotEmpty}');

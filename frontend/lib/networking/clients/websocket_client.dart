@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 
+import 'package:aico_frontend/core/services/encryption_service.dart';
 import 'package:aico_frontend/networking/models/error_models.dart';
+import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 
@@ -14,6 +16,9 @@ enum WebSocketConnectionState {
 }
 
 class WebSocketClient {
+  final EncryptionService _encryptionService;
+  final TokenManager _tokenManager;
+  
   IOWebSocketChannel? _channel;
   final StreamController<Map<String, dynamic>> _messageController = 
       StreamController.broadcast();
@@ -27,6 +32,13 @@ class WebSocketClient {
   String? _url;
   WebSocketConnectionState _state = WebSocketConnectionState.disconnected;
   int _reconnectAttempts = 0;
+  bool _encryptionEnabled = false;
+  
+  WebSocketClient({
+    required EncryptionService encryptionService,
+    required TokenManager tokenManager,
+  }) : _encryptionService = encryptionService,
+       _tokenManager = tokenManager;
   
   static const int _maxReconnectAttempts = 5;
   static const Duration _heartbeatInterval = Duration(seconds: 30);
@@ -37,8 +49,9 @@ class WebSocketClient {
   WebSocketConnectionState get currentState => _state;
   bool get isConnected => _state == WebSocketConnectionState.connected;
 
-  Future<void> connect(String url) async {
+  Future<void> connect(String url, {bool enableEncryption = true}) async {
     _url = url;
+    _encryptionEnabled = enableEncryption;
     await _attemptConnection();
   }
 
@@ -55,7 +68,10 @@ class WebSocketClient {
   void sendMessage(Map<String, dynamic> message) {
     if (isConnected && _channel != null) {
       try {
-        _channel!.sink.add(json.encode(message));
+        final messageToSend = _encryptionEnabled 
+            ? _encryptMessage(message)
+            : message;
+        _channel!.sink.add(json.encode(messageToSend));
       } catch (e) {
         debugPrint('Failed to send message: $e');
         _queueMessage(message);
@@ -76,7 +92,8 @@ class WebSocketClient {
         : WebSocketConnectionState.reconnecting);
 
     try {
-      _channel = IOWebSocketChannel.connect(_url!);
+      final headers = await _buildHeaders();
+      _channel = IOWebSocketChannel.connect(_url!, headers: headers);
       await _channel!.ready;
       
       _setState(WebSocketConnectionState.connected);
@@ -96,7 +113,10 @@ class WebSocketClient {
     _channel!.stream.listen(
       (data) {
         try {
-          final message = json.decode(data) as Map<String, dynamic>;
+          final rawMessage = json.decode(data) as Map<String, dynamic>;
+          final message = _encryptionEnabled 
+              ? _decryptMessage(rawMessage)
+              : rawMessage;
           _messageController.add(message);
         } catch (e) {
           debugPrint('Failed to parse WebSocket message: $e');
@@ -186,9 +206,66 @@ class WebSocketClient {
     }
   }
 
-  void dispose() {
-    disconnect();
-    _messageController.close();
-    _stateController.close();
+  Future<Map<String, String>> _buildHeaders() async {
+    final headers = <String, String>{};
+    
+    // Add authentication token if available
+    final token = await _tokenManager.getAccessToken();
+    if (token != null) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    
+    // Add encryption capability header
+    if (_encryptionEnabled && _encryptionService.isInitialized) {
+      headers['X-Encryption-Supported'] = 'true';
+      final publicKey = _encryptionService.getPublicKey();
+      if (publicKey != null) {
+        headers['X-Public-Key'] = publicKey;
+      }
+    }
+    
+    return headers;
+  }
+  
+  Map<String, dynamic> _encryptMessage(Map<String, dynamic> message) {
+    if (!_encryptionService.isInitialized) {
+      return message;
+    }
+    
+    try {
+      final encryptedData = _encryptionService.encryptPayload(message);
+      return {
+        'encrypted': true,
+        'data': encryptedData,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+    } catch (e) {
+      debugPrint('Failed to encrypt WebSocket message: $e');
+      return message;
+    }
+  }
+  
+  Map<String, dynamic> _decryptMessage(Map<String, dynamic> message) {
+    if (!message.containsKey('encrypted') || message['encrypted'] != true) {
+      return message;
+    }
+    
+    if (!_encryptionService.isInitialized) {
+      throw Exception('Received encrypted message but encryption service not initialized');
+    }
+    
+    try {
+      final encryptedData = message['data'] as String;
+      return _encryptionService.decryptPayload(encryptedData);
+    } catch (e) {
+      debugPrint('Failed to decrypt WebSocket message: $e');
+      throw Exception('Failed to decrypt message: $e');
+    }
+  }
+  
+  Future<void> dispose() async {
+    await disconnect();
+    await _messageController.close();
+    await _stateController.close();
   }
 }

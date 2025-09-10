@@ -8,7 +8,7 @@ class DioClient {
   static Dio createDio({
     required String baseUrl,
     TokenManager? tokenManager,
-    ApiUserRepository? userRepository,
+    ApiUserService? userService,
   }) {
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
@@ -30,10 +30,10 @@ class DioClient {
     ));
 
     // Add token refresh interceptor if dependencies are provided
-    if (tokenManager != null && userRepository != null) {
+    if (tokenManager != null && userService != null) {
       dio.interceptors.add(TokenRefreshInterceptor(
         tokenManager: tokenManager,
-        userRepository: userRepository,
+        userService: userService,
         dio: dio,
       ));
     }

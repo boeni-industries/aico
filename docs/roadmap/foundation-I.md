@@ -84,7 +84,7 @@ Build the **essential** system infrastructure required for MVP companion feature
 
 ### Basic Resource Management (Required for LLM Operations)
 - [ ] **Resource Monitor**: CPU, memory, battery, and system load tracking
-- [ ] **Job Scheduler**: Task queue with priority scheduling for LLM operations
+- [x] **Job Scheduler**: Task queue with priority scheduling for LLM operations
 - [ ] **Resource Policies**: Configurable limits for LLM inference
 - [ ] **Background Processing**: Pause/resume capabilities for non-critical tasks
 - [ ] **Battery Awareness**: Reduced processing on battery power

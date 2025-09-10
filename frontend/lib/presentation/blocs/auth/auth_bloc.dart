@@ -99,14 +99,14 @@ class AuthFailure extends AuthState {
 
 // BLoC
 class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
-  final UserRepository _userRepository;
+  final ApiUserService _apiUserService;
   final TokenManager _tokenManager;
   bool _isAuthenticating = false;
 
   AuthBloc({
-    required UserRepository userRepository,
+    required ApiUserService apiUserService,
     required TokenManager tokenManager,
-  })  : _userRepository = userRepository,
+  })  : _apiUserService = apiUserService,
         _tokenManager = tokenManager,
         super(const AuthInitial()) {
     
@@ -138,14 +138,14 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
       });
 
       // Ensure encryption is initialized before making API calls
-      await _userRepository.initializeEncryption();
+      await _apiUserService.initializeEncryption();
 
       final request = AuthenticateRequest(
         uuid: event.userUuid,
         pin: event.pin,
       );
 
-      final response = await _userRepository.authenticate(request);
+      final response = await _apiUserService.authenticate(request);
 
       if (response.success && response.user != null && response.token != null) {
         // Set token expiry based on "remember me" preference
@@ -165,8 +165,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
         debugPrint('🔐 AuthBloc: Remember me enabled: ${event.rememberMe}');
         if (event.rememberMe) {
           debugPrint('🔐 AuthBloc: Storing credentials for future auto-login');
-          final userRepository = _userRepository as ApiUserRepository;
-          await userRepository.storeCredentials(event.userUuid, event.pin, response.token!);
+          await _apiUserService.storeCredentials(event.userUuid, event.pin, response.token!);
           debugPrint('🔐 AuthBloc: Credentials stored successfully');
         } else {
           debugPrint('🔐 AuthBloc: Remember me not enabled, skipping credential storage');
@@ -249,8 +248,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
     try {
       // Clear stored tokens and credentials
       await _tokenManager.clearTokens();
-      final userRepository = _userRepository as ApiUserRepository;
-      await userRepository.clearStoredCredentials();
+      await _apiUserService.clearStoredCredentials();
       
       // TODO: Call logout API endpoint to revoke token on server
       // await _userRepository.logout();
@@ -268,8 +266,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
 
       // Even if logout fails, clear local tokens and credentials
       await _tokenManager.clearTokens();
-      final userRepository = _userRepository as ApiUserRepository;
-      await userRepository.clearStoredCredentials();
+      await _apiUserService.clearStoredCredentials();
       emit(const AuthUnauthenticated());
     }
   }
@@ -324,8 +321,7 @@ class AuthBloc extends HydratedBloc<AuthEvent, AuthState> {
 
     try {
       // Attempt auto-login using stored credentials
-      final userRepository = _userRepository as ApiUserRepository;
-      final authResponse = await userRepository.attemptAutoLogin();
+      final authResponse = await _apiUserService.attemptAutoLogin();
       
       if (authResponse != null && authResponse.user != null) {
         debugPrint('🔐 AuthBloc: Auto-login successful');

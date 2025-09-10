@@ -99,12 +99,16 @@ The application uses the BLoC (Business Logic Component) pattern for all state m
 
 **State Persistence**: Critical BLoCs extend HydratedBloc to automatically persist state across app restarts, ensuring users never lose their work or preferences.
 
-**Key BLoCs**:
-- **ConversationBloc**: Manages conversation state, message sending/receiving, and typing indicators
+**Currently Implemented BLoCs**:
+- **AuthBloc**: Manages user authentication state and JWT token lifecycle
 - **ConnectionBloc**: Handles backend connectivity, automatic reconnection, and offline mode
 - **SettingsBloc**: Persists user preferences, theme selection, and configuration changes
-- **UpdateBloc**: Manages update notifications, download progress, and installation coordination
-- **AvatarBloc**: Controls avatar state, animations, and WebView communication
+- **NavigationBloc**: Manages application navigation state and routing
+
+**Planned BLoCs** (in development):
+- **ConversationBloc**: Will manage conversation state, message sending/receiving, and typing indicators
+- **UpdateBloc**: Will manage update notifications, download progress, and installation coordination
+- **AvatarBloc**: Will control avatar state, animations, and WebView communication
 
 ### Dependency Injection
 
@@ -126,11 +130,17 @@ The application implements declarative routing using `go_router`, providing type
 
 ### API Integration
 
-The frontend communicates with the backend through a multi-protocol API Gateway using **JSON serialization** for all external communication:
+The frontend communicates with the backend through a **UnifiedApiClient** that provides intelligent routing between encrypted and unencrypted endpoints using **JSON serialization** for all external communication:
 
-- **REST API**: Standard HTTP requests with JSON request/response bodies for commands and queries
-- **WebSocket**: Real-time bidirectional communication using JSON message format for events and notifications
-- **ZeroMQ IPC**: Local inter-process communication with JSON messages for high-performance scenarios
+- **REST API**: Primary communication via Dio HTTP client with automatic token refresh and interceptor-based authentication
+- **HTTP Fallback**: Secondary HTTP client using the `http` package for reliability
+- **WebSocket**: Basic real-time communication (limited implementation)
+- **Encryption Layer**: Automatic E2E encryption for sensitive endpoints with handshake protocol
+
+**Current Protocol Status**:
+- ✅ **REST/HTTP**: Fully implemented with dual client approach
+- ⚠️ **WebSocket**: Basic implementation, limited functionality
+- ❌ **ZeroMQ IPC**: Not yet implemented (planned for future)
 
 **Protocol Clarification**: The frontend exclusively uses JSON for all backend communication. Protocol Buffers are used internally within the backend modules but are not exposed to the frontend layer.
 
@@ -348,28 +358,37 @@ Optimistic updates provide immediate user feedback while ensuring data consisten
 
 ### Code Organization
 
+**Current Implementation Structure**:
 ```
 lib/
-├── core/                 # Core utilities and constants
-│   ├── constants/
-│   ├── extensions/
-│   ├── utils/
-│   └── theme/
-├── data/                 # Data layer implementation
-│   ├── datasources/
-│   ├── models/
-│   └── repositories/
-├── domain/               # Business logic and entities
-│   ├── entities/
-│   ├── repositories/
-│   └── usecases/
-├── presentation/         # UI layer
-│   ├── blocs/
-│   ├── screens/
-│   ├── widgets/
-│   └── routes/
-└── main.dart            # Application entry point
+├── core/                 # Core utilities, services, and infrastructure
+│   ├── constants/        # App constants and configuration
+│   ├── di/              # Dependency injection (ServiceLocator)
+│   ├── logging/         # Structured logging system
+│   ├── navigation/      # Navigation utilities
+│   ├── services/        # Core services (API, encryption, storage)
+│   ├── theme/           # Theme management and Material 3 theming
+│   ├── topics/          # Message topics for logging
+│   ├── utils/           # Utility functions and extensions
+│   └── widgets/         # Reusable core widgets
+├── networking/          # All networking and data access
+│   ├── clients/         # Protocol-specific clients (Dio, WebSocket)
+│   ├── interceptors/    # HTTP interceptors (auth, retry)
+│   ├── models/          # Data models and serialization
+│   ├── repositories/    # Repository pattern implementations
+│   └── services/        # Network services (connection, offline queue)
+├── presentation/        # UI layer
+│   ├── blocs/           # BLoC state management
+│   ├── models/          # UI-specific models
+│   ├── screens/         # Application screens
+│   └── widgets/         # UI widgets and components
+└── main.dart           # Application entry point
 ```
+
+**Architecture Notes**:
+- **Pragmatic Structure**: Combines data/domain layers into `networking/` for simplicity
+- **Service-Oriented**: Core services handle cross-cutting concerns
+- **Clean Separation**: UI logic separated from business logic via BLoCs
 
 ### Build Configuration
 

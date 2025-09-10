@@ -23,20 +23,39 @@ lib/networking/
 └── services/        # Coordination layer
 ```
 
-## REST API Client
+## Unified API Client
 
-The REST client uses **Retrofit** to generate type-safe API interfaces from annotations. This approach eliminates boilerplate while providing compile-time safety and excellent IDE support. Retrofit builds on **Dio**, which handles the underlying HTTP communication with advanced features like connection pooling and request/response transformation.
+The frontend uses a **UnifiedApiClient** that intelligently routes requests between encrypted and unencrypted endpoints. This approach provides transparent encryption, automatic protocol selection, and robust error handling while maintaining a simple interface for the application layer.
 
-Key benefits include automatic serialization, declarative endpoint definitions, and seamless integration with Flutter's async/await patterns. The generated client handles all HTTP details while exposing clean, typed methods to the repository layer.
+The client combines **Dio** for primary HTTP communication with the standard **http** package as a fallback, ensuring maximum reliability across different network conditions and deployment scenarios.
+
+Key features include automatic encryption detection, JWT token management, handshake protocol handling, and seamless fallback between transport mechanisms.
 
 ```dart
-@RestApi(baseUrl: "http://localhost:8771/api/v1")
-abstract class AicoApiClient {
-  // Generated factory constructor
-  factory AicoApiClient(Dio dio, {String baseUrl}) = _AicoApiClient;
-
-  @GET("/users")
-  Future<UserListResponse> getUsers({@Query("user_type") String? userType});
+class UnifiedApiClient {
+  final Dio _dio;
+  final http.Client _httpClient;
+  final EncryptionService _encryptionService;
+  
+  // Smart request routing based on endpoint encryption requirements
+  Future<T> request<T>(
+    String method,
+    String endpoint, {
+    Map<String, dynamic>? data,
+    T Function(Map<String, dynamic>)? fromJson,
+  }) async {
+    final needsEncryption = _requiresEncryption(endpoint);
+    
+    if (needsEncryption) {
+      // Handle encrypted endpoints with handshake protocol
+      final encryptedPayload = data != null ? 
+        _encryptionService.encryptPayload(data) : null;
+      // ... encryption logic
+    } else {
+      // Use plain HTTP for public endpoints
+      // ... standard HTTP logic
+    }
+  }
 }
 ```
 
@@ -50,11 +69,35 @@ Connection resilience is critical for user experience - the client automatically
 
 ## Connection Management
 
-The connection manager provides **adaptive transport selection** that automatically chooses the best available protocol based on network conditions and server availability. This ensures optimal performance while maintaining reliability through graceful degradation.
+### Current Implementation Status
 
-The system follows a preference hierarchy: IPC for local high-performance scenarios, WebSocket for real-time features, and HTTP as the reliable fallback. When a connection fails, the manager automatically attempts the next protocol without user intervention.
+**Implemented Protocols**:
+- ✅ **HTTP/REST**: Primary protocol via Dio with comprehensive error handling
+- ✅ **HTTP Fallback**: Secondary client using `http` package for reliability
+- ⚠️ **WebSocket**: Basic implementation with limited functionality
+- ❌ **ZeroMQ IPC**: Planned for future implementation
 
-This approach abstracts transport complexity from the application layer - repositories and business logic remain unchanged regardless of the underlying protocol.
+**Smart Protocol Selection**: The `UnifiedApiClient` currently focuses on HTTP reliability with dual client architecture rather than multi-protocol switching. Future versions will implement the full adaptive transport layer.
+
+```dart
+class ConnectionManager {
+  // Current: Basic WebSocket + HTTP
+  // Future: Full adaptive transport with IPC support
+  Future<void> establishConnection() async {
+    // Phase 1: HTTP-first approach (current)
+    await _establishHttpConnection();
+    
+    // Phase 2: WebSocket enhancement (in progress)
+    if (_wsClient.isAvailable) {
+      await _wsClient.connect();
+    }
+    
+    // Phase 3: IPC integration (planned)
+    // if (_ipcClient.isAvailable) {
+    //   await _ipcClient.connect();
+    // }
+  }
+}
 ```
 
 ## Authentication & Security
@@ -84,19 +127,38 @@ Operations are persisted locally and automatically retried when connectivity ret
 The offline queue implements intelligent retry logic with exponential backoff and conflict resolution. Failed operations are preserved across app restarts, ensuring no user data is lost due to temporary network issues.
 ```
 
-## Implementation Phases
+## Implementation Status & Roadmap
 
-1. **Phase 1**: REST API client with Retrofit + Dio
-2. **Phase 2**: WebSocket client for real-time features  
-3. **Phase 3**: Connection management and protocol fallback
-4. **Phase 4**: Offline queue and optimistic updates
-5. **Phase 5**: IPC client for local high-performance scenarios
+### ✅ **Completed (Phase 1)**
+- **UnifiedApiClient**: Intelligent encrypted/unencrypted endpoint routing
+- **Dual HTTP Architecture**: Dio primary + http package fallback
+- **JWT Authentication**: Automatic token refresh and secure storage
+- **Encryption Layer**: E2E encryption with handshake protocol
+- **Error Handling**: Comprehensive error classification and recovery
+
+### 🔄 **In Progress (Phase 2)**
+- **WebSocket Enhancement**: Expanding real-time communication capabilities
+- **Connection Resilience**: Improved reconnection and failure handling
+- **Repository Pattern**: Completing domain-specific repository implementations
+
+### 📋 **Planned (Phase 3+)**
+- **ZeroMQ IPC**: High-performance local communication
+- **Adaptive Transport**: Automatic protocol selection and failover
+- **Advanced Offline**: Operation queuing and conflict resolution
+- **Performance Optimization**: Connection pooling and request batching
 
 ## Key Benefits
 
-- **Type Safety**: Compile-time safe API clients via code generation
-- **Maintainability**: Clean separation between protocols and business logic
-- **Testability**: Abstract interfaces enable easy mocking
-- **Offline-First**: Optimistic updates with operation queueing
-- **Resilience**: Comprehensive retry and fallback mechanisms
-- **Performance**: Advanced HTTP features (connection pooling, interceptors)
+### **Current Implementation**
+- ✅ **Security-First**: Automatic encryption for sensitive endpoints
+- ✅ **Reliability**: Dual HTTP client architecture with intelligent fallback
+- ✅ **Maintainability**: Clean separation between transport and business logic
+- ✅ **Testability**: Service locator pattern enables easy mocking
+- ✅ **Performance**: Dio interceptors, connection pooling, and request optimization
+- ✅ **Developer Experience**: Unified API with automatic error handling
+
+### **Future Enhancements**
+- 🔄 **Multi-Protocol**: WebSocket and IPC integration
+- 🔄 **Offline-First**: Operation queuing and optimistic updates
+- 📋 **Type Safety**: Enhanced compile-time safety via code generation
+- 📋 **Adaptive Transport**: Intelligent protocol selection and failover
