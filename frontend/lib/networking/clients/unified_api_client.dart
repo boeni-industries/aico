@@ -34,6 +34,9 @@ class UnifiedApiClient {
   Future<void> initialize() async {
     if (_isInitialized) return;
     
+    // Initialize encryption service first
+    await _encryptionService.initialize();
+    
     // Initialize Dio
     _dio = Dio(BaseOptions(
       baseUrl: _baseUrl,
@@ -68,8 +71,9 @@ class UnifiedApiClient {
     Map<String, String>? queryParameters,
     T Function(Map<String, dynamic>)? fromJson,
   }) async {
+    // Auto-initialize if not done yet
     if (!_isInitialized) {
-      throw StateError('UnifiedApiClient not initialized. Call initialize() first.');
+      await initialize();
     }
 
     final needsEncryption = _requiresEncryption(endpoint);
@@ -281,7 +285,7 @@ class UnifiedApiClient {
     final handshakeRequest = await _encryptionService.createHandshakeRequest();
     
     final response = await _dio.post(
-      '/auth/handshake',
+      '/handshake',
       data: handshakeRequest,
     );
 
@@ -306,12 +310,10 @@ class UnifiedApiClient {
 
   /// Determine if endpoint requires encryption
   bool _requiresEncryption(String endpoint) {
-    // Public endpoints that don't require encryption
+    // Public endpoints that don't require encryption (must match backend middleware)
     const publicEndpoints = [
       '/health',
-      '/auth/login',
-      '/auth/register',
-      '/auth/handshake',
+      '/handshake',
     ];
 
     return !publicEndpoints.any((public) => endpoint.startsWith(public));

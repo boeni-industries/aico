@@ -215,9 +215,9 @@ Privacy boundaries are calculated using weighted relationship dimensions:
 ## Integration Points
 
 ### **Message Bus Topics**
-- `social.relationship.updated`: Relationship vector changes
-- `social.context.changed`: Social context transitions
-- `social.inference.result`: Relationship reasoning results
+- `social/relationship/updated`: Relationship vector changes
+- `social/context/changed`: Social context transitions
+- `social/inference/result`: Relationship reasoning results
 
 ### **API Endpoints**
 - Relationship context queries for AI systems

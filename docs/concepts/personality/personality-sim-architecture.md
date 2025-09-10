@@ -108,7 +108,7 @@ Generated personality states are published to multiple output topics:
 ```python
 def publish_personality_outputs(self, personality_state: PersonalityState):
     # Publish current personality state
-    self.bus.publish("personality.state.current", {
+    self.bus.publish("personality/state/current", {
         "timestamp": datetime.utcnow().isoformat(),
         "source": "personality_simulation",
         "personality_state": personality_state.to_dict()
@@ -128,7 +128,7 @@ def publish_personality_outputs(self, personality_state: PersonalityState):
     
     # Store personality experience for learning
     experience = self.create_personality_experience(personality_state)
-    self.bus.publish("personality.memory.store", experience)
+    self.bus.publish("personality/memory/store", experience)
 ```
 
 ## Component Integration
@@ -141,7 +141,7 @@ def publish_personality_outputs(self, personality_state: PersonalityState):
 - **Integration**: LLM prompt injection with personality context
 
 #### Emotion Simulation
-- **Subscribes to**: `personality.state.current`
+- **Subscribes to**: `personality/state/current`
 - **Uses**: Trait-based emotional tendencies, regulation parameters
 - **Integration**: Personality-influenced appraisal processing
 
@@ -151,7 +151,7 @@ def publish_personality_outputs(self, personality_state: PersonalityState):
 - **Integration**: Personality-aligned goal generation and planning
 
 #### Memory System
-- **Subscribes to**: `personality.memory.store`
+- **Subscribes to**: `personality/memory/store`
 - **Uses**: Personality experiences for learning and pattern recognition
 - **Integration**: Encrypted storage of personality development patterns
 
@@ -365,9 +365,9 @@ personality_simulation:
       - "user/feedback"
     output_topics:
       - "personality/state/current"
-      - "personality.expression.communication"
-      - "personality.expression.decision"
-      - "personality.expression.emotional"
+      - "personality/expression/communication"
+      - "personality/expression/decision"
+      - "personality/expression/emotional"
       
   cloud_enhancement:
     enabled: false

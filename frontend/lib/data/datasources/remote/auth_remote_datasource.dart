@@ -1,6 +1,6 @@
 import 'package:aico_frontend/data/models/auth_model.dart';
 import 'package:aico_frontend/data/models/user_model.dart';
-import 'package:dio/dio.dart';
+import 'package:aico_frontend/networking/clients/unified_api_client.dart';
 
 abstract class AuthRemoteDataSource {
   Future<AuthModel> authenticate(String userUuid, String pin);
@@ -9,57 +9,61 @@ abstract class AuthRemoteDataSource {
 }
 
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
-  final Dio _dio;
+  final UnifiedApiClient _apiClient;
 
-  AuthRemoteDataSourceImpl(this._dio);
+  AuthRemoteDataSourceImpl(this._apiClient);
 
   @override
   Future<AuthModel> authenticate(String userUuid, String pin) async {
     try {
-      final response = await _dio.post('/auth/login', data: {
-        'user_uuid': userUuid,
-        'pin': pin,
-      });
+      final responseData = await _apiClient.post<Map<String, dynamic>>(
+        '/users/authenticate',
+        data: {
+          'user_uuid': userUuid,
+          'pin': pin,
+        },
+        fromJson: (json) => json,
+      );
 
-      if (response.statusCode == 200) {
-        return AuthModel.fromJson(response.data);
+      if (responseData != null) {
+        return AuthModel.fromJson(responseData);
       } else {
-        throw Exception('Authentication failed: ${response.statusMessage}');
+        throw Exception('Authentication failed: No response data');
       }
-    } on DioException catch (e) {
-      throw Exception('Network error during authentication: ${e.message}');
+    } catch (e) {
+      throw Exception('Network error during authentication: ${e.toString()}');
     }
   }
 
   @override
   Future<bool> refreshToken(String token) async {
     try {
-      final response = await _dio.post(
+      final responseData = await _apiClient.post<Map<String, dynamic>>(
         '/auth/refresh',
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
+        fromJson: (json) => json,
       );
 
-      return response.statusCode == 200;
-    } on DioException catch (e) {
-      throw Exception('Token refresh failed: ${e.message}');
+      return responseData != null;
+    } catch (e) {
+      throw Exception('Token refresh failed: ${e.toString()}');
     }
   }
 
   @override
   Future<UserModel> getCurrentUser(String token) async {
     try {
-      final response = await _dio.get(
+      final responseData = await _apiClient.get<Map<String, dynamic>>(
         '/auth/user',
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
+        fromJson: (json) => json,
       );
 
-      if (response.statusCode == 200) {
-        return UserModel.fromJson(response.data);
+      if (responseData != null) {
+        return UserModel.fromJson(responseData);
       } else {
-        throw Exception('Failed to get user: ${response.statusMessage}');
+        throw Exception('Failed to get user: No response data');
       }
-    } on DioException catch (e) {
-      throw Exception('Network error getting user: ${e.message}');
+    } catch (e) {
+      throw Exception('Network error getting user: ${e.toString()}');
     }
   }
 }

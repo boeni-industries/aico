@@ -23,13 +23,10 @@ final unifiedApiClientProvider = Provider<UnifiedApiClient>((ref) {
   final encryptionService = ref.watch(networkingEncryptionServiceProvider);
   final tokenManager = ref.watch(networkingTokenManagerProvider);
   
-  final client = UnifiedApiClient(
+  return UnifiedApiClient(
     encryptionService: encryptionService,
     tokenManager: tokenManager,
   );
-  // Initialize the client
-  client.initialize();
-  return client;
 });
 
 /// WebSocket manager provider

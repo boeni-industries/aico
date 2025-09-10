@@ -439,7 +439,7 @@ All messages on the bus follow this common envelope structure:
 
 ### Personality State
 
-**Topic**: `personality.state.current`  
+**Topic**: `personality/state/current`  
 **Description**: Current personality state published by the Personality Simulation module.
 
 > **Note on Personality Models**: The personality state includes both Big Five and HEXACO trait models intentionally. While there is some overlap (e.g., both include "extraversion"), they serve complementary purposes. Big Five provides widely-validated general personality parameters, while HEXACO adds the crucial Honesty-Humility dimension missing from Big Five. This dual-model approach enables integration with various personality-aware systems, supports different use cases (general expression vs. ethical reasoning), and provides redundant but distinct measurements for more robust personality modeling.
@@ -450,7 +450,7 @@ All messages on the bus follow this common envelope structure:
     "message_id": "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p",
     "timestamp": "2025-07-29T14:48:30.123Z",
     "source": "personality_simulation",
-    "message_type": "personality.state.current",
+    "message_type": "personality/state/current",
     "version": "1.0"
   },
   "payload": {
@@ -788,7 +788,7 @@ All messages on the bus follow this common envelope structure:
 
 ### Personality Memory Store
 
-**Topic**: `personality.memory.store`  
+**Topic**: `personality/memory/store`  
 **Description**: Personality experiences to store in the Memory System.
 
 ```json
@@ -797,7 +797,7 @@ All messages on the bus follow this common envelope structure:
     "message_id": "5e6f7g8h-9i0j-1k2l-3m4n-5o6p7q8r9s0t",
     "timestamp": "2025-07-29T14:48:38.456Z",
     "source": "personality_simulation",
-    "message_type": "personality.memory.store",
+    "message_type": "personality/memory/store",
     "version": "1.0"
   },
   "payload": {

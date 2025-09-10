@@ -20,7 +20,7 @@ Standardized JSON structure for all log messages:
   "function": "sendMessage",
   "file": "conversation_screen.dart",
   "line": 42,
-  "topic": "ui.button.click",
+  "topic": "ui/button/click",
   "message": "User clicked Send",
   "trace_id": "abc123",
   "session_id": "session-123"
@@ -74,7 +74,7 @@ logEvent(
   level: 'INFO',
   module: 'frontend.conversation_ui',
   functionName: 'sendMessage',
-  topic: 'ui.button.click',
+  topic: 'ui/button/click',
   message: 'User clicked Send',
 );
 ```

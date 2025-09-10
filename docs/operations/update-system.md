@@ -55,16 +55,16 @@ The Update System communicates via the ZeroMQ message bus using the following to
 
 | Topic | Description |
 |-------|-------------|
-| `update.check.request` | Request to check for available updates |
-| `update.check.response` | Response containing update availability information |
-| `update.available` | Notification that updates are available |
-| `update.download.progress` | Progress updates during download |
-| `update.download.complete` | Notification that download is complete |
-| `update.install.request` | Request to install downloaded updates |
-| `update.install.progress` | Progress updates during installation |
-| `update.install.complete` | Notification that installation is complete |
-| `update.restart.required` | Notification that restart is required |
-| `update.restart.scheduled` | Information about scheduled restart |
+| `update/check/request` | Request to check for available updates |
+| `update/check/response` | Response containing update availability information |
+| `update/available` | Notification that updates are available |
+| `update/download/progress` | Progress updates during download |
+| `update/download/complete` | Notification that download is complete |
+| `update/install/request` | Request to install downloaded updates |
+| `update/install/progress` | Progress updates during installation |
+| `update/install/complete` | Notification that installation is complete |
+| `update/restart/required` | Notification that restart is required |
+| `update/restart/scheduled` | Information about scheduled restart |
 
 ## Update Process Flow
 

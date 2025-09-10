@@ -361,11 +361,11 @@ The scheduler integrates seamlessly with AICO's ZeroMQ message bus for remote ma
 - Secure message authentication using AICO's transit security
 
 **Message Topics**
-- `scheduler.task.create` - Create new scheduled tasks
-- `scheduler.task.delete` - Remove existing tasks
-- `scheduler.task.status` - Query task status and execution history
-- `scheduler.stats` - Retrieve scheduler performance metrics
-- `scheduler.health` - Health check and system status
+- `scheduler/task/create` - Create new scheduled tasks
+- `scheduler/task/delete` - Remove existing tasks
+- `scheduler/task/status` - Query task status and execution history
+- `scheduler/stats` - Retrieve scheduler performance metrics
+- `scheduler/health` - Health check and system status
 
 ### CLI Integration
 

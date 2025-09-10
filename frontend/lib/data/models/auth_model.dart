@@ -15,7 +15,7 @@ class AuthModel {
   factory AuthModel.fromJson(Map<String, dynamic> json) {
     return AuthModel(
       user: UserModel.fromJson(json['user'] ?? {}),
-      token: json['token'] as String,
+      token: json['token']?.toString() ?? '',
       lastLogin: json['last_login'] != null 
           ? DateTime.parse(json['last_login'] as String)
           : null,

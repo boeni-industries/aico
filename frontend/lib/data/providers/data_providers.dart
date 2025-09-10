@@ -18,8 +18,8 @@ final authLocalDataSourceProvider = Provider<AuthLocalDataSource>((ref) {
 
 /// Auth remote datasource provider
 final authRemoteDataSourceProvider = Provider<AuthRemoteDataSource>((ref) {
-  final dio = ref.watch(dioProvider);
-  return AuthRemoteDataSourceImpl(dio);
+  final apiClient = ref.watch(unifiedApiClientProvider);
+  return AuthRemoteDataSourceImpl(apiClient);
 });
 
 /// Auth repository provider
