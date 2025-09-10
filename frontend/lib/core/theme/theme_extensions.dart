@@ -1,6 +1,6 @@
-import 'package:aico_frontend/core/di/service_locator.dart';
+// import 'package:aico_frontend/core/di/service_locator.dart'; // TODO: Remove - no longer needed
 import 'package:aico_frontend/core/theme/design_tokens.dart';
-import 'package:aico_frontend/core/theme/theme_manager.dart';
+// import 'package:aico_frontend/core/theme/theme_manager.dart'; // TODO: Remove when migrated to Riverpod
 import 'package:flutter/material.dart';
 
 /// BuildContext extensions for convenient theme access
@@ -15,7 +15,8 @@ extension AicoThemeExtensions on BuildContext {
   TextTheme get textTheme => theme.textTheme;
   
   /// Get the theme manager instance
-  ThemeManager get themeManager => ServiceLocator.get<ThemeManager>();
+  // TODO: Replace with Riverpod provider when theme management is migrated
+  // ThemeManager get themeManager => ref.read(themeManagerProvider);
   
   /// Check if current theme is dark
   bool get isDarkTheme => theme.brightness == Brightness.dark;
@@ -24,7 +25,8 @@ extension AicoThemeExtensions on BuildContext {
   bool get isLightTheme => theme.brightness == Brightness.light;
   
   /// Check if high contrast is enabled
-  bool get isHighContrast => themeManager.isHighContrastEnabled;
+  // TODO: Implement high contrast check when theme management is migrated to Riverpod
+  bool get isHighContrast => false;
   
   /// Get semantic colors with context awareness
   AicoSemanticColors get semanticColors => AicoSemanticColors.of(this);

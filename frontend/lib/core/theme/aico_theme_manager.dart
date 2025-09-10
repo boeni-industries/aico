@@ -1,18 +1,18 @@
 import 'dart:async';
 
-import 'package:aico_frontend/core/di/service_locator.dart';
+// import 'package:aico_frontend/core/di/service_locator.dart'; // TODO: Remove - no longer needed
 import 'package:aico_frontend/core/theme/theme_data_factory.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
-import 'package:aico_frontend/presentation/blocs/settings/settings_bloc.dart';
+// import 'package:aico_frontend/presentation/blocs/settings/settings_bloc.dart'; // TODO: Replace with Riverpod settings provider
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 /// Concrete implementation of ThemeManager for AICO
-/// Integrates with SettingsBloc for theme persistence and state management
+/// TODO: Migrate to Riverpod providers for settings management
 class AicoThemeManager implements ThemeManager {
-  final SettingsBloc _settingsBloc;
+  // final SettingsBloc _settingsBloc; // TODO: Replace with Riverpod settings provider
   final StreamController<ThemeMode> _themeController = StreamController<ThemeMode>.broadcast();
-  StreamSubscription<SettingsState>? _settingsSubscription;
+  // StreamSubscription<SettingsState>? _settingsSubscription; // TODO: Replace with Riverpod listener
   
   ThemeMode _currentMode = ThemeMode.system;
   bool _isHighContrast = false;
@@ -22,17 +22,20 @@ class AicoThemeManager implements ThemeManager {
   ThemeData? _cachedHighContrastDarkTheme;
   bool _disposed = false;
 
-  AicoThemeManager({required SettingsBloc settingsBloc}) : _settingsBloc = settingsBloc {
+  AicoThemeManager() {
+    // TODO: Initialize from Riverpod settings provider
     _initializeFromSettings();
-    _listenToSettingsChanges();
+    // TODO: Listen to Riverpod settings changes
+    // _listenToSettingsChanges();
   }
 
   /// Factory constructor using service locator
-  factory AicoThemeManager.fromServiceLocator() {
-    return AicoThemeManager(
-      settingsBloc: ServiceLocator.get<SettingsBloc>(),
-    );
-  }
+  // TODO: Remove when migrated to Riverpod providers
+  // factory AicoThemeManager.fromServiceLocator() {
+  //   return AicoThemeManager(
+  //     settingsBloc: ref.read(settingsBlocProvider),
+  //   );
+  // }
 
   @override
   ThemeMode get currentThemeMode => _currentMode;
@@ -93,18 +96,13 @@ class AicoThemeManager implements ThemeManager {
 
   @override
   Future<void> setThemeMode(ThemeMode mode) async {
-    if (_currentMode == mode) return;
-
+    if (_disposed) return;
+    
     _currentMode = mode;
-    
-    // Update settings bloc
-    _settingsBloc.add(SettingsThemeChanged(_themeModeToString(mode)));
-
-    // Update system UI overlay style
-    await _updateSystemUIOverlay();
-    
-    // Notify listeners
     _themeController.add(mode);
+    
+    // TODO: Persist theme change to Riverpod settings provider
+    // ref.read(settingsProvider.notifier).updateTheme(_themeModeToString(mode));
   }
 
   @override
@@ -123,18 +121,15 @@ class AicoThemeManager implements ThemeManager {
 
   @override
   Future<void> setHighContrastEnabled(bool enabled) async {
-    if (_isHighContrast == enabled) return;
-
-    _isHighContrast = enabled;
+    if (_disposed) return;
     
-    // Clear cached themes to force regeneration
+    _isHighContrast = enabled;
     _clearThemeCache();
     
-    // Update settings bloc with custom setting
-    // TODO: Add high contrast support to new SettingsBloc
-    // _settingsBloc.add(SettingsHighContrastChanged(enabled));
-
-    // Notify listeners
+    // TODO: Persist high contrast change to Riverpod settings provider
+    // ref.read(settingsProvider.notifier).updateHighContrast(enabled);
+    
+    await _updateSystemUIOverlay();
     _themeController.add(_currentMode);
   }
 
@@ -144,62 +139,31 @@ class AicoThemeManager implements ThemeManager {
     _isHighContrast = false;
     _clearThemeCache();
     
-    // Reset in settings
-    _settingsBloc.add(SettingsThemeChanged('system'));
-    // TODO: Add high contrast reset to new SettingsBloc
-    // _settingsBloc.add(SettingsHighContrastChanged(false));
+    // TODO: Reset in Riverpod settings provider
+    // ref.read(settingsProvider.notifier).resetTheme();
     
     await _updateSystemUIOverlay();
-    _themeController.add(_currentMode);
   }
 
-  /// Initialize theme settings from SettingsBloc state
+  /// Initialize theme settings from Riverpod settings provider
   void _initializeFromSettings() {
-    final state = _settingsBloc.state;
-    if (state is SettingsLoaded) {
-      // Load theme mode
-      _currentMode = _stringToThemeMode(state.theme);
-      
-      // Load high contrast setting - TODO: Add to new SettingsBloc
-      _isHighContrast = false; // state.highContrastEnabled ?? false;
-      
-      // Update system UI overlay
-      _updateSystemUIOverlay();
-    }
+    // TODO: Initialize from Riverpod settings provider
+    // final settings = ref.read(settingsProvider);
+    // _currentMode = _stringToThemeMode(settings.theme);
+    // _isHighContrast = settings.highContrastEnabled;
+    
+    // Default values for now
+    _currentMode = ThemeMode.system;
+    _isHighContrast = false;
+    
+    // Update system UI overlay
+    _updateSystemUIOverlay();
   }
 
-  /// Listen to settings changes and update theme accordingly
-  void _listenToSettingsChanges() {
-    _settingsSubscription = _settingsBloc.stream.listen((state) {
-      if (_disposed) return;
-      
-      if (state is SettingsLoaded) {
-        bool hasChanges = false;
-        
-        // Check theme mode changes
-        final newThemeMode = _stringToThemeMode(state.theme);
-        if (_currentMode != newThemeMode) {
-          _currentMode = newThemeMode;
-          hasChanges = true;
-        }
-        
-        // Check high contrast changes - TODO: Add to new SettingsBloc
-        final newHighContrast = false; // state.highContrastEnabled ?? false;
-        if (_isHighContrast != newHighContrast) {
-          _isHighContrast = newHighContrast;
-          _clearThemeCache();
-          hasChanges = true;
-        }
-        
-        if (hasChanges && !_disposed) {
-          _updateSystemUIOverlay();
-          if (!_themeController.isClosed) {
-            _themeController.add(_currentMode);
-          }
-        }
-      }
-    });
-  }
+  // TODO: Remove - replaced with Riverpod listeners
+  // void _listenToSettingsChanges() {
+  //   // Will be replaced with Riverpod ref.listen in widget context
+  // }
 
   /// Update system UI overlay style based on current theme
   Future<void> _updateSystemUIOverlay() async {
@@ -229,36 +193,16 @@ class AicoThemeManager implements ThemeManager {
     _cachedHighContrastDarkTheme = null;
   }
 
-  /// Convert ThemeMode to string for persistence
-  String _themeModeToString(ThemeMode mode) {
-    switch (mode) {
-      case ThemeMode.light:
-        return 'light';
-      case ThemeMode.dark:
-        return 'dark';
-      case ThemeMode.system:
-        return 'system';
-    }
-  }
-
-  /// Convert string to ThemeMode from persistence
-  ThemeMode _stringToThemeMode(String? modeString) {
-    switch (modeString) {
-      case 'light':
-        return ThemeMode.light;
-      case 'dark':
-        return ThemeMode.dark;
-      case 'system':
-      default:
-        return ThemeMode.system;
-    }
-  }
 
   /// Dispose resources
   void dispose() {
+    if (_disposed) return;
     _disposed = true;
-    _settingsSubscription?.cancel();
-    _settingsSubscription = null;
+    
+    // TODO: Remove when migrated to Riverpod
+    // _settingsSubscription?.cancel();
+    // _settingsSubscription = null;
+    
     if (!_themeController.isClosed) {
       _themeController.close();
     }

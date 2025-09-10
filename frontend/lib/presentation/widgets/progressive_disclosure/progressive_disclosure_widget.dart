@@ -110,7 +110,7 @@ class _ProgressiveDisclosureWidgetState extends State<ProgressiveDisclosureWidge
                   sizeFactor: _animations[index],
                   child: FadeTransition(
                     opacity: _animations[index],
-                    child: Container(
+                    child: SizedBox(
                       width: double.infinity,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,7 +136,7 @@ class _ProgressiveDisclosureWidgetState extends State<ProgressiveDisclosureWidge
                 );
               },
             );
-          }).toList(),
+          }),
         ],
       ),
     );

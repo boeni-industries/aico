@@ -166,7 +166,7 @@ class _ProgressiveFormDisclosureState extends State<ProgressiveFormDisclosure> {
                 ),
               ),
             );
-          }).toList(),
+          }),
         ],
       ),
     );

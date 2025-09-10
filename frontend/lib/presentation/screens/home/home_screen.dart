@@ -1,21 +1,20 @@
-import 'package:aico_frontend/core/di/service_locator.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
-import 'package:aico_frontend/presentation/blocs/auth/auth_bloc.dart';
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
+import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Home screen featuring avatar-centric hub with integrated conversation interface.
 /// Serves as the primary interaction point with AICO, including conversation history
 /// and collapsible right drawer for thoughts and memory timeline.
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
 enum NavigationPage {
@@ -25,7 +24,7 @@ enum NavigationPage {
   settings,
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _isRightDrawerOpen = true;
   bool _isRightDrawerExpanded = false; // true = expanded, false = collapsed to icons
   bool _isLeftDrawerExpanded = true; // true = expanded with text, false = collapsed to icons only
@@ -44,15 +43,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _themeManager = ServiceLocator.get<ThemeManager>();
-    // Listen to theme changes and rebuild UI
-    _themeManager?.themeChanges.listen((_) {
-      if (mounted) {
-        setState(() {
-          debugPrint('Theme changed via stream listener');
-        });
-      }
-    });
+    // TODO: Replace with Riverpod theme provider when theme management is migrated
+    // _themeManager = ref.read(themeManagerProvider);
   }
 
   @override
@@ -141,7 +133,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       IconButton(
                         onPressed: () {
-                          context.read<AuthBloc>().add(AuthLogoutRequested());
+                          ref.read(authProvider.notifier).logout();
                         },
                         icon: const Icon(Icons.logout),
                         tooltip: 'Logout',

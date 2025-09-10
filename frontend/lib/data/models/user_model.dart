@@ -29,6 +29,7 @@ class UserModel extends User {
     );
   }
 
+  @override
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -41,7 +42,7 @@ class UserModel extends User {
     };
   }
 
-  factory UserModel.fromEntity(User user) {
+  factory UserModel.fromDomain(User user) {
     return UserModel(
       id: user.id,
       username: user.username,
@@ -53,7 +54,7 @@ class UserModel extends User {
     );
   }
 
-  User toEntity() {
+  User toDomain() {
     return User(
       id: id,
       username: username,

@@ -110,13 +110,82 @@ The application uses the BLoC (Business Logic Component) pattern for all state m
 - **UpdateBloc**: Will manage update notifications, download progress, and installation coordination
 - **AvatarBloc**: Will control avatar state, animations, and WebView communication
 
-### Dependency Injection
+### Dependency Injection (2025 Modern Approach)
 
-The application uses the Service Locator pattern with `get_it` for dependency management, providing a simple and effective way to manage object lifecycles and dependencies without complex frameworks.
+**Current Implementation Issues**: The application previously used the Service Locator anti-pattern with `get_it`, which caused complex async dependency chains, circular dependencies, and timing issues that violated Clean Architecture principles.
 
-**Registration Strategy**: Services are registered at application startup with appropriate lifecycles - singletons for shared resources like API clients, and factories for stateful components like BLoCs.
+**Problems with Service Locator Pattern**:
+- **Anti-pattern**: Service Locator is widely recognized as an anti-pattern that hides dependencies
+- **Complex async chains**: UI → AuthBloc → ApiUserService → ApiService → UnifiedApiClient
+- **Tight coupling**: Direct dependencies between layers without proper abstraction
+- **Race conditions**: Mixed sync/async registration patterns causing unpredictable failures
+- **No dependency guarantees**: Services could be accessed before initialization
+- **Testing difficulties**: Hard to mock dependencies and isolate components
 
-**Testing Benefits**: The service locator pattern enables easy mocking and dependency replacement during testing, supporting both unit and integration test scenarios.
+**Modern 2025 Solution - Riverpod Dependency Injection**:
+
+Following Flutter community best practices from 2024-2025, we implement **Riverpod** as our dependency injection solution:
+
+```dart
+// Domain layer - Abstract repository interfaces
+abstract class AuthRepository {
+  Future<User> login(String email, String password);
+  Future<void> logout();
+  Stream<AuthState> get authStateStream;
+}
+
+// Data layer - Repository implementation
+class AuthRepositoryImpl implements AuthRepository {
+  final ApiService _apiService;
+  final TokenManager _tokenManager;
+  
+  AuthRepositoryImpl(this._apiService, this._tokenManager);
+  // Implementation...
+}
+
+// Riverpod providers - Clean dependency injection
+final apiServiceProvider = Provider<ApiService>((ref) {
+  return ApiService(baseUrl: 'http://localhost:8771/api/v1');
+});
+
+final tokenManagerProvider = Provider<TokenManager>((ref) {
+  return TokenManager();
+});
+
+final authRepositoryProvider = Provider<AuthRepository>((ref) {
+  return AuthRepositoryImpl(
+    ref.read(apiServiceProvider),
+    ref.read(tokenManagerProvider),
+  );
+});
+
+// Use case layer
+final loginUseCaseProvider = Provider<LoginUseCase>((ref) {
+  return LoginUseCase(ref.read(authRepositoryProvider));
+});
+
+// Presentation layer - BLoC with clean dependencies
+final authBlocProvider = StateNotifierProvider<AuthBloc, AuthState>((ref) {
+  return AuthBloc(ref.read(loginUseCaseProvider));
+});
+```
+
+**Key Benefits of Riverpod Approach**:
+- **Compile-time safety**: Dependencies are checked at compile time
+- **No service locator**: Dependencies are explicitly injected, not hidden
+- **Automatic disposal**: Riverpod handles lifecycle management automatically
+- **Easy testing**: Simple to override providers for testing
+- **No async registration complexity**: Providers are created on-demand
+- **Circular dependency prevention**: Compile-time detection of circular dependencies
+- **State management integration**: Seamless integration with state management
+
+**Architecture Layers with Riverpod**:
+1. **Domain Layer**: Defines abstract interfaces and business entities
+2. **Data Layer**: Implements domain interfaces with concrete data sources
+3. **Use Case Layer**: Encapsulates business logic in single-responsibility classes
+4. **Presentation Layer**: BLoCs/StateNotifiers depend only on use cases
+
+**Testing Benefits**: Riverpod's provider overrides make testing trivial - simply override providers with mocks during testing without complex setup or teardown.
 
 ### Navigation Architecture
 
@@ -358,37 +427,80 @@ Optimistic updates provide immediate user feedback while ensuring data consisten
 
 ### Code Organization
 
-**Current Implementation Structure**:
+**Legacy Implementation Structure (Problematic)**:
 ```
 lib/
-├── core/                 # Core utilities, services, and infrastructure
-│   ├── constants/        # App constants and configuration
-│   ├── di/              # Dependency injection (ServiceLocator)
-│   ├── logging/         # Structured logging system
-│   ├── navigation/      # Navigation utilities
-│   ├── services/        # Core services (API, encryption, storage)
-│   ├── theme/           # Theme management and Material 3 theming
-│   ├── topics/          # Message topics for logging
-│   ├── utils/           # Utility functions and extensions
-│   └── widgets/         # Reusable core widgets
-├── networking/          # All networking and data access
-│   ├── clients/         # Protocol-specific clients (Dio, WebSocket)
-│   ├── interceptors/    # HTTP interceptors (auth, retry)
-│   ├── models/          # Data models and serialization
-│   ├── repositories/    # Repository pattern implementations
-│   └── services/        # Network services (connection, offline queue)
-├── presentation/        # UI layer
-│   ├── blocs/           # BLoC state management
-│   ├── models/          # UI-specific models
-│   ├── screens/         # Application screens
-│   └── widgets/         # UI widgets and components
-└── main.dart           # Application entry point
+├── core/
+│   ├── di/              # ❌ Service Locator anti-pattern
+│   └── ...
+├── networking/          # ❌ Mixed data/domain concerns
+├── presentation/        # ❌ Tight coupling to concrete implementations
+└── main.dart
 ```
 
-**Architecture Notes**:
-- **Pragmatic Structure**: Combines data/domain layers into `networking/` for simplicity
-- **Service-Oriented**: Core services handle cross-cutting concerns
-- **Clean Separation**: UI logic separated from business logic via BLoCs
+**Modern 2025 Clean Architecture Structure**:
+
+Following Flutter community best practices and Clean Architecture principles:
+
+```
+lib/
+├── domain/                    # 🏗️ Business Logic Layer (Pure Dart)
+│   ├── entities/             # Core business objects (User, Message, etc.)
+│   ├── repositories/         # Abstract repository interfaces
+│   ├── usecases/            # Single-responsibility business logic
+│   └── failures/            # Domain-specific error types
+├── data/                     # 📊 Data Access Layer
+│   ├── datasources/         # Abstract data source interfaces
+│   │   ├── remote/          # API data sources
+│   │   └── local/           # Local storage data sources
+│   ├── models/              # Data models with JSON serialization
+│   ├── repositories/        # Repository implementations
+│   └── providers/           # Riverpod data providers
+├── presentation/             # 🎨 Presentation Layer
+│   ├── providers/           # Riverpod state providers
+│   ├── screens/             # Application screens
+│   ├── widgets/             # Reusable UI components
+│   └── theme/               # Theme and styling
+├── core/                     # 🔧 Infrastructure Layer
+│   ├── constants/           # App constants
+│   ├── errors/              # Error handling utilities
+│   ├── network/             # Network utilities (Dio setup)
+│   ├── storage/             # Storage utilities
+│   ├── utils/               # Helper functions
+│   └── providers.dart       # Core Riverpod providers
+├── shared/                   # 🤝 Shared Components
+│   ├── widgets/             # Cross-feature widgets
+│   └── extensions/          # Dart extensions
+└── main.dart                # Application entry point
+```
+
+**Key Architectural Improvements**:
+
+1. **Pure Domain Layer**: Contains only business logic, no external dependencies
+2. **Clear Separation**: Each layer has distinct responsibilities
+3. **Dependency Inversion**: Higher layers depend on abstractions, not concretions
+4. **Riverpod Integration**: Modern dependency injection throughout
+5. **Feature-First Option**: Can be organized by features for larger teams
+
+**Alternative Feature-First Structure** (for large teams):
+```
+lib/
+├── features/
+│   ├── authentication/
+│   │   ├── domain/
+│   │   ├── data/
+│   │   └── presentation/
+│   ├── conversation/
+│   │   ├── domain/
+│   │   ├── data/
+│   │   └── presentation/
+│   └── settings/
+│       ├── domain/
+│       ├── data/
+│       └── presentation/
+├── core/                    # Shared infrastructure
+└── shared/                  # Shared components
+```
 
 ### Build Configuration
 

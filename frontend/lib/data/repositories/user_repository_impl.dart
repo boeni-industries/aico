@@ -1,7 +1,7 @@
 import 'package:aico_frontend/domain/entities/user.dart';
 import 'package:aico_frontend/domain/repositories/user_repository.dart';
-import 'package:aico_frontend/networking/services/user_service.dart';
 import 'package:aico_frontend/networking/models/user_models.dart' as NetworkingModels;
+import 'package:aico_frontend/networking/services/user_service.dart';
 
 /// Clean architecture implementation of UserRepository using networking services
 class UserDataRepository implements UserRepository {

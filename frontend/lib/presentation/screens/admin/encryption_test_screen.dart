@@ -1,6 +1,3 @@
-import 'package:aico_frontend/core/di/service_locator.dart';
-import 'package:aico_frontend/core/services/encryption_service.dart';
-import 'package:aico_frontend/networking/clients/unified_api_client.dart';
 import 'package:flutter/material.dart';
 
 class EncryptionTestScreen extends StatefulWidget {
@@ -11,8 +8,9 @@ class EncryptionTestScreen extends StatefulWidget {
 }
 
 class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
-  final UnifiedApiClient _apiService = ServiceLocator.get<UnifiedApiClient>();
-  final EncryptionService _encryptionService = ServiceLocator.get<EncryptionService>();
+  // TODO: Replace with Riverpod providers when these services are migrated
+  // final UnifiedApiClient _apiService = ref.read(unifiedApiClientProvider);
+  // final EncryptionService _encryptionService = ref.read(encryptionServiceProvider);
   final List<String> _logs = [];
   bool _isLoading = false;
 
@@ -20,8 +18,7 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
   void initState() {
     super.initState();
     _log('Encryption Test Screen Initialized.');
-    _log('Encryption Service Initialized: ${_encryptionService.isInitialized}');
-    _log('Encryption Session Active: ${_encryptionService.isSessionActive}');
+    _log('TODO: Encryption service needs to be migrated to Riverpod providers');
   }
 
   void _log(String message) {
@@ -32,35 +29,14 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
 
   Future<void> _runHandshake() async {
     setState(() => _isLoading = true);
-    _log('Attempting to initialize API client...');
-    try {
-      await _apiService.initialize();
-      _log('✅ API client initialized!');
-      _log('Encryption Service Initialized: ${_encryptionService.isInitialized}');
-      _log('Encryption Session Active: ${_encryptionService.isSessionActive}');
-    } catch (e) {
-      _log('❌ API client initialization failed: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
+    _log('TODO: Handshake functionality needs migration to Riverpod providers');
+    setState(() => _isLoading = false);
   }
 
   Future<void> _runEchoTest() async {
-    if (!_encryptionService.isSessionActive) {
-      _log('⚠️ Cannot run echo test: Encryption session not active.');
-      return;
-    }
     setState(() => _isLoading = true);
-    _log('Sending encrypted echo request...');
-    try {
-      final response = await _apiService.post('/echo', data: {'message': 'Hello from the AICO app!'});
-      _log('✅ Echo successful!');
-      _log('Server response: ${response.toString()}');
-    } catch (e) {
-      _log('❌ Echo failed: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
+    _log('TODO: Echo test functionality needs migration to Riverpod providers');
+    setState(() => _isLoading = false);
   }
 
   @override
@@ -74,7 +50,7 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Encryption Status: ${_encryptionService.isSessionActive ? "Active" : "Inactive"}', style: Theme.of(context).textTheme.titleMedium),
+            Text('Encryption Status: TODO - Migrate to Riverpod', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
             if (_isLoading)
               const Center(child: CircularProgressIndicator())
@@ -85,7 +61,7 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
               ),
               const SizedBox(height: 8),
               ElevatedButton(
-                onPressed: _encryptionService.isSessionActive ? _runEchoTest : null,
+                onPressed: _runEchoTest,
                 child: const Text('2. Send Encrypted Echo'),
               ),
             ],

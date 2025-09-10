@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:aico_frontend/core/services/storage_service.dart';
-import 'package:get_it/get_it.dart';
+// import 'package:aico_frontend/core/services/storage_service.dart'; // TODO: Remove when migrated to Riverpod
+// TODO: Replace with Riverpod providers when storage service is migrated
 
 abstract class QueuedOperation {
   String get id;
@@ -147,7 +147,8 @@ class OfflineQueue {
 
   Future<void> _saveQueue() async {
     try {
-      final storageService = GetIt.instance<StorageService>();
+      // TODO: Replace with Riverpod provider when storage service is migrated
+      // final storageService = ref.read(storageServiceProvider);
       
       final serializedOps = _operations.map((op) => {
         'id': op.id,
@@ -157,7 +158,7 @@ class OfflineQueue {
         'retryCount': op.retryCount,
       }).toList();
       
-      await storageService.setJson('offline_queue', {'operations': serializedOps});
+      // await storageService.setJson('offline_queue', {'operations': serializedOps});
       debugPrint('Saved ${serializedOps.length} operations to storage');
     } catch (e) {
       debugPrint('Failed to save queue to storage: $e');
@@ -166,53 +167,18 @@ class OfflineQueue {
 
   Future<void> _loadQueue() async {
     try {
-      final storageService = GetIt.instance<StorageService>();
-      final queueData = storageService.getJson('offline_queue');
+      // TODO: Replace with Riverpod provider when storage service is migrated
+      // final storageService = ref.read(storageServiceProvider);
+      // final queueData = storageService.getJson('offline_queue');
       
-      if (queueData != null && queueData['operations'] != null) {
-        final operations = queueData['operations'] as List<dynamic>;
-        
-        for (final opData in operations) {
-          final opMap = opData as Map<String, dynamic>;
-          final operation = _deserializeOperation(opMap);
-          if (operation != null) {
-            _operations.add(operation);
-          }
-        }
-        
-        debugPrint('Loaded ${_operations.length} operations from storage');
-        _notifyQueueChanged();
-      }
+      // Temporary: Skip loading from storage until migration is complete
+      debugPrint('Queue loading skipped - awaiting Riverpod migration'); 
+      _notifyQueueChanged();
     } catch (e) {
       debugPrint('Failed to load queue from storage: $e');
     }
   }
 
-  QueuedOperation? _deserializeOperation(Map<String, dynamic> data) {
-    try {
-      final type = data['type'] as String;
-      final id = data['id'] as String;
-      final operationData = data['data'] as Map<String, dynamic>;
-      final createdAt = DateTime.parse(data['createdAt'] as String);
-      final retryCount = data['retryCount'] as int? ?? 0;
-      
-      switch (type) {
-        case 'create_user':
-          return CreateUserOperation(
-            id: id,
-            data: operationData,
-            createdAt: createdAt,
-            retryCount: retryCount,
-          );
-        default:
-          debugPrint('Unknown operation type: $type');
-          return null;
-      }
-    } catch (e) {
-      debugPrint('Failed to deserialize operation: $e');
-      return null;
-    }
-  }
 
   Future<void> initialize() async {
     await _loadQueue();

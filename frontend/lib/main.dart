@@ -1,18 +1,14 @@
 import 'dart:io';
 
-import 'package:aico_frontend/core/di/service_locator.dart';
-import 'package:aico_frontend/core/logging/logging.dart';
-import 'package:aico_frontend/core/logging/logging_module.dart';
+import 'package:aico_frontend/core/providers.dart';
 import 'package:aico_frontend/core/theme/aico_theme.dart';
-import 'package:aico_frontend/core/theme/theme_manager.dart';
 import 'package:aico_frontend/core/topics/aico_topics.dart';
-import 'package:aico_frontend/presentation/blocs/auth/auth_bloc.dart';
-import 'package:aico_frontend/presentation/blocs/connection/connection_bloc.dart';
-import 'package:aico_frontend/presentation/blocs/settings/settings_bloc.dart';
+import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/widgets/auth/auth_gate.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 void main() async {
@@ -43,83 +39,54 @@ void main() async {
     debugPrint('Window manager not available: $e');
   }
   
-  // Initialize dependency injection and wait for all services to be ready
-  await ServiceLocator.initialize();
-  await ServiceLocator.allReady();
+  // Initialize SharedPreferences for Riverpod
+  final sharedPreferences = await SharedPreferences.getInstance();
   
-  // Log application startup
-  await Log.i('app', AICOTopics.appStartup, 'AICO Flutter application starting', extra: {
-    'platform': Platform.operatingSystem,
-    'version': Platform.operatingSystemVersion,
-    'is_web': kIsWeb,
-    'is_debug': kDebugMode,
-  });
+  // TODO: Replace with proper unified logging that sends to backend
+  debugPrint('[app:${AICOTopics.appStartup}] AICO Flutter application starting');
   
-  runApp(const AicoApp());
+  runApp(
+    ProviderScope(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(sharedPreferences),
+      ],
+      child: const AicoApp(),
+    ),
+  );
 }
 
-class AicoApp extends StatefulWidget {
+class AicoApp extends ConsumerStatefulWidget {
+  // TODO: Implement proper unified logging that sends to backend via HTTP/WebSocket
+
   const AicoApp({super.key});
 
   @override
-  State<AicoApp> createState() => _AicoAppState();
+  ConsumerState<AicoApp> createState() => _AicoAppState();
 }
 
-class _AicoAppState extends State<AicoApp> {
-  late ThemeManager _themeManager;
-  ThemeMode _currentThemeMode = ThemeMode.system;
-
+class _AicoAppState extends ConsumerState<AicoApp> {
   @override
   void initState() {
     super.initState();
-    _themeManager = ServiceLocator.get<ThemeManager>();
-    _currentThemeMode = _themeManager.currentThemeMode;
     
-    // Log app initialization
-    Log.i('app', AICOTopics.appInitialization, 'App widget initialized', extra: {
-      'theme_mode': _currentThemeMode.toString(),
-    });
+    // TODO: Replace with proper unified logging that sends to backend
+    debugPrint('[app:${AICOTopics.appInitialization}] App widget initialized with Riverpod');
     
-    // Listen to theme changes
-    _themeManager.themeChanges.listen((themeMode) {
-      if (mounted) {
-        Log.i('app', AICOTopics.appThemeChange, 'Theme changed', extra: {
-          'from': _currentThemeMode.toString(),
-          'to': themeMode.toString(),
-        });
-        setState(() {
-          _currentThemeMode = themeMode;
-        });
-      }
+    // Initialize auth status check
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(authProvider.notifier).checkAuthStatus();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return MultiBlocProvider(
-      providers: [
-        BlocProvider<SettingsBloc>(
-          create: (context) => ServiceLocator.get<SettingsBloc>()..add(const SettingsLoad()),
-        ),
-        BlocProvider<ConnectionBloc>(
-          create: (context) => ServiceLocator.get<ConnectionBloc>(),
-        ),
-        BlocProvider<AuthBloc>(
-          create: (context) => ServiceLocator.get<AuthBloc>()..add(const AuthStatusChecked()),
-        ),
-      ],
-      child: MaterialApp(
-        title: 'AICO',
-        debugShowCheckedModeBanner: false,
-        theme: _themeManager.isHighContrastEnabled 
-            ? _themeManager.generateHighContrastLightTheme()
-            : AicoTheme.light(),
-        darkTheme: _themeManager.isHighContrastEnabled 
-            ? _themeManager.generateHighContrastDarkTheme()
-            : AicoTheme.dark(),
-        themeMode: _currentThemeMode,
-        home: const AuthGate(),
-      ),
+    return MaterialApp(
+      title: 'AICO',
+      debugShowCheckedModeBanner: false,
+      theme: AicoTheme.light(),
+      darkTheme: AicoTheme.dark(),
+      themeMode: ThemeMode.system, // TODO: Implement theme provider
+      home: const AuthGate(),
     );
   }
 }

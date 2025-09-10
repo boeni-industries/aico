@@ -1,18 +1,18 @@
 import 'package:aico_frontend/core/theme/aico_theme.dart';
 import 'package:aico_frontend/core/widgets/atoms/aico_button.dart';
 import 'package:aico_frontend/core/widgets/atoms/aico_text_field.dart';
-import 'package:aico_frontend/presentation/blocs/auth/auth_bloc.dart';
+import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _userUuidController = TextEditingController();
   final _pinController = TextEditingController();
@@ -27,12 +27,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _handleLogin() {
     if (_formKey.currentState?.validate() ?? false) {
-      context.read<AuthBloc>().add(
-        AuthLoginRequested(
-          userUuid: _userUuidController.text.trim(),
-          pin: _pinController.text.trim(),
-          rememberMe: _rememberMe,
-        ),
+      ref.read(authProvider.notifier).login(
+        _userUuidController.text.trim(),
+        _pinController.text.trim(),
+        rememberMe: _rememberMe,
       );
     }
   }
@@ -42,9 +40,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final theme = Theme.of(context);
     final aicoTheme = theme.extension<AicoThemeExtension>()!;
 
-    return BlocBuilder<AuthBloc, AuthState>(
-      builder: (context, state) {
-        return Padding(
+    final authState = ref.watch(authProvider);
+    
+    return Padding(
           padding: const EdgeInsets.all(24.0),
           child: Form(
             key: _formKey,
@@ -137,7 +135,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     // Login Button
                     AicoButton.primary(
                       onPressed: _handleLogin,
-                      isLoading: state is AuthLoading,
+                      isLoading: authState.isLoading,
                       child: const Text('Sign In'),
                     ),
               ],
@@ -145,7 +143,5 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           );
-      },
-    );
   }
 }

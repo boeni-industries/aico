@@ -1,8 +1,8 @@
-import 'package:aico_frontend/presentation/blocs/auth/auth_bloc.dart';
+import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/screens/auth/login_screen.dart';
 import 'package:aico_frontend/presentation/screens/home/home_screen.dart' as presentation;
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Login overlay widget that displays as a card on top of the main UI
 class LoginOverlay extends StatelessWidget {
@@ -75,14 +75,14 @@ class LoginOverlay extends StatelessWidget {
 
 /// AuthGate implements progressive disclosure by showing minimal UI when unauthenticated
 /// and full companion interface when authenticated
-class AuthGate extends StatefulWidget {
+class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({super.key});
 
   @override
-  State<AuthGate> createState() => _AuthGateState();
+  ConsumerState<AuthGate> createState() => _AuthGateState();
 }
 
-class _AuthGateState extends State<AuthGate> {
+class _AuthGateState extends ConsumerState<AuthGate> {
   String? _loginMessage;
   IconData? _loginMessageIcon;
   Color? _loginMessageColor;
@@ -92,91 +92,64 @@ class _AuthGateState extends State<AuthGate> {
     super.initState();
     // Trigger automatic login check on app startup
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AuthBloc>().add(const AuthAutoLoginRequested());
+      ref.read(authProvider.notifier).checkAuthStatus();
     });
   }
   
   void _updateLoginMessage(AuthState state) {
-    if (state is AuthFailure) {
-      switch (state.errorCode) {
-        case 'NETWORK_ERROR':
-          _loginMessage = 'Unable to connect to AICO. Please check your network connection and try again.';
-          _loginMessageIcon = Icons.wifi_off;
-          _loginMessageColor = Colors.orange;
-          break;
-        case 'AUTH_FAILED':
-          // More specific message based on the actual error details
-          if (state.message.toLowerCase().contains('invalid pin') || 
-              state.message.toLowerCase().contains('incorrect pin')) {
-            _loginMessage = 'Incorrect PIN. Please check your PIN and try again.';
-          } else if (state.message.toLowerCase().contains('user not found') || 
-                     state.message.toLowerCase().contains('invalid user')) {
-            _loginMessage = 'User not found. Please check your credentials or contact support.';
-          } else if (state.message.toLowerCase().contains('account locked') || 
-                     state.message.toLowerCase().contains('too many attempts')) {
-            _loginMessage = 'Account temporarily locked due to too many failed attempts. Please try again later.';
-          } else {
-            _loginMessage = 'Authentication failed. ${state.message.isNotEmpty ? state.message : "Please check your credentials."}';
-          }
-          _loginMessageIcon = Icons.lock_outline;
-          _loginMessageColor = Colors.red;
-          break;
-        case 'TOKEN_EXPIRED':
-          _loginMessage = 'Your session has expired. Please sign in again to continue.';
-          _loginMessageIcon = Icons.access_time;
-          _loginMessageColor = Colors.amber;
-          break;
-        case 'SERVER_ERROR':
-          if (state.message.toLowerCase().contains('timeout')) {
-            _loginMessage = 'Connection timed out. AICO server may be busy. Please try again.';
-          } else if (state.message.toLowerCase().contains('maintenance')) {
-            _loginMessage = 'AICO is currently under maintenance. Please try again later.';
-          } else {
-            _loginMessage = 'AICO server error. ${state.message.isNotEmpty ? state.message : "Please try again later."}';
-          }
-          _loginMessageIcon = Icons.error_outline;
-          _loginMessageColor = Colors.red;
-          break;
-        case 'AUTO_LOGIN_FAILED':
-          if (state.message.toLowerCase().contains('no stored credentials')) {
-            _loginMessage = 'No saved credentials found. Please sign in to continue.';
-          } else if (state.message.toLowerCase().contains('credentials corrupted')) {
-            _loginMessage = 'Saved credentials are corrupted. Please sign in again.';
-          } else {
-            _loginMessage = 'Automatic sign-in failed. ${state.message.isNotEmpty ? state.message : "Please enter your credentials."}';
-          }
-          _loginMessageIcon = Icons.refresh;
-          _loginMessageColor = Colors.blue;
-          break;
-        case 'CONNECTION_ERROR':
-          _loginMessage = 'Connection error. Please check your internet connection and try again.';
-          _loginMessageIcon = Icons.signal_wifi_off;
-          _loginMessageColor = Colors.orange;
-          break;
-        case 'INVALID_RESPONSE':
-          _loginMessage = 'Invalid server response. Please try again or contact support if the issue persists.';
-          _loginMessageIcon = Icons.warning_outlined;
-          _loginMessageColor = Colors.amber;
-          break;
-        case 'PERMISSION_DENIED':
-          _loginMessage = 'Access denied. Your account may not have the required permissions.';
-          _loginMessageIcon = Icons.block;
-          _loginMessageColor = Colors.red;
-          break;
-        default:
-          // Enhanced fallback with more context
-          if (state.message.isNotEmpty) {
-            _loginMessage = 'Sign-in issue: ${state.message}';
-          } else if (state.errorCode?.isNotEmpty == true) {
-            _loginMessage = 'Authentication error (${state.errorCode}). Please try again.';
-          } else {
-            _loginMessage = 'An unexpected error occurred. Please try signing in again.';
-          }
-          _loginMessageIcon = Icons.info_outline;
-          _loginMessageColor = Colors.grey[600];
+    if (state.error != null) {
+      final error = state.error!.toLowerCase();
+      
+      if (error.contains('network') || error.contains('connection')) {
+        _loginMessage = 'Unable to connect to AICO. Please check your network connection and try again.';
+        _loginMessageIcon = Icons.wifi_off;
+        _loginMessageColor = Colors.orange;
+      } else if (error.contains('invalid pin') || error.contains('incorrect pin')) {
+        _loginMessage = 'Incorrect PIN. Please check your PIN and try again.';
+        _loginMessageIcon = Icons.lock_outline;
+        _loginMessageColor = Colors.red;
+      } else if (error.contains('user not found') || error.contains('invalid user')) {
+        _loginMessage = 'User not found. Please check your credentials or contact support.';
+        _loginMessageIcon = Icons.lock_outline;
+        _loginMessageColor = Colors.red;
+      } else if (error.contains('account locked') || error.contains('too many attempts')) {
+        _loginMessage = 'Account temporarily locked due to too many failed attempts. Please try again later.';
+        _loginMessageIcon = Icons.lock_outline;
+        _loginMessageColor = Colors.red;
+      } else if (error.contains('token expired') || error.contains('session expired')) {
+        _loginMessage = 'Your session has expired. Please sign in again to continue.';
+        _loginMessageIcon = Icons.access_time;
+        _loginMessageColor = Colors.amber;
+      } else if (error.contains('timeout')) {
+        _loginMessage = 'Connection timed out. AICO server may be busy. Please try again.';
+        _loginMessageIcon = Icons.error_outline;
+        _loginMessageColor = Colors.red;
+      } else if (error.contains('maintenance')) {
+        _loginMessage = 'AICO is currently under maintenance. Please try again later.';
+        _loginMessageIcon = Icons.error_outline;
+        _loginMessageColor = Colors.red;
+      } else if (error.contains('no stored credentials')) {
+        _loginMessage = 'No saved credentials found. Please sign in to continue.';
+        _loginMessageIcon = Icons.refresh;
+        _loginMessageColor = Colors.blue;
+      } else if (error.contains('credentials corrupted')) {
+        _loginMessage = 'Saved credentials are corrupted. Please sign in again.';
+        _loginMessageIcon = Icons.refresh;
+        _loginMessageColor = Colors.blue;
+      } else if (error.contains('server error')) {
+        _loginMessage = 'AICO server error. Please try again later.';
+        _loginMessageIcon = Icons.error_outline;
+        _loginMessageColor = Colors.red;
+      } else if (error.contains('permission denied')) {
+        _loginMessage = 'Access denied. Your account may not have the required permissions.';
+        _loginMessageIcon = Icons.block;
+        _loginMessageColor = Colors.red;
+      } else {
+        _loginMessage = 'Sign-in issue: ${state.error}';
+        _loginMessageIcon = Icons.info_outline;
+        _loginMessageColor = Colors.grey[600];
       }
-    } else if (state is AuthUnauthenticated) {
-      // Check if this is the first time or a logout
+    } else if (!state.isAuthenticated && !state.isLoading) {
       _loginMessage = 'Welcome to AICO. Please sign in to get started.';
       _loginMessageIcon = Icons.waving_hand;
       _loginMessageColor = null;
@@ -189,77 +162,58 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocConsumer<AuthBloc, AuthState>(
-      listener: (context, state) {
-        // Update login message based on state
-        setState(() {
-          _updateLoginMessage(state);
-        });
-        
-        // Debug logging to trace authentication state changes
-        if (state is AuthAuthenticated) {
-          debugPrint('AuthGate: User authenticated, showing HomeScreen');
-        } else if (state is AuthUnauthenticated) {
-          debugPrint('AuthGate: User unauthenticated, showing LoginScreen');
-        } else if (state is AuthFailure) {
-          debugPrint('AuthGate: Authentication failed - ${state.message}');
-        }
-      },
-      builder: (context, state) {
-        switch (state) {
-          case AuthAuthenticated _:
-            return const presentation.HomeScreen();
-          case AuthUnauthenticated _:
-          case AuthFailure _:
-            return Stack(
-              children: [
-                const presentation.HomeScreen(),
-                Container(
-                  color: Colors.black.withValues(alpha: 0.9),
-                  child: Center(
-                    child: LoginOverlay(
-                      message: _loginMessage,
-                      messageIcon: _loginMessageIcon,
-                      messageColor: _loginMessageColor,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          case AuthLoading _:
-            return Scaffold(
-              body: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const CircularProgressIndicator(),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Connecting to AICO...',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
+    ref.listen<AuthState>(authProvider, (previous, next) {
+      // Update login message based on state
+      setState(() {
+        _updateLoginMessage(next);
+      });
+      
+      // Debug logging to trace authentication state changes
+      if (next.isAuthenticated) {
+        debugPrint('AuthGate: User authenticated, showing HomeScreen');
+      } else if (!next.isAuthenticated && !next.isLoading) {
+        debugPrint('AuthGate: User unauthenticated, showing LoginScreen');
+      } else if (next.error != null) {
+        debugPrint('AuthGate: Authentication failed - ${next.error}');
+      }
+    });
+
+    final authState = ref.watch(authProvider);
+    
+    if (authState.isAuthenticated) {
+      return const presentation.HomeScreen();
+    } else if (authState.isLoading) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                'Connecting to AICO...',
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
-            );
-          default:
-            return Scaffold(
-              body: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const CircularProgressIndicator(),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Initializing AICO...',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      return Stack(
+        children: [
+          const presentation.HomeScreen(),
+          Container(
+            color: Colors.black.withValues(alpha: 0.9),
+            child: Center(
+              child: LoginOverlay(
+                message: _loginMessage,
+                messageIcon: _loginMessageIcon,
+                messageColor: _loginMessageColor,
               ),
-            );
-        }
-      },
-    );
+            ),
+          ),
+        ],
+      );
+    }
   }
 }

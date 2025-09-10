@@ -1,10 +1,11 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
-import 'package:aico_frontend/networking/services/websocket_service.dart';
+
 import 'package:aico_frontend/networking/clients/websocket_client.dart';
-import 'package:aico_frontend/core/services/encryption_service.dart';
-import 'package:aico_frontend/networking/services/token_manager.dart';
-import 'package:get_it/get_it.dart';
+import 'package:aico_frontend/networking/services/websocket_service.dart';
+import 'package:flutter/foundation.dart';
+// import 'package:aico_frontend/core/services/encryption_service.dart'; // TODO: Remove when migrated to Riverpod
+// import 'package:aico_frontend/networking/services/token_manager.dart'; // TODO: Remove when migrated to Riverpod
+// TODO: Replace with Riverpod providers when services are migrated
 
 /// Manages WebSocket connections and provides high-level messaging interface
 class WebSocketManager {
@@ -39,13 +40,12 @@ class WebSocketManager {
     if (_isInitialized) return;
     
     try {
-      final encryptionService = GetIt.instance<EncryptionService>();
-      final tokenManager = GetIt.instance<TokenManager>();
+      // TODO: Replace with Riverpod providers when services are migrated
+      // final encryptionService = ref.read(encryptionServiceProvider);
+      // final tokenManager = ref.read(tokenManagerProvider);
       
-      _webSocketService = WebSocketService(
-        encryptionService: encryptionService,
-        tokenManager: tokenManager,
-      );
+      // Temporarily skip WebSocket initialization until services are migrated
+      debugPrint('WebSocket initialization skipped - awaiting Riverpod migration');
       
       await _webSocketService!.initialize(baseUrl);
       

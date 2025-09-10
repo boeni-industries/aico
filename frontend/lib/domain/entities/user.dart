@@ -50,6 +50,42 @@ class User extends Equatable {
       isActive: isActive ?? this.isActive,
     );
   }
+
+  /// Create User from JSON (for hydrated bloc persistence)
+  factory User.fromJson(Map<String, dynamic> json) {
+    return User(
+      id: json['id'] as String,
+      username: json['username'] as String,
+      email: json['email'] as String,
+      role: UserRole.values.firstWhere(
+        (e) => e.name == json['role'],
+        orElse: () => UserRole.user,
+      ),
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      lastLoginAt: json['lastLoginAt'] != null
+          ? DateTime.parse(json['lastLoginAt'] as String)
+          : null,
+      isActive: json['isActive'] as bool? ?? true,
+    );
+  }
+
+  /// Convert User to JSON (for hydrated bloc persistence)
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'username': username,
+      'email': email,
+      'role': role.name,
+      'createdAt': createdAt.toIso8601String(),
+      'lastLoginAt': lastLoginAt?.toIso8601String(),
+      'isActive': isActive,
+    };
+  }
+
+  @override
+  String toString() {
+    return 'User(id: $id, username: $username, email: $email, role: $role, isActive: $isActive)';
+  }
 }
 
 enum UserRole {
