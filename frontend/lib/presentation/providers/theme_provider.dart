@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:aico_frontend/core/theme/aico_theme_manager.dart';
-import 'package:aico_frontend/presentation/providers/settings_provider.dart';
 
 /// Theme manager provider
 final themeManagerProvider = Provider<AicoThemeManager>((ref) {
@@ -40,9 +39,8 @@ final highContrastDarkThemeProvider = Provider<ThemeData>((ref) {
 
 /// Theme controller provider for managing theme changes
 final themeControllerProvider = StateNotifierProvider<ThemeController, ThemeState>((ref) {
-  final settingsNotifier = ref.read(settingsProvider.notifier);
   final themeManager = ref.read(themeManagerProvider);
-  return ThemeController(settingsNotifier, themeManager);
+  return ThemeController(themeManager);
 });
 
 /// Theme state
@@ -72,10 +70,9 @@ class ThemeState {
 
 /// Theme controller for managing theme operations
 class ThemeController extends StateNotifier<ThemeState> {
-  final SettingsNotifier _settingsNotifier;
   final AicoThemeManager _themeManager;
 
-  ThemeController(this._settingsNotifier, this._themeManager) 
+  ThemeController(this._themeManager) 
     : super(ThemeState(
         themeMode: ThemeMode.system,
         isHighContrast: false,
@@ -93,7 +90,6 @@ class ThemeController extends StateNotifier<ThemeState> {
   }
 
   Future<void> setThemeMode(ThemeMode mode) async {
-    await _settingsNotifier.updateThemeMode(mode);
     await _themeManager.setThemeMode(mode);
     state = state.copyWith(
       themeMode: mode,
@@ -114,13 +110,11 @@ class ThemeController extends StateNotifier<ThemeState> {
   }
 
   Future<void> setHighContrastEnabled(bool enabled) async {
-    await _settingsNotifier.updateHighContrast(enabled);
     await _themeManager.setHighContrastEnabled(enabled);
     state = state.copyWith(isHighContrast: enabled);
   }
 
   Future<void> resetTheme() async {
-    await _settingsNotifier.resetTheme();
     await _themeManager.resetTheme();
     state = ThemeState(
       themeMode: ThemeMode.system,

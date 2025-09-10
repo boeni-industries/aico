@@ -144,6 +144,42 @@ This document integrates all previous guidance—including your latest preferenc
 - Mobile: bottom navigation; Desktop: vertical sidebar
 - No deep nesting; back/forward always visible and accessible
 
+### Admin & Settings UI Patterns
+
+**Core Principle: Context-Aware Placement**
+
+- **Primary Rule**: Admin/settings content uses the **main content area** as default, with overlays reserved for specific use cases
+- **Three-Pane Layout**: `[Sidebar Nav] [Main Content Area] [Optional Right Panel]`
+- **Desktop (≥1024px)**: Persistent sidebar with admin sections in main content area
+- **Tablet/Mobile**: Collapsible sidebar, full-width content area
+
+**Content Area Usage:**
+- Settings/Preferences, Admin Dashboards, Data Management
+- Complex Workflows, Multi-step processes, Detailed forms
+- Primary Admin Tasks where users spend significant time
+
+**Overlay Usage (Exceptions):**
+- Quick Actions: Simple confirmations, single-field edits
+- Contextual Tools: Actions related to specific list/table items  
+- Interrupting Workflows: Critical warnings, destructive confirmations
+- Developer/Diagnostic Tools: Infrequent utilities like encryption testing
+- Progressive Disclosure: Breaking complex tasks into steps
+
+**Navigation Hierarchy:**
+```
+Admin (Sidebar Section)
+├── Dashboard (Main Content)
+├── User Management (Main Content)
+├── System Settings (Main Content)
+│   ├── General (Tab/Section)
+│   └── Security (Tab/Section)
+└── Developer Tools (Main Content)
+    ├── API Testing (Sub-section)
+    └── Diagnostics (Sub-section)
+```
+
+**Benefits**: Predictable UX, scalable navigation, context preservation, efficient scanning, platform consistency with desktop application conventions
+
 ### System Status & Feedback
 
 - **Progress Indicators**: Clear visual feedback for long-running operations with meaningful status text

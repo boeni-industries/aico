@@ -81,15 +81,9 @@ class _EncryptionTestScreenState extends ConsumerState<EncryptionTestScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Transport Encryption Test'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
             Consumer(
               builder: (context, ref, child) {
                 final encryptionService = ref.watch(encryptionServiceProvider);
@@ -129,8 +123,6 @@ class _EncryptionTestScreenState extends ConsumerState<EncryptionTestScreen> {
               ),
             ),
           ],
-        ),
-      ),
-    );
+        );
   }
 }

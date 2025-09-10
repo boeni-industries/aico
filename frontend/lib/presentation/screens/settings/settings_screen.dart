@@ -1,20 +1,30 @@
 import 'package:flutter/material.dart';
 
-/// Settings screen for user preferences and configuration.
+/// Settings screen placeholder.
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    final theme = Theme.of(context);
+    
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.settings, size: 64, color: Colors.grey),
-          SizedBox(height: 16),
-          Text('Settings', 
-               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          Text('User preferences coming soon'),
+          Icon(
+            Icons.settings,
+            size: 64,
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Not Implemented Yet',
+            style: theme.textTheme.headlineMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ],
       ),
     );
