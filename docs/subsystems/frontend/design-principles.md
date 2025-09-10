@@ -140,9 +140,36 @@ This document integrates all previous guidance—including your latest preferenc
 
 ### Navigation
 
-- Flat structure: 4–5 root items only
+**Core Navigation Principles:**
+- **Maximum 2-level hierarchy** - Never exceed two levels of navigation depth
+- **Eliminate third-level navigation** - Use alternative patterns instead of nested tabs/menus
+- **Single-level primary navigation** - 4–5 root items maximum in main navigation
 - Mobile: bottom navigation; Desktop: vertical sidebar
-- No deep nesting; back/forward always visible and accessible
+- Back/forward always visible and accessible
+
+**Anti-Pattern: Avoid Nested Tabs**
+```
+❌ BAD: Tab > Sub-Tab > Sub-Sub-Tab
+✅ GOOD: Tab > Card Grid > Modal/Dialog
+```
+
+**Recommended Navigation Patterns:**
+
+1. **Card-Based Selection Pattern** (for tool/utility selection):
+   - Replace nested tabs with visual card grids
+   - Fixed card dimensions (280px × 140px recommended)
+   - Use `Wrap` layout for responsive behavior
+   - Open tools in focused modals/dialogs
+
+2. **Modal Dialog Pattern** (for focused tasks):
+   - Use for developer tools, diagnostics, one-off utilities
+   - Maintains context while providing focused interaction
+   - Prevents navigation stack complexity
+
+3. **Horizontal Tab Pattern** (for main sections):
+   - Maximum 4-6 tabs for primary content areas
+   - Use `TabController` with `TabBar` and `TabBarView`
+   - Each tab contains complete content area, not sub-navigation
 
 ### Admin & Settings UI Patterns
 
@@ -165,18 +192,25 @@ This document integrates all previous guidance—including your latest preferenc
 - Developer/Diagnostic Tools: Infrequent utilities like encryption testing
 - Progressive Disclosure: Breaking complex tasks into steps
 
-**Navigation Hierarchy:**
+**Implemented Navigation Hierarchy:**
 ```
 Admin (Sidebar Section)
-├── Dashboard (Main Content)
-├── User Management (Main Content)
-├── System Settings (Main Content)
-│   ├── General (Tab/Section)
-│   └── Security (Tab/Section)
-└── Developer Tools (Main Content)
-    ├── API Testing (Sub-section)
-    └── Diagnostics (Sub-section)
+├── Dashboard (Horizontal Tab → Main Content)
+├── User Management (Horizontal Tab → Main Content)
+├── System Settings (Horizontal Tab → Main Content)
+└── Developer Tools (Horizontal Tab → Card Grid)
+    ├── Encryption Test (Card → Modal Dialog)
+    ├── API Testing (Card → Modal Dialog)
+    ├── System Diagnostics (Card → Modal Dialog)
+    └── Application Logs (Card → Modal Dialog)
 ```
+
+**Implementation Details:**
+- **Primary Navigation**: Single `TabController` with 4 tabs (Dashboard, User Management, System Settings, Developer Tools)
+- **Developer Tools Section**: Uses `Wrap` widget with fixed-size cards (280px × 140px)
+- **Tool Access**: Each card opens focused content in modal dialogs
+- **Layout**: `SingleChildScrollView` with `Wrap` for responsive card arrangement
+- **Hover Effects**: Proper z-index handling with `Material` widget wrapping
 
 **Benefits**: Predictable UX, scalable navigation, context preservation, efficient scanning, platform consistency with desktop application conventions
 
@@ -194,7 +228,86 @@ Admin (Sidebar Section)
 
 ***
 
-## 7. Interaction Patterns
+## 7. Navigation Implementation Patterns
+
+### Flutter Implementation Guidelines
+
+**TabController Pattern for Admin Sections:**
+```dart
+class AdminScreen extends StatefulWidget with TickerProviderStateMixin {
+  late TabController _tabController;
+  
+  @override
+  void initState() {
+    _tabController = TabController(length: 4, vsync: this);
+  }
+  
+  // Use TabBar with TabBarView for main sections
+  TabBar(
+    controller: _tabController,
+    tabs: [
+      Tab(text: 'Dashboard'),
+      Tab(text: 'User Management'), 
+      Tab(text: 'System Settings'),
+      Tab(text: 'Developer Tools'),
+    ],
+  )
+}
+```
+
+**Card Grid Pattern for Tool Selection:**
+```dart
+Widget _buildDeveloperTools(BuildContext context, ThemeData theme) {
+  return Padding(
+    padding: const EdgeInsets.all(24),
+    child: SingleChildScrollView(
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 16,
+        children: [
+          _buildDeveloperToolCard(/* ... */),
+          // More cards...
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _buildDeveloperToolCard(/* params */) {
+  return SizedBox(
+    width: 280,
+    height: 140,
+    child: Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(/* card content */),
+      ),
+    ),
+  );
+}
+```
+
+**Modal Dialog Pattern for Focused Tasks:**
+```dart
+void _showEncryptionTest(BuildContext context) {
+  showDialog(
+    context: context,
+    builder: (context) => Dialog(
+      child: Container(
+        width: 800,
+        height: 600,
+        child: /* embedded tool content */,
+      ),
+    ),
+  );
+}
+```
+
+***
+
+## 8. Interaction Patterns
 
 - **Micro-interactions:** Button pulse, avatar expression, input shake (error), selection glow—all use **soft purple accent** where appropriate.
 - **Transitions:** Slide-in for panels; fade between states/views.
@@ -203,7 +316,7 @@ Admin (Sidebar Section)
 
 ***
 
-## 8. Accessibility
+## 9. Accessibility
 
 - All text/interactive color contrast meets WCAG AA+.
 - No color is the sole indicator; always pair with icon/label/animation.
@@ -211,7 +324,7 @@ Admin (Sidebar Section)
 
 ***
 
-## 9. Layout
+## 10. Layout
 
 - **Grid:** Responsive flex-box/grid—1–2 columns desktop, single column mobile.
 - **Avatar** is primary visual focus on home.
@@ -219,7 +332,7 @@ Admin (Sidebar Section)
 
 ***
 
-## 10. Theming & Adaptivity
+## 11. Theming & Adaptivity
 
 - **Tokenized colors and spacing** for easy theme updates (JSON/YAML).
 - Avatar and controls modular; layout adapts gracefully across device types.
@@ -227,7 +340,7 @@ Admin (Sidebar Section)
 
 ***
 
-## 11. Content & Tone
+## 12. Content & Tone
 
 - **Voice:** Warm, friendly, direct. Never clinical.
 - **Messaging:** Helpful and actionable; errors are gentle, not alarming.
@@ -244,6 +357,7 @@ Admin (Sidebar Section)
 | Gestalt      | 1–2 grouping levels, horizontal action rows, distinct layers          |
 | Typography   | Inter, minimal weights, spaced for clarity                            |
 | UI Flow      | No-barrier start, flat navigation, immediate affordances              |
+| Navigation   | Max 2-level hierarchy, card grids + modals, no nested tabs            |
 | Responsiveness| Modular for web/mobile/AR, avatar-centric, input always at hand      |
 | Feedback     | Subtle confirmations, avatar expression, micro-interactions highlight |
 | Accessibility| Color contrast, icons+labels, focus outlines, ARIA roles              |
