@@ -91,6 +91,7 @@ class ThemeController extends StateNotifier<ThemeState> {
 
   Future<void> setThemeMode(ThemeMode mode) async {
     await _themeManager.setThemeMode(mode);
+    _themeManager.updateThemeMode(mode);
     state = state.copyWith(
       themeMode: mode,
       currentBrightness: _themeManager.currentBrightness,
@@ -98,9 +99,21 @@ class ThemeController extends StateNotifier<ThemeState> {
   }
 
   Future<void> toggleTheme() async {
-    final newMode = state.themeMode == ThemeMode.light 
-        ? ThemeMode.dark 
-        : ThemeMode.light;
+    final ThemeMode newMode;
+    switch (state.themeMode) {
+      case ThemeMode.light:
+        newMode = ThemeMode.dark;
+        break;
+      case ThemeMode.dark:
+        newMode = ThemeMode.light;
+        break;
+      case ThemeMode.system:
+        // If system mode, toggle to the opposite of current system brightness
+        newMode = state.currentBrightness == Brightness.light 
+            ? ThemeMode.dark 
+            : ThemeMode.light;
+        break;
+    }
     await setThemeMode(newMode);
   }
 
@@ -111,11 +124,14 @@ class ThemeController extends StateNotifier<ThemeState> {
 
   Future<void> setHighContrastEnabled(bool enabled) async {
     await _themeManager.setHighContrastEnabled(enabled);
+    _themeManager.updateHighContrast(enabled);
     state = state.copyWith(isHighContrast: enabled);
   }
 
   Future<void> resetTheme() async {
     await _themeManager.resetTheme();
+    _themeManager.updateThemeMode(ThemeMode.system);
+    _themeManager.updateHighContrast(false);
     state = ThemeState(
       themeMode: ThemeMode.system,
       isHighContrast: false,

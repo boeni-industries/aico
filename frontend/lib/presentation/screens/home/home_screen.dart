@@ -102,22 +102,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        onPressed: () async {
-                          debugPrint('Theme toggle pressed');
-                          ref.read(themeControllerProvider.notifier).toggleTheme();
-                          debugPrint('Theme toggled');
+                      Consumer(
+                        builder: (context, ref, child) {
+                          final themeState = ref.watch(themeControllerProvider);
+                          return IconButton(
+                            onPressed: () async {
+                              debugPrint('Theme toggle pressed');
+                              await ref.read(themeControllerProvider.notifier).toggleTheme();
+                              debugPrint('Theme toggled');
+                            },
+                            icon: Icon(themeState.themeMode == ThemeMode.light ? Icons.wb_sunny : Icons.nightlight_round),
+                            tooltip: 'Toggle theme',
+                            style: IconButton.styleFrom(
+                              foregroundColor: theme.colorScheme.onSurface,
+                            ),
+                          );
                         },
-                        icon: Consumer(
-                          builder: (context, ref, child) {
-                            final themeMode = ref.watch(themeControllerProvider);
-                            return Icon(themeMode == ThemeMode.light ? Icons.wb_sunny : Icons.nightlight_round);
-                          },
-                        ),
-                        tooltip: 'Toggle theme',
-                        style: IconButton.styleFrom(
-                          foregroundColor: theme.colorScheme.onSurface,
-                        ),
                       ),
                       IconButton(
                         onPressed: () async {
