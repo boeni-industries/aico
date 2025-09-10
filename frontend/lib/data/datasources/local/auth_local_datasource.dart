@@ -1,5 +1,6 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 
 abstract class AuthLocalDataSource {
   Future<void> storeCredentials(String userUuid, String pin, String token);
@@ -24,37 +25,74 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
 
   @override
   Future<void> storeCredentials(String userUuid, String pin, String token) async {
+    debugPrint('AuthLocalDataSource: Storing credentials - userUuid: $userUuid, pin: ${pin.isNotEmpty ? "PROVIDED" : "EMPTY"}, token: ${token.isNotEmpty ? "PROVIDED" : "EMPTY"}');
+    
+    // Clear any existing stale credentials first
+    debugPrint('AuthLocalDataSource: Clearing any existing stale credentials...');
     await Future.wait([
-      _secureStorage.write(key: _keyUserUuid, value: userUuid),
-      _secureStorage.write(key: _keyPin, value: pin),
-      _secureStorage.write(key: _keyToken, value: token),
-      _sharedPreferences.setBool(_keyHasCredentials, true),
+      _secureStorage.delete(key: _keyUserUuid),
+      _secureStorage.delete(key: _keyPin),
+      _secureStorage.delete(key: _keyToken),
     ]);
+    
+    // Store each credential individually to debug which ones fail
+    try {
+      await _secureStorage.write(key: _keyUserUuid, value: userUuid);
+      debugPrint('AuthLocalDataSource: UserUuid stored successfully');
+    } catch (e) {
+      debugPrint('AuthLocalDataSource: Failed to store userUuid: $e');
+    }
+    
+    try {
+      await _secureStorage.write(key: _keyPin, value: pin);
+      debugPrint('AuthLocalDataSource: PIN stored successfully');
+    } catch (e) {
+      debugPrint('AuthLocalDataSource: Failed to store PIN: $e');
+    }
+    
+    try {
+      await _secureStorage.write(key: _keyToken, value: token);
+      debugPrint('AuthLocalDataSource: Token stored successfully');
+    } catch (e) {
+      debugPrint('AuthLocalDataSource: Failed to store token: $e');
+    }
+    
+    try {
+      await _sharedPreferences.setBool(_keyHasCredentials, true);
+      debugPrint('AuthLocalDataSource: HasCredentials flag set successfully');
+    } catch (e) {
+      debugPrint('AuthLocalDataSource: Failed to set hasCredentials flag: $e');
+    }
+    
+    debugPrint('AuthLocalDataSource: Credential storage process completed');
   }
 
   @override
   Future<Map<String, String>?> getStoredCredentials() async {
-    final hasCredentials = _sharedPreferences.getBool(_keyHasCredentials) ?? false;
-    if (!hasCredentials) return null;
-
+    debugPrint('AuthLocalDataSource: Getting stored credentials...');
+    
     final results = await Future.wait([
       _secureStorage.read(key: _keyUserUuid),
       _secureStorage.read(key: _keyPin),
       _secureStorage.read(key: _keyToken),
     ]);
-
+    
     final userUuid = results[0];
     final pin = results[1];
     final token = results[2];
-
+    
+    debugPrint('AuthLocalDataSource: Retrieved - userUuid: ${userUuid != null ? "EXISTS" : "NULL"}, pin: ${pin != null ? "EXISTS" : "NULL"}, token: ${token != null ? "EXISTS" : "NULL"}');
+    
     if (userUuid != null && pin != null && token != null) {
+      debugPrint('AuthLocalDataSource: All credentials found, returning credential map');
       return {
         'userUuid': userUuid,
         'pin': pin,
         'token': token,
       };
     }
-
+    
+    debugPrint('AuthLocalDataSource: Missing credentials, returning null');
     return null;
   }
 
@@ -70,7 +108,9 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
 
   @override
   Future<bool> hasStoredCredentials() async {
-    return _sharedPreferences.getBool(_keyHasCredentials) ?? false;
+    final hasCredentials = _sharedPreferences.getBool(_keyHasCredentials) ?? false;
+    debugPrint('AuthLocalDataSource: Has stored credentials check: $hasCredentials');
+    return hasCredentials;
   }
 
   @override

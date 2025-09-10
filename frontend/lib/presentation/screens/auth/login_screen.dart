@@ -1,5 +1,6 @@
 import 'package:aico_frontend/core/widgets/atoms/aico_button.dart';
 import 'package:aico_frontend/core/widgets/atoms/aico_text_field.dart';
+import 'package:aico_frontend/data/providers/data_providers.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,12 +17,46 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _userUuidController = TextEditingController();
   final _pinController = TextEditingController();
   bool _rememberMe = false;
+  bool _credentialsLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStoredCredentials();
+  }
 
   @override
   void dispose() {
     _userUuidController.dispose();
     _pinController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadStoredCredentials() async {
+    if (_credentialsLoaded) return;
+    
+    try {
+      // Check if we have stored credentials via the auth repository
+      final authRepository = ref.read(authRepositoryProvider);
+      final hasCredentials = await authRepository.hasStoredCredentials();
+      
+      if (hasCredentials) {
+        final localDataSource = ref.read(authLocalDataSourceProvider);
+        final credentials = await localDataSource.getStoredCredentials();
+        
+        if (credentials != null && mounted) {
+          setState(() {
+            _userUuidController.text = credentials['userUuid'] ?? '';
+            _pinController.text = credentials['pin'] ?? '';
+            _rememberMe = true;
+            _credentialsLoaded = true;
+          });
+        }
+      }
+    } catch (e) {
+      // Silently handle errors - user can still enter credentials manually
+      debugPrint('Failed to load stored credentials: $e');
+    }
   }
 
   void _handleLogin() {

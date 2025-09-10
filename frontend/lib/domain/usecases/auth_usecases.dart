@@ -1,4 +1,5 @@
 import 'package:aico_frontend/domain/repositories/auth_repository.dart';
+import 'package:flutter/foundation.dart';
 
 /// Use case for user authentication
 class LoginUseCase {
@@ -7,9 +8,11 @@ class LoginUseCase {
   const LoginUseCase(this._authRepository);
 
   Future<AuthResult> execute(String userUuid, String pin, {bool rememberMe = false}) async {
+    debugPrint('LoginUseCase: Authenticating user - userUuid: $userUuid, rememberMe: $rememberMe');
     final result = await _authRepository.authenticate(userUuid, pin);
     
     if (rememberMe) {
+      debugPrint('LoginUseCase: Storing credentials - userUuid: $userUuid, token: ${result.token.isNotEmpty ? "PROVIDED" : "EMPTY"}');
       await _authRepository.storeCredentials(userUuid, pin, result.token);
     }
     
@@ -50,7 +53,7 @@ class RefreshTokenUseCase {
   }
 }
 
-/// Use case for checking authentication status
+/// Use case for checking if user has stored credentials
 class CheckAuthStatusUseCase {
   final AuthRepository _authRepository;
 

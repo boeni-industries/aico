@@ -1,6 +1,7 @@
 import 'package:aico_frontend/data/datasources/local/auth_local_datasource.dart';
 import 'package:aico_frontend/data/datasources/remote/auth_remote_datasource.dart';
 import 'package:aico_frontend/domain/repositories/auth_repository.dart';
+import 'package:flutter/foundation.dart';
 
 /// Clean implementation of AuthRepository using modern data sources
 class AuthRepositoryImpl implements AuthRepository {
@@ -29,7 +30,10 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       // Check if we have stored credentials
       final credentials = await _localDataSource.getStoredCredentials();
-      if (credentials == null) return null;
+      
+      if (credentials == null) {
+        return null;
+      }
 
       // Try to authenticate with stored credentials
       final authModel = await _remoteDataSource.authenticate(
@@ -39,8 +43,12 @@ class AuthRepositoryImpl implements AuthRepository {
       
       return authModel.toDomain();
     } catch (e) {
-      // Clear invalid credentials
-      await _localDataSource.clearStoredCredentials();
+      debugPrint('AuthRepository: Auto-login failed with error: $e');
+      // Only clear credentials on authentication failure (401), not on network errors
+      if (e.toString().contains('401') || e.toString().contains('Unauthorized')) {
+        debugPrint('AuthRepository: Clearing invalid credentials due to 401');
+        await _localDataSource.clearStoredCredentials();
+      }
       return null;
     }
   }

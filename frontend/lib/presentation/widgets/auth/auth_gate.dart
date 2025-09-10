@@ -107,14 +107,24 @@ class _AuthGateState extends ConsumerState<AuthGate> {
   String? _loginMessage;
   IconData? _loginMessageIcon;
   Color? _loginMessageColor;
+  bool _initialAuthCheckCompleted = false;
   
   @override
   void initState() {
     super.initState();
     // Trigger automatic login check on app startup
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(authProvider.notifier).checkAuthStatus();
+      _performInitialAuthCheck();
     });
+  }
+  
+  Future<void> _performInitialAuthCheck() async {
+    await ref.read(authProvider.notifier).checkAuthStatus();
+    if (mounted) {
+      setState(() {
+        _initialAuthCheckCompleted = true;
+      });
+    }
   }
   
   void _updateLoginMessage(AuthState state) {
@@ -203,7 +213,7 @@ class _AuthGateState extends ConsumerState<AuthGate> {
     
     if (authState.isAuthenticated) {
       return const presentation.HomeScreen();
-    } else if (authState.isLoading) {
+    } else if (authState.isLoading || !_initialAuthCheckCompleted) {
       return Scaffold(
         body: Center(
           child: Column(
@@ -212,7 +222,7 @@ class _AuthGateState extends ConsumerState<AuthGate> {
               const CircularProgressIndicator(),
               const SizedBox(height: 16),
               Text(
-                'Connecting to AICO...',
+                _initialAuthCheckCompleted ? 'Connecting to AICO...' : 'Starting AICO...',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ],
