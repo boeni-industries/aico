@@ -240,12 +240,12 @@ class AICOLogger {
       return;
     }
 
-    // Get caller context automatically
-    final frame = Trace.current().frames[2]; // Skip _log and the public method
-    final module = _extractModuleName(frame.uri);
-    final function = frame.member ?? 'unknown';
-    final file = frame.uri.pathSegments.isNotEmpty ? frame.uri.pathSegments.last : null;
-    final line = frame.line;
+    // Get caller context automatically - find the actual calling module
+    final callerInfo = _findActualCaller(Trace.current().frames);
+    final module = _extractModuleName(callerInfo.uri);
+    final function = callerInfo.member ?? 'unknown';
+    final file = callerInfo.uri.pathSegments.isNotEmpty ? callerInfo.uri.pathSegments.last : null;
+    final line = callerInfo.line;
 
     final entry = LogEntry(
       timestamp: DateTime.now().toIso8601String(),
@@ -263,6 +263,30 @@ class AICOLogger {
     );
 
     logger._processLogEntry(entry);
+  }
+
+  /// Find the actual caller by skipping logging infrastructure frames
+  static Frame _findActualCaller(List<Frame> frames) {
+    // Skip frames that are part of the logging infrastructure
+    for (int i = 0; i < frames.length; i++) {
+      final frame = frames[i];
+      final uri = frame.uri.toString();
+      
+      // Skip logging infrastructure files
+      if (uri.contains('aico_log.dart') || 
+          uri.contains('aico_logger.dart') ||
+          uri.contains('log_entry.dart') ||
+          uri.contains('log_transport.dart') ||
+          uri.contains('log_cache.dart')) {
+        continue;
+      }
+      
+      // This should be the actual caller
+      return frame;
+    }
+    
+    // Fallback to the last frame if we can't find a non-logging frame
+    return frames.isNotEmpty ? frames.last : Frame(Uri.parse('unknown'), null, null, 'unknown');
   }
 
   /// Extract module name from library URI
