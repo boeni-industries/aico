@@ -4,14 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Core HTTP client provider
+/// Dio HTTP client provider
 final dioProvider = Provider<Dio>((ref) {
   final dio = Dio();
   
   // Configure base options
-  dio.options.baseUrl = 'http://localhost:8080/api'; // TODO: Use environment config
-  dio.options.connectTimeout = const Duration(seconds: 30);
-  dio.options.receiveTimeout = const Duration(seconds: 30);
+  dio.options.baseUrl = 'http://localhost:8771/api/v1';
+  dio.options.connectTimeout = const Duration(seconds: 10);
+  dio.options.receiveTimeout = const Duration(seconds: 10);
   
   // Add interceptors for logging, auth, etc.
   dio.interceptors.add(LogInterceptor(
@@ -23,8 +23,8 @@ final dioProvider = Provider<Dio>((ref) {
   return dio;
 });
 
-// Secure storage provider
-final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
+/// Flutter Secure Storage provider
+final flutterSecureStorageProvider = Provider<FlutterSecureStorage>((ref) {
   return const FlutterSecureStorage(
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
@@ -35,7 +35,8 @@ final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
   );
 });
 
-// Shared preferences provider - will be overridden in main.dart
+/// SharedPreferences provider
+/// This should be overridden in main.dart with the actual instance
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError('SharedPreferences must be overridden with actual instance in main.dart');
 });

@@ -256,17 +256,17 @@ ZeroMQ uses simple prefix matching (no wildcards):
 
 ### Cross-Cutting Concerns
 
-- **crisis.*** - Crisis detection and handling
-  - `crisis.detection` - Crisis signals and alerts
-  - `crisis.response` - Crisis response coordination
+- **crisis/** - Crisis detection and handling
+  - `crisis/detection` - Crisis signals and alerts
+  - `crisis/response` - Crisis response coordination
 
-- **expression.*** - Cross-modal expression coordination
-  - `expression.coordination` - Coordinated expression directives
-  - `expression.feedback` - Expression effectiveness feedback
+- **expression/** - Cross-modal expression coordination
+  - `expression/coordination` - Coordinated expression directives
+  - `expression/feedback` - Expression effectiveness feedback
 
-- **learning.*** - Shared learning coordination
-  - `learning.coordination` - Learning signals and coordination
-  - `learning.feedback` - Learning effectiveness feedback
+- **learning/** - Shared learning coordination
+  - `learning/coordination` - Learning signals and coordination
+  - `learning/feedback` - Learning effectiveness feedback
 
 ## Module Integration Patterns
 

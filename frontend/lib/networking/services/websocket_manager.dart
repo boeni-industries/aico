@@ -1,21 +1,24 @@
 import 'dart:async';
+import 'dart:convert';
 
-import 'package:aico_frontend/networking/clients/websocket_client.dart';
-import 'package:aico_frontend/networking/services/websocket_service.dart';
 import 'package:flutter/foundation.dart';
-// import 'package:aico_frontend/core/services/encryption_service.dart'; // TODO: Remove when migrated to Riverpod
-// import 'package:aico_frontend/networking/services/token_manager.dart'; // TODO: Remove when migrated to Riverpod
-// TODO: Replace with Riverpod providers when services are migrated
+import 'package:web_socket_channel/web_socket_channel.dart';
 
-/// Manages WebSocket connections and provides high-level messaging interface
+/// Simple WebSocket state enum
+enum WebSocketState {
+  disconnected,
+  connecting,
+  connected,
+  reconnecting,
+}
+
+/// Simplified WebSocket manager for Riverpod architecture
 class WebSocketManager {
-  WebSocketService? _webSocketService;
-  final StreamController<WebSocketConnectionState> _connectionStateController = 
-      StreamController.broadcast();
-  final StreamController<Map<String, dynamic>> _messageController = 
-      StreamController.broadcast();
+  WebSocketChannel? _channel;
+  final StreamController<WebSocketState> _stateController = StreamController.broadcast();
+  final StreamController<Map<String, dynamic>> _messageController = StreamController.broadcast();
   
-  bool _isInitialized = false;
+  WebSocketState _currentState = WebSocketState.disconnected;
   Timer? _reconnectTimer;
   Timer? _heartbeatTimer;
   
@@ -23,246 +26,129 @@ class WebSocketManager {
   static const Duration _heartbeatInterval = Duration(seconds: 30);
 
   /// Stream of connection state changes
-  Stream<WebSocketConnectionState> get connectionState => _connectionStateController.stream;
+  Stream<WebSocketState> get connectionState => _stateController.stream;
   
-  /// Stream of all incoming messages
+  /// Stream of incoming messages
   Stream<Map<String, dynamic>> get messages => _messageController.stream;
   
   /// Current connection state
-  WebSocketConnectionState get currentState => 
-      _webSocketService?.currentState ?? WebSocketConnectionState.disconnected;
-  
-  /// Whether the WebSocket is connected
-  bool get isConnected => _webSocketService?.isConnected ?? false;
+  WebSocketState get currentState => _currentState;
 
-  /// Initialize the WebSocket manager
-  Future<void> initialize(String baseUrl) async {
-    if (_isInitialized) return;
-    
-    try {
-      // TODO: Replace with Riverpod providers when services are migrated
-      // final encryptionService = ref.read(encryptionServiceProvider);
-      // final tokenManager = ref.read(tokenManagerProvider);
-      
-      // Temporarily skip WebSocket initialization until services are migrated
-      debugPrint('WebSocket initialization skipped - awaiting Riverpod migration');
-      
-      await _webSocketService!.initialize(baseUrl);
-      
-      // Set up message and state forwarding
-      _webSocketService!.messages.listen(
-        (message) => _messageController.add(message),
-        onError: (error) => _messageController.addError(error),
-      );
-      
-      _webSocketService!.connectionState.listen(
-        (state) {
-          _connectionStateController.add(state);
-          _handleConnectionStateChange(state);
-        },
-        onError: (error) => _connectionStateController.addError(error),
-      );
-      
-      _isInitialized = true;
-      debugPrint('WebSocketManager initialized');
-    } catch (e) {
-      debugPrint('Failed to initialize WebSocketManager: $e');
-      rethrow;
-    }
-  }
-
-  /// Connect to the WebSocket server
-  Future<void> connect() async {
-    if (!_isInitialized || _webSocketService == null) {
-      throw StateError('WebSocketManager not initialized. Call initialize() first.');
-    }
-    
-    try {
-      await _webSocketService!.connect();
-    } catch (e) {
-      debugPrint('WebSocket connection failed: $e');
-      _scheduleReconnect();
-    }
-  }
-
-  /// Disconnect from the WebSocket server
-  Future<void> disconnect() async {
-    _cancelReconnectTimer();
-    _cancelHeartbeatTimer();
-    
-    if (_webSocketService != null) {
-      await _webSocketService!.disconnect();
-    }
-  }
-
-  /// Send a message through the WebSocket connection
-  void sendMessage(Map<String, dynamic> message) {
-    if (!isConnected) {
-      debugPrint('Cannot send message: WebSocket not connected');
+  /// Connect to WebSocket server
+  Future<void> connect(String url) async {
+    if (_currentState == WebSocketState.connected || _currentState == WebSocketState.connecting) {
       return;
     }
+
+    _updateState(WebSocketState.connecting);
     
-    _webSocketService!.sendMessage(message);
-  }
-
-  /// Send a conversation message
-  void sendConversationMessage({
-    required String conversationId,
-    required String content,
-    String? messageId,
-  }) {
-    _webSocketService?.sendConversationMessage(
-      conversationId: conversationId,
-      content: content,
-      messageId: messageId,
-    );
-  }
-
-  /// Send typing indicator
-  void sendTypingIndicator({
-    required String conversationId,
-    required bool isTyping,
-  }) {
-    _webSocketService?.sendTypingIndicator(
-      conversationId: conversationId,
-      isTyping: isTyping,
-    );
-  }
-
-  /// Subscribe to conversation updates
-  void subscribeToConversation(String conversationId) {
-    _webSocketService?.subscribeToConversation(conversationId);
-  }
-
-  /// Unsubscribe from conversation updates
-  void unsubscribeFromConversation(String conversationId) {
-    _webSocketService?.unsubscribeFromConversation(conversationId);
-  }
-
-  /// Update user presence status
-  void updatePresenceStatus({
-    required String status,
-    String? customMessage,
-  }) {
-    _webSocketService?.updatePresenceStatus(
-      status: status,
-      customMessage: customMessage,
-    );
-  }
-
-  /// Get filtered message streams
-  Stream<Map<String, dynamic>> getConversationMessages() {
-    return _webSocketService?.getConversationMessages() ?? const Stream.empty();
-  }
-
-  Stream<Map<String, dynamic>> getTypingIndicators() {
-    return _webSocketService?.getTypingIndicators() ?? const Stream.empty();
-  }
-
-  Stream<Map<String, dynamic>> getPresenceUpdates() {
-    return _webSocketService?.getPresenceUpdates() ?? const Stream.empty();
-  }
-
-  Stream<Map<String, dynamic>> getSystemNotifications() {
-    return _webSocketService?.getSystemNotifications() ?? const Stream.empty();
-  }
-
-  void _handleConnectionStateChange(WebSocketConnectionState state) {
-    switch (state) {
-      case WebSocketConnectionState.connected:
-        _cancelReconnectTimer();
-        _startHeartbeat();
-        debugPrint('WebSocket connected successfully');
-        break;
-      case WebSocketConnectionState.disconnected:
-        _cancelHeartbeatTimer();
-        _scheduleReconnect();
-        debugPrint('WebSocket disconnected');
-        break;
-      case WebSocketConnectionState.connecting:
-      case WebSocketConnectionState.reconnecting:
-        debugPrint('WebSocket connecting...');
-        break;
+    try {
+      _channel = WebSocketChannel.connect(Uri.parse(url));
+      
+      // Listen for messages
+      _channel!.stream.listen(
+        _handleMessage,
+        onError: _handleError,
+        onDone: _handleDisconnect,
+      );
+      
+      _updateState(WebSocketState.connected);
+      _startHeartbeat();
+      
+      debugPrint('[WebSocket] Connected to $url');
+    } catch (e) {
+      debugPrint('[WebSocket] Connection failed: $e');
+      _updateState(WebSocketState.disconnected);
+      _scheduleReconnect(url);
     }
   }
 
-  void _scheduleReconnect() {
-    _cancelReconnectTimer();
-    
-    _reconnectTimer = Timer(_reconnectInterval, () async {
-      if (!isConnected && _isInitialized) {
-        debugPrint('Attempting WebSocket reconnection...');
-        try {
-          await connect();
-        } catch (e) {
-          debugPrint('Reconnection failed: $e');
-          _scheduleReconnect(); // Schedule another attempt
-        }
-      }
-    });
-  }
-
-  void _cancelReconnectTimer() {
+  /// Disconnect from WebSocket server
+  Future<void> disconnect() async {
     _reconnectTimer?.cancel();
-    _reconnectTimer = null;
+    _heartbeatTimer?.cancel();
+    
+    await _channel?.sink.close();
+    _channel = null;
+    
+    _updateState(WebSocketState.disconnected);
+    debugPrint('[WebSocket] Disconnected');
   }
 
+  /// Send message to WebSocket server
+  void sendMessage(Map<String, dynamic> message) {
+    if (_currentState != WebSocketState.connected || _channel == null) {
+      debugPrint('[WebSocket] Cannot send message - not connected');
+      return;
+    }
+
+    try {
+      final jsonMessage = jsonEncode(message);
+      _channel!.sink.add(jsonMessage);
+      debugPrint('[WebSocket] Sent: $jsonMessage');
+    } catch (e) {
+      debugPrint('[WebSocket] Failed to send message: $e');
+    }
+  }
+
+  /// Handle incoming messages
+  void _handleMessage(dynamic data) {
+    try {
+      final Map<String, dynamic> message = jsonDecode(data.toString());
+      _messageController.add(message);
+      debugPrint('[WebSocket] Received: $message');
+    } catch (e) {
+      debugPrint('[WebSocket] Failed to parse message: $e');
+    }
+  }
+
+  /// Handle connection errors
+  void _handleError(error) {
+    debugPrint('[WebSocket] Error: $error');
+    _updateState(WebSocketState.disconnected);
+  }
+
+  /// Handle disconnection
+  void _handleDisconnect() {
+    debugPrint('[WebSocket] Connection closed');
+    _updateState(WebSocketState.disconnected);
+  }
+
+  /// Update connection state and notify listeners
+  void _updateState(WebSocketState newState) {
+    if (_currentState != newState) {
+      _currentState = newState;
+      _stateController.add(newState);
+    }
+  }
+
+  /// Schedule reconnection attempt
+  void _scheduleReconnect(String url) {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(_reconnectInterval, () {
+      debugPrint('[WebSocket] Attempting reconnection...');
+      connect(url);
+    });
+  }
+
+  /// Start heartbeat to keep connection alive
   void _startHeartbeat() {
-    _cancelHeartbeatTimer();
-    
+    _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(_heartbeatInterval, (timer) {
-      if (isConnected) {
-        sendMessage({
-          'type': WebSocketMessageTypes.ping,
-          'timestamp': DateTime.now().toIso8601String(),
-        });
+      if (_currentState == WebSocketState.connected) {
+        sendMessage({'type': 'ping', 'timestamp': DateTime.now().millisecondsSinceEpoch});
       } else {
-        _cancelHeartbeatTimer();
+        timer.cancel();
       }
     });
   }
 
-  void _cancelHeartbeatTimer() {
+  /// Dispose resources
+  void dispose() {
+    _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
-    _heartbeatTimer = null;
-  }
-
-  /// Dispose of the manager and clean up resources
-  Future<void> dispose() async {
-    _cancelReconnectTimer();
-    _cancelHeartbeatTimer();
-    
-    await _webSocketService?.dispose();
-    await _connectionStateController.close();
-    await _messageController.close();
-    
-    _isInitialized = false;
-  }
-}
-
-/// Singleton WebSocket manager for global access
-class GlobalWebSocketManager {
-  static WebSocketManager? _instance;
-  
-  static WebSocketManager get instance {
-    _instance ??= WebSocketManager();
-    return _instance!;
-  }
-  
-  static Future<void> initialize(String baseUrl) async {
-    await instance.initialize(baseUrl);
-  }
-  
-  static Future<void> connect() async {
-    await instance.connect();
-  }
-  
-  static Future<void> disconnect() async {
-    await instance.disconnect();
-  }
-  
-  static void dispose() {
-    _instance?.dispose();
-    _instance = null;
+    _channel?.sink.close();
+    _stateController.close();
+    _messageController.close();
   }
 }

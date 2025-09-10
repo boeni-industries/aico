@@ -31,7 +31,16 @@ class AICOPaths {
       }
 
       // Get platform-appropriate data directory
-      final appDataDir = await getApplicationSupportDirectory();
+      Directory appDataDir;
+      if (Platform.isWindows) {
+        // Use Local AppData on Windows: C:\Users\{username}\AppData\Local
+        final localAppDataPath = Platform.environment['LOCALAPPDATA'] ?? 
+                                path.join(Platform.environment['USERPROFILE']!, 'AppData', 'Local');
+        appDataDir = Directory(localAppDataPath);
+      } else {
+        // Use Application Support on other platforms
+        appDataDir = await getApplicationSupportDirectory();
+      }
       _baseDataDir = path.join(appDataDir.path, 'boeni-industries', 'aico');
 
       // Read core.yaml configuration

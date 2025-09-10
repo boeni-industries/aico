@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-// import 'package:aico_frontend/core/services/storage_service.dart'; // TODO: Remove when migrated to Riverpod
-// TODO: Replace with Riverpod providers when storage service is migrated
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:aico_frontend/core/providers/storage_providers.dart';
 
 abstract class QueuedOperation {
   String get id;
@@ -50,6 +51,9 @@ class CreateUserOperation extends QueuedOperation {
 }
 
 class OfflineQueue {
+  final Ref _ref;
+  
+  OfflineQueue(this._ref);
   final List<QueuedOperation> _operations = [];
   final StreamController<List<QueuedOperation>> _queueController = 
       StreamController.broadcast();
@@ -147,8 +151,7 @@ class OfflineQueue {
 
   Future<void> _saveQueue() async {
     try {
-      // TODO: Replace with Riverpod provider when storage service is migrated
-      // final storageService = ref.read(storageServiceProvider);
+      final storageService = _ref.read(storageServiceProvider);
       
       final serializedOps = _operations.map((op) => {
         'id': op.id,
@@ -158,7 +161,8 @@ class OfflineQueue {
         'retryCount': op.retryCount,
       }).toList();
       
-      // await storageService.setJson('offline_queue', {'operations': serializedOps});
+      final jsonString = {'operations': serializedOps}.toString();
+      await storageService.setStringValue('offline_queue', jsonString);
       debugPrint('Saved ${serializedOps.length} operations to storage');
     } catch (e) {
       debugPrint('Failed to save queue to storage: $e');
@@ -167,12 +171,16 @@ class OfflineQueue {
 
   Future<void> _loadQueue() async {
     try {
-      // TODO: Replace with Riverpod provider when storage service is migrated
-      // final storageService = ref.read(storageServiceProvider);
-      // final queueData = storageService.getJson('offline_queue');
+      final storageService = _ref.read(storageServiceProvider);
+      final queueDataString = storageService.getStringValue('offline_queue');
       
-      // Temporary: Skip loading from storage until migration is complete
-      debugPrint('Queue loading skipped - awaiting Riverpod migration'); 
+      if (queueDataString != null) {
+        // TODO: Implement proper JSON parsing when needed
+        debugPrint('Queue data found in storage: ${queueDataString.length} chars');
+      } else {
+        debugPrint('No queue data found in storage');
+      }
+      
       _notifyQueueChanged();
     } catch (e) {
       debugPrint('Failed to load queue from storage: $e');

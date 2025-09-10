@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class EncryptionTestScreen extends StatefulWidget {
+import 'package:aico_frontend/core/providers/networking_providers.dart';
+import 'package:aico_frontend/core/providers/storage_providers.dart';
+
+class EncryptionTestScreen extends ConsumerStatefulWidget {
   const EncryptionTestScreen({super.key});
 
   @override
-  State<EncryptionTestScreen> createState() => _EncryptionTestScreenState();
+  ConsumerState<EncryptionTestScreen> createState() => _EncryptionTestScreenState();
 }
 
-class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
-  // TODO: Replace with Riverpod providers when these services are migrated
-  // final UnifiedApiClient _apiService = ref.read(unifiedApiClientProvider);
-  // final EncryptionService _encryptionService = ref.read(encryptionServiceProvider);
+class _EncryptionTestScreenState extends ConsumerState<EncryptionTestScreen> {
   final List<String> _logs = [];
   bool _isLoading = false;
 
@@ -18,7 +19,7 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
   void initState() {
     super.initState();
     _log('Encryption Test Screen Initialized.');
-    _log('TODO: Encryption service needs to be migrated to Riverpod providers');
+    _log('Encryption service loaded via Riverpod providers');
   }
 
   void _log(String message) {
@@ -29,14 +30,53 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
 
   Future<void> _runHandshake() async {
     setState(() => _isLoading = true);
-    _log('TODO: Handshake functionality needs migration to Riverpod providers');
-    setState(() => _isLoading = false);
+    
+    try {
+      final apiClient = ref.read(unifiedApiClientProvider);
+      _log('Starting handshake with backend...');
+      
+      // Initialize encryption handshake
+      await apiClient.initialize();
+      _log('Handshake completed successfully');
+      _log('API client initialized: ${apiClient.runtimeType}');
+      
+    } catch (e) {
+      _log('Handshake failed: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _runEchoTest() async {
     setState(() => _isLoading = true);
-    _log('TODO: Echo test functionality needs migration to Riverpod providers');
-    setState(() => _isLoading = false);
+    
+    try {
+      final apiClient = ref.read(unifiedApiClientProvider);
+      final encryptionService = ref.read(encryptionServiceProvider);
+      
+      _log('Running encrypted echo test...');
+      _log('Using API client: ${apiClient.runtimeType}');
+      _log('Using encryption service: ${encryptionService.runtimeType}');
+      
+      const testMessage = 'Hello, encrypted world!';
+      final encrypted = encryptionService.encrypt(testMessage);
+      final decrypted = encryptionService.decrypt(encrypted);
+      
+      _log('Original: $testMessage');
+      _log('Encrypted: $encrypted');
+      _log('Decrypted: $decrypted');
+      
+      if (testMessage == decrypted) {
+        _log('✅ Encryption test passed');
+      } else {
+        _log('❌ Encryption test failed');
+      }
+      
+    } catch (e) {
+      _log('Echo test failed: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -50,7 +90,15 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Encryption Status: TODO - Migrate to Riverpod', style: Theme.of(context).textTheme.titleMedium),
+            Consumer(
+              builder: (context, ref, child) {
+                final encryptionService = ref.watch(encryptionServiceProvider);
+                return Text(
+                  'Encryption Status: Ready (${encryptionService.runtimeType})',
+                  style: Theme.of(context).textTheme.titleMedium,
+                );
+              },
+            ),
             const SizedBox(height: 16),
             if (_isLoading)
               const Center(child: CircularProgressIndicator())

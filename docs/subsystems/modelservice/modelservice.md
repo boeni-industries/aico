@@ -81,16 +81,16 @@ Local-first design with zero external dependencies. No Docker required for simpl
 
 ## ZMQ Message Topics ✅
 
-**Completions**: `modelservice.completions.request`
-**Models**: `modelservice.models.request`
-**Health**: `modelservice.health.request`
-**Status**: `modelservice.status.request`
+**Completions**: `modelservice/completions/request`
+**Models**: `modelservice/models/request`
+**Health**: `modelservice/health/request`
+**Status**: `modelservice/status/request`
 
 **Ollama Management**:
-- `ollama.status.request`
-- `ollama.models.request`
-- `ollama.models.pull.request`
-- `ollama.models.remove.request`
+- `ollama/status/request`
+- `ollama/models/request`
+- `ollama/models/pull/request`
+- `ollama/models/remove/request`
 
 **Message Format**: Protocol Buffer serialization with correlation IDs
 

@@ -1,4 +1,4 @@
-import 'package:aico_frontend/core/theme/theme_manager.dart';
+import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
@@ -29,7 +29,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _isRightDrawerExpanded = false; // true = expanded, false = collapsed to icons
   bool _isLeftDrawerExpanded = true; // true = expanded with text, false = collapsed to icons only
   NavigationPage _currentPage = NavigationPage.home;
-  ThemeManager? _themeManager;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _conversationController = ScrollController();
   final List<ConversationMessage> _messages = [
@@ -43,8 +42,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // TODO: Replace with Riverpod theme provider when theme management is migrated
-    // _themeManager = ref.read(themeManagerProvider);
+    // Theme management now handled via Riverpod providers
   }
 
   @override
@@ -107,10 +105,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       IconButton(
                         onPressed: () async {
                           debugPrint('Theme toggle pressed');
-                          await _themeManager?.toggleTheme();
-                          debugPrint('Theme toggled to: ${_themeManager?.currentThemeMode}');
+                          ref.read(themeControllerProvider.notifier).toggleTheme();
+                          debugPrint('Theme toggled');
                         },
-                        icon: Icon(_themeManager?.currentBrightness == Brightness.light ? Icons.wb_sunny : Icons.nightlight_round),
+                        icon: Consumer(
+                          builder: (context, ref, child) {
+                            final themeMode = ref.watch(themeControllerProvider);
+                            return Icon(themeMode == ThemeMode.light ? Icons.wb_sunny : Icons.nightlight_round);
+                          },
+                        ),
                         tooltip: 'Toggle theme',
                         style: IconButton.styleFrom(
                           foregroundColor: theme.colorScheme.onSurface,
@@ -118,13 +121,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                       IconButton(
                         onPressed: () async {
-                          debugPrint('Contrast toggle pressed');
-                          await _themeManager?.setHighContrastEnabled(!(_themeManager?.isHighContrastEnabled ?? false));
-                          debugPrint('Contrast toggled to: ${_themeManager?.isHighContrastEnabled}');
+                          debugPrint('Contrast toggle pressed - feature disabled for now');
                         },
                         icon: Icon(
                           Icons.contrast,
-                          color: (_themeManager?.isHighContrastEnabled ?? false) ? Colors.orange : theme.colorScheme.onSurface,
+                          color: theme.colorScheme.onSurface,
                         ),
                         tooltip: 'Toggle high contrast',
                         style: IconButton.styleFrom(
