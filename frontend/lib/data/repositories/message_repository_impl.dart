@@ -55,12 +55,13 @@ class MessageRepositoryImpl implements MessageRepository {
           conversationId: response['thread_id'] as String,
           type: message.type,
           status: MessageStatus.sent, // Message was successfully sent
-          timestamp: DateTime.parse(response['timestamp'] as String).toUtc(),
+          timestamp: message.timestamp, // Keep original frontend timestamp
           metadata: {
             'thread_action': response['thread_action'] as String,
             'thread_reasoning': response['thread_reasoning'] as String,
             'backend_status': response['status'] as String,
             'ai_response': response['ai_response'] as String?, // Store AI response for later use
+            'backend_timestamp': response['timestamp'] as String, // Store backend timestamp separately
           },
         );
         

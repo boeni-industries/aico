@@ -665,8 +665,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   String _formatTimestamp(DateTime timestamp) {
-    // Convert UTC timestamp to local time
-    final localTimestamp = timestamp.toLocal();
+    // Handle both UTC and local timestamps properly
+    final localTimestamp = timestamp.isUtc ? timestamp.toLocal() : timestamp;
     final now = DateTime.now();
     final diff = now.difference(localTimestamp);
     

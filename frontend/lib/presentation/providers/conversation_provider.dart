@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:aico_frontend/domain/entities/message.dart';
 import 'package:aico_frontend/domain/repositories/message_repository.dart';
@@ -117,10 +118,13 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
 
       final sentMessage = await _sendMessageUseCase.call(params);
 
-      // Update user message with sent status and backend response data
+      // Only update user message status to "sent" - don't overwrite the entire message
       final updatedMessages = state.messages.map((msg) {
         if (msg.id == messageId) {
-          return sentMessage;
+          return msg.copyWith(
+            status: MessageStatus.sent,
+            conversationId: sentMessage.conversationId, // Update thread ID if changed
+          );
         }
         return msg;
       }).toList();
@@ -143,7 +147,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
           'thread_id': sentMessage.conversationId,
         });
 
-      // Handle AI response from backend
+      // Handle AI response from backend using the backend response data
       await _handleAIResponse(sentMessage);
 
     } catch (e) {
@@ -175,6 +179,13 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
       final aiResponseContent = userMessage.metadata?['ai_response'] as String?;
       
       if (aiResponseContent != null && aiResponseContent.isNotEmpty) {
+        // Debug: Print the backend timestamp to see what we're actually getting
+        final backendTimestamp = userMessage.metadata?['backend_timestamp'] as String?;
+        debugPrint('Backend timestamp debug: $backendTimestamp, Current time: ${DateTime.now().toIso8601String()}');
+        
+        // For now, use current time to eliminate the 2-hour offset
+        final aiTimestamp = DateTime.now();
+        
         final aiMessage = Message(
           id: _uuid.v4(),
           content: aiResponseContent,
@@ -182,7 +193,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
           conversationId: userMessage.conversationId,
           type: MessageType.text,
           status: MessageStatus.sent,
-          timestamp: DateTime.now().toUtc().add(const Duration(milliseconds: 100)), // Slightly after user message
+          timestamp: aiTimestamp,
         );
 
         state = state.copyWith(
