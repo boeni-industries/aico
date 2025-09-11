@@ -28,7 +28,7 @@ final unifiedApiClientProvider = Provider<UnifiedApiClient>((ref) {
     tokenManager: tokenManager,
   );
   
-  // Wire up TokenManager to use this API client for encrypted refresh requests
+  // Wire up TokenManager to use UnifiedApiClient for encrypted refresh requests
   tokenManager.setApiClient(client);
   
   // Ensure the client is disposed when the provider is disposed

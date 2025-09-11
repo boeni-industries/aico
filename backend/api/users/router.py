@@ -376,7 +376,11 @@ async def logout_user(request: Request):
 
 
 @router.post("/refresh", response_model=AuthenticationResponse)
-async def refresh_token(request: Request):
+async def refresh_token(
+    request: Request,
+    auth_manager = Depends(get_auth_manager),
+    user_service: UserService = Depends(get_user_service)
+):
     """Refresh JWT token for authenticated user with session rotation"""
     # Extract current token from Authorization header
     auth_header = request.headers.get("Authorization")

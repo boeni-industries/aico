@@ -16,13 +16,12 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   @override
   Future<AuthModel> authenticate(String userUuid, String pin) async {
     try {
-      final responseData = await _apiClient.post<Map<String, dynamic>>(
+      final responseData = await _apiClient.post(
         '/users/authenticate',
         data: {
           'user_uuid': userUuid,
           'pin': pin,
         },
-        fromJson: (json) => json,
       );
 
       if (responseData != null) {
@@ -38,9 +37,8 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   @override
   Future<bool> refreshToken(String token) async {
     try {
-      final responseData = await _apiClient.post<Map<String, dynamic>>(
+      final responseData = await _apiClient.post(
         '/auth/refresh',
-        fromJson: (json) => json,
       );
 
       return responseData != null;
@@ -52,9 +50,8 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   @override
   Future<UserModel> getCurrentUser(String token) async {
     try {
-      final responseData = await _apiClient.get<Map<String, dynamic>>(
+      final responseData = await _apiClient.get(
         '/auth/user',
-        fromJson: (json) => json,
       );
 
       if (responseData != null) {

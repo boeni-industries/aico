@@ -42,7 +42,7 @@ class TokenManager {
   DateTime? _tokenExpiry;
   Timer? _refreshTimer;
   
-  // Callback to get UnifiedApiClient instance for encrypted refresh requests
+  // UnifiedApiClient for encrypted refresh requests
   dynamic _apiClient;
 
   /// Get access token (alias for getValidToken for compatibility)
@@ -106,11 +106,11 @@ class TokenManager {
         return false;
       }
       
-      debugPrint('🚀 TokenManager: Attempting token refresh via existing encrypted API client');
-      AICOLog.info('Attempting token refresh via encrypted client', topic: 'network/token/refresh/encrypted');
+      debugPrint('🚀 TokenManager: Attempting token refresh via API client with skip refresh flag');
+      AICOLog.info('Attempting token refresh via API client', topic: 'network/token/refresh/encrypted');
       
-      // Use existing UnifiedApiClient for encrypted refresh
-      final response = await _apiClient.post('/users/refresh');
+      // Use UnifiedApiClient with special refresh method that skips token freshness check
+      final response = await _apiClient.postForTokenRefresh('/users/refresh');
       
       if (response != null && response['success'] == true && response['jwt_token'] != null) {
         final newToken = response['jwt_token'] as String;
@@ -155,7 +155,7 @@ class TokenManager {
       return true;
     }
     
-    final isValid = DateTime.now().isBefore(_tokenExpiry!.subtract(const Duration(minutes: 5)));
+    final isValid = DateTime.now().isBefore(_tokenExpiry!.subtract(const Duration(minutes: 2)));
     debugPrint('TokenManager: Token expiry check result: $isValid');
     return isValid;
   }
@@ -166,8 +166,8 @@ class TokenManager {
       return false;
     }
     
-    // Refresh if token expires within 5 minutes
-    final shouldRefresh = DateTime.now().isAfter(_tokenExpiry!.subtract(const Duration(minutes: 5)));
+    // Refresh if token expires within 2 minutes
+    final shouldRefresh = DateTime.now().isAfter(_tokenExpiry!.subtract(const Duration(minutes: 2)));
     debugPrint('TokenManager: Should refresh token: $shouldRefresh');
     return shouldRefresh;
   }
@@ -262,8 +262,8 @@ class TokenManager {
     // Cancel existing timer if any
     _refreshTimer?.cancel();
     
-    // Check and refresh token every 5 minutes
-    _refreshTimer = Timer.periodic(const Duration(minutes: 5), (timer) async {
+    // Check and refresh token every 30 seconds for maximum reliability
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
       try {
         debugPrint('⏰ TokenManager: Background refresh timer triggered - checking token freshness');
         AICOLog.debug('Background refresh timer triggered', topic: 'auth/token/background_refresh/timer');
@@ -278,7 +278,7 @@ class TokenManager {
     
     AICOLog.info('Background token refresh monitoring started', 
       topic: 'auth/token/background_refresh',
-      extra: {'interval_minutes': 5});
+      extra: {'interval_seconds': 30});
   }
 
   /// Stop background token refresh monitoring

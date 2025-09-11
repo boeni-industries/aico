@@ -74,6 +74,7 @@ class UnifiedApiClient {
     Map<String, dynamic>? data,
     Map<String, String>? queryParameters,
     T Function(Map<String, dynamic>)? fromJson,
+    bool skipTokenRefresh = false,
   }) async {
     // Auto-initialize if not done yet
     if (!_isInitialized) {
@@ -83,13 +84,14 @@ class UnifiedApiClient {
     final needsEncryption = _requiresEncryption(endpoint);
     
     try {
-      if (needsEncryption && _encryptionService.isInitialized) {
+      if (needsEncryption) {
         return await _makeEncryptedRequest<T>(
           method,
           endpoint,
           data: data,
           queryParameters: queryParameters,
           fromJson: fromJson,
+          skipTokenRefresh: skipTokenRefresh,
         );
       } else {
         return await _makeUnencryptedRequest<T>(
@@ -98,6 +100,7 @@ class UnifiedApiClient {
           data: data,
           queryParameters: queryParameters,
           fromJson: fromJson,
+          skipTokenRefresh: skipTokenRefresh,
         );
       }
     } catch (e) {
@@ -109,13 +112,15 @@ class UnifiedApiClient {
     }
   }
 
-  /// Make encrypted request using Dio
+
+  /// Make encrypted request using EncryptionService
   Future<T?> _makeEncryptedRequest<T>(
     String method,
     String endpoint, {
     Map<String, dynamic>? data,
     Map<String, String>? queryParameters,
     T Function(Map<String, dynamic>)? fromJson,
+    bool skipTokenRefresh = false,
   }) async {
     // Ensure encryption session is active
     if (!_encryptionService.isSessionActive) {
@@ -126,24 +131,42 @@ class UnifiedApiClient {
     }
 
     // Prepare headers (including Authorization for authenticated endpoints)
-    final headers = await _buildHeaders();
+    final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh);
     
-    // Encrypt payload if present
-    Map<String, dynamic>? requestData;
+    // Create encrypted request payload
+    Map<String, dynamic> requestData;
     if (data != null) {
+      // Use EncryptionService to create properly encrypted request
       requestData = _encryptionService.createEncryptedRequest(data);
+    } else {
+      // Even for requests without data, we need to encrypt an empty payload
+      requestData = _encryptionService.createEncryptedRequest({});
     }
 
-    // Make request with Dio - headers include Authorization token
+    // Make request with Dio to the same HTTP endpoint but with encrypted payload
     final response = await _dio!.request(
       endpoint,
       data: requestData,
       queryParameters: queryParameters,
       options: Options(
         method: method,
-        headers: headers, // This now correctly includes Authorization header
+        headers: headers,
       ),
     );
+
+    // Process and decrypt response if needed
+    if (response.data != null && response.data is Map<String, dynamic>) {
+      final responseMap = response.data;
+      
+      // Check if response is encrypted
+      if (responseMap.containsKey('encrypted') && 
+          responseMap['encrypted'] == true && 
+          responseMap.containsKey('payload')) {
+        // Decrypt the response payload
+        final decryptedData = _encryptionService.decryptPayload(responseMap['payload']);
+        return _processResponse<T>(decryptedData, fromJson);
+      }
+    }
 
     return _processResponse<T>(response.data, fromJson);
   }
@@ -155,10 +178,11 @@ class UnifiedApiClient {
     Map<String, dynamic>? data,
     Map<String, String>? queryParameters,
     T Function(Map<String, dynamic>)? fromJson,
+    bool skipTokenRefresh = false,
   }) async {
     try {
       // Try Dio first
-      final headers = await _buildHeaders();
+      final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh);
       
       final response = await _dio!.request(
         endpoint,
@@ -184,6 +208,7 @@ class UnifiedApiClient {
         data: data,
         queryParameters: queryParameters,
         fromJson: fromJson,
+        skipTokenRefresh: skipTokenRefresh,
       );
     }
   }
@@ -195,12 +220,13 @@ class UnifiedApiClient {
     Map<String, dynamic>? data,
     Map<String, String>? queryParameters,
     T Function(Map<String, dynamic>)? fromJson,
+    bool skipTokenRefresh = false,
   }) async {
     final uri = Uri.parse('$_baseUrl$endpoint').replace(
       queryParameters: queryParameters,
     );
 
-    final headers = await _buildHeaders();
+    final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh);
     
     http.Response response;
     
@@ -258,18 +284,45 @@ class UnifiedApiClient {
   }
 
   /// Convenience method for POST requests
-  Future<T?> post<T>(
+  Future<Map<String, dynamic>?> post(
     String endpoint, {
     Map<String, dynamic>? data,
     Map<String, String>? queryParameters,
-    T Function(Map<String, dynamic>)? fromJson,
   }) async {
-    return request<T>(
+    return await request<Map<String, dynamic>>(
       'POST',
       endpoint,
       data: data,
       queryParameters: queryParameters,
-      fromJson: fromJson,
+      fromJson: (json) => json as Map<String, dynamic>,
+    );
+  }
+
+  /// Make a POST request for token refresh (skips token freshness check)
+  Future<Map<String, dynamic>?> postForTokenRefresh(
+    String endpoint, {
+    Map<String, dynamic>? data,
+    Map<String, String>? queryParameters,
+  }) async {
+    // Auto-initialize if not done yet
+    if (!_isInitialized) {
+      await initialize();
+    }
+
+    // Ensure encryption session is active for token refresh
+    if (!_encryptionService.isSessionActive) {
+      debugPrint('🔐 UnifiedApiClient: Starting encryption handshake for token refresh');
+      await _performHandshake();
+    }
+
+    // Use encrypted request directly with skip token refresh flag
+    return await _makeEncryptedRequest<Map<String, dynamic>>(
+      'POST',
+      endpoint,
+      data: data,
+      queryParameters: queryParameters,
+      fromJson: (json) => json as Map<String, dynamic>,
+      skipTokenRefresh: true,
     );
   }
 
@@ -288,7 +341,7 @@ class UnifiedApiClient {
         responseData['encrypted'] == true) {
       data = _encryptionService.decryptPayload(responseData['payload']);
     } else {
-      data = responseData as Map<String, dynamic>;
+      data = responseData;
     }
 
     // Apply JSON transformation if provided
@@ -311,15 +364,18 @@ class UnifiedApiClient {
     await _encryptionService.processHandshakeResponse(response.data);
   }
 
-  /// Build request headers with authentication
-  Future<Map<String, String>> _buildHeaders() async {
+  /// Build headers for HTTP requests
+  Future<Map<String, String>> _buildHeaders({bool skipTokenRefresh = false}) async {
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      'User-Agent': 'AICO-Flutter/1.0',
     };
 
-    // Proactively refresh token if needed before making request
-    await _tokenManager.ensureTokenFreshness();
+    // Skip token refresh for refresh requests to avoid circular dependency
+    if (!skipTokenRefresh) {
+      await _tokenManager.ensureTokenFreshness();
+    }
 
     // Add authentication token if available
     final token = await _tokenManager.getAccessToken();
