@@ -65,23 +65,28 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
   }
 
   Color _getRingColor() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    // Stronger colors for light mode, softer for dark mode
     const softPurple = Color(0xFFB8A1EA);
+    final lightPurple = Color(0xFF8B5CF6); // Stronger purple for light mode
     
     if (!_isAuthenticated) {
-      return Colors.orange.shade400;
+      return isDark ? Colors.orange.shade400 : Colors.orange.shade600;
     }
     
     switch (_currentStatus) {
       case ConnectionStatus.connected:
-        return softPurple;
+        return isDark ? softPurple : lightPurple;
       case ConnectionStatus.connecting:
-        return Colors.blue.shade400;
+        return isDark ? Colors.blue.shade400 : Colors.blue.shade600;
       case ConnectionStatus.disconnected:
-        return Colors.orange.shade400;
+        return isDark ? Colors.orange.shade400 : Colors.orange.shade600;
       case ConnectionStatus.offline:
-        return Colors.red.shade400;
+        return isDark ? Colors.red.shade400 : Colors.red.shade600;
       case ConnectionStatus.error:
-        return Colors.red.shade600;
+        return isDark ? Colors.red.shade600 : Colors.red.shade700;
     }
   }
 
@@ -167,7 +172,7 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                           shape: BoxShape.circle,
                           color: Colors.transparent,
                           border: Border.all(
-                            color: ringColor.withOpacity(ringOpacity * 0.6),
+                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? ringOpacity * 0.6 : ringOpacity * 0.9),
                             width: 2.6,
                           ),
                         ),
@@ -180,7 +185,7 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                           shape: BoxShape.circle,
                           color: Colors.transparent,
                           border: Border.all(
-                            color: ringColor.withOpacity(ringOpacity * 0.5),
+                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? ringOpacity * 0.5 : ringOpacity * 0.7),
                             width: 1.3,
                           ),
                         ),
@@ -189,17 +194,9 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                       Container(
                         width: 125,
                         height: 125,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: theme.colorScheme.surface,
-                          border: Border.all(
-                            color: theme.dividerColor.withOpacity(0.1),
-                            width: 1.3,
-                          ),
-                        ),
                         child: ClipOval(
                           child: Image.asset(
-                            'assets/images/aico.jpg',
+                            'assets/images/aico.png',
                             width: 125,
                             height: 125,
                             fit: BoxFit.cover,
