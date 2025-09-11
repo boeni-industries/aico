@@ -21,8 +21,8 @@ class TokenManager {
   );
   
 
-  // Storage keys
-  static const String _keyAccessToken = 'aico_access_token';
+  // Storage keys - aligned with AuthLocalDataSource
+  static const String _keyAccessToken = 'auth_token';
   static const String _keyRefreshToken = 'aico_refresh_token';
   static const String _keyTokenExpiry = 'aico_token_expiry';
 
@@ -37,25 +37,33 @@ class TokenManager {
 
   /// Get a valid token, refreshing if necessary
   Future<String?> getValidToken() async {
+    debugPrint('TokenManager: getValidToken() called - cachedToken: ${_cachedToken != null ? "EXISTS" : "NULL"}');
+    
     // Return cached token if still valid
     if (_cachedToken != null && _isTokenValid()) {
+      debugPrint('TokenManager: Returning cached token');
       return _cachedToken;
     }
 
     // Try to load from secure storage
     await _loadTokensFromStorage();
     
+    debugPrint('TokenManager: After loading from storage - cachedToken: ${_cachedToken != null ? "EXISTS" : "NULL"}');
+    
     if (_cachedToken != null && _isTokenValid()) {
+      debugPrint('TokenManager: Returning token from storage');
       return _cachedToken;
     }
 
     // Token expired or missing, try refresh
     if (_cachedRefreshToken != null) {
+      debugPrint('TokenManager: Attempting token refresh');
       if (await refreshToken()) {
         return _cachedToken;
       }
     }
 
+    debugPrint('TokenManager: No valid token available');
     return null;
   }
 
@@ -87,8 +95,17 @@ class TokenManager {
 
   /// Check if current token is valid (not expired)
   bool _isTokenValid() {
-    if (_tokenExpiry == null) return false;
-    return DateTime.now().isBefore(_tokenExpiry!.subtract(const Duration(minutes: 5)));
+    debugPrint('TokenManager: Validating token - cachedToken: ${_cachedToken != null ? "EXISTS" : "NULL"}, tokenExpiry: ${_tokenExpiry?.toString() ?? "NULL"}');
+    
+    // If no expiry is stored, assume token is valid (for backward compatibility)
+    if (_tokenExpiry == null) {
+      debugPrint('TokenManager: No expiry stored, assuming token is valid');
+      return true;
+    }
+    
+    final isValid = DateTime.now().isBefore(_tokenExpiry!.subtract(const Duration(minutes: 5)));
+    debugPrint('TokenManager: Token expiry check result: $isValid');
+    return isValid;
   }
 
 
@@ -98,6 +115,8 @@ class TokenManager {
       final accessToken = await _secureStorage.read(key: _keyAccessToken);
       final refreshToken = await _secureStorage.read(key: _keyRefreshToken);
       final expiryString = await _secureStorage.read(key: _keyTokenExpiry);
+
+      debugPrint('TokenManager: Loading from storage - accessToken: ${accessToken != null ? "FOUND (${accessToken.substring(0, 20)}...)" : "NOT FOUND"}, refreshToken: ${refreshToken != null ? "FOUND" : "NOT FOUND"}');
 
       if (accessToken != null && accessToken.isNotEmpty) {
         _cachedToken = accessToken;

@@ -125,7 +125,7 @@ class UnifiedApiClient {
       await _performHandshake();
     }
 
-    // Prepare headers
+    // Prepare headers (including Authorization for authenticated endpoints)
     final headers = await _buildHeaders();
     
     // Encrypt payload if present
@@ -134,14 +134,14 @@ class UnifiedApiClient {
       requestData = _encryptionService.createEncryptedRequest(data);
     }
 
-    // Make request with Dio
+    // Make request with Dio - headers include Authorization token
     final response = await _dio!.request(
       endpoint,
       data: requestData,
       queryParameters: queryParameters,
       options: Options(
         method: method,
-        headers: headers,
+        headers: headers, // This now correctly includes Authorization header
       ),
     );
 
@@ -320,8 +320,16 @@ class UnifiedApiClient {
 
     // Add authentication token if available
     final token = await _tokenManager.getAccessToken();
+    debugPrint('UnifiedApiClient: Token retrieved: ${token != null ? "YES (${token.substring(0, 20)}...)" : "NO"}');
+    AICOLog.info('Building headers for request', 
+      topic: 'network/client/headers',
+      extra: {'has_token': token != null, 'token_preview': token?.substring(0, 20)});
+    
     if (token != null) {
       headers['Authorization'] = 'Bearer $token';
+      debugPrint('UnifiedApiClient: Authorization header added');
+    } else {
+      debugPrint('UnifiedApiClient: No token available, Authorization header NOT added');
     }
 
     return headers;

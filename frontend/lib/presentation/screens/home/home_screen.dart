@@ -1,6 +1,7 @@
 import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
+import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
@@ -31,13 +32,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   NavigationPage _currentPage = NavigationPage.home;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _conversationController = ScrollController();
-  final List<ConversationMessage> _messages = [
-    ConversationMessage(
-      isFromAico: true,
-      message: "I noticed you seemed a bit stressed earlier. How are you feeling now? I'm here if you'd like to talk about anything.",
-      timestamp: DateTime.now().subtract(const Duration(minutes: 5)),
-    ),
-  ];
 
   @override
   void initState() {
@@ -290,14 +284,59 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildConversationArea(BuildContext context, ThemeData theme, Color accentColor) {
+    final conversationState = ref.watch(conversationProvider);
+    
+    if (conversationState.isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (conversationState.error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: theme.colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Error loading conversation',
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              conversationState.error!,
+              style: theme.textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => ref.read(conversationProvider.notifier).clearError(),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
       child: ListView.builder(
         controller: _conversationController,
-        itemCount: _messages.length,
+        itemCount: conversationState.messages.length,
         itemBuilder: (context, index) {
-          final message = _messages[index];
-          return _buildMessageBubble(context, theme, accentColor, message);
+          final message = conversationState.messages[index];
+          // Convert domain Message to presentation ConversationMessage
+          final conversationMessage = ConversationMessage(
+            isFromAico: message.userId == 'aico',
+            message: message.content,
+            timestamp: message.timestamp,
+          );
+          return _buildMessageBubble(context, theme, accentColor, conversationMessage);
         },
       ),
     );
@@ -575,41 +614,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _sendMessage(String text) {
     if (text.trim().isEmpty) return;
     
-    setState(() {
-      _messages.add(ConversationMessage(
-        isFromAico: false,
-        message: text.trim(),
-        timestamp: DateTime.now(),
-      ));
-      _messageController.clear();
-    });
+    // Clear the input field immediately
+    _messageController.clear();
     
-    // Scroll to bottom
+    // Send message through conversation provider
+    ref.read(conversationProvider.notifier).sendMessage(text.trim());
+    
+    // Scroll to bottom after sending
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _conversationController.animateTo(
-        _conversationController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    });
-    
-    // Simulate AICO response
-    Future.delayed(const Duration(seconds: 1), () {
-      setState(() {
-        _messages.add(ConversationMessage(
-          isFromAico: true,
-          message: "I understand. Thank you for sharing that with me. How can I help you with this?",
-          timestamp: DateTime.now(),
-        ));
-      });
-      
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_conversationController.hasClients) {
         _conversationController.animateTo(
           _conversationController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
-      });
+      }
     });
   }
 

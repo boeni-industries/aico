@@ -41,7 +41,13 @@ class AuthRepositoryImpl implements AuthRepository {
         credentials['pin']!,
       );
       
-      return authModel.toDomain();
+      final authResult = authModel.toDomain();
+      
+      // Store the new token from the authentication response
+      debugPrint('AuthRepository: Auto-login successful, storing new token');
+      await _localDataSource.storeToken(authResult.token);
+      
+      return authResult;
     } catch (e) {
       debugPrint('AuthRepository: Auto-login failed with error: $e');
       // Only clear credentials on authentication failure (401), not on network errors

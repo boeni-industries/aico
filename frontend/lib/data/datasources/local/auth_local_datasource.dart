@@ -1,6 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
+import '../../../networking/services/jwt_decoder.dart';
 
 abstract class AuthLocalDataSource {
   Future<void> storeCredentials(String userUuid, String pin, String token);
@@ -115,7 +116,19 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
 
   @override
   Future<void> storeToken(String token) async {
+    debugPrint('AuthLocalDataSource: Storing token with key: $_keyToken, token: ${token.substring(0, 20)}...');
     await _secureStorage.write(key: _keyToken, value: token);
+    
+    // Also store token expiry for TokenManager compatibility
+    try {
+      final expiryTime = JWTDecoder.getExpiryTime(token);
+      if (expiryTime != null) {
+        await _secureStorage.write(key: 'aico_token_expiry', value: expiryTime.toIso8601String());
+        debugPrint('AuthLocalDataSource: Stored token expiry: ${expiryTime.toIso8601String()}');
+      }
+    } catch (e) {
+      debugPrint('AuthLocalDataSource: Failed to extract/store token expiry: $e');
+    }
   }
 
   @override
