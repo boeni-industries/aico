@@ -52,27 +52,20 @@ class TokenManager {
 
   /// Get a valid token, refreshing if necessary
   Future<String?> getValidToken() async {
-    debugPrint('TokenManager: getValidToken() called - cachedToken: ${_cachedToken != null ? "EXISTS" : "NULL"}');
-    
     // Return cached token if still valid
     if (_cachedToken != null && _isTokenValid()) {
-      debugPrint('TokenManager: Returning cached token');
       return _cachedToken;
     }
 
     // Try to load from secure storage
     await _loadTokensFromStorage();
     
-    debugPrint('TokenManager: After loading from storage - cachedToken: ${_cachedToken != null ? "EXISTS" : "NULL"}');
-    
     if (_cachedToken != null && _isTokenValid()) {
-      debugPrint('TokenManager: Returning token from storage');
       return _cachedToken;
     }
 
     // Token expired or missing, try refresh
     if (_cachedRefreshToken != null) {
-      debugPrint('TokenManager: Attempting token refresh');
       if (await refreshToken()) {
         return _cachedToken;
       }
@@ -90,23 +83,19 @@ class TokenManager {
 
   /// Refresh the access token using refresh token
   Future<bool> refreshToken() async {
-    debugPrint('🔄 TokenManager: refreshToken() called - Starting token refresh process');
     AICOLog.debug('Token refresh initiated', topic: 'network/token/refresh/debug');
     
     if (_cachedToken == null) {
-      debugPrint('❌ TokenManager: No current token available for refresh');
       AICOLog.warn('No current token available for refresh', topic: 'network/token/refresh/no_token');
       return false;
     }
 
     try {
       if (_apiClient == null) {
-        debugPrint('❌ TokenManager: No API client available for encrypted refresh');
         AICOLog.error('No API client available for token refresh', topic: 'network/token/refresh/no_client');
         return false;
       }
       
-      debugPrint('🚀 TokenManager: Attempting token refresh via API client with skip refresh flag');
       AICOLog.info('Attempting token refresh via API client', topic: 'network/token/refresh/encrypted');
       
       // Use UnifiedApiClient with special refresh method that skips token freshness check
@@ -116,13 +105,10 @@ class TokenManager {
         final newToken = response['jwt_token'] as String;
         final newExpiry = JWTDecoder.getExpiryTime(newToken);
         
-        debugPrint('✅ TokenManager: Token refresh successful via encrypted client! New expiry: ${newExpiry?.toIso8601String()}');
-        
         _cachedToken = newToken;
         _tokenExpiry = newExpiry;
         await _storeTokensInStorage();
         
-        debugPrint('💾 TokenManager: New token stored in secure storage');
         AICOLog.info('Token refresh successful via encrypted client', 
           topic: 'network/token/refresh/success',
           extra: {'new_expiry': newExpiry?.toIso8601String()});
@@ -130,13 +116,11 @@ class TokenManager {
         return true;
       }
       
-      debugPrint('❌ TokenManager: Token refresh failed - invalid response from encrypted client');
       AICOLog.error('Token refresh failed - invalid response from encrypted client', 
         topic: 'network/token/refresh/invalid_response');
       return false;
       
     } catch (e) {
-      debugPrint('💥 TokenManager: Token refresh failed with error: $e');
       AICOLog.error('Token refresh failed', 
         topic: 'network/token/refresh/error',
         extra: {'error': e.toString()});
@@ -147,17 +131,12 @@ class TokenManager {
 
   /// Check if current token is valid (not expired)
   bool _isTokenValid() {
-    debugPrint('TokenManager: Validating token - cachedToken: ${_cachedToken != null ? "EXISTS" : "NULL"}, tokenExpiry: ${_tokenExpiry?.toString() ?? "NULL"}');
-    
     // If no expiry is stored, assume token is valid (for backward compatibility)
     if (_tokenExpiry == null) {
-      debugPrint('TokenManager: No expiry stored, assuming token is valid');
       return true;
     }
     
-    final isValid = DateTime.now().isBefore(_tokenExpiry!.subtract(const Duration(minutes: 2)));
-    debugPrint('TokenManager: Token expiry check result: $isValid');
-    return isValid;
+    return DateTime.now().isBefore(_tokenExpiry!.subtract(const Duration(minutes: 2)));
   }
 
   /// Check if token needs refresh (expires within 5 minutes)
@@ -167,23 +146,14 @@ class TokenManager {
     }
     
     // Refresh if token expires within 2 minutes
-    final shouldRefresh = DateTime.now().isAfter(_tokenExpiry!.subtract(const Duration(minutes: 2)));
-    debugPrint('TokenManager: Should refresh token: $shouldRefresh');
-    return shouldRefresh;
+    return DateTime.now().isAfter(_tokenExpiry!.subtract(const Duration(minutes: 2)));
   }
 
   /// Proactively refresh token if it's close to expiring
   Future<void> ensureTokenFreshness() async {
-    debugPrint('🔍 TokenManager: ensureTokenFreshness() called - Checking if refresh needed');
-    AICOLog.debug('Token freshness check initiated', topic: 'network/token/freshness_check');
-    
     if (_shouldRefreshToken()) {
-      debugPrint('⚠️ TokenManager: Token needs refresh - calling refreshToken()');
       AICOLog.info('Proactively refreshing token before expiry', topic: 'network/token/proactive_refresh');
       await refreshToken();
-    } else {
-      debugPrint('✅ TokenManager: Token is still fresh - no refresh needed');
-      AICOLog.debug('Token is still fresh', topic: 'network/token/fresh');
     }
   }
 
@@ -195,7 +165,7 @@ class TokenManager {
       final refreshToken = await _storage.read(key: _keyRefreshToken);
       final expiryString = await _storage.read(key: _keyTokenExpiry);
 
-      debugPrint('TokenManager: Loading from storage - accessToken: ${accessToken != null ? "FOUND (${accessToken.substring(0, 20)}...)" : "NOT FOUND"}, refreshToken: ${refreshToken != null ? "FOUND" : "NOT FOUND"}');
+      // Load tokens silently
 
       if (accessToken != null && accessToken.isNotEmpty) {
         _cachedToken = accessToken;
@@ -256,20 +226,14 @@ class TokenManager {
 
   /// Start background token refresh monitoring
   void startBackgroundRefresh() {
-    debugPrint('🚀 TokenManager: Starting background token refresh monitoring');
-    debugPrint('📊 TokenManager: Current state - cachedToken: ${_cachedToken != null ? "EXISTS" : "NULL"}, tokenExpiry: ${_tokenExpiry?.toIso8601String() ?? "NULL"}');
-    
     // Cancel existing timer if any
     _refreshTimer?.cancel();
     
     // Check and refresh token every 30 seconds for maximum reliability
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
       try {
-        debugPrint('⏰ TokenManager: Background refresh timer triggered - checking token freshness');
-        AICOLog.debug('Background refresh timer triggered', topic: 'auth/token/background_refresh/timer');
         await ensureTokenFreshness();
       } catch (e) {
-        debugPrint('💥 TokenManager: Background refresh failed: $e');
         AICOLog.error('Background token refresh failed', 
           topic: 'auth/token/background_refresh',
           extra: {'error': e.toString()});
@@ -283,7 +247,6 @@ class TokenManager {
 
   /// Stop background token refresh monitoring
   void stopBackgroundRefresh() {
-    debugPrint('TokenManager: Stopping background token refresh monitoring');
     _refreshTimer?.cancel();
     _refreshTimer = null;
     
