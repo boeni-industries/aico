@@ -8,6 +8,7 @@ import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:aico_frontend/networking/services/user_service.dart';
 import 'package:aico_frontend/networking/services/websocket_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:aico_frontend/networking/services/resilient_api_service.dart';
 
 /// Encryption service provider for networking - singleton
 final networkingEncryptionServiceProvider = Provider<EncryptionService>((ref) {
@@ -78,6 +79,13 @@ final webSocketManagerProvider = Provider<WebSocketManager>((ref) {
 final apiServiceProvider = Provider<ApiService>((ref) {
   final unifiedApiClient = ref.watch(unifiedApiClientProvider);
   return ApiService(unifiedApiClient);
+});
+
+/// Resilient API service provider
+final resilientApiServiceProvider = Provider<ResilientApiService>((ref) {
+  final unifiedApiClient = ref.watch(unifiedApiClientProvider);
+  final connectionManager = ref.watch(connectionManagerProvider);
+  return ResilientApiService(unifiedApiClient, connectionManager);
 });
 
 /// User service provider

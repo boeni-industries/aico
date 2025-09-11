@@ -44,41 +44,49 @@ class UnifiedApiClient {
   Future<void> initialize() async {
     if (_isInitialized) return;
     
-    // Initialize encryption service first
-    await _encryptionService.initialize();
-    
-    // Initialize Dio
-    _dio = Dio(BaseOptions(
-      baseUrl: _baseUrl ?? _defaultBaseUrl,
-      connectTimeout: _defaultTimeout,
-      receiveTimeout: _defaultTimeout,
-      sendTimeout: _defaultTimeout,
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      // Configure validateStatus to not throw exceptions for expected error codes
-      validateStatus: (status) {
-        // Don't throw exceptions for any status code - we'll handle them manually
-        return status != null && status < 500; // Only throw for server errors (500+)
-      },
-    ));
+    try {
+      // Initialize encryption service first
+      await _encryptionService.initialize();
+      
+      // Initialize Dio
+      _dio = Dio(BaseOptions(
+        baseUrl: _baseUrl ?? _defaultBaseUrl,
+        connectTimeout: _defaultTimeout,
+        receiveTimeout: _defaultTimeout,
+        sendTimeout: _defaultTimeout,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        // Configure validateStatus to not throw exceptions for expected error codes
+        validateStatus: (status) {
+          // Don't throw exceptions for any status code - we'll handle them manually
+          return status != null && status < 500; // Only throw for server errors (500+)
+        },
+      ));
 
-    // Add minimal logging interceptor for errors only
-    _dio!.interceptors.add(LogInterceptor(
-      requestBody: false,
-      responseBody: false,
-      requestHeader: false,
-      responseHeader: false,
-      request: false,
-      error: true,
-      logPrint: (obj) => AICOLog.debug(obj.toString(), topic: 'network/dio/error'),
-    ));
+      // Add minimal logging interceptor for errors only
+      _dio!.interceptors.add(LogInterceptor(
+        requestBody: false,
+        responseBody: false,
+        requestHeader: false,
+        responseHeader: false,
+        request: false,
+        error: true,
+        logPrint: (obj) => AICOLog.debug(obj.toString(), topic: 'network/dio/error'),
+      ));
 
-    _isInitialized = true;
-    AICOLog.info('UnifiedApiClient initialized', 
-      topic: 'network/client/init', 
-      extra: {'base_url': _baseUrl});
+      _isInitialized = true;
+      AICOLog.info('UnifiedApiClient initialized', 
+        topic: 'network/client/init', 
+        extra: {'base_url': _baseUrl});
+    } catch (e) {
+      // Handle initialization errors gracefully - don't let them crash the app
+      AICOLog.warn('UnifiedApiClient initialization failed, will retry on first request', 
+        topic: 'network/client/init_error', 
+        extra: {'error': e.toString()});
+      // Don't set _isInitialized to true, so it will retry on first request
+    }
   }
 
   /// Make a request with automatic encryption detection

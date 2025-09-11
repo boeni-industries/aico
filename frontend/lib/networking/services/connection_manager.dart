@@ -85,12 +85,12 @@ class ConnectionManager {
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    _updateHealth(ConnectionStatus.connecting);
+    updateHealth(ConnectionStatus.connecting);
     
     // Check network connectivity first
     final connectivityResult = await _connectivity.checkConnectivity();
     if (connectivityResult.contains(ConnectivityResult.none)) {
-      _updateHealth(ConnectionStatus.offline);
+      updateHealth(ConnectionStatus.offline);
       _isInitialized = true;
       return;
     }
@@ -120,10 +120,10 @@ class ConnectionManager {
     }
 
     if (connected) {
-      _updateHealth(ConnectionStatus.connected);
+      updateHealth(ConnectionStatus.connected);
       _startHealthMonitoring();
     } else {
-      _updateHealth(ConnectionStatus.error, 'All connection attempts failed');
+      updateHealth(ConnectionStatus.error, 'All connection attempts failed');
     }
 
     _isInitialized = true;
@@ -160,7 +160,7 @@ class ConnectionManager {
         
         // Success - update health
         if (_health.consecutiveFailures > 0) {
-          _updateHealth(ConnectionStatus.connected);
+          updateHealth(ConnectionStatus.connected);
         }
         
         return result;
@@ -168,8 +168,15 @@ class ConnectionManager {
       } catch (e) {
         lastException = e is Exception ? e : Exception(e.toString());
         
-        // Update failure count
-        _updateHealth(_health.status, e.toString(), _health.consecutiveFailures + 1);
+        // Gracefully handle connection errors - update status immediately
+        ConnectionStatus newStatus = ConnectionStatus.error;
+        if (e is SocketException || e.toString().contains('connection refused')) {
+          newStatus = ConnectionStatus.disconnected;
+          // Schedule background reconnection
+          _scheduleReconnect();
+        }
+        
+        updateHealth(newStatus, e.toString(), _health.consecutiveFailures + 1);
         
         AICOLog.warn('Operation attempt ${attempt + 1} failed',
           topic: 'network/connection/retry',
@@ -195,8 +202,13 @@ class ConnectionManager {
       }
     }
     
-    // All attempts failed
-    _updateHealth(ConnectionStatus.error, lastException?.toString());
+    // All attempts failed - gracefully handle without throwing
+    final finalStatus = lastException.toString().contains('connection refused') 
+        ? ConnectionStatus.disconnected 
+        : ConnectionStatus.error;
+    updateHealth(finalStatus, lastException?.toString());
+    
+    // Return a graceful failure instead of throwing
     throw lastException ?? Exception('Operation failed after all retries');
   }
 
@@ -221,7 +233,7 @@ class ConnectionManager {
           stateSubscription?.cancel();
           
           // Update health with latency info
-          _updateHealth(
+          updateHealth(
             ConnectionStatus.connected,
             null,
             0,
@@ -273,7 +285,7 @@ class ConnectionManager {
       client.close();
       
       if (response.statusCode == 200) {
-        _updateHealth(
+        updateHealth(
           ConnectionStatus.connected,
           null,
           0,
@@ -284,6 +296,8 @@ class ConnectionManager {
       
       return false;
     } catch (e) {
+      // Gracefully handle all connection errors without throwing
+      updateHealth(ConnectionStatus.error, e.toString());
       AICOLog.debug('HTTP connection test failed',
         topic: 'network/connection/http_test', 
         extra: {'error': e.toString()});
@@ -298,6 +312,12 @@ class ConnectionManager {
              error is ServerException ||
              error is OfflineException;
     }
+    
+    // Handle SocketException and connection refused errors
+    if (error is SocketException || error.toString().contains('connection refused')) {
+      return true;
+    }
+    
     return false;
   }
 
@@ -354,7 +374,7 @@ class ConnectionManager {
   void _initializeConnectivityMonitoring() {
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen((result) {
       if (result.contains(ConnectivityResult.none)) {
-        _updateHealth(ConnectionStatus.offline);
+        updateHealth(ConnectionStatus.offline);
         _offlineController.add(true);
       } else {
         _offlineController.add(false);
@@ -397,10 +417,16 @@ class ConnectionManager {
       }
       
       if (!isHealthy && _health.status == ConnectionStatus.connected) {
-        _updateHealth(ConnectionStatus.error, 'Health check failed');
+        updateHealth(ConnectionStatus.disconnected, 'Health check failed - backend unavailable');
         _scheduleReconnect();
+      } else if (isHealthy && _health.status != ConnectionStatus.connected) {
+        // Backend came back online
+        updateHealth(ConnectionStatus.connected, null, 0);
       }
     } catch (e) {
+      // Gracefully handle health check failures
+      updateHealth(ConnectionStatus.disconnected, 'Health check failed: ${e.toString()}');
+      _scheduleReconnect();
       AICOLog.warn('Health check failed', 
         topic: 'network/connection/health_check',
         extra: {'error': e.toString()});
@@ -432,7 +458,7 @@ class ConnectionManager {
     );
   }
   
-  void _updateHealth(
+  void updateHealth(
     ConnectionStatus status, [
     String? error,
     int? consecutiveFailures,

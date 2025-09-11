@@ -114,6 +114,17 @@ class TokenManager {
         await _triggerAutoReAuthentication();
       }
     } catch (e) {
+      // Check if this is a backend unavailable error
+      if (e.toString().contains('connection refused') || 
+          e.toString().contains('SocketException') ||
+          e.toString().contains('timeout')) {
+        AICOLog.warn('Token refresh failed - backend unavailable, will retry later', 
+          topic: 'auth/token/refresh_backend_unavailable',
+          extra: {'error': e.toString()});
+        // Don't trigger re-authentication on network errors - just return false
+        return false;
+      }
+      
       AICOLog.error('Token refresh failed with exception, triggering re-authentication', 
         topic: 'auth/token/refresh_error',
         extra: {'error': e.toString()});

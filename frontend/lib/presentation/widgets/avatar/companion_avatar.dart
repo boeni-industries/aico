@@ -68,44 +68,50 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     
-    // Stronger colors for light mode, softer for dark mode
-    const softPurple = Color(0xFFB8A1EA);
-    final lightPurple = Color(0xFF8B5CF6); // Stronger purple for light mode
+    // Design principle: Soft purple accent for primary states, subtle indicators for issues
+    const softPurple = Color(0xFFB8A1EA); // Primary brand accent
+    const coral = Color(0xFFED7867); // Error/warning accent
     
     if (!_isAuthenticated) {
-      return isDark ? Colors.orange.shade400 : Colors.orange.shade600;
+      // Subtle coral for auth required - not alarming
+      return isDark ? coral.withOpacity(0.7) : coral.withOpacity(0.8);
     }
     
     switch (_currentStatus) {
       case ConnectionStatus.connected:
-        return isDark ? softPurple : lightPurple;
+        // Primary soft purple - healthy, connected state
+        return isDark ? softPurple.withOpacity(0.8) : softPurple;
       case ConnectionStatus.connecting:
-        return isDark ? Colors.blue.shade400 : Colors.blue.shade600;
+        // Gentle blue pulse - transitional state
+        return isDark ? Colors.blue.shade300.withOpacity(0.7) : Colors.blue.shade400;
       case ConnectionStatus.disconnected:
-        return isDark ? Colors.orange.shade400 : Colors.orange.shade600;
+        // Muted amber - temporary issue, not alarming
+        return isDark ? Colors.amber.shade300.withOpacity(0.6) : Colors.amber.shade500;
       case ConnectionStatus.offline:
-        return isDark ? Colors.red.shade400 : Colors.red.shade600;
+        // Soft coral - network issue indicator
+        return isDark ? coral.withOpacity(0.6) : coral.withOpacity(0.7);
       case ConnectionStatus.error:
-        return isDark ? Colors.red.shade600 : Colors.red.shade700;
+        // Slightly stronger coral for persistent errors
+        return isDark ? coral.withOpacity(0.8) : coral;
     }
   }
 
   String _getTooltipMessage() {
     if (!_isAuthenticated) {
-      return 'Authentication required';
+      return 'Touch to authenticate';
     }
     
     switch (_currentStatus) {
       case ConnectionStatus.connected:
-        return 'All systems operational';
+        return 'Ready to chat';
       case ConnectionStatus.connecting:
-        return 'Establishing connection...';
+        return 'Connecting...';
       case ConnectionStatus.disconnected:
-        return 'Connection interrupted - attempting to reconnect';
+        return 'Reconnecting in background';
       case ConnectionStatus.offline:
-        return 'No network connection available';
+        return 'Check network connection';
       case ConnectionStatus.error:
-        return 'Connection error - check network settings';
+        return 'Connection issue - will retry automatically';
     }
   }
 

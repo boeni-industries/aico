@@ -12,17 +12,17 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<AuthResult> authenticate(String userUuid, String pin) async {
-    try {
-      // Authenticate with remote API
-      final authModel = await _remoteDataSource.authenticate(userUuid, pin);
-      
-      // Convert to domain entity
-      final authResult = authModel.toDomain();
-      
-      return authResult;
-    } catch (e) {
-      throw Exception('Authentication failed: $e');
+    // Authenticate with remote API - returns null on failure
+    final authModel = await _remoteDataSource.authenticate(userUuid, pin);
+    
+    if (authModel == null) {
+      throw Exception('Authentication failed: Backend unavailable or invalid credentials');
     }
+    
+    // Convert to domain entity
+    final authResult = authModel.toDomain();
+    
+    return authResult;
   }
 
   @override
@@ -40,6 +40,12 @@ class AuthRepositoryImpl implements AuthRepository {
         credentials['userUuid']!,
         credentials['pin']!,
       );
+      
+      if (authModel == null) {
+        // Backend unavailable - don't clear credentials, just return null
+        debugPrint('AuthRepository: Auto-login failed - backend unavailable');
+        return null;
+      }
       
       final authResult = authModel.toDomain();
       

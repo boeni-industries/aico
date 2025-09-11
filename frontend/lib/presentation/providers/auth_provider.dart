@@ -103,10 +103,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
           isLoading: false,
         );
       } else {
-        debugPrint('AuthProvider: Auto-login failed - no result returned');
+        debugPrint('AuthProvider: Auto-login failed - no result returned (likely backend unavailable)');
         AICOLog.warn('Auto-login failed - no result returned', topic: 'auth/autologin/failure');
-        // Clear stored credentials on auto-login failure to prevent infinite loops
-        await _logoutUseCase.execute();
+        // Don't clear credentials on auto-login failure - backend might be temporarily unavailable
+        // Just set loading to false and let connection manager handle reconnection
         state = state.copyWith(isLoading: false);
       }
     } catch (e) {
@@ -115,12 +115,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
         topic: 'auth/autologin/error', 
         error: e, 
         extra: {'error_type': e.runtimeType.toString()});
-      // Clear stored credentials on auto-login exception to prevent infinite loops
-      await _logoutUseCase.execute();
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      
+      // Only clear credentials on actual authentication errors, not network errors
+      if (e.toString().contains('Authentication failed: Backend unavailable')) {
+        // Backend unavailable - don't clear credentials, just stop loading
+        debugPrint('AuthProvider: Backend unavailable during auto-login, preserving credentials');
+        state = state.copyWith(isLoading: false);
+      } else {
+        // Actual authentication error - clear credentials to prevent loops
+        debugPrint('AuthProvider: Authentication error during auto-login, clearing credentials');
+        await _logoutUseCase.execute();
+        state = state.copyWith(
+          isLoading: false,
+          error: e.toString(),
+        );
+      }
     } finally {
       _isAutoLoginInProgress = false;
     }

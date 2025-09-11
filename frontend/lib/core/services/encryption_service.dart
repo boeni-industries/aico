@@ -43,10 +43,17 @@ class EncryptionService {
   
   /// Initialize encryption service with libsodium
   Future<void> initialize() async {
-    // Initialize sodium with platform binaries
-    _sodium = await sodium_libs.SodiumInit.init();
-    
-    await _loadOrGenerateIdentityKeys();
+    try {
+      // Initialize sodium with platform binaries
+      _sodium = await sodium_libs.SodiumInit.init();
+      
+      await _loadOrGenerateIdentityKeys();
+    } catch (e) {
+      // Handle initialization errors gracefully - don't crash the app
+      debugPrint('EncryptionService initialization failed: $e');
+      // Set a minimal state so the app can continue without encryption
+      _sessionEstablished = false;
+    }
   }
   
   /// Load existing identity keys or generate new ones
