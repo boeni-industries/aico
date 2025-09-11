@@ -48,7 +48,6 @@ void main() async {
   // Initialize SharedPreferences for Riverpod
   final sharedPreferences = await SharedPreferences.getInstance();
   
-  // TODO: Replace with proper unified logging that sends to backend
   debugPrint('[app:${AICOTopics.appStartup}] AICO Flutter application starting');
   AICOLog.info('AICO Flutter application starting', 
     topic: 'app/startup/init', 
@@ -65,8 +64,6 @@ void main() async {
 }
 
 class AicoApp extends ConsumerStatefulWidget {
-  // TODO: Implement proper unified logging that sends to backend via HTTP/WebSocket
-
   const AicoApp({super.key});
 
   @override
@@ -83,7 +80,6 @@ class _AicoAppState extends ConsumerState<AicoApp> {
       ref.read(aicoLoggerProvider);
     });
     
-    // TODO: Replace with proper unified logging that sends to backend
     debugPrint('[app:${AICOTopics.appInitialization}] App widget initialized with Riverpod');
     AICOLog.info('App widget initialized with Riverpod', 
       topic: 'app/lifecycle/init', 
