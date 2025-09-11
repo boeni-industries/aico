@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:aico_frontend/core/logging/aico_log.dart';
-import 'package:dio/dio.dart';
 import 'package:aico_frontend/networking/services/jwt_decoder.dart';
 
 class TokenManager {
@@ -14,7 +13,7 @@ class TokenManager {
   
   TokenManager._internal();
 
-  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage(
+  static const FlutterSecureStorage _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
     ),
@@ -22,6 +21,7 @@ class TokenManager {
       accessibility: KeychainAccessibility.first_unlock_this_device,
     ),
     lOptions: LinuxOptions(),
+    mOptions: MacOsOptions(),
     wOptions: WindowsOptions(
       useBackwardCompatibility: false,
     ),
@@ -41,6 +41,9 @@ class TokenManager {
   String? _cachedRefreshToken;
   DateTime? _tokenExpiry;
   Timer? _refreshTimer;
+  
+  // Callback to get UnifiedApiClient instance for encrypted refresh requests
+  dynamic _apiClient;
 
   /// Get access token (alias for getValidToken for compatibility)
   Future<String?> getAccessToken() async {
@@ -80,6 +83,11 @@ class TokenManager {
   }
 
 
+  /// Set the API client for encrypted refresh requests
+  void setApiClient(dynamic apiClient) {
+    _apiClient = apiClient;
+  }
+
   /// Refresh the access token using refresh token
   Future<bool> refreshToken() async {
     debugPrint('🔄 TokenManager: refreshToken() called - Starting token refresh process');
@@ -92,56 +100,39 @@ class TokenManager {
     }
 
     try {
-      debugPrint('🚀 TokenManager: Attempting token refresh with current token');
-      AICOLog.info('Attempting token refresh', topic: 'network/token/refresh/start');
-      
-      // Create Dio instance for refresh request
-      final dio = Dio();
-      
-      // Make refresh request to backend
-      final response = await dio.post(
-        'http://127.0.0.1:8771/api/v1/users/refresh',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $_cachedToken',
-            'Content-Type': 'application/json',
-          },
-        ),
-      );
-
-      if (response.statusCode == 200 && response.data != null) {
-        final data = response.data as Map<String, dynamic>;
-        
-        if (data['success'] == true && data['jwt_token'] != null) {
-          final newToken = data['jwt_token'] as String;
-          
-          // Extract expiry from new token
-          final newExpiry = JWTDecoder.getExpiryTime(newToken);
-          
-          debugPrint('✅ TokenManager: Token refresh successful! New expiry: ${newExpiry?.toIso8601String()}');
-          
-          // Update cached tokens
-          _cachedToken = newToken;
-          _tokenExpiry = newExpiry;
-          
-          // Store new token in secure storage
-          await _storeTokensInStorage();
-          
-          debugPrint('💾 TokenManager: New token stored in secure storage');
-          AICOLog.info('Token refresh successful', 
-            topic: 'network/token/refresh/success',
-            extra: {
-              'new_expiry': newExpiry?.toIso8601String(),
-            });
-          
-          return true;
-        }
+      if (_apiClient == null) {
+        debugPrint('❌ TokenManager: No API client available for encrypted refresh');
+        AICOLog.error('No API client available for token refresh', topic: 'network/token/refresh/no_client');
+        return false;
       }
       
-      debugPrint('❌ TokenManager: Token refresh failed - invalid response. Status: ${response.statusCode}');
-      AICOLog.error('Token refresh failed - invalid response', 
-        topic: 'network/token/refresh/invalid_response',
-        extra: {'status_code': response.statusCode});
+      debugPrint('🚀 TokenManager: Attempting token refresh via existing encrypted API client');
+      AICOLog.info('Attempting token refresh via encrypted client', topic: 'network/token/refresh/encrypted');
+      
+      // Use existing UnifiedApiClient for encrypted refresh
+      final response = await _apiClient.post('/users/refresh');
+      
+      if (response != null && response['success'] == true && response['jwt_token'] != null) {
+        final newToken = response['jwt_token'] as String;
+        final newExpiry = JWTDecoder.getExpiryTime(newToken);
+        
+        debugPrint('✅ TokenManager: Token refresh successful via encrypted client! New expiry: ${newExpiry?.toIso8601String()}');
+        
+        _cachedToken = newToken;
+        _tokenExpiry = newExpiry;
+        await _storeTokensInStorage();
+        
+        debugPrint('💾 TokenManager: New token stored in secure storage');
+        AICOLog.info('Token refresh successful via encrypted client', 
+          topic: 'network/token/refresh/success',
+          extra: {'new_expiry': newExpiry?.toIso8601String()});
+        
+        return true;
+      }
+      
+      debugPrint('❌ TokenManager: Token refresh failed - invalid response from encrypted client');
+      AICOLog.error('Token refresh failed - invalid response from encrypted client', 
+        topic: 'network/token/refresh/invalid_response');
       return false;
       
     } catch (e) {
@@ -200,9 +191,9 @@ class TokenManager {
   /// Load tokens from secure storage
   Future<void> _loadTokensFromStorage() async {
     try {
-      final accessToken = await _secureStorage.read(key: _keyAccessToken);
-      final refreshToken = await _secureStorage.read(key: _keyRefreshToken);
-      final expiryString = await _secureStorage.read(key: _keyTokenExpiry);
+      final accessToken = await _storage.read(key: _keyAccessToken);
+      final refreshToken = await _storage.read(key: _keyRefreshToken);
+      final expiryString = await _storage.read(key: _keyTokenExpiry);
 
       debugPrint('TokenManager: Loading from storage - accessToken: ${accessToken != null ? "FOUND (${accessToken.substring(0, 20)}...)" : "NOT FOUND"}, refreshToken: ${refreshToken != null ? "FOUND" : "NOT FOUND"}');
 
@@ -232,15 +223,15 @@ class TokenManager {
   Future<void> _storeTokensInStorage() async {
     try {
       if (_cachedToken != null && _cachedToken!.isNotEmpty) {
-        await _secureStorage.write(key: _keyAccessToken, value: _cachedToken!);
+        await _storage.write(key: _keyAccessToken, value: _cachedToken!);
       }
       
       if (_cachedRefreshToken != null && _cachedRefreshToken!.isNotEmpty) {
-        await _secureStorage.write(key: _keyRefreshToken, value: _cachedRefreshToken!);
+        await _storage.write(key: _keyRefreshToken, value: _cachedRefreshToken!);
       }
       
       if (_tokenExpiry != null) {
-        await _secureStorage.write(key: _keyTokenExpiry, value: _tokenExpiry!.toIso8601String());
+        await _storage.write(key: _keyTokenExpiry, value: _tokenExpiry!.toIso8601String());
       }
     } catch (e) {
       debugPrint('Failed to store tokens: $e');
@@ -311,9 +302,9 @@ class TokenManager {
     
     // Clear from secure storage
     try {
-      await _secureStorage.delete(key: _keyAccessToken);
-      await _secureStorage.delete(key: _keyRefreshToken);
-      await _secureStorage.delete(key: _keyTokenExpiry);
+      await _storage.delete(key: _keyAccessToken);
+      await _storage.delete(key: _keyRefreshToken);
+      await _storage.delete(key: _keyTokenExpiry);
     } catch (e) {
       debugPrint('Failed to clear secure storage: $e');
     }
