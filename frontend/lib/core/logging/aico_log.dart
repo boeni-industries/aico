@@ -1,7 +1,6 @@
-import 'package:flutter/foundation.dart';
-
 import 'package:aico_frontend/core/logging/models/log_entry.dart';
 import 'package:aico_frontend/core/logging/services/aico_logger.dart';
+import 'package:flutter/foundation.dart';
 
 /// Developer-friendly logging API for AICO
 /// 
@@ -49,7 +48,7 @@ class AICOLog {
     StackTrace? stackTrace,
     Map<String, dynamic>? extra,
   }) {
-    _log(LogLevel.warn, message, topic, error, stackTrace, extra);
+    _log(LogLevel.warning, message, topic, error, stackTrace, extra);
   }
 
   /// Log an error message
@@ -73,7 +72,7 @@ class AICOLog {
     StackTrace? stackTrace,
     Map<String, dynamic>? extra,
   }) {
-    _log(LogLevel.fatal, message, topic, error, stackTrace, extra);
+    _log(LogLevel.error, message, topic, error, stackTrace, extra);
   }
 
   /// Internal logging method
@@ -114,14 +113,11 @@ class AICOLog {
       case LogLevel.info:
         AICOLogger.info(message, topic: topic, extra: extra);
         break;
-      case LogLevel.warn:
+      case LogLevel.warning:
         AICOLogger.warn(message, topic: topic, extra: extra);
         break;
       case LogLevel.error:
         AICOLogger.error(message, topic: topic, extra: extra);
-        break;
-      case LogLevel.fatal:
-        AICOLogger.fatal(message, topic: topic, extra: extra);
         break;
     }
   }

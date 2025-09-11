@@ -1,10 +1,9 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:aico_frontend/core/logging/models/log_entry.dart';
 import 'package:aico_frontend/core/logging/services/aico_logger.dart';
 import 'package:aico_frontend/core/logging/services/log_cache.dart';
 import 'package:aico_frontend/core/logging/services/log_monitor.dart';
 import 'package:aico_frontend/core/logging/services/log_transport.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Logging configuration provider
 final loggingConfigProvider = Provider<LoggingConfig>((ref) {

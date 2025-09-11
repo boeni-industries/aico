@@ -1,8 +1,8 @@
+import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/data/models/message_model.dart';
 import 'package:aico_frontend/domain/entities/message.dart';
 import 'package:aico_frontend/domain/repositories/message_repository.dart';
-import 'package:aico_frontend/data/models/message_model.dart';
 import 'package:aico_frontend/networking/clients/unified_api_client.dart';
-import 'package:aico_frontend/core/logging/aico_log.dart';
 
 /// Implementation of MessageRepository that communicates with AICO backend
 class MessageRepositoryImpl implements MessageRepository {
@@ -25,10 +25,10 @@ class MessageRepositoryImpl implements MessageRepository {
       final messageModel = MessageModel.fromEntity(message);
       
       // Prepare request payload for backend /conversation/messages endpoint
-      // Using UnifiedMessageRequest format
+      // Using UnifiedMessageRequest format matching backend schema
       final requestData = {
         'message': messageModel.content,
-        'message_type': messageModel.type.name, // Convert enum to string
+        'message_type': 'text', // Use literal string instead of enum
         'context': {
           'frontend_client': 'flutter',
           'conversation_id': messageModel.conversationId, // For context only
@@ -76,14 +76,49 @@ class MessageRepositoryImpl implements MessageRepository {
 
         return sentMessage;
       } else {
-        throw Exception('Failed to send message: null response');
+        // Handle null response gracefully - backend may be unavailable
+        AICOLog.warn('Message send failed: backend unavailable', 
+          topic: 'message_repository/send_backend_unavailable',
+          extra: {
+            'message_id': message.id,
+            'conversation_id': message.conversationId,
+          });
+        
+        // Return message with failed status instead of throwing
+        return Message(
+          id: message.id,
+          content: message.content,
+          userId: message.userId,
+          conversationId: message.conversationId,
+          type: message.type,
+          status: MessageStatus.failed, // Mark as failed
+          timestamp: message.timestamp,
+          metadata: {
+            'error': 'Backend unavailable',
+            'retry_available': true,
+          },
+        );
       }
     } catch (e) {
       AICOLog.error('Failed to send message', 
         topic: 'message_repository/send_error',
         error: e,
         extra: {'message_id': message.id});
-      rethrow;
+      
+      // Return failed message instead of rethrowing
+      return Message(
+        id: message.id,
+        content: message.content,
+        userId: message.userId,
+        conversationId: message.conversationId,
+        type: message.type,
+        status: MessageStatus.failed,
+        timestamp: message.timestamp,
+        metadata: {
+          'error': e.toString(),
+          'retry_available': true,
+        },
+      );
     }
   }
 

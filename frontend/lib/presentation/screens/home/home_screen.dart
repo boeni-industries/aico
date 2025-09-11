@@ -1,10 +1,11 @@
-import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
+import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
+import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -228,30 +229,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          // Avatar with mood ring
-          SizedBox(
-            width: 96,
-            child: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: accentColor,
-                  width: 3,
-                ),
-              ),
-              child: CircleAvatar(
-                radius: 60,
-                backgroundColor: theme.colorScheme.surface,
-                child: Icon(
-                  Icons.face,
-                  size: 48,
-                  color: accentColor,
-                ),
-              ),
-            ),
-          ),
+          // Avatar with intelligent status ring
+          const CompanionAvatar(),
           
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           
           // Emotional state
           Text(

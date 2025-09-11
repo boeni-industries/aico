@@ -1,12 +1,12 @@
-import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/core/providers/networking_providers.dart';
+import 'package:aico_frontend/data/repositories/message_repository_impl.dart';
 import 'package:aico_frontend/domain/entities/message.dart';
 import 'package:aico_frontend/domain/repositories/message_repository.dart';
 import 'package:aico_frontend/domain/usecases/send_message_usecase.dart';
-import 'package:aico_frontend/data/repositories/message_repository_impl.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
-import 'package:aico_frontend/core/providers/networking_providers.dart';
-import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 /// State class for conversation management

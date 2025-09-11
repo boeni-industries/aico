@@ -1,8 +1,8 @@
+import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/core/services/api_service.dart';
 import 'package:aico_frontend/networking/models/user_models.dart';
 import 'package:aico_frontend/networking/services/secure_credential_manager.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
-import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 

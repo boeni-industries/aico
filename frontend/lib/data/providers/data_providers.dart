@@ -1,5 +1,3 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:aico_frontend/core/providers.dart';
 import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/data/datasources/local/auth_local_datasource.dart';
@@ -8,6 +6,7 @@ import 'package:aico_frontend/data/repositories/auth_repository_impl.dart';
 import 'package:aico_frontend/data/repositories/user_repository_impl.dart';
 import 'package:aico_frontend/domain/repositories/auth_repository.dart';
 import 'package:aico_frontend/domain/repositories/user_repository.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Auth local datasource provider
 final authLocalDataSourceProvider = Provider<AuthLocalDataSource>((ref) {

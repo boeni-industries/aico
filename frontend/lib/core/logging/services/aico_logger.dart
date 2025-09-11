@@ -1,12 +1,11 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 
-import 'package:flutter/foundation.dart';
-import 'package:stack_trace/stack_trace.dart';
-
 import 'package:aico_frontend/core/logging/models/log_entry.dart';
 import 'package:aico_frontend/core/logging/services/log_cache.dart';
 import 'package:aico_frontend/core/logging/services/log_transport.dart';
+import 'package:flutter/foundation.dart';
+import 'package:stack_trace/stack_trace.dart';
 
 /// Configuration for the AICO logging system
 class LoggingConfig {
@@ -155,7 +154,7 @@ class AICOLogger {
     String? sessionId,
     Map<String, dynamic>? extra,
   }) {
-    _log(LogLevel.warn, message, topic: topic, traceId: traceId, sessionId: sessionId, extra: extra);
+    _log(LogLevel.warning, message, topic: topic, traceId: traceId, sessionId: sessionId, extra: extra);
   }
 
   /// Log an error message
@@ -208,7 +207,7 @@ class AICOLogger {
     }
     
     _log(
-      LogLevel.fatal, 
+      LogLevel.error, 
       message, 
       topic: topic, 
       traceId: traceId, 
@@ -297,7 +296,11 @@ class AICOLogger {
     // Find the lib segment and extract module path
     final libIndex = segments.indexOf('lib');
     if (libIndex == -1 || libIndex >= segments.length - 1) {
-      return 'frontend.${segments.last}';
+      final lastSegment = segments.last;
+      final cleanName = lastSegment.endsWith('.dart') 
+          ? lastSegment.substring(0, lastSegment.length - 5)
+          : lastSegment;
+      return 'frontend.$cleanName';
     }
     
     final moduleSegments = segments.sublist(libIndex + 1);
@@ -309,6 +312,7 @@ class AICOLogger {
       }
     }
     
+    // Use dots to match backend validation expectation
     return 'frontend.${moduleSegments.join('.')}';
   }
 
@@ -317,9 +321,9 @@ class AICOLogger {
     final moduleParts = module.split('.');
     if (moduleParts.length >= 2) {
       final category = moduleParts[1]; // e.g., 'ui', 'api', 'storage'
-      return '$category.${function.toLowerCase()}';
+      return '$category/${function.toLowerCase()}';
     }
-    return 'app.${function.toLowerCase()}';
+    return 'app/${function.toLowerCase()}';
   }
 
   /// Process a log entry through the pipeline
@@ -359,14 +363,11 @@ class AICOLogger {
         case LogLevel.info:
           debugPrint(message);
           break;
-        case LogLevel.warn:
+        case LogLevel.warning:
           debugPrint('⚠️ $message');
           break;
         case LogLevel.error:
           debugPrint('❌ $message');
-          break;
-        case LogLevel.fatal:
-          debugPrint('💀 $message');
           break;
       }
     }

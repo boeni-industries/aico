@@ -3,9 +3,8 @@
 enum LogLevel {
   debug,
   info,
-  warn,
+  warning,
   error,
-  fatal,
 }
 
 /// Standardized log entry following AICO unified logging schema
@@ -166,12 +165,10 @@ extension LogLevelExtension on LogLevel {
         return 0;
       case LogLevel.info:
         return 1;
-      case LogLevel.warn:
+      case LogLevel.warning:
         return 2;
       case LogLevel.error:
         return 3;
-      case LogLevel.fatal:
-        return 4;
     }
   }
 

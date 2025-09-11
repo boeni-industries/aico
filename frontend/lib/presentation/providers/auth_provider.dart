@@ -1,7 +1,10 @@
+import 'dart:async';
+import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/domain/entities/user.dart';
 import 'package:aico_frontend/domain/providers/domain_providers.dart';
 import 'package:aico_frontend/domain/usecases/auth_usecases.dart';
-import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -40,15 +43,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final AutoLoginUseCase _autoLoginUseCase;
   final LogoutUseCase _logoutUseCase;
   final CheckAuthStatusUseCase _checkAuthStatusUseCase;
+  final TokenManager _tokenManager;
   
   bool _isAutoLoginInProgress = false;
+  StreamSubscription<ReAuthenticationRequired>? _reAuthSubscription;
 
   AuthNotifier(
     this._loginUseCase,
     this._autoLoginUseCase,
     this._logoutUseCase,
     this._checkAuthStatusUseCase,
-  ) : super(const AuthState());
+    this._tokenManager,
+  ) : super(const AuthState()) {
+    _setupReAuthenticationListener();
+  }
 
   Future<void> login(String userUuid, String pin, {bool rememberMe = false}) async {
     state = state.copyWith(isLoading: true, error: null);
@@ -97,6 +105,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       } else {
         debugPrint('AuthProvider: Auto-login failed - no result returned');
         AICOLog.warn('Auto-login failed - no result returned', topic: 'auth/autologin/failure');
+        // Clear stored credentials on auto-login failure to prevent infinite loops
+        await _logoutUseCase.execute();
         state = state.copyWith(isLoading: false);
       }
     } catch (e) {
@@ -105,6 +115,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         topic: 'auth/autologin/error', 
         error: e, 
         extra: {'error_type': e.runtimeType.toString()});
+      // Clear stored credentials on auto-login exception to prevent infinite loops
+      await _logoutUseCase.execute();
       state = state.copyWith(
         isLoading: false,
         error: e.toString(),
@@ -163,6 +175,41 @@ class AuthNotifier extends StateNotifier<AuthState> {
   void clearError() {
     state = state.copyWith(error: null);
   }
+
+  /// Setup listener for token manager re-authentication events
+  void _setupReAuthenticationListener() {
+    _reAuthSubscription = _tokenManager.reAuthenticationStream.listen(
+      (reAuthEvent) {
+        AICOLog.info('Token refresh failed, attempting credential re-authentication',
+          topic: 'auth/reauth/token_expired',
+          extra: {
+            'reason': reAuthEvent.reason,
+            'timestamp': reAuthEvent.timestamp.toIso8601String()
+          });
+        
+        // Only attempt auto-login if we're currently authenticated
+        // This prevents loops when user has no stored credentials
+        if (state.isAuthenticated) {
+          debugPrint('AuthProvider: Token expired, attempting credential re-auth...');
+          attemptAutoLogin();
+        } else {
+          debugPrint('AuthProvider: Token expired but not authenticated, clearing state');
+          state = const AuthState();
+        }
+      },
+      onError: (error) {
+        AICOLog.error('Re-authentication stream error',
+          topic: 'auth/reauth/stream_error',
+          error: error);
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _reAuthSubscription?.cancel();
+    super.dispose();
+  }
 }
 
 // Auth provider
@@ -172,5 +219,6 @@ final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
     ref.read(autoLoginUseCaseProvider),
     ref.read(logoutUseCaseProvider),
     ref.read(checkAuthStatusUseCaseProvider),
+    ref.read(tokenManagerProvider),
   );
 });

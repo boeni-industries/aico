@@ -1,8 +1,7 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/core/providers/storage_providers.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class EncryptionTestScreen extends ConsumerStatefulWidget {
   const EncryptionTestScreen({super.key});

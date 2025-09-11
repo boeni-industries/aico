@@ -20,10 +20,10 @@ class AicoThemeDataFactory {
       
       // Surface colors - Pure white for cards/panels
       surface: Color(0xFFFFFFFF), // Pure white
-      onSurface: Color(0xFF1A1C1E), // Dark text
+      onSurface: Color(0xFF1A1C1E),
       
-      // Background - Soft white-neutral
-      background: Color(0xFFF5F6FA), // Soft white-neutral from design principles
+      // Background - Soft white-neutral from design principles
+      background: Color(0xFFF5F6FA), // Soft white-neutral background
       onBackground: Color(0xFF1A1C1E),
       
       // Error states
@@ -55,9 +55,9 @@ class AicoThemeDataFactory {
       
       // Surface colors
       surface: Color(0xFF21242E), // Dark surface from design principles
-      onSurface: Color(0xFFE6E1E5), // Light text
+      onSurface: Color(0xFFE6E1E5),
       
-      // Background
+      // Background - Dark background from design principles
       background: Color(0xFF181A21), // Dark background from design principles
       onBackground: Color(0xFFE6E1E5),
       

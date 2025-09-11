@@ -1,8 +1,8 @@
+import 'package:aico_frontend/networking/services/jwt_decoder.dart';
+import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:aico_frontend/networking/services/jwt_decoder.dart';
-import 'package:aico_frontend/networking/services/token_manager.dart';
 
 abstract class AuthLocalDataSource {
   Future<void> storeCredentials(String userUuid, String pin, String token);
@@ -104,6 +104,8 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
       _secureStorage.delete(key: _keyUserUuid),
       _secureStorage.delete(key: _keyPin),
       _secureStorage.delete(key: _keyToken),
+      _secureStorage.delete(key: 'aico_access_token'),
+      _secureStorage.delete(key: 'aico_token_expiry'),
       _sharedPreferences.setBool(_keyHasCredentials, false),
     ]);
   }
@@ -120,8 +122,11 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
     debugPrint('AuthLocalDataSource: Storing token with key: $_keyToken, token: ${token.substring(0, 20)}...');
     await _secureStorage.write(key: _keyToken, value: token);
     
-    // Also store token expiry for TokenManager compatibility
+    // Store token in TokenManager format for compatibility
     try {
+      await _secureStorage.write(key: 'aico_access_token', value: token);
+      debugPrint('AuthLocalDataSource: Stored token in TokenManager format');
+      
       final expiryTime = JWTDecoder.getExpiryTime(token);
       if (expiryTime != null) {
         await _secureStorage.write(key: 'aico_token_expiry', value: expiryTime.toIso8601String());
@@ -143,6 +148,10 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
 
   @override
   Future<void> clearToken() async {
-    await _secureStorage.delete(key: _keyToken);
+    await Future.wait([
+      _secureStorage.delete(key: _keyToken),
+      _secureStorage.delete(key: 'aico_access_token'),
+      _secureStorage.delete(key: 'aico_token_expiry'),
+    ]);
   }
 }

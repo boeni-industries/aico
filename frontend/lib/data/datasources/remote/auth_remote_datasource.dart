@@ -37,11 +37,9 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   @override
   Future<bool> refreshToken(String token) async {
     try {
-      final responseData = await _apiClient.post(
-        '/auth/refresh',
-      );
+      final responseData = await _apiClient.postForTokenRefresh('/users/refresh');
 
-      return responseData != null;
+      return responseData != null && responseData['success'] == true;
     } catch (e) {
       throw Exception('Token refresh failed: ${e.toString()}');
     }
@@ -51,7 +49,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   Future<UserModel> getCurrentUser(String token) async {
     try {
       final responseData = await _apiClient.get(
-        '/auth/user',
+        '/users/me',
       );
 
       if (responseData != null) {

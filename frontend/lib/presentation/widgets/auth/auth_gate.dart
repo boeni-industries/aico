@@ -1,9 +1,11 @@
 import 'dart:ui';
-import 'package:aico_frontend/presentation/providers/auth_provider.dart';
-import 'package:aico_frontend/presentation/screens/auth/login_screen.dart';
-import 'package:aico_frontend/presentation/screens/home/home_screen.dart' as presentation;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/auth_provider.dart';
+import '../../screens/auth/login_screen.dart';
+import '../../screens/home/home_screen.dart';
+import '../common/simple_status_banner.dart';
+import 'auth_status_overlay.dart';
 
 /// Login overlay widget that displays as a card on top of the main UI
 class LoginOverlay extends StatelessWidget {
@@ -212,7 +214,11 @@ class _AuthGateState extends ConsumerState<AuthGate> {
     final authState = ref.watch(authProvider);
     
     if (authState.isAuthenticated) {
-      return const presentation.HomeScreen();
+      return AuthStatusOverlay(
+        child: SimpleStatusBanner(
+          child: const HomeScreen(),
+        ),
+      );
     } else if (authState.isLoading || !_initialAuthCheckCompleted) {
       return Scaffold(
         body: Center(
@@ -232,7 +238,7 @@ class _AuthGateState extends ConsumerState<AuthGate> {
     } else {
       return Stack(
         children: [
-          const presentation.HomeScreen(),
+          const HomeScreen(),
           Container(
             decoration: BoxDecoration(
               color: Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.95),

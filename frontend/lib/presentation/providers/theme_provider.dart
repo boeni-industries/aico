@@ -1,6 +1,6 @@
+import 'package:aico_frontend/core/theme/aico_theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:aico_frontend/core/theme/aico_theme_manager.dart';
 
 /// Theme manager provider
 final themeManagerProvider = Provider<AicoThemeManager>((ref) {

@@ -1,8 +1,7 @@
+import 'package:aico_frontend/core/providers/token_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-import 'package:aico_frontend/core/providers/token_manager.dart';
 
 /// Flutter Secure Storage provider
 final flutterSecureStorageProvider = Provider<FlutterSecureStorage>((ref) {

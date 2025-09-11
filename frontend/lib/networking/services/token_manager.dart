@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/networking/services/jwt_decoder.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class TokenManager {
   // Singleton implementation
@@ -83,49 +84,64 @@ class TokenManager {
 
   /// Refresh the access token using refresh token
   Future<bool> refreshToken() async {
-    AICOLog.debug('Token refresh initiated', topic: 'network/token/refresh/debug');
-    
-    if (_cachedToken == null) {
-      AICOLog.warn('No current token available for refresh', topic: 'network/token/refresh/no_token');
-      return false;
-    }
-
     try {
-      if (_apiClient == null) {
-        AICOLog.error('No API client available for token refresh', topic: 'network/token/refresh/no_client');
+      // If both tokens are expired/missing, trigger automatic re-authentication
+      if (_cachedToken == null || (_isTokenExpired() && _cachedRefreshToken == null)) {
+        AICOLog.warn('All tokens expired/missing, triggering automatic re-authentication',
+          topic: 'auth/token/auto_reauth_required');
+        await _triggerAutoReAuthentication();
         return false;
       }
       
-      AICOLog.info('Attempting token refresh via API client', topic: 'network/token/refresh/encrypted');
-      
-      // Use UnifiedApiClient with special refresh method that skips token freshness check
+      // Try to refresh using the current token (backend validates refresh capability)
       final response = await _apiClient.postForTokenRefresh('/users/refresh');
-      
-      if (response != null && response['success'] == true && response['jwt_token'] != null) {
-        final newToken = response['jwt_token'] as String;
-        final newExpiry = JWTDecoder.getExpiryTime(newToken);
-        
-        _cachedToken = newToken;
-        _tokenExpiry = newExpiry;
+      if (response != null && response['success'] == true) {
+        _cachedToken = response['jwt_token'];
+        _tokenExpiry = JWTDecoder.getExpiryTime(_cachedToken!);
         await _storeTokensInStorage();
         
-        AICOLog.info('Token refresh successful via encrypted client', 
-          topic: 'network/token/refresh/success',
-          extra: {'new_expiry': newExpiry?.toIso8601String()});
-        
+        AICOLog.info('Token refreshed successfully',
+          topic: 'auth/token/refresh_success',
+          extra: {
+            'new_expiry': _tokenExpiry?.toIso8601String(),
+            'time_until_expiry': _tokenExpiry?.difference(DateTime.now()).inMinutes
+          });
         return true;
+      } else {
+        AICOLog.warn('Token refresh failed - invalid response, triggering re-authentication',
+          topic: 'auth/token/refresh_failed',
+          extra: {'response': response});
+        await _triggerAutoReAuthentication();
       }
-      
-      AICOLog.error('Token refresh failed - invalid response from encrypted client', 
-        topic: 'network/token/refresh/invalid_response');
-      return false;
-      
     } catch (e) {
-      AICOLog.error('Token refresh failed', 
-        topic: 'network/token/refresh/error',
+      AICOLog.error('Token refresh failed with exception, triggering re-authentication', 
+        topic: 'auth/token/refresh_error',
         extra: {'error': e.toString()});
-      return false;
+      
+      await _triggerAutoReAuthentication();
     }
+    return false;
+  }
+  
+  // Re-authentication stream for UI integration
+  final StreamController<ReAuthenticationRequired> _reAuthController = StreamController<ReAuthenticationRequired>.broadcast();
+  
+  /// Stream for re-authentication events
+  Stream<ReAuthenticationRequired> get reAuthenticationStream => _reAuthController.stream;
+  
+  /// Trigger automatic re-authentication flow
+  /// Emits event for UI layer - follows message-driven architecture
+  Future<void> _triggerAutoReAuthentication() async {
+    await _clearTokens();
+    
+    AICOLog.info('Token refresh failed - triggering re-authentication',
+      topic: 'auth/token/reauth_required');
+    
+    // Simple event emission - let existing AuthProvider handle the logic
+    _reAuthController.add(ReAuthenticationRequired(
+      reason: 'Token refresh failed',
+      timestamp: DateTime.now(),
+    ));
   }
 
 
@@ -139,22 +155,42 @@ class TokenManager {
     return DateTime.now().isBefore(_tokenExpiry!.subtract(const Duration(minutes: 2)));
   }
 
-  /// Check if token needs refresh (expires within 5 minutes)
-  bool _shouldRefreshToken() {
-    if (_tokenExpiry == null || _cachedToken == null) {
+  /// Check if token is expired
+  bool _isTokenExpired() {
+    if (_tokenExpiry == null) {
       return false;
     }
-    
-    // Refresh if token expires within 2 minutes
-    return DateTime.now().isAfter(_tokenExpiry!.subtract(const Duration(minutes: 2)));
+    return DateTime.now().isAfter(_tokenExpiry!);
   }
 
-  /// Proactively refresh token if it's close to expiring
-  Future<void> ensureTokenFreshness() async {
-    if (_shouldRefreshToken()) {
-      AICOLog.info('Proactively refreshing token before expiry', topic: 'network/token/proactive_refresh');
-      await refreshToken();
+  /// Ensure token freshness - refresh if expired or expiring soon
+  Future<bool> ensureTokenFreshness() async {
+    // If no token, cannot ensure freshness
+    if (_cachedToken == null) {
+      AICOLog.warn('No cached token available for freshness check',
+        topic: 'auth/token/no_token');
+      return false;
     }
+
+    // If token is expired, attempt refresh
+    if (_isTokenExpired()) {
+      AICOLog.info('Token expired, attempting refresh',
+        topic: 'auth/token/expired_refresh');
+      return await refreshToken();
+    }
+
+    // Proactively refresh if token expires within 5 minutes
+    if (_tokenExpiry != null) {
+      final timeUntilExpiry = _tokenExpiry!.difference(DateTime.now());
+      if (timeUntilExpiry.inMinutes <= 5) {
+        AICOLog.info('Token expiring soon, proactive refresh',
+          topic: 'auth/token/proactive_refresh',
+          extra: {'minutes_until_expiry': timeUntilExpiry.inMinutes});
+        return await refreshToken();
+      }
+    }
+
+    return true;
   }
 
 
@@ -168,16 +204,25 @@ class TokenManager {
       // Load tokens silently
 
       if (accessToken != null && accessToken.isNotEmpty) {
-        _cachedToken = accessToken;
-        _cachedRefreshToken = refreshToken;
-        
-        if (expiryString != null && expiryString.isNotEmpty) {
-          try {
-            _tokenExpiry = DateTime.parse(expiryString);
-          } catch (e) {
-            debugPrint('Invalid token expiry format: $expiryString');
-            _tokenExpiry = null;
+        // Validate token format before storing
+        if (_isValidJWTFormat(accessToken)) {
+          _cachedToken = accessToken;
+          _cachedRefreshToken = refreshToken;
+          
+          // Try to extract expiry from JWT token directly
+          _tokenExpiry = JWTDecoder.getExpiryTime(accessToken);
+          
+          // Fallback to stored expiry string if JWT parsing fails
+          if (_tokenExpiry == null && expiryString != null && expiryString.isNotEmpty) {
+            try {
+              _tokenExpiry = DateTime.parse(expiryString);
+            } catch (e) {
+              debugPrint('Invalid token expiry format: $expiryString');
+            }
           }
+        } else {
+          debugPrint('Invalid JWT token format, clearing stored tokens');
+          await clearTokens();
         }
       }
     } catch (e) {
@@ -191,25 +236,37 @@ class TokenManager {
 
   /// Store tokens in secure storage
   Future<void> _storeTokensInStorage() async {
-    try {
-      if (_cachedToken != null && _cachedToken!.isNotEmpty) {
-        await _storage.write(key: _keyAccessToken, value: _cachedToken!);
-      }
-      
-      if (_cachedRefreshToken != null && _cachedRefreshToken!.isNotEmpty) {
-        await _storage.write(key: _keyRefreshToken, value: _cachedRefreshToken!);
-      }
-      
+    if (_cachedToken != null) {
+      await _storage.write(key: _keyAccessToken, value: _cachedToken!);
       if (_tokenExpiry != null) {
-        await _storage.write(key: _keyTokenExpiry, value: _tokenExpiry!.toIso8601String());
+        await _storage.write(
+          key: _keyTokenExpiry, 
+          value: _tokenExpiry!.millisecondsSinceEpoch.toString()
+        );
       }
-    } catch (e) {
-      debugPrint('Failed to store tokens: $e');
-      rethrow;
+      
+      AICOLog.debug('Tokens stored in secure storage',
+        topic: 'auth/token/storage_success',
+        extra: {
+          'has_token': _cachedToken != null,
+          'has_expiry': _tokenExpiry != null,
+          'expiry': _tokenExpiry?.toIso8601String()
+        });
     }
   }
-
-
+  
+  Future<void> _clearTokens() async {
+    _cachedToken = null;
+    _cachedRefreshToken = null;
+    _tokenExpiry = null;
+    await _storage.delete(key: _keyAccessToken);
+    await _storage.delete(key: _keyRefreshToken);
+    await _storage.delete(key: _keyTokenExpiry);
+    
+    AICOLog.info('All tokens cleared from storage',
+      topic: 'auth/token/cleared');
+  }
+  
   /// Enhanced storeTokens method with secure storage
   Future<void> storeTokens({
     required String accessToken,
@@ -226,23 +283,28 @@ class TokenManager {
 
   /// Start background token refresh monitoring
   void startBackgroundRefresh() {
-    // Cancel existing timer if any
     _refreshTimer?.cancel();
-    
-    // Check and refresh token every 30 seconds for maximum reliability
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
-      try {
-        await ensureTokenFreshness();
-      } catch (e) {
-        AICOLog.error('Background token refresh failed', 
-          topic: 'auth/token/background_refresh',
-          extra: {'error': e.toString()});
+      if (_cachedToken != null) {
+        // Check if token needs refresh (expired or expiring soon)
+        if (_isTokenExpired()) {
+          AICOLog.info('Background refresh: token expired',
+            topic: 'auth/token/background_expired');
+          await refreshToken();
+        } else if (_tokenExpiry != null) {
+          final timeUntilExpiry = _tokenExpiry!.difference(DateTime.now());
+          if (timeUntilExpiry.inMinutes <= 10) {
+            AICOLog.info('Background refresh: token expiring soon',
+              topic: 'auth/token/background_expiring',
+              extra: {'minutes_until_expiry': timeUntilExpiry.inMinutes});
+            await refreshToken();
+          }
+        }
+      } else {
+        AICOLog.debug('Background refresh: no token to refresh',
+          topic: 'auth/token/background_no_token');
       }
     });
-    
-    AICOLog.info('Background token refresh monitoring started', 
-      topic: 'auth/token/background_refresh',
-      extra: {'interval_seconds': 30});
   }
 
   /// Stop background token refresh monitoring
@@ -254,7 +316,21 @@ class TokenManager {
       topic: 'auth/token/background_refresh');
   }
 
-  /// Clear all tokens from memory and secure storage
+  /// Validate JWT token format
+  bool _isValidJWTFormat(String token) {
+    // Basic JWT format check: should have 3 parts separated by dots
+    final parts = token.split('.');
+    if (parts.length != 3) return false;
+    
+    // Each part should be base64 encoded (basic check)
+    for (final part in parts) {
+      if (part.isEmpty) return false;
+    }
+    
+    return true;
+  }
+
+  /// Clear all tokens from memory and storage
   Future<void> clearTokens() async {
     // Stop background refresh when clearing tokens
     stopBackgroundRefresh();
@@ -263,7 +339,6 @@ class TokenManager {
     _cachedRefreshToken = null;
     _tokenExpiry = null;
     
-    // Clear from secure storage
     try {
       await _storage.delete(key: _keyAccessToken);
       await _storage.delete(key: _keyRefreshToken);
@@ -273,5 +348,21 @@ class TokenManager {
     }
   }
   
+  /// Dispose resources
+  void dispose() {
+    _refreshTimer?.cancel();
+    _reAuthController.close();
+  }
+}
+
+/// Re-authentication required event
+class ReAuthenticationRequired {
+  final String reason;
+  final DateTime timestamp;
+  
+  const ReAuthenticationRequired({
+    required this.reason,
+    required this.timestamp,
+  });
 }
 

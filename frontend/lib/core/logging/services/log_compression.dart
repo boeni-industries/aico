@@ -1,9 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
-
 import 'package:aico_frontend/core/logging/models/log_entry.dart';
+import 'package:flutter/foundation.dart';
 
 /// Compression utilities for log batches to optimize network transfer
 class LogCompression {

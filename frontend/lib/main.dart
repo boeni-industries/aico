@@ -1,12 +1,12 @@
 import 'dart:io';
 
+import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/core/logging/providers/logging_providers.dart';
 import 'package:aico_frontend/core/providers.dart';
 import 'package:aico_frontend/core/topics/aico_topics.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/widgets/auth/auth_gate.dart';
-import 'package:aico_frontend/core/logging/aico_log.dart';
-import 'package:aico_frontend/core/logging/providers/logging_providers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

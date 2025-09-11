@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:aico_frontend/core/services/encryption_service.dart';
 import 'package:aico_frontend/networking/clients/unified_api_client.dart';
+import 'package:aico_frontend/networking/clients/websocket_client.dart';
+import 'package:aico_frontend/networking/services/connection_manager.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:flutter/foundation.dart';
 
@@ -14,12 +16,19 @@ void main() async {
   final encryptionService = EncryptionService();
   await encryptionService.initialize();
   
-  // Create token manager and API client
+  // Create token manager and connection manager
   final tokenManager = TokenManager();
+  final webSocketClient = WebSocketClient(
+    encryptionService: encryptionService,
+    tokenManager: tokenManager,
+  );
+  final connectionManager = ConnectionManager(webSocketClient);
+  
+  // Create API client with proper dependencies
   final apiClient = UnifiedApiClient(
     encryptionService: encryptionService,
     tokenManager: tokenManager,
-    baseUrl: 'http://localhost:8771/api/v1',
+    connectionManager: connectionManager,
   );
   
   try {

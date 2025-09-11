@@ -1,12 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:aico_frontend/core/logging/models/log_entry.dart';
+import 'package:aico_frontend/core/logging/providers/logging_providers.dart';
 import 'package:aico_frontend/core/logging/services/aico_logger.dart';
 import 'package:aico_frontend/core/logging/services/log_transport.dart';
-import 'package:aico_frontend/core/logging/providers/logging_providers.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Statistics for logging system monitoring
 class LoggingStats {

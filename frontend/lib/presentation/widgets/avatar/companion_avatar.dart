@@ -1,68 +1,111 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/auth_provider.dart';
+import '../../../core/providers/networking_providers.dart';
+import '../../../networking/services/connection_manager.dart';
 
-class CompanionAvatar extends StatefulWidget {
+/// Avatar with subtle pulsating ring status indicator - clean, minimal, following design principles
+class CompanionAvatar extends ConsumerStatefulWidget {
   const CompanionAvatar({super.key});
 
   @override
-  State<CompanionAvatar> createState() => _CompanionAvatarState();
+  ConsumerState<CompanionAvatar> createState() => _CompanionAvatarState();
 }
 
-class _CompanionAvatarState extends State<CompanionAvatar>
+class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
     with TickerProviderStateMixin {
-  late AnimationController _breathingController;
   late AnimationController _pulseController;
-  late Animation<double> _breathingAnimation;
   late Animation<double> _pulseAnimation;
-  late Animation<double> _glowAnimation;
+  
+  ConnectionStatus _currentStatus = ConnectionStatus.connected;
+  bool _isAuthenticated = false;
 
   @override
   void initState() {
     super.initState();
     
-    // Breathing animation for idle state
-    _breathingController = AnimationController(
-      duration: const Duration(seconds: 3),
-      vsync: this,
-    );
-    
-    // Pulse animation for mood ring
+    // Subtle pulse animation - like calm breathing
     _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 2000),
+      duration: const Duration(milliseconds: 3000),
       vsync: this,
     );
-    
-    _breathingAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.05,
-    ).animate(CurvedAnimation(
-      parent: _breathingController,
-      curve: Curves.easeInOut,
-    ));
     
     _pulseAnimation = Tween<double>(
-      begin: 0.8,
+      begin: 0.6,
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _pulseController,
       curve: Curves.easeInOut,
     ));
     
-    _glowAnimation = Tween<double>(
-      begin: 0.3,
-      end: 0.7,
-    ).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
+    _startPulsing();
+  }
+
+  void _startPulsing() {
+    if (_shouldPulse()) {
+      _pulseController.repeat(reverse: true);
+    }
+  }
+
+  void _stopPulsing() {
+    _pulseController.stop();
+    _pulseController.reset();
+  }
+
+  bool _shouldPulse() {
+    return _currentStatus == ConnectionStatus.connected && _isAuthenticated;
+  }
+
+  void _updateAnimationState() {
+    if (_shouldPulse()) {
+      _startPulsing();
+    } else {
+      _stopPulsing();
+    }
+  }
+
+  Color _getRingColor() {
+    const softPurple = Color(0xFFB8A1EA);
     
-    // Start animations
-    _breathingController.repeat(reverse: true);
-    _pulseController.repeat(reverse: true);
+    if (!_isAuthenticated) {
+      return Colors.orange.shade400;
+    }
+    
+    switch (_currentStatus) {
+      case ConnectionStatus.connected:
+        return softPurple;
+      case ConnectionStatus.connecting:
+        return Colors.blue.shade400;
+      case ConnectionStatus.disconnected:
+        return Colors.orange.shade400;
+      case ConnectionStatus.offline:
+        return Colors.red.shade400;
+      case ConnectionStatus.error:
+        return Colors.red.shade600;
+    }
+  }
+
+  String _getTooltipMessage() {
+    if (!_isAuthenticated) {
+      return 'Authentication required';
+    }
+    
+    switch (_currentStatus) {
+      case ConnectionStatus.connected:
+        return 'All systems operational';
+      case ConnectionStatus.connecting:
+        return 'Establishing connection...';
+      case ConnectionStatus.disconnected:
+        return 'Connection interrupted - attempting to reconnect';
+      case ConnectionStatus.offline:
+        return 'No network connection available';
+      case ConnectionStatus.error:
+        return 'Connection error - check network settings';
+    }
   }
 
   @override
   void dispose() {
-    _breathingController.dispose();
     _pulseController.dispose();
     super.dispose();
   }
@@ -70,51 +113,85 @@ class _CompanionAvatarState extends State<CompanionAvatar>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final connectionManager = ref.watch(connectionManagerProvider);
+    final authState = ref.watch(authProvider);
     
-    return AnimatedBuilder(
-      animation: Listenable.merge([_breathingController, _pulseController]),
-      builder: (context, child) {
-        return Transform.scale(
-          scale: _breathingAnimation.value,
-          child: Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              // Mood ring with pulsing glow
-              boxShadow: [
-                BoxShadow(
-                  color: colorScheme.primary.withValues(alpha: _glowAnimation.value),
-                  blurRadius: 20 * _pulseAnimation.value,
-                  spreadRadius: 5 * _pulseAnimation.value,
-                ),
-              ],
-            ),
-            child: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    colorScheme.primary.withValues(alpha: 0.9),
-                    colorScheme.primary.withValues(alpha: 0.6),
-                    colorScheme.primary.withValues(alpha: 0.3),
+    return StreamBuilder<ConnectionHealth>(
+      stream: connectionManager.healthStream,
+      initialData: connectionManager.health,
+      builder: (context, snapshot) {
+        final health = snapshot.data ?? connectionManager.health;
+        final newStatus = health.status;
+        final newAuthState = authState.isAuthenticated;
+        
+        // Update state and animations when status changes
+        if (newStatus != _currentStatus || newAuthState != _isAuthenticated) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            setState(() {
+              _currentStatus = newStatus;
+              _isAuthenticated = newAuthState;
+            });
+            _updateAnimationState();
+          });
+        }
+        
+        return Tooltip(
+          message: _getTooltipMessage(),
+          decoration: BoxDecoration(
+            color: Colors.black87,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          textStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+          child: AnimatedBuilder(
+            animation: _pulseController,
+            builder: (context, child) {
+              final ringColor = _getRingColor();
+              final ringOpacity = _shouldPulse() ? _pulseAnimation.value : 0.8;
+              
+              return SizedBox(
+                width: 120,
+                height: 120,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Subtle pulsating ring
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: ringColor.withOpacity(ringOpacity),
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    // Clean avatar circle
+                    Container(
+                      width: 96,
+                      height: 96,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: theme.colorScheme.surface,
+                        border: Border.all(
+                          color: theme.dividerColor.withOpacity(0.1),
+                          width: 1,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.person_2,
+                        size: 48,
+                        color: ringColor,
+                      ),
+                    ),
                   ],
-                  stops: const [0.0, 0.7, 1.0],
                 ),
-                border: Border.all(
-                  color: colorScheme.primary.withValues(alpha: 0.4),
-                  width: 2,
-                ),
-              ),
-              child: Center(
-                child: Icon(
-                  Icons.psychology_outlined,
-                  size: 50,
-                  color: colorScheme.onPrimary,
-                ),
-              ),
-            ),
+              );
+            },
           ),
         );
       },

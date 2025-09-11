@@ -68,6 +68,10 @@ class LogEntryRequest(BaseModel):
 class LogBatchRequest(BaseModel):
     """Batch log submission from frontend"""
     logs: List[LogEntryRequest] = Field(..., description="List of log entries")
+    batch_size: Optional[int] = Field(None, description="Number of logs in batch")
+    timestamp: Optional[str] = Field(None, description="Batch submission timestamp")
+    compression: Optional[str] = Field(None, description="Compression type if used")
+    compressed_logs: Optional[str] = Field(None, description="Base64 encoded compressed logs")
 
     @validator('logs')
     def validate_logs_not_empty(cls, v):
