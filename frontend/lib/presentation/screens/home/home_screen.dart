@@ -32,11 +32,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   NavigationPage _currentPage = NavigationPage.home;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _conversationController = ScrollController();
+  final FocusNode _messageFocusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
     // Theme management now handled via Riverpod providers
+    
+    // Listen for conversation changes to auto-scroll
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.listenManual(conversationProvider, (previous, next) {
+        // Auto-scroll when new messages are added
+        if (previous != null && next.messages.length > previous.messages.length) {
+          _scrollToBottom();
+        }
+      });
+    });
   }
 
   @override
@@ -325,19 +336,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
-      child: ListView.builder(
-        controller: _conversationController,
-        itemCount: conversationState.messages.length,
-        itemBuilder: (context, index) {
-          final message = conversationState.messages[index];
-          // Convert domain Message to presentation ConversationMessage
-          final conversationMessage = ConversationMessage(
-            isFromAico: message.userId == 'aico',
-            message: message.content,
-            timestamp: message.timestamp,
-          );
-          return _buildMessageBubble(context, theme, accentColor, conversationMessage);
-        },
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+        child: Scrollbar(
+          controller: _conversationController,
+          thumbVisibility: true,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 16), // Add padding to prevent scrollbar overlap
+            child: ListView.builder(
+              controller: _conversationController,
+              itemCount: conversationState.messages.length,
+              itemBuilder: (context, index) {
+                final message = conversationState.messages[index];
+                // Convert domain Message to presentation ConversationMessage
+                final conversationMessage = ConversationMessage(
+                  isFromAico: message.userId == 'aico',
+                  message: message.content,
+                  timestamp: message.timestamp,
+                );
+                return _buildMessageBubble(context, theme, accentColor, conversationMessage);
+              },
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -407,6 +428,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             Expanded(
               child: TextField(
                 controller: _messageController,
+                focusNode: _messageFocusNode,
+                autofocus: true,
                 decoration: InputDecoration(
                   hintText: 'Share what\'s on your mind...',
                   border: InputBorder.none,
@@ -621,6 +644,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.read(conversationProvider.notifier).sendMessage(text.trim());
     
     // Scroll to bottom after sending
+    _scrollToBottom();
+    
+    // Refocus the input field for continuous conversation
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _messageFocusNode.requestFocus();
+    });
+  }
+
+  void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_conversationController.hasClients) {
         _conversationController.animateTo(
@@ -633,8 +665,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   String _formatTimestamp(DateTime timestamp) {
+    // Convert UTC timestamp to local time
+    final localTimestamp = timestamp.toLocal();
     final now = DateTime.now();
-    final diff = now.difference(timestamp);
+    final diff = now.difference(localTimestamp);
     
     if (diff.inMinutes < 1) return 'Just now';
     if (diff.inMinutes < 60) return '${diff.inMinutes} minutes ago';
@@ -812,6 +846,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void dispose() {
     _messageController.dispose();
     _conversationController.dispose();
+    _messageFocusNode.dispose();
     super.dispose();
   }
 }
