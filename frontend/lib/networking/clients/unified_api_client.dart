@@ -318,6 +318,9 @@ class UnifiedApiClient {
       'Accept': 'application/json',
     };
 
+    // Proactively refresh token if needed before making request
+    await _tokenManager.ensureTokenFreshness();
+
     // Add authentication token if available
     final token = await _tokenManager.getAccessToken();
     debugPrint('UnifiedApiClient: Token retrieved: ${token != null ? "YES (${token.substring(0, 20)}...)" : "NO"}');

@@ -55,7 +55,7 @@ class MessageRepositoryImpl implements MessageRepository {
           conversationId: response['thread_id'] as String,
           type: message.type,
           status: MessageStatus.sent, // Message was successfully sent
-          timestamp: DateTime.parse(response['timestamp'] as String),
+          timestamp: DateTime.parse(response['timestamp'] as String).toUtc(),
           metadata: {
             'thread_action': response['thread_action'] as String,
             'thread_reasoning': response['thread_reasoning'] as String,

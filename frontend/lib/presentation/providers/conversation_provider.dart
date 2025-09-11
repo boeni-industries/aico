@@ -78,7 +78,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
     }
 
     final messageId = _uuid.v4();
-    final timestamp = DateTime.now();
+    final timestamp = DateTime.now().toUtc();
 
     // Create user message
     final userMessage = Message(
@@ -182,7 +182,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
           conversationId: userMessage.conversationId,
           type: MessageType.text,
           status: MessageStatus.sent,
-          timestamp: DateTime.now().add(const Duration(milliseconds: 100)), // Slightly after user message
+          timestamp: DateTime.now().toUtc().add(const Duration(milliseconds: 100)), // Slightly after user message
         );
 
         state = state.copyWith(

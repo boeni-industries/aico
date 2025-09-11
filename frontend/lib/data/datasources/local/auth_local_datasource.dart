@@ -1,7 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart';
-import '../../../networking/services/jwt_decoder.dart';
+import 'package:aico_frontend/networking/services/jwt_decoder.dart';
+import 'package:aico_frontend/networking/services/token_manager.dart';
 
 abstract class AuthLocalDataSource {
   Future<void> storeCredentials(String userUuid, String pin, String token);
@@ -129,6 +130,10 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
     } catch (e) {
       debugPrint('AuthLocalDataSource: Failed to extract/store token expiry: $e');
     }
+    
+    // Start background token refresh monitoring after storing new token
+    TokenManager().startBackgroundRefresh();
+    debugPrint('AuthLocalDataSource: Started background token refresh monitoring');
   }
 
   @override
