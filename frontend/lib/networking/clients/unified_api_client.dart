@@ -5,7 +5,6 @@ import 'package:aico_frontend/core/services/encryption_service.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 /// Unified API client that handles both encrypted and unencrypted requests
@@ -50,18 +49,21 @@ class UnifiedApiClient {
       },
     ));
 
-    // Add interceptors
+    // Add minimal logging interceptor for errors only
     _dio!.interceptors.add(LogInterceptor(
-      requestBody: kDebugMode,
-      responseBody: kDebugMode,
-      logPrint: (obj) => debugPrint(obj.toString()),
+      requestBody: false,
+      responseBody: false,
+      requestHeader: false,
+      responseHeader: false,
+      request: false,
+      error: true,
+      logPrint: (obj) => AICOLog.debug(obj.toString(), topic: 'network/dio/error'),
     ));
 
     // Initialize HTTP client
     _httpClient = http.Client();
     
     _isInitialized = true;
-    debugPrint('UnifiedApiClient initialized with base URL: $_baseUrl');
     AICOLog.info('UnifiedApiClient initialized', 
       topic: 'network/client/init', 
       extra: {'base_url': _baseUrl});
@@ -104,7 +106,6 @@ class UnifiedApiClient {
         );
       }
     } catch (e) {
-      debugPrint('UnifiedApiClient request failed: $e');
       AICOLog.error('API request failed', 
         topic: 'network/client/request/error',
         extra: {'method': method, 'endpoint': endpoint, 'error': e.toString()});
@@ -124,9 +125,7 @@ class UnifiedApiClient {
   }) async {
     // Ensure encryption session is active
     if (!_encryptionService.isSessionActive) {
-      AICOLog.info('Starting encryption handshake', 
-        topic: 'network/encryption/handshake/start',
-        extra: {'endpoint': endpoint});
+      // Start encryption handshake silently
       await _performHandshake();
     }
 
@@ -196,7 +195,6 @@ class UnifiedApiClient {
 
       return _processResponse<T>(response.data, fromJson);
     } catch (e) {
-      debugPrint('Dio request failed, falling back to HTTP: $e');
       AICOLog.warn('Dio request failed, using HTTP fallback', 
         topic: 'network/client/fallback',
         extra: {'method': method, 'endpoint': endpoint, 'error': e.toString()});
@@ -294,7 +292,7 @@ class UnifiedApiClient {
       endpoint,
       data: data,
       queryParameters: queryParameters,
-      fromJson: (json) => json as Map<String, dynamic>,
+      fromJson: (json) => json,
     );
   }
 
@@ -311,7 +309,7 @@ class UnifiedApiClient {
 
     // Ensure encryption session is active for token refresh
     if (!_encryptionService.isSessionActive) {
-      debugPrint('🔐 UnifiedApiClient: Starting encryption handshake for token refresh');
+      // Starting encryption handshake for token refresh
       await _performHandshake();
     }
 
@@ -321,7 +319,7 @@ class UnifiedApiClient {
       endpoint,
       data: data,
       queryParameters: queryParameters,
-      fromJson: (json) => json as Map<String, dynamic>,
+      fromJson: (json) => json,
       skipTokenRefresh: true,
     );
   }
@@ -379,16 +377,8 @@ class UnifiedApiClient {
 
     // Add authentication token if available
     final token = await _tokenManager.getAccessToken();
-    debugPrint('UnifiedApiClient: Token retrieved: ${token != null ? "YES (${token.substring(0, 20)}...)" : "NO"}');
-    AICOLog.info('Building headers for request', 
-      topic: 'network/client/headers',
-      extra: {'has_token': token != null, 'token_preview': token?.substring(0, 20)});
-    
     if (token != null) {
       headers['Authorization'] = 'Bearer $token';
-      debugPrint('UnifiedApiClient: Authorization header added');
-    } else {
-      debugPrint('UnifiedApiClient: No token available, Authorization header NOT added');
     }
 
     return headers;
