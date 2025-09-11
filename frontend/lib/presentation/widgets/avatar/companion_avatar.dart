@@ -31,7 +31,7 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
     );
     
     _pulseAnimation = Tween<double>(
-      begin: 0.6,
+      begin: 0.7,
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _pulseController,
@@ -153,42 +153,69 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
               final ringOpacity = _shouldPulse() ? _pulseAnimation.value : 0.8;
               
               return SizedBox(
-                width: 120,
-                height: 120,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Subtle pulsating ring
-                    Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: ringColor.withOpacity(ringOpacity),
-                          width: 2,
+                width: 182,
+                height: 182,
+                child: RepaintBoundary(
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Outer breathing ring
+                      Container(
+                        width: 148 + (_pulseAnimation.value * 26),
+                        height: 148 + (_pulseAnimation.value * 26),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.transparent,
+                          border: Border.all(
+                            color: ringColor.withOpacity(ringOpacity * 0.6),
+                            width: 2.6,
+                          ),
                         ),
                       ),
-                    ),
-                    // Clean avatar circle
-                    Container(
-                      width: 96,
-                      height: 96,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: theme.colorScheme.surface,
-                        border: Border.all(
-                          color: theme.dividerColor.withOpacity(0.1),
-                          width: 1,
+                      // Inner breathing ring
+                      Container(
+                        width: 135 + (_pulseAnimation.value * 16),
+                        height: 135 + (_pulseAnimation.value * 16),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.transparent,
+                          border: Border.all(
+                            color: ringColor.withOpacity(ringOpacity * 0.5),
+                            width: 1.3,
+                          ),
                         ),
                       ),
-                      child: Icon(
-                        Icons.person_2,
-                        size: 48,
-                        color: ringColor,
+                      // Clean avatar circle
+                      Container(
+                        width: 125,
+                        height: 125,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: theme.colorScheme.surface,
+                          border: Border.all(
+                            color: theme.dividerColor.withOpacity(0.1),
+                            width: 1.3,
+                          ),
+                        ),
+                        child: ClipOval(
+                          child: Image.asset(
+                            'assets/images/aico.jpg',
+                            width: 125,
+                            height: 125,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              // Fallback to icon if image fails to load
+                              return Icon(
+                                Icons.person_2,
+                                size: 62,
+                                color: ringColor,
+                              );
+                            },
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
