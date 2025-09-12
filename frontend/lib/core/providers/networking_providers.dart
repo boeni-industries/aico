@@ -1,4 +1,3 @@
-import 'package:aico_frontend/core/providers/offline_queue_provider.dart';
 import 'package:aico_frontend/core/services/api_service.dart';
 import 'package:aico_frontend/core/services/encryption_service.dart';
 import 'package:aico_frontend/networking/clients/unified_api_client.dart';
@@ -50,13 +49,11 @@ final unifiedApiClientProvider = Provider<UnifiedApiClient>((ref) {
   final encryptionService = ref.watch(networkingEncryptionServiceProvider);
   final tokenManager = ref.watch(tokenManagerProvider);
   final connectionManager = ref.watch(connectionManagerProvider);
-  final offlineQueue = ref.watch(offlineQueueProvider);
   
   final client = UnifiedApiClient(
     encryptionService: encryptionService,
     tokenManager: tokenManager,
     connectionManager: connectionManager,
-    offlineQueue: offlineQueue,
   );
   
   // Wire up TokenManager to use UnifiedApiClient for encrypted refresh requests

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/data/repositories/message_repository_impl.dart';
@@ -61,6 +63,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
     _initializeConversation();
   }
 
+
   void _initializeConversation() {
     AICOLog.info('Initializing conversation provider', 
       topic: 'conversation_provider/init',
@@ -108,7 +111,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
       });
 
     try {
-      // Send message through use case
+      // Send message through use case with timeout to prevent UI freeze
       final params = SendMessageParams(
         content: content.trim(),
         userId: _userId,

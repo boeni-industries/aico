@@ -43,10 +43,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final AutoLoginUseCase _autoLoginUseCase;
   final LogoutUseCase _logoutUseCase;
   final CheckAuthStatusUseCase _checkAuthStatusUseCase;
-  final TokenManager _tokenManager;
+  late final TokenManager _tokenManager;
   
   bool _isAutoLoginInProgress = false;
-  StreamSubscription<ReAuthenticationRequired>? _reAuthSubscription;
 
   AuthNotifier(
     this._loginUseCase,
@@ -78,56 +77,65 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> attemptAutoLogin() async {
     if (_isAutoLoginInProgress) {
-      debugPrint('AuthProvider: Auto-login already in progress, skipping...');
-      AICOLog.debug('Auto-login already in progress, skipping', topic: 'auth/autologin/skip');
       return;
     }
-    
+
     _isAutoLoginInProgress = true;
-    debugPrint('AuthProvider: Starting auto-login attempt...');
-    AICOLog.info('Starting auto-login attempt', topic: 'auth/autologin/attempt');
-    state = state.copyWith(isLoading: true);
     
     try {
+      // Check if we have stored credentials first (fast local check)
+      final hasCredentials = await _checkAuthStatusUseCase.execute();
+      
+      if (!hasCredentials) {
+        state = state.copyWith(
+          isLoading: false,
+          error: 'No stored credentials found. Please sign in.',
+        );
+        return;
+      }
+
+      // We have credentials - attempt auto-login
+      state = state.copyWith(isLoading: true);
+      
       final result = await _autoLoginUseCase.execute();
-      debugPrint('AuthProvider: Auto-login result: ${result != null ? "SUCCESS" : "FAILED - null result"}');
       
       if (result != null) {
-        debugPrint('AuthProvider: Auto-login successful, user: ${result.user.id}');
-        AICOLog.info('Auto-login successful', 
-          topic: 'auth/autologin/success', 
-          extra: {'user_id': result.user.id});
         state = state.copyWith(
           user: result.user,
           isAuthenticated: true,
           isLoading: false,
+          error: null,
         );
       } else {
-        debugPrint('AuthProvider: Auto-login failed - no result returned (likely backend unavailable)');
-        AICOLog.warn('Auto-login failed - no result returned', topic: 'auth/autologin/failure');
-        // Don't clear credentials on auto-login failure - backend might be temporarily unavailable
-        // Just set loading to false and let connection manager handle reconnection
-        state = state.copyWith(isLoading: false);
+        state = state.copyWith(
+          isLoading: false,
+          error: 'Unable to connect to AICO. Please check your connection.',
+        );
       }
     } catch (e) {
-      debugPrint('AuthProvider: Auto-login exception: $e');
-      AICOLog.error('Auto-login exception', 
-        topic: 'auth/autologin/error', 
-        error: e, 
-        extra: {'error_type': e.runtimeType.toString()});
+      debugPrint('AuthProvider: Auto-login failed with error: $e');
       
-      // Only clear credentials on actual authentication errors, not network errors
-      if (e.toString().contains('Authentication failed: Backend unavailable')) {
-        // Backend unavailable - don't clear credentials, just stop loading
-        debugPrint('AuthProvider: Backend unavailable during auto-login, preserving credentials');
-        state = state.copyWith(isLoading: false);
-      } else {
-        // Actual authentication error - clear credentials to prevent loops
-        debugPrint('AuthProvider: Authentication error during auto-login, clearing credentials');
+      // Check if this is a backend unavailable error
+      if (e.toString().contains('Authentication failed: Backend unavailable') ||
+          e.toString().contains('connection refused') ||
+          e.toString().contains('SocketException')) {
+        // Don't clear credentials on backend unavailable - just set loading false
+        state = state.copyWith(
+          isLoading: false,
+          error: 'Unable to connect to AICO. Please check your connection.',
+        );
+      } else if (e.toString().contains('401') || e.toString().contains('Unauthorized')) {
+        // Clear credentials on authentication errors
         await _logoutUseCase.execute();
         state = state.copyWith(
           isLoading: false,
-          error: e.toString(),
+          error: 'Your session has expired. Please sign in again.',
+        );
+      } else {
+        // Other errors - provide helpful message but keep credentials
+        state = state.copyWith(
+          isLoading: false,
+          error: 'Sign-in issue occurred. Please try again.',
         );
       }
     } finally {
@@ -155,7 +163,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> checkAuthStatus() async {
+  Future<bool> checkAuthStatus() async {
     debugPrint('AuthProvider: Checking auth status...');
     AICOLog.debug('Checking auth status', topic: 'auth/status/check');
     
@@ -185,6 +193,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         // Ensure loading state is cleared when already authenticated
         state = state.copyWith(isLoading: false);
       }
+      
+      return hasCredentials;
     } catch (e) {
       debugPrint('AuthProvider: Error during auth status check: $e');
       AICOLog.error('Auth status check failed', 
@@ -192,6 +202,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         error: e);
       // Clear loading state on any error to prevent infinite loading
       state = state.copyWith(isLoading: false, error: e.toString());
+      return false;
     }
   }
 
@@ -199,38 +210,26 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(error: null);
   }
 
-  /// Setup listener for token manager re-authentication events
+  /// Listen for token expiration events and trigger re-authentication
   void _setupReAuthenticationListener() {
-    _reAuthSubscription = _tokenManager.reAuthenticationStream.listen(
-      (reAuthEvent) {
-        AICOLog.info('Token refresh failed, attempting credential re-authentication',
-          topic: 'auth/reauth/token_expired',
-          extra: {
-            'reason': reAuthEvent.reason,
-            'timestamp': reAuthEvent.timestamp.toIso8601String()
-          });
+    _tokenManager.reAuthenticationStream.listen((event) {
+      if (state.isAuthenticated && !_isAutoLoginInProgress) {
+        AICOLog.info('Token expiration detected, attempting re-authentication',
+          topic: 'auth/token/expiration_detected',
+          extra: {'reason': event.reason});
         
-        // Only attempt auto-login if we're currently authenticated
-        // This prevents loops when user has no stored credentials
-        if (state.isAuthenticated) {
-          debugPrint('AuthProvider: Token expired, attempting credential re-auth...');
-          attemptAutoLogin();
-        } else {
-          debugPrint('AuthProvider: Token expired but not authenticated, clearing state');
-          state = const AuthState();
-        }
-      },
-      onError: (error) {
-        AICOLog.error('Re-authentication stream error',
-          topic: 'auth/reauth/stream_error',
-          error: error);
-      },
-    );
+        // Schedule re-authentication with delay to prevent blocking UI thread
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (state.isAuthenticated && !_isAutoLoginInProgress) {
+            attemptAutoLogin();
+          }
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
-    _reAuthSubscription?.cancel();
     super.dispose();
   }
 }

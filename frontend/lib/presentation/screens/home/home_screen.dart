@@ -6,7 +6,6 @@ import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart';
-import 'package:aico_frontend/presentation/widgets/status/unified_connection_status.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -55,12 +54,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    
     final accentColor = const Color(0xFFB8A1EA); // Soft purple accent
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth > 800;
     
-    return UnifiedConnectionStatus(
-      child: Scaffold(
+    return Scaffold(
         body: Stack(
           children: [
             Row(
@@ -223,8 +222,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ],
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endTop,
-      ),
-    );
+      );
   }
 
   Widget _buildAvatarHeader(BuildContext context, ThemeData theme, Color accentColor) {

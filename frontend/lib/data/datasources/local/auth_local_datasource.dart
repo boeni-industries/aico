@@ -85,16 +85,36 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
     
     debugPrint('AuthLocalDataSource: Retrieved - userUuid: ${userUuid != null ? "EXISTS" : "NULL"}, pin: ${pin != null ? "EXISTS" : "NULL"}, token: ${token != null ? "EXISTS" : "NULL"}');
     
-    if (userUuid != null && pin != null && token != null) {
-      debugPrint('AuthLocalDataSource: All credentials found, returning credential map');
-      return {
+    // Check if we have essential credentials (userUuid and pin)
+    if (userUuid != null && pin != null) {
+      final credentials = {
         'userUuid': userUuid,
         'pin': pin,
-        'token': token,
       };
+      
+      // Add token if available and valid
+      if (token != null) {
+        try {
+          final expiryTime = JWTDecoder.getExpiryTime(token);
+          final now = DateTime.now();
+          
+          if (expiryTime != null && expiryTime.isAfter(now.add(const Duration(minutes: 5)))) {
+            // Token is valid for at least 5 more minutes
+            credentials['token'] = token;
+            debugPrint('AuthLocalDataSource: Valid token found, expires at: ${expiryTime.toIso8601String()}');
+          } else {
+            debugPrint('AuthLocalDataSource: Token expired or expires soon, will need re-authentication');
+          }
+        } catch (e) {
+          debugPrint('AuthLocalDataSource: Failed to parse token expiry: $e');
+        }
+      }
+      
+      debugPrint('AuthLocalDataSource: Returning credentials with ${credentials.containsKey('token') ? 'valid' : 'no'} token');
+      return credentials;
     }
     
-    debugPrint('AuthLocalDataSource: Missing credentials, returning null');
+    debugPrint('AuthLocalDataSource: Missing essential credentials, returning null');
     return null;
   }
 

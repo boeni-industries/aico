@@ -83,35 +83,42 @@ class TokenManager {
   }
 
   /// Refresh the access token using refresh token
+  /// This method is designed to be non-blocking and fail-fast
   Future<bool> refreshToken() async {
     try {
-      // If both tokens are expired/missing, trigger automatic re-authentication
-      if (_cachedToken == null || (_isTokenExpired() && _cachedRefreshToken == null)) {
-        AICOLog.warn('All tokens expired/missing, triggering automatic re-authentication',
-          topic: 'auth/token/auto_reauth_required');
-        await _triggerAutoReAuthentication();
-        return false;
+      // If no refresh token available, trigger automatic re-authentication
+      if (_cachedRefreshToken == null) {
+        await _loadTokensFromStorage();
+        if (_cachedRefreshToken == null) {
+          AICOLog.warn('No refresh token available, triggering automatic re-authentication',
+            topic: 'auth/token/auto_reauth_required');
+          _triggerAutoReAuthentication();
+          return false;
+        }
       }
       
-      // Try to refresh using the current token (backend validates refresh capability)
-      final response = await _apiClient.postForTokenRefresh('/users/refresh');
+      // Use refresh token to get new access token
+      final response = await _apiClient.postForTokenRefresh('/auth/refresh', {
+        'refresh_token': _cachedRefreshToken,
+      });
+      
       if (response != null && response['success'] == true) {
-        _cachedToken = response['jwt_token'];
+        _cachedToken = response['access_token'];
         _tokenExpiry = JWTDecoder.getExpiryTime(_cachedToken!);
-        await _storeTokensInStorage();
         
-        AICOLog.info('Token refreshed successfully',
-          topic: 'auth/token/refresh_success',
-          extra: {
-            'new_expiry': _tokenExpiry?.toIso8601String(),
-            'time_until_expiry': _tokenExpiry?.difference(DateTime.now()).inMinutes
-          });
+        // Update refresh token if provided
+        if (response['refresh_token'] != null) {
+          _cachedRefreshToken = response['refresh_token'];
+        }
+        
+        await _storeTokensInStorage();
+        _scheduleProactiveRefresh();
         return true;
       } else {
         AICOLog.warn('Token refresh failed - invalid response, triggering re-authentication',
           topic: 'auth/token/refresh_failed',
           extra: {'response': response});
-        await _triggerAutoReAuthentication();
+        _triggerAutoReAuthentication();
       }
     } catch (e) {
       // Check if this is a backend unavailable error
@@ -121,7 +128,17 @@ class TokenManager {
         AICOLog.warn('Token refresh failed - backend unavailable, will retry later', 
           topic: 'auth/token/refresh_backend_unavailable',
           extra: {'error': e.toString()});
-        // Don't trigger re-authentication on network errors - just return false
+        // Schedule retry for network errors
+        _scheduleRefreshRetry();
+        return false;
+      }
+      
+      // Check for authentication errors (refresh token expired/invalid)
+      if (e.toString().contains('401') || e.toString().contains('403')) {
+        AICOLog.warn('Refresh token expired/invalid, triggering re-authentication', 
+          topic: 'auth/token/refresh_token_expired',
+          extra: {'error': e.toString()});
+        _triggerAutoReAuthentication();
         return false;
       }
       
@@ -129,9 +146,44 @@ class TokenManager {
         topic: 'auth/token/refresh_error',
         extra: {'error': e.toString()});
       
-      await _triggerAutoReAuthentication();
+      _triggerAutoReAuthentication();
     }
     return false;
+  }
+  
+  /// Schedule proactive token refresh before expiry
+  void _scheduleProactiveRefresh() {
+    _refreshTimer?.cancel();
+    
+    if (_tokenExpiry != null) {
+      final now = DateTime.now();
+      final timeUntilExpiry = _tokenExpiry!.difference(now);
+      
+      // Refresh when 10 minutes remain or at 80% of token lifetime, whichever is sooner
+      final refreshBuffer = Duration(minutes: 10);
+      final eightyPercentLifetime = Duration(milliseconds: (timeUntilExpiry.inMilliseconds * 0.8).round());
+      final refreshIn = timeUntilExpiry.compareTo(refreshBuffer) > 0 
+          ? (eightyPercentLifetime.compareTo(refreshBuffer) < 0 ? eightyPercentLifetime : refreshBuffer)
+          : Duration(seconds: 30); // If very close to expiry, refresh soon
+      
+      debugPrint('TokenManager: Scheduling proactive refresh in ${refreshIn.inMinutes} minutes');
+      
+      _refreshTimer = Timer(refreshIn, () {
+        debugPrint('TokenManager: Proactive token refresh triggered');
+        refreshToken();
+      });
+    }
+  }
+  
+  /// Schedule retry for failed refresh attempts
+  void _scheduleRefreshRetry() {
+    _refreshTimer?.cancel();
+    
+    debugPrint('TokenManager: Scheduling refresh retry in 2 minutes');
+    _refreshTimer = Timer(const Duration(minutes: 2), () {
+      debugPrint('TokenManager: Retrying token refresh after network error');
+      refreshToken();
+    });
   }
   
   // Re-authentication stream for UI integration
@@ -142,8 +194,9 @@ class TokenManager {
   
   /// Trigger automatic re-authentication flow
   /// Emits event for UI layer - follows message-driven architecture
-  Future<void> _triggerAutoReAuthentication() async {
-    await _clearTokens();
+  void _triggerAutoReAuthentication() {
+    // Don't clear tokens immediately - let AuthProvider handle it
+    // This prevents infinite loops where cleared tokens trigger more refresh attempts
     
     AICOLog.info('Token refresh failed - triggering re-authentication',
       topic: 'auth/token/reauth_required');
@@ -176,10 +229,8 @@ class TokenManager {
 
   /// Ensure token freshness - refresh if expired or expiring soon
   Future<bool> ensureTokenFreshness() async {
-    // If no token, cannot ensure freshness
+    // If no token, cannot ensure freshness - but don't trigger refresh loops
     if (_cachedToken == null) {
-      AICOLog.warn('No cached token available for freshness check',
-        topic: 'auth/token/no_token');
       return false;
     }
 
@@ -264,18 +315,6 @@ class TokenManager {
           'expiry': _tokenExpiry?.toIso8601String()
         });
     }
-  }
-  
-  Future<void> _clearTokens() async {
-    _cachedToken = null;
-    _cachedRefreshToken = null;
-    _tokenExpiry = null;
-    await _storage.delete(key: _keyAccessToken);
-    await _storage.delete(key: _keyRefreshToken);
-    await _storage.delete(key: _keyTokenExpiry);
-    
-    AICOLog.info('All tokens cleared from storage',
-      topic: 'auth/token/cleared');
   }
   
   /// Enhanced storeTokens method with secure storage

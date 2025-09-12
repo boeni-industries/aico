@@ -1,5 +1,6 @@
 import 'package:aico_frontend/data/datasources/local/auth_local_datasource.dart';
 import 'package:aico_frontend/data/datasources/remote/auth_remote_datasource.dart';
+import 'package:aico_frontend/domain/entities/user.dart';
 import 'package:aico_frontend/domain/repositories/auth_repository.dart';
 import 'package:flutter/foundation.dart';
 
@@ -32,10 +33,34 @@ class AuthRepositoryImpl implements AuthRepository {
       final credentials = await _localDataSource.getStoredCredentials();
       
       if (credentials == null) {
+        debugPrint('AuthRepository: No stored credentials found');
         return null;
       }
 
-      // Try to authenticate with stored credentials
+      // Check if we have a valid token - if so, use it directly
+      if (credentials.containsKey('token')) {
+        debugPrint('AuthRepository: Valid token found, using direct authentication');
+        try {
+          // Create auth result from stored token without network call
+          final authResult = AuthResult(
+            user: User(
+              id: credentials['userUuid']!,
+              username: credentials['userUuid']!, // Use UUID as username for now
+              email: '${credentials['userUuid']!}@aico.local', // Placeholder email
+              role: UserRole.user,
+              createdAt: DateTime.now(),
+            ),
+            token: credentials['token']!,
+          );
+          return authResult;
+        } catch (e) {
+          debugPrint('AuthRepository: Failed to create auth result from token: $e');
+          // Fall through to re-authentication
+        }
+      }
+
+      // No valid token - need to re-authenticate with stored credentials
+      debugPrint('AuthRepository: No valid token, re-authenticating with stored credentials');
       final authModel = await _remoteDataSource.authenticate(
         credentials['userUuid']!,
         credentials['pin']!,
@@ -43,14 +68,14 @@ class AuthRepositoryImpl implements AuthRepository {
       
       if (authModel == null) {
         // Backend unavailable - don't clear credentials, just return null
-        debugPrint('AuthRepository: Auto-login failed - backend unavailable');
+        debugPrint('AuthRepository: Re-authentication failed - backend unavailable');
         return null;
       }
       
       final authResult = authModel.toDomain();
       
       // Store the new token from the authentication response
-      debugPrint('AuthRepository: Auto-login successful, storing new token');
+      debugPrint('AuthRepository: Re-authentication successful, storing new token');
       await _localDataSource.storeToken(authResult.token);
       
       return authResult;

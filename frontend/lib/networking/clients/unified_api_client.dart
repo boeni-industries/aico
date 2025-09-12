@@ -1,16 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
 
-import 'package:aico_frontend/core/logging/aico_log.dart';
-import 'package:aico_frontend/core/services/encryption_service.dart';
-import 'package:aico_frontend/networking/exceptions/api_exceptions.dart';
-import 'package:aico_frontend/networking/services/connection_manager.dart';
-import 'package:aico_frontend/networking/services/offline_queue.dart';
-import 'package:aico_frontend/networking/services/request_progress_manager.dart';
-import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:uuid/uuid.dart';
+
+import '../../core/logging/aico_log.dart';
+import '../../core/services/encryption_service.dart';
+import '../exceptions/api_exceptions.dart';
+import '../services/connection_manager.dart';
+import '../services/token_manager.dart';
 
 /// Unified API client that handles both encrypted and unencrypted requests
 /// Uses Dio for primary requests with http as fallback
@@ -18,11 +17,9 @@ class UnifiedApiClient {
   final EncryptionService _encryptionService;
   final TokenManager _tokenManager;
   final ConnectionManager _connectionManager;
-  final OfflineQueue? _offlineQueue;
   
   Dio? _dio;
   String? _baseUrl;
-  static const _uuid = Uuid();
   
   static const Duration _defaultTimeout = Duration(seconds: 120);
   static const String _defaultBaseUrl = 'http://localhost:8771/api/v1';
@@ -32,11 +29,9 @@ class UnifiedApiClient {
     required EncryptionService encryptionService,
     required TokenManager tokenManager,
     required ConnectionManager connectionManager,
-    OfflineQueue? offlineQueue,
   }) : _encryptionService = encryptionService,
        _tokenManager = tokenManager,
-       _connectionManager = connectionManager,
-       _offlineQueue = offlineQueue {
+       _connectionManager = connectionManager {
     _tokenManager.setApiClient(this);
   }
 
@@ -146,11 +141,7 @@ class UnifiedApiClient {
 
     // Check if device is offline
     if (!_connectionManager.isOnline) {
-      // Queue request for later if offline queue is available
-      if (_offlineQueue != null) {
-        debugPrint('📱 [UnifiedApiClient] Device offline - queuing request for later');
-        await _queueOfflineRequest(endpoint, data, 'POST');
-      }
+      debugPrint('📱 [UnifiedApiClient] Device offline - returning null');
       return null; // Return null instead of throwing
     }
 
@@ -158,8 +149,8 @@ class UnifiedApiClient {
       await _performHandshake();
     }
 
-    // Start progress tracking for long requests
-    final requestId = RequestProgressManager.startRequest(endpoint, method);
+    // Log request start
+    debugPrint('📡 [UnifiedApiClient] Starting $method request to: $endpoint');
 
     final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh);
     final requestData = data != null 
@@ -182,14 +173,15 @@ class UnifiedApiClient {
 
       // Handle specific status codes manually since we disabled Dio's automatic throwing
       if (response.statusCode == 401 && !skipTokenRefresh) {
-        debugPrint('🔄 [UnifiedApiClient] 401 Unauthorized, attempting token refresh...');
-        if (await _tokenManager.refreshToken()) {
-          debugPrint('✅ [UnifiedApiClient] Token refresh successful, retrying request...');
-          return _makeEncryptedRequest<T>(method, endpoint, data: data, skipTokenRefresh: true);
-        } else {
-          debugPrint('❌ [UnifiedApiClient] Token refresh failed');
-          return null;
-        }
+        debugPrint('🔄 [UnifiedApiClient] 401 Unauthorized - failing fast');
+        AICOLog.warn('401 Unauthorized - authentication required', 
+          topic: 'network/request/auth_required',
+          extra: {'endpoint': endpoint, 'method': method});
+        
+        // Trigger background token refresh without blocking this request
+        _tokenManager.refreshToken();
+        
+        return null; // Fail fast - don't block
       }
 
       if (response.statusCode == 422) {
@@ -218,8 +210,8 @@ class UnifiedApiClient {
         return null;
       }
 
-      // Success response - complete progress tracking
-      RequestProgressManager.completeRequest(requestId, result: response.data);
+      // Success response
+      debugPrint('✅ [UnifiedApiClient] Request successful: ${response.statusCode}');
       
       if (response.data != null && response.data is Map<String, dynamic>) {
         if (response.data['encrypted'] == true && response.data.containsKey('payload')) {
@@ -237,7 +229,6 @@ class UnifiedApiClient {
           e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.sendTimeout) {
         debugPrint('⏰ [UnifiedApiClient] Request timeout - likely backend not running');
-        RequestProgressManager.failRequest(requestId, 'Request timed out after ${_defaultTimeout.inSeconds} seconds', canRetry: true);
         AICOLog.warn('Request timeout - backend may not be available',
           topic: 'network/request/timeout',
           extra: {
@@ -252,7 +243,6 @@ class UnifiedApiClient {
       // Handle connection errors
       if (e.type == DioExceptionType.connectionError) {
         debugPrint('🔌 [UnifiedApiClient] Connection error - backend not reachable');
-        RequestProgressManager.failRequest(requestId, 'Connection error - backend not reachable', canRetry: true);
         AICOLog.warn('Connection error - backend not reachable',
           topic: 'network/request/connection_error',
           extra: {
@@ -263,24 +253,17 @@ class UnifiedApiClient {
         return null;
       }
       
-      // Handle 401 errors with token refresh and retry
+      // Handle 401 errors - fail fast, trigger background refresh
       if (e.response?.statusCode == 401 && !skipTokenRefresh) {
-        debugPrint('🔄 [UnifiedApiClient] 401 Unauthorized, attempting token refresh...');
-        AICOLog.warn('401 Unauthorized, attempting token refresh',
-          topic: 'network/request/auth_retry',
+        debugPrint('🔄 [UnifiedApiClient] 401 Unauthorized - failing fast');
+        AICOLog.warn('401 Unauthorized - authentication required',
+          topic: 'network/request/auth_required',
           extra: {'endpoint': endpoint, 'method': method});
         
-        if (await _tokenManager.refreshToken()) {
-          debugPrint('✅ [UnifiedApiClient] Token refresh successful, retrying request...');
-          // Retry with new token
-          return _makeEncryptedRequest<T>(method, endpoint, data: data, skipTokenRefresh: true);
-        } else {
-          debugPrint('❌ [UnifiedApiClient] Token refresh failed');
-          // Don't throw - return null to indicate auth failure
-          AICOLog.error('Token refresh failed - authentication required',
-            topic: 'network/request/auth_failed');
-          return null;
-        }
+        // Trigger background token refresh without blocking this request
+        _tokenManager.refreshToken();
+        
+        return null; // Fail fast - don't block
       }
       
       // Handle 422 errors gracefully (validation errors)
@@ -298,7 +281,6 @@ class UnifiedApiClient {
       }
       
       debugPrint('❌ [UnifiedApiClient] Request failed: ${e.response?.statusCode} - ${e.message}');
-      RequestProgressManager.failRequest(requestId, 'Request failed: ${e.response?.statusCode}', canRetry: false);
       AICOLog.error('Encrypted request failed', 
         topic: 'network/request/encrypted_error',
         extra: {
@@ -314,7 +296,6 @@ class UnifiedApiClient {
       return null;
     } catch (e) {
       debugPrint('💥 [UnifiedApiClient] Unexpected error: $e');
-      RequestProgressManager.failRequest(requestId, 'Unexpected error: $e', canRetry: false);
       AICOLog.error('Unexpected error in encrypted request', 
         topic: 'network/request/unexpected_error',
         extra: {
@@ -634,64 +615,6 @@ class UnifiedApiClient {
     }
   }
 
-  /// Queue a request for offline processing
-  Future<void> _queueOfflineRequest(String endpoint, Map<String, dynamic>? data, String method) async {
-    if (_offlineQueue == null) return;
-    
-    final operationId = _uuid.v4();
-    final operationData = {
-      'endpoint': endpoint,
-      'data': data ?? {},
-      'method': method,
-    };
-    
-    // Determine operation type based on endpoint
-    String operationType;
-    if (endpoint.contains('/users') && method == 'POST') {
-      operationType = 'create_user';
-    } else if (endpoint.contains('/users') && method == 'PUT') {
-      operationType = 'update_user';
-    } else if (endpoint.contains('/messages') && method == 'POST') {
-      operationType = 'send_message';
-    } else {
-      operationType = 'generic_request';
-    }
-    
-    QueuedOperation operation;
-    switch (operationType) {
-      case 'create_user':
-        operation = CreateUserOperation(
-          id: operationId,
-          data: operationData,
-          createdAt: DateTime.now(),
-        );
-        break;
-      case 'update_user':
-        operation = UpdateUserOperation(
-          id: operationId,
-          data: operationData,
-          createdAt: DateTime.now(),
-        );
-        break;
-      case 'send_message':
-        operation = SendMessageOperation(
-          id: operationId,
-          data: operationData,
-          createdAt: DateTime.now(),
-        );
-        break;
-      default:
-        // For generic requests, use CreateUserOperation as fallback
-        operation = CreateUserOperation(
-          id: operationId,
-          data: operationData,
-          createdAt: DateTime.now(),
-        );
-    }
-    
-    _offlineQueue.add(operation);
-    debugPrint('Queued $operationType operation for offline processing');
-  }
 
   /// Dispose of resources
   Future<void> dispose() async {

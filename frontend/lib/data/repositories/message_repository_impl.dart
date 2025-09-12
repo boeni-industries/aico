@@ -37,6 +37,7 @@ class MessageRepositoryImpl implements MessageRepository {
       };
 
       // Send POST request to backend using UnifiedApiClient
+      // This should never block UI - any auth issues will be handled asynchronously
       final response = await _apiClient.request<Map<String, dynamic>>(
         'POST',
         '/conversation/messages',
