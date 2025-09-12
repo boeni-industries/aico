@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,9 +24,16 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
   late AnimationController _pulseController;
   late AnimationController _progressController;
   late AnimationController _fadeController;
+  late AnimationController _retryRingController;
   late Animation<double> _pulseAnimation;
   late Animation<double> _progressAnimation;
   late Animation<double> _fadeAnimation;
+  late Animation<double> _retryRingAnimation;
+  
+  Timer? _retryRingTimer;
+  bool _isRetryRingActive = false;
+  int? _animationStartTime;
+  bool _isShowingCompletionAnimation = false;
 
   @override
   void initState() {
@@ -42,6 +51,11 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
     
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    
+    _retryRingController = AnimationController(
+      duration: const Duration(seconds: 30), // Initial duration, will be updated dynamically
       vsync: this,
     );
 
@@ -68,6 +82,14 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
       parent: _fadeController,
       curve: Curves.easeOut,
     ));
+    
+    _retryRingAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _retryRingController,
+      curve: Curves.linear, // Linear for smooth, consistent progress
+    ));
 
     _pulseController.repeat(reverse: true);
     _fadeController.forward();
@@ -78,6 +100,8 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
     _pulseController.dispose();
     _progressController.dispose();
     _fadeController.dispose();
+    _retryRingController.dispose();
+    _retryRingTimer?.cancel();
     super.dispose();
   }
 
@@ -89,21 +113,120 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
       
       // For initial connection (attempt 0), show smooth progress animation
       if (state.currentAttempt == 0 && state.phase == StartupConnectionPhase.connecting) {
-        // Animate from 0 to 1 over 4 seconds for initial attempt
+        // Reset to 0 and animate to 1 over 4 seconds for initial attempt
+        _progressController.reset();
         _progressController.animateTo(1.0, duration: const Duration(seconds: 4));
-      } else {
-        // For retry attempts, show progress based on attempt number
-        final progress = state.currentAttempt / state.maxAttempts;
-        _progressController.animateTo(progress, duration: const Duration(milliseconds: 500));
+        _stopRetryRingAnimation();
+      } else if (state.phase == StartupConnectionPhase.retryMode) {
+        // Start independent retry ring animation only once when entering retry mode
+        _startRetryRingAnimation();
+        // Keep progress ring at 0 during retry mode - retry ring shows progress
+        _progressController.reset();
       }
     } else {
       _pulseController.stop();
+      
       if (state.isConnected) {
-        _progressController.animateTo(1.0, duration: const Duration(milliseconds: 300));
+        // If we were in retry mode, smoothly transition from retry ring progress to completion
+        if (_isRetryRingActive) {
+          final currentRetryProgress = _retryRingAnimation.value;
+          debugPrint('Connection successful during retry mode at ${(currentRetryProgress * 100).toInt()}% progress');
+          _stopRetryRingAnimation();
+          // Start progress ring from current retry progress and animate to completion
+          _progressController.value = currentRetryProgress;
+          _progressController.animateTo(1.0, duration: const Duration(milliseconds: 500));
+        } else {
+          _progressController.animateTo(1.0, duration: const Duration(milliseconds: 300));
+        }
       } else if (state.isFailed) {
-        _progressController.animateTo(0.0, duration: const Duration(milliseconds: 300));
+        // If retry ring was active, complete it to 100% for proper UX closure
+        if (_isRetryRingActive) {
+          debugPrint('Connection failed - completing retry ring to 100% for UX closure');
+          _isShowingCompletionAnimation = true;
+          _retryRingController.animateTo(1.0, duration: const Duration(milliseconds: 800));
+          // Stop the retry ring after completion animation
+          Timer(const Duration(milliseconds: 1000), () {
+            _isShowingCompletionAnimation = false;
+            _stopRetryRingAnimation();
+            // Trigger UI rebuild to show failed state
+            if (mounted) {
+              setState(() {});
+            }
+            // Only animate progress ring to 0 after retry ring completion is visible
+            _progressController.animateTo(0.0, duration: const Duration(milliseconds: 300));
+          });
+        } else {
+          _progressController.animateTo(0.0, duration: const Duration(milliseconds: 300));
+        }
       }
     }
+  }
+  
+  void _startRetryRingAnimation() {
+    if (!_isRetryRingActive) {
+      _isRetryRingActive = true;
+      _animationStartTime = DateTime.now().millisecondsSinceEpoch;
+      _retryRingController.reset();
+      
+      // Calculate actual retry cycle duration based on exponential backoff
+      final actualDuration = _calculateActualRetryDuration();
+      
+      debugPrint('Starting retry ring animation with duration: ${actualDuration.inSeconds}s');
+      
+      // Update animation duration to match actual retry timing
+      _retryRingController.duration = actualDuration;
+      _retryRingController.forward();
+      
+      // Add listener to debug animation progress
+      _retryRingController.addListener(() {
+        if (_retryRingController.value % 0.1 < 0.01) { // Log every 10%
+          final elapsed = DateTime.now().millisecondsSinceEpoch - _animationStartTime!;
+          debugPrint('Retry ring progress: ${(_retryRingController.value * 100).toInt()}% at ${elapsed}ms elapsed');
+        }
+      });
+      
+      // Set timer to complete animation after actual duration
+      _retryRingTimer = Timer(actualDuration, () {
+        debugPrint('Retry ring timer completed, stopping animation');
+        _stopRetryRingAnimation();
+      });
+    }
+  }
+  
+  Duration _calculateActualRetryDuration() {
+    // Calculate total retry cycle duration matching StartupConnectionProvider's ACTUAL logic
+    // The provider has a bug: it passes (nextAttempt - 2) to _calculateRetryDelay
+    const baseDelayMs = 3000; // 3 second base
+    const maxDelayMs = 12000; // 12 seconds max
+    const connectionTestMs = 2000; // 2 seconds per connection test
+    const maxJitterMs = 1000; // Maximum jitter
+    
+    int totalMs = 0;
+    
+    // Match the actual buggy parameter passing in StartupConnectionProvider
+    // nextAttempt values: 1, 2, 3 → _calculateRetryDelay gets: -1, 0, 1
+    final actualAttemptParams = [-1, 0, 1];
+    
+    for (int i = 0; i < 3; i++) {
+      final attemptParam = actualAttemptParams[i];
+      final exponentialDelay = (baseDelayMs * math.pow(2, attemptParam)).toInt();
+      final clampedDelay = exponentialDelay.clamp(baseDelayMs, maxDelayMs);
+      totalMs += clampedDelay + maxJitterMs + connectionTestMs;
+      
+      debugPrint('Retry ${i+1}: attemptParam=$attemptParam, delay=${clampedDelay}ms, total so far=${totalMs}ms');
+    }
+    
+    final duration = Duration(milliseconds: totalMs);
+    debugPrint('Total calculated retry duration: ${duration.inSeconds}s (${totalMs}ms)');
+    return duration;
+  }
+  
+  void _stopRetryRingAnimation() {
+    debugPrint('Stopping retry ring animation at ${(_retryRingController.value * 100).toInt()}% progress');
+    _isRetryRingActive = false;
+    _retryRingTimer?.cancel();
+    _retryRingTimer = null;
+    _retryRingController.reset();
   }
 
   void _handleRetry() {
@@ -125,6 +248,11 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
     final theme = Theme.of(context);
     final state = ref.watch(startupConnectionProvider);
     
+    // Override state to show retry mode during completion animation
+    final displayState = _isShowingCompletionAnimation && state.isFailed
+        ? state.copyWith(phase: StartupConnectionPhase.retryMode)
+        : state;
+    
     // Listen for state changes to update animations
     ref.listen<StartupConnectionState>(startupConnectionProvider, (previous, next) {
       _updateAnimations(next);
@@ -143,12 +271,15 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
         child: FadeTransition(
           opacity: _fadeAnimation,
           child: Center(
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 480), // Constrained width, not full screen
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 480), // Constrained width, not full screen
+                padding: EdgeInsets.symmetric(
+                  horizontal: 24, 
+                  vertical: math.max(32, MediaQuery.of(context).padding.top + 16),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
                   // Connection indicator card
                   Container(
                     padding: const EdgeInsets.all(48),
@@ -166,15 +297,15 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _buildConnectionIndicator(theme, state),
+                        _buildConnectionIndicator(theme, displayState),
                         const SizedBox(height: 32),
-                        _buildStatusContent(theme, state),
+                        _buildStatusContent(theme, displayState),
                       ],
                     ),
                   ),
                   
-                  // Action buttons (only when failed)
-                  if (state.isFailed) ...[
+                  // Action buttons (only when failed and not showing completion animation)
+                  if (state.isFailed && !_isShowingCompletionAnimation) ...[
                     const SizedBox(height: 24),
                     _buildActionButtons(theme, state),
                   ],
@@ -213,15 +344,26 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
               },
             ),
           
-          // Progress ring
+          // Progress ring - shows initial connection or retry ring animation
           AnimatedBuilder(
-            animation: _progressAnimation,
+            animation: state.phase == StartupConnectionPhase.retryMode 
+                ? _retryRingAnimation 
+                : _progressAnimation,
             builder: (context, child) {
+              double progressValue;
+              if (state.isFailed) {
+                progressValue = 0.0;
+              } else if (state.phase == StartupConnectionPhase.retryMode) {
+                progressValue = _retryRingAnimation.value;
+              } else {
+                progressValue = _progressAnimation.value;
+              }
+              
               return SizedBox(
                 width: 80,
                 height: 80,
                 child: CircularProgressIndicator(
-                  value: state.isFailed ? 0.0 : _progressAnimation.value,
+                  value: progressValue,
                   strokeWidth: 3,
                   backgroundColor: const Color(0xFF243455).withValues(alpha: 0.08),
                   valueColor: AlwaysStoppedAnimation<Color>(
@@ -252,10 +394,14 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
   }
 
   Widget _buildStatusContent(ThemeData theme, StartupConnectionState state) {
-    return SizedBox(
-      height: 120, // Fixed height to prevent layout jumps
+    return Container(
+      constraints: const BoxConstraints(
+        minHeight: 80,
+        maxHeight: 120,
+      ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           // Main status message - Design principle: Inter font, clear hierarchy
           Text(
@@ -268,55 +414,36 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
               letterSpacing: 0.02,
             ),
             textAlign: TextAlign.center,
+            maxLines: 2, // Allow wrapping for very long messages
+            overflow: TextOverflow.ellipsis,
           ),
           
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           
-          // Secondary message - always reserve space
-          SizedBox(
-            height: 48, // Fixed height for secondary message area
-            child: Center(
-              child: state.message != null
-                  ? Text(
-                      state.message!,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 16, // 1.0rem body
-                        fontWeight: FontWeight.w400,
-                        color: Color(0xFF6B7280),
-                      ),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    )
-                  : const SizedBox.shrink(),
+          // Secondary message - flexible height with fixed constraints
+          if (state.message != null)
+            Flexible(
+              child: Container(
+                constraints: const BoxConstraints(
+                  minHeight: 20,
+                  maxHeight: 80,
+                ),
+                child: Center(
+                  child: Text(
+                    state.message!,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 16, // 1.0rem body
+                      fontWeight: FontWeight.w400,
+                      color: Color(0xFF6B7280),
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 4, // Allow more lines if space permits
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
             ),
-          ),
-          
-          // Retry counter area - always reserve space
-          SizedBox(
-            height: 32, // Fixed height for retry counter area
-            child: Center(
-              child: (state.isInProgress && state.currentAttempt > 1)
-                  ? Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF3F4F6),
-                        borderRadius: BorderRadius.circular(16), // Design principle: rounded
-                      ),
-                      child: Text(
-                        'Attempt ${state.currentAttempt} of ${state.maxAttempts}',
-                        style: const TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 14, // 0.875rem caption
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF6B7280),
-                        ),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-          ),
         ],
       ),
     );

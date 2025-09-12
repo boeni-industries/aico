@@ -245,7 +245,7 @@ class StartupConnectionNotifier extends StateNotifier<StartupConnectionState> {
     _cancelRetryTimer();
     state = state.copyWith(
       phase: StartupConnectionPhase.connecting,
-      currentAttempt: 1,
+      currentAttempt: 0, // Reset to 0 so first attempt shows as attempt 1
       message: 'Connecting to AICO...',
       error: null,
       canRetry: false,
