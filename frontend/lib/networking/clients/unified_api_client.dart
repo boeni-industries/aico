@@ -159,15 +159,28 @@ class UnifiedApiClient {
 
       // Handle specific status codes manually since we disabled Dio's automatic throwing
       if (response.statusCode == 401 && !skipTokenRefresh) {
-        debugPrint('🔄 [UnifiedApiClient] 401 Unauthorized - failing fast');
-        AICOLog.warn('401 Unauthorized - authentication required', 
-          topic: 'network/request/auth_required',
+        debugPrint('🔄 [UnifiedApiClient] 401 Unauthorized - resetting encryption session');
+        AICOLog.warn('401 Unauthorized - resetting encryption session',
+          topic: 'network/request/encryption_session_reset',
           extra: {'endpoint': endpoint, 'method': method});
         
-        // Trigger background token refresh without blocking this request
-        _tokenManager.refreshToken();
+        // Reset encryption session since backend likely lost it
+        _encryptionService.resetSession();
         
-        return null; // Fail fast - don't block
+        // Retry the request once with new session
+        try {
+          debugPrint('🔄 [UnifiedApiClient] Retrying request after session reset');
+          return await _makeEncryptedRequest<T>(
+            method,
+            endpoint,
+            data: data,
+            fromJson: fromJson,
+            skipTokenRefresh: true, // Skip token refresh on retry to avoid infinite loop
+          );
+        } catch (retryError) {
+          debugPrint('💥 [UnifiedApiClient] Retry after session reset failed: $retryError');
+          return null;
+        }
       }
 
       if (response.statusCode == 422) {
