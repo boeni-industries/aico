@@ -37,6 +37,41 @@ The system learns that users have vastly different conversation styles. Some pre
 **Advanced Capabilities:**
 In the final phase, thread decisions consider not just immediate context but broader relationship dynamics, emotional undertones, and proactive engagement opportunities. AICO evolves from merely responding to conversation cues to actively participating in shaping meaningful dialogue experiences.
 
+### Module Structure and Organization
+
+The memory system is implemented at `shared/aico/ai/memory/` following AICO's established patterns and guidelines. The module structure provides clear separation of concerns with well-defined interfaces:
+
+```
+shared/aico/ai/memory/
+├── __init__.py          # Module exports and public interface
+├── manager.py           # MemoryManager - central coordinator
+├── working.py           # WorkingMemoryStore - RocksDB session context
+├── episodic.py          # EpisodicMemoryStore - encrypted libSQL conversations
+├── semantic.py          # SemanticMemoryStore - ChromaDB knowledge base
+├── procedural.py        # ProceduralMemoryStore - libSQL user patterns
+├── context.py           # ContextAssembler - cross-tier context assembly
+└── consolidation.py     # MemoryConsolidator - background processing
+```
+
+**Storage Technologies:**
+- **Working Memory**: RocksDB for high-performance ephemeral storage
+- **Episodic Memory**: Encrypted libSQL for conversation history persistence  
+- **Semantic Memory**: ChromaDB for vector similarity search and knowledge storage
+- **Procedural Memory**: Encrypted libSQL for user patterns and behavioral data
+
+**Integration Patterns:**
+The memory system integrates with AICO's architecture through established patterns:
+- **ConfigurationManager**: Unified configuration following AICO's hierarchical config system
+- **EncryptedLibSQLConnection**: Reuses existing encrypted database infrastructure
+- **BaseAIProcessor**: Inherits from shared AI processing interface for message bus integration
+- **Logging**: Uses AICO's structured logging system with proper module identification
+
+Each component follows AICO's core principles:
+- **Simplicity First**: Clear, readable implementations over clever constructs
+- **Privacy by Design**: Encrypted storage and local-first processing
+- **Modularity**: Well-defined interfaces with message bus integration
+- **Resource Awareness**: Configurable performance for consumer hardware
+
 ### Data Architecture Principles
 
 The memory system's data architecture embodies AICO's commitment to privacy-first design while enabling sophisticated relationship intelligence. Every piece of persistent data undergoes encryption at rest using user-controlled keys, ensuring complete user control over conversation content.

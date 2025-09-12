@@ -2,10 +2,14 @@
 
 ## Implementation Phases
 
-### Phase 1: Session Context Management (Foundation)
-**Priority**: Immediate implementation  
-**Timeline**: 2-3 weeks  
-**Goal**: Maintain conversation context within active sessions
+### Phase 1: Session Context Management (Month 1)
+
+**Core Deliverables:**
+- Working memory implementation with RocksDB (`shared/aico/ai/memory/working.py`)
+- Basic session state persistence following AICO patterns
+- Simple thread continuation logic integrated with existing ThreadManager
+- Foundation context assembly framework (`shared/aico/ai/memory/context.py`)
+- MemoryManager base implementation extending BaseAIProcessor
 
 #### Deliverables
 - **Session Continuity**: Conversations maintain context within active sessions
@@ -37,6 +41,13 @@
 - Vector Storage Integration (ChromaDB)
 - Cosine similarity-based thread matching
 - Enhanced database schema with embeddings
+
+#### Phase 2 Implementation Notes:
+- Episodic memory uses EncryptedLibSQLConnection following AICO patterns
+- Semantic analysis requires lightweight embedding models for local processing
+- ChromaDB provides vector storage with local persistence and fallback JSON storage
+- Thread resolution integrates with existing ThreadManager service
+- Performance remains viable on consumer hardware with proper model selection
 
 ---
 

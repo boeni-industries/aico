@@ -63,6 +63,15 @@ Learned interaction patterns and successful strategies.
 - **Lazy Loading**: Loads context only when needed
 - **Configurable Depth**: User-adjustable memory detail vs. performance trade-offs
 
+## Implementation Location
+
+The memory system is implemented as a shared AI module at `shared/aico/ai/memory/`, making it accessible across AICO's architecture while maintaining modularity and following established patterns. This location enables:
+
+- **Cross-component access**: Backend modules, CLI tools, and other AI components can import and use memory functionality
+- **Consistent patterns**: Follows AICO's established shared library structure for AI capabilities
+- **Message bus integration**: Seamless integration with AICO's message-driven architecture
+- **Frontend integration**: Flutter frontend accesses memory through REST API endpoints, maintaining separation of concerns
+
 ## Implementation Strategy
 
 The memory system implementation follows a phased approach, starting with essential session context and building toward full relationship intelligence:

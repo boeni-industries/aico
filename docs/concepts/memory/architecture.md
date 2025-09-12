@@ -272,6 +272,49 @@ class AICOMemoryManager:
 - Graceful degradation on resource constraints
 - Battery-aware processing modes
 
+## Implementation Location and Integration
+
+The memory system is implemented as a shared AI module at `shared/aico/ai/memory/`, following AICO's established patterns and guidelines:
+
+```
+shared/aico/ai/memory/
+├── __init__.py          # Module exports and public interface
+├── manager.py           # MemoryManager - central coordinator extending BaseAIProcessor
+├── working.py           # WorkingMemoryStore - RocksDB session context
+├── episodic.py          # EpisodicMemoryStore - encrypted libSQL conversations
+├── semantic.py          # SemanticMemoryStore - ChromaDB knowledge base
+├── procedural.py        # ProceduralMemoryStore - libSQL user patterns
+├── context.py           # ContextAssembler - cross-tier context assembly
+└── consolidation.py     # MemoryConsolidator - background processing
+```
+
+### Architecture Integration Patterns
+
+**Configuration Management:**
+- Uses `ConfigurationManager` for hierarchical configuration following AICO patterns
+- Memory-specific settings under `memory.*` configuration namespace
+- Supports environment-specific and user-specific configuration overrides
+
+**Database Integration:**
+- Reuses `EncryptedLibSQLConnection` for persistent storage components
+- Follows existing schema management and migration patterns
+- Maintains encryption-at-rest for all persistent data using AICO's key management
+
+**AI Processing Pipeline:**
+- `MemoryManager` extends `BaseAIProcessor` for seamless message bus integration
+- Processes `ProcessingContext` objects from AI coordination system
+- Returns `ProcessingResult` with assembled memory context for downstream processors
+
+**Frontend Integration:**
+- Flutter frontend accesses memory functionality through REST API endpoints
+- Backend exposes memory operations via API Gateway following existing patterns
+- Maintains clean separation between frontend and Python shared modules
+
+**Message Bus Communication:**
+- Memory operations publish to `memory.*` topics for loose coupling
+- Subscribes to conversation events for real-time context updates
+- Integrates with existing message routing and processing infrastructure
+
 This architecture provides the foundation for AICO's sophisticated memory capabilities while maintaining the local-first, privacy-first principles essential to the companion's design philosophy.
 
 ## Related Documentation
