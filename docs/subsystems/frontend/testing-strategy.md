@@ -6,37 +6,79 @@ title: Testing Strategy
 
 ## Overview
 
-AICO's testing strategy ensures reliable, maintainable code through comprehensive coverage emphasizing BLoC testing, accessibility validation, and cross-platform compatibility while supporting offline-first operation.
+AICO's testing strategy ensures reliable, maintainable code through comprehensive coverage emphasizing Riverpod provider testing, accessibility validation, and cross-platform compatibility while supporting offline-first operation.
 
 ## Testing Pyramid
 
-- **Unit Tests (70%)**: BLoC logic, repositories, utilities, model serialization
+- **Unit Tests (70%)**: StateNotifier logic, repositories, use cases, model serialization
 - **Widget Tests (20%)**: Component behavior, UI interactions, accessibility, visual regression
-- **Integration Tests (10%)**: End-to-end flows, cross-component communication, API integration, performance
+- **Integration Tests (10%)**: End-to-end flows, provider integration, API communication, performance
 
-## BLoC Testing
+## Riverpod Provider Testing
 
-### Unit Testing
-Use `bloc_test` package to test state transitions with mock dependencies. Test success and error scenarios for each event, verify repository calls, and ensure proper state emissions.
+### StateNotifier Testing
+Test StateNotifier state transitions with provider overrides and mock dependencies. Test success and error scenarios for each method, verify repository calls, and ensure proper state updates.
 
 ```dart
-blocTest<ConversationBloc, ConversationState>(
-  'emits [loading, success] when message sent',
-  act: (bloc) => bloc.add(MessageSent(content: 'Hello')),
-  expect: () => [ConversationState.loading(), ConversationState.success()],
-);
+testWidgets('conversation provider sends message successfully', (tester) async {
+  final mockRepository = MockMessageRepository();
+  when(mockRepository.sendMessage(any)).thenAnswer((_) async => testMessage);
+  
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        messageRepositoryProvider.overrideWithValue(mockRepository),
+      ],
+      child: Consumer(
+        builder: (context, ref, _) {
+          final notifier = ref.read(conversationProvider.notifier);
+          return ElevatedButton(
+            onPressed: () => notifier.sendMessage('Hello'),
+            child: Text('Send'),
+          );
+        },
+      ),
+    ),
+  );
+  
+  await tester.tap(find.byType(ElevatedButton));
+  await tester.pumpAndSettle();
+  
+  verify(mockRepository.sendMessage('Hello')).called(1);
+});
 ```
 
 ### State Persistence Testing
-Test HydratedBloc `fromJson()` and `toJson()` methods with mock storage. Verify state restoration after app restart and graceful handling of corrupted data.
+Test secure storage and shared preferences persistence with mock storage providers. Verify state restoration on app restart and graceful handling of corrupted or missing data.
 
 ## Widget Testing
 
 ### Component Testing
 Test individual widgets in isolation using `testWidgets`. Verify text display, styling differences between user/AICO messages, and proper widget hierarchy.
 
-### BLoC Integration Testing
-Test widgets with mock BLoCs to verify state-driven UI updates and user interaction handling. Use `BlocProvider.value` with mock BLoCs and verify event dispatching.
+### Provider Integration Testing
+Test widgets with provider overrides to verify state-driven UI updates and user interaction handling. Use `ProviderScope` with overridden providers and verify method calls on StateNotifiers.
+
+```dart
+testWidgets('home screen shows conversation messages', (tester) async {
+  final mockConversationNotifier = MockConversationNotifier();
+  when(mockConversationNotifier.state).thenReturn(
+    ConversationState(messages: [testMessage1, testMessage2]),
+  );
+  
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        conversationProvider.overrideWith((ref) => mockConversationNotifier),
+      ],
+      child: MaterialApp(home: HomeScreen()),
+    ),
+  );
+  
+  expect(find.text(testMessage1.content), findsOneWidget);
+  expect(find.text(testMessage2.content), findsOneWidget);
+});
+```
 
 ## Accessibility Testing
 
@@ -61,10 +103,62 @@ Use golden file testing with `matchesGoldenFile()` to detect unintended visual c
 ## Test Utilities
 
 ### Mock Implementations
-Use `mockito` for repository, WebSocket, and API client mocks. Implement builder patterns for test data creation with fluent APIs.
+Use `mockito` for repository, API client, and service mocks. Create mock StateNotifiers for testing widget interactions. Implement builder patterns for test data creation with fluent APIs.
+
+```dart
+// Mock StateNotifier for testing
+class MockConversationNotifier extends Mock implements ConversationNotifier {}
+
+// Mock repository
+class MockMessageRepository extends Mock implements MessageRepository {}
+
+// Test data builders
+class MessageBuilder {
+  String _content = 'Test message';
+  String _userId = 'user123';
+  
+  MessageBuilder withContent(String content) {
+    _content = content;
+    return this;
+  }
+  
+  MessageBuilder fromUser(String userId) {
+    _userId = userId;
+    return this;
+  }
+  
+  Message build() => Message(
+    id: 'test-id',
+    content: _content,
+    userId: _userId,
+    timestamp: DateTime.now(),
+    conversationId: 'test-conversation',
+    type: MessageType.text,
+    status: MessageStatus.sent,
+  );
+}
+```
 
 ### Test Configuration
-Centralized test setup with dependency injection reset, platform overrides, and consistent test environment configuration.
+Centralized test setup with provider scope configuration, platform overrides, and consistent test environment setup.
+
+```dart
+// Test utilities for provider testing
+class TestProviderScope {
+  static Widget createApp({
+    required Widget child,
+    List<Override> overrides = const [],
+  }) {
+    return ProviderScope(
+      overrides: overrides,
+      child: MaterialApp(
+        home: child,
+        theme: ThemeData.light(),
+      ),
+    );
+  }
+}
+```
 
 ## Code Coverage
 

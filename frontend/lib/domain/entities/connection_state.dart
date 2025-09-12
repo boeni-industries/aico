@@ -1,8 +1,10 @@
 import 'package:equatable/equatable.dart';
+// Import the actual enums used by the connection system
+import '../../networking/services/connection_manager.dart' show InternalConnectionStatus;
 
 /// Domain entity representing the connection state to the backend
 class ConnectionState extends Equatable {
-  final ConnectionStatus status;
+  final InternalConnectionStatus status;
   final String? errorMessage;
   final DateTime lastConnected;
   final DateTime? lastAttempt;
@@ -35,7 +37,7 @@ class ConnectionState extends Equatable {
       ];
 
   ConnectionState copyWith({
-    ConnectionStatus? status,
+    InternalConnectionStatus? status,
     String? errorMessage,
     DateTime? lastConnected,
     DateTime? lastAttempt,
@@ -57,41 +59,11 @@ class ConnectionState extends Equatable {
   }
 }
 
-enum ConnectionStatus {
-  disconnected,
-  connecting,
-  connected,
-  reconnecting,
-  failed,
-}
-
 enum ConnectionMode {
   http,
   httpFallback,
   websocket,
   ipc, // Future implementation
-}
-
-extension ConnectionStatusExtension on ConnectionStatus {
-  bool get isConnected => this == ConnectionStatus.connected;
-  bool get isConnecting => this == ConnectionStatus.connecting || 
-                          this == ConnectionStatus.reconnecting;
-  bool get hasError => this == ConnectionStatus.failed;
-  
-  String get displayName {
-    switch (this) {
-      case ConnectionStatus.disconnected:
-        return 'Disconnected';
-      case ConnectionStatus.connecting:
-        return 'Connecting';
-      case ConnectionStatus.connected:
-        return 'Connected';
-      case ConnectionStatus.reconnecting:
-        return 'Reconnecting';
-      case ConnectionStatus.failed:
-        return 'Connection Failed';
-    }
-  }
 }
 
 extension ConnectionModeExtension on ConnectionMode {

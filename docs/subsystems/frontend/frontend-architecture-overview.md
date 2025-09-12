@@ -19,7 +19,7 @@ The application assumes network connectivity is unreliable and designs for offli
 The frontend contains minimal business logic, focusing entirely on presentation and user interaction. All AI processing, data persistence, and complex operations occur in the backend service, ensuring UI responsiveness and enabling autonomous backend operation.
 
 ### ⚡ Reactive Programming
-Event-driven architecture with reactive streams throughout. State changes flow unidirectionally from events through BLoCs to UI updates, creating predictable and testable behavior that naturally handles asynchronous operations.
+Event-driven architecture with reactive streams throughout. State changes flow unidirectionally through Riverpod StateNotifiers to UI updates, creating predictable and testable behavior that naturally handles asynchronous operations.
 
 ### 🏗️ Clean Architecture
 Strict layering separates concerns: presentation layer handles UI rendering, domain layer contains business rules and entities, data layer manages external communication and storage. Dependencies point inward for testability and maintainability.
@@ -45,7 +45,7 @@ User actions immediately update the interface for instant feedback while operati
 The frontend contains minimal business logic, focusing entirely on presentation and user interaction. All AI processing, data persistence, and complex operations occur in the backend service. This separation ensures the UI remains responsive and allows the backend to operate autonomously even when the frontend is closed.
 
 ### Reactive Programming
-The application uses event-driven architecture with reactive streams throughout. State changes flow unidirectionally from events through BLoCs to UI updates, creating predictable and testable behavior. This pattern naturally handles asynchronous operations like network requests and real-time updates.
+The application uses event-driven architecture with reactive streams throughout. State changes flow unidirectionally through Riverpod StateNotifiers to UI updates, creating predictable and testable behavior. This pattern naturally handles asynchronous operations like network requests and real-time updates.
 
 ### Clean Architecture
 Strict layering separates concerns: the presentation layer handles UI rendering, the domain layer contains business rules and entities, and the data layer manages external communication and storage. Dependencies point inward, making the architecture testable and maintainable.
@@ -65,11 +65,11 @@ The application implements WCAG 2.1 AA standards from the ground up, ensuring us
 ┌─────────────────────────────────────────────────────────────┐
 │                    Presentation Layer                       │
 ├─────────────────────────────────────────────────────────────┤
-│  Screens & Widgets  │  BLoC/Cubit State Management         │
-│  - Conversation Interface │  - ConversationBloc                │
-│  - Avatar Display   │  - ConnectionBloc                    │
-│  - Settings UI      │  - SettingsBloc                      │
-│  - Admin Dashboard  │  - UpdateBloc                        │
+│  Screens & Widgets  │  Riverpod State Management           │
+│  - Conversation Interface │  - ConversationProvider            │
+│  - Avatar Display   │  - ConnectionProvider                │
+│  - Settings UI      │  - ThemeProvider                     │
+│  - Admin Dashboard  │  - AuthProvider                      │
 ├─────────────────────────────────────────────────────────────┤
 │                     Domain Layer                            │
 ├─────────────────────────────────────────────────────────────┤
@@ -91,40 +91,41 @@ The application implements WCAG 2.1 AA standards from the ground up, ensuring us
 
 ## Core Components
 
-### State Management (BLoC Pattern)
+### State Management (Riverpod Pattern)
 
-The application uses the BLoC (Business Logic Component) pattern for all state management, providing a reactive and testable architecture. BLoCs act as intermediaries between the UI and data layers, processing events and emitting state changes through streams.
+The application uses **Riverpod** for all state management, providing a reactive and testable architecture. StateNotifiers act as intermediaries between the UI and data layers, managing state changes through immutable state objects and automatic UI updates.
 
-**Event-Driven Flow**: User interactions trigger events that BLoCs process asynchronously, potentially involving API calls or local operations, before emitting new states that automatically update the UI.
+**Reactive Flow**: User interactions trigger methods on StateNotifiers that process operations asynchronously, potentially involving API calls or local operations, before updating state that automatically rebuilds consuming widgets.
 
-**State Persistence**: Critical BLoCs extend HydratedBloc to automatically persist state across app restarts, ensuring users never lose their work or preferences.
+**State Persistence**: Critical state is persisted through secure storage and shared preferences, with automatic restoration on app restart.
 
-**Currently Implemented BLoCs**:
-- **AuthBloc**: Manages user authentication state and JWT token lifecycle
-- **ConnectionBloc**: Handles backend connectivity, automatic reconnection, and offline mode
-- **SettingsBloc**: Persists user preferences, theme selection, and configuration changes
-- **NavigationBloc**: Manages application navigation state and routing
+**Currently Implemented Providers**:
+- **AuthProvider**: Manages user authentication state and JWT token lifecycle
+- **ConversationProvider**: Handles conversation state, message sending/receiving, and real-time updates
+- **ThemeProvider**: Manages theme selection, dark/light mode, and accessibility settings
+- **NetworkingProviders**: Provides unified API clients, token management, connection services, and resilient operations
+- **ConnectionManager**: Core service managing connection health, retry logic, and protocol fallback
+- **UnifiedConnectionStatus**: Avatar-centric immersive status system replacing legacy banner components
 
-**Planned BLoCs** (in development):
-- **ConversationBloc**: Will manage conversation state, message sending/receiving, and typing indicators
-- **UpdateBloc**: Will manage update notifications, download progress, and installation coordination
-- **AvatarBloc**: Will control avatar state, animations, and WebView communication
+**Provider Architecture Benefits**:
+- **Compile-time Safety**: Dependencies are checked at compile time
+- **Automatic Disposal**: Riverpod handles lifecycle management automatically
+- **Easy Testing**: Simple provider overrides for testing scenarios
+- **No Boilerplate**: Direct state access without event/state classes
 
-### Dependency Injection (2025 Modern Approach)
+### Dependency Injection (Riverpod Implementation)
 
-**Current Implementation Issues**: The application previously used the Service Locator anti-pattern with `get_it`, which caused complex async dependency chains, circular dependencies, and timing issues that violated Clean Architecture principles.
+**Current Implementation**: The application uses **Riverpod** for dependency injection, providing compile-time safety, automatic lifecycle management, and easy testing capabilities.
 
-**Problems with Service Locator Pattern**:
-- **Anti-pattern**: Service Locator is widely recognized as an anti-pattern that hides dependencies
-- **Complex async chains**: UI → AuthBloc → ApiUserService → ApiService → UnifiedApiClient
-- **Tight coupling**: Direct dependencies between layers without proper abstraction
-- **Race conditions**: Mixed sync/async registration patterns causing unpredictable failures
-- **No dependency guarantees**: Services could be accessed before initialization
-- **Testing difficulties**: Hard to mock dependencies and isolate components
+**Riverpod Benefits Over Service Locator**:
+- **Compile-time Safety**: Dependencies are checked at compile time, preventing runtime errors
+- **No Hidden Dependencies**: All dependencies are explicitly declared in provider definitions
+- **Automatic Disposal**: Riverpod handles resource cleanup automatically
+- **Easy Testing**: Simple provider overrides for testing scenarios
+- **No Async Registration**: Providers are created on-demand, eliminating timing issues
+- **Circular Dependency Prevention**: Compile-time detection prevents circular dependencies
 
-**Modern 2025 Solution - Riverpod Dependency Injection**:
-
-Following Flutter community best practices from 2024-2025, we implement **Riverpod** as our dependency injection solution:
+**Current Riverpod Implementation**:
 
 ```dart
 // Domain layer - Abstract repository interfaces
@@ -164,9 +165,15 @@ final loginUseCaseProvider = Provider<LoginUseCase>((ref) {
   return LoginUseCase(ref.read(authRepositoryProvider));
 });
 
-// Presentation layer - BLoC with clean dependencies
-final authBlocProvider = StateNotifierProvider<AuthBloc, AuthState>((ref) {
-  return AuthBloc(ref.read(loginUseCaseProvider));
+// Presentation layer - StateNotifier with clean dependencies
+final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+  return AuthNotifier(
+    ref.read(loginUseCaseProvider),
+    ref.read(autoLoginUseCaseProvider),
+    ref.read(logoutUseCaseProvider),
+    ref.read(checkAuthStatusUseCaseProvider),
+    ref.read(tokenManagerProvider),
+  );
 });
 ```
 
@@ -181,11 +188,27 @@ final authBlocProvider = StateNotifierProvider<AuthBloc, AuthState>((ref) {
 
 **Architecture Layers with Riverpod**:
 1. **Domain Layer**: Defines abstract interfaces and business entities
-2. **Data Layer**: Implements domain interfaces with concrete data sources
+2. **Data Layer**: Implements domain interfaces with concrete data sources  
 3. **Use Case Layer**: Encapsulates business logic in single-responsibility classes
-4. **Presentation Layer**: BLoCs/StateNotifiers depend only on use cases
+4. **Presentation Layer**: StateNotifiers depend only on use cases through provider injection
 
 **Testing Benefits**: Riverpod's provider overrides make testing trivial - simply override providers with mocks during testing without complex setup or teardown.
+
+**Example Provider Override for Testing**:
+```dart
+testWidgets('auth flow test', (tester) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        authRepositoryProvider.overrideWithValue(mockAuthRepository),
+        tokenManagerProvider.overrideWithValue(mockTokenManager),
+      ],
+      child: MyApp(),
+    ),
+  );
+  // Test implementation...
+});
+```
 
 ### Navigation Architecture
 
@@ -352,13 +375,21 @@ Centralized error handling provides consistent user experience across all applic
 
 ### Connection Management
 
-Robust connection management ensures the application remains functional regardless of network conditions, with intelligent reconnection strategies and clear user communication about connectivity status.
+Robust connection management ensures the application remains functional regardless of network conditions, with intelligent reconnection strategies and immersive user communication about connectivity status.
 
-**State Monitoring**: Continuous monitoring of backend connectivity provides real-time status updates and triggers appropriate UI changes when connection state changes.
+**State Monitoring**: The `ConnectionManager` continuously monitors backend connectivity using `InternalConnectionStatus` enum (connected, connecting, disconnected, offline, error) and provides real-time status updates through reactive streams.
 
-**Reconnection Strategy**: Exponential backoff algorithms prevent overwhelming the backend during outages while ensuring prompt reconnection when service resumes.
+**Reconnection Strategy**: Exponential backoff algorithms with jitter prevent overwhelming the backend during outages while ensuring prompt reconnection when service resumes. Protocol fallback (WebSocket → HTTP) provides additional resilience.
 
-**User Feedback**: Clear visual indicators communicate connection status without being intrusive, and the interface gracefully adapts to offline mode when necessary.
+**Immersive Status Feedback**: Connection status is communicated through an avatar-centric system using dynamic rings, ambient effects, and contextual hints. This approach eliminates intrusive banners while providing clear visual feedback about system health:
+- **Emerald rings**: Connected and healthy
+- **Sapphire rings**: Connecting or syncing
+- **Amber rings**: Degraded connectivity or authentication required
+- **Coral rings**: Disconnected or error states
+- **Ambient particles**: Celebration effects during reconnection
+- **Contextual hints**: Minimal text guidance only when user action is required
+
+**Unified Architecture**: The system uses a single `UnifiedConnectionStatus` widget that wraps screens and coordinates between the `ConnectionManager` service layer and the immersive UI presentation, eliminating legacy banner systems and duplicate status components.
 
 ### Data Synchronization
 

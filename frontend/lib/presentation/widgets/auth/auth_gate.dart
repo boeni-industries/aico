@@ -2,8 +2,10 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/startup_connection_provider.dart';
 import '../../screens/auth/login_screen.dart';
 import '../../screens/home/home_screen.dart';
+import '../../screens/startup/startup_connection_screen.dart';
 import 'auth_status_overlay.dart';
 
 /// Login overlay widget that displays as a card on top of the main UI
@@ -108,22 +110,22 @@ class _AuthGateState extends ConsumerState<AuthGate> {
   String? _loginMessage;
   IconData? _loginMessageIcon;
   Color? _loginMessageColor;
-  bool _initialAuthCheckCompleted = false;
+  bool _startupConnectionCompleted = false;
   
   @override
   void initState() {
     super.initState();
-    // Trigger automatic login check on app startup
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _performInitialAuthCheck();
-    });
+    // No immediate auth check - wait for startup connection to complete
   }
   
-  Future<void> _performInitialAuthCheck() async {
-    await ref.read(authProvider.notifier).checkAuthStatus();
+  void _onStartupConnectionCompleted() {
     if (mounted) {
       setState(() {
-        _initialAuthCheckCompleted = true;
+        _startupConnectionCompleted = true;
+      });
+      // Now perform auth check after connection is established
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(authProvider.notifier).checkAuthStatus();
       });
     }
   }
@@ -194,6 +196,9 @@ class _AuthGateState extends ConsumerState<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
+    // Listen for startup connection state
+    final startupConnectionState = ref.watch(startupConnectionProvider);
+    
     ref.listen<AuthState>(authProvider, (previous, next) {
       // Update login message based on state
       setState(() {
@@ -212,11 +217,18 @@ class _AuthGateState extends ConsumerState<AuthGate> {
 
     final authState = ref.watch(authProvider);
     
+    // Show startup connection screen if not connected yet
+    if (!startupConnectionState.isConnected && !_startupConnectionCompleted) {
+      return StartupConnectionScreen(
+        onConnected: _onStartupConnectionCompleted,
+      );
+    }
+    
     if (authState.isAuthenticated) {
       return const AuthStatusOverlay(
         child: HomeScreen(),
       );
-    } else if (authState.isLoading || !_initialAuthCheckCompleted) {
+    } else if (authState.isLoading) {
       return Scaffold(
         body: Center(
           child: Column(
@@ -225,7 +237,7 @@ class _AuthGateState extends ConsumerState<AuthGate> {
               const CircularProgressIndicator(),
               const SizedBox(height: 16),
               Text(
-                _initialAuthCheckCompleted ? 'Connecting to AICO...' : 'Starting AICO...',
+                'Authenticating...',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ],

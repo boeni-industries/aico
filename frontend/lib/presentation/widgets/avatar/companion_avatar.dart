@@ -17,14 +17,14 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   
-  ConnectionStatus _currentStatus = ConnectionStatus.connected;
+  InternalConnectionStatus _currentStatus = InternalConnectionStatus.connected;
   bool _isAuthenticated = false;
 
   @override
   void initState() {
     super.initState();
     
-    // Subtle pulse animation - like calm breathing
+    // Dynamic pulse animation - adapts to connection state
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 3000),
       vsync: this,
@@ -53,11 +53,30 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
   }
 
   bool _shouldPulse() {
-    return _currentStatus == ConnectionStatus.connected && _isAuthenticated;
+    // Enhanced pulsing logic for different states
+    if (!_isAuthenticated) return false;
+    
+    switch (_currentStatus) {
+      case InternalConnectionStatus.connected:
+        return true; // Healthy breathing
+      case InternalConnectionStatus.connecting:
+        return true; // Active connection pulse
+      default:
+        return false; // Static for issues
+    }
   }
 
   void _updateAnimationState() {
     if (_shouldPulse()) {
+      // Adjust pulse speed based on connection state
+      final duration = _currentStatus == InternalConnectionStatus.connecting
+          ? const Duration(milliseconds: 1500) // Faster for connecting
+          : const Duration(milliseconds: 3000); // Slower for connected
+      
+      if (_pulseController.duration != duration) {
+        _pulseController.duration = duration;
+        _pulseController.reset();
+      }
       _startPulsing();
     } else {
       _stopPulsing();
@@ -68,31 +87,32 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     
-    // Design principle: Soft purple accent for primary states, subtle indicators for issues
-    const softPurple = Color(0xFFB8A1EA); // Primary brand accent
+    // Enhanced color system for immersive status representation
     const coral = Color(0xFFED7867); // Error/warning accent
+    const emerald = Color(0xFF10B981); // Success/healthy state
+    const amber = Color(0xFFF59E0B); // Caution/transitional
+    const sapphire = Color(0xFF3B82F6); // Processing/connecting
     
     if (!_isAuthenticated) {
-      // Subtle coral for auth required - not alarming
       return isDark ? coral.withOpacity(0.7) : coral.withOpacity(0.8);
     }
     
     switch (_currentStatus) {
-      case ConnectionStatus.connected:
-        // Primary soft purple - healthy, connected state
-        return isDark ? softPurple.withOpacity(0.8) : softPurple;
-      case ConnectionStatus.connecting:
-        // Gentle blue pulse - transitional state
-        return isDark ? Colors.blue.shade300.withOpacity(0.7) : Colors.blue.shade400;
-      case ConnectionStatus.disconnected:
-        // Muted amber - temporary issue, not alarming
-        return isDark ? Colors.amber.shade300.withOpacity(0.6) : Colors.amber.shade500;
-      case ConnectionStatus.offline:
-        // Soft coral - network issue indicator
+      case InternalConnectionStatus.connected:
+        // Vibrant emerald for optimal connection - more celebratory
+        return isDark ? emerald.withOpacity(0.9) : emerald;
+      case InternalConnectionStatus.connecting:
+        // Dynamic sapphire for active connection attempts
+        return isDark ? sapphire.withOpacity(0.8) : sapphire;
+      case InternalConnectionStatus.disconnected:
+        // Warm amber for temporary disconnection
+        return isDark ? amber.withOpacity(0.7) : amber;
+      case InternalConnectionStatus.offline:
+        // Muted coral for network unavailability
         return isDark ? coral.withOpacity(0.6) : coral.withOpacity(0.7);
-      case ConnectionStatus.error:
-        // Slightly stronger coral for persistent errors
-        return isDark ? coral.withOpacity(0.8) : coral;
+      case InternalConnectionStatus.error:
+        // Stronger coral for persistent errors
+        return isDark ? coral.withOpacity(0.9) : coral;
     }
   }
 
@@ -102,15 +122,15 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
     }
     
     switch (_currentStatus) {
-      case ConnectionStatus.connected:
+      case InternalConnectionStatus.connected:
         return 'Ready to chat';
-      case ConnectionStatus.connecting:
+      case InternalConnectionStatus.connecting:
         return 'Connecting...';
-      case ConnectionStatus.disconnected:
+      case InternalConnectionStatus.disconnected:
         return 'Reconnecting in background';
-      case ConnectionStatus.offline:
+      case InternalConnectionStatus.offline:
         return 'Check network connection';
-      case ConnectionStatus.error:
+      case InternalConnectionStatus.error:
         return 'Connection issue - will retry automatically';
     }
   }

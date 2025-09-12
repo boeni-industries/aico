@@ -13,7 +13,7 @@ enum ConnectionMode {
   ipc, // Future implementation
 }
 
-enum ConnectionStatus {
+enum InternalConnectionStatus {
   connected,
   connecting,
   disconnected,
@@ -22,7 +22,7 @@ enum ConnectionStatus {
 }
 
 class ConnectionHealth {
-  final ConnectionStatus status;
+  final InternalConnectionStatus status;
   final DateTime lastSuccessful;
   final int consecutiveFailures;
   final String? lastError;
@@ -36,8 +36,8 @@ class ConnectionHealth {
     this.latency,
   });
 
-  bool get isHealthy => status == ConnectionStatus.connected && consecutiveFailures < 3;
-  bool get needsReconnection => consecutiveFailures >= 3 || status == ConnectionStatus.error;
+  bool get isHealthy => status == InternalConnectionStatus.connected && consecutiveFailures < 3;
+  bool get needsReconnection => consecutiveFailures >= 3 || status == InternalConnectionStatus.error;
 }
 
 class ConnectionManager {
@@ -49,7 +49,7 @@ class ConnectionManager {
   
   // Connection health monitoring
   ConnectionHealth _health = ConnectionHealth(
-    status: ConnectionStatus.disconnected,
+    status: InternalConnectionStatus.disconnected,
     lastSuccessful: DateTime.now(),
   );
   
@@ -79,18 +79,18 @@ class ConnectionManager {
   ConnectionHealth get health => _health;
   Stream<ConnectionHealth> get healthStream => _healthController.stream;
   Stream<bool> get offlineStream => _offlineController.stream;
-  bool get isOnline => _health.status != ConnectionStatus.offline;
-  bool get isConnected => _health.status == ConnectionStatus.connected;
+  bool get isOnline => _health.status != InternalConnectionStatus.offline;
+  bool get isConnected => _health.status == InternalConnectionStatus.connected;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    updateHealth(ConnectionStatus.connecting);
+    updateHealth(InternalConnectionStatus.connecting);
     
     // Check network connectivity first
     final connectivityResult = await _connectivity.checkConnectivity();
     if (connectivityResult.contains(ConnectivityResult.none)) {
-      updateHealth(ConnectionStatus.offline);
+      updateHealth(InternalConnectionStatus.offline);
       _isInitialized = true;
       return;
     }
@@ -120,10 +120,10 @@ class ConnectionManager {
     }
 
     if (connected) {
-      updateHealth(ConnectionStatus.connected);
+      updateHealth(InternalConnectionStatus.connected);
       _startHealthMonitoring();
     } else {
-      updateHealth(ConnectionStatus.error, 'All connection attempts failed');
+      updateHealth(InternalConnectionStatus.error, 'All connection attempts failed');
     }
 
     _isInitialized = true;
@@ -145,7 +145,7 @@ class ConnectionManager {
     }
 
     // Check if we're offline
-    if (_health.status == ConnectionStatus.offline) {
+    if (_health.status == InternalConnectionStatus.offline) {
       throw const OfflineException('Device is offline');
     }
 
@@ -160,7 +160,7 @@ class ConnectionManager {
         
         // Success - update health
         if (_health.consecutiveFailures > 0) {
-          updateHealth(ConnectionStatus.connected);
+          updateHealth(InternalConnectionStatus.connected);
         }
         
         return result;
@@ -169,9 +169,9 @@ class ConnectionManager {
         lastException = e is Exception ? e : Exception(e.toString());
         
         // Gracefully handle connection errors - update status immediately
-        ConnectionStatus newStatus = ConnectionStatus.error;
+        InternalConnectionStatus newStatus = InternalConnectionStatus.error;
         if (e is SocketException || e.toString().contains('connection refused')) {
-          newStatus = ConnectionStatus.disconnected;
+          newStatus = InternalConnectionStatus.disconnected;
           // Schedule background reconnection
           _scheduleReconnect();
         }
@@ -204,8 +204,8 @@ class ConnectionManager {
     
     // All attempts failed - gracefully handle without throwing
     final finalStatus = lastException.toString().contains('connection refused') 
-        ? ConnectionStatus.disconnected 
-        : ConnectionStatus.error;
+        ? InternalConnectionStatus.disconnected 
+        : InternalConnectionStatus.error;
     updateHealth(finalStatus, lastException?.toString());
     
     // Return a graceful failure instead of throwing
@@ -234,7 +234,7 @@ class ConnectionManager {
           
           // Update health with latency info
           updateHealth(
-            ConnectionStatus.connected,
+            InternalConnectionStatus.connected,
             null,
             0,
             stopwatch.elapsed,
@@ -286,7 +286,7 @@ class ConnectionManager {
       
       if (response.statusCode == 200) {
         updateHealth(
-          ConnectionStatus.connected,
+          InternalConnectionStatus.connected,
           null,
           0,
           stopwatch.elapsed,
@@ -297,7 +297,7 @@ class ConnectionManager {
       return false;
     } catch (e) {
       // Gracefully handle all connection errors without throwing
-      updateHealth(ConnectionStatus.error, e.toString());
+      updateHealth(InternalConnectionStatus.error, e.toString());
       AICOLog.debug('HTTP connection test failed',
         topic: 'network/connection/http_test', 
         extra: {'error': e.toString()});
@@ -374,12 +374,12 @@ class ConnectionManager {
   void _initializeConnectivityMonitoring() {
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen((result) {
       if (result.contains(ConnectivityResult.none)) {
-        updateHealth(ConnectionStatus.offline);
+        updateHealth(InternalConnectionStatus.offline);
         _offlineController.add(true);
       } else {
         _offlineController.add(false);
         // If we were offline and now have connectivity, try to reconnect
-        if (_health.status == ConnectionStatus.offline) {
+        if (_health.status == InternalConnectionStatus.offline) {
           _scheduleReconnect();
         }
       }
@@ -399,7 +399,7 @@ class ConnectionManager {
   }
   
   Future<void> _performHealthCheck() async {
-    if (_health.status == ConnectionStatus.offline) return;
+    if (_health.status == InternalConnectionStatus.offline) return;
     
     try {
       bool isHealthy = false;
@@ -416,16 +416,16 @@ class ConnectionManager {
           break;
       }
       
-      if (!isHealthy && _health.status == ConnectionStatus.connected) {
-        updateHealth(ConnectionStatus.disconnected, 'Health check failed - backend unavailable');
+      if (!isHealthy && _health.status == InternalConnectionStatus.connected) {
+        updateHealth(InternalConnectionStatus.disconnected, 'Health check failed - backend unavailable');
         _scheduleReconnect();
-      } else if (isHealthy && _health.status != ConnectionStatus.connected) {
+      } else if (isHealthy && _health.status != InternalConnectionStatus.connected) {
         // Backend came back online
-        updateHealth(ConnectionStatus.connected, null, 0);
+        updateHealth(InternalConnectionStatus.connected, null, 0);
       }
     } catch (e) {
       // Gracefully handle health check failures
-      updateHealth(ConnectionStatus.disconnected, 'Health check failed: ${e.toString()}');
+      updateHealth(InternalConnectionStatus.disconnected, 'Health check failed: ${e.toString()}');
       _scheduleReconnect();
       AICOLog.warn('Health check failed', 
         topic: 'network/connection/health_check',
@@ -459,18 +459,18 @@ class ConnectionManager {
   }
   
   void updateHealth(
-    ConnectionStatus status, [
+    InternalConnectionStatus status, [
     String? error,
     int? consecutiveFailures,
     Duration? latency,
   ]) {
     _health = ConnectionHealth(
       status: status,
-      lastSuccessful: status == ConnectionStatus.connected 
+      lastSuccessful: status == InternalConnectionStatus.connected 
         ? DateTime.now() 
         : _health.lastSuccessful,
       consecutiveFailures: consecutiveFailures ?? 
-        (status == ConnectionStatus.connected ? 0 : _health.consecutiveFailures),
+        (status == InternalConnectionStatus.connected ? 0 : _health.consecutiveFailures),
       lastError: error,
       latency: latency ?? _health.latency,
     );

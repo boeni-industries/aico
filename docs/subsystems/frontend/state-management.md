@@ -6,84 +6,108 @@ title: State Management Specification
 
 ## Overview
 
-AICO uses BLoC pattern with HydratedBloc for automatic state persistence and get_it for dependency injection. This provides reactive, testable state management supporting offline-first operation and cross-device synchronization.
+AICO uses **Riverpod** with StateNotifier pattern for reactive state management and dependency injection. This provides compile-time safe, testable state management supporting offline-first operation and automatic lifecycle management.
 
 ## Architecture
 
 ### Core Components
-- **BLoCs**: Handle state transitions through events and states
-- **Cubits**: Simplified state management for straightforward cases
-- **HydratedBloc**: Automatic state persistence to local storage
-- **get_it**: Service locator managing object lifecycles and dependencies
+- **StateNotifiers**: Handle state transitions through immutable state objects
+- **Providers**: Dependency injection and state access with compile-time safety
+- **Secure Storage**: Persistent storage for critical state (auth tokens, user preferences)
+- **Shared Preferences**: Non-sensitive settings and UI preferences
 
 ## State Categories
 
 ### Application State (Global)
 
-#### ConnectionBloc
-Manages backend connectivity with states: Connected, Connecting, Disconnected, Offline. Persists connection preferences, backend configuration, and network failure patterns for intelligent retry logic.
+#### AuthProvider (StateNotifier)
+Manages user authentication state including login/logout, token refresh, and auto-login. Persists authentication state through secure storage with automatic token lifecycle management.
 
-#### SettingsBloc  
-Handles user preferences including theme, locale, notifications, voice settings, privacy controls, and accessibility options. Full state persistence ensures settings survive app restarts.
+#### ThemeProvider (StateNotifier)
+Handles user preferences including theme mode (light/dark/system), high contrast settings, and accessibility options. State persistence through shared preferences ensures settings survive app restarts.
 
 ### Feature State (Domain-Specific)
 
-#### ConversationBloc
-Manages conversation state including message history, draft messages, typing indicators, and suggested responses. Persists recent conversations and drafts for continuity across sessions.
+#### ConversationProvider (StateNotifier)
+Manages conversation state including message history, sending/receiving messages, loading states, and error handling. Integrates with backend API for real-time conversation updates and optimistic UI updates.
 
-#### AvatarBloc
-Controls avatar expressions, animations, and emotional states. Persists customization preferences while maintaining real-time interaction responsiveness.
+#### ConnectionProvider (Planned)
+Will handle backend connectivity monitoring, automatic reconnection, and offline mode detection. Will provide connection status to other providers for graceful degradation.
 
-#### RelationshipBloc
-Tracks family member relationships, interaction history, and relationship insights. Maintains persistent relationship data while supporting dynamic interaction updates.
+#### SettingsProvider (Planned)
+Will manage application settings, user preferences, and configuration options with automatic persistence and validation.
 
 ### UI State (Ephemeral)
 
-#### NavigationCubit
-Manages current route, parameters, navigation history, and back button state. Only navigation preferences are persisted.
+#### Navigation State
+Managed through go_router with declarative routing. Navigation state is automatically managed by the router with deep linking support.
 
-#### UiStateCubit
-Handles transient UI elements like drawer state, active modals, expanded sections, and scroll positions. No persistence required.
+#### UI State
+Transient UI elements like loading states, modal visibility, and form validation are managed locally within widgets or through temporary providers that don't require persistence.
 
 ## State Persistence
 
-### HydratedBloc Implementation
-Automatic state persistence through `fromJson()` and `toJson()` methods with graceful error handling for migration and corruption scenarios.
+### Riverpod Persistence Strategy
+State persistence through platform-specific secure storage and shared preferences, with automatic restoration on app startup.
 
 ### Storage Hierarchy
-1. **Critical State**: Always persisted (settings, connection preferences)
-2. **Important State**: Size-limited persistence (conversation history)
-3. **Cache State**: Temporary persistence (UI preferences)
-4. **Ephemeral State**: Never persisted (loading states, animations)
+1. **Critical State**: Secure storage (JWT tokens, user credentials, encryption keys)
+2. **User Preferences**: Shared preferences (theme settings, app configuration)
+3. **Cache State**: Memory-only providers (API responses, temporary UI state)
+4. **Ephemeral State**: Widget-local state (loading indicators, form validation)
 
 ### Synchronization Strategy
-- **Local-First**: Immediate local updates with background sync
-- **Conflict Resolution**: Last-write-wins with user notification
-- **Offline Queue**: Actions queued when disconnected
-- **Cross-Device Sync**: Settings and conversations across trusted devices
+- **Optimistic Updates**: Immediate UI updates with background API calls
+- **Error Recovery**: Automatic retry with exponential backoff for failed operations
+- **State Reconciliation**: Periodic sync with backend to resolve any inconsistencies
+- **Offline Support**: Local state management with sync when connectivity restored
 
 ## Lifecycle Management
 
-### Dependency Registration
-Repositories registered as lazy singletons, feature BLoCs as factories for fresh instances, and global BLoCs as singletons for app-wide state.
+### Provider Lifecycle
+Riverpod automatically manages provider lifecycle - providers are created on first access and disposed when no longer needed. Global providers (auth, theme) persist throughout app lifecycle.
 
 ### Widget Integration
-Use `BlocProvider` for feature-specific BLoCs and `BlocConsumer` for combined state listening and UI building with side effect handling.
+Use `ConsumerWidget` or `Consumer` for reactive UI updates. StateNotifiers automatically notify listeners when state changes, triggering widget rebuilds only for affected components.
 
 ## Error Handling
 
-Base state classes include loading flags, error messages, and exceptions with automatic retry for transient errors, user-initiated retry for persistent errors, and graceful degradation when features are unavailable.
+State classes include loading flags, error messages, and error types. StateNotifiers handle errors through:
+- **Automatic Retry**: Exponential backoff for network errors
+- **User Feedback**: Clear error messages with actionable recovery options
+- **Graceful Degradation**: Fallback behavior when services are unavailable
+- **Error Boundaries**: Isolated error handling prevents cascading failures
 
 ## Testing & Performance
 
 ### Testing Strategy
-- **Unit Testing**: BLoC testing with `blocTest` for state transitions
-- **Integration Testing**: State persistence, cross-BLoC communication, and error scenarios
-- **Performance Testing**: State update efficiency and memory usage
+- **Unit Testing**: StateNotifier testing with provider overrides for isolated testing
+- **Widget Testing**: Consumer widget testing with mock providers
+- **Integration Testing**: End-to-end state flows and persistence scenarios
+- **Provider Testing**: Dependency injection and provider lifecycle testing
 
 ### Optimization
-- **State Efficiency**: Immutable objects, selective rebuilds with `buildWhen`, state normalization
-- **Persistence**: Selective persistence, compression for large objects, background persistence
-- **Memory Management**: Proper BLoC disposal and lifecycle management
+- **State Efficiency**: Immutable state objects, selective widget rebuilds, normalized state structure
+- **Provider Optimization**: Lazy loading, automatic disposal, dependency caching
+- **Memory Management**: Automatic provider lifecycle management, efficient state updates
+- **Performance Monitoring**: Provider rebuild tracking, state update profiling
 
-This specification ensures robust, performant state management supporting offline-first operation and cross-device synchronization.
+## Current Implementation Status
+
+### ✅ Implemented
+- **AuthProvider**: Complete authentication state management with token lifecycle
+- **ConversationProvider**: Full conversation state with message sending/receiving
+- **ThemeProvider**: Theme management with system preference detection
+- **Core Providers**: Networking, storage, and utility providers
+
+### 🚧 In Progress
+- **Connection Monitoring**: Backend connectivity status and offline detection
+- **Settings Management**: Comprehensive app settings and user preferences
+- **Error Recovery**: Enhanced error handling and retry mechanisms
+
+### 📋 Planned
+- **Avatar State**: Avatar animation and interaction state management
+- **Notification State**: Push notification and alert management
+- **Performance Monitoring**: State update metrics and optimization
+
+This specification reflects the current Riverpod-based architecture, providing robust, performant state management with compile-time safety and automatic lifecycle management.

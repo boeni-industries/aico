@@ -209,10 +209,22 @@ GoRouter(
 
 ### Navigation State Management
 
-#### Navigation BLoC
-- **Route changes**: Track and manage navigation state
-- **Deep link handling**: Process incoming deep links
-- **State persistence**: Maintain navigation state across sessions
+#### Navigation with Riverpod
+- **Route changes**: Track and manage navigation state through providers
+- **Deep link handling**: Process incoming deep links with go_router integration
+- **State persistence**: Maintain navigation preferences through shared preferences
+
+```dart
+// Navigation state provider
+final navigationStateProvider = StateNotifierProvider<NavigationNotifier, NavigationState>((ref) {
+  return NavigationNotifier();
+});
+
+// Current route provider
+final currentRouteProvider = Provider<String>((ref) {
+  return GoRouter.of(context).location;
+});
+```
 
 #### Route Parameters
 - **Type-safe parameters**: Strongly typed route parameters

@@ -43,7 +43,7 @@ Future<Uint8List> processImage(Uint8List imageData) async {
 ### Widget Optimization
 - **Const Constructors**: Use `const` wherever possible to prevent unnecessary rebuilds
 - **ListView.builder**: For large lists to recycle widgets efficiently
-- **BlocBuilder with buildWhen**: Selective rebuilds only when specific state changes
+- **Consumer with select**: Selective rebuilds only when specific state changes using Riverpod's select modifier
 - **RepaintBoundary**: Isolate expensive custom painting operations
 
 ## Memory Management
@@ -54,7 +54,7 @@ Future<Uint8List> processImage(Uint8List imageData) async {
 - **Cache Management**: Configure stale periods and maximum cache objects to prevent memory bloat
 
 ### Resource Cleanup
-- **Stream Disposal**: Always cancel subscriptions in BLoC `close()` methods
+- **Provider Disposal**: Riverpod automatically handles provider lifecycle and resource cleanup
 - **AutomaticKeepAlive**: Use for expensive widgets that should persist across rebuilds
 - **Memory Monitoring**: Track memory usage and trigger cleanup when thresholds are exceeded
 
@@ -71,10 +71,24 @@ Future<Uint8List> processImage(Uint8List imageData) async {
 
 ## State Management
 
-### BLoC Optimization
-- **Equatable**: Use for efficient state comparison and preventing unnecessary rebuilds
-- **Batch Updates**: Process multiple changes in single state updates to minimize widget rebuilds
-- **Selective Listening**: Use `buildWhen` to rebuild only when specific state properties change
+### Riverpod Optimization
+- **Immutable State**: Use immutable state objects with proper equality for efficient comparison
+- **Selective Watching**: Use `ref.watch` with select to rebuild only when specific state properties change
+- **Provider Caching**: Leverage Riverpod's automatic caching and dependency management
+- **State Normalization**: Structure state efficiently to minimize unnecessary provider updates
+
+```dart
+// Selective state watching for performance
+Widget build(BuildContext context, WidgetRef ref) {
+  // Only rebuilds when loading state changes
+  final isLoading = ref.watch(conversationProvider.select((state) => state.isLoading));
+  
+  // Only rebuilds when message count changes
+  final messageCount = ref.watch(conversationProvider.select((state) => state.messages.length));
+  
+  return /* Widget tree */;
+}
+```
 
 ## Network Performance
 

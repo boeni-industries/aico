@@ -158,26 +158,40 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> checkAuthStatus() async {
     debugPrint('AuthProvider: Checking auth status...');
     AICOLog.debug('Checking auth status', topic: 'auth/status/check');
-    final hasCredentials = await _checkAuthStatusUseCase.execute();
-    debugPrint('AuthProvider: Has stored credentials: $hasCredentials');
-    debugPrint('AuthProvider: Current auth state: ${state.isAuthenticated}');
-    AICOLog.debug('Auth status check result', 
-      topic: 'auth/status/result', 
-      extra: {
-        'has_credentials': hasCredentials, 
-        'is_authenticated': state.isAuthenticated
-      });
     
-    if (hasCredentials && !state.isAuthenticated) {
-      debugPrint('AuthProvider: Attempting auto-login...');
-      AICOLog.info('Credentials found, attempting auto-login', topic: 'auth/status/autologin_trigger');
-      await attemptAutoLogin();
-    } else if (!hasCredentials) {
-      debugPrint('AuthProvider: No stored credentials found');
-      AICOLog.debug('No stored credentials found', topic: 'auth/status/no_credentials');
-    } else if (state.isAuthenticated) {
-      debugPrint('AuthProvider: Already authenticated');
-      AICOLog.debug('Already authenticated', topic: 'auth/status/already_authenticated');
+    try {
+      final hasCredentials = await _checkAuthStatusUseCase.execute();
+      debugPrint('AuthProvider: Has stored credentials: $hasCredentials');
+      debugPrint('AuthProvider: Current auth state: ${state.isAuthenticated}');
+      AICOLog.debug('Auth status check result', 
+        topic: 'auth/status/result', 
+        extra: {
+          'has_credentials': hasCredentials, 
+          'is_authenticated': state.isAuthenticated
+        });
+      
+      if (hasCredentials && !state.isAuthenticated) {
+        debugPrint('AuthProvider: Attempting auto-login...');
+        AICOLog.info('Credentials found, attempting auto-login', topic: 'auth/status/autologin_trigger');
+        await attemptAutoLogin();
+      } else if (!hasCredentials) {
+        debugPrint('AuthProvider: No stored credentials found - clearing loading state');
+        AICOLog.debug('No stored credentials found', topic: 'auth/status/no_credentials');
+        // Ensure loading state is cleared when no credentials exist
+        state = state.copyWith(isLoading: false);
+      } else if (state.isAuthenticated) {
+        debugPrint('AuthProvider: Already authenticated');
+        AICOLog.debug('Already authenticated', topic: 'auth/status/already_authenticated');
+        // Ensure loading state is cleared when already authenticated
+        state = state.copyWith(isLoading: false);
+      }
+    } catch (e) {
+      debugPrint('AuthProvider: Error during auth status check: $e');
+      AICOLog.error('Auth status check failed', 
+        topic: 'auth/status/error', 
+        error: e);
+      // Clear loading state on any error to prevent infinite loading
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
