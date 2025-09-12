@@ -22,7 +22,7 @@ void main() async {
     encryptionService: encryptionService,
     tokenManager: tokenManager,
   );
-  final connectionManager = ConnectionManager(webSocketClient);
+  final connectionManager = ConnectionManager(webSocketClient, encryptionService);
   
   // Create API client with proper dependencies
   final apiClient = UnifiedApiClient(

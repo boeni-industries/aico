@@ -33,8 +33,9 @@ final webSocketClientProvider = Provider<WebSocketClient>((ref) {
 /// Connection manager provider
 final connectionManagerProvider = Provider<ConnectionManager>((ref) {
   final webSocketClient = ref.watch(webSocketClientProvider);
+  final encryptionService = ref.watch(networkingEncryptionServiceProvider);
   
-  final connectionManager = ConnectionManager(webSocketClient);
+  final connectionManager = ConnectionManager(webSocketClient, encryptionService);
   
   // Dispose when provider is disposed
   ref.onDispose(() {

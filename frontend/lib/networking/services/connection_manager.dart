@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/core/services/encryption_service.dart';
 import 'package:aico_frontend/networking/clients/websocket_client.dart';
 import 'package:aico_frontend/networking/exceptions/api_exceptions.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -42,6 +43,7 @@ class ConnectionHealth {
 
 class ConnectionManager {
   final WebSocketClient _wsClient;
+  final EncryptionService _encryptionService;
   final Connectivity _connectivity = Connectivity();
   
   ConnectionMode _currentMode = ConnectionMode.http; // REST-first architecture
@@ -71,7 +73,7 @@ class ConnectionManager {
   static const String _defaultWsUrl = 'ws://localhost:8772';
   static const String _defaultHttpUrl = 'http://localhost:8771';
 
-  ConnectionManager(this._wsClient) {
+  ConnectionManager(this._wsClient, this._encryptionService) {
     _initializeConnectivityMonitoring();
   }
 
@@ -421,7 +423,12 @@ class ConnectionManager {
         updateHealth(InternalConnectionStatus.disconnected, 'Health check failed - backend unavailable');
         _scheduleReconnect();
       } else if (isHealthy && _health.status != InternalConnectionStatus.connected) {
-        // Backend came back online
+        // Backend came back online - reset encryption session since backend lost all sessions
+        if (_encryptionService.isSessionActive) {
+          AICOLog.info('Backend reconnected - resetting encryption session', 
+            topic: 'network/connection/encryption_reset');
+          _encryptionService.resetSession();
+        }
         updateHealth(InternalConnectionStatus.connected, null, 0);
       }
     } catch (e) {
