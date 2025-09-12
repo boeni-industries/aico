@@ -4,7 +4,7 @@ import 'dart:math';
 
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/networking/clients/websocket_client.dart';
-import 'package:aico_frontend/networking/models/error_models.dart';
+import 'package:aico_frontend/networking/exceptions/api_exceptions.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 enum ConnectionMode {
@@ -56,6 +56,7 @@ class ConnectionManager {
   // Retry configuration
   static const int _maxRetries = 5;
   static const Duration _baseRetryDelay = Duration(seconds: 1);
+  static const Duration _healthCheckInterval = Duration(seconds: 15);
   static const Duration _maxRetryDelay = Duration(seconds: 30);
   
   // Connection monitoring
@@ -154,9 +155,7 @@ class ConnectionManager {
     for (int attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         final Future<T> future = operation();
-        final T result = timeout != null 
-          ? await future.timeout(timeout)
-          : await future;
+        final T result = await future;
         
         // Success - update health
         if (_health.consecutiveFailures > 0) {
@@ -271,18 +270,18 @@ class ConnectionManager {
   }
   
   Future<bool> _tryHttpConnection() async {
+    HttpClient? client;
     try {
       final stopwatch = Stopwatch()..start();
       
-      // Simple HTTP health check
-      final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 5);
+      // Use HttpClient directly to avoid Dio's debugger exception issues
+      client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 3);
       
       final request = await client.getUrl(Uri.parse('$_defaultHttpUrl/api/v1/health'));
       final response = await request.close();
       
       stopwatch.stop();
-      client.close();
       
       if (response.statusCode == 200) {
         updateHealth(
@@ -296,17 +295,19 @@ class ConnectionManager {
       
       return false;
     } catch (e) {
-      // Gracefully handle all connection errors without throwing
+      // Gracefully handle ALL connection errors including timeouts
       updateHealth(InternalConnectionStatus.error, e.toString());
       AICOLog.debug('HTTP connection test failed',
         topic: 'network/connection/http_test', 
         extra: {'error': e.toString()});
       return false;
+    } finally {
+      client?.close(force: true);
     }
   }
 
   bool _shouldFallback(dynamic error) {
-    if (error is NetworkException) {
+    if (error is ApiException) {
       // Fallback on connection errors, but not on auth errors
       return error is ConnectionException || 
              error is ServerException ||
@@ -388,7 +389,7 @@ class ConnectionManager {
   
   void _startHealthMonitoring() {
     _healthCheckTimer?.cancel();
-    _healthCheckTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+    _healthCheckTimer = Timer.periodic(_healthCheckInterval, (_) {
       _performHealthCheck();
     });
   }

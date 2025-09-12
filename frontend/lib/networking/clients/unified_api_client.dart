@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 
 import '../../core/logging/aico_log.dart';
 import '../../core/services/encryption_service.dart';
@@ -12,7 +10,7 @@ import '../services/connection_manager.dart';
 import '../services/token_manager.dart';
 
 /// Unified API client that handles both encrypted and unencrypted requests
-/// Uses Dio for primary requests with http as fallback
+/// Uses Dio exclusively for all HTTP operations
 class UnifiedApiClient {
   final EncryptionService _encryptionService;
   final TokenManager _tokenManager;
@@ -98,27 +96,15 @@ class UnifiedApiClient {
       await initialize();
     }
 
-    final needsEncryption = _requiresEncryption(endpoint);
-    
+    // All requests are encrypted - backend only supports encrypted connections
     try {
-      if (needsEncryption) {
-        return await _makeEncryptedRequest<T>(
-          method,
-          endpoint,
-          data: data,
-          fromJson: fromJson,
-          skipTokenRefresh: skipTokenRefresh,
-        );
-      } else {
-        return await _makeUnencryptedRequest<T>(
-          method,
-          endpoint,
-          data: data,
-          queryParameters: queryParameters,
-          fromJson: fromJson,
-          skipTokenRefresh: skipTokenRefresh,
-        );
-      }
+      return await _makeEncryptedRequest<T>(
+        method,
+        endpoint,
+        data: data,
+        fromJson: fromJson,
+        skipTokenRefresh: skipTokenRefresh,
+      );
     } catch (e) {
       AICOLog.error('API request failed', 
         topic: 'network/client/request/error',
@@ -307,104 +293,7 @@ class UnifiedApiClient {
     }
   }
 
-  /// Make unencrypted request using Dio with HTTP fallback
-  Future<T?> _makeUnencryptedRequest<T>(
-    String method,
-    String endpoint, {
-    Map<String, dynamic>? data,
-    Map<String, String>? queryParameters,
-    T Function(Map<String, dynamic>)? fromJson,
-    bool skipTokenRefresh = false,
-  }) async {
-    try {
-      // Try Dio first
-      final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh);
-      
-      final response = await _dio!.request(
-        endpoint,
-        data: data,
-        queryParameters: queryParameters,
-        options: Options(
-          method: method,
-          headers: headers,
-        ),
-      );
 
-      return _processResponse<T>(response.data, fromJson);
-    } catch (e) {
-      AICOLog.warn('Dio request failed, using HTTP fallback', 
-        topic: 'network/client/fallback',
-        extra: {'method': method, 'endpoint': endpoint, 'error': e.toString()});
-      
-      // Fallback to HTTP client
-      return await _makeHttpRequest<T>(
-        method,
-        endpoint,
-        data: data,
-        queryParameters: queryParameters,
-        fromJson: fromJson,
-        skipTokenRefresh: skipTokenRefresh,
-      );
-    }
-  }
-
-  /// Fallback HTTP request
-  Future<T?> _makeHttpRequest<T>(
-    String method,
-    String endpoint, {
-    Map<String, dynamic>? data,
-    Map<String, String>? queryParameters,
-    T Function(Map<String, dynamic>)? fromJson,
-    bool skipTokenRefresh = false,
-  }) async {
-    final uri = Uri.parse('$_baseUrl$endpoint').replace(
-      queryParameters: queryParameters,
-    );
-
-    final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh);
-    
-    late http.Response response;
-    
-    switch (method.toUpperCase()) {
-      case 'GET':
-        response = await http.get(uri, headers: headers);
-        break;
-      case 'POST':
-        response = await http.post(
-          uri,
-          headers: headers,
-          body: data != null ? json.encode(data) : null,
-        );
-        break;
-      case 'PUT':
-        response = await http.put(
-          uri,
-          headers: headers,
-          body: data != null ? json.encode(data) : null,
-        );
-        break;
-      case 'DELETE':
-        response = await http.delete(uri, headers: headers);
-        break;
-      default:
-        debugPrint('❌ [UnifiedApiClient] Unsupported HTTP method: $method');
-        return null;
-    }
-
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      final responseData = json.decode(response.body);
-      AICOLog.debug('HTTP request successful', 
-        topic: 'network/http/success',
-        extra: {'method': method, 'endpoint': endpoint, 'status_code': response.statusCode});
-      return _processResponse<T>(responseData, fromJson);
-    } else {
-      debugPrint('❌ [UnifiedApiClient] HTTP request failed: ${response.statusCode}');
-      AICOLog.error('HTTP request failed', 
-        topic: 'network/http/error',
-        extra: {'method': method, 'endpoint': endpoint, 'status_code': response.statusCode, 'response_body': response.body});
-      return null; // Return null instead of throwing
-    }
-  }
 
   /// Convenience method for GET requests
   Future<T?> get<T>(String endpoint, {Map<String, dynamic>? queryParameters}) async {
@@ -578,16 +467,6 @@ class UnifiedApiClient {
     return headers;
   }
 
-  /// Determine if endpoint requires encryption
-  bool _requiresEncryption(String endpoint) {
-    // Public endpoints that don't require encryption (must match backend middleware)
-    const publicEndpoints = [
-      '/health',
-      '/handshake',
-    ];
-
-    return !publicEndpoints.any((public) => endpoint.startsWith(public));
-  }
 
   /// Convert DioException to appropriate exception type
   Exception _convertDioException(DioException e) {

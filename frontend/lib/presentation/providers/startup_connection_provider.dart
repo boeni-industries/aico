@@ -138,20 +138,22 @@ class StartupConnectionNotifier extends StateNotifier<StartupConnectionState> {
     }
   }
 
-  /// Test connection with isolated HTTP request
+  /// Test connection with HttpClient (original approach that worked)
   Future<bool> _testConnection() async {
+    HttpClient? client;
     try {
-      final client = HttpClient();
+      client = HttpClient();
       client.connectionTimeout = const Duration(seconds: 2);
       
       final request = await client.getUrl(Uri.parse('http://localhost:8771/api/v1/health'));
       final response = await request.close();
       
-      client.close();
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('StartupConnection: Connection test failed: $e');
       return false;
+    } finally {
+      client?.close(force: true);
     }
   }
 
