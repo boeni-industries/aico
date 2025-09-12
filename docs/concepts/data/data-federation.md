@@ -73,7 +73,7 @@ Different data types have different synchronization policies based on their impo
 | Vector Embeddings | Low | On-demand sync | ChromaDB |
 | Analytics Data | Low | Periodic batch sync | DuckDB |
 | Media Files | Low | Thumbnail only by default | File system |
-| Cache Data | None | Local only | RocksDB |
+| Cache Data | None | Local only | LMDB |
 
 **Sync Characteristics**:
 - **Different sync policies per database and data type**
@@ -136,8 +136,6 @@ AICO implements sophisticated conflict resolution strategies tailored to differe
 
 **Planned Implementation Timeline**:
 1. **MVP (Current)**: Single device with local data only ✅
-2. **Post-MVP**: Add federated device network as an enhancement ⏳
-3. **Future**: Advanced conflict resolution and offline operation ⏳
 
 ## Security Considerations
 

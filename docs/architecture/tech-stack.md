@@ -47,7 +47,7 @@ AICO employs a specialized multi-database architecture optimized for local-first
 | **libSQL** | Primary storage | Modern SQLite fork with encryption, improved concurrency, and vector extensions |
 | **DuckDB** | Analytical engine | Columnar storage for efficient OLAP workloads and complex analytics |
 | **ChromaDB** | Vector database | Embedded vector storage with document metadata and similarity search |
-| **RocksDB** | Key-value store (optional) | Ultra-fast access for performance-critical paths and caching |
+| **LMDB** | Key-value store (optional) | High-performance, memory-mapped key-value store for session data |
 | **Sentence Transformers** | Embedding generation | Efficient text embedding models for semantic understanding |
 | **P2P Sync Protocol** | Federated device sync | Custom protocol for secure device-to-device synchronization |
 

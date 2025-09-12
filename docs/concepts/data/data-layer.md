@@ -14,7 +14,7 @@ AICO's data layer provides local-first, privacy-preserving storage for the AI co
 **Planned for Future:**
 - ⏳ **ChromaDB**: Vector database for AI embeddings and semantic search
 - ⏳ **DuckDB**: Analytics engine for conversation analysis
-- ⏳ **RocksDB**: High-performance cache for session data
+- ⏳ **LMDB**: High-performance cache for session data
 
 ## Architecture Overview
 
@@ -43,7 +43,7 @@ classDiagram
         OLAP queries
     }
     
-    class RocksDB {
+    class LMDB {
         ⏳ CACHE LAYER
         Session data
         High-performance KV
@@ -52,7 +52,7 @@ classDiagram
     AICO_DATA_LAYER --> libSQL
     AICO_DATA_LAYER -.-> ChromaDB
     AICO_DATA_LAYER -.-> DuckDB
-    AICO_DATA_LAYER -.-> RocksDB
+    AICO_DATA_LAYER -.-> LMDB
 ```
 
 **Current Architecture Principles:**
@@ -129,7 +129,7 @@ conn.execute("INSERT INTO logs (timestamp, level, message) VALUES (?, ?, ?)",
 - Store embeddings with metadata in ChromaDB
 - Provide semantic search API for conversation history
 
-### 4. Cache Layer: RocksDB ⏳
+### 4. Cache Layer: LMDB ⏳
 
 **Status**: Planned for future implementation.
 
@@ -190,7 +190,7 @@ conn.execute("INSERT INTO logs (timestamp, level, message) VALUES (?, ?, ?)",
 **Future Multi-Database Performance**:
 - **Specialized Workloads**: Each database optimized for specific use cases
 - **Query Routing**: Automatic selection of optimal database for each query type
-- **Caching Strategy**: Hot data in RocksDB, analytical queries in DuckDB
+- **Caching Strategy**: Hot data in LMDB, analytical queries in DuckDB
 
 ## Architecture Rationale
 

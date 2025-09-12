@@ -174,7 +174,7 @@ AICO uses UV workspace management with a unified `pyproject.toml` at the root an
 > **Benefits of UV Workspace:**
 > - Single environment eliminates activation/deactivation complexity
 > - Consistent dependency resolution across all components
-> - Faster installs and better caching
+> - **Cache**: LMDB for high-performance session caching
 > - Simplified IDE configuration (one Python interpreter)
 > - Automatic shared library integration
 

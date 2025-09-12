@@ -45,7 +45,7 @@ Build **advanced infrastructure** for production deployment and extensibility. *
 - [ ] **Lifecycle Management**: Support 10+ concurrent plugins
 
 ### Advanced Resource Management
-- [ ] **RocksDB Integration**: Optional high-performance key-value store for caching
+- [ ] **LMDB Integration**: Optional high-performance key-value store for caching
 - [ ] **Advanced Job Scheduler**: Complex task dependencies and workflows
 - [ ] **Resource Optimization**: Dynamic resource allocation based on system load
 - [ ] **Performance Profiling**: Built-in profiling and optimization tools

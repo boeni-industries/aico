@@ -5,7 +5,7 @@
 ### Phase 1: Session Context Management (Month 1)
 
 **Core Deliverables:**
-- Working memory implementation with RocksDB (`shared/aico/ai/memory/working.py`)
+- Working memory implementation with LMDB (`shared/aico/ai/memory/working.py`)
 - Basic session state persistence following AICO patterns
 - Simple thread continuation logic integrated with existing ThreadManager
 - Foundation context assembly framework (`shared/aico/ai/memory/context.py`)
@@ -213,7 +213,7 @@ hardware:
 - **ChromaDB**: Vector storage for semantic analysis
 - **Sentence Transformers**: Embedding models for semantic similarity
 - **libSQL**: Encrypted conversation persistence
-- **RocksDB**: High-performance working memory storage
+- **LMDB**: High-performance working memory storage
 
 ### Internal Dependencies
 - **ThreadManager Service**: Core thread resolution logic

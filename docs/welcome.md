@@ -186,7 +186,7 @@ AICO is an open experiment—all code and progress are public. Whether you want 
   - **Component**: Individual functional units (e.g., Trait Vector, Appraisal Engine)
 
 - **Key Technologies:**
-  - **Backend:** Python, FastAPI, ZeroMQ, Protocol Buffers, libSQL, DuckDB, ChromaDB, RocksDB
+  - **Backend:** Python, FastAPI, ZeroMQ, Protocol Buffers, libSQL, DuckDB, ChromaDB, LMDB
   - **Frontend:** Flutter (UI), WebView (Three.js/Ready Player Me/TalkingHead.js for avatar)
   - **Modelservice:** REST API gateway for LLM inference (Ollama integration)
   - **Admin Tools:** React-based Admin UI, Python CLI (Typer, Rich)

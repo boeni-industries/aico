@@ -43,7 +43,7 @@ Each database uses its optimal encryption method for maximum performance and rel
 
 - **libSQL**: SQLCipher-style encryption via PRAGMA statements with PBKDF2 key derivation
 - **DuckDB**: Built-in AES-256 encryption via PRAGMA statements
-- **RocksDB**: Native EncryptedEnv for transparent key-value encryption
+- **LMDB**: Native EncryptedEnv for transparent key-value encryption
 - **ChromaDB**: Custom file-level encryption wrapper
 
 **Implementation Example**:

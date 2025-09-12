@@ -11,7 +11,7 @@ AICO's memory system implements a sophisticated four-tier architecture designed 
 **Purpose**: Real-time conversation state and immediate context management
 
 **Implementation**:
-- **Storage**: RocksDB for high-performance key-value operations
+- **Storage**: LMDB (Lightning Memory-Mapped Database) for high-performance, memory-mapped key-value operations.
 - **Scope**: Current session, active threads, immediate context
 - **Lifecycle**: Ephemeral with periodic persistence to libSQL
 - **Performance**: Sub-millisecond access, in-memory caching

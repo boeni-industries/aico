@@ -19,7 +19,7 @@ The working memory system serves as AICO's active consciousness during conversat
 - **Recovery Mechanism**: Periodic snapshots enable seamless session restoration
 
 **Dual-Storage Architecture:**
-The system employs a two-tier approach for optimal performance and resilience. RocksDB provides the high-performance ephemeral layer where active conversations live, enabling sub-millisecond context retrieval. Simultaneously, periodic snapshots flow to encrypted libSQL storage, ensuring conversations can resume seamlessly even after unexpected system restarts.
+The system employs a two-tier approach for optimal performance and resilience. LMDB provides the high-performance ephemeral layer where active conversations live, enabling sub-millisecond context retrieval. Simultaneously, periodic snapshots flow to encrypted libSQL storage, ensuring conversations can resume seamlessly even after unexpected system restarts.
 
 ### Thread Resolution Strategy
 
@@ -45,7 +45,7 @@ The memory system is implemented at `shared/aico/ai/memory/` following AICO's es
 shared/aico/ai/memory/
 ├── __init__.py          # Module exports and public interface
 ├── manager.py           # MemoryManager - central coordinator
-├── working.py           # WorkingMemoryStore - RocksDB session context
+├── working.py           # WorkingMemoryStore - LMDB session context
 ├── episodic.py          # EpisodicMemoryStore - encrypted libSQL conversations
 ├── semantic.py          # SemanticMemoryStore - ChromaDB knowledge base
 ├── procedural.py        # ProceduralMemoryStore - libSQL user patterns
@@ -54,7 +54,7 @@ shared/aico/ai/memory/
 ```
 
 **Storage Technologies:**
-- **Working Memory**: RocksDB for high-performance ephemeral storage
+- **Working Memory**: LMDB for high-performance ephemeral storage
 - **Episodic Memory**: Encrypted libSQL for conversation history persistence  
 - **Semantic Memory**: ChromaDB for vector similarity search and knowledge storage
 - **Procedural Memory**: Encrypted libSQL for user patterns and behavioral data

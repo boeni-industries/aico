@@ -52,7 +52,7 @@ AICO's architecture supports both coupled (same device) and detached (separate d
 #### Backend Security Responsibilities
 
 - **Data Encryption**: 
-  - Database-native encryption (SQLCipher, DuckDB, RocksDB)
+  - Database-native encryption (SQLCipher, DuckDB, LMDB)
   - File-level encryption wrapper for generic files
   - Key derivation (Argon2id)
   - Master key management
@@ -138,7 +138,7 @@ Each database uses its optimal encryption method for maximum performance and rel
 
 - **libSQL**: SQLCipher-style encryption via PRAGMA statements with PBKDF2 key derivation (✅ implemented)
 - **DuckDB**: Built-in AES-256 encryption via PRAGMA statements (🚧 planned)
-- **RocksDB**: Native EncryptedEnv for transparent key-value encryption (🚧 planned)
+- **LMDB**: Native EncryptedEnv for transparent key-value encryption (🚧 planned)
 - **ChromaDB**: Custom file-level encryption wrapper (🚧 planned)
   - **Forward Secrecy**: Ensures past data remains secure even if keys are compromised
 - **Memory Protection**: Sensitive data in memory is protected against unauthorized access
@@ -193,7 +193,7 @@ AICO employs a comprehensive approach to key management that combines secure key
   | Context | Memory | Iterations | Parallelism | AICO Usage |
   |---------|--------|------------|-------------|--------|
   | Master Key | 1GB | 3 | 4 | Initial login, derives all other keys |
-  | Database Encryption | 256MB | 2 | 2 | SQLCipher, DuckDB, RocksDB keys |
+  | Database Encryption | 256MB | 2 | 2 | SQLCipher, DuckDB, LMDB keys |
   | File Encryption | 128MB | 1 | 2 | Generic file encryption wrapper |
   | Authentication | 64MB | 1 | 1 | Device pairing, roaming authentication |
 
@@ -374,7 +374,7 @@ AICO's architecture requires specific security implementations for both frontend
 
 | Feature | Implementation | Rationale |
 |---------|----------------|------------|
-| **Database Encryption** | SQLCipher, DuckDB, RocksDB native encryption | Core protection for all database files using optimal encryption methods |
+| **Database Encryption** | SQLCipher, DuckDB, LMDB native encryption | Core protection for all database files using optimal encryption methods |
 | **Key Derivation** | Argon2id with context-specific parameters | Secure generation of encryption keys from master password |
 | **Secure Key Storage** | Python keyring library with platform backends | Platform-native secure storage of cryptographic keys |
 | **Authentication Service** | Token-based authentication with JWTs | Verify user identity and manage sessions across both coupled and detached modes |

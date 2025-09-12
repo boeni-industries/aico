@@ -19,8 +19,11 @@ Storage Architecture:
 - Configurable retention policies based on session activity and thread importance
 
 Technologies & Dependencies:
-- RocksDB: High-performance embedded key-value store optimized for SSD storage
-  Rationale: Provides excellent read/write performance for conversation data with built-in compression and TTL
+- LMDB (Lightning Memory-Mapped Database): High-performance, memory-mapped key-value store.
+  Rationale: Offers performance competitive with RocksDB, especially for read-heavy workloads, but with a much simpler, dependency-free installation, making it ideal for user deployment.
+  Python Integration: The `lmdb` package provides pre-compiled binaries for all major platforms.
+  Installation: `uv add lmdb`
+  Platform Support: Linux, macOS, and Windows are fully supported out-of-the-box.
 - asyncio: Asynchronous I/O operations for non-blocking memory access
 - dataclasses: Structured representation of session and thread context data
 - datetime: Temporal operations for expiration policies and session timing
