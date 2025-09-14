@@ -382,7 +382,7 @@ class MemoryManager(BaseAIProcessor):
             "conversation_phase": context.conversation_phase
         }
         
-        await self._working_store.store(interaction_data)
+        await self._working_store.store_message(context.thread_id, interaction_data)
     
     async def _assemble_context(self, context: ProcessingContext) -> Dict[str, Any]:
         """Assemble relevant memory context for processing"""
@@ -407,7 +407,7 @@ class MemoryManager(BaseAIProcessor):
             }
             
             if self._working_store:
-                working_context = await self._working_store.get_thread_context(context.thread_id)
+                working_context = await self._working_store.retrieve_thread_history(context.thread_id)
                 basic_context["memories"] = working_context
                 basic_context["total_items"] = len(working_context)
                 

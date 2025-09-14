@@ -470,23 +470,25 @@ class ConversationEngine(BaseService):
                 thread_id=thread.thread_id,
                 user_id=thread.user_context.user_id,
                 request_id=request_id,
-                message_content=message.content,
+                message_content=message.message.text, # Correctly access the text content
                 message_type="text",
                 turn_number=thread.turn_number,
                 conversation_phase=thread.conversation_phase,
                 user_name=thread.user_context.username,
                 relationship_type=thread.user_context.relationship_type,
-                conversation_style=thread.user_context.conversation_style
+                conversation_style=thread.user_context.conversation_style,
+                shared_state={}
             )
             
             try:
-                # Process memory retrieval
-                result = await memory_processor.retrieve_memories(context)
-                if request_id in self.pending_responses:
-                    self.pending_responses[request_id]["memory_data"] = result
-                    self.logger.debug(f"Memory retrieval completed for {request_id}")
+                # Process memory operations (store and retrieve)
+                result = await memory_processor.process(context)
+                if request_id in self.pending_responses and result.success:
+                    # The result data is now in context.shared_state
+                    self.pending_responses[request_id]["memory_data"] = context.shared_state.get("memory_context")
+                    self.logger.debug(f"Memory processing completed for {request_id}")
             except Exception as e:
-                self.logger.error(f"Memory retrieval failed for {request_id}: {e}")
+                self.logger.error(f"Memory processing failed for {request_id}: {e}")
         
         # Always mark as ready (no blocking)
         if request_id in self.pending_responses:
