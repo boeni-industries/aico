@@ -44,6 +44,7 @@ import aico.data.schemas.core
 from cli.utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
 from cli.utils.timezone import format_timestamp_local, get_timezone_suffix
 from cli.utils.logging import initialize_cli_logging, get_cli_logger
+from cli.utils.lmdb_utils import initialize_lmdb_cli
 
 def database_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
@@ -275,6 +276,9 @@ def init(
         # Only show keyring message if master password was actually created
         if master_password_was_created:
             console.print("🔐 Master password stored in system keyring")
+
+        # Also initialize the LMDB database for working memory
+        initialize_lmdb_cli(config=config)
         
     except Exception as e:
         console.print(f"❌ [red]Failed to create database: {e}[/red]")

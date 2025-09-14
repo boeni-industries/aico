@@ -58,6 +58,7 @@ from cli.commands.bus import app as bus_app
 from cli.commands.scheduler import app as scheduler_app
 from cli.commands.modelservice import app as modelservice_app
 from cli.commands.ollama import app as ollama_app
+from cli.commands.lmdb import app as lmdb_app
 from cli.utils.platform import get_platform_chars
 
 # Get platform-appropriate characters
@@ -74,6 +75,7 @@ app = typer.Typer(
 app.add_typer(config_app, name="config", help=f"{chars['config']} Configuration management")
 app.add_typer(version_app, name="version", help=f"{chars['package']} Version and build information") 
 app.add_typer(database_app, name="db", help=f"{chars['database']} Database management")
+app.add_typer(lmdb_app, name="lmdb", help=f"{chars['database']} LMDB working memory management")
 app.add_typer(security_app, name="security", help=f"{chars['security']} Security and encryption")
 app.add_typer(logs_app, name="logs", help=f"{chars['logs']} Log management and analysis")
 app.add_typer(scheduler_app, name="scheduler", help="⏰ Task scheduler management")
@@ -109,6 +111,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
         commands = [
             (chars["package"], "version", "Manage and synchronize versions across all AICO system parts"),
             (chars["database"], "db", "Database initialization, status, and management"),
+            (chars["database"], "lmdb", "LMDB working memory management"),
             (chars["security"], "security", "Master password setup and security management"),
             (chars["config"], "config", "Configuration management and validation"),
             (chars["logs"], "logs", "Log management and analysis"),

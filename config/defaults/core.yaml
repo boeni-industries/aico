@@ -303,3 +303,13 @@ personality:
   consistency_weight: 0.7
   adaptation_weight: 0.3
 
+# Memory System Configuration
+memory:
+  working:
+    filename: "working_memory" # For WorkingMemoryStore (LMDB)
+    map_size_mb: 100 # Default LMDB map size
+    # Named databases (sub-databases) within the LMDB environment
+    named_databases:
+      - "conversation_history"
+      - "message_index"
+      - "user_state"
