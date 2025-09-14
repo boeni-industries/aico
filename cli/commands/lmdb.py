@@ -80,22 +80,41 @@ def status():
 
     console.print(table)
 
-@app.command(name="ls", help="List all named sub-databases.")
+@app.command(name="ls", help="List all named sub-databases and their record counts.")
 def ls():
-    """List all named sub-databases within the LMDB environment."""
-    dbs = list_named_databases()
+    """List all named sub-databases and their record counts."""
+    status_data = get_lmdb_status_cli()
+    if not status_data["exists"]:
+        console.print("[red]Error: LMDB database not found. Run 'aico db init' first.[/red]")
+        raise typer.Exit(1)
+
+    if status_data.get("error"):
+        console.print(f"[red]Error accessing LMDB database: {status_data['error']}[/red]")
+        raise typer.Exit(1)
+
     table = Table(
-        title="✨ [bold cyan]Named LMDB Sub-Databases[/bold cyan]",
+        title="✨ [bold cyan]LMDB Sub-Databases[/bold cyan]",
         title_justify="left",
         border_style="bright_blue",
         header_style="bold yellow",
         box=box.SIMPLE_HEAD,
         padding=(0, 1)
     )
+    
     table.add_column("Database Name", style="cyan", justify="left")
-    for db_name in dbs:
-        table.add_row(db_name)
+    table.add_column("Records", style="white", justify="right")
+
+    db_stats = status_data.get("db_stats", {})
+    if not db_stats:
+        console.print("[yellow]No sub-databases found or database is empty.[/yellow]")
+        return
+
+    for name, count in sorted(db_stats.items()):
+        table.add_row(name, f"{count:,}")
+    
+    console.print()
     console.print(table)
+    console.print()
 
 @app.command(name="count", help="Count entries in a specific sub-database.")
 def count(db_name: str = typer.Argument(..., help="The name of the sub-database to count.")):

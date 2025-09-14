@@ -45,40 +45,42 @@ def list_named_databases(config: Optional[ConfigurationManager] = None) -> list[
 
 def get_lmdb_status_cli(config: Optional[ConfigurationManager] = None) -> dict:
     """Get the status of the LMDB database for CLI display."""
+    if config is None:
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+
     db_path = get_lmdb_path(config)
     status = {
         "path": str(db_path),
         "exists": db_path.exists(),
         "size_mb": None,
-        "entries": None,
+        "db_stats": {},
     }
 
-    if db_path.exists():
-        try:
-            env = lmdb.open(str(db_path), readonly=True)
-            with env.begin() as txn:
-                stats = txn.stat()
-                status["entries"] = stats['entries']
-            status["size_mb"] = round(db_path.stat().st_size / (1024 * 1024), 2)
-            env.close()
-        except Exception as e:
-            status["error"] = str(e)
-    
-    if status["exists"] and not status.get("error"):
-        try:
-            env = lmdb.open(str(db_path), readonly=True)
-            named_dbs = list_named_databases(config)
-            all_dbs = [None] + [db.encode('utf-8') for db in named_dbs]
-            db_stats = {}
-            with env.begin() as txn:
-                for db_key in all_dbs:
-                    sub_db = env.open_db(db_key, txn=txn)
-                    db_name = db_key.decode('utf-8') if db_key is not None else "(main)"
-                    db_stats[db_name] = txn.stat(sub_db)["entries"]
-            status["db_stats"] = db_stats
-            env.close()
-        except Exception as e:
-            status["error"] = f"Could not read sub-db stats: {e}"
+    if not db_path.exists():
+        return status
+
+    try:
+        named_dbs = list_named_databases(config)
+        env = lmdb.open(str(db_path), readonly=True, max_dbs=len(named_dbs) + 1)
+        db_stats = {}
+
+        with env.begin() as txn:
+            # Main DB
+            main_db = env.open_db(None, txn=txn)
+            db_stats["(main)"] = txn.stat(main_db)["entries"]
+            # Named DBs
+            for db_name in named_dbs:
+                sub_db = env.open_db(db_name.encode('utf-8'), txn=txn)
+                db_stats[db_name] = txn.stat(sub_db)["entries"]
+        
+        status["db_stats"] = db_stats
+        status["size_mb"] = round(db_path.stat().st_size / (1024 * 1024), 2)
+        env.close()
+
+    except Exception as e:
+        status["error"] = str(e)
+
 
     return status
 
@@ -99,7 +101,11 @@ def dump_lmdb_db(db_name: str, limit: int, config: Optional[ConfigurationManager
     table.add_column("Key", style="cyan", justify="left")
     table.add_column("Value", style="white", justify="left")
 
-    env = lmdb.open(str(db_path), readonly=True)
+    if config is None:
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+    named_dbs = list_named_databases(config)
+    env = lmdb.open(str(db_path), readonly=True, max_dbs=len(named_dbs) + 1)
     db_key = db_name.encode('utf-8') if db_name != "(main)" else None
     
     with env.begin() as txn:
