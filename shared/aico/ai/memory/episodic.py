@@ -58,25 +58,35 @@ class EpisodicMemoryStore:
         self._max_thread_length = memory_config.get("max_thread_length", 1000)
     
     async def initialize(self) -> None:
-        """Initialize encrypted libSQL connection - Phase 1 scaffolding"""
+        """Initialize episodic memory store - Phase 1 scaffolding"""
         if self._initialized:
             return
             
-        logger.info(f"Initializing episodic memory store at {self._db_path}")
+        logger.info("Initializing episodic memory store (Phase 1 scaffolding)")
         
-        try:
-            # TODO Phase 1: Implement encrypted libSQL connection
-            # - Create EncryptedLibSQLConnection with AICO patterns
-            # - Connect to database
-            # - Create schema tables
-            # - Start maintenance tasks
-            
-            self._initialized = True
-            logger.info("Episodic memory store initialized (scaffolding)")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize episodic memory store: {e}")
-            raise
+        # TODO Phase 1: Initialize libSQL database
+        # - Create conversation_entries table
+        # - Create indexes for efficient querying
+        # - Set up encryption if configured
+        
+        self._initialized = True
+        logger.info("Episodic memory store initialized (scaffolding mode)")
+    
+    def _parse_timestamp(self, timestamp_value):
+        """Parse timestamp consistently, handling Z suffix format"""
+        if isinstance(timestamp_value, str):
+            # Parse timestamp as UTC (remove timezone info for consistent comparison)
+            if timestamp_value.endswith('Z'):
+                return datetime.fromisoformat(timestamp_value[:-1])
+            elif '+' in timestamp_value or timestamp_value.endswith('+00:00'):
+                return datetime.fromisoformat(timestamp_value.replace('+00:00', ''))
+            else:
+                # Assume UTC if no timezone info
+                return datetime.fromisoformat(timestamp_value)
+        elif isinstance(timestamp_value, datetime):
+            return timestamp_value
+        else:
+            return datetime.utcnow()
     
     async def store(self, data: Dict[str, Any]) -> bool:
         """Store conversation entry - Phase 1 scaffolding"""
@@ -92,7 +102,7 @@ class EpisodicMemoryStore:
                 message_content=data["message_content"],
                 message_type=data.get("message_type", "text"),
                 role=data.get("role", "user"),
-                timestamp=data.get("timestamp", datetime.utcnow()),
+                timestamp=self._parse_timestamp(data.get("timestamp", datetime.utcnow())),
                 turn_number=data.get("turn_number", 0),
                 metadata=data.get("metadata", {})
             )

@@ -138,7 +138,7 @@ class MemoryManager(BaseAIProcessor):
         self._memory_config = self.config.get("memory", {})
         self._consolidation_interval = self._memory_config.get("consolidation_interval_hours", 24)
         
-        logger.info("MemoryManager initialized with configuration")
+        logger.info("[DEBUG] MemoryManager: Initialized with configuration")
         logger.debug(f"Memory config: {self._memory_config}")
         
     async def initialize(self) -> None:
@@ -146,7 +146,7 @@ class MemoryManager(BaseAIProcessor):
         if self._initialized:
             return
             
-        logger.info("Initializing memory manager")
+        logger.info("[DEBUG] MemoryManager: Initializing memory components.")
         
         try:
             # Phase 1: Initialize working memory (immediate)
@@ -198,6 +198,7 @@ class MemoryManager(BaseAIProcessor):
             raise
     
     async def process(self, context: ProcessingContext) -> ProcessingResult:
+        logger.info("[DEBUG] MemoryManager: process() called.")
         """
         Process memory operations based on context.
         
@@ -209,6 +210,7 @@ class MemoryManager(BaseAIProcessor):
         - Phase 2+: Multi-tier context assembly
         """
         if not self._initialized:
+            logger.info("[DEBUG] MemoryManager: Lazy initializing on first process call.")
             await self.initialize()
             
         start_time = datetime.utcnow()
@@ -238,15 +240,18 @@ class MemoryManager(BaseAIProcessor):
                 tiers_accessed.append("procedural")
             
             return ProcessingResult(
-                processor_name=self.name,
+                component=self.component_name,
+                operation="memory_retrieval",
                 success=True,
-                data={
-                    "context_assembled": True, 
-                    "memory_entries": len(memory_context.get("memories", [])),
-                    "phase": self._get_current_phase()
+                result_data={
+                    "memory_context": memory_context,
+                    "tiers_accessed": tiers_accessed,
+                    "processing_time_ms": processing_time,
+                    "thread_id": context.thread_id,
+                    "user_id": context.user_id,
+                    "timestamp": datetime.utcnow().isoformat()
                 },
-                processing_time_ms=processing_time,
-                metadata={"memory_tiers_accessed": tiers_accessed}
+                processing_time_ms=processing_time
             )
             
         except Exception as e:
@@ -254,9 +259,10 @@ class MemoryManager(BaseAIProcessor):
             processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
             
             return ProcessingResult(
-                processor_name=self.name,
+                component=self.component_name,
+                operation="memory_retrieval",
                 success=False,
-                error=str(e),
+                error_message=str(e),
                 processing_time_ms=processing_time
             )
     
@@ -335,6 +341,31 @@ class MemoryManager(BaseAIProcessor):
                 }
             return {"thread_id": thread_id, "user_id": user_id, "context_strength": 0.0}
     
+    def get_supported_operations(self) -> List[str]:
+        """Return a list of supported memory operations."""
+        return ["store", "retrieve", "query", "context_assembly"]
+
+    async def health_check(self) -> Dict[str, Any]:
+        """Perform a health check on the memory manager and its stores."""
+        if not self._initialized:
+            await self.initialize()
+
+        working_store_healthy = False
+        if self._working_store:
+            # In a real scenario, this would be an async check to the store
+            working_store_healthy = self._working_store._initialized
+
+        return {
+            "status": "healthy" if working_store_healthy else "degraded",
+            "phase": self._get_current_phase(),
+            "stores": {
+                "working_memory": {"status": "ok" if working_store_healthy else "error"},
+                "episodic_memory": {"status": "ok" if self._episodic_store else "disabled"},
+                "semantic_memory": {"status": "ok" if self._semantic_store else "disabled"},
+                "procedural_memory": {"status": "ok" if self._procedural_store else "disabled"},
+            }
+        }
+
     async def cleanup(self) -> None:
         """Cleanup resources for all initialized stores"""
         logger.info("Starting memory manager cleanup")
@@ -382,6 +413,7 @@ class MemoryManager(BaseAIProcessor):
             "conversation_phase": context.conversation_phase
         }
         
+        logger.info(f"[DEBUG] MemoryManager: Storing interaction for thread {context.thread_id}")
         await self._working_store.store_message(context.thread_id, interaction_data)
     
     async def _assemble_context(self, context: ProcessingContext) -> Dict[str, Any]:
@@ -406,6 +438,7 @@ class MemoryManager(BaseAIProcessor):
                 "phase": 1
             }
             
+            logger.info("[DEBUG] MemoryManager: Assembling context from working memory.")
             if self._working_store:
                 working_context = await self._working_store.retrieve_thread_history(context.thread_id)
                 basic_context["memories"] = working_context

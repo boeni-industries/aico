@@ -174,6 +174,9 @@ class BackendLifecycleManager:
         
         # Register core services
         await self._register_core_services()
+
+        # Register AI processors
+        await self._register_ai_processors()
         
         # Register plugins
         await self._register_plugins()
@@ -272,6 +275,28 @@ class BackendLifecycleManager:
         )
         
         self.logger.debug("Core services registered")
+
+    async def _register_ai_processors(self) -> None:
+        """Register core AI processors with the AI registry"""
+        self.logger.info("Registering AI processors...")
+
+        from aico.ai import ai_registry
+        from aico.ai.memory.manager import MemoryManager
+
+        # Create and register the MemoryManager
+        # It requires the global config manager
+        memory_manager = MemoryManager(self.config)
+        ai_registry.register("memory", memory_manager)
+        self.logger.info("Registered 'memory' processor.")
+
+        # TODO: Register other core AI processors here as they are implemented.
+        # Example:
+        # from aico.ai.emotion import EmotionProcessor
+        # emotion_processor = EmotionProcessor(self.config)
+        # ai_registry.register("emotion", emotion_processor)
+        # self.logger.info("Registered 'emotion' processor.")
+
+        self.logger.info("AI processors registered.")
     
     def _register_plugin_classes(self) -> None:
         """Register all plugin classes with the plugin registry"""
@@ -653,26 +678,23 @@ class BackendLifecycleManager:
         
         core_services = ["database", "zmq_context", "user_service", "task_scheduler", "conversation_engine"]
         
+        from .service_container import ServiceState
         for service_name in core_services:
             try:
-                service = self.container.get_service(service_name)
-                if service:
-                    if service_name == "task_scheduler":
-                        # Check if the scheduler is running
-                        if getattr(service, 'running', False):
-                            print(f"[✓] {service_name}: Running")
-                        else:
-                            print(f"[!] {service_name}: Initialized but not started")
-                    elif service_name == "conversation_engine":
-                        # Check conversation engine status
-                        if hasattr(service, 'bus_client') and service.bus_client:
-                            print(f"[✓] {service_name}: Running (subscribed to conversation topics)")
-                        else:
-                            print(f"[!] {service_name}: Initialized but not connected to message bus")
-                    else:
-                        print(f"[✓] {service_name}: Running")
+                service_instance = self.container.get_service(service_name)
+                service_state = self.container._states.get(service_name)
+
+                if service_instance and service_state == ServiceState.RUNNING:
+                    status_line = f"[✓] {service_name}: Running"
+                    if service_name == "conversation_engine":
+                        if hasattr(service_instance, 'get_active_features'):
+                            features = service_instance.get_active_features()
+                            if features:
+                                status_line += f" (Integrations: {', '.join(features)})"
+                    print(status_line)
                 else:
-                    print(f"[✗] {service_name}: Failed to start")
+                    state_val = service_state.value if service_state else 'Not Found'
+                    print(f"[✗] {service_name}: {state_val}")
             except Exception as e:
                 print(f"[✗] {service_name}: Error - {e}")
         

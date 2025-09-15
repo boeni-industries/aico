@@ -107,9 +107,26 @@ class MemoryConsolidator:
         self._task_queue: List[ConsolidationTask] = []
         self._consolidation_running = False
     
-    async def consolidate(self, force: bool = False) -> Dict[str, Any]:
-        """Run consolidation process"""
-        if self._consolidation_running and not force:
+    def _parse_timestamp(self, timestamp_value):
+        """Parse timestamp consistently, handling Z suffix format"""
+        if isinstance(timestamp_value, str):
+            # Parse timestamp as UTC (remove timezone info for consistent comparison)
+            if timestamp_value.endswith('Z'):
+                return datetime.fromisoformat(timestamp_value[:-1])
+            elif '+' in timestamp_value or timestamp_value.endswith('+00:00'):
+                return datetime.fromisoformat(timestamp_value.replace('+00:00', ''))
+            else:
+                # Assume UTC if no timezone info
+                return datetime.fromisoformat(timestamp_value)
+        elif isinstance(timestamp_value, datetime):
+            return timestamp_value
+        else:
+            return datetime.utcnow()
+
+    async def consolidate_memories(self) -> Dict[str, Any]:
+        """Run memory consolidation process"""
+        if self._consolidation_running:
+            logger.warning("Memory consolidation already running")
             return {"status": "already_running"}
         
         self._consolidation_running = True
@@ -329,7 +346,7 @@ class MemoryConsolidator:
             "message_content": working_entry.get("message_content", ""),
             "message_type": working_entry.get("message_type", "text"),
             "role": working_entry.get("role", "user"),
-            "timestamp": working_entry.get("timestamp", datetime.utcnow()),
+            "timestamp": self._parse_timestamp(working_entry.get("timestamp", datetime.utcnow())),
             "turn_number": working_entry.get("turn_number", 0),
             "metadata": working_entry.get("metadata", {})
         }

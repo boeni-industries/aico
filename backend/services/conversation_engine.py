@@ -116,22 +116,37 @@ class ConversationEngine(BaseService):
         
         # AI processing coordination
         self.pending_responses: Dict[str, Dict[str, Any]] = {}  # request_id -> response data
+
+        # Configuration - access via core.conversation path (like other services)
+        engine_config = self.container.config.get("core.conversation", {})
+        features_config = engine_config.get("features", {})
         
-        # Configuration
-        engine_config = self.config.get("conversation_engine", {})
+        # Feature flags for gradual implementation
+        self.enable_emotion_integration = features_config.get("enable_emotion_integration", False)
+        self.enable_personality_integration = features_config.get("enable_personality_integration", False)
+        self.enable_memory_integration = features_config.get("enable_memory_integration", False)
+        self.enable_embodiment = features_config.get("enable_embodiment", False)
+        self.enable_agency = features_config.get("enable_agency", False)
+        
+        
         self.max_context_messages = engine_config.get("max_context_messages", 10)
         self.response_timeout = engine_config.get("response_timeout_seconds", 30.0)
         self.default_response_mode = ResponseMode(engine_config.get("default_response_mode", "text_only"))
         
-        # Feature flags for gradual implementation
-        self.enable_emotion_integration = engine_config.get("enable_emotion_integration", False)
-        self.enable_personality_integration = engine_config.get("enable_personality_integration", False)
-        self.enable_memory_integration = engine_config.get("enable_memory_integration", False)
-        self.enable_embodiment = engine_config.get("enable_embodiment", False)
-        self.enable_agency = engine_config.get("enable_agency", False)
+
+    def get_active_features(self) -> List[str]:
+        """Return a list of enabled AI integration features."""
+        features = []
+        if self.enable_emotion_integration: features.append("emotion")
+        if self.enable_personality_integration: features.append("personality")
+        if self.enable_memory_integration: features.append("memory")
+        if self.enable_embodiment: features.append("embodiment")
+        if self.enable_agency: features.append("agency")
+        return features
     
     async def initialize(self) -> None:
         """Initialize service resources - called once during startup"""
+        # Configuration is handled in __init__.
         pass
     
     async def start(self) -> None:
@@ -239,9 +254,9 @@ class ConversationEngine(BaseService):
             
             # Extract data from the ConversationMessage protobuf
             thread_id = conv_message.message.thread_id
-            user_id = conv_message.source
+            user_id = conv_message.user_id  # Use the actual user_id, not the source
             
-            self.logger.info(f"Processing user input", extra={
+            self.logger.info(f"[DEBUG] ConversationEngine: Received user input.", extra={
                 "thread_id": thread_id,
                 "user_id": user_id,
                 "message_type": conv_message.message.type
@@ -370,8 +385,11 @@ class ConversationEngine(BaseService):
                 await self._request_personality_expression(request_id, thread, user_message)
             
             if self.enable_memory_integration:
+                self.logger.info(f"[DEBUG] ConversationEngine: Memory integration enabled, requesting memory retrieval for request {request_id}")
                 components_needed.append("memory")
                 await self._request_memory_retrieval(request_id, thread, user_message)
+            else:
+                self.logger.info(f"[DEBUG] ConversationEngine: Memory integration disabled (enable_memory_integration={self.enable_memory_integration})")
             
             self.pending_responses[request_id]["components_needed"] = components_needed
             
@@ -464,6 +482,7 @@ class ConversationEngine(BaseService):
         # Check if memory processor is available
         memory_processor = ai_registry.get("memory")
         
+        self.logger.info(f"[DEBUG] ConversationEngine: Requesting memory retrieval. Memory processor found: {memory_processor is not None}")
         if memory_processor:
             # Create processing context for memory retrieval
             context = ProcessingContext(
@@ -471,7 +490,7 @@ class ConversationEngine(BaseService):
                 user_id=thread.user_context.user_id,
                 request_id=request_id,
                 message_content=message.message.text, # Correctly access the text content
-                message_type="text",
+                message_type="user_input",
                 turn_number=thread.turn_number,
                 conversation_phase=thread.conversation_phase,
                 user_name=thread.user_context.username,
@@ -557,11 +576,11 @@ class ConversationEngine(BaseService):
     async def _generate_llm_response(self, request_id: str, thread: ConversationThread, user_message: ConversationMessage, context: Dict[str, Any]) -> None:
         """Generate LLM response with integrated context"""
         try:
-            self.logger.info(f"Generating LLM response", extra={
-                "request_id": request_id,
-                "thread_id": thread.thread_id,
-                "context_components": list(context.keys())
-            })
+            # Include memory data in context if available
+            if request_id in self.pending_responses and "memory_data" in self.pending_responses[request_id]:
+                memory_data = self.pending_responses[request_id]["memory_data"]
+                if memory_data:
+                    context["memory"] = memory_data
             
             # Build conversation history for LLM
             messages = []
@@ -570,12 +589,49 @@ class ConversationEngine(BaseService):
             system_prompt = self._build_system_prompt(thread, context)
             messages.append(ModelConversationMessage(role="system", content=system_prompt))
             
-            # Add recent conversation history
-            for msg in thread.message_history[-5:]:
-                role = "user" if msg.message.type == Message.MessageType.USER_INPUT else "assistant"
-                messages.append(ModelConversationMessage(role=role, content=msg.message.text))
+            # Add conversation history from memory context if available
+            if "memory" in context and context["memory"]:
+                memory_data = context["memory"]
+                memories = memory_data.get("memories", [])
+                self.logger.info(f"[DEBUG] Using {len(memories)} memory items for conversation history")
+                
+                # Add memory items as conversation history
+                for memory_item in memories[-10:]:  # Use last 10 memory items
+                    self.logger.debug(f"[MEMORY_ITEM_DEBUG] memory_item type: {type(memory_item)}")
+                    
+                    if isinstance(memory_item, dict):
+                        # Serialized ContextItem - extract role from metadata
+                        content = memory_item.get("content", "")
+                        metadata = memory_item.get("metadata", {})
+                        
+                        self.logger.debug(f"[DICT_DEBUG] memory_item keys: {list(memory_item.keys())}")
+                        self.logger.debug(f"[METADATA_DEBUG] metadata: {metadata}")
+                        
+                        # Extract role from metadata (this is where the fix is!)
+                        role = metadata.get("role", "user") if isinstance(metadata, dict) else "user"
+                        self.logger.debug(f"[ROLE_EXTRACT_DEBUG] Extracted role='{role}' from metadata")
+                        
+                        if content.strip():
+                            messages.append(ModelConversationMessage(role=role, content=content))
+                            self.logger.debug(f"[DEBUG] Added memory: role={role}, content='{content[:50]}...'")
+                    else:
+                        self.logger.warning(f"[UNKNOWN_ITEM_DEBUG] Unknown memory_item type: {type(memory_item)}, value: {memory_item}")
+            else:
+                # Fallback to thread message history if no memory context
+                self.logger.info("[DEBUG] No memory context available, using thread message history")
+                for msg in thread.message_history[-5:]:
+                    role = "user" if msg.message.type == Message.MessageType.USER_INPUT else "assistant"
+                    messages.append(ModelConversationMessage(role=role, content=msg.message.text))
             
-            # Get conversation model from config
+            # Add current user message
+            messages.append(ModelConversationMessage(role="user", content=user_message.message.text))
+            
+            # Log final messages being sent to LLM
+            self.logger.info(f"[DEBUG] Sending {len(messages)} messages to LLM:")
+            for i, msg in enumerate(messages):
+                self.logger.info(f"[DEBUG] Message {i}: role={msg.role}, content='{msg.content[:100]}...'")
+            
+            # Create completions request
             conversation_model = self.config.get("modelservice.ollama.default_models.conversation.name", "hermes3:8b")
             
             # Create completions request
@@ -627,8 +683,21 @@ class ConversationEngine(BaseService):
         # Add memory context
         if "memory" in context:
             memory_data = context["memory"]
-            if memory_data.get("memories"):
-                prompt_parts.append("Relevant memories: " + str(memory_data["memories"]))
+            if memory_data:
+                # Include memory context information
+                context_summary = memory_data.get("context_summary", "")
+                if context_summary:
+                    prompt_parts.append(f"Memory context: {context_summary}")
+                
+                # Include any available memories
+                memories = memory_data.get("memories", [])
+                if memories:
+                    prompt_parts.append("Relevant memories: " + str(memories))
+                
+                # Include personalization data if available
+                personalization = memory_data.get("personalization", {})
+                if personalization:
+                    prompt_parts.append(f"User personalization: {personalization}")
         
         return "\n".join(prompt_parts)
     
@@ -669,30 +738,35 @@ class ConversationEngine(BaseService):
                     if completions_response.result.message and completions_response.result.message.content:
                         response_text = completions_response.result.message.content
                 elif completions_response.error:
-                    self.logger.error(f"LLM error: {completions_response.error}")
-                    response_text = "I apologize, but I'm having trouble processing your request right now."
+                    self.logger.error(f"LLM completion error: {completions_response.error}")
+                    response_text = "I apologize, but I encountered an error generating a response."
                 
-                self.logger.debug(f"Extracted response text: {response_text}")
-                
-                # Create response components
+                # Store response for delivery
                 response_components = ResponseComponents(
                     text=response_text,
-                    avatar_actions=await self._generate_avatar_actions(thread, response_text) if self.enable_embodiment else None,
-                    voice_synthesis=await self._generate_voice_parameters(thread, response_text) if self.enable_embodiment else None
+                    avatar_actions=None,
+                    voice_synthesis=None,
+                    proactive_triggers=None
                 )
+                
+                # Store response text for direct API access
+                if request_id in self.pending_responses:
+                    self.pending_responses[request_id]["response_text"] = response_text
+                    self.pending_responses[request_id]["response_ready"] = True
                 
                 # Deliver response
                 await self._deliver_response(thread, response_components)
                 
-                # Cleanup
-                await self._cleanup_request(request_id)
+                # Clean up (but only if not being used by direct API)
+                if request_id in self.pending_responses and not self.pending_responses[request_id].get("direct_api_call"):
+                    await self._cleanup_request(request_id)
             else:
                 self.logger.warning(f"No matching request found for correlation_id: {correlation_id}")
                 self.logger.debug(f"Pending requests: {list(self.pending_responses.keys())}")
                     
         except Exception as e:
             self.logger.error(f"Error handling LLM response: {e}")
-    
+
     # ============================================================================
     # EMBODIMENT SYSTEM (SCAFFOLDING)
     # ============================================================================
@@ -777,6 +851,23 @@ class ConversationEngine(BaseService):
             # Add to thread history
             thread.message_history.append(ai_message)
             
+            # Store AI response in memory
+            memory_processor = ai_registry.get("memory")
+            if memory_processor:
+                try:
+                    ai_context = ProcessingContext(
+                        thread_id=thread.thread_id,
+                        user_id=thread.user_context.user_id,
+                        request_id=f"ai_response_{thread.thread_id}_{thread.turn_number}",
+                        message_content=response_components.text,
+                        message_type="ai_response",
+                        turn_number=thread.turn_number,
+                        conversation_phase=thread.conversation_phase
+                    )
+                    await memory_processor.process(ai_context)
+                except Exception as e:
+                    self.logger.error(f"Failed to store AI response in memory: {e}")
+            
             # Publish text response
             await self.bus_client.publish(
                 AICOTopics.CONVERSATION_AI_RESPONSE,
@@ -818,6 +909,7 @@ class ConversationEngine(BaseService):
         if request_id in self.pending_responses:
             del self.pending_responses[request_id]
     
+
     async def health_check(self) -> Dict[str, Any]:
         """Health check for conversation engine"""
         return {

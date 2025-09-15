@@ -9,7 +9,7 @@ import asyncio
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, Query, Request
 from fastapi.security import HTTPBearer
 
 from aico.core.logging import get_logger
@@ -44,12 +44,17 @@ active_connections: Dict[str, WebSocket] = {}
 
 
 # Unified endpoint with automatic thread management
+def get_service_container(request: Request):
+    """Dependency to get the service container from FastAPI app state"""
+    return request.app.state.service_container
+
 @router.post("/messages", response_model=UnifiedMessageResponse)
 async def send_message_with_auto_thread(
     request: UnifiedMessageRequest,
     current_user = Depends(get_current_user),
     thread_manager = Depends(get_thread_manager),
-    bus_client = Depends(get_message_bus_client)
+    bus_client = Depends(get_message_bus_client),
+    container = Depends(get_service_container)
 ):
     """Send message with automatic thread resolution (primary endpoint)"""
     try:
@@ -79,50 +84,72 @@ async def send_message_with_auto_thread(
             user_id=user_id
         )
         
-        # Publish to message bus for async processing
-        await bus_client.publish(
-            "conversation/user/input",
-            conv_message
-        )
+        # Process message through message bus (proper architecture)
+        logger.info(f"[DEBUG] Processing message via message bus for thread {thread_resolution.thread_id}")
         
-        # Get modelservice client and generate LLM response
-        from backend.services.modelservice_client import get_modelservice_client
-        from aico.core.config import ConfigurationManager
+        # Update the existing conv_message with proper content
+        conv_message.message.text = request.message
+        # Set message type using the enum value
+        if request.message_type == "text" or not request.message_type:
+            conv_message.message.type = conv_message.message.MessageType.USER_INPUT
+        else:
+            conv_message.message.type = conv_message.message.MessageType.USER_INPUT
+        conv_message.message.thread_id = thread_resolution.thread_id
+        conv_message.message.turn_number = 1  # TODO: Track actual turn numbers
         
-        config_manager = ConfigurationManager()
-        config_manager.initialize(lightweight=True)
-        modelservice_client = get_modelservice_client(config_manager)
+        # Publish to conversation input topic (ConversationEngine will handle)
+        await bus_client.publish("conversation/user/input/v1", conv_message)
         
-        # Get conversation model from configuration
-        modelservice_config = config_manager.get("modelservice", {})
-        ollama_config = modelservice_config.get("ollama", {})
-        default_models = ollama_config.get("default_models", {})
-        conversation_model = default_models.get("conversation", {}).get("name", "hermes3:8b")
+        # Wait for ConversationEngine to process and get the AI response synchronously
+        import asyncio
         
-        # Generate LLM response
+        response_received = asyncio.Event()
+        ai_response = "No response received"
+        response_thread_id = None
+        
+        async def handle_ai_response(envelope):
+            try:
+                nonlocal ai_response
+                logger.debug(f"[API_GATEWAY] Received AI response envelope: {type(envelope)}")
+                
+                # Extract ConversationMessage from envelope
+                conversation_message = ConversationMessage()
+                envelope.any_payload.Unpack(conversation_message)
+                
+                logger.debug(f"[API_GATEWAY] Extracted ConversationMessage: {type(conversation_message)}")
+                logger.debug(f"[API_GATEWAY] Response thread_id: {conversation_message.message.thread_id}, expected: {thread_resolution.thread_id}")
+                
+                # Check if this response is for our thread
+                if conversation_message.message.thread_id == thread_resolution.thread_id:
+                    ai_response = conversation_message.message.text
+                    logger.info(f"[API_GATEWAY] ✅ AI response extracted: '{ai_response[:100]}...'")
+                    response_received.set()
+                else:
+                    logger.debug(f"[API_GATEWAY] Thread ID mismatch, ignoring response")
+                    
+            except Exception as e:
+                logger.error(f"Error handling AI response: {e}")
+                import traceback
+                logger.error(f"Full traceback: {traceback.format_exc()}")
+        
+        # Subscribe to AI response topic
+        await bus_client.subscribe("conversation/ai/response/v1", handle_ai_response)
+        
+        # Wait for response with timeout
         try:
-            llm_response = await modelservice_client.get_completions(
-                model=conversation_model,
-                prompt=request.message
-            )
-            
-            ai_response = "No response available"
-            logger.debug(f"LLM response received: {llm_response}")
-            if llm_response.get("success", False) and "response" in llm_response:
-                ai_response = llm_response["response"]
-                logger.debug(f"Extracted AI response: {ai_response[:100]}...")
-            elif "choices" in llm_response and len(llm_response["choices"]) > 0:
-                ai_response = llm_response["choices"][0].get("text", ai_response)
-            else:
-                logger.error(f"Unexpected LLM response format: {llm_response}")
-                ai_response = "LLM response received but format unexpected"
-        except Exception as e:
-            logger.error(f"LLM request failed: {e}")
-            ai_response = f"LLM request failed: {str(e)}"
+            await asyncio.wait_for(response_received.wait(), timeout=30.0)
+        except asyncio.TimeoutError:
+            ai_response = "Request timed out - please try again"
+        finally:
+            # Unsubscribe from the topic
+            try:
+                await bus_client.unsubscribe("conversation/ai/response/v1")
+            except Exception as e:
+                logger.error(f"Error unsubscribing: {e}")
         
         logger.info(f"Auto-resolved message {message_id} to thread {thread_resolution.thread_id} (action: {thread_resolution.action})")
         
-        # Return response with AI reply
+        # Return response with actual AI reply
         response_data = UnifiedMessageResponse(
             success=True,
             message_id=message_id,

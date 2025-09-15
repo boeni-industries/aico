@@ -265,11 +265,11 @@ conversation:
   
   # Feature flags for AI components
   features:
-    enable_emotion_integration: true
-    enable_personality_integration: true
+    enable_emotion_integration: false # TODO: Enable when implemented
+    enable_personality_integration: false # TODO: Enable when implemented
     enable_memory_integration: true
-    enable_embodiment: true
-    enable_agency: true
+    enable_embodiment: false # TODO: Enable when implemented
+    enable_agency: false # TODO: Enable when implemented
 
 # Embodiment Engine Configuration
 embodiment:
@@ -308,6 +308,7 @@ memory:
   working:
     filename: "working_memory" # For WorkingMemoryStore (LMDB)
     map_size_mb: 100 # Default LMDB map size
+    ttl_seconds: 86400 # 24 hours TTL for conversation continuity (was 3600 = 1 hour)
     # Named databases (sub-databases) within the LMDB environment
     named_databases:
       - "conversation_history"

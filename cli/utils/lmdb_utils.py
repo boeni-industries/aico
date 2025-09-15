@@ -13,6 +13,7 @@ from typing import Optional
 from aico.core.config import ConfigurationManager
 from aico.data.lmdb import get_lmdb_path, initialize_lmdb_env
 from rich.table import Table
+from rich import box
 
 console = Console()
 
@@ -129,6 +130,69 @@ def dump_lmdb_db(db_name: str, limit: int, config: Optional[ConfigurationManager
 
             table.add_row(key_str, value_str)
             count += 1
+    env.close()
+    return table
+
+def tail_lmdb_db(db_name: str, limit: int, full: bool = False, config: Optional[ConfigurationManager] = None) -> Table:
+    """Show the last N key-value pairs from a specific named database."""
+    db_path = get_lmdb_path(config)
+    if not db_path.exists():
+        raise FileNotFoundError(f"LMDB database not found at {db_path}")
+
+    table = Table(
+        title=f"✨ [bold cyan]Last {limit} entries from '{db_name}' Database[/bold cyan]",
+        title_justify="left",
+        border_style="bright_blue",
+        header_style="bold yellow",
+        box=box.SIMPLE_HEAD,
+        padding=(0, 1)
+    )
+    table.add_column("Key", style="cyan", justify="left")
+    # Enable wrapping for full output mode to handle long values
+    table.add_column("Value", style="white", justify="left", overflow="fold" if full else "ellipsis", no_wrap=not full)
+
+    if config is None:
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+    named_dbs = list_named_databases(config)
+    env = lmdb.open(str(db_path), readonly=True, max_dbs=len(named_dbs) + 1)
+    db_key = db_name.encode('utf-8') if db_name != "(main)" else None
+    
+    with env.begin() as txn:
+        sub_db = env.open_db(db_key, txn=txn)
+        cursor = txn.cursor(sub_db)
+        
+        # Get total count first to determine if we need to collect all entries
+        total_count = txn.stat(sub_db)["entries"]
+        
+        if total_count == 0:
+            env.close()
+            raise ValueError(f"Sub-database '{db_name}' is empty")
+        
+        # Collect all entries first, then take the last N
+        all_entries = []
+        for key, value in cursor:
+            try:
+                key_str = key.decode('utf-8')
+            except UnicodeDecodeError:
+                key_str = repr(key)
+            try:
+                value_str = value.decode('utf-8')
+            except UnicodeDecodeError:
+                value_str = repr(value)
+            
+            # Only truncate if not in full mode
+            if not full and len(value_str) > 100:
+                value_str = value_str[:97] + "..."
+            
+            all_entries.append((key_str, value_str))
+        
+        # Take the last N entries
+        last_entries = all_entries[-limit:] if len(all_entries) > limit else all_entries
+        
+        for key_str, value_str in last_entries:
+            table.add_row(key_str, value_str)
+    
     env.close()
     return table
 

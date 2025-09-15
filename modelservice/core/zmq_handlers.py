@@ -75,11 +75,14 @@ class ModelserviceZMQHandlers:
                 response.error = error_msg
                 return response
             
-            # Convert messages to prompt (simple implementation)
-            prompt_parts = []
-            for msg in messages:
-                prompt_parts.append(f"{msg.role}: {msg.content}")
-            prompt = "\n".join(prompt_parts)
+            # Convert Protocol Buffer messages to Ollama chat format
+            chat_messages = []
+            for i, msg in enumerate(messages):
+                chat_messages.append({
+                    "role": msg.role,
+                    "content": msg.content
+                })
+                logger.info(f"[COMPLETIONS] Message {i}: role='{msg.role}', content='{msg.content[:200]}{'...' if len(msg.content) > 200 else ''}')")
             
             # Forward to Ollama - check config path
             ollama_config = self.config.get('ollama', {})
@@ -87,22 +90,22 @@ class ModelserviceZMQHandlers:
             logger.info(f"[COMPLETIONS] Full config keys: {list(self.config.keys())}")
             ollama_url = f"http://{ollama_config.get('host', '127.0.0.1')}:{ollama_config.get('port', 11434)}"
             logger.info(f"[COMPLETIONS] Forwarding to Ollama at {ollama_url}")
-            logger.info(f"[COMPLETIONS] Prompt: '{prompt[:100]}..." + ("'" if len(prompt) <= 100 else "' (truncated)"))
+            logger.info(f"[COMPLETIONS] Chat messages count: {len(chat_messages)}")
             
             logger.info(f"[COMPLETIONS] Creating HTTP client...")
             async with httpx.AsyncClient(timeout=30.0) as client:
                 logger.info(f"[COMPLETIONS] HTTP client created, sending request to Ollama...")
                 request_data = {
                     "model": model,
-                    "prompt": prompt,
+                    "messages": chat_messages,
                     "stream": False
                 }
-                logger.info(f"[COMPLETIONS] Request data prepared: model={model}, prompt_length={len(prompt)}")
+                logger.info(f"[COMPLETIONS] Request data prepared: model={model}, messages_count={len(chat_messages)}")
                 
                 try:
-                    logger.info(f"[COMPLETIONS] Making POST request to {ollama_url}/api/generate")
+                    logger.info(f"[COMPLETIONS] Making POST request to {ollama_url}/api/chat")
                     ollama_response = await client.post(
-                        f"{ollama_url}/api/generate",
+                        f"{ollama_url}/api/chat",
                         json=request_data
                     )
                     logger.info(f"[COMPLETIONS] Ollama response received with status: {ollama_response.status_code}")
@@ -125,10 +128,15 @@ class ModelserviceZMQHandlers:
                 result.model = model
                 result.done = data.get("done", True)
                 
-                # Create response message
+                # Create response message - extract from chat API response format
                 response_msg = ConversationMessage()
                 response_msg.role = "assistant"
-                response_content = data.get("response", "")
+                # Chat API returns message in different format than generate API
+                if "message" in data and "content" in data["message"]:
+                    response_content = data["message"]["content"]
+                else:
+                    # Fallback for generate API format
+                    response_content = data.get("response", "")
                 logger.info(f"[DEBUG] Extracted response content: '{response_content}' (length: {len(response_content)})")
                 response_msg.content = response_content
                 result.message.CopyFrom(response_msg)

@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
-from cli.utils.lmdb_utils import get_lmdb_status_cli, clear_lmdb_cli, list_named_databases, dump_lmdb_db
+from cli.utils.lmdb_utils import get_lmdb_status_cli, clear_lmdb_cli, list_named_databases, dump_lmdb_db, tail_lmdb_db
 from cli.decorators.sensitive import destructive
 from cli.utils.help_formatter import format_subcommand_help
 
@@ -19,6 +19,7 @@ def lmdb_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help",
             ("ls", "List all named sub-databases within the LMDB environment."),
             ("count", "Count the number of entries in a specific sub-database."),
             ("dump", "View the first N key-value pairs from a sub-database."),
+            ("tail", "View the last N key-value pairs from a sub-database."),
             ("clear", "Clear all data from the LMDB database.")
         ]
         
@@ -26,7 +27,9 @@ def lmdb_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help",
             "aico lmdb status",
             "aico lmdb ls",
             "aico lmdb count conversation_history",
-            "aico lmdb dump message_index --limit 10"
+            "aico lmdb dump message_index --limit 10",
+            "aico lmdb tail conversation_history --limit 5",
+            "aico lmdb tail message_index --limit 3 --full"
         ]
         
         format_subcommand_help(
@@ -139,6 +142,25 @@ def dump(db_name: str = typer.Argument(..., help="The name of the sub-database t
         console.print(table)
     except Exception as e:
         console.print(f"[red]Error dumping database: {e}[/red]")
+        raise typer.Exit(1)
+
+@app.command(name="tail", help="View the last N key-value pairs from a sub-database.")
+def tail(
+    db_name: str = typer.Argument(..., help="The name of the sub-database to tail."),
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of records to show"),
+    full: bool = typer.Option(False, "--full", help="Show full values without truncation")
+):
+    """View the last N key-value pairs from a sub-database."""
+    try:
+        table = tail_lmdb_db(db_name, limit, full=full)
+        console.print()
+        console.print(table)
+        console.print()
+    except ValueError as e:
+        console.print(f"[yellow]{e}[/yellow]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error reading sub-database: {e}[/red]")
         raise typer.Exit(1)
 
 @app.command(name="clear", help="Clear all data from the LMDB database.")

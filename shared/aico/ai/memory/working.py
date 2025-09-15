@@ -70,7 +70,7 @@ class WorkingMemoryStore:
         if self._initialized:
             return
 
-        logger.info(f"Initializing working memory store at {self._db_path}")
+        logger.info(f"[DEBUG] WorkingMemoryStore: Initializing at {self._db_path}")
         try:
             initialize_lmdb_env(self.config)
             self.env = lmdb.open(str(self._db_path), max_dbs=len(self._named_dbs) + 1)
@@ -80,7 +80,7 @@ class WorkingMemoryStore:
                 self.dbs[db_name] = self.env.open_db(db_name.encode('utf-8'))
 
             self._initialized = True
-            logger.info("Working memory store initialized successfully.")
+            logger.info("[DEBUG] WorkingMemoryStore: Initialized successfully.")
 
         except Exception as e:
             logger.error(f"Failed to initialize working memory store: {e}")
@@ -97,14 +97,24 @@ class WorkingMemoryStore:
                 raise ConnectionError("conversation_history database not open.")
 
             timestamp = datetime.utcnow()
-            key = f"{thread_id}:{timestamp.isoformat()}".encode('utf-8')
+            key_str = f"{thread_id}:{timestamp.isoformat()}Z"
+            key = key_str.encode('utf-8')
 
+            # Convert datetime objects to ISO format strings for JSON serialization
+            serializable_message = {}
+            for msg_key, msg_value in message.items():
+                if isinstance(msg_value, datetime):
+                    serializable_message[msg_key] = msg_value.isoformat() + "Z"
+                else:
+                    serializable_message[msg_key] = msg_value
+            
             storage_data = {
-                **message,
-                "_stored_at": timestamp.isoformat(),
-                "_expires_at": (timestamp + timedelta(seconds=self._ttl_seconds)).isoformat()
+                **serializable_message,
+                "_stored_at": timestamp.isoformat() + "Z",
+                "_expires_at": (timestamp + timedelta(seconds=self._ttl_seconds)).isoformat() + "Z"
             }
 
+            logger.info(f"[DEBUG] WorkingMemoryStore: Storing message for thread {thread_id} with key {key_str}")
             with self.env.begin(write=True, db=db) as txn:
                 txn.put(key, json.dumps(storage_data).encode('utf-8'))
 
@@ -126,6 +136,7 @@ class WorkingMemoryStore:
             if db is None:
                 raise ConnectionError("conversation_history database not open.")
 
+            logger.info(f"[DEBUG] WorkingMemoryStore: Retrieving history for thread {thread_id}.")
             with self.env.begin(db=db) as txn:
                 cursor = txn.cursor()
                 # Seek to the start of the desired thread
@@ -146,10 +157,61 @@ class WorkingMemoryStore:
 
             # LMDB iterates in lexicographical order, so we need to sort by timestamp
             history.sort(key=lambda x: x.get("_stored_at"), reverse=True)
-            return history[:limit]
+            return history
 
         except Exception as e:
             logger.error(f"Failed to retrieve thread history: {e}")
+            return []
+
+    async def _get_recent_user_messages(self, user_id: str, hours: int = 24) -> List[Dict[str, Any]]:
+        """Get recent messages for a user across all threads within the specified time window."""
+        if not self._initialized:
+            await self.initialize()
+
+        recent_messages = []
+        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+        logger.debug(f"Cutoff time for recent messages: {cutoff_time} UTC")
+        
+        try:
+            db = self.dbs.get("conversation_history")
+            if db is None:
+                raise ConnectionError("conversation_history database not open.")
+
+            with self.env.begin(db=db) as txn:
+                cursor = txn.cursor()
+                for key, value in cursor:
+                    try:
+                        data = json.loads(value.decode('utf-8'))
+                        
+                        # Check if message belongs to this user
+                        if data.get('user_id') == user_id:
+                            # Check if message is within time window
+                            timestamp_str = data.get('timestamp')
+                            if timestamp_str:
+                                # Parse timestamp as UTC (remove timezone info for consistent comparison)
+                                if timestamp_str.endswith('Z'):
+                                    timestamp = datetime.fromisoformat(timestamp_str[:-1])
+                                elif '+' in timestamp_str or timestamp_str.endswith('+00:00'):
+                                    timestamp = datetime.fromisoformat(timestamp_str.replace('+00:00', ''))
+                                else:
+                                    # Assume UTC if no timezone info
+                                    timestamp = datetime.fromisoformat(timestamp_str)
+                                
+                                logger.debug(f"Message timestamp: {timestamp} UTC, cutoff: {cutoff_time} UTC")
+                                if timestamp >= cutoff_time:
+                                    recent_messages.append(data)
+                                    logger.debug(f"Message included (within {hours}h window)")
+                                else:
+                                    logger.debug(f"Message excluded (outside {hours}h window)")
+                    except (json.JSONDecodeError, ValueError) as e:
+                        logger.warning(f"Failed to parse message data: {e}")
+                        continue
+
+            logger.debug(f"Found {len(recent_messages)} recent messages for user {user_id} within {hours}h window")
+            return recent_messages
+
+        except Exception as e:
+            logger.error(f"Failed to get recent user messages: {e}")
             return []
 
     async def cleanup(self) -> None:
@@ -166,7 +228,17 @@ class WorkingMemoryStore:
         if not expires_at_str:
             return False
         try:
-            expires_at = datetime.fromisoformat(expires_at_str)
-            return datetime.utcnow() > expires_at
+            # Parse expiration timestamp as UTC (consistent with storage)
+            if expires_at_str.endswith('Z'):
+                expires_at = datetime.fromisoformat(expires_at_str[:-1])
+            elif '+' in expires_at_str:
+                expires_at = datetime.fromisoformat(expires_at_str.replace('+00:00', ''))
+            else:
+                expires_at = datetime.fromisoformat(expires_at_str)
+            
+            now_utc = datetime.utcnow()
+            is_expired = now_utc > expires_at
+            logger.debug(f"Expiration check: now={now_utc} UTC, expires={expires_at} UTC, expired={is_expired}")
+            return is_expired
         except (ValueError, TypeError):
             return True
