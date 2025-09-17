@@ -47,8 +47,11 @@ def get_chroma_status_cli(config: Optional[ConfigurationManager] = None) -> Dict
                 total_size += file_path.stat().st_size
         status["size_mb"] = round(total_size / (1024 * 1024), 2)
         
-        # Initialize ChromaDB client
-        client = chromadb.PersistentClient(path=str(semantic_memory_dir))
+        # Initialize ChromaDB client with proper settings
+        client = chromadb.PersistentClient(
+            path=str(semantic_memory_dir),
+            settings=Settings(allow_reset=True, anonymized_telemetry=False)
+        )
         
         # Get collections
         collections = client.list_collections()
@@ -83,8 +86,12 @@ def list_chroma_collections(config: Optional[ConfigurationManager] = None) -> Di
 
     try:
         import chromadb
+        from chromadb.config import Settings
         
-        client = chromadb.PersistentClient(path=str(semantic_memory_dir))
+        client = chromadb.PersistentClient(
+            path=str(semantic_memory_dir),
+            settings=Settings(allow_reset=True, anonymized_telemetry=False)
+        )
         collections = client.list_collections()
         
         result = {"collections": []}
@@ -126,8 +133,13 @@ def get_chroma_collection_stats(collection_name: str, config: Optional[Configura
 
     try:
         import chromadb
+        from chromadb.config import Settings
         
-        client = chromadb.PersistentClient(path=str(semantic_memory_dir))
+        # Configure ChromaDB to NOT use default embedding function
+        client = chromadb.PersistentClient(
+            path=str(semantic_memory_dir),
+            settings=Settings(allow_reset=True, anonymized_telemetry=False)
+        )
         
         try:
             collection = client.get_collection(collection_name)
@@ -166,15 +178,34 @@ def query_chroma_collection(
 
     try:
         import chromadb
+        from chromadb.config import Settings
         
-        client = chromadb.PersistentClient(path=str(semantic_memory_dir))
+        # Step 1: Generate query embeddings via modelservice
+        embedding_model = config.get("core.modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
+        
+        try:
+            from cli.utils.zmq_client import get_embeddings
+            embeddings_response = get_embeddings(embedding_model, query_text)
+            if not embeddings_response.get("success"):
+                return {"error": f"Failed to generate query embeddings: {embeddings_response.get('error', 'Unknown error')}"}
+            
+            query_embedding = embeddings_response["data"]["embedding"]
+            
+        except Exception as e:
+            return {"error": f"Modelservice query embedding generation failed: {e}. Is modelservice running?"}
+        
+        # Step 2: Query ChromaDB with pre-computed embeddings
+        client = chromadb.PersistentClient(
+            path=str(semantic_memory_dir),
+            settings=Settings(allow_reset=True, anonymized_telemetry=False)
+        )
         
         try:
             collection = client.get_collection(collection_name)
             
-            # Query the collection
+            # Query the collection using pre-computed embeddings
             results = collection.query(
-                query_texts=[query_text],
+                query_embeddings=[query_embedding],  # Use modelservice embeddings!
                 n_results=limit
             )
             
@@ -210,7 +241,7 @@ def add_chroma_document(
     metadata: Optional[str] = None,
     config: Optional[ConfigurationManager] = None
 ) -> Dict[str, Any]:
-    """Add a document to a ChromaDB collection."""
+    """Add a document to a ChromaDB collection using modelservice embeddings."""
     if config is None:
         config = ConfigurationManager()
         config.initialize(lightweight=True)
@@ -222,16 +253,45 @@ def add_chroma_document(
 
     try:
         import chromadb
+        from chromadb.config import Settings
         
-        client = chromadb.PersistentClient(path=str(semantic_memory_dir))
+        # Step 1: Generate embeddings via modelservice
+        embedding_model = config.get("core.modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
         
         try:
-            # Get or create collection
+            from cli.utils.zmq_client import get_embeddings
+            console.print(f"[dim]Generating embeddings via modelservice using {embedding_model}...[/dim]")
+            
+            embeddings_response = get_embeddings(embedding_model, document)
+            if not embeddings_response.get("success"):
+                return {"error": f"Failed to generate embeddings: {embeddings_response.get('error', 'Unknown error')}"}
+            
+            embedding_vector = embeddings_response["data"]["embedding"]
+            console.print(f"[dim]Generated {len(embedding_vector)}-dimensional embedding[/dim]")
+            
+        except Exception as e:
+            return {"error": f"Modelservice embedding generation failed: {e}. Is modelservice running?"}
+        
+        # Step 2: Add to ChromaDB with pre-computed embeddings
+        client = chromadb.PersistentClient(
+            path=str(semantic_memory_dir),
+            settings=Settings(allow_reset=True, anonymized_telemetry=False)
+        )
+        
+        try:
+            # Get or create collection with proper metadata
             try:
                 collection = client.get_collection(collection_name)
             except:
-                # Collection doesn't exist, create it
-                collection = client.create_collection(collection_name)
+                # Collection doesn't exist, create it with metadata
+                dimensions = len(embedding_vector)
+                collection_metadata = {
+                    "embedding_model": embedding_model,
+                    "dimensions": dimensions,
+                    "created_by": "aico_chroma_add",
+                    "version": "1.0"
+                }
+                collection = client.create_collection(collection_name, metadata=collection_metadata)
             
             # Generate ID if not provided
             if not doc_id:
@@ -245,10 +305,11 @@ def add_chroma_document(
                 except json.JSONDecodeError as e:
                     return {"error": f"Invalid JSON metadata: {e}"}
             
-            # Add document
+            # Add document with pre-computed embeddings (bypasses ChromaDB's default embedding function)
             collection.add(
                 documents=[document],
                 ids=[doc_id],
+                embeddings=[embedding_vector],  # Pre-computed via modelservice!
                 metadatas=[parsed_metadata] if parsed_metadata else None
             )
             
@@ -282,7 +343,11 @@ def clear_chroma_cli(config: Optional[ConfigurationManager] = None) -> None:
         
         try:
             import chromadb
-            client = chromadb.PersistentClient(path=str(semantic_memory_dir))
+            from chromadb.config import Settings
+            client = chromadb.PersistentClient(
+                path=str(semantic_memory_dir),
+                settings=Settings(allow_reset=True, anonymized_telemetry=False)
+            )
             
             # Create default collection with embedding model metadata
             collection_name = config.get("memory.semantic.collection_name", "user_facts")

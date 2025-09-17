@@ -66,8 +66,12 @@ def initialize_chromadb_cli(config: Optional[ConfigurationManager] = None, verbo
     semantic_memory_dir = AICOPaths.get_semantic_memory_path()
     
     try:
-        # Initialize ChromaDB client with persistent storage
-        client = chromadb.PersistentClient(path=str(semantic_memory_dir))
+        # Initialize ChromaDB client with persistent storage and proper settings
+        from chromadb.config import Settings
+        client = chromadb.PersistentClient(
+            path=str(semantic_memory_dir),
+            settings=Settings(allow_reset=True, anonymized_telemetry=False)
+        )
         
         # Create default collection for user facts with embedding model metadata
         collection_name = config.get("memory.semantic.collection_name", "user_facts")

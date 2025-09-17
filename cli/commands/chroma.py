@@ -32,7 +32,8 @@ def chroma_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             "aico chroma ls",
             "aico chroma count user_facts",
             "aico chroma query user_facts 'What is my name?'",
-            "aico chroma add user_facts 'My name is John' --metadata '{\"type\": \"personal_info\"}'",
+            "aico chroma add 'My name is John' --metadata '{\"type\": \"personal_info\"}'",
+            "aico chroma add 'I like pizza' --collection user_facts --id my_preference",
             "aico chroma clear"
         ]
         
@@ -181,8 +182,8 @@ def query(
 
 @app.command(name="add", help="Add a document to a collection for testing.")
 def add(
-    collection_name: str = typer.Argument(..., help="Name of the collection"),
     document: str = typer.Argument(..., help="Document text to add"),
+    collection_name: Optional[str] = typer.Option("user_facts", "--collection", "-c", help="Name of the collection (default: user_facts)"),
     doc_id: Optional[str] = typer.Option(None, "--id", help="Document ID (auto-generated if not provided)"),
     metadata: Optional[str] = typer.Option(None, "--metadata", help="JSON metadata for the document")
 ):
