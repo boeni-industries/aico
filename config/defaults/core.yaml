@@ -305,12 +305,23 @@ personality:
 
 # Memory System Configuration
 memory:
+  # Working Memory (LMDB) - Session context and conversation history
   working:
-    filename: "working_memory" # For WorkingMemoryStore (LMDB)
     map_size_mb: 100 # Default LMDB map size
-    ttl_seconds: 86400 # 24 hours TTL for conversation continuity (was 3600 = 1 hour)
+    ttl_seconds: 86400 # 24 hours TTL for conversation continuity
     # Named databases (sub-databases) within the LMDB environment
     named_databases:
       - "conversation_history"
       - "message_index"
       - "user_state"
+  
+  # Semantic Memory (ChromaDB) - User facts with vector embeddings
+  semantic:
+    collection_name: "user_facts"
+    embedding_model: "paraphrase-multilingual-mpnet-base-v2"
+    dimensions: 768
+    max_results: 20
+    confidence_threshold: 0.8
+    fact_retention_days: 365  # Long-term storage
+    supported_languages: ["en", "de", "es", "it", "fr"]
+    enable_fallback_storage: true

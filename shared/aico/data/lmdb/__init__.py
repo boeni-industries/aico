@@ -13,16 +13,16 @@ from aico.core.config import ConfigurationManager
 from aico.core.paths import AICOPaths
 
 def get_lmdb_path(config: Optional[ConfigurationManager] = None) -> Path:
-    """Resolve the LMDB database path from configuration."""
+    """Resolve the LMDB database path using new hierarchical memory structure."""
     if config is None:
         config = ConfigurationManager()
         config.initialize(lightweight=True)
     
-    memory_config = config.get("core.memory.working", {})
-    filename = memory_config.get("filename")
-    if not filename:
-        raise ValueError("LMDB filename is not configured in core.yaml under memory.working.filename")
-    return AICOPaths.resolve_database_path(filename)
+    # Use new hierarchical path structure: data/memory/working/
+    # The working directory IS the LMDB database directory (no additional filename needed)
+    working_memory_dir = AICOPaths.get_working_memory_path()
+    
+    return working_memory_dir
 
 def initialize_lmdb_env(config: Optional[ConfigurationManager] = None) -> None:
     """Idempotently initialize the LMDB working memory database environment."""

@@ -5,28 +5,62 @@
 ### Phase 1: Session Context Management (Month 1)
 
 **Core Deliverables:**
-- Working memory implementation with LMDB (`shared/aico/ai/memory/working.py`)
-- Basic session state persistence following AICO patterns
-- Simple thread continuation logic integrated with existing ThreadManager
-- Foundation context assembly framework (`shared/aico/ai/memory/context.py`)
-- MemoryManager base implementation extending BaseAIProcessor
+- ✅ Working memory implementation with LMDB (`shared/aico/ai/memory/working.py`)
+- ✅ Basic session state persistence following AICO patterns
+- ✅ Simple thread continuation logic integrated with existing ThreadManager
+- ✅ Foundation context assembly framework (`shared/aico/ai/memory/context.py`)
+- ✅ MemoryManager base implementation extending BaseAIProcessor
 
 #### Deliverables
-- **Session Continuity**: Conversations maintain context within active sessions
-- **Basic Thread Management**: Simple time-based thread creation/continuation
-- **Context Persistence**: Working memory survives application restarts
-- **Foundation Architecture**: Database schema and core classes established
+- ✅ **Session Continuity**: Conversations maintain context within active sessions
+- ✅ **Basic Thread Management**: Simple time-based thread creation/continuation
+- ✅ **Context Persistence**: Working memory survives application restarts
+- ✅ **Foundation Architecture**: Database schema and core classes established
 
 #### Key Components
-- Working Memory Manager for real-time conversation state
-- Basic Thread Manager with time-based heuristics
-- Core database schema for threads and messages
-- Working memory persistence for session recovery
+- ✅ Working Memory Manager for real-time conversation state
+- ✅ Basic Thread Manager with time-based heuristics
+- ✅ Core database schema for threads and messages
+- ✅ Working memory persistence for session recovery
 
 ---
 
-### Phase 2: Semantic Thread Resolution (Intelligence)
+### Phase 2: User-Specific Long-Term Memory (Relationship Building)
 **Priority**: After Phase 1 completion  
+**Timeline**: 2-3 weeks  
+**Goal**: Zero-ambiguity storage of critical user facts for relationship building
+
+#### Deliverables
+- **Personal Facts Storage**: Names, birthdates, and key personal information per user
+- **Multi-User Support**: Isolated storage preventing cross-user contamination
+- **Zero-Ambiguity Retrieval**: Guaranteed correct facts for the right user
+- **Relationship Context**: Foundation for personalized interactions
+
+#### Key Components
+- Semantic Memory Store implementation (`shared/aico/ai/memory/semantic.py`)
+- User-scoped fact storage with ChromaDB vector embeddings
+- Confidence-based fact validation and contradiction detection
+- Encrypted libSQL metadata storage for structured user facts
+
+#### Phase 2 Implementation Notes:
+- Semantic memory uses ChromaDB for vector similarity and libSQL for metadata
+- Each fact tied to specific `user_id` with confidence scoring
+- Source episodes reference LMDB conversation_history keys (format: `thread_id:timestamp`)
+- Single multilingual embedding model: `paraphrase-multilingual-mpnet-base-v2` (768 dimensions)
+- Fallback JSON storage when ChromaDB unavailable
+- Integration with existing conversation context assembly
+
+#### Critical User Facts Supported:
+- **Personal Information**: Names, birthdates, contact details
+- **Preferences**: Communication style, topics of interest, response preferences  
+- **Relationships**: Family members, friends, professional contacts
+- **Important Dates**: Anniversaries, appointments, significant events
+- **Context Facts**: Work details, hobbies, personal history
+
+---
+
+### Phase 3: Semantic Thread Resolution (Intelligence)
+**Priority**: After Phase 2 completion  
 **Timeline**: 3-4 weeks  
 **Goal**: Intelligent thread switching based on content similarity
 
@@ -38,21 +72,21 @@
 
 #### Key Components
 - Semantic Thread Resolver with embedding models
-- Vector Storage Integration (ChromaDB)
+- Vector Storage Integration (ChromaDB) - building on Phase 2 foundation
 - Cosine similarity-based thread matching
 - Enhanced database schema with embeddings
 
-#### Phase 2 Implementation Notes:
-- Episodic memory uses EncryptedLibSQLConnection following AICO patterns
-- Semantic analysis requires lightweight embedding models for local processing
-- ChromaDB provides vector storage with local persistence and fallback JSON storage
+#### Phase 3 Implementation Notes:
+- Builds on Phase 2 ChromaDB infrastructure for thread embeddings
+- Uses same multilingual embedding model for consistency
 - Thread resolution integrates with existing ThreadManager service
+- Source episodes continue to reference LMDB conversation_history keys
 - Performance remains viable on consumer hardware with proper model selection
 
 ---
 
-### Phase 3: Behavioral Learning (Personalization)
-**Priority**: After Phase 2 completion  
+### Phase 4: Behavioral Learning (Personalization)
+**Priority**: After Phase 3 completion  
 **Timeline**: 4-5 weeks  
 **Goal**: Learn user-specific conversation patterns and preferences
 
@@ -67,11 +101,18 @@
 - Adaptive Threshold Manager for dynamic adjustment
 - User Conversation Profile system
 - Feedback learning mechanisms
+- Procedural Memory Store implementation (`shared/aico/ai/memory/procedural.py`)
+
+#### Phase 4 Implementation Notes:
+- Procedural memory uses libSQL for behavior pattern storage requiring SQL queries
+- Source episodes reference LMDB conversation_history keys (same as other tiers)
+- Statistical analysis and pattern recognition from conversation data
+- Integration with semantic memory for comprehensive user understanding
 
 ---
 
-### Phase 4: Advanced Relationship Intelligence (Full System)
-**Priority**: After Phase 3 completion  
+### Phase 5: Advanced Relationship Intelligence (Full System)
+**Priority**: After Phase 4 completion  
 **Timeline**: 6-8 weeks  
 **Goal**: Complete memory system with proactive capabilities
 
@@ -82,23 +123,30 @@
 - **Advanced Context**: Multi-modal context integration
 
 #### Key Components
-- Semantic Memory Builder for cross-conversation knowledge
 - Proactive Engagement Engine for initiative generation
-- Advanced relationship modeling
+- Advanced relationship modeling and cross-conversation learning
 - Multi-modal context integration
+- Complete memory system coordination and optimization
+
+#### Phase 5 Implementation Notes:
+- Unified memory system with all tiers working together
+- LMDB conversation_history remains the permanent episodic memory store
+- Advanced context assembly across all memory tiers
+- Proactive capabilities based on comprehensive user understanding
 
 ## Migration Strategy
 
 ### Phase Transitions
-1. **Phase 1 → Phase 2**: Add vector storage, maintain existing thread logic as fallback
-2. **Phase 2 → Phase 3**: Add behavioral analysis, keep semantic resolution as primary
-3. **Phase 3 → Phase 4**: Add advanced features, maintain all existing functionality
+1. **Phase 1 → Phase 2**: Add semantic memory store for user facts, maintain LMDB working memory
+2. **Phase 2 → Phase 3**: Add vector storage for thread resolution, build on Phase 2 ChromaDB infrastructure
+3. **Phase 3 → Phase 4**: Add procedural memory for behavior patterns, maintain existing systems
+4. **Phase 4 → Phase 5**: Add advanced features and system coordination
 
-### Backward Compatibility
-- Each phase maintains full compatibility with previous phases
-- Graceful degradation when advanced features unavailable
-- Configuration-driven feature enablement
-- Progressive enhancement approach
+### Simplified Architecture
+- **No episodic memory migration**: LMDB conversation_history serves as permanent episodic memory
+- **Single source of truth**: All source_episodes reference LMDB conversation_history keys
+- **KISS principle**: Three storage systems total (LMDB, ChromaDB, libSQL) - no redundancy
+- **Zero migration complexity**: No backward compatibility issues between storage systems
 
 ## Configuration Evolution
 
@@ -118,16 +166,38 @@ memory:
 ### Phase 2 Configuration
 ```yaml
 memory:
-  semantic_analysis:
-    embedding_model: "all-MiniLM-L6-v2"
-    similarity_threshold: 0.7
-    max_dormant_threads: 10
-    vector_storage_path: "data/memory/vectors"
+  semantic:
+    db_path: "data/memory/semantic"
+    collection_name: "user_facts"
+    embedding_model: "paraphrase-multilingual-mpnet-base-v2"
+    dimensions: 768
+    max_results: 20
+    confidence_threshold: 0.8
+    fact_retention_days: 365  # Long-term storage
+    supported_languages: ["en", "de", "es", "it", "fr"]
+    enable_fallback_storage: true
 ```
 
 ### Phase 3 Configuration
 ```yaml
 memory:
+  semantic_analysis:
+    # Reuse same model as Phase 2 for consistency
+    embedding_model: "paraphrase-multilingual-mpnet-base-v2"
+    dimensions: 768
+    similarity_threshold: 0.7
+    max_dormant_threads: 10
+    # Uses existing ChromaDB infrastructure from Phase 2
+```
+
+### Phase 4 Configuration
+```yaml
+memory:
+  procedural:
+    db_path: "data/memory/procedural.db"
+    pattern_retention_days: 180
+    min_pattern_frequency: 3
+    confidence_threshold: 0.6
   behavioral_learning:
     learning_rate: 0.1
     adaptation_interval: 24  # hours
@@ -135,7 +205,7 @@ memory:
     feedback_weight: 0.8
 ```
 
-### Phase 4 Configuration
+### Phase 5 Configuration
 ```yaml
 memory:
   advanced_features:
@@ -148,9 +218,11 @@ memory:
 ## Hardware Adaptation Strategy
 
 ### Performance Modes
-- **Minimal**: Phase 1 only, basic context management
-- **Balanced**: Phases 1-2, semantic analysis with reduced models
-- **Full**: All phases, complete feature set
+- **Minimal**: Phase 1 only, basic context management (LMDB working memory)
+- **Essential**: Phases 1-2, user facts storage with semantic memory (+ ChromaDB)
+- **Balanced**: Phases 1-3, semantic thread resolution (+ thread embeddings)
+- **Advanced**: Phases 1-4, behavioral learning (+ libSQL procedural memory)
+- **Full**: All phases, complete proactive system
 
 ### Resource Management
 ```yaml
@@ -176,18 +248,24 @@ hardware:
 - Memory usage: <50MB
 
 ### Phase 2 Metrics
+- User fact storage accuracy: >99%
+- Cross-user contamination rate: 0%
+- Fact retrieval time: <20ms
+- User recognition accuracy: >95%
+
+### Phase 3 Metrics
 - Semantic thread matching accuracy: >90%
 - Vector search performance: <50ms
 - Topic coherence score: >0.8
 - User satisfaction with thread decisions: >85%
 
-### Phase 3 Metrics
+### Phase 4 Metrics
 - Personalization effectiveness: >80% user preference alignment
 - Adaptive threshold convergence: <2 weeks
 - Pattern recognition accuracy: >85%
 - User engagement improvement: >20%
 
-### Phase 4 Metrics
+### Phase 5 Metrics
 - Proactive engagement success rate: >70%
 - Cross-conversation knowledge retention: >90%
 - Relationship model accuracy: >85%
@@ -225,11 +303,14 @@ hardware:
 
 | Phase | Duration | Cumulative | Key Milestone |
 |-------|----------|------------|---------------|
-| Phase 1 | 2-3 weeks | 3 weeks | Session context working |
-| Phase 2 | 3-4 weeks | 7 weeks | Semantic thread resolution |
-| Phase 3 | 4-5 weeks | 12 weeks | Personalized behavior |
-| Phase 4 | 6-8 weeks | 20 weeks | Full relationship intelligence |
+| Phase 1 | 2-3 weeks | 3 weeks | Session context working (LMDB) |
+| Phase 2 | 2-3 weeks | 6 weeks | User facts storage (ChromaDB) |
+| Phase 3 | 3-4 weeks | 10 weeks | Semantic thread resolution |
+| Phase 4 | 4-5 weeks | 15 weeks | Behavioral patterns (libSQL) |
+| Phase 5 | 6-8 weeks | 23 weeks | Full proactive intelligence |
 
-**Total Timeline**: ~5 months for complete memory system implementation
+**Total Timeline**: ~6 months for complete memory system implementation
+
+**Simplified Architecture**: 3 storage systems total (LMDB + ChromaDB + libSQL) with zero migration complexity
 
 This roadmap ensures systematic development of AICO's memory capabilities while maintaining user value at each phase.
