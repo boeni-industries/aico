@@ -69,18 +69,27 @@ def initialize_chromadb_cli(config: Optional[ConfigurationManager] = None, verbo
         # Initialize ChromaDB client with persistent storage
         client = chromadb.PersistentClient(path=str(semantic_memory_dir))
         
-        # Create default collection for user facts
+        # Create default collection for user facts with embedding model metadata
         collection_name = config.get("memory.semantic.collection_name", "user_facts")
+        embedding_model = config.get("core.modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
+        dimensions = config.get("core.modelservice.ollama.default_models.embedding.dimensions", 768)
+        
         try:
             collection = client.get_collection(collection_name)
             if verbose:
                 console.print(f"[blue]INFO[/blue] - ChromaDB collection '{collection_name}' already exists at [cyan]{semantic_memory_dir}[/cyan]")
         except Exception:
-            # Collection doesn't exist, create it
-            collection = client.create_collection(collection_name)
+            # Collection doesn't exist, create it with metadata
+            metadata = {
+                "embedding_model": embedding_model,
+                "dimensions": dimensions,
+                "created_by": "aico_db_init",
+                "version": "1.0"
+            }
+            collection = client.create_collection(collection_name, metadata=metadata)
             if verbose:
                 console.print(f"✅ [green]Successfully initialized ChromaDB semantic memory at[/green] [cyan]{semantic_memory_dir}[/cyan]")
-                console.print(f"📋 Created collection: [cyan]{collection_name}[/cyan]")
+                console.print(f"📋 Created collection: [cyan]{collection_name}[/cyan] with model: [cyan]{embedding_model}[/cyan]")
         
     except Exception as e:
         if verbose:

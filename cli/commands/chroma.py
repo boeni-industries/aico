@@ -1,0 +1,208 @@
+"""
+AICO CLI commands for managing the ChromaDB semantic memory database.
+"""
+
+import typer
+from rich.console import Console
+from rich.table import Table
+from rich import box
+from typing import Optional
+
+from cli.utils.chroma_utils import (
+    get_chroma_status_cli, clear_chroma_cli, list_chroma_collections,
+    query_chroma_collection, get_chroma_collection_stats, add_chroma_document
+)
+from cli.decorators.sensitive import destructive
+from cli.utils.help_formatter import format_subcommand_help
+
+def chroma_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit.")):
+    """Show help when no subcommand is given or --help is used."""
+    if ctx.invoked_subcommand is None or help:
+        subcommands = [
+            ("status", "Show the status and statistics of the ChromaDB database."),
+            ("ls", "List all collections within the ChromaDB database."),
+            ("count", "Count the number of documents in a specific collection."),
+            ("query", "Query a collection for similar documents."),
+            ("add", "Add a document to a collection for testing."),
+            ("clear", "Clear all data from the ChromaDB database.")
+        ]
+        
+        examples = [
+            "aico chroma status",
+            "aico chroma ls",
+            "aico chroma count user_facts",
+            "aico chroma query user_facts 'What is my name?'",
+            "aico chroma add user_facts 'My name is John' --metadata '{\"type\": \"personal_info\"}'",
+            "aico chroma clear"
+        ]
+        
+        format_subcommand_help(
+            console=console,
+            command_name="chroma",
+            description="Manage the ChromaDB semantic memory database.",
+            subcommands=subcommands,
+            examples=examples
+        )
+        raise typer.Exit()
+
+app = typer.Typer(
+    help="Manage the ChromaDB semantic memory database.",
+    callback=chroma_callback,
+    invoke_without_command=True,
+    context_settings={"help_option_names": []}
+)
+console = Console()
+
+@app.command(name="status", help="Show the status and statistics of the ChromaDB database.")
+def status():
+    """Show the status and statistics of the ChromaDB database."""
+    status_data = get_chroma_status_cli()
+    
+    table = Table(
+        title="✨ [bold cyan]ChromaDB Semantic Memory Status[/bold cyan]",
+        title_justify="left",
+        border_style="bright_blue",
+        header_style="bold yellow",
+        box=box.SIMPLE_HEAD,
+        padding=(0, 1)
+    )
+    table.add_column("Property", style="cyan", justify="left")
+    table.add_column("Value", style="green", justify="left")
+
+    table.add_row("Database Path", status_data["path"])
+    table.add_row("Exists", "✅ Yes" if status_data["exists"] else "❌ No")
+
+    if status_data["exists"] and not status_data.get("error"):
+        table.add_row("Size (MB)", str(status_data["size_mb"]))
+        table.add_row("Collections", str(status_data.get("collection_count", 0)))
+        
+        if status_data.get("collections"):
+            collections_table = Table(title="Collection Document Counts", box=None, show_header=False)
+            collections_table.add_column("Collection", style="cyan")
+            collections_table.add_column("Documents", style="white")
+            for name, count in status_data["collections"].items():
+                collections_table.add_row(name, f"{count:,}")
+            table.add_row("Documents", collections_table)
+
+    elif status_data.get("error"):
+        table.add_row("Error", f"[red]{status_data['error']}[/red]")
+
+    console.print(table)
+
+@app.command(name="ls", help="List all collections and their document counts.")
+def ls():
+    """List all collections and their document counts."""
+    collections_data = list_chroma_collections()
+    if collections_data.get("error"):
+        console.print(f"[red]Error accessing ChromaDB: {collections_data['error']}[/red]")
+        raise typer.Exit(1)
+
+    collections = collections_data.get("collections", [])
+    if not collections:
+        console.print("[yellow]No collections found. ChromaDB may not be initialized.[/yellow]")
+        console.print("[dim]Run 'aico db init' to initialize the database.[/dim]")
+        return
+
+    table = Table(
+        title="✨ [bold cyan]ChromaDB Collections[/bold cyan]",
+        title_justify="left",
+        border_style="bright_blue",
+        header_style="bold yellow",
+        box=box.SIMPLE_HEAD,
+        padding=(0, 1)
+    )
+    table.add_column("Collection", style="cyan", justify="left")
+    table.add_column("Documents", style="green", justify="right")
+    table.add_column("Embedding Model", style="bright_blue", justify="left")
+
+    for collection in collections:
+        table.add_row(
+            collection["name"],
+            f"{collection.get('count', 0):,}",
+            collection.get("metadata", {}).get("embedding_model", "unknown")
+        )
+
+    console.print(table)
+
+@app.command(name="count", help="Count the number of documents in a specific collection.")
+def count(collection_name: str = typer.Argument(..., help="Name of the collection to count")):
+    """Count the number of documents in a specific collection."""
+    stats = get_chroma_collection_stats(collection_name)
+    
+    if stats.get("error"):
+        console.print(f"[red]Error: {stats['error']}[/red]")
+        raise typer.Exit(1)
+    
+    count_value = stats.get("count", 0)
+    console.print(f"Collection '[cyan]{collection_name}[/cyan]' contains [green]{count_value:,}[/green] documents")
+
+@app.command(name="query", help="Query a collection for similar documents.")
+def query(
+    collection_name: str = typer.Argument(..., help="Name of the collection to query"),
+    query_text: str = typer.Argument(..., help="Text to search for"),
+    limit: int = typer.Option(5, "--limit", "-l", help="Maximum number of results to return"),
+    threshold: float = typer.Option(0.0, "--threshold", "-t", help="Minimum similarity threshold (0.0-1.0)")
+):
+    """Query a collection for similar documents."""
+    results = query_chroma_collection(collection_name, query_text, limit, threshold)
+    
+    if results.get("error"):
+        console.print(f"[red]Error: {results['error']}[/red]")
+        raise typer.Exit(1)
+    
+    documents = results.get("documents", [])
+    if not documents:
+        console.print(f"[yellow]No documents found in collection '{collection_name}' matching '{query_text}'[/yellow]")
+        return
+    
+    table = Table(
+        title=f"✨ [bold cyan]Query Results: '{query_text}'[/bold cyan]",
+        title_justify="left",
+        border_style="bright_blue",
+        header_style="bold yellow",
+        box=box.SIMPLE_HEAD,
+        padding=(0, 1)
+    )
+    table.add_column("ID", style="dim", width=10)
+    table.add_column("Document", style="cyan", no_wrap=False, min_width=40)
+    table.add_column("Distance", style="green", justify="right", width=10)
+    table.add_column("Metadata", style="bright_blue", no_wrap=False, width=20)
+    
+    for i, doc in enumerate(documents):
+        metadata_str = str(doc.get("metadata", {})) if doc.get("metadata") else ""
+        table.add_row(
+            doc.get("id", f"doc_{i}"),
+            doc.get("document", "")[:100] + ("..." if len(doc.get("document", "")) > 100 else ""),
+            f"{doc.get('distance', 0.0):.3f}",
+            metadata_str[:50] + ("..." if len(metadata_str) > 50 else "")
+        )
+    
+    console.print(table)
+
+@app.command(name="add", help="Add a document to a collection for testing.")
+def add(
+    collection_name: str = typer.Argument(..., help="Name of the collection"),
+    document: str = typer.Argument(..., help="Document text to add"),
+    doc_id: Optional[str] = typer.Option(None, "--id", help="Document ID (auto-generated if not provided)"),
+    metadata: Optional[str] = typer.Option(None, "--metadata", help="JSON metadata for the document")
+):
+    """Add a document to a collection for testing."""
+    result = add_chroma_document(collection_name, document, doc_id, metadata)
+    
+    if result.get("error"):
+        console.print(f"[red]Error: {result['error']}[/red]")
+        raise typer.Exit(1)
+    
+    console.print(f"✅ [green]Added document to collection '[cyan]{collection_name}[/cyan]'[/green]")
+    console.print(f"Document ID: [dim]{result.get('id', 'unknown')}[/dim]")
+
+@app.command(name="clear", help="Clear all data from the ChromaDB database.")
+@destructive
+def clear():
+    """Clear all data from the ChromaDB database."""
+    try:
+        clear_chroma_cli()
+        console.print("✅ [green]ChromaDB database cleared successfully.[/green]")
+    except Exception as e:
+        console.print(f"[red]Error clearing ChromaDB: {e}[/red]")
+        raise typer.Exit(1)
