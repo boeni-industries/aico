@@ -592,8 +592,18 @@ class OllamaManager:
                                 self._print_status("✅", f"Model downloaded: {actual_model_name}", "green")
                                 self.logger.info(f"Successfully pulled model: {actual_model_name}")
                             
-                            # Start the model (whether just downloaded or already available)
-                            if model_config.get("auto_start", True):  # Default to auto-start
+                            # Check if this is an embedding model (they don't need to be "started")
+                            is_embedding_model = config_key == "embedding" or any(
+                                emb_keyword in actual_model_name.lower() 
+                                for emb_keyword in ["embed", "paraphrase", "bge", "minilm"]
+                            )
+                            
+                            if is_embedding_model:
+                                # Embedding models are ready once downloaded - no need to "start"
+                                started_models.append(actual_model_name)
+                                self._print_status("✅", f"Embedding model ready: {actual_model_name}", "green")
+                                self.logger.info(f"Embedding model ready: {actual_model_name}")
+                            elif model_config.get("auto_start", True):  # Default to auto-start for LLM models
                                 # Estimate loading time based on model name/size
                                 estimated_time = self._estimate_loading_time(actual_model_name)
                                 

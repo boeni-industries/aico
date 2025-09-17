@@ -180,6 +180,12 @@ modelservice:
         description: "Nous Hermes 3 - Primary foundation model for character consistency"
         auto_pull: true
         priority: 1
+      embedding:
+        name: "paraphrase-multilingual"
+        description: "Multilingual embedding model for semantic memory (Phase 2)"
+        auto_pull: true
+        priority: 1
+        dimensions: 768
       vision:
         name: "llama3.2-vision:11b"
         description: "Scene understanding and emotional context"
@@ -318,8 +324,7 @@ memory:
   # Semantic Memory (ChromaDB) - User facts with vector embeddings
   semantic:
     collection_name: "user_facts"
-    embedding_model: "paraphrase-multilingual-mpnet-base-v2"
-    dimensions: 768
+    # Embedding model configuration references core.modelservice.ollama.default_models.embedding
     max_results: 20
     confidence_threshold: 0.8
     fact_retention_days: 365  # Long-term storage

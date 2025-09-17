@@ -88,6 +88,7 @@ CREATE TABLE conversation_threads (
 
 **Implementation**:
 - **Storage**: ChromaDB for vector operations, libSQL for structured data
+- **Embeddings**: Ollama-managed multilingual models via modelservice abstraction
 - **Scope**: Cross-conversation knowledge, user facts, preferences
 - **Lifecycle**: Accumulated knowledge with confidence scoring
 - **Performance**: Vector similarity search, semantic clustering
@@ -114,11 +115,41 @@ class SemanticFact:
 - **Domain Knowledge**: Work context, technical interests, hobbies
 - **Communication Patterns**: Successful interaction strategies
 
+**Embedding Model Architecture**:
+```python
+# Unified model access via modelservice (DRY principle)
+class EmbeddingService:
+    """Abstraction layer for embedding generation via modelservice."""
+    
+    def __init__(self, config: ConfigurationManager):
+        self.modelservice_client = ModelserviceClient()
+        self.model_config = config.get("memory.semantic", {})
+        self.embedding_model = self.model_config.get("embedding_model", "paraphrase-multilingual")
+        
+    async def generate_embeddings(self, texts: List[str]) -> List[np.ndarray]:
+        """Generate embeddings via modelservice/Ollama."""
+        embeddings = []
+        for text in texts:
+            response = await self.modelservice_client.generate_embeddings(
+                model=self.embedding_model,
+                prompt=text
+            )
+            embeddings.append(np.array(response.embedding))
+        return embeddings
+```
+
+**Model Selection Strategy**:
+- **Primary**: `paraphrase-multilingual` (278M parameters, multilingual)
+- **Fallback**: `all-minilm` (22M parameters, English-focused, faster)
+- **Auto-management**: Ollama handles model downloads and lifecycle
+- **Local-first**: No external API dependencies
+
 **Responsibilities**:
 - Store and retrieve user preferences and facts
 - Enable semantic search across conversation history
 - Maintain knowledge consistency and conflict resolution
 - Support cross-conversation learning and adaptation
+- Generate embeddings via unified modelservice interface
 
 ### 4. Procedural Memory
 
@@ -156,6 +187,68 @@ class InteractionPattern:
 - Optimize timing for proactive engagement
 - Maintain behavioral consistency across sessions
 
+## Model Management Architecture
+
+### Unified Model Service Integration
+
+AICO's memory system integrates with the existing **modelservice** architecture to maintain DRY principles and provide a single, consistent interface for all AI model interactions.
+
+```python
+class ModelServiceIntegration:
+    """Unified interface to modelservice for all AI model needs."""
+    
+    def __init__(self, config: ConfigurationManager):
+        self.config = config
+        self.modelservice_client = ModelserviceClient()
+        
+        # Model configurations from unified config
+        self.llm_model = config.get("core.modelservice.default_models.conversation", "hermes3:8b")
+        self.embedding_model = config.get("memory.semantic.embedding_model", "paraphrase-multilingual")
+        
+    async def generate_embeddings(self, texts: List[str]) -> List[np.ndarray]:
+        """Generate embeddings via modelservice/Ollama."""
+        embeddings = []
+        for text in texts:
+            response = await self.modelservice_client.generate_embeddings(
+                model=self.embedding_model,
+                prompt=text
+            )
+            embeddings.append(np.array(response.embedding))
+        return embeddings
+    
+    async def ensure_models_available(self) -> bool:
+        """Ensure required models are available via Ollama."""
+        try:
+            # Check if embedding model is available
+            models_response = await self.modelservice_client.list_models()
+            available_models = [m.name for m in models_response.models]
+            
+            if self.embedding_model not in available_models:
+                # Request model download via modelservice
+                await self.modelservice_client.pull_model(self.embedding_model)
+                
+            return True
+        except Exception as e:
+            logger.error(f"Failed to ensure models available: {e}")
+            return False
+```
+
+### Ollama Model Management Strategy
+
+**Embedding Models Supported by Ollama:**
+- ✅ **`paraphrase-multilingual`** (278M) - Primary choice for multilingual support
+- ✅ **`all-minilm`** (22M/33M) - Lightweight fallback option  
+- ✅ **`bge-m3`** (567M) - Advanced multilingual option
+- ✅ **`mxbai-embed-large`** (335M) - High-performance English option
+- ✅ **`nomic-embed-text`** - Large context window option
+
+**Why Ollama vs. HuggingFace/PyTorch:**
+1. **Consistency**: Same management system as LLM models
+2. **Simplicity**: No additional PyTorch/transformers dependencies
+3. **Performance**: Ollama's optimized inference engine
+4. **Local-first**: Unified local model management
+5. **DRY Compliance**: Single modelservice interface for all models
+
 ## System Integration
 
 ### Memory Manager Coordination
@@ -166,10 +259,13 @@ class AICOMemoryManager:
     
     def __init__(self, config: MemoryConfig):
         # Storage backends
-        self.working_memory = RocksDBStore(config.working_memory_path)
-        self.episodic_store = EncryptedLibSQL(config.episodic_db_path)
+        self.working_memory = LMDBStore(config.working_memory_path)
+        self.episodic_store = EncryptedLibSQL(config.episodic_db_path)  # LMDB conversation_history
         self.semantic_store = ChromaDBStore(config.semantic_db_path)
         self.procedural_store = LibSQLStore(config.procedural_db_path)
+        
+        # Unified model service integration
+        self.model_service = ModelServiceIntegration(config)
         
         # Coordination components
         self.context_assembler = ContextAssembler()
@@ -177,24 +273,28 @@ class AICOMemoryManager:
         self.conflict_resolver = ConflictResolver()
         
     async def assemble_context(self, user_id: str, message: str) -> ConversationContext:
-        """Coordinate memory retrieval across all tiers"""
+        """Coordinate memory retrieval across all tiers with unified model service."""
         # 1. Get working memory (immediate context)
         working_ctx = await self.working_memory.get_active_context(user_id)
         
-        # 2. Retrieve relevant episodic memories
-        episodic_memories = await self.episodic_store.query_similar_episodes(
+        # 2. Generate embeddings for semantic search via modelservice
+        message_embeddings = await self.model_service.generate_embeddings([message])
+        message_embedding = message_embeddings[0]
+        
+        # 3. Retrieve relevant episodic memories (from LMDB conversation_history)
+        episodic_memories = await self.working_memory.query_similar_episodes(
             message, user_id, limit=5
         )
         
-        # 3. Get semantic knowledge
+        # 4. Get semantic knowledge using vector similarity
         semantic_facts = await self.semantic_store.query_relevant_facts(
-            message, user_id, threshold=0.7
+            message_embedding, user_id, threshold=0.7
         )
         
-        # 4. Apply procedural patterns
+        # 5. Apply procedural patterns
         interaction_patterns = await self.procedural_store.get_user_patterns(user_id)
         
-        # 5. Assemble and optimize context
+        # 6. Assemble and optimize context
         return self.context_assembler.build_context(
             working_ctx, episodic_memories, semantic_facts, interaction_patterns
         )
@@ -252,6 +352,46 @@ class AICOMemoryManager:
 - Reduce embedding dimensions on low-end hardware
 - Defer non-critical operations during high load
 
+## Configuration and Deployment
+
+### Model Configuration Strategy
+
+```yaml
+# Unified configuration in core.yaml
+core:
+  modelservice:
+    default_models:
+      conversation: "hermes3:8b"
+      embedding: "paraphrase-multilingual"  # Primary multilingual model
+      embedding_fallback: "all-minilm"      # Lightweight fallback
+    ollama:
+      auto_install: true
+      auto_pull_models: true
+      host: "127.0.0.1"
+      port: 11434
+
+memory:
+  semantic:
+    embedding_model: "paraphrase-multilingual"
+    dimensions: 768  # Matches paraphrase-multilingual output
+    fallback_model: "all-minilm"
+    fallback_dimensions: 384
+    auto_model_download: true
+```
+
+### Deployment Considerations
+
+**Model Download Strategy**:
+1. **Automatic**: Models downloaded on first use via Ollama
+2. **LLM vs Embedding**: LLM models are "started" (kept in memory), embedding models are loaded on-demand
+3. **Validation**: Verify model availability before semantic operations
+4. **Caching**: Models persist locally after download
+
+**Resource Requirements**:
+- **`paraphrase-multilingual`**: ~278MB disk, ~512MB RAM during inference
+- **`all-minilm`**: ~22MB disk, ~128MB RAM during inference
+- **Ollama overhead**: ~200MB base memory usage
+
 ## Local-First Design Principles
 
 ### No External Dependencies
@@ -259,6 +399,7 @@ class AICOMemoryManager:
 - No cloud services or external APIs required
 - Embedded databases with no server processes
 - Offline-capable with full functionality
+- **Model Privacy**: All embedding generation happens locally via Ollama
 
 ### Privacy-First Architecture
 - All personal data encrypted at rest
