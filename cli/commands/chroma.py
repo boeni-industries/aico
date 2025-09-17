@@ -200,9 +200,13 @@ def add(
 @destructive
 def clear():
     """Clear all data from the ChromaDB database."""
-    try:
-        clear_chroma_cli()
-        console.print("✅ [green]ChromaDB database cleared successfully.[/green]")
-    except Exception as e:
-        console.print(f"[red]Error clearing ChromaDB: {e}[/red]")
-        raise typer.Exit(1)
+    if typer.confirm("Are you sure you want to clear the ChromaDB semantic memory database? This cannot be undone."):
+        try:
+            clear_chroma_cli()
+            console.print("✅ [green]ChromaDB database cleared successfully.[/green]")
+        except Exception as e:
+            console.print(f"[red]Error clearing ChromaDB: {e}[/red]")
+            raise typer.Exit(1)
+    else:
+        console.print("Operation cancelled.")
+        raise typer.Exit()
