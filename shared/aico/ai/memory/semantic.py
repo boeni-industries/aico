@@ -515,27 +515,23 @@ class SemanticMemoryStore:
     async def _generate_embedding(self, text: str) -> Optional[List[float]]:
         """Generate embeddings via modelservice (replaces ChromaDB default embedding function)"""
         try:
-            # Import modelservice client
-            from backend.services.modelservice_client import ModelserviceClient
+            if not self._modelservice:
+                logger.error("Modelservice not available for embedding generation")
+                return None
             
-            # Create modelservice client
-            modelservice = ModelserviceClient(self.config)
-            await modelservice.connect()
+            # Generate embeddings via modelservice
+            response = await self._modelservice.get_embeddings(
+                model=self._embedding_model,
+                prompt=text
+            )
             
-            try:
-                # Generate embeddings via modelservice
-                response = await modelservice.get_embeddings(self._embedding_model, text)
-                
-                if response.get("success") and "embedding" in response.get("data", {}):
-                    embedding = response["data"]["embedding"]
-                    logger.debug(f"Generated {len(embedding)}-dimensional embedding via modelservice")
-                    return embedding
-                else:
-                    logger.error(f"Modelservice embedding generation failed: {response.get('error', 'Unknown error')}")
-                    return None
-                    
-            finally:
-                await modelservice.disconnect()
+            if response.get("success") and "embedding" in response.get("data", {}):
+                embedding = response["data"]["embedding"]
+                logger.debug(f"Generated {len(embedding)}-dimensional embedding via modelservice")
+                return embedding
+            else:
+                logger.error(f"Modelservice embedding generation failed: {response.get('error', 'Unknown error')}")
+                return None
                 
         except Exception as e:
             logger.error(f"Failed to generate embedding via modelservice: {e}")

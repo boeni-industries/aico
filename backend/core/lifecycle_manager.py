@@ -282,10 +282,38 @@ class BackendLifecycleManager:
 
         from aico.ai import ai_registry
         from aico.ai.memory.manager import MemoryManager
+        from backend.services.modelservice_client import get_modelservice_client
 
         # Create and register the MemoryManager
         # It requires the global config manager
         memory_manager = MemoryManager(self.config)
+        
+        # Inject modelservice dependency for semantic memory
+        try:
+            modelservice_client = get_modelservice_client(self.config)
+            memory_manager.set_modelservice(modelservice_client)
+            self.logger.info("✅ Injected modelservice dependency into MemoryManager")
+        except Exception as e:
+            self.logger.error(f"❌ Failed to inject modelservice into MemoryManager: {e}")
+            import traceback
+            self.logger.error(f"Full traceback: {traceback.format_exc()}")
+        
+        # Force initialization to see config logs
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Schedule initialization for later
+                asyncio.create_task(memory_manager.initialize())
+            else:
+                # Initialize immediately
+                loop.run_until_complete(memory_manager.initialize())
+            self.logger.info("✅ MemoryManager initialized during startup")
+        except Exception as e:
+            self.logger.error(f"❌ Failed to initialize MemoryManager during startup: {e}")
+            import traceback
+            self.logger.error(f"Full traceback: {traceback.format_exc()}")
+        
         ai_registry.register("memory", memory_manager)
         self.logger.info("Registered 'memory' processor.")
 

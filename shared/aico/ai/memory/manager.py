@@ -135,11 +135,17 @@ class MemoryManager(BaseAIProcessor):
         self._consolidator: Optional[MemoryConsolidator] = None
         
         # Configuration following AICO patterns
-        self._memory_config = self.config.get("memory", {})
+        self._memory_config = self.config.get("core.memory", {})
         self._consolidation_interval = self._memory_config.get("consolidation_interval_hours", 24)
+        
+        # Debug: Check full config tree
+        logger.debug(f"Full config keys: {list(self.config._config.keys()) if hasattr(self.config, '_config') else 'No _config attr'}")
+        logger.debug(f"Direct semantic check: {self.config.get('core.memory.semantic.enabled', 'NOT_FOUND')}")
         
         logger.info("[DEBUG] MemoryManager: Initialized with configuration")
         logger.debug(f"Memory config: {self._memory_config}")
+        logger.debug(f"Semantic config check: {self._memory_config.get('semantic', {})}")
+        logger.debug(f"Semantic enabled check: {self._memory_config.get('semantic', {}).get('enabled', False)}")
         
         # Modelservice dependency (injected later)
         self._modelservice = None
@@ -160,27 +166,35 @@ class MemoryManager(BaseAIProcessor):
         
         try:
             # Phase 1: Initialize working memory (immediate)
-            if self._memory_config.get("working.enabled", True):
+            if self._memory_config.get("working", {}).get("enabled", True):
                 self._working_store = WorkingMemoryStore(self.config)
                 await self._working_store.initialize()
                 logger.info("Working memory store initialized")
             
             # Phase 2: Initialize episodic and semantic stores (when implemented)
-            if self._memory_config.get("episodic.enabled", False):
+            if self._memory_config.get("episodic", {}).get("enabled", False):
                 self._episodic_store = EpisodicMemoryStore(self.config)
                 await self._episodic_store.initialize()
                 logger.info("Episodic memory store initialized")
             
-            if self._memory_config.get("semantic.enabled", False):
+            if self._memory_config.get("semantic", {}).get("enabled", False):
+                logger.info("[SEMANTIC] Semantic memory enabled in config, initializing...")
                 self._semantic_store = SemanticMemoryStore(self.config)
+                
                 # Inject modelservice dependency if available
                 if hasattr(self, '_modelservice') and self._modelservice:
+                    logger.info("[SEMANTIC] Injecting modelservice dependency")
                     self._semantic_store.set_modelservice(self._modelservice)
+                else:
+                    logger.warning("[SEMANTIC] No modelservice available for injection")
+                
                 await self._semantic_store.initialize()
-                logger.info("Semantic memory store initialized")
+                logger.info("[SEMANTIC] ✅ Semantic memory store initialized successfully")
+            else:
+                logger.info("[SEMANTIC] Semantic memory disabled in config")
             
             # Phase 3: Initialize procedural store (when implemented)
-            if self._memory_config.get("procedural.enabled", False):
+            if self._memory_config.get("procedural", {}).get("enabled", False):
                 self._procedural_store = ProceduralMemoryStore(self.config)
                 await self._procedural_store.initialize()
                 logger.info("Procedural memory store initialized")
@@ -222,6 +236,13 @@ class MemoryManager(BaseAIProcessor):
         - Phase 1: Working memory storage and basic context
         - Phase 2+: Multi-tier context assembly
         """
+        # Debug context type
+        logger.debug(f"[DEBUG] MemoryManager: context type: {type(context)}")
+        if hasattr(context, 'thread_id'):
+            logger.debug(f"[DEBUG] MemoryManager: context.thread_id: {context.thread_id}")
+        else:
+            logger.error(f"[DEBUG] MemoryManager: context has no thread_id attribute: {context}")
+        
         if not self._initialized:
             logger.info("[DEBUG] MemoryManager: Lazy initializing on first process call.")
             await self.initialize()
@@ -269,6 +290,8 @@ class MemoryManager(BaseAIProcessor):
             
         except Exception as e:
             logger.error(f"Memory processing failed: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
             
             return ProcessingResult(
@@ -430,21 +453,31 @@ class MemoryManager(BaseAIProcessor):
         await self._working_store.store_message(context.thread_id, interaction_data)
         
         # Extract and store personal facts from user messages
-        if context.message_type == "user_input" and self._semantic_store:
-            try:
-                facts_stored = await self._semantic_store.extract_and_store_facts(
-                    user_message=context.message_content,
-                    user_id=context.user_id,
-                    context={
-                        "thread_id": context.thread_id,
-                        "turn_number": context.turn_number,
-                        "timestamp": context.timestamp.isoformat()
-                    }
-                )
-                if facts_stored > 0:
-                    logger.info(f"[SEMANTIC] Extracted and stored {facts_stored} personal facts for user {context.user_id}")
-            except Exception as e:
-                logger.warning(f"[SEMANTIC] Fact extraction failed: {e}")
+        if context.message_type == "user_input":
+            logger.debug(f"[SEMANTIC] Processing user input for fact extraction: '{context.message_content[:50]}...'")
+            
+            if not self._semantic_store:
+                logger.warning(f"[SEMANTIC] Semantic store not available - skipping fact extraction")
+            else:
+                logger.debug(f"[SEMANTIC] Semantic store available, attempting fact extraction")
+                try:
+                    facts_stored = await self._semantic_store.extract_and_store_facts(
+                        user_message=context.message_content,
+                        user_id=context.user_id,
+                        context={
+                            "thread_id": context.thread_id,
+                            "turn_number": context.turn_number,
+                            "timestamp": context.timestamp.isoformat()
+                        }
+                    )
+                    if facts_stored > 0:
+                        logger.info(f"[SEMANTIC] ✅ Extracted and stored {facts_stored} personal facts for user {context.user_id}")
+                    else:
+                        logger.debug(f"[SEMANTIC] No facts extracted from message: '{context.message_content[:50]}...'")
+                except Exception as e:
+                    logger.error(f"[SEMANTIC] ❌ Fact extraction failed: {e}")
+                    import traceback
+                    logger.error(f"[SEMANTIC] Full traceback: {traceback.format_exc()}")
     
     async def _assemble_context(self, context: ProcessingContext) -> Dict[str, Any]:
         """Assemble relevant memory context for processing"""

@@ -189,8 +189,23 @@ class ModelServiceClient:
             {}
         )
     
+    async def get_chat_completions(self, model: str, messages: List[Dict[str, str]], **kwargs) -> Dict[str, Any]:
+        """Get chat completions from modelservice (conversational with message arrays)."""
+        request_data = {
+            "model": model,
+            "messages": messages,
+            "stream": kwargs.get("stream", False),
+            "options": kwargs.get("options", {})
+        }
+        
+        return await self._send_request(
+            AICOTopics.MODELSERVICE_CHAT_REQUEST,
+            AICOTopics.MODELSERVICE_CHAT_RESPONSE,
+            request_data
+        )
+    
     async def get_completions(self, model: str, prompt: str, **kwargs) -> Dict[str, Any]:
-        """Get text completions from modelservice."""
+        """Get text completions from modelservice (single prompt analysis)."""
         request_data = {
             "model": model,
             "prompt": prompt,

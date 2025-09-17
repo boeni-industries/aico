@@ -38,6 +38,7 @@ class ModelserviceZMQService:
         # Topic to handler mapping
         self.topic_handlers = {
             AICOTopics.MODELSERVICE_HEALTH_REQUEST: self.handlers.handle_health_request,
+            AICOTopics.MODELSERVICE_CHAT_REQUEST: self.handlers.handle_chat_request,
             AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST: self.handlers.handle_completions_request,
             AICOTopics.MODELSERVICE_MODELS_REQUEST: self.handlers.handle_models_request,
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: self.handlers.handle_model_info_request,
@@ -101,6 +102,7 @@ class ModelserviceZMQService:
             
             # Subscribe to remaining topics that require Ollama
             ollama_topics = [
+                AICOTopics.MODELSERVICE_CHAT_REQUEST,
                 AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST,
                 AICOTopics.MODELSERVICE_MODELS_REQUEST,
                 AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST,
@@ -259,6 +261,7 @@ class ModelserviceZMQService:
         """Get the response topic for a given request topic."""
         response_mapping = {
             AICOTopics.MODELSERVICE_HEALTH_REQUEST: AICOTopics.MODELSERVICE_HEALTH_RESPONSE,
+            AICOTopics.MODELSERVICE_CHAT_REQUEST: AICOTopics.MODELSERVICE_CHAT_RESPONSE,
             AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST: AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE,
             AICOTopics.MODELSERVICE_MODELS_REQUEST: AICOTopics.MODELSERVICE_MODELS_RESPONSE,
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE,
@@ -294,7 +297,7 @@ class ModelserviceZMQService:
             response.success = False
             response.status = "error"
             response.error = error_message
-        elif request_topic == AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST:
+        elif request_topic in [AICOTopics.MODELSERVICE_CHAT_REQUEST, AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST]:
             from aico.proto.aico_modelservice_pb2 import CompletionsResponse
             response = CompletionsResponse()
             response.success = False
@@ -322,6 +325,7 @@ class ModelserviceZMQService:
         """Get response message type for request topic."""
         mapping = {
             AICOTopics.MODELSERVICE_HEALTH_REQUEST: AICOTopics.MODELSERVICE_HEALTH_RESPONSE,
+            AICOTopics.MODELSERVICE_CHAT_REQUEST: AICOTopics.MODELSERVICE_CHAT_RESPONSE,
             AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST: AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE,
             AICOTopics.MODELSERVICE_MODELS_REQUEST: AICOTopics.MODELSERVICE_MODELS_RESPONSE,
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE,

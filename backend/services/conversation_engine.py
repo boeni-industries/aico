@@ -162,16 +162,7 @@ class ConversationEngine(BaseService):
             # No initialization needed for empty registry
             
             # Subscribe to conversation topics
-            await self.bus_client.subscribe(
-                AICOTopics.CONVERSATION_USER_INPUT,
-                self._handle_user_input
-            )
-            
-            # Subscribe to LLM response topics
-            await self.bus_client.subscribe(
-                AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE,
-                self._handle_llm_response
-            )
+            await self._setup_subscriptions()
             
             self.logger.info("Conversation engine started successfully")
             
@@ -206,9 +197,9 @@ class ConversationEngine(BaseService):
             self._handle_user_input
         )
         
-        # LLM responses (always enabled)
+        # Subscribe to LLM responses (always enabled)
         await self.bus_client.subscribe(
-            AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE,
+            AICOTopics.MODELSERVICE_CHAT_RESPONSE,
             self._handle_llm_response
         )
         
@@ -645,7 +636,7 @@ class ConversationEngine(BaseService):
             
             # Publish to modelservice with correlation ID for proper response matching
             await self.bus_client.publish(
-                AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST,
+                AICOTopics.MODELSERVICE_CHAT_REQUEST,
                 completions_request,
                 correlation_id=request_id
             )

@@ -194,9 +194,17 @@ class AICOTopics:
     # Modelservice Domain (ZMQ topics for REST endpoint replacements)
     MODELSERVICE_HEALTH_REQUEST = "modelservice/health/request/v1"
     MODELSERVICE_HEALTH_RESPONSE = "modelservice/health/response/v1"
+    
+    # Chat endpoints (conversational with message arrays and roles)
+    MODELSERVICE_CHAT_REQUEST = "modelservice/chat/request/v1"
+    MODELSERVICE_CHAT_RESPONSE = "modelservice/chat/response/v1"
+    MODELSERVICE_CHAT_STREAM = "modelservice/chat/stream/v1"
+    
+    # Completions endpoints (single prompt analysis tasks)
     MODELSERVICE_COMPLETIONS_REQUEST = "modelservice/completions/request/v1"
     MODELSERVICE_COMPLETIONS_RESPONSE = "modelservice/completions/response/v1"
     MODELSERVICE_COMPLETIONS_STREAM = "modelservice/completions/stream/v1"
+    
     MODELSERVICE_MODELS_REQUEST = "modelservice/models/request/v1"
     MODELSERVICE_MODELS_RESPONSE = "modelservice/models/response/v1"
     MODELSERVICE_MODEL_INFO_REQUEST = "modelservice/model/info/request/v1"

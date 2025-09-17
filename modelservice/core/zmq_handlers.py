@@ -55,22 +55,22 @@ class ModelserviceZMQHandlers:
         
         return response
     
-    async def handle_completions_request(self, request_payload) -> CompletionsResponse:
-        """Handle completion requests via Protocol Buffers."""
+    async def handle_chat_request(self, request_payload) -> CompletionsResponse:
+        """Handle chat requests via Protocol Buffers (conversational with message arrays)."""
         response = CompletionsResponse()
         
         try:
-            logger.info(f"[COMPLETIONS] Processing completion request: {type(request_payload)}")
+            logger.info(f"[CHAT] Processing chat request: {type(request_payload)}")
             
             # Extract data from Protocol Buffer request
             model = request_payload.model
             messages = request_payload.messages
             
-            logger.info(f"[COMPLETIONS] Request details - model: '{model}', messages count: {len(messages)}")
+            logger.info(f"[CHAT] Request details - model: '{model}', messages count: {len(messages)}")
             
             if not model or not messages:
                 error_msg = "Model and messages are required"
-                logger.error(f"[COMPLETIONS] Validation failed: {error_msg}")
+                logger.error(f"[CHAT] Validation failed: {error_msg}")
                 response.success = False
                 response.error = error_msg
                 return response
@@ -82,33 +82,33 @@ class ModelserviceZMQHandlers:
                     "role": msg.role,
                     "content": msg.content
                 })
-                logger.info(f"[COMPLETIONS] Message {i}: role='{msg.role}', content='{msg.content[:200]}{'...' if len(msg.content) > 200 else ''}')")
+                logger.info(f"[CHAT] Message {i}: role='{msg.role}', content='{msg.content[:200]}{'...' if len(msg.content) > 200 else ''}')")
             
             # Forward to Ollama - check config path
             ollama_config = self.config.get('ollama', {})
-            logger.info(f"[COMPLETIONS] Ollama config from self.config: {ollama_config}")
-            logger.info(f"[COMPLETIONS] Full config keys: {list(self.config.keys())}")
+            logger.info(f"[CHAT] Ollama config from self.config: {ollama_config}")
+            logger.info(f"[CHAT] Full config keys: {list(self.config.keys())}")
             ollama_url = f"http://{ollama_config.get('host', '127.0.0.1')}:{ollama_config.get('port', 11434)}"
-            logger.info(f"[COMPLETIONS] Forwarding to Ollama at {ollama_url}")
-            logger.info(f"[COMPLETIONS] Chat messages count: {len(chat_messages)}")
+            logger.info(f"[CHAT] Forwarding to Ollama at {ollama_url}")
+            logger.info(f"[CHAT] Chat messages count: {len(chat_messages)}")
             
-            logger.info(f"[COMPLETIONS] Creating HTTP client...")
+            logger.info(f"[CHAT] Creating HTTP client...")
             async with httpx.AsyncClient(timeout=30.0) as client:
-                logger.info(f"[COMPLETIONS] HTTP client created, sending request to Ollama...")
+                logger.info(f"[CHAT] HTTP client created, sending request to Ollama...")
                 request_data = {
                     "model": model,
                     "messages": chat_messages,
                     "stream": False
                 }
-                logger.info(f"[COMPLETIONS] Request data prepared: model={model}, messages_count={len(chat_messages)}")
+                logger.info(f"[CHAT] Request data prepared: model={model}, messages_count={len(chat_messages)}")
                 
                 try:
-                    logger.info(f"[COMPLETIONS] Making POST request to {ollama_url}/api/chat")
+                    logger.info(f"[CHAT] Making POST request to {ollama_url}/api/chat")
                     ollama_response = await client.post(
                         f"{ollama_url}/api/chat",
                         json=request_data
                     )
-                    logger.info(f"[COMPLETIONS] Ollama response received with status: {ollama_response.status_code}")
+                    logger.info(f"[CHAT] Ollama response received with status: {ollama_response.status_code}")
                 except httpx.ConnectError as conn_err:
                     raise Exception(f"Failed to connect to Ollama at {ollama_url}: {conn_err}")
                 except httpx.TimeoutException as timeout_err:
@@ -141,6 +141,106 @@ class ModelserviceZMQHandlers:
                 response_msg.content = response_content
                 result.message.CopyFrom(response_msg)
                 logger.info(f"[DEBUG] Final result message content: '{result.message.content}'")
+                
+                # Optional timing fields
+                if "total_duration" in data:
+                    result.total_duration = data["total_duration"]
+                if "load_duration" in data:
+                    result.load_duration = data["load_duration"]
+                if "prompt_eval_count" in data:
+                    result.prompt_eval_count = data["prompt_eval_count"]
+                if "prompt_eval_duration" in data:
+                    result.prompt_eval_duration = data["prompt_eval_duration"]
+                if "eval_count" in data:
+                    result.eval_count = data["eval_count"]
+                if "eval_duration" in data:
+                    result.eval_duration = data["eval_duration"]
+                
+                response.success = True
+                response.result.CopyFrom(result)
+                
+                logger.info(f"[CHAT] ✅ Success! Generated chat response for model {model}")
+                logger.info(f"[CHAT] Response length: {len(response_content)} characters")
+                logger.info(
+                    f"Completion generated for model {model}",
+                    extra={"topic": AICOTopics.LOGS_ENTRY}
+                )
+                
+        except Exception as e:
+            error_msg = f"Chat request failed: {str(e)}"
+            logger.error(f"[CHAT] ❌ CRITICAL ERROR: {error_msg}")
+            logger.error(f"[CHAT] Exception type: {type(e).__name__}")
+            import traceback
+            logger.error(f"[CHAT] Full traceback: {traceback.format_exc()}")
+            response.success = False
+            response.error = error_msg
+            logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+        
+        return response
+    
+    async def handle_completions_request(self, request_payload) -> CompletionsResponse:
+        """Handle completions requests via Protocol Buffers (single prompt analysis)."""
+        response = CompletionsResponse()
+        
+        try:
+            logger.info(f"[COMPLETIONS] Processing completions request: {type(request_payload)}")
+            
+            # Extract data from Protocol Buffer request
+            model = request_payload.model
+            prompt = request_payload.prompt
+            
+            logger.info(f"[COMPLETIONS] Request details - model: '{model}', prompt: '{prompt[:100]}...'")
+            
+            if not model or not prompt:
+                error_msg = "Model and prompt are required"
+                logger.error(f"[COMPLETIONS] Validation failed: {error_msg}")
+                response.success = False
+                response.error = error_msg
+                return response
+            
+            # Forward to Ollama /api/generate endpoint
+            ollama_config = self.config.get('ollama', {})
+            ollama_url = f"http://{ollama_config.get('host', '127.0.0.1')}:{ollama_config.get('port', 11434)}"
+            logger.info(f"[COMPLETIONS] Forwarding to Ollama at {ollama_url}")
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                request_data = {
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": False
+                }
+                logger.info(f"[COMPLETIONS] Request data prepared: model={model}")
+                
+                try:
+                    logger.info(f"[COMPLETIONS] Making POST request to {ollama_url}/api/generate")
+                    ollama_response = await client.post(
+                        f"{ollama_url}/api/generate",
+                        json=request_data
+                    )
+                    logger.info(f"[COMPLETIONS] Ollama response received with status: {ollama_response.status_code}")
+                except httpx.ConnectError as conn_err:
+                    raise Exception(f"Failed to connect to Ollama at {ollama_url}: {conn_err}")
+                except httpx.TimeoutException as timeout_err:
+                    raise Exception(f"Ollama request timed out after 30s: {timeout_err}")
+                except Exception as req_err:
+                    raise Exception(f"HTTP request to Ollama failed: {req_err}")
+                
+                if ollama_response.status_code != 200:
+                    raise Exception(f"Ollama error: {ollama_response.status_code} - {ollama_response.text}")
+                
+                data = ollama_response.json()
+                logger.info(f"[COMPLETIONS] Ollama raw response: {data}")
+                
+                # Extract response content
+                response_content = data.get("response", "")
+                logger.info(f"[COMPLETIONS] Extracted response content: '{response_content[:100]}...' (length: {len(response_content)})")
+                
+                # Create Protocol Buffer response
+                from aico.proto.aico_modelservice_pb2 import CompletionResult
+                result = CompletionResult()
+                result.content = response_content
+                result.model = model
+                result.created_at.GetCurrentTime()
                 
                 # Optional timing fields
                 if "total_duration" in data:

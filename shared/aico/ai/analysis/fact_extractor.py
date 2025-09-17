@@ -53,10 +53,10 @@ class PersonalFactExtractor:
             # Generate analysis prompt
             prompt = self._build_extraction_prompt(user_message, user_id, context or {})
             
-            # Get LLM response
-            response = await self.modelservice.generate_completion(
+            # Call LLM via modelservice
+            response = await self.modelservice.get_completions(
                 model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
+                prompt=prompt,
                 temperature=0.1  # Low temperature for consistent structured output
             )
             
