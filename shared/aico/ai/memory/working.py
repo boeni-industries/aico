@@ -75,9 +75,9 @@ class WorkingMemoryStore:
             initialize_lmdb_env(self.config)
             self.env = lmdb.open(str(self._db_path), max_dbs=len(self._named_dbs) + 1)
 
-            # Open handles to named databases
+            # Open handles to named databases (create if they don't exist)
             for db_name in self._named_dbs:
-                self.dbs[db_name] = self.env.open_db(db_name.encode('utf-8'))
+                self.dbs[db_name] = self.env.open_db(db_name.encode('utf-8'), create=True)
 
             self._initialized = True
             logger.info("[DEBUG] WorkingMemoryStore: Initialized successfully.")

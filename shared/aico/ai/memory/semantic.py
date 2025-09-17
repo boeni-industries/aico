@@ -76,8 +76,8 @@ except ImportError:
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths
-from aico.ai.analysis.fact_extractor import PersonalFactExtractor
-from aico.data.schemas.semantic import PersonalFact, SemanticQuery, SemanticResult
+from aico.ai.analysis.conversation_processor import ConversationSegmentProcessor
+from aico.data.schemas.semantic import SemanticQuery, SemanticResult
 
 logger = get_logger("shared", "ai.memory.semantic")
 
@@ -116,22 +116,23 @@ class SemanticMemoryStore:
         # Configuration - use hierarchical paths and modelservice integration
         memory_config = self.config.get("memory.semantic", {})
         self._db_path = AICOPaths.get_semantic_memory_path()
-        self._collection_name = memory_config.get("collection_name", "user_facts")
+        self._collection_name = memory_config.get("collection_name", "conversation_segments")
         # Use modelservice embedding model instead of sentence-transformers
         self._embedding_model = self.config.get("core.modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
         self._max_results = memory_config.get("max_results", 20)
         
-        # Initialize fact extractor
-        self.fact_extractor = PersonalFactExtractor(config_manager)
+        # Initialize conversation processor
+        self.conversation_processor = ConversationSegmentProcessor(config_manager)
         
         # Check ChromaDB availability
         if chromadb is None:
             logger.warning("ChromaDB not available - semantic memory will use fallback storage")
     
     def set_modelservice(self, modelservice):
-        """Inject modelservice dependency for fact extraction and embeddings"""
+        """Inject modelservice dependency for embeddings and NER"""
         self._modelservice = modelservice
-        self.fact_extractor.modelservice = modelservice
+        # Also inject into conversation processor
+        self.conversation_processor.modelservice = modelservice
     
     async def initialize(self) -> None:
         """Initialize ChromaDB client and collection with modelservice integration"""
@@ -172,9 +173,7 @@ class SemanticMemoryStore:
                 )
                 logger.info(f"Created new collection: {self._collection_name} with model: {self._embedding_model}")
             
-            # Inject modelservice dependency into fact extractor
-            if hasattr(self, '_modelservice'):
-                self.fact_extractor.modelservice = self._modelservice
+            # Modelservice dependency is handled directly in _generate_embedding
             
             self._initialized = True
             logger.info("Semantic memory store initialized with modelservice integration")
@@ -306,74 +305,13 @@ class SemanticMemoryStore:
             else:
                 # Use fallback search
                 return await self._query_fallback(query_text, max_results, filters)
-                
         except Exception as e:
             logger.error(f"Failed to query semantic memory: {e}")
             return []
     
-    async def extract_and_store_facts(self, user_message: str, user_id: str, context: Dict[str, Any] = None) -> int:
-        """
-        Extract personal facts from user message and store them in semantic memory.
-        
-        Args:
-            user_message: The user's message to analyze
-            user_id: User identifier for scoping facts
-            context: Additional context (thread_id, recent_messages, etc.)
-            
-        Returns:
-            Number of facts successfully stored
-        """
-        if not self._initialized:
-            await self.initialize()
-        
-        try:
-            # Extract facts using LLM analysis
-            facts = await self.fact_extractor.extract_facts(user_message, user_id, context or {})
-            
-            if not facts:
-                logger.debug(f"No facts extracted from message for user {user_id}")
-                return 0
-            
-            # Store each extracted fact
-            facts_stored = 0
-            for fact in facts:
-                fact_data = {
-                    "id": f"fact_{user_id}_{fact.timestamp.strftime('%Y%m%d_%H%M%S_%f')}",
-                    "content": fact.fact_text,
-                    "metadata": {
-                        "user_id": user_id,
-                        "category": fact.category.value,  # Convert enum to string for ChromaDB
-                        "permanence": fact.permanence.value,  # Convert enum to string for ChromaDB
-                        "confidence": fact.confidence,
-                        "reasoning": fact.reasoning,
-                        "source_thread": context.get("thread_id") if context else None,
-                        "extracted_at": fact.timestamp.isoformat()
-                    },
-                    "source": "fact_extraction",
-                    "confidence": fact.confidence
-                }
-                
-                success = await self.store(fact_data)
-                if success:
-                    facts_stored += 1
-                    logger.debug(f"Stored fact for user {user_id}: {fact.fact_text}")
-                else:
-                    logger.warning(f"Failed to store fact for user {user_id}: {fact.fact_text}")
-            
-            logger.info(f"Extracted and stored {facts_stored}/{len(facts)} facts for user {user_id}")
-            return facts_stored
-            
-        except Exception as e:
-            logger.error(f"Failed to extract and store facts for user {user_id}: {e}")
-            return 0
-    
-    async def get_related_concepts(self, concept: str, max_results: int = 10) -> List[Dict[str, Any]]:
-        """Get concepts related to the given concept - Phase 1 interface"""
-        return await self.query(concept, max_results=max_results)
-    
-    async def get_user_facts(self, user_id: str, category: Optional[str] = None, 
-                           confidence_threshold: Optional[float] = None) -> List[Dict[str, Any]]:
-        """Get all facts for a user with optional filtering (administrative query)"""
+    async def get_user_segments(self, user_id: str, thread_id: Optional[str] = None, 
+                              entity_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get all conversation segments for a user with optional filtering (administrative query)"""
         if not self._initialized:
             await self.initialize()
         
@@ -382,13 +320,14 @@ class SemanticMemoryStore:
         
         try:
             # Build where clause for metadata filtering
-            where_clause = {"user_id": user_id, "status": "active"}
+            where_clause = {"user_id": user_id, "type": "conversation_segment"}
             
-            if category:
-                where_clause["category"] = category
+            if thread_id:
+                where_clause["thread_id"] = thread_id
             
-            if confidence_threshold:
-                where_clause["confidence"] = {"$gte": confidence_threshold}
+            if entity_filter:
+                # Filter by entity presence (simplified for now)
+                where_clause["entities"] = {"$contains": entity_filter}
             
             # Use get() for administrative queries (no embeddings needed)
             results = self._collection.get(
@@ -397,24 +336,24 @@ class SemanticMemoryStore:
             )
             
             # Format results
-            facts = []
+            segments = []
             if results["documents"]:
                 for i in range(len(results["documents"])):
-                    facts.append({
+                    segments.append({
                         "id": results["ids"][i],
                         "content": results["documents"][i],
                         "metadata": results["metadatas"][i] if results["metadatas"] else {}
                     })
             
-            logger.debug(f"Retrieved {len(facts)} facts for user {user_id}")
-            return facts
+            logger.debug(f"Retrieved {len(segments)} conversation segments for user {user_id}")
+            return segments
             
         except Exception as e:
-            logger.error(f"Failed to get user facts: {e}")
+            logger.error(f"Failed to get user segments: {e}")
             return []
     
-    async def delete_user_facts(self, user_id: str) -> bool:
-        """Delete all facts for a user (GDPR compliance)"""
+    async def delete_user_segments(self, user_id: str) -> bool:
+        """Delete all conversation segments for a user (GDPR compliance)"""
         if not self._initialized:
             await self.initialize()
         
@@ -422,22 +361,22 @@ class SemanticMemoryStore:
             return False
         
         try:
-            # Get all fact IDs for the user
-            user_facts = await self.get_user_facts(user_id)
+            # Get all segment IDs for the user
+            user_segments = await self.get_user_segments(user_id)
             
-            if not user_facts:
-                logger.info(f"No facts found for user {user_id}")
+            if not user_segments:
+                logger.info(f"No conversation segments found for user {user_id}")
                 return True
             
-            # Delete all facts
-            fact_ids = [fact["id"] for fact in user_facts]
-            self._collection.delete(ids=fact_ids)
+            # Delete all segments
+            segment_ids = [segment["id"] for segment in user_segments]
+            self._collection.delete(ids=segment_ids)
             
-            logger.info(f"Deleted {len(fact_ids)} facts for user {user_id}")
+            logger.info(f"Deleted {len(segment_ids)} conversation segments for user {user_id}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to delete user facts: {e}")
+            logger.error(f"Failed to delete user segments: {e}")
             return False
     
     async def cleanup_old_facts(self, days_old: int = 90) -> int:
@@ -519,10 +458,14 @@ class SemanticMemoryStore:
                 logger.error("Modelservice not available for embedding generation")
                 return None
             
-            # Generate embeddings via modelservice
-            response = await self._modelservice.get_embeddings(
-                model=self._embedding_model,
-                prompt=text
+            # Add timeout handling for background embedding generation
+            import asyncio
+            response = await asyncio.wait_for(
+                self._modelservice.get_embeddings(
+                    model=self._embedding_model,
+                    prompt=text
+                ),
+                timeout=30.0  # Shorter timeout for background tasks
             )
             
             if response.get("success") and "embedding" in response.get("data", {}):
@@ -533,6 +476,9 @@ class SemanticMemoryStore:
                 logger.error(f"Modelservice embedding generation failed: {response.get('error', 'Unknown error')}")
                 return None
                 
+        except asyncio.TimeoutError:
+            logger.warning(f"Embedding generation timed out after 30s - skipping fact storage")
+            return None
         except Exception as e:
             logger.error(f"Failed to generate embedding via modelservice: {e}")
             return None

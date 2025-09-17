@@ -434,7 +434,7 @@ class MemoryManager(BaseAIProcessor):
             return 0
     
     async def _store_interaction(self, context: ProcessingContext) -> None:
-        """Store current interaction in working memory and extract facts for semantic memory"""
+        """Store current interaction in working memory (fast, blocking)"""
         if not self._working_store:
             logger.warning("Working memory store not available")
             return
@@ -452,32 +452,44 @@ class MemoryManager(BaseAIProcessor):
         logger.info(f"[DEBUG] MemoryManager: Storing interaction for thread {context.thread_id}")
         await self._working_store.store_message(context.thread_id, interaction_data)
         
-        # Extract and store personal facts from user messages
-        if context.message_type == "user_input":
-            logger.debug(f"[SEMANTIC] Processing user input for fact extraction: '{context.message_content[:50]}...'")
+        # Schedule conversation segment processing as background task (non-blocking)
+        if context.message_type in ["user_input", "ai_response"] and self._semantic_store:
+            logger.debug(f"[SEMANTIC] Scheduling background conversation processing for thread {context.thread_id}")
+            import asyncio
+            asyncio.create_task(self._process_conversation_segments_background(context))
+    
+    async def _process_conversation_segments_background(self, context: ProcessingContext) -> None:
+        """Process conversation segments in background without blocking user response"""
+        try:
+            logger.debug(f"[SEMANTIC] Background conversation processing started for thread {context.thread_id}")
             
-            if not self._semantic_store:
-                logger.warning(f"[SEMANTIC] Semantic store not available - skipping fact extraction")
-            else:
-                logger.debug(f"[SEMANTIC] Semantic store available, attempting fact extraction")
-                try:
-                    facts_stored = await self._semantic_store.extract_and_store_facts(
-                        user_message=context.message_content,
-                        user_id=context.user_id,
-                        context={
-                            "thread_id": context.thread_id,
-                            "turn_number": context.turn_number,
-                            "timestamp": context.timestamp.isoformat()
-                        }
+            # Get recent conversation history from working memory
+            if self._working_store:
+                recent_messages = await self._working_store.retrieve_thread_history(
+                    context.thread_id, 
+                    limit=10  # Get last 10 messages for segmentation
+                )
+                
+                if recent_messages:
+                    segments_stored = await self._semantic_store.store_conversation_segments(
+                        messages=recent_messages,
+                        thread_id=context.thread_id,
+                        user_id=context.user_id
                     )
-                    if facts_stored > 0:
-                        logger.info(f"[SEMANTIC] ✅ Extracted and stored {facts_stored} personal facts for user {context.user_id}")
+                    
+                    if segments_stored > 0:
+                        logger.info(f"[SEMANTIC] ✅ Background processing: stored {segments_stored} conversation segments for user {context.user_id}")
                     else:
-                        logger.debug(f"[SEMANTIC] No facts extracted from message: '{context.message_content[:50]}...'")
-                except Exception as e:
-                    logger.error(f"[SEMANTIC] ❌ Fact extraction failed: {e}")
-                    import traceback
-                    logger.error(f"[SEMANTIC] Full traceback: {traceback.format_exc()}")
+                        logger.debug(f"[SEMANTIC] Background processing: no new segments created")
+                else:
+                    logger.debug(f"[SEMANTIC] Background processing: no recent messages found")
+            else:
+                logger.warning(f"[SEMANTIC] Working memory store not available for conversation processing")
+                
+        except Exception as e:
+            logger.error(f"[SEMANTIC] ❌ Background conversation processing failed: {e}")
+            import traceback
+            logger.error(f"[SEMANTIC] Full traceback: {traceback.format_exc()}")
     
     async def _assemble_context(self, context: ProcessingContext) -> Dict[str, Any]:
         """Assemble relevant memory context for processing"""

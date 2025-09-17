@@ -69,13 +69,20 @@ class ModelServiceClient:
         correlation_id = str(uuid.uuid4())
         
         # Create proper protobuf message based on request type
-        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest
+        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest, EmbeddingsRequest
         
-        if "completions" in request_topic:
+        if "completions" in request_topic or "chat" in request_topic:
             # Create CompletionsRequest protobuf
             request_proto = CompletionsRequest()
             request_proto.model = data.get("model", "")
-            if "prompt" in data:
+            if "messages" in data:
+                # For chat requests with message arrays
+                from aico.proto.aico_modelservice_pb2 import ConversationMessage
+                for message in data["messages"]:
+                    msg = request_proto.messages.add()
+                    msg.role = message.get("role", "user")
+                    msg.content = message.get("content", "")
+            elif "prompt" in data:
                 # For simple prompt, convert to messages format
                 from aico.proto.aico_modelservice_pb2 import ConversationMessage
                 msg = request_proto.messages.add()
@@ -86,6 +93,11 @@ class ModelServiceClient:
                 request_proto.temperature = data["options"]["temperature"]
             if "max_tokens" in data.get("options", {}):
                 request_proto.max_tokens = data["options"]["max_tokens"]
+        elif "embeddings" in request_topic:
+            # Create EmbeddingsRequest protobuf
+            request_proto = EmbeddingsRequest()
+            request_proto.model = data.get("model", "")
+            request_proto.prompt = data.get("prompt", "")
         elif "health" in request_topic:
             request_proto = HealthRequest()
         elif "models" in request_topic:
@@ -117,39 +129,55 @@ class ModelServiceClient:
                 
                 self.logger.debug(f"Processing response for correlation_id: {correlation_id}")
                 
-                from aico.proto.aico_modelservice_pb2 import CompletionsResponse
                 if hasattr(message, 'any_payload'):
-                    # Unpack the Any payload
-                    completions_response = CompletionsResponse()
-                    if message.any_payload.Unpack(completions_response):
-                        self.logger.debug(f"Successfully unpacked CompletionsResponse: success={completions_response.success}")
-                        response_data = {
-                            'success': completions_response.success,
-                            'error': completions_response.error if completions_response.HasField('error') else None
-                        }
-                        if completions_response.HasField('result'):
-                            # Check if result has message field (actual field name from logs)
-                            if hasattr(completions_response.result, 'message'):
-                                response_data['response'] = completions_response.result.message.content
-                                self.logger.debug(f"Extracted message content: {completions_response.result.message.content[:100]}...")
-                            elif hasattr(completions_response.result, 'content'):
-                                response_data['response'] = completions_response.result.content
-                                self.logger.debug(f"Extracted content: {completions_response.result.content[:100]}...")
-                            elif hasattr(completions_response.result, 'text'):
-                                response_data['response'] = completions_response.result.text
-                                self.logger.debug(f"Extracted text: {completions_response.result.text[:100]}...")
-                            else:
-                                # Log available fields for debugging
-                                fields = [field.name for field in completions_response.result.DESCRIPTOR.fields]
-                                self.logger.debug(f"Available result fields: {fields}")
-                                response_data['response'] = str(completions_response.result)
+                    # Handle different response types based on response topic
+                    if "embeddings" in response_topic:
+                        from aico.proto.aico_modelservice_pb2 import EmbeddingsResponse
+                        embeddings_response = EmbeddingsResponse()
+                        if message.any_payload.Unpack(embeddings_response):
+                            self.logger.debug(f"Successfully unpacked EmbeddingsResponse: success={embeddings_response.success}")
+                            response_data = {
+                                'success': embeddings_response.success,
+                                'error': embeddings_response.error if embeddings_response.HasField('error') else None
+                            }
+                            if embeddings_response.success and embeddings_response.embedding:
+                                response_data['data'] = {'embedding': list(embeddings_response.embedding)}
+                                self.logger.debug(f"Extracted embedding with {len(embeddings_response.embedding)} dimensions")
+                            response_received.set()
                         else:
-                            self.logger.debug("No result field in response")
-                        response_received.set()
+                            self.logger.error("Failed to unpack EmbeddingsResponse")
+                            response_data = {'success': False, 'error': 'Failed to unpack response'}
+                            response_received.set()
                     else:
-                        self.logger.error("Failed to unpack CompletionsResponse")
-                        response_data = {'success': False, 'error': 'Failed to unpack response'}
-                        response_received.set()
+                        # Handle completions/chat responses
+                        from aico.proto.aico_modelservice_pb2 import CompletionsResponse
+                        completions_response = CompletionsResponse()
+                        if message.any_payload.Unpack(completions_response):
+                            self.logger.debug(f"Successfully unpacked CompletionsResponse: success={completions_response.success}")
+                            response_data = {
+                                'success': completions_response.success,
+                                'error': completions_response.error if completions_response.HasField('error') else None
+                            }
+                            if completions_response.HasField('result'):
+                                # Check if result has message field (actual field name from logs)
+                                if hasattr(completions_response.result, 'message'):
+                                    response_data['data'] = {'content': completions_response.result.message.content}
+                                    self.logger.debug(f"Extracted message content: {completions_response.result.message.content[:100]}...")
+                                elif hasattr(completions_response.result, 'content'):
+                                    response_data['data'] = {'content': completions_response.result.content}
+                                    self.logger.debug(f"Extracted content: {completions_response.result.content[:100]}...")
+                                else:
+                                    # Log available fields for debugging
+                                    fields = [field.name for field in completions_response.result.DESCRIPTOR.fields]
+                                    self.logger.debug(f"Available result fields: {fields}")
+                                    response_data['data'] = {'content': str(completions_response.result)}
+                            else:
+                                self.logger.debug("No result field in response")
+                            response_received.set()
+                        else:
+                            self.logger.error("Failed to unpack CompletionsResponse")
+                            response_data = {'success': False, 'error': 'Failed to unpack response'}
+                            response_received.set()
                 else:
                     # Handle case where message doesn't have any_payload
                     self.logger.debug(f"Message structure: {type(message)}, fields: {dir(message)}")
@@ -245,6 +273,18 @@ class ModelServiceClient:
         return await self._send_request(
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
             AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
+            request_data
+        )
+    
+    async def get_ner_entities(self, text: str) -> Dict[str, Any]:
+        """Get named entity recognition from modelservice."""
+        request_data = {
+            "text": text
+        }
+        
+        return await self._send_request(
+            AICOTopics.MODELSERVICE_NER_REQUEST,
+            AICOTopics.MODELSERVICE_NER_RESPONSE,
             request_data
         )
     

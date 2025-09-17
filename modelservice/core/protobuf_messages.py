@@ -248,6 +248,7 @@ class ModelserviceMessageParser:
         # Map message types to their corresponding protobuf classes
         request_types = {
             AICOTopics.MODELSERVICE_HEALTH_REQUEST: HealthRequest,
+            AICOTopics.MODELSERVICE_CHAT_REQUEST: CompletionsRequest,
             AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST: CompletionsRequest,
             AICOTopics.MODELSERVICE_MODELS_REQUEST: ModelsRequest,
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: ModelInfoRequest,
@@ -277,6 +278,7 @@ class ModelserviceMessageParser:
         # Map message types to their corresponding protobuf classes
         response_types = {
             AICOTopics.MODELSERVICE_HEALTH_RESPONSE: HealthResponse,
+            AICOTopics.MODELSERVICE_CHAT_RESPONSE: CompletionsResponse,
             AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE: CompletionsResponse,
             AICOTopics.MODELSERVICE_MODELS_RESPONSE: ModelsResponse,
             AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE: ModelInfoResponse,

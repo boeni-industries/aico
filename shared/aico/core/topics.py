@@ -211,6 +211,8 @@ class AICOTopics:
     MODELSERVICE_MODEL_INFO_RESPONSE = "modelservice/model/info/response/v1"
     MODELSERVICE_EMBEDDINGS_REQUEST = "modelservice/embeddings/request/v1"
     MODELSERVICE_EMBEDDINGS_RESPONSE = "modelservice/embeddings/response/v1"
+    MODELSERVICE_NER_REQUEST = "modelservice/ner/request/v1"
+    MODELSERVICE_NER_RESPONSE = "modelservice/ner/response/v1"
     MODELSERVICE_STATUS_REQUEST = "modelservice/status/request/v1"
     MODELSERVICE_STATUS_RESPONSE = "modelservice/status/response/v1"
     

@@ -47,6 +47,10 @@ cli = [
     "cron-descriptor>=1.4.3",
 ]
 
+modelservice = [
+    "spacy>=3.7.0",  # NER for conversation segment processing
+]
+
 test = [
     "pytest>=8.4.1",
 ]

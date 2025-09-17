@@ -209,18 +209,26 @@ def query_chroma_collection(
                 n_results=limit
             )
             
-            # Format results
+            # Format results with normalized similarity scores
             documents = []
             if results["documents"] and results["documents"][0]:
-                for i in range(len(results["documents"][0])):
-                    distance = results["distances"][0][i] if results["distances"] else 0.0
-                    
-                    # Apply threshold filter
-                    if distance <= threshold or threshold == 0.0:
+                # Get all distances to calculate normalization
+                raw_distances = results["distances"][0] if results["distances"] and results["distances"][0] else []
+                
+                for i, doc in enumerate(results["documents"][0]):
+                    if doc:  # Skip empty documents
+                        raw_distance = raw_distances[i] if i < len(raw_distances) else 0.0
+                        
+                        # Convert distance to similarity score (0-1 range)
+                        # Using exponential decay: similarity = exp(-distance/scale)
+                        # Scale factor chosen to map typical distances (0-20) to meaningful similarities
+                        similarity = max(0.0, min(1.0, 1.0 / (1.0 + raw_distance / 5.0)))
+                        
                         documents.append({
-                            "id": results["ids"][0][i] if results["ids"] else f"doc_{i}",
-                            "document": results["documents"][0][i],
-                            "distance": distance,
+                            "id": results["ids"][0][i] if results["ids"] and results["ids"][0] else f"doc_{i}",
+                            "document": doc,
+                            "distance": raw_distance,  # Keep raw distance for debugging
+                            "similarity": similarity,  # Add normalized similarity
                             "metadata": results["metadatas"][0][i] if results["metadatas"] and results["metadatas"][0] else {}
                         })
             

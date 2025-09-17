@@ -97,10 +97,11 @@ def dump_lmdb_db(db_name: str, limit: int, config: Optional[ConfigurationManager
         border_style="bright_blue",
         header_style="bold yellow",
         box=box.SIMPLE_HEAD,
-        padding=(0, 1)
+        padding=(0, 1),
+        expand=True  # Allow table to expand for better readability
     )
-    table.add_column("Key", style="cyan", justify="left")
-    table.add_column("Value", style="white", justify="left")
+    table.add_column("Key", style="cyan", justify="left", width=40)
+    table.add_column("Value", style="white", justify="left", no_wrap=False)
 
     if config is None:
         config = ConfigurationManager()
@@ -125,9 +126,7 @@ def dump_lmdb_db(db_name: str, limit: int, config: Optional[ConfigurationManager
             except UnicodeDecodeError:
                 value_str = repr(value)
             
-            if len(value_str) > 100:
-                value_str = value_str[:97] + "..."
-
+            # No truncation - show full content for better UX
             table.add_row(key_str, value_str)
             count += 1
     env.close()
@@ -145,11 +144,11 @@ def tail_lmdb_db(db_name: str, limit: int, full: bool = False, config: Optional[
         border_style="bright_blue",
         header_style="bold yellow",
         box=box.SIMPLE_HEAD,
-        padding=(0, 1)
+        padding=(0, 1),
+        expand=True  # Allow table to expand for better readability
     )
-    table.add_column("Key", style="cyan", justify="left")
-    # Enable wrapping for full output mode to handle long values
-    table.add_column("Value", style="white", justify="left", overflow="fold" if full else "ellipsis", no_wrap=not full)
+    table.add_column("Key", style="cyan", justify="left", width=40)
+    table.add_column("Value", style="white", justify="left", no_wrap=False)
 
     if config is None:
         config = ConfigurationManager()
@@ -181,10 +180,7 @@ def tail_lmdb_db(db_name: str, limit: int, full: bool = False, config: Optional[
             except UnicodeDecodeError:
                 value_str = repr(value)
             
-            # Only truncate if not in full mode
-            if not full and len(value_str) > 100:
-                value_str = value_str[:97] + "..."
-            
+            # No truncation for better UX - show full content
             all_entries.append((key_str, value_str))
         
         # Take the last N entries

@@ -44,6 +44,11 @@ message EmbeddingsRequest {
   string prompt = 2;
 }
 
+// NER request
+message NerRequest {
+  string text = 1;
+}
+
 // Service status request
 message StatusRequest {
   // Empty - no parameters needed
@@ -111,6 +116,17 @@ message EmbeddingsResponse {
   bool success = 1;
   repeated double embedding = 2;
   optional string error = 3;
+}
+
+// NER response
+message NerResponse {
+  bool success = 1;
+  map<string, EntityList> entities = 2;
+  optional string error = 3;
+}
+
+message EntityList {
+  repeated string entities = 1;
 }
 
 // Service status response

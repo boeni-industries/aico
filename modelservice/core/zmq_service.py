@@ -33,7 +33,9 @@ class ModelserviceZMQService:
         self.running = False
         self.bus_client = None
         self.processed_correlation_ids = set()  # Track processed correlation IDs to prevent duplicates
+        logger.info("🚀 Initializing modelservice handlers...")
         self.handlers = ModelserviceZMQHandlers(self.config, ollama_manager)
+        logger.info("✅ Modelservice handlers ready")
         
         # Topic to handler mapping
         self.topic_handlers = {
@@ -43,6 +45,7 @@ class ModelserviceZMQService:
             AICOTopics.MODELSERVICE_MODELS_REQUEST: self.handlers.handle_models_request,
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: self.handlers.handle_model_info_request,
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: self.handlers.handle_embeddings_request,
+            AICOTopics.MODELSERVICE_NER_REQUEST: self.handlers.handle_ner_request,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: self.handlers.handle_status_request,
             # Ollama management topics
             AICOTopics.OLLAMA_STATUS_REQUEST: self._handle_ollama_status,
@@ -107,6 +110,7 @@ class ModelserviceZMQService:
                 AICOTopics.MODELSERVICE_MODELS_REQUEST,
                 AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST,
                 AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
+                AICOTopics.MODELSERVICE_NER_REQUEST,
                 AICOTopics.OLLAMA_STATUS_REQUEST,
                 AICOTopics.OLLAMA_MODELS_REQUEST,
                 AICOTopics.OLLAMA_MODELS_PULL_REQUEST,
@@ -202,15 +206,20 @@ class ModelserviceZMQService:
             handler = self.topic_handlers.get(topic)
             if not handler:
                 logger.error(f"[ZMQ_SERVICE] ❌ CRITICAL: No handler found for topic: {topic}")
-                logger.error(f"[ZMQ_SERVICE] Available handlers: {list(self.topic_handlers.keys())}")
-                return
+                logger.info(f"[ZMQ_SERVICE] Looking up handler for topic: {topic}")
             
-            logger.info(f"[ZMQ_SERVICE] ✅ Handler found: {handler.__name__}")
-            
-            # Execute handler with Protocol Buffer payload
-            logger.info(f"[ZMQ_SERVICE] Executing handler {handler.__name__} with payload type: {type(request_payload)}")
-            response_payload = await handler(request_payload)
-            logger.info(f"[ZMQ_SERVICE] Handler completed, response type: {type(response_payload)}")
+            if topic in self.topic_handlers:
+                handler_name = self.topic_handlers[topic].__name__
+                logger.info(f"[ZMQ_SERVICE] ✅ Handler found: {handler_name}")
+                
+                # Add special logging for NER requests
+                if topic == AICOTopics.MODELSERVICE_NER_REQUEST:
+                    logger.info("🔍 [ZMQ_SERVICE] Processing NER request...")
+                
+                # Execute handler
+                logger.info(f"[ZMQ_SERVICE] Executing handler {handler_name} with payload type: {type(request_payload)}")
+                response = await self.topic_handlers[topic](request_payload)
+            logger.info(f"[ZMQ_SERVICE] Handler completed, response type: {type(response)}")
             
             # Send Protocol Buffer response if correlation_id is provided
             if correlation_id and self.bus_client:
@@ -266,6 +275,7 @@ class ModelserviceZMQService:
             AICOTopics.MODELSERVICE_MODELS_REQUEST: AICOTopics.MODELSERVICE_MODELS_RESPONSE,
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE,
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
+            AICOTopics.MODELSERVICE_NER_REQUEST: AICOTopics.MODELSERVICE_NER_RESPONSE,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: AICOTopics.MODELSERVICE_STATUS_RESPONSE,
             AICOTopics.OLLAMA_STATUS_REQUEST: AICOTopics.OLLAMA_STATUS_RESPONSE,
             AICOTopics.OLLAMA_MODELS_REQUEST: AICOTopics.OLLAMA_MODELS_RESPONSE,
@@ -330,6 +340,7 @@ class ModelserviceZMQService:
             AICOTopics.MODELSERVICE_MODELS_REQUEST: AICOTopics.MODELSERVICE_MODELS_RESPONSE,
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE,
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
+            AICOTopics.MODELSERVICE_NER_REQUEST: AICOTopics.MODELSERVICE_NER_RESPONSE,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: AICOTopics.MODELSERVICE_STATUS_RESPONSE,
             AICOTopics.OLLAMA_STATUS_REQUEST: AICOTopics.OLLAMA_STATUS_RESPONSE,
             AICOTopics.OLLAMA_MODELS_REQUEST: AICOTopics.OLLAMA_MODELS_RESPONSE,

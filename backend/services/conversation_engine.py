@@ -745,6 +745,31 @@ class ConversationEngine(BaseService):
                     self.pending_responses[request_id]["response_text"] = response_text
                     self.pending_responses[request_id]["response_ready"] = True
                 
+                # CRITICAL FIX: Store AI response in memory BEFORE delivery to prevent race condition
+                # This ensures the AI's response is available for context in the next user message
+                memory_processor = ai_registry.get("memory")
+                self.logger.info(f"[DEBUG] ConversationEngine: Storing AI response in memory BEFORE delivery. Memory processor found: {memory_processor is not None}")
+                if memory_processor:
+                    try:
+                        ai_context = ProcessingContext(
+                            thread_id=thread.thread_id,
+                            user_id=thread.user_context.user_id,
+                            request_id=f"ai_response_{thread.thread_id}_{thread.turn_number}",
+                            message_content=response_text,
+                            message_type="ai_response",
+                            turn_number=thread.turn_number,
+                            conversation_phase=thread.conversation_phase
+                        )
+                        self.logger.info(f"[DEBUG] ConversationEngine: Calling memory_processor.process() for AI response BEFORE delivery")
+                        await memory_processor.process(ai_context)
+                        self.logger.info(f"[DEBUG] ConversationEngine: AI response memory storage completed successfully BEFORE delivery")
+                    except Exception as e:
+                        self.logger.error(f"Failed to store AI response in memory: {e}")
+                        import traceback
+                        self.logger.error(f"Full traceback: {traceback.format_exc()}")
+                else:
+                    self.logger.warning(f"[DEBUG] ConversationEngine: Memory processor not found for AI response storage!")
+                
                 # Deliver response
                 await self._deliver_response(thread, response_components)
                 
@@ -841,23 +866,6 @@ class ConversationEngine(BaseService):
             
             # Add to thread history
             thread.message_history.append(ai_message)
-            
-            # Store AI response in memory
-            memory_processor = ai_registry.get("memory")
-            if memory_processor:
-                try:
-                    ai_context = ProcessingContext(
-                        thread_id=thread.thread_id,
-                        user_id=thread.user_context.user_id,
-                        request_id=f"ai_response_{thread.thread_id}_{thread.turn_number}",
-                        message_content=response_components.text,
-                        message_type="ai_response",
-                        turn_number=thread.turn_number,
-                        conversation_phase=thread.conversation_phase
-                    )
-                    await memory_processor.process(ai_context)
-                except Exception as e:
-                    self.logger.error(f"Failed to store AI response in memory: {e}")
             
             # Publish text response
             await self.bus_client.publish(

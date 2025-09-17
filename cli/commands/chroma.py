@@ -156,29 +156,73 @@ def query(
         console.print(f"[yellow]No documents found in collection '{collection_name}' matching '{query_text}'[/yellow]")
         return
     
+    # Add explanation about distance values
+    console.print()
+    console.print("[bold cyan]🔍 Semantic Search Results[/bold cyan]")
+    console.print(f"[dim]Query: '{query_text}' in collection '{collection_name}'[/dim]")
+    console.print()
+    console.print("[bold yellow]📏 Similarity Explanation:[/bold yellow]")
+    console.print("[dim]• Similarity measures how closely your query matches each document[/dim]")
+    console.print("[dim]• Higher values = more similar (1.0 = perfect match, 0.0 = no similarity)[/dim]")
+    console.print("[dim]• Typical ranges: 0.8-1.0 (very similar), 0.5-0.8 (somewhat similar), 0.0-0.5 (less similar)[/dim]")
+    console.print("[dim]• Normalized from raw embedding distances for easier interpretation[/dim]")
+    console.print()
+    
     table = Table(
-        title=f"✨ [bold cyan]Query Results: '{query_text}'[/bold cyan]",
-        title_justify="left",
         border_style="bright_blue",
         header_style="bold yellow",
         box=box.SIMPLE_HEAD,
-        padding=(0, 1)
+        padding=(0, 1),
+        expand=True
     )
-    table.add_column("ID", style="dim", width=10)
-    table.add_column("Document", style="cyan", no_wrap=False, min_width=40)
-    table.add_column("Distance", style="green", justify="right", width=10)
-    table.add_column("Metadata", style="bright_blue", no_wrap=False, width=20)
+    table.add_column("ID", style="dim", width=12, no_wrap=True)
+    table.add_column("Document", style="cyan", no_wrap=False, min_width=50)
+    table.add_column("Similarity", style="green", justify="right", width=10)
+    table.add_column("Metadata", style="bright_blue", no_wrap=False, min_width=25)
     
     for i, doc in enumerate(documents):
-        metadata_str = str(doc.get("metadata", {})) if doc.get("metadata") else ""
+        doc_id = doc.get("id", f"doc_{i}")
+        document_text = doc.get("document", "")
+        similarity = doc.get('similarity', 0.0)
+        metadata = doc.get("metadata", {})
+        
+        # Format document ID (truncate if too long)
+        formatted_id = doc_id if len(doc_id) <= 12 else doc_id[:9] + "..."
+        
+        # Format document text (don't truncate, let table handle wrapping)
+        formatted_document = document_text
+        
+        # Format similarity with color coding (0-1 range, higher = better)
+        if similarity > 0.8:
+            similarity_str = f"[bright_green]{similarity:.3f}[/bright_green]"
+        elif similarity > 0.5:
+            similarity_str = f"[yellow]{similarity:.3f}[/yellow]"
+        else:
+            similarity_str = f"[red]{similarity:.3f}[/red]"
+        
+        # Format metadata as readable key-value pairs
+        if metadata:
+            metadata_parts = []
+            for key, value in metadata.items():
+                if key in ['source_message', 'fact_extraction_id', 'reasoning']:
+                    continue  # Skip internal fields
+                if isinstance(value, str) and len(value) > 20:
+                    value = value[:17] + "..."
+                metadata_parts.append(f"{key}: {value}")
+            formatted_metadata = "\n".join(metadata_parts) if metadata_parts else "[dim]none[/dim]"
+        else:
+            formatted_metadata = "[dim]none[/dim]"
+        
         table.add_row(
-            doc.get("id", f"doc_{i}"),
-            doc.get("document", "")[:100] + ("..." if len(doc.get("document", "")) > 100 else ""),
-            f"{doc.get('distance', 0.0):.3f}",
-            metadata_str[:50] + ("..." if len(metadata_str) > 50 else "")
+            formatted_id,
+            formatted_document,
+            similarity_str,
+            formatted_metadata
         )
     
     console.print(table)
+    console.print()
+    console.print(f"[dim]Found {len(documents)} result{'s' if len(documents) != 1 else ''} • Showing top {min(limit, len(documents))}[/dim]")
 
 @app.command(name="add", help="Add a document to a collection for testing.")
 def add(
