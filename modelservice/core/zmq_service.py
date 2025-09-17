@@ -33,9 +33,7 @@ class ModelserviceZMQService:
         self.running = False
         self.bus_client = None
         self.processed_correlation_ids = set()  # Track processed correlation IDs to prevent duplicates
-        logger.info("🚀 Initializing modelservice handlers...")
         self.handlers = ModelserviceZMQHandlers(self.config, ollama_manager)
-        logger.info("✅ Modelservice handlers ready")
         
         # Topic to handler mapping
         self.topic_handlers = {
@@ -212,9 +210,6 @@ class ModelserviceZMQService:
                 handler_name = self.topic_handlers[topic].__name__
                 logger.info(f"[ZMQ_SERVICE] ✅ Handler found: {handler_name}")
                 
-                # Add special logging for NER requests
-                if topic == AICOTopics.MODELSERVICE_NER_REQUEST:
-                    logger.info("🔍 [ZMQ_SERVICE] Processing NER request...")
                 
                 # Execute handler
                 logger.info(f"[ZMQ_SERVICE] Executing handler {handler_name} with payload type: {type(request_payload)}")

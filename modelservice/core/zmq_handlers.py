@@ -33,9 +33,7 @@ class ModelserviceZMQHandlers:
         self.nlp_models = {}  # Multi-language models loaded at startup
         
         # Load spaCy models for multiple languages at startup
-        logger.info("🌍 Initializing multi-language NER system...")
         self._load_spacy_models()
-        logger.info("✅ NER system initialization complete")
     
     def _load_spacy_models(self):
         """Load spaCy NER models for multiple languages at startup using proper AICO paths."""
@@ -48,8 +46,6 @@ class ModelserviceZMQHandlers:
             models_path = AICOPaths.get_models_path()
             spacy_data_path = models_path / "spacy"
             spacy_data_path.mkdir(parents=True, exist_ok=True)
-            
-            logger.info(f"📁 spaCy models directory: {spacy_data_path}")
             
             # Set environment variable for spaCy data path
             os.environ["SPACY_DATA"] = str(spacy_data_path)
@@ -67,46 +63,40 @@ class ModelserviceZMQHandlers:
             }
             
             # Load each language model
-            logger.info(f"🔍 Scanning for {len(language_models)} language models...")
-            
             for lang_code, model_name in language_models.items():
                 try:
                     model_path = spacy_data_path / model_name
                     
                     # Try to load from AICO models directory first
                     if model_path.exists():
-                        logger.info(f"📦 Loading {lang_code.upper()} model from AICO directory...")
                         self.nlp_models[lang_code] = spacy.load(str(model_path))
-                        logger.info(f"✅ {lang_code.upper()} model loaded: {model_name}")
                     else:
                         # Try to load from system installation
                         try:
-                            logger.info(f"📦 Loading {lang_code.upper()} model from system...")
                             self.nlp_models[lang_code] = spacy.load(model_name)
-                            logger.info(f"✅ {lang_code.upper()} model loaded: {model_name}")
                         except OSError:
                             # Model not found - only download English by default
                             if lang_code == "en":
-                                logger.warning(f"⚠️  English model '{model_name}' not found - downloading...")
+                                print("📥 Downloading English NER model (first time setup)...")
                                 self._download_spacy_model(model_name, spacy_data_path, lang_code)
-                            else:
-                                logger.info(f"⏭️  Optional {lang_code.upper()} model not available - skipping")
                                 
                 except Exception as e:
-                    logger.error(f"❌ Failed to load {lang_code.upper()} model: {e}")
+                    logger.error(f"Failed to load {lang_code.upper()} model: {e}")
             
-            # Ensure we have at least English
-            if not self.nlp_models:
-                logger.error("❌ No spaCy models loaded - NER will not be available")
+            # Console output for readiness
+            if self.nlp_models:
+                loaded_langs = ", ".join([lang.upper() for lang in sorted(self.nlp_models.keys())])
+                print(f"✅ NER system ready ({loaded_langs})")
             else:
-                loaded_langs = ", ".join([f"{lang.upper()}" for lang in sorted(self.nlp_models.keys())])
-                logger.info(f"🌍 Multi-language NER ready: {loaded_langs} ({len(self.nlp_models)} models)")
+                print("⚠️  NER system unavailable (no models loaded)")
                 
         except ImportError:
-            logger.error("❌ spaCy not installed. Install with: pip install 'spacy>=3.7.0'")
+            print("❌ spaCy not installed - NER unavailable")
+            logger.error("spaCy not installed. Install with: pip install 'spacy>=3.7.0'")
             self.nlp_models = {}
         except Exception as e:
-            logger.error(f"❌ Failed to load spaCy models: {e}")
+            print("❌ NER system failed to initialize")
+            logger.error(f"Failed to load spaCy models: {e}")
             self.nlp_models = {}
     
     def _download_spacy_model(self, model_name: str, target_path, lang_code: str):
@@ -115,8 +105,7 @@ class ModelserviceZMQHandlers:
             import subprocess
             import sys
             
-            logger.info(f"📥 Downloading spaCy model '{model_name}' to {target_path}")
-            logger.info("⏳ This may take a few minutes...")
+            print("   Downloading model files...")
             
             # Download model using spaCy CLI
             result = subprocess.run([
@@ -127,16 +116,19 @@ class ModelserviceZMQHandlers:
             if result.returncode == 0:
                 # Try to load the downloaded model
                 import spacy
-                logger.info(f"📦 Loading downloaded {lang_code.upper()} model...")
+                print("   Loading model...")
                 self.nlp_models[lang_code] = spacy.load(str(target_path / model_name))
-                logger.info(f"✅ Successfully downloaded and loaded: {model_name}")
+                print("✅ English NER model ready")
             else:
-                logger.error(f"❌ Failed to download spaCy model: {result.stderr}")
+                print("❌ Model download failed")
+                logger.error(f"Failed to download spaCy model: {result.stderr}")
                 
         except subprocess.TimeoutExpired:
-            logger.error("❌ spaCy model download timed out after 5 minutes")
+            print("❌ Model download timed out")
+            logger.error("spaCy model download timed out after 5 minutes")
         except Exception as e:
-            logger.error(f"❌ Error downloading spaCy model: {e}")
+            print("❌ Model download error")
+            logger.error(f"Error downloading spaCy model: {e}")
     
     def _detect_language(self, text: str) -> str:
         """Detect language of input text. Returns language code or 'en' as fallback."""
@@ -169,7 +161,6 @@ class ModelserviceZMQHandlers:
     def _get_nlp_model(self, text: str):
         """Get appropriate spaCy model for the given text."""
         if not self.nlp_models:
-            logger.warning("🚫 [NER] No spaCy models loaded")
             return None
             
         # Detect language
@@ -177,18 +168,15 @@ class ModelserviceZMQHandlers:
         
         # Try to get model for detected language
         if detected_lang in self.nlp_models:
-            logger.debug(f"🎯 [NER] Using {detected_lang.upper()} model for detected language")
             return self.nlp_models[detected_lang]
         
         # Fallback to English
         if "en" in self.nlp_models:
-            logger.debug(f"🔄 [NER] No {detected_lang.upper()} model, falling back to English")
             return self.nlp_models["en"]
         
         # Fallback to any available model
         if self.nlp_models:
             fallback_lang = next(iter(self.nlp_models))
-            logger.debug(f"🔄 [NER] No English model, using {fallback_lang.upper()} as fallback")
             return self.nlp_models[fallback_lang]
         
         return None
@@ -614,25 +602,14 @@ class ModelserviceZMQHandlers:
                 response.error = "text is required"
                 return response
             
-            logger.info(f"🔍 [NER] Processing text: '{text[:50]}{'...' if len(text) > 50 else ''}'")
+            logger.info(f"Processing NER for text: {text[:50]}...")
             
             # Get appropriate spaCy model for the text language
             nlp_model = self._get_nlp_model(text)
             if nlp_model is None:
-                logger.error("❌ [NER] No spaCy models available")
                 response.success = False
                 response.error = "No spaCy NER models available"
                 return response
-            
-            # Detect and log language
-            detected_lang = self._detect_language(text)
-            model_lang = None
-            for lang, model in self.nlp_models.items():
-                if model == nlp_model:
-                    model_lang = lang
-                    break
-            
-            logger.info(f"🌍 [NER] Detected: {detected_lang.upper()}, Using model: {model_lang.upper()}")
             
             doc = nlp_model(text)
             entities = {}
@@ -657,18 +634,10 @@ class ModelserviceZMQHandlers:
                 entity_list_pb.entities.extend(entity_list)
                 response.entities[entity_type] = entity_list_pb
             
-            # Log detailed results
+            # Log results
             total_entities = sum(len(v) for v in entities.values())
-            if total_entities > 0:
-                entity_summary = []
-                for entity_type, entity_list in entities.items():
-                    entity_summary.append(f"{entity_type}: {', '.join(entity_list)}")
-                logger.info(f"✅ [NER] Found {total_entities} entities: {' | '.join(entity_summary)}")
-            else:
-                logger.info("ℹ️  [NER] No entities found in text")
-            
             logger.info(
-                f"[NER] Extracted {total_entities} entities",
+                f"Extracted {total_entities} entities",
                 extra={"topic": AICOTopics.LOGS_ENTRY}
             )
             return response
