@@ -211,16 +211,42 @@ class SemanticMemoryStore:
             # Store in ChromaDB with pre-computed embeddings
             if self._collection and chromadb:
                 try:
+                    # Enhanced metadata structure for administrative queries
+                    enhanced_metadata = {
+                        # Core identification
+                        "user_id": entry.metadata.get("user_id", "unknown"),
+                        "fact_id": entry.id,
+                        
+                        # Semantic categorization
+                        "category": entry.metadata.get("category", "context"),
+                        "permanence": entry.metadata.get("permanence", "evolving"),
+                        
+                        # Quality metrics
+                        "confidence": entry.confidence,
+                        "reasoning": entry.metadata.get("reasoning", ""),
+                        
+                        # Temporal data
+                        "created_at": entry.timestamp.isoformat(),
+                        "updated_at": entry.timestamp.isoformat(),
+                        
+                        # Source tracking
+                        "source_thread": entry.metadata.get("source_thread"),
+                        "source_message": entry.source,
+                        "extraction_method": "llm_analysis",
+                        
+                        # Administrative
+                        "version": 1,
+                        "status": "active",
+                        
+                        # Legacy fields for backward compatibility
+                        **entry.metadata
+                    }
+                    
                     self._collection.add(
                         documents=[entry.content],
                         ids=[entry.id],
                         embeddings=[entry.embedding],  # Pre-computed via modelservice!
-                        metadatas=[{
-                            **entry.metadata,
-                            "source": entry.source,
-                            "confidence": entry.confidence,
-                            "timestamp": entry.timestamp.isoformat()
-                        }]
+                        metadatas=[enhanced_metadata]
                     )
                     logger.debug(f"Stored semantic memory entry: {entry.id}")
                     return True
@@ -344,6 +370,113 @@ class SemanticMemoryStore:
     async def get_related_concepts(self, concept: str, max_results: int = 10) -> List[Dict[str, Any]]:
         """Get concepts related to the given concept - Phase 1 interface"""
         return await self.query(concept, max_results=max_results)
+    
+    async def get_user_facts(self, user_id: str, category: Optional[str] = None, 
+                           confidence_threshold: Optional[float] = None) -> List[Dict[str, Any]]:
+        """Get all facts for a user with optional filtering (administrative query)"""
+        if not self._initialized:
+            await self.initialize()
+        
+        if not self._collection or not chromadb:
+            return []
+        
+        try:
+            # Build where clause for metadata filtering
+            where_clause = {"user_id": user_id, "status": "active"}
+            
+            if category:
+                where_clause["category"] = category
+            
+            if confidence_threshold:
+                where_clause["confidence"] = {"$gte": confidence_threshold}
+            
+            # Use get() for administrative queries (no embeddings needed)
+            results = self._collection.get(
+                where=where_clause,
+                limit=1000  # Large limit for administrative queries
+            )
+            
+            # Format results
+            facts = []
+            if results["documents"]:
+                for i in range(len(results["documents"])):
+                    facts.append({
+                        "id": results["ids"][i],
+                        "content": results["documents"][i],
+                        "metadata": results["metadatas"][i] if results["metadatas"] else {}
+                    })
+            
+            logger.debug(f"Retrieved {len(facts)} facts for user {user_id}")
+            return facts
+            
+        except Exception as e:
+            logger.error(f"Failed to get user facts: {e}")
+            return []
+    
+    async def delete_user_facts(self, user_id: str) -> bool:
+        """Delete all facts for a user (GDPR compliance)"""
+        if not self._initialized:
+            await self.initialize()
+        
+        if not self._collection or not chromadb:
+            return False
+        
+        try:
+            # Get all fact IDs for the user
+            user_facts = await self.get_user_facts(user_id)
+            
+            if not user_facts:
+                logger.info(f"No facts found for user {user_id}")
+                return True
+            
+            # Delete all facts
+            fact_ids = [fact["id"] for fact in user_facts]
+            self._collection.delete(ids=fact_ids)
+            
+            logger.info(f"Deleted {len(fact_ids)} facts for user {user_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to delete user facts: {e}")
+            return False
+    
+    async def cleanup_old_facts(self, days_old: int = 90) -> int:
+        """Clean up old temporary facts (scheduled maintenance)"""
+        if not self._initialized:
+            await self.initialize()
+        
+        if not self._collection or not chromadb:
+            return 0
+        
+        try:
+            from datetime import datetime, timedelta
+            cutoff_date = (datetime.utcnow() - timedelta(days=days_old)).isoformat()
+            
+            # Find old temporary facts
+            old_facts = self._collection.get(
+                where={
+                    "$and": [
+                        {"permanence": "temporary"},
+                        {"created_at": {"$lt": cutoff_date}},
+                        {"status": "active"}
+                    ]
+                },
+                limit=1000
+            )
+            
+            if not old_facts["ids"]:
+                logger.debug("No old temporary facts to clean up")
+                return 0
+            
+            # Delete old facts
+            self._collection.delete(ids=old_facts["ids"])
+            
+            logger.info(f"Cleaned up {len(old_facts['ids'])} old temporary facts")
+            return len(old_facts["ids"])
+            
+        except Exception as e:
+            logger.error(f"Failed to cleanup old facts: {e}")
+            return 0
     
     async def update_knowledge(self, entry_id: str, updates: Dict[str, Any]) -> bool:
         """Update existing knowledge entry - Phase 1 interface"""

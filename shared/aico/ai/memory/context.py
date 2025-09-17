@@ -111,16 +111,44 @@ class ContextAssembler:
         try:
             logger.info(f"🧠 Assembling context for thread {thread_id} with sovereign excellence")
             
-            # Focus on working memory only (other tiers not yet implemented)
-            logger.debug("Retrieving context from working memory tier only")
+            # Retrieve context from all available memory tiers
+            logger.debug("Retrieving context from all available memory tiers")
             
+            all_items = []
+            
+            # Get working memory context (immediate conversation)
             try:
                 working_items = await self._get_working_context(thread_id, user_id)
-                all_items = working_items or []
-                logger.debug(f"Retrieved {len(all_items)} items from working memory")
+                all_items.extend(working_items or [])
+                logger.debug(f"Retrieved {len(working_items or [])} items from working memory")
             except Exception as e:
                 logger.warning(f"Working memory context retrieval failed: {e}")
-                all_items = []
+            
+            # Get semantic memory context (long-term user facts)
+            try:
+                semantic_items = await self._get_semantic_context(current_message, user_id)
+                all_items.extend(semantic_items or [])
+                logger.debug(f"Retrieved {len(semantic_items or [])} items from semantic memory")
+            except Exception as e:
+                logger.warning(f"Semantic memory context retrieval failed: {e}")
+            
+            # Get episodic memory context (historical conversations) - placeholder
+            try:
+                episodic_items = await self._get_episodic_context(thread_id, user_id, current_message)
+                all_items.extend(episodic_items or [])
+                logger.debug(f"Retrieved {len(episodic_items or [])} items from episodic memory")
+            except Exception as e:
+                logger.warning(f"Episodic memory context retrieval failed: {e}")
+            
+            # Get procedural memory context (user patterns) - placeholder
+            try:
+                procedural_items = await self._get_procedural_context(user_id)
+                all_items.extend(procedural_items or [])
+                logger.debug(f"Retrieved {len(procedural_items or [])} items from procedural memory")
+            except Exception as e:
+                logger.warning(f"Procedural memory context retrieval failed: {e}")
+            
+            logger.debug(f"Retrieved {len(all_items)} total items from all memory tiers")
             
             # Score and filter with Gandhian non-violence toward irrelevant context
             scored_items = self._score_context_items(all_items, current_message)
@@ -329,10 +357,54 @@ class ContextAssembler:
                 logger.debug("No semantic memory store available - proceeding with mindfulness")
                 return []
             
-            # For now, semantic memory is not yet implemented in the stores
-            # This is a placeholder for future semantic memory integration
-            logger.debug(f"Semantic memory context retrieval - future enlightenment awaits")
-            return []
+            # Query semantic memory for relevant user facts
+            logger.debug(f"Querying semantic memory for user {user_id} with message: '{current_message[:50]}...'")
+            
+            # Use semantic store's query method to find relevant facts
+            semantic_results = await self.semantic_store.query(
+                query_text=current_message,
+                max_results=10,  # Limit semantic context items
+                filters={"user_id": user_id}  # Scope to specific user
+            )
+            
+            if not semantic_results:
+                logger.debug("No relevant semantic facts found")
+                return []
+            
+            # Convert semantic results to ContextItem objects
+            context_items = []
+            now = datetime.utcnow()
+            
+            for result in semantic_results:
+                # Calculate age-based relevance decay for semantic facts
+                fact_age_hours = (now - result.get('metadata', {}).get('timestamp', now)).total_seconds() / 3600 if isinstance(result.get('metadata', {}).get('timestamp'), datetime) else 0
+                age_decay = max(0.3, 1.0 - (fact_age_hours / (365 * 24)))  # Decay over 1 year, minimum 0.3
+                
+                # Base semantic relevance from similarity score
+                base_score = result.get('similarity', 0.5) * self._tier_weights["semantic"] * age_decay
+                
+                # Extract metadata from result
+                metadata = result.get('metadata', {})
+                
+                context_item = ContextItem(
+                    content=result.get('content', ''),
+                    source_tier="semantic",
+                    relevance_score=base_score,
+                    timestamp=metadata.get('timestamp', now) if isinstance(metadata.get('timestamp'), datetime) else now,
+                    metadata={
+                        "user_id": user_id,
+                        "category": metadata.get('category', 'unknown'),
+                        "permanence": metadata.get('permanence', 'unknown'),
+                        "confidence": metadata.get('confidence', 0.5),
+                        "similarity": result.get('similarity', 0.5),
+                        "fact_age_hours": fact_age_hours
+                    },
+                    item_type="knowledge"
+                )
+                context_items.append(context_item)
+            
+            logger.debug(f"Retrieved {len(context_items)} semantic memory items for user {user_id}")
+            return context_items
             
         except Exception as e:
             logger.error(f"Failed to get semantic context with philosophical calm: {e}")

@@ -39,16 +39,17 @@
 #### Key Components
 - ✅ Semantic Memory Store implementation (`shared/aico/ai/memory/semantic.py`)
 - ✅ User-scoped fact storage with ChromaDB vector embeddings
+- ✅ Enhanced ChromaDB metadata structure for administrative queries
 - ⏳ Confidence-based fact validation and contradiction detection
-- ⏳ Encrypted libSQL metadata storage for structured user facts
 
 #### Phase 2 Implementation Notes:
-- ✅ Semantic memory uses ChromaDB for vector similarity and libSQL for metadata
-- ⏳ Each fact tied to specific `user_id` with confidence scoring
-- ⏳ Source episodes reference LMDB conversation_history keys (format: `thread_id:timestamp`)
+- ✅ Semantic memory uses ChromaDB-only with enhanced metadata (no libSQL duplication)
+- ✅ Each fact tied to specific `user_id` with confidence scoring
+- ✅ Source episodes reference LMDB conversation_history keys (format: `thread_id:timestamp`)
 - ✅ Single multilingual embedding model: `paraphrase-multilingual` (768 dimensions) - **Updated to use Ollama modelservice**
 - ✅ Fallback JSON storage when ChromaDB unavailable
-- ⏳ Integration with existing conversation context assembly
+- ✅ Integration with existing conversation context assembly
+- ✅ Rich metadata structure supports administrative queries without separate database
 
 #### Infrastructure Completed:
 - ✅ **ChromaDB Integration**: Proper ChromaDB client setup with modelservice embeddings
@@ -57,6 +58,9 @@
 - ✅ **No External Downloads**: ChromaDB bypasses default embedding function, uses modelservice exclusively
 - ✅ **Hierarchical Paths**: Uses `AICOPaths.get_semantic_memory_path()` for consistent storage
 - ✅ **Collection Metadata**: Embedding model and dimensions tracked in ChromaDB collections
+- ✅ **Memory Integration**: ContextAssembler now queries semantic memory alongside working memory
+- ✅ **Fact Extraction**: Automatic personal fact extraction from user messages via LLM analysis
+- ✅ **Centralized Schemas**: Type-safe schemas in `/shared/aico/data/schemas/semantic.py`
 
 #### Critical User Facts Supported:
 - **Personal Information**: Names, birthdates, contact details

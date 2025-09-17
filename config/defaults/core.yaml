@@ -323,6 +323,7 @@ memory:
   
   # Semantic Memory (ChromaDB) - User facts with vector embeddings
   semantic:
+    enabled: true  # Enable semantic memory for Phase 2
     collection_name: "user_facts"
     # Embedding model configuration references core.modelservice.ollama.default_models.embedding
     max_results: 20

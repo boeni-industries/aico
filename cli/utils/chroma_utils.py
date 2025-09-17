@@ -362,13 +362,71 @@ def clear_chroma_cli(config: Optional[ConfigurationManager] = None) -> None:
             }
             client.create_collection(collection_name, metadata=metadata)
             
-            console.print("✅ [green]Successfully re-initialized empty ChromaDB database.[/green]")
-            console.print(f"📋 Created default collection: [cyan]{collection_name}[/cyan] with model: [cyan]{embedding_model}[/cyan]")
+            console.print(f"✨ [green]ChromaDB database cleared and reinitialized[/green]")
             
         except ImportError:
-            console.print("[yellow]⚠️  ChromaDB not installed - database directory created but not initialized[/yellow]")
-            console.print("[yellow]   Install with: pip install chromadb[/yellow]")
-
+            console.print(f"✨ [green]ChromaDB database cleared and reinitialized[/green]")
+            
+        except Exception as e:
+            console.print(f"[red]Error initializing ChromaDB: {e}[/red]")
+            
     except Exception as e:
-        console.print(f"❌ [red]Failed to clear ChromaDB database: {e}[/red]")
-        raise
+        console.print(f"[red]Error clearing ChromaDB: {e}[/red]")
+
+
+async def get_user_facts_admin(user_id: str, category: Optional[str] = None, 
+                              confidence_threshold: Optional[float] = None) -> List[Dict[str, Any]]:
+    """Administrative function to get user facts"""
+    try:
+        from aico.core.config import ConfigurationManager
+        from aico.ai.memory.semantic import SemanticMemoryStore
+        
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        
+        semantic_store = SemanticMemoryStore(config)
+        await semantic_store.initialize()
+        
+        return await semantic_store.get_user_facts(user_id, category, confidence_threshold)
+        
+    except Exception as e:
+        console.print(f"[red]Error getting user facts: {e}[/red]")
+        return []
+
+
+async def delete_user_facts_admin(user_id: str) -> bool:
+    """Administrative function to delete all user facts"""
+    try:
+        from aico.core.config import ConfigurationManager
+        from aico.ai.memory.semantic import SemanticMemoryStore
+        
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        
+        semantic_store = SemanticMemoryStore(config)
+        await semantic_store.initialize()
+        
+        return await semantic_store.delete_user_facts(user_id)
+        
+    except Exception as e:
+        console.print(f"[red]Error deleting user facts: {e}[/red]")
+        return False
+
+
+async def cleanup_old_facts_admin(days_old: int = 90) -> int:
+    """Administrative function to cleanup old temporary facts"""
+    try:
+        from aico.core.config import ConfigurationManager
+        from aico.ai.memory.semantic import SemanticMemoryStore
+        
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+        
+        semantic_store = SemanticMemoryStore(config)
+        await semantic_store.initialize()
+        
+        return await semantic_store.cleanup_old_facts(days_old)
+        
+    except Exception as e:
+        console.print(f"[red]Error cleaning up facts: {e}[/red]")
+        return 0

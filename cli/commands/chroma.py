@@ -199,15 +199,115 @@ def add(
 
 @app.command(name="clear", help="Clear all data from the ChromaDB database.")
 @destructive
-def clear():
-    """Clear all data from the ChromaDB database."""
-    if typer.confirm("Are you sure you want to clear the ChromaDB semantic memory database? This cannot be undone."):
-        try:
-            clear_chroma_cli()
-            console.print("✅ [green]ChromaDB database cleared successfully.[/green]")
-        except Exception as e:
-            console.print(f"[red]Error clearing ChromaDB: {e}[/red]")
+def clear_chroma():
+    """Clear and reinitialize ChromaDB database"""
+    try:
+        from cli.utils.chroma_utils import clear_chroma_cli
+        clear_chroma_cli()
+    except Exception as e:
+        console.print(f"[red]Error clearing ChromaDB: {e}[/red]")
+        raise typer.Exit(1)
+
+@app.command(name="user-facts")
+def get_user_facts(
+    user_id: str = typer.Argument(..., help="User ID to get facts for"),
+    category: Optional[str] = typer.Option(None, "--category", "-c", help="Filter by category"),
+    confidence: Optional[float] = typer.Option(None, "--confidence", "-conf", help="Minimum confidence threshold"),
+    format: str = typer.Option("table", "--format", "-f", help="Output format: table, json")
+):
+    """Get all facts for a specific user (administrative query)"""
+    try:
+        import asyncio
+        from cli.utils.chroma_utils import get_user_facts_admin
+        
+        facts = asyncio.run(get_user_facts_admin(user_id, category, confidence))
+        
+        if not facts:
+            console.print(f"[yellow]No facts found for user {user_id}[/yellow]")
+            return
+        
+        if format == "json":
+            import json
+            console.print(json.dumps(facts, indent=2))
+        else:
+            # Table format
+            from rich.table import Table
+            
+            table = Table(title=f"Facts for User: {user_id}")
+            table.add_column("ID", style="dim")
+            table.add_column("Content", style="cyan")
+            table.add_column("Category", style="green")
+            table.add_column("Confidence", style="yellow")
+            table.add_column("Created", style="dim")
+            
+            for fact in facts:
+                metadata = fact.get("metadata", {})
+                table.add_row(
+                    fact["id"][:20] + "...",
+                    fact["content"][:50] + ("..." if len(fact["content"]) > 50 else ""),
+                    metadata.get("category", "unknown"),
+                    f"{metadata.get('confidence', 0):.2f}",
+                    metadata.get("created_at", "unknown")[:10]
+                )
+            
+            console.print(table)
+            console.print(f"\n[dim]Total: {len(facts)} facts[/dim]")
+            
+    except Exception as e:
+        console.print(f"[red]Error getting user facts: {e}[/red]")
+        raise typer.Exit(1)
+
+@app.command(name="delete-user")
+def delete_user_facts(
+    user_id: str = typer.Argument(..., help="User ID to delete facts for"),
+    confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt")
+):
+    """Delete all facts for a user (GDPR compliance)"""
+    try:
+        if not confirm:
+            import typer
+            if not typer.confirm(f"Are you sure you want to delete ALL facts for user '{user_id}'? This cannot be undone."):
+                console.print("[yellow]Operation cancelled[/yellow]")
+                return
+        
+        import asyncio
+        from cli.utils.chroma_utils import delete_user_facts_admin
+        
+        success = asyncio.run(delete_user_facts_admin(user_id))
+        
+        if success:
+            console.print(f"[green]✅ Successfully deleted all facts for user {user_id}[/green]")
+        else:
+            console.print(f"[red]❌ Failed to delete facts for user {user_id}[/red]")
             raise typer.Exit(1)
-    else:
-        console.print("Operation cancelled.")
-        raise typer.Exit()
+            
+    except Exception as e:
+        console.print(f"[red]Error deleting user facts: {e}[/red]")
+        raise typer.Exit(1)
+
+@app.command(name="cleanup")
+def cleanup_old_facts(
+    days: int = typer.Option(90, "--days", "-d", help="Delete temporary facts older than N days"),
+    confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt")
+):
+    """Clean up old temporary facts (maintenance)"""
+    try:
+        if not confirm:
+            import typer
+            if not typer.confirm(f"Delete temporary facts older than {days} days?"):
+                console.print("[yellow]Operation cancelled[/yellow]")
+                return
+        
+        import asyncio
+        from cli.utils.chroma_utils import cleanup_old_facts_admin
+        
+        deleted_count = asyncio.run(cleanup_old_facts_admin(days))
+        
+        if deleted_count > 0:
+            console.print(f"[green]✅ Cleaned up {deleted_count} old temporary facts[/green]")
+        else:
+            console.print("[dim]No old temporary facts found to clean up[/dim]")
+            
+    except Exception as e:
+        console.print(f"[red]Error cleaning up facts: {e}[/red]")
+        raise typer.Exit(1)
