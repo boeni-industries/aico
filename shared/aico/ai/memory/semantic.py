@@ -76,8 +76,10 @@ except ImportError:
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths
+from aico.ai.analysis.fact_extractor import PersonalFactExtractor
+from aico.data.schemas.semantic import PersonalFact, SemanticQuery, SemanticResult
 
-logger = get_logger("ai", "memory.semantic")
+logger = get_logger("shared", "ai.memory.semantic")
 
 
 @dataclass
@@ -119,9 +121,17 @@ class SemanticMemoryStore:
         self._embedding_model = self.config.get("core.modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
         self._max_results = memory_config.get("max_results", 20)
         
+        # Initialize fact extractor
+        self.fact_extractor = PersonalFactExtractor(config_manager)
+        
         # Check ChromaDB availability
         if chromadb is None:
             logger.warning("ChromaDB not available - semantic memory will use fallback storage")
+    
+    def set_modelservice(self, modelservice):
+        """Inject modelservice dependency for fact extraction and embeddings"""
+        self._modelservice = modelservice
+        self.fact_extractor.modelservice = modelservice
     
     async def initialize(self) -> None:
         """Initialize ChromaDB client and collection with modelservice integration"""
@@ -161,6 +171,10 @@ class SemanticMemoryStore:
                     metadata=collection_metadata
                 )
                 logger.info(f"Created new collection: {self._collection_name} with model: {self._embedding_model}")
+            
+            # Inject modelservice dependency into fact extractor
+            if hasattr(self, '_modelservice'):
+                self.fact_extractor.modelservice = self._modelservice
             
             self._initialized = True
             logger.info("Semantic memory store initialized with modelservice integration")
@@ -270,6 +284,62 @@ class SemanticMemoryStore:
         except Exception as e:
             logger.error(f"Failed to query semantic memory: {e}")
             return []
+    
+    async def extract_and_store_facts(self, user_message: str, user_id: str, context: Dict[str, Any] = None) -> int:
+        """
+        Extract personal facts from user message and store them in semantic memory.
+        
+        Args:
+            user_message: The user's message to analyze
+            user_id: User identifier for scoping facts
+            context: Additional context (thread_id, recent_messages, etc.)
+            
+        Returns:
+            Number of facts successfully stored
+        """
+        if not self._initialized:
+            await self.initialize()
+        
+        try:
+            # Extract facts using LLM analysis
+            facts = await self.fact_extractor.extract_facts(user_message, user_id, context or {})
+            
+            if not facts:
+                logger.debug(f"No facts extracted from message for user {user_id}")
+                return 0
+            
+            # Store each extracted fact
+            facts_stored = 0
+            for fact in facts:
+                fact_data = {
+                    "id": f"fact_{user_id}_{fact.timestamp.strftime('%Y%m%d_%H%M%S_%f')}",
+                    "content": fact.fact_text,
+                    "metadata": {
+                        "user_id": user_id,
+                        "category": fact.category.value,  # Convert enum to string for ChromaDB
+                        "permanence": fact.permanence.value,  # Convert enum to string for ChromaDB
+                        "confidence": fact.confidence,
+                        "reasoning": fact.reasoning,
+                        "source_thread": context.get("thread_id") if context else None,
+                        "extracted_at": fact.timestamp.isoformat()
+                    },
+                    "source": "fact_extraction",
+                    "confidence": fact.confidence
+                }
+                
+                success = await self.store(fact_data)
+                if success:
+                    facts_stored += 1
+                    logger.debug(f"Stored fact for user {user_id}: {fact.fact_text}")
+                else:
+                    logger.warning(f"Failed to store fact for user {user_id}: {fact.fact_text}")
+            
+            logger.info(f"Extracted and stored {facts_stored}/{len(facts)} facts for user {user_id}")
+            return facts_stored
+            
+        except Exception as e:
+            logger.error(f"Failed to extract and store facts for user {user_id}: {e}")
+            return 0
     
     async def get_related_concepts(self, concept: str, max_results: int = 10) -> List[Dict[str, Any]]:
         """Get concepts related to the given concept - Phase 1 interface"""
