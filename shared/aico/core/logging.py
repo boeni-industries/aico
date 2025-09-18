@@ -527,12 +527,13 @@ class ZMQLogTransport:
         if not self._message_bus_client.connected:
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(self._connect_client())
+                # Connect client AND flush buffer after connection succeeds
+                loop.create_task(self._connect_and_flush())
             except RuntimeError:
                 pass  # Connection will be established lazily when first log is sent
-        
-        # Flush buffered logs from LogBuffer when broker becomes ready
-        self._flush_log_buffer()
+        else:
+            # Client already connected - flush immediately
+            self._flush_log_buffer()
     
     def _flush_log_buffer(self):
         """Flush any buffered logs from the LogBuffer to ZMQ transport"""
@@ -555,6 +556,17 @@ class ZMQLogTransport:
         """Helper method to connect the message bus client"""
         try:
             await self._message_bus_client.connect()
+        except Exception as e:
+            # Connection failure handled silently
+            pass
+    
+    async def _connect_and_flush(self):
+        """Connect client and flush buffer after successful connection"""
+        try:
+            await self._message_bus_client.connect()
+            # Only flush if connection succeeded
+            if self._message_bus_client.connected:
+                self._flush_log_buffer()
         except Exception as e:
             # Connection failure handled silently
             pass

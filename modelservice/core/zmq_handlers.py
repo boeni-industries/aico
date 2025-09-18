@@ -30,14 +30,14 @@ class ModelserviceZMQHandlers:
         # Initialize logger first
         self.logger = get_logger("modelservice", "core.zmq_handlers")
         
-        print("🔧 [DEBUG] ModelserviceZMQHandlers constructor called - initializing...")
+        #print("🔧 [DEBUG] ModelserviceZMQHandlers constructor called - initializing...")
         self.logger.debug("ModelserviceZMQHandlers constructor called - initializing...")
         
         # Test if logger is connected to buffering system
         from aico.core.logging import get_logger_factory
         factory = get_logger_factory("modelservice")  # Get modelservice-specific factory
-        print(f"🔧 [DEBUG] Logger factory transport: {factory._transport}")
-        print(f"🔧 [DEBUG] Logger factory buffer size: {len(factory._log_buffer._buffer) if hasattr(factory, '_log_buffer') else 'No buffer'}")
+        #print(f"🔧 [DEBUG] Logger factory transport: {factory._transport}")
+        #print(f"🔧 [DEBUG] Logger factory buffer size: {len(factory._log_buffer._buffer) if hasattr(factory, '_log_buffer') else 'No buffer'}")
         
         self.logger.info("ModelserviceZMQHandlers constructor called - initializing...")
         self.config = config
@@ -62,12 +62,12 @@ class ModelserviceZMQHandlers:
     
     def _load_spacy_models(self):
         """Load spaCy NER models for multiple languages at startup using proper AICO paths."""
-        print("🔧 [DEBUG] _load_spacy_models() called")
+        #print("🔧 [DEBUG] _load_spacy_models() called")
         self.logger.info("Starting NER system initialization...")
         try:
-            print("🔧 [DEBUG] Attempting to import spacy...")
+            #print("🔧 [DEBUG] Attempting to import spacy...")
             import spacy
-            print("🔧 [DEBUG] spacy imported successfully")
+            #print("🔧 [DEBUG] spacy imported successfully")
             from aico.core.paths import AICOPaths
             import os
             
