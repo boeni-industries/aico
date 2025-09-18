@@ -19,6 +19,7 @@ from aico.proto.aico_modelservice_pb2 import (
     EmbeddingsResponse, NerResponse, EntityList, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus
 )
 from google.protobuf.timestamp_pb2 import Timestamp
+from .spacy_manager import SpaCyManager
 
 # Logger will be initialized in class constructor to avoid import-time issues
 
@@ -30,216 +31,52 @@ class ModelserviceZMQHandlers:
         # Initialize logger first
         self.logger = get_logger("modelservice", "core.zmq_handlers")
         
-        #print("🔧 [DEBUG] ModelserviceZMQHandlers constructor called - initializing...")
         self.logger.debug("ModelserviceZMQHandlers constructor called - initializing...")
         
         # Test if logger is connected to buffering system
         from aico.core.logging import get_logger_factory
         factory = get_logger_factory("modelservice")  # Get modelservice-specific factory
-        #print(f"🔧 [DEBUG] Logger factory transport: {factory._transport}")
-        #print(f"🔧 [DEBUG] Logger factory buffer size: {len(factory._log_buffer._buffer) if hasattr(factory, '_log_buffer') else 'No buffer'}")
         
         self.logger.info("ModelserviceZMQHandlers constructor called - initializing...")
         self.config = config
         self.ollama_manager = ollama_manager
         self.version = get_modelservice_version()
-        self.nlp_models = {}  # Multi-language models loaded at startup
+        
+        # Initialize spaCy manager
+        self.spacy_manager = SpaCyManager()
         
         self.logger.info("About to initialize NER system...")
-        # Load spaCy models for multiple languages at startup
-        try:
-            self._load_spacy_models()
-            self.logger.info("NER system initialization completed successfully")
-        except Exception as e:
-            print(f"❌ [DEBUG] NER initialization failed: {e}")
-            self.logger.error(f"CRITICAL: NER system initialization failed: {e}")
-            import traceback
-            print(f"❌ [DEBUG] NER traceback: {traceback.format_exc()}")
-            self.logger.error(f"NER initialization traceback: {traceback.format_exc()}")
-            # Set empty models dict so service can still start
-            self.nlp_models = {}
+        # Initialize spaCy models asynchronously - will be done during startup
+        self.ner_initialized = False
         self.logger.info("ModelserviceZMQHandlers initialization complete")
     
-    def _load_spacy_models(self):
-        """Load spaCy NER models for multiple languages at startup using proper AICO paths."""
-        #print("🔧 [DEBUG] _load_spacy_models() called")
-        self.logger.info("Starting NER system initialization...")
+    async def initialize_ner_system(self):
+        """Initialize the NER system asynchronously using SpaCyManager."""
+        if self.ner_initialized:
+            return
+        
         try:
-            #print("🔧 [DEBUG] Attempting to import spacy...")
-            import spacy
-            #print("🔧 [DEBUG] spacy imported successfully")
-            from aico.core.paths import AICOPaths
-            import os
+            self.logger.info("Starting NER system initialization...")
             
-            # Set spaCy data path to AICO models directory
-            models_path = AICOPaths.get_data_directory() / "models"
-            spacy_data_path = models_path / "spacy"
-            spacy_data_path.mkdir(parents=True, exist_ok=True)
+            # Use SpaCy manager to ensure models are installed
+            installation_results = await self.spacy_manager.ensure_models_installed()
             
-            # Set environment variable for spaCy data path
-            os.environ["SPACY_DATA"] = str(spacy_data_path)
-            
-            # Multi-language model configuration
-            language_models = {
-                "en": "en_core_web_sm",      # English
-                "de": "de_core_news_sm",     # German  
-                "fr": "fr_core_news_sm",     # French
-                "es": "es_core_news_sm",     # Spanish
-                "it": "it_core_news_sm",     # Italian
-                "pt": "pt_core_news_sm",     # Portuguese
-                "nl": "nl_core_news_sm",     # Dutch
-                "zh": "zh_core_web_sm",      # Chinese
-            }
-            
-            # Load each language model
-            for lang_code, model_name in language_models.items():
-                try:
-                    self.logger.info(f"Attempting to load {lang_code.upper()} model: {model_name}")
-                    model_path = spacy_data_path / model_name
-                    
-                    # Try to load from AICO models directory first
-                    if model_path.exists():
-                        self.logger.info(f"Loading {lang_code.upper()} model from AICO directory: {model_path}")
-                        self.nlp_models[lang_code] = spacy.load(str(model_path))
-                        self.logger.info(f"Successfully loaded {lang_code.upper()} model from AICO directory")
-                    else:
-                        # Try to load from system installation
-                        try:
-                            self.logger.info(f"Loading {lang_code.upper()} model from system installation")
-                            self.nlp_models[lang_code] = spacy.load(model_name)
-                            self.logger.info(f"Successfully loaded {lang_code.upper()} model from system")
-                        except OSError as ose:
-                            # Model not found - download English automatically
-                            if lang_code == "en":
-                                print("📥 Downloading English NER model (first time setup)...")
-                                self.logger.warning(f"English model not found, attempting download: {ose}")
-                                if self._download_spacy_model(model_name, spacy_data_path, lang_code):
-                                    print("✅ English NER model ready")
-                                else:
-                                    print("❌ Failed to download English NER model")
-                            else:
-                                self.logger.info(f"Optional {lang_code.upper()} model not available: {ose}")
-                                
-                except Exception as e:
-                    self.logger.error(f"Failed to load {lang_code.upper()} model ({model_name}): {e}")
-                    import traceback
-                    self.logger.error(f"Model loading traceback for {lang_code}: {traceback.format_exc()}")
-            
-            # Console output for readiness
-            if self.nlp_models:
-                loaded_langs = ", ".join([lang.upper() for lang in sorted(self.nlp_models.keys())])
-                print(f"✅ NER system ready ({loaded_langs})")
-                self.logger.info(f"NER system initialization successful - loaded models: {loaded_langs}")
+            if any(installation_results.values()):
+                self.logger.info("NER system initialization completed successfully")
+                self.ner_initialized = True
             else:
-                print("⚠️  NER system unavailable (no models loaded)")
                 self.logger.warning("NER system initialization completed but no models were loaded")
                 
-        except ImportError as e:
-            print(f"❌ [DEBUG] ImportError: {e}")
-            print("❌ NER system unavailable (install with: pip install -e '.[modelservice]')")
-            self.logger.error(f"spaCy not installed - NER system unavailable: {e}")
-            self.logger.error("Install modelservice dependencies with: pip install -e '.[modelservice]'")
-            self.nlp_models = {}
         except Exception as e:
-            print(f"❌ [DEBUG] Exception in _load_spacy_models: {e}")
-            print("❌ NER system failed to initialize")
-            self.logger.error(f"NER system initialization failed: {e}")
+            self.logger.error(f"CRITICAL: NER system initialization failed: {e}")
             import traceback
-            print(f"❌ [DEBUG] Full traceback: {traceback.format_exc()}")
-            self.logger.error(f"Full NER initialization traceback: {traceback.format_exc()}")
-            self.nlp_models = {}
+            self.logger.error(f"NER initialization traceback: {traceback.format_exc()}")
     
-    def _download_spacy_model(self, model_name: str, target_path, lang_code: str) -> bool:
-        """Download spaCy model to AICO models directory. Returns True if successful."""
-        try:
-            import subprocess
-            import sys
-            
-            print("   Downloading model files...")
-            self.logger.info(f"Downloading spaCy model '{model_name}' to {target_path}")
-            
-            # Download model using spaCy CLI
-            result = subprocess.run([
-                sys.executable, "-m", "spacy", "download", model_name,
-                "--target", str(target_path)
-            ], capture_output=True, text=True, timeout=300)
-            
-            if result.returncode == 0:
-                # Try to load the downloaded model
-                import spacy
-                print("   Loading model...")
-                self.logger.info(f"Loading downloaded {lang_code.upper()} model...")
-                self.nlp_models[lang_code] = spacy.load(str(target_path / model_name))
-                print("✅ English NER model ready")
-                self.logger.info(f"Successfully downloaded and loaded spaCy model: {model_name}")
-                return True
-            else:
-                print("❌ Model download failed")
-                self.logger.error(f"Failed to download spaCy model: {result.stderr}")
-                self.logger.error(f"Download command stdout: {result.stdout}")
-                return False
-                
-        except subprocess.TimeoutExpired:
-            print("❌ Model download timed out")
-            self.logger.error("spaCy model download timed out after 5 minutes")
-            return False
-        except Exception as e:
-            print("❌ Model download error")
-            self.logger.error(f"Error downloading spaCy model: {e}")
-            import traceback
-            self.logger.error(f"Model download traceback: {traceback.format_exc()}")
-            return False
     
-    def _detect_language(self, text: str) -> str:
-        """Detect language of input text. Returns language code or 'en' as fallback."""
-        try:
-            # Simple heuristic-based language detection
-            # For production, consider using langdetect or similar
-            
-            # Check for common patterns
-            if any(char in text for char in "äöüßÄÖÜ"):
-                return "de"  # German
-            elif any(char in text for char in "àâäéèêëïîôöùûüÿç"):
-                return "fr"  # French  
-            elif any(char in text for char in "ñáéíóúü"):
-                return "es"  # Spanish
-            elif any(char in text for char in "àèéìíîòóù"):
-                return "it"  # Italian
-            elif any(char in text for char in "ãáâàéêíóôõú"):
-                return "pt"  # Portuguese
-            elif any(char in text for char in "áéíóúý"):
-                return "nl"  # Dutch (simplified)
-            elif any(ord(char) > 0x4e00 and ord(char) < 0x9fff for char in text):
-                return "zh"  # Chinese
-            else:
-                return "en"  # Default to English
-                
-        except Exception as e:
-            self.logger.debug(f"Language detection failed: {e}, defaulting to English")
-            return "en"
     
     def _get_nlp_model(self, text: str):
         """Get appropriate spaCy model for the given text."""
-        if not self.nlp_models:
-            return None
-            
-        # Detect language
-        detected_lang = self._detect_language(text)
-        
-        # Try to get model for detected language
-        if detected_lang in self.nlp_models:
-            return self.nlp_models[detected_lang]
-        
-        # Fallback to English
-        if "en" in self.nlp_models:
-            return self.nlp_models["en"]
-        
-        # Fallback to any available model
-        if self.nlp_models:
-            fallback_lang = next(iter(self.nlp_models))
-            return self.nlp_models[fallback_lang]
-        
-        return None
+        return self.spacy_manager.get_model_for_text(text)
         
     async def handle_health_request(self, request_payload) -> HealthResponse:
         """Handle health check requests via Protocol Buffers."""

@@ -136,6 +136,10 @@ class ModelserviceZMQService:
                 else:
                     self.logger.warning(f"No handler found for topic {topic} during subscription")
             
+            # Initialize NER system now that all services are ready
+            self.logger.info("Initializing NER system...")
+            await self.handlers.initialize_ner_system()
+            
             self.logger.info("Modelservice ZMQ service fully initialized")
             
             # Start message processing loop as background task (non-blocking)

@@ -226,6 +226,25 @@ modelservice:
       auto_update_binary: true
       backup_models_before_update: true
   
+  # spaCy NER (Named Entity Recognition) configuration
+  spacy:
+    # Auto-management settings
+    auto_install: true  # Automatically install spaCy models if missing
+    
+    # Language models to install and load
+    # Models are downloaded from GitHub releases using UV-compatible methods
+    languages:
+      - "en"  # English (required) - en_core_web_sm
+      - "de"  # German (optional) - de_core_news_sm
+      - "fr"  # French (optional) - fr_core_news_sm
+      - "es"  # Spanish (optional) - es_core_news_sm
+      - "it"  # Italian (optional) - it_core_news_sm
+    
+    # Model download settings
+    download:
+      timeout_seconds: 300  # 5 minutes timeout for model downloads
+      retry_attempts: 3
+      use_direct_urls: true  # Use GitHub release URLs for better UV compatibility
 
 # Task Scheduler configuration
 scheduler:
