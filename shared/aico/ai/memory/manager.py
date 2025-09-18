@@ -225,7 +225,6 @@ class MemoryManager(BaseAIProcessor):
             raise
     
     async def process(self, context: ProcessingContext) -> ProcessingResult:
-        logger.info("[DEBUG] MemoryManager: process() called.")
         """
         Process memory operations based on context.
         
@@ -236,15 +235,11 @@ class MemoryManager(BaseAIProcessor):
         - Phase 1: Working memory storage and basic context
         - Phase 2+: Multi-tier context assembly
         """
-        # Debug context type
-        logger.debug(f"[DEBUG] MemoryManager: context type: {type(context)}")
-        if hasattr(context, 'thread_id'):
-            logger.debug(f"[DEBUG] MemoryManager: context.thread_id: {context.thread_id}")
-        else:
-            logger.error(f"[DEBUG] MemoryManager: context has no thread_id attribute: {context}")
+        logger.info(f"🧠 [MEMORY_FLOW] Processing memory operation for thread {context.thread_id}")
+        logger.info(f"🧠 [MEMORY_FLOW] Message type: {context.message_type}, Turn: {context.turn_number}")
         
         if not self._initialized:
-            logger.info("[DEBUG] MemoryManager: Lazy initializing on first process call.")
+            logger.info("🧠 [MEMORY_FLOW] Lazy initializing memory system on first use")
             await self.initialize()
             
         start_time = datetime.utcnow()
@@ -252,10 +247,23 @@ class MemoryManager(BaseAIProcessor):
         try:
             # Store current interaction (Phase 1+)
             if self._working_store:
+                logger.info("🧠 [MEMORY_FLOW] → Storing interaction in working memory")
                 await self._store_interaction(context)
+                logger.info("🧠 [MEMORY_FLOW] ✅ Working memory storage complete")
+            else:
+                logger.warning("🧠 [MEMORY_FLOW] ⚠️  Working memory not available")
             
             # Assemble relevant context for processing
+            logger.info("🧠 [MEMORY_FLOW] → Assembling context from memory tiers")
             memory_context = await self._assemble_context(context)
+            
+            # Log context assembly results
+            context_items = memory_context.get("items", [])
+            working_items = [item for item in context_items if item.get("source_tier") == "working"]
+            semantic_items = [item for item in context_items if item.get("source_tier") == "semantic"]
+            episodic_items = [item for item in context_items if item.get("source_tier") == "episodic"]
+            
+            logger.info(f"🧠 [MEMORY_FLOW] ✅ Context assembled: {len(working_items)} working, {len(semantic_items)} semantic, {len(episodic_items)} episodic")
             
             # Update processing context with memory
             context.shared_state["memory_context"] = memory_context
@@ -273,6 +281,9 @@ class MemoryManager(BaseAIProcessor):
             if self._procedural_store:
                 tiers_accessed.append("procedural")
             
+            logger.info(f"🧠 [MEMORY_FLOW] ✅ Memory processing complete ({processing_time:.1f}ms)")
+            logger.info(f"🧠 [MEMORY_FLOW] Tiers accessed: {', '.join(tiers_accessed)}")
+            
             return ProcessingResult(
                 component=self.component_name,
                 operation="memory_retrieval",
@@ -289,10 +300,10 @@ class MemoryManager(BaseAIProcessor):
             )
             
         except Exception as e:
-            logger.error(f"Memory processing failed: {e}")
-            import traceback
-            logger.error(f"Full traceback: {traceback.format_exc()}")
             processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+            logger.error(f"🧠 [MEMORY_FLOW] ❌ Memory processing failed ({processing_time:.1f}ms): {e}")
+            import traceback
+            logger.error(f"🧠 [MEMORY_FLOW] Full traceback: {traceback.format_exc()}")
             
             return ProcessingResult(
                 component=self.component_name,

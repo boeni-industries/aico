@@ -91,6 +91,9 @@ class WorkingMemoryStore:
         if not self._initialized:
             await self.initialize()
 
+        logger.info(f"💾 [WORKING_MEMORY] Storing message for thread {thread_id}")
+        logger.info(f"💾 [WORKING_MEMORY] Message type: {message.get('message_type', 'unknown')}")
+
         try:
             db = self.dbs.get("conversation_history")
             if db is None:
@@ -114,21 +117,22 @@ class WorkingMemoryStore:
                 "_expires_at": (timestamp + timedelta(seconds=self._ttl_seconds)).isoformat() + "Z"
             }
 
-            logger.info(f"[DEBUG] WorkingMemoryStore: Storing message for thread {thread_id} with key {key_str}")
             with self.env.begin(write=True, db=db) as txn:
                 txn.put(key, json.dumps(storage_data).encode('utf-8'))
 
-            logger.debug(f"Stored message in working memory for thread {thread_id}")
+            logger.info(f"💾 [WORKING_MEMORY] ✅ Message stored successfully")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to store message in working memory: {e}")
+            logger.error(f"💾 [WORKING_MEMORY] ❌ Failed to store message: {e}")
             return False
 
     async def retrieve_thread_history(self, thread_id: str, limit: int = 50) -> List[Dict[str, Any]]:
         """Retrieve recent messages for a given thread_id."""
         if not self._initialized:
             await self.initialize()
+
+        logger.info(f"🔍 [WORKING_MEMORY] Retrieving history for thread {thread_id} (limit: {limit})")
 
         history = []
         try:
@@ -157,10 +161,12 @@ class WorkingMemoryStore:
 
             # LMDB iterates in lexicographical order, so we need to sort by timestamp
             history.sort(key=lambda x: x.get("_stored_at"), reverse=True)
+            
+            logger.info(f"🔍 [WORKING_MEMORY] ✅ Retrieved {len(history)} messages from history")
             return history
 
         except Exception as e:
-            logger.error(f"Failed to retrieve thread history: {e}")
+            logger.error(f"🔍 [WORKING_MEMORY] ❌ Failed to retrieve thread history: {e}")
             return []
 
     async def _get_recent_user_messages(self, user_id: str, hours: int = 24) -> List[Dict[str, Any]]:

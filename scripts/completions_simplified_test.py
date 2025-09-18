@@ -34,7 +34,7 @@ from core.protobuf_messages import ModelserviceMessageFactory, ModelserviceMessa
 # Initialize configuration and logging
 config_manager = ConfigurationManager()
 config_manager.initialize()
-initialize_logging(config_manager)
+initialize_logging(config_manager, service_name="test")
 logger = get_logger("test", "completions")
 
 

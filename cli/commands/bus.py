@@ -127,7 +127,7 @@ def test_connection(
         
         config = ConfigurationManager()
         config.initialize(lightweight=True)
-        initialize_logging(config)
+        initialize_logging(config, service_name="cli")
     except Exception as e:
         console.print(f"[yellow]Warning: Could not initialize logging: {e}[/yellow]")
     
@@ -225,7 +225,7 @@ def monitor_traffic(
         
         config = ConfigurationManager()
         config.initialize(lightweight=True)
-        initialize_logging(config)
+        initialize_logging(config, service_name="cli")
         
     except Exception as e:
         console.print(f"[red]✗ Failed to initialize logging: {e}[/red]")

@@ -200,24 +200,34 @@ class LogConsumerService(BaseService):
     def _handle_log_message(self, message: AicoMessage) -> None:
         """Handle incoming log message from message bus"""
         
+        # Process incoming log message silently
+        
         try:
             if message.HasField('any_payload'):
+                # Unpack the Any payload to LogEntry
                 # The Any payload should now contain LogEntry directly (no double-wrapping)
                 try:
                     log_entry = LogEntry()
                     success = message.any_payload.Unpack(log_entry)
                     
+                    # Check unpack success
                     if success:
                         # Process the log entry
+                        # Process the log entry
                         self._process_log_entry(log_entry)
+                        # Log processed successfully
                     else:
+                        # Unpack failed - type mismatch
                         self.logger.error("Unpack returned False - type mismatch")
                         
                 except Exception as e:
+                    # Unpack exception occurred
                     self.logger.error(f"Failed to unpack Any payload to LogEntry: {e}")
             else:
+                # Message has no any_payload field
                 self.logger.error("Message has no any_payload field")
         except Exception as e:
+            # Message processing failed
             self.logger.error(f"Failed to process message: {e}")
     
     def _process_log_entry(self, log_entry: LogEntry) -> None:

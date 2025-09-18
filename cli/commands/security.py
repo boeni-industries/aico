@@ -217,6 +217,7 @@ def setup(
                 "message_bus_client_scheduler",
                 "message_bus_client_cli",
                 "message_bus_client_modelservice",
+                "zmq_log_transport",  # ZMQ log transport for cross-service logging
                 "message_bus_client_system_host",
                 "message_bus_client_backend_modules"
             ]
@@ -522,6 +523,7 @@ def status(
                     ("Scheduler", "message_bus_client_scheduler"),
                     ("CLI", "message_bus_client_cli"),
                     ("Model Service", "message_bus_client_modelservice"),
+                    ("ZMQ Log Transport", "zmq_log_transport"),
                     ("System Host", "message_bus_client_system_host"),
                     ("Backend Modules", "message_bus_client_backend_modules")
                 ]

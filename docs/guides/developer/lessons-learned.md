@@ -154,3 +154,47 @@ _SHARED_BROKER_SECRET = "D:)Q[IlAW!ahhC2ac:9*A}h:p?([4%wOTJ%JR%cs"
 - Multi-process systems need persistent/static keys for CurveZMQ authentication
 - Always test encryption with multiple separate processes, not just single-process tests
 - CurveZMQ debugging requires message-level tracing, connection success doesn't guarantee message delivery
+
+## ZMQ Client Authorization and Encrypted Message Bus
+
+**Problem**: ZMQ log transport showed "LOG SENT successfully" messages but logs never reached the database. Transport appeared to connect successfully but messages were silently dropped.
+
+**Root Cause**: The `"zmq_log_transport"` client was not included in the message bus broker's authorized client list. Without authorization, the client couldn't authenticate with CurveZMQ encryption, causing all messages to be silently rejected by the broker.
+
+**Debugging Challenge**: 
+- Client appeared to connect successfully (`connected=True`)
+- No error messages or authentication failures reported
+- Messages showed "sent successfully" but never reached log consumer
+- Connection logs looked normal, masking the authorization failure
+
+**Solution**: Add the ZMQ log transport client to the authorized client list:
+```python
+# In shared/aico/core/bus.py
+AUTHORIZED_CLIENTS = [
+    "backend.api_gateway",
+    "conversation_engine", 
+    "message_bus_client_modelservice",
+    "zmq_log_transport",  # ← Must be explicitly authorized
+    "log_consumer"
+]
+```
+
+Also ensure the client is included in security keypair generation:
+```python
+# In cli/commands/security.py  
+COMPONENTS = [
+    "backend.api_gateway",
+    "conversation_engine",
+    "message_bus_client_modelservice", 
+    "zmq_log_transport",  # ← Must have CurveZMQ keypair
+    "log_consumer"
+]
+```
+
+**Key Lessons**:
+- Every ZMQ client must be explicitly authorized in the broker's client list
+- CurveZMQ encryption requires both shared broker keys AND individual client authorization
+- Authorization failures are completely silent - no errors, just dropped messages
+- Client connection success != message delivery authorization
+- Always verify end-to-end message flow when adding new ZMQ clients
+- Authorization is separate from authentication - both must be configured correctly

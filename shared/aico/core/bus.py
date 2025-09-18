@@ -574,6 +574,7 @@ class MessageBusBroker:
                 "message_bus_client_scheduler",
                 "message_bus_client_cli",
                 "message_bus_client_modelservice",
+                "zmq_log_transport",  # ZMQ log transport for cross-service logging
                 "message_bus_client_system_host",
                 "message_bus_client_backend_modules",
                 "zeromq_adapter",  # API Gateway ZMQ adapter

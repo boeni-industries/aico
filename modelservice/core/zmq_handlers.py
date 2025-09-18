@@ -20,30 +20,59 @@ from aico.proto.aico_modelservice_pb2 import (
 )
 from google.protobuf.timestamp_pb2 import Timestamp
 
-logger = get_logger("modelservice", "zmq_handlers")
+# Logger will be initialized in class constructor to avoid import-time issues
 
 
 class ModelserviceZMQHandlers:
     """ZeroMQ message handlers for modelservice functionality."""
     
     def __init__(self, config: dict, ollama_manager):
+        # Initialize logger first
+        self.logger = get_logger("modelservice", "core.zmq_handlers")
+        
+        print("🔧 [DEBUG] ModelserviceZMQHandlers constructor called - initializing...")
+        self.logger.debug("ModelserviceZMQHandlers constructor called - initializing...")
+        
+        # Test if logger is connected to buffering system
+        from aico.core.logging import get_logger_factory
+        factory = get_logger_factory("modelservice")  # Get modelservice-specific factory
+        print(f"🔧 [DEBUG] Logger factory transport: {factory._transport}")
+        print(f"🔧 [DEBUG] Logger factory buffer size: {len(factory._log_buffer._buffer) if hasattr(factory, '_log_buffer') else 'No buffer'}")
+        
+        self.logger.info("ModelserviceZMQHandlers constructor called - initializing...")
         self.config = config
         self.ollama_manager = ollama_manager
         self.version = get_modelservice_version()
         self.nlp_models = {}  # Multi-language models loaded at startup
         
+        self.logger.info("About to initialize NER system...")
         # Load spaCy models for multiple languages at startup
-        self._load_spacy_models()
+        try:
+            self._load_spacy_models()
+            self.logger.info("NER system initialization completed successfully")
+        except Exception as e:
+            print(f"❌ [DEBUG] NER initialization failed: {e}")
+            self.logger.error(f"CRITICAL: NER system initialization failed: {e}")
+            import traceback
+            print(f"❌ [DEBUG] NER traceback: {traceback.format_exc()}")
+            self.logger.error(f"NER initialization traceback: {traceback.format_exc()}")
+            # Set empty models dict so service can still start
+            self.nlp_models = {}
+        self.logger.info("ModelserviceZMQHandlers initialization complete")
     
     def _load_spacy_models(self):
         """Load spaCy NER models for multiple languages at startup using proper AICO paths."""
+        print("🔧 [DEBUG] _load_spacy_models() called")
+        self.logger.info("Starting NER system initialization...")
         try:
+            print("🔧 [DEBUG] Attempting to import spacy...")
             import spacy
+            print("🔧 [DEBUG] spacy imported successfully")
             from aico.core.paths import AICOPaths
             import os
             
             # Set spaCy data path to AICO models directory
-            models_path = AICOPaths.get_models_path()
+            models_path = AICOPaths.get_data_directory() / "models"
             spacy_data_path = models_path / "spacy"
             spacy_data_path.mkdir(parents=True, exist_ok=True)
             
@@ -65,47 +94,69 @@ class ModelserviceZMQHandlers:
             # Load each language model
             for lang_code, model_name in language_models.items():
                 try:
+                    self.logger.info(f"Attempting to load {lang_code.upper()} model: {model_name}")
                     model_path = spacy_data_path / model_name
                     
                     # Try to load from AICO models directory first
                     if model_path.exists():
+                        self.logger.info(f"Loading {lang_code.upper()} model from AICO directory: {model_path}")
                         self.nlp_models[lang_code] = spacy.load(str(model_path))
+                        self.logger.info(f"Successfully loaded {lang_code.upper()} model from AICO directory")
                     else:
                         # Try to load from system installation
                         try:
+                            self.logger.info(f"Loading {lang_code.upper()} model from system installation")
                             self.nlp_models[lang_code] = spacy.load(model_name)
-                        except OSError:
-                            # Model not found - only download English by default
+                            self.logger.info(f"Successfully loaded {lang_code.upper()} model from system")
+                        except OSError as ose:
+                            # Model not found - download English automatically
                             if lang_code == "en":
                                 print("📥 Downloading English NER model (first time setup)...")
-                                self._download_spacy_model(model_name, spacy_data_path, lang_code)
+                                self.logger.warning(f"English model not found, attempting download: {ose}")
+                                if self._download_spacy_model(model_name, spacy_data_path, lang_code):
+                                    print("✅ English NER model ready")
+                                else:
+                                    print("❌ Failed to download English NER model")
+                            else:
+                                self.logger.info(f"Optional {lang_code.upper()} model not available: {ose}")
                                 
                 except Exception as e:
-                    logger.error(f"Failed to load {lang_code.upper()} model: {e}")
+                    self.logger.error(f"Failed to load {lang_code.upper()} model ({model_name}): {e}")
+                    import traceback
+                    self.logger.error(f"Model loading traceback for {lang_code}: {traceback.format_exc()}")
             
             # Console output for readiness
             if self.nlp_models:
                 loaded_langs = ", ".join([lang.upper() for lang in sorted(self.nlp_models.keys())])
                 print(f"✅ NER system ready ({loaded_langs})")
+                self.logger.info(f"NER system initialization successful - loaded models: {loaded_langs}")
             else:
                 print("⚠️  NER system unavailable (no models loaded)")
+                self.logger.warning("NER system initialization completed but no models were loaded")
                 
-        except ImportError:
-            print("❌ spaCy not installed - NER unavailable")
-            logger.error("spaCy not installed. Install with: pip install 'spacy>=3.7.0'")
+        except ImportError as e:
+            print(f"❌ [DEBUG] ImportError: {e}")
+            print("❌ NER system unavailable (install with: pip install -e '.[modelservice]')")
+            self.logger.error(f"spaCy not installed - NER system unavailable: {e}")
+            self.logger.error("Install modelservice dependencies with: pip install -e '.[modelservice]'")
             self.nlp_models = {}
         except Exception as e:
+            print(f"❌ [DEBUG] Exception in _load_spacy_models: {e}")
             print("❌ NER system failed to initialize")
-            logger.error(f"Failed to load spaCy models: {e}")
+            self.logger.error(f"NER system initialization failed: {e}")
+            import traceback
+            print(f"❌ [DEBUG] Full traceback: {traceback.format_exc()}")
+            self.logger.error(f"Full NER initialization traceback: {traceback.format_exc()}")
             self.nlp_models = {}
     
-    def _download_spacy_model(self, model_name: str, target_path, lang_code: str):
-        """Download spaCy model to AICO models directory."""
+    def _download_spacy_model(self, model_name: str, target_path, lang_code: str) -> bool:
+        """Download spaCy model to AICO models directory. Returns True if successful."""
         try:
             import subprocess
             import sys
             
             print("   Downloading model files...")
+            self.logger.info(f"Downloading spaCy model '{model_name}' to {target_path}")
             
             # Download model using spaCy CLI
             result = subprocess.run([
@@ -117,18 +168,27 @@ class ModelserviceZMQHandlers:
                 # Try to load the downloaded model
                 import spacy
                 print("   Loading model...")
+                self.logger.info(f"Loading downloaded {lang_code.upper()} model...")
                 self.nlp_models[lang_code] = spacy.load(str(target_path / model_name))
                 print("✅ English NER model ready")
+                self.logger.info(f"Successfully downloaded and loaded spaCy model: {model_name}")
+                return True
             else:
                 print("❌ Model download failed")
-                logger.error(f"Failed to download spaCy model: {result.stderr}")
+                self.logger.error(f"Failed to download spaCy model: {result.stderr}")
+                self.logger.error(f"Download command stdout: {result.stdout}")
+                return False
                 
         except subprocess.TimeoutExpired:
             print("❌ Model download timed out")
-            logger.error("spaCy model download timed out after 5 minutes")
+            self.logger.error("spaCy model download timed out after 5 minutes")
+            return False
         except Exception as e:
             print("❌ Model download error")
-            logger.error(f"Error downloading spaCy model: {e}")
+            self.logger.error(f"Error downloading spaCy model: {e}")
+            import traceback
+            self.logger.error(f"Model download traceback: {traceback.format_exc()}")
+            return False
     
     def _detect_language(self, text: str) -> str:
         """Detect language of input text. Returns language code or 'en' as fallback."""
@@ -155,7 +215,7 @@ class ModelserviceZMQHandlers:
                 return "en"  # Default to English
                 
         except Exception as e:
-            logger.debug(f"Language detection failed: {e}, defaulting to English")
+            self.logger.debug(f"Language detection failed: {e}, defaulting to English")
             return "en"
     
     def _get_nlp_model(self, text: str):
@@ -192,7 +252,7 @@ class ModelserviceZMQHandlers:
             response.success = True
             response.status = health_data["status"]
             
-            logger.info(
+            self.logger.info(
                 f"Health check completed: {health_data['status']}",
                 extra={"topic": AICOTopics.LOGS_ENTRY}
             )
@@ -201,7 +261,7 @@ class ModelserviceZMQHandlers:
             response.success = False
             response.status = "error"
             response.error = f"Health check failed: {str(e)}"
-            logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+            self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
         
         return response
     
@@ -210,17 +270,17 @@ class ModelserviceZMQHandlers:
         response = CompletionsResponse()
         
         try:
-            logger.info(f"[CHAT] Processing chat request: {type(request_payload)}")
+            self.logger.info(f"[CHAT] Processing chat request: {type(request_payload)}")
             
             # Extract data from Protocol Buffer request
             model = request_payload.model
             messages = request_payload.messages
             
-            logger.info(f"[CHAT] Request details - model: '{model}', messages count: {len(messages)}")
+            self.logger.info(f"[CHAT] Request details - model: '{model}', messages count: {len(messages)}")
             
             if not model or not messages:
                 error_msg = "Model and messages are required"
-                logger.error(f"[CHAT] Validation failed: {error_msg}")
+                self.logger.error(f"[CHAT] Validation failed: {error_msg}")
                 response.success = False
                 response.error = error_msg
                 return response
@@ -232,33 +292,33 @@ class ModelserviceZMQHandlers:
                     "role": msg.role,
                     "content": msg.content
                 })
-                logger.info(f"[CHAT] Message {i}: role='{msg.role}', content='{msg.content[:200]}{'...' if len(msg.content) > 200 else ''}')")
+                self.logger.info(f"[CHAT] Message {i}: role='{msg.role}', content='{msg.content[:200]}{'...' if len(msg.content) > 200 else ''}')")
             
             # Forward to Ollama - check config path
             ollama_config = self.config.get('ollama', {})
-            logger.info(f"[CHAT] Ollama config from self.config: {ollama_config}")
-            logger.info(f"[CHAT] Full config keys: {list(self.config.keys())}")
+            self.logger.info(f"[CHAT] Ollama config from self.config: {ollama_config}")
+            self.logger.info(f"[CHAT] Full config keys: {list(self.config.keys())}")
             ollama_url = f"http://{ollama_config.get('host', '127.0.0.1')}:{ollama_config.get('port', 11434)}"
-            logger.info(f"[CHAT] Forwarding to Ollama at {ollama_url}")
-            logger.info(f"[CHAT] Chat messages count: {len(chat_messages)}")
+            self.logger.info(f"[CHAT] Forwarding to Ollama at {ollama_url}")
+            self.logger.info(f"[CHAT] Chat messages count: {len(chat_messages)}")
             
-            logger.info(f"[CHAT] Creating HTTP client...")
+            self.logger.info(f"[CHAT] Creating HTTP client...")
             async with httpx.AsyncClient(timeout=30.0) as client:
-                logger.info(f"[CHAT] HTTP client created, sending request to Ollama...")
+                self.logger.info(f"[CHAT] HTTP client created, sending request to Ollama...")
                 request_data = {
                     "model": model,
                     "messages": chat_messages,
                     "stream": False
                 }
-                logger.info(f"[CHAT] Request data prepared: model={model}, messages_count={len(chat_messages)}")
+                self.logger.info(f"[CHAT] Request data prepared: model={model}, messages_count={len(chat_messages)}")
                 
                 try:
-                    logger.info(f"[CHAT] Making POST request to {ollama_url}/api/chat")
+                    self.logger.info(f"[CHAT] Making POST request to {ollama_url}/api/chat")
                     ollama_response = await client.post(
                         f"{ollama_url}/api/chat",
                         json=request_data
                     )
-                    logger.info(f"[CHAT] Ollama response received with status: {ollama_response.status_code}")
+                    self.logger.info(f"[CHAT] Ollama response received with status: {ollama_response.status_code}")
                 except httpx.ConnectError as conn_err:
                     raise Exception(f"Failed to connect to Ollama at {ollama_url}: {conn_err}")
                 except httpx.TimeoutException as timeout_err:
@@ -270,7 +330,7 @@ class ModelserviceZMQHandlers:
                     raise Exception(f"Ollama error: {ollama_response.status_code} - {ollama_response.text}")
                 
                 data = ollama_response.json()
-                logger.info(f"[DEBUG] Ollama raw response: {data}")
+                self.logger.info(f"[DEBUG] Ollama raw response: {data}")
                 
                 # Create Protocol Buffer response
                 from aico.proto.aico_modelservice_pb2 import CompletionResult, ConversationMessage
@@ -287,10 +347,10 @@ class ModelserviceZMQHandlers:
                 else:
                     # Fallback for generate API format
                     response_content = data.get("response", "")
-                logger.info(f"[DEBUG] Extracted response content: '{response_content}' (length: {len(response_content)})")
+                self.logger.info(f"[DEBUG] Extracted response content: '{response_content}' (length: {len(response_content)})")
                 response_msg.content = response_content
                 result.message.CopyFrom(response_msg)
-                logger.info(f"[DEBUG] Final result message content: '{result.message.content}'")
+                self.logger.info(f"[DEBUG] Final result message content: '{result.message.content}'")
                 
                 # Optional timing fields
                 if "total_duration" in data:
@@ -309,22 +369,22 @@ class ModelserviceZMQHandlers:
                 response.success = True
                 response.result.CopyFrom(result)
                 
-                logger.info(f"[CHAT] ✅ Success! Generated chat response for model {model}")
-                logger.info(f"[CHAT] Response length: {len(response_content)} characters")
-                logger.info(
+                self.logger.info(f"[CHAT] ✅ Success! Generated chat response for model {model}")
+                self.logger.info(f"[CHAT] Response length: {len(response_content)} characters")
+                self.logger.info(
                     f"Completion generated for model {model}",
                     extra={"topic": AICOTopics.LOGS_ENTRY}
                 )
                 
         except Exception as e:
             error_msg = f"Chat request failed: {str(e)}"
-            logger.error(f"[CHAT] ❌ CRITICAL ERROR: {error_msg}")
-            logger.error(f"[CHAT] Exception type: {type(e).__name__}")
+            self.logger.error(f"[CHAT] ❌ CRITICAL ERROR: {error_msg}")
+            self.logger.error(f"[CHAT] Exception type: {type(e).__name__}")
             import traceback
-            logger.error(f"[CHAT] Full traceback: {traceback.format_exc()}")
+            self.logger.error(f"[CHAT] Full traceback: {traceback.format_exc()}")
             response.success = False
             response.error = error_msg
-            logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+            self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
         
         return response
     
@@ -333,7 +393,7 @@ class ModelserviceZMQHandlers:
         response = CompletionsResponse()
         
         try:
-            logger.info(f"[COMPLETIONS] Processing completions request: {type(request_payload)}")
+            self.logger.info(f"[COMPLETIONS] Processing completions request: {type(request_payload)}")
             
             # Extract data from Protocol Buffer request
             model = request_payload.model
@@ -354,11 +414,11 @@ class ModelserviceZMQHandlers:
             else:
                 prompt = ""
             
-            logger.info(f"[COMPLETIONS] Request details - model: '{model}', prompt: '{prompt[:100]}...'")
+            self.logger.info(f"[COMPLETIONS] Request details - model: '{model}', prompt: '{prompt[:100]}...'")
             
             if not model or not prompt:
                 error_msg = "Model and prompt are required"
-                logger.error(f"[COMPLETIONS] Validation failed: {error_msg}")
+                self.logger.error(f"[COMPLETIONS] Validation failed: {error_msg}")
                 response.success = False
                 response.error = error_msg
                 return response
@@ -366,7 +426,7 @@ class ModelserviceZMQHandlers:
             # Forward to Ollama /api/generate endpoint
             ollama_config = self.config.get('ollama', {})
             ollama_url = f"http://{ollama_config.get('host', '127.0.0.1')}:{ollama_config.get('port', 11434)}"
-            logger.info(f"[COMPLETIONS] Forwarding to Ollama at {ollama_url}")
+            self.logger.info(f"[COMPLETIONS] Forwarding to Ollama at {ollama_url}")
             
             async with httpx.AsyncClient(timeout=30.0) as client:
                 request_data = {
@@ -374,15 +434,15 @@ class ModelserviceZMQHandlers:
                     "prompt": prompt,
                     "stream": False
                 }
-                logger.info(f"[COMPLETIONS] Request data prepared: model={model}")
+                self.logger.info(f"[COMPLETIONS] Request data prepared: model={model}")
                 
                 try:
-                    logger.info(f"[COMPLETIONS] Making POST request to {ollama_url}/api/generate")
+                    self.logger.info(f"[COMPLETIONS] Making POST request to {ollama_url}/api/generate")
                     ollama_response = await client.post(
                         f"{ollama_url}/api/generate",
                         json=request_data
                     )
-                    logger.info(f"[COMPLETIONS] Ollama response received with status: {ollama_response.status_code}")
+                    self.logger.info(f"[COMPLETIONS] Ollama response received with status: {ollama_response.status_code}")
                 except httpx.ConnectError as conn_err:
                     raise Exception(f"Failed to connect to Ollama at {ollama_url}: {conn_err}")
                 except httpx.TimeoutException as timeout_err:
@@ -394,11 +454,11 @@ class ModelserviceZMQHandlers:
                     raise Exception(f"Ollama error: {ollama_response.status_code} - {ollama_response.text}")
                 
                 data = ollama_response.json()
-                logger.info(f"[COMPLETIONS] Ollama raw response: {data}")
+                self.logger.info(f"[COMPLETIONS] Ollama raw response: {data}")
                 
                 # Extract response content
                 response_content = data.get("response", "")
-                logger.info(f"[COMPLETIONS] Extracted response content: '{response_content[:100]}...' (length: {len(response_content)})")
+                self.logger.info(f"[COMPLETIONS] Extracted response content: '{response_content[:100]}...' (length: {len(response_content)})")
                 
                 # Create Protocol Buffer response
                 from aico.proto.aico_modelservice_pb2 import CompletionResult, ConversationMessage
@@ -428,22 +488,22 @@ class ModelserviceZMQHandlers:
                 response.success = True
                 response.result.CopyFrom(result)
                 
-                logger.info(f"[COMPLETIONS] ✅ Success! Generated completion for model {model}")
-                logger.info(f"[COMPLETIONS] Response length: {len(response_content)} characters")
-                logger.info(
+                self.logger.info(f"[COMPLETIONS] ✅ Success! Generated completion for model {model}")
+                self.logger.info(f"[COMPLETIONS] Response length: {len(response_content)} characters")
+                self.logger.info(
                     f"Completion generated for model {model}",
                     extra={"topic": AICOTopics.LOGS_ENTRY}
                 )
                 
         except Exception as e:
             error_msg = f"Completion failed: {str(e)}"
-            logger.error(f"[COMPLETIONS] ❌ CRITICAL ERROR: {error_msg}")
-            logger.error(f"[COMPLETIONS] Exception type: {type(e).__name__}")
+            self.logger.error(f"[COMPLETIONS] ❌ CRITICAL ERROR: {error_msg}")
+            self.logger.error(f"[COMPLETIONS] Exception type: {type(e).__name__}")
             import traceback
-            logger.error(f"[COMPLETIONS] Full traceback: {traceback.format_exc()}")
+            self.logger.error(f"[COMPLETIONS] Full traceback: {traceback.format_exc()}")
             response.success = False
             response.error = error_msg
-            logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+            self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
         
         return response
     
@@ -482,7 +542,7 @@ class ModelserviceZMQHandlers:
                 
                 response.success = True
                 
-                logger.info(
+                self.logger.info(
                     f"Retrieved {len(response.models)} models from Ollama",
                     extra={"topic": AICOTopics.LOGS_ENTRY}
                 )
@@ -490,7 +550,7 @@ class ModelserviceZMQHandlers:
         except Exception as e:
             response.success = False
             response.error = f"Models request failed: {str(e)}"
-            logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+            self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
         
         return response
     
@@ -529,7 +589,7 @@ class ModelserviceZMQHandlers:
                 response.success = True
                 response.details.CopyFrom(details)
                 
-                logger.info(
+                self.logger.info(
                     f"Retrieved info for model {model_name}",
                     extra={"topic": AICOTopics.LOGS_ENTRY}
                 )
@@ -537,7 +597,7 @@ class ModelserviceZMQHandlers:
         except Exception as e:
             response.success = False
             response.error = f"Model info request failed: {str(e)}"
-            logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+            self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
         
         return response
     
@@ -577,7 +637,7 @@ class ModelserviceZMQHandlers:
                 
                 response.success = True
                 
-                logger.info(
+                self.logger.info(
                     f"Generated embeddings for model {model}",
                     extra={"topic": AICOTopics.LOGS_ENTRY}
                 )
@@ -585,7 +645,7 @@ class ModelserviceZMQHandlers:
         except Exception as e:
             response.success = False
             response.error = f"Embeddings request failed: {str(e)}"
-            logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+            self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
         
         return response
     
@@ -602,7 +662,7 @@ class ModelserviceZMQHandlers:
                 response.error = "text is required"
                 return response
             
-            logger.info(f"Processing NER for text: {text[:50]}...")
+            self.logger.info(f"Processing NER for text: {text[:50]}...")
             
             # Get appropriate spaCy model for the text language
             nlp_model = self._get_nlp_model(text)
@@ -636,7 +696,7 @@ class ModelserviceZMQHandlers:
             
             # Log results
             total_entities = sum(len(v) for v in entities.values())
-            logger.info(
+            self.logger.info(
                 f"Extracted {total_entities} entities",
                 extra={"topic": AICOTopics.LOGS_ENTRY}
             )
@@ -647,7 +707,7 @@ class ModelserviceZMQHandlers:
             response = NerResponse()
             response.success = False
             response.error = f"NER request failed: {str(e)}"
-            logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+            self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
             return response
     
     async def handle_status_request(self, request_payload) -> StatusResponse:
@@ -681,7 +741,7 @@ class ModelserviceZMQHandlers:
             response.success = True
             response.status.CopyFrom(status)
             
-            logger.info(
+            self.logger.info(
                 "Status request completed",
                 extra={"topic": AICOTopics.LOGS_ENTRY}
             )
@@ -689,7 +749,7 @@ class ModelserviceZMQHandlers:
         except Exception as e:
             response.success = False
             response.error = f"Status request failed: {str(e)}"
-            logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+            self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
         
         return response
     
@@ -731,7 +791,7 @@ class ModelserviceZMQHandlers:
             
         except Exception as e:
             # Only mark as unhealthy for critical system errors
-            logger.error(f"Critical health check error: {str(e)}")
+            self.logger.error(f"Critical health check error: {str(e)}")
             health_data["status"] = "unhealthy"
             health_data["issues"].append(f"Critical health check error: {str(e)}")
         

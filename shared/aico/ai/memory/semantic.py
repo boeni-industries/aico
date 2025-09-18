@@ -67,11 +67,8 @@ from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
 
-try:
-    import chromadb
-    from chromadb.config import Settings
-except ImportError:
-    chromadb = None
+import chromadb
+from chromadb.config import Settings
 
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
@@ -124,9 +121,8 @@ class SemanticMemoryStore:
         # Initialize conversation processor
         self.conversation_processor = ConversationSegmentProcessor(config_manager)
         
-        # Check ChromaDB availability
-        if chromadb is None:
-            logger.warning("ChromaDB not available - semantic memory will use fallback storage")
+        # ChromaDB is required - no fallback
+        logger.info("ChromaDB available - semantic memory ready")
     
     def set_modelservice(self, modelservice):
         """Inject modelservice dependency for embeddings and NER"""
@@ -142,11 +138,7 @@ class SemanticMemoryStore:
         logger.info(f"Initializing semantic memory store at {self._db_path}")
         
         try:
-            if chromadb is None:
-                logger.warning("ChromaDB not available - using fallback storage")
-                await self._initialize_fallback()
-                self._initialized = True
-                return
+            logger.info("Initializing ChromaDB client...")
             
             # Create ChromaDB client with proper settings (no default embedding function)
             self._client = chromadb.PersistentClient(
@@ -183,16 +175,18 @@ class SemanticMemoryStore:
             raise
     
     async def store(self, data: Dict[str, Any]) -> bool:
-        """Store semantic knowledge entry with modelservice embeddings"""
+        """Store semantic knowledge with embeddings via modelservice"""
         if not self._initialized:
             await self.initialize()
             
+        logger.info(f"🧠 [SEMANTIC_MEMORY] Storing semantic entry: {data.get('content', '')[:50]}...")
+        
         try:
             # Create semantic entry
             entry = SemanticEntry(
-                id=data.get("id", f"semantic_{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}"),
-                content=data["content"],
-                embedding=data.get("embedding"),
+                id=data.get("id", f"fact_{datetime.utcnow().timestamp()}"),
+                content=data.get("content", ""),
+                embedding=data.get("embedding"),  # Optional pre-computed embedding
                 metadata=data.get("metadata", {}),
                 timestamp=data.get("timestamp", datetime.utcnow()),
                 source=data.get("source", "user"),
@@ -201,11 +195,13 @@ class SemanticMemoryStore:
             
             # Generate embeddings via modelservice if not provided
             if not entry.embedding:
+                logger.info("🧠 [SEMANTIC_MEMORY] → Generating embeddings via modelservice")
                 embedding_vector = await self._generate_embedding(entry.content)
                 if not embedding_vector:
-                    logger.error("Failed to generate embeddings - falling back to storage without embeddings")
-                    return await self._store_fallback(entry)
+                    logger.error("🧠 [SEMANTIC_MEMORY] ❌ Failed to generate embeddings - semantic storage failed")
+                    raise Exception("Embedding generation failed - semantic memory requires embeddings")
                 entry.embedding = embedding_vector
+                logger.info("🧠 [SEMANTIC_MEMORY] ✅ Embeddings generated successfully")
             
             # Store in ChromaDB with pre-computed embeddings
             if self._collection and chromadb:
@@ -247,14 +243,13 @@ class SemanticMemoryStore:
                         embeddings=[entry.embedding],  # Pre-computed via modelservice!
                         metadatas=[enhanced_metadata]
                     )
-                    logger.debug(f"Stored semantic memory entry: {entry.id}")
+                    logger.info(f"🧠 [SEMANTIC_MEMORY] ✅ Entry stored in ChromaDB: {entry.id}")
                     return True
                 except Exception as e:
-                    logger.warning(f"ChromaDB storage failed, using fallback: {e}")
-                    return await self._store_fallback(entry)
+                    logger.error(f"🧠 [SEMANTIC_MEMORY] ❌ ChromaDB storage failed: {e}")
+                    raise Exception(f"Semantic memory storage failed: {e}")
             else:
-                # Use fallback storage
-                return await self._store_fallback(entry)
+                raise Exception("ChromaDB not initialized - semantic memory unavailable")
             
         except Exception as e:
             logger.error(f"Failed to store semantic memory: {e}")
@@ -266,14 +261,17 @@ class SemanticMemoryStore:
         if not self._initialized:
             await self.initialize()
             
+        logger.info(f"🔍 [SEMANTIC_MEMORY] Querying: '{query_text[:50]}...' (max_results: {max_results or self._max_results})")
+        
         max_results = max_results or self._max_results
         
         try:
             # Generate query embeddings via modelservice
+            logger.info("🔍 [SEMANTIC_MEMORY] → Generating query embeddings via modelservice")
             query_embedding = await self._generate_embedding(query_text)
             if not query_embedding:
-                logger.error("Failed to generate query embeddings - using fallback search")
-                return await self._query_fallback(query_text, max_results, filters)
+                logger.error("🔍 [SEMANTIC_MEMORY] ❌ Failed to generate query embeddings - semantic search failed")
+                raise Exception("Query embedding generation failed - semantic search unavailable")
             
             # Query ChromaDB with pre-computed embeddings
             if self._collection and chromadb:
@@ -296,15 +294,14 @@ class SemanticMemoryStore:
                                 "similarity": 1.0 - (results["distances"][0][i] if results["distances"] else 0.0)  # Convert distance to similarity
                             })
                     
-                    logger.debug(f"Found {len(formatted_results)} semantic memory results for: {query_text}")
+                    logger.info(f"🔍 [SEMANTIC_MEMORY] ✅ Found {len(formatted_results)} semantic results")
                     return formatted_results
                     
                 except Exception as e:
-                    logger.warning(f"ChromaDB query failed, using fallback: {e}")
-                    return await self._query_fallback(query_text, max_results, filters)
+                    logger.error(f"🔍 [SEMANTIC_MEMORY] ❌ ChromaDB query failed: {e}")
+                    raise Exception(f"Semantic memory query failed: {e}")
             else:
-                # Use fallback search
-                return await self._query_fallback(query_text, max_results, filters)
+                raise Exception("ChromaDB not initialized - semantic memory unavailable")
         except Exception as e:
             logger.error(f"Failed to query semantic memory: {e}")
             return []
@@ -483,35 +480,3 @@ class SemanticMemoryStore:
             logger.error(f"Failed to generate embedding via modelservice: {e}")
             return None
     
-    async def _initialize_fallback(self) -> None:
-        """Initialize fallback JSON storage - Phase 1 TODO"""
-        # TODO Phase 1: Implement fallback storage
-        # - Create JSON file structure
-        # - Handle directory creation
-        # - Initialize empty storage
-        pass
-    
-    async def _store_fallback(self, entry: SemanticEntry) -> None:
-        """Store entry in fallback JSON storage - Phase 1 TODO"""
-        # TODO Phase 1: Implement fallback storage operations
-        # - Read existing JSON data
-        # - Add new entry
-        # - Write back to file
-        pass
-    
-    async def _query_fallback(self, query_text: str, max_results: int, 
-                             filters: Dict[str, Any] = None) -> List[Dict[str, Any]]:
-        """Query fallback JSON storage - Phase 1 TODO"""
-        # TODO Phase 1: Implement fallback search
-        # - Simple text matching and scoring
-        # - Apply filters
-        # - Sort by similarity
-        return []
-    
-    async def _update_fallback(self, entry_id: str, updates: Dict[str, Any]) -> bool:
-        """Update entry in fallback JSON storage - Phase 1 TODO"""
-        # TODO Phase 1: Implement fallback updates
-        # - Find entry by ID
-        # - Apply updates
-        # - Write back to file
-        return False

@@ -55,7 +55,7 @@ class ConversationSegmentProcessor:
         self.min_chunk_size = self.config.get("memory.semantic.min_chunk_size", 3)
         self.max_chunk_size = self.config.get("memory.semantic.max_chunk_size", 5)
     
-    def process_conversation_history(self, messages: List[Dict[str, Any]], thread_id: str, user_id: str) -> List[ConversationSegment]:
+    async def process_conversation_history(self, messages: List[Dict[str, Any]], thread_id: str, user_id: str) -> List[ConversationSegment]:
         """
         Process conversation history into semantic segments.
         
@@ -84,7 +84,7 @@ class ConversationSegmentProcessor:
             if segment:
                 segments.append(segment)
                 
-        logger.debug(f"Created {len(segments)} conversation segments from {len(messages)} messages")
+        logger.info(f"🔄 [CONVERSATION_PROCESSOR] Created {len(segments)} conversation segments from {len(messages)} messages")
         return segments
     
     async def _create_segment(self, messages: List[Dict[str, Any]], thread_id: str, user_id: str, start_index: int) -> Optional[ConversationSegment]:
@@ -106,7 +106,10 @@ class ConversationSegmentProcessor:
             segment_text = "\n".join(text_parts)
             
             # Extract entities using modelservice NER
+            logger.info(f"🔄 [CONVERSATION_PROCESSOR] → Extracting entities from segment ({len(segment_text)} chars)")
             entities = await self._extract_entities_via_modelservice(segment_text)
+            entity_count = sum(len(v) for v in entities.values())
+            logger.info(f"🔄 [CONVERSATION_PROCESSOR] ✅ Extracted {entity_count} entities from segment")
             
             # Get timestamp from first message
             timestamp = datetime.utcnow()

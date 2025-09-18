@@ -330,4 +330,3 @@ memory:
     confidence_threshold: 0.8
     fact_retention_days: 365  # Long-term storage
     supported_languages: ["en", "de", "es", "it", "fr"]
-    enable_fallback_storage: true

@@ -29,9 +29,9 @@ from aico.core.config import ConfigurationManager
 from aico.core.logging import initialize_logging
 from aico.core.logging_context import create_infrastructure_logger
 
-# Initialize logging first before importing any modules that use loggers
+# Initialize backend-specific logging first before importing any modules that use loggers
 config_manager = ConfigurationManager()
-initialize_logging(config_manager)
+initialize_logging(config_manager, service_name="backend")
 
 from core.lifecycle_manager import BackendLifecycleManager
 
