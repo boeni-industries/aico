@@ -49,6 +49,11 @@ message NerRequest {
   string text = 1;
 }
 
+// Sentiment analysis request
+message SentimentRequest {
+  string text = 1;
+}
+
 // Service status request
 message StatusRequest {
   // Empty - no parameters needed
@@ -127,6 +132,14 @@ message NerResponse {
 
 message EntityList {
   repeated string entities = 1;
+}
+
+// Sentiment analysis response
+message SentimentResponse {
+  bool success = 1;
+  string sentiment = 2;  // "positive", "negative", "neutral"
+  double confidence = 3; // confidence score 0.0-1.0
+  optional string error = 4;
 }
 
 // Service status response

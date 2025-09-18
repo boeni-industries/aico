@@ -527,9 +527,8 @@ class ModelserviceZMQHandlers:
             response.success = True
             
             for entity_type, entity_list in entities.items():
-                entity_list_pb = EntityList()
-                entity_list_pb.entities.extend(entity_list)
-                response.entities[entity_type] = entity_list_pb
+                # Access the map entry and set its entities field
+                response.entities[entity_type].entities.extend(entity_list)
             
             # Log results
             total_entities = sum(len(v) for v in entities.values())
@@ -537,6 +536,14 @@ class ModelserviceZMQHandlers:
                 f"Extracted {total_entities} entities",
                 extra={"topic": AICOTopics.LOGS_ENTRY}
             )
+            
+            # Debug logging of detailed NER results
+            if entities:
+                self.logger.debug(f"[NER] Detailed extraction results for text: '{text[:100]}...'")
+                for entity_type, entity_list in entities.items():
+                    self.logger.debug(f"[NER] {entity_type}: {entity_list}")
+            else:
+                self.logger.debug(f"[NER] No entities extracted from text: '{text[:100]}...'")
             return response
             
         except Exception as e:

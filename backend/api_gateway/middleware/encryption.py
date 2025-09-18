@@ -240,7 +240,7 @@ class EncryptionMiddleware:
                         
                         try:
                             decrypted_data = channel.decrypt_json_payload(encrypted_payload)
-                            self.logger.info(f"Successfully decrypted request payload: {decrypted_data}")
+                            self.logger.debug(f"Successfully decrypted request payload: {decrypted_data}")
                             
                             # Replace the request body with decrypted data
                             decrypted_body = json.dumps(decrypted_data).encode()

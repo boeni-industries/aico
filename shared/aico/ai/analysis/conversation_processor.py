@@ -72,17 +72,29 @@ class ConversationSegmentProcessor:
             
         segments = []
         
+        logger.debug(f"🔄 [CONVERSATION_PROCESSOR] Processing {len(messages)} messages with chunk_size={self.chunk_size}, min_chunk_size={self.min_chunk_size}")
+        
         # Create overlapping chunks of 3-5 messages
         for i in range(0, len(messages), self.chunk_size - 1):  # Overlap by 1 message
             chunk_messages = messages[i:i + self.chunk_size]
             
-            # Skip if chunk is too small
+            logger.debug(f"🔄 [CONVERSATION_PROCESSOR] Created chunk {i} with {len(chunk_messages)} messages")
+            
+            # Skip if chunk is too small (but allow smaller chunks for short conversations)
             if len(chunk_messages) < self.min_chunk_size:
-                continue
+                # For short conversations (2 messages), allow smaller chunks
+                if len(messages) <= 2 and len(chunk_messages) >= 2:
+                    logger.debug(f"🔄 [CONVERSATION_PROCESSOR] Allowing small chunk for short conversation: {len(chunk_messages)} messages")
+                else:
+                    logger.debug(f"🔄 [CONVERSATION_PROCESSOR] Skipping chunk {i}: {len(chunk_messages)} < {self.min_chunk_size}")
+                    continue
                 
             segment = await self._create_segment(chunk_messages, thread_id, user_id, i)
             if segment:
                 segments.append(segment)
+                logger.debug(f"🔄 [CONVERSATION_PROCESSOR] ✅ Created segment {i} successfully")
+            else:
+                logger.debug(f"🔄 [CONVERSATION_PROCESSOR] ❌ Failed to create segment {i}")
                 
         logger.info(f"🔄 [CONVERSATION_PROCESSOR] Created {len(segments)} conversation segments from {len(messages)} messages")
         return segments
@@ -90,11 +102,15 @@ class ConversationSegmentProcessor:
     async def _create_segment(self, messages: List[Dict[str, Any]], thread_id: str, user_id: str, start_index: int) -> Optional[ConversationSegment]:
         """Create a conversation segment from a chunk of messages."""
         try:
+            logger.debug(f"🔄 [CONVERSATION_PROCESSOR] _create_segment: Processing {len(messages)} messages")
+            
             # Combine messages into coherent text
             text_parts = []
-            for msg in messages:
+            for i, msg in enumerate(messages):
                 role = msg.get("message_type", "unknown")
                 content = msg.get("message_content", "")
+                
+                logger.debug(f"🔄 [CONVERSATION_PROCESSOR] Message {i}: role='{role}', content_length={len(content)}")
                 
                 if role == "user_input":
                     text_parts.append(f"User: {content}")
@@ -104,6 +120,7 @@ class ConversationSegmentProcessor:
                     text_parts.append(content)
             
             segment_text = "\n".join(text_parts)
+            logger.debug(f"🔄 [CONVERSATION_PROCESSOR] Combined segment text length: {len(segment_text)}")
             
             # Extract entities using modelservice NER
             logger.info(f"🔄 [CONVERSATION_PROCESSOR] → Extracting entities from segment ({len(segment_text)} chars)")
@@ -153,11 +170,21 @@ class ConversationSegmentProcessor:
             # Parse NER response
             entities = response.get("data", {}).get("entities", {})
             
-            # Filter out common false positives
-            entities = self._filter_entities(entities, text)
+            # Debug log raw NER response
+            logger.debug(f"[NER] Raw modelservice response: {entities}")
             
-            logger.debug(f"Extracted entities via modelservice: {entities}")
-            return entities
+            # Filter out common false positives
+            filtered_entities = self._filter_entities(entities, text)
+            
+            # Debug log filtered results
+            if filtered_entities:
+                logger.debug(f"[NER] Filtered entities: {filtered_entities}")
+                for entity_type, entity_list in filtered_entities.items():
+                    logger.debug(f"[NER] {entity_type}: {entity_list}")
+            else:
+                logger.debug(f"[NER] No entities remaining after filtering")
+            
+            return filtered_entities
             
         except Exception as e:
             logger.error(f"Modelservice NER extraction failed: {e}")

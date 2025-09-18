@@ -15,11 +15,11 @@ from aico.proto.aico_core_envelope_pb2 import AicoMessage, MessageMetadata
 from aico.proto.aico_modelservice_pb2 import (
     # Request messages
     HealthRequest, CompletionsRequest, ModelsRequest, ModelInfoRequest,
-    EmbeddingsRequest, StatusRequest, OllamaStatusRequest, OllamaModelsRequest,
+    EmbeddingsRequest, NerRequest, StatusRequest, OllamaStatusRequest, OllamaModelsRequest,
     OllamaPullRequest, OllamaRemoveRequest, OllamaServeRequest, OllamaShutdownRequest,
     # Response messages
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
-    EmbeddingsResponse, StatusResponse, OllamaStatusResponse, OllamaModelsResponse,
+    EmbeddingsResponse, NerResponse, StatusResponse, OllamaStatusResponse, OllamaModelsResponse,
     OllamaPullResponse, OllamaRemoveResponse, OllamaServeResponse, OllamaShutdownResponse,
     # Data structures
     ConversationMessage
@@ -253,6 +253,7 @@ class ModelserviceMessageParser:
             AICOTopics.MODELSERVICE_MODELS_REQUEST: ModelsRequest,
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: ModelInfoRequest,
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: EmbeddingsRequest,
+            AICOTopics.MODELSERVICE_NER_REQUEST: NerRequest,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: StatusRequest,
             AICOTopics.OLLAMA_STATUS_REQUEST: OllamaStatusRequest,
             AICOTopics.OLLAMA_MODELS_REQUEST: OllamaModelsRequest,
@@ -283,6 +284,7 @@ class ModelserviceMessageParser:
             AICOTopics.MODELSERVICE_MODELS_RESPONSE: ModelsResponse,
             AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE: ModelInfoResponse,
             AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE: EmbeddingsResponse,
+            AICOTopics.MODELSERVICE_NER_RESPONSE: NerResponse,
             AICOTopics.MODELSERVICE_STATUS_RESPONSE: StatusResponse,
             AICOTopics.OLLAMA_STATUS_RESPONSE: OllamaStatusResponse,
             AICOTopics.OLLAMA_MODELS_RESPONSE: OllamaModelsResponse,

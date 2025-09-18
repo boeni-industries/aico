@@ -477,7 +477,7 @@ class UnifiedApiClient {
     if (!skipTokenRefresh) {
       final tokenFresh = await _tokenManager.ensureTokenFreshness();
       if (!tokenFresh) {
-        AICOLog.warn('Token freshness check failed',
+        AICOLog.info('Token freshness check failed',
           topic: 'network/request/token_freshness_failed');
       }
     }

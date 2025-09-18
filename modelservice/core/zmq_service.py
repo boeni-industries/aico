@@ -226,25 +226,26 @@ class ModelserviceZMQService:
                 handler_name = self.topic_handlers[topic].__name__
                 self.logger.info(f"[ZMQ_SERVICE] ✅ Handler found: {handler_name}")
                 
-                
                 # Execute handler
                 self.logger.info(f"[ZMQ_SERVICE] Executing handler {handler_name} with payload type: {type(request_payload)}")
                 response = await self.topic_handlers[topic](request_payload)
-            self.logger.info(f"[ZMQ_SERVICE] Handler completed, response type: {type(response)}")
-            
-            # Send Protocol Buffer response if correlation_id is provided
-            if correlation_id and self.bus_client:
-                response_topic = self._get_response_topic(topic)
-                self.logger.info(f"[ZMQ_SERVICE] Response topic for '{topic}': {response_topic}")
-                if response_topic:
-                    self.logger.info(f"[ZMQ_SERVICE] Publishing response to topic '{response_topic}' with correlation_id '{correlation_id}'")
-                    # Pass raw response_payload to MessageBusClient, let it handle envelope wrapping
-                    await self.bus_client.publish(response_topic, response_payload, correlation_id=correlation_id)
-                    self.logger.info(f"[ZMQ_SERVICE] ✅ Response published successfully to topic {response_topic}")
+                self.logger.info(f"[ZMQ_SERVICE] Handler completed, response type: {type(response)}")
+                
+                # Send Protocol Buffer response if correlation_id is provided
+                if correlation_id and self.bus_client:
+                    response_topic = self._get_response_topic(topic)
+                    self.logger.info(f"[ZMQ_SERVICE] Response topic for '{topic}': {response_topic}")
+                    if response_topic:
+                        self.logger.info(f"[ZMQ_SERVICE] Publishing response to topic '{response_topic}' with correlation_id '{correlation_id}'")
+                        # Pass raw response to MessageBusClient, let it handle envelope wrapping
+                        await self.bus_client.publish(response_topic, response, correlation_id=correlation_id)
+                        self.logger.info(f"[ZMQ_SERVICE] ✅ Response published successfully to topic {response_topic}")
+                    else:
+                        self.logger.error(f"[ZMQ_SERVICE] ❌ No response topic found for request topic: {topic}")
                 else:
-                    self.logger.error(f"[ZMQ_SERVICE] ❌ No response topic found for request topic: {topic}")
+                    self.logger.warning(f"[ZMQ_SERVICE] ⚠️ No response sent - correlation_id: {correlation_id}, bus_client: {self.bus_client is not None}")
             else:
-                self.logger.warning(f"[ZMQ_SERVICE] ⚠️ No response sent - correlation_id: {correlation_id}, bus_client: {self.bus_client is not None}")
+                self.logger.error(f"[ZMQ_SERVICE] ❌ No handler found for topic: {topic}")
             
         except Exception as e:
             self.logger.error(f"[ZMQ_SERVICE] ❌ CRITICAL ERROR handling Protocol Buffer message: {str(e)}")

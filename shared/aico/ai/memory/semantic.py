@@ -210,32 +210,43 @@ class SemanticMemoryStore:
                     enhanced_metadata = {
                         # Core identification
                         "user_id": entry.metadata.get("user_id", "unknown"),
-                        "fact_id": entry.id,
+                        "fact_id": entry.id or "unknown",
                         
                         # Semantic categorization
                         "category": entry.metadata.get("category", "context"),
                         "permanence": entry.metadata.get("permanence", "evolving"),
                         
                         # Quality metrics
-                        "confidence": entry.confidence,
+                        "confidence": entry.confidence if entry.confidence is not None else 0.5,
                         "reasoning": entry.metadata.get("reasoning", ""),
                         
                         # Temporal data
-                        "created_at": entry.timestamp.isoformat(),
-                        "updated_at": entry.timestamp.isoformat(),
+                        "created_at": entry.timestamp.isoformat() if entry.timestamp else "",
+                        "updated_at": entry.timestamp.isoformat() if entry.timestamp else "",
                         
                         # Source tracking
-                        "source_thread": entry.metadata.get("source_thread"),
-                        "source_message": entry.source,
+                        "source_thread": entry.metadata.get("source_thread", ""),
+                        "source_message": entry.source or "",
                         "extraction_method": "llm_analysis",
                         
                         # Administrative
                         "version": 1,
-                        "status": "active",
-                        
-                        # Legacy fields for backward compatibility
-                        **entry.metadata
+                        "status": "active"
                     }
+                    
+                    # Add legacy fields but filter out None values
+                    for key, value in entry.metadata.items():
+                        if value is not None and key not in enhanced_metadata:
+                            enhanced_metadata[key] = value
+                    
+                    # Final safety filter - remove any None values that might have slipped through
+                    enhanced_metadata = {k: v for k, v in enhanced_metadata.items() if v is not None}
+                    
+                    # Debug log the final metadata to identify None values
+                    logger.debug(f"🧠 [SEMANTIC_MEMORY] Final metadata for ChromaDB: {enhanced_metadata}")
+                    none_values = [k for k, v in enhanced_metadata.items() if v is None]
+                    if none_values:
+                        logger.error(f"🧠 [SEMANTIC_MEMORY] ❌ Found None values in metadata: {none_values}")
                     
                     self._collection.add(
                         documents=[entry.content],
@@ -376,6 +387,69 @@ class SemanticMemoryStore:
             logger.error(f"Failed to delete user segments: {e}")
             return False
     
+    async def store_conversation_segments(self, messages: List[Dict[str, Any]], 
+                                        thread_id: str, user_id: str) -> int:
+        """Store conversation segments for semantic memory processing"""
+        if not self._initialized:
+            await self.initialize()
+        
+        logger.info(f"🧠 [SEMANTIC_MEMORY] Processing {len(messages)} messages for conversation segments")
+        
+        try:
+            # Use conversation processor to create segments
+            segments = await self.conversation_processor.process_conversation_history(
+                messages=messages,
+                thread_id=thread_id,
+                user_id=user_id
+            )
+            
+            segments_stored = 0
+            for segment in segments:
+                # Debug log segment details including entities
+                entities = segment.entities
+                logger.debug(f"🧠 [SEMANTIC_MEMORY] Processing segment with entities: {entities}")
+                logger.debug(f"🧠 [SEMANTIC_MEMORY] Segment fields - thread_id: {segment.thread_id}, user_id: {segment.user_id}, text: {segment.text[:50] if segment.text else 'None'}...")
+                
+                # Store each segment as semantic knowledge
+                # Serialize complex data types for ChromaDB compatibility
+                
+                # Create metadata dictionary and filter out None values
+                metadata = {
+                    "type": "conversation_segment",
+                    "thread_id": segment.thread_id or "",
+                    "user_id": segment.user_id or "",
+                    "segment_type": "general",
+                    "entities_json": json.dumps(segment.entities) if segment.entities else "{}",
+                    "topics_json": json.dumps([]),
+                    "sentiment": "neutral",
+                    "importance": 0.5,
+                    "turn_range_json": json.dumps(list(segment.turn_range)) if segment.turn_range else "[0,0]",
+                    "message_count": len(segment.messages) if segment.messages else 0
+                }
+                
+                # Filter out any None values that ChromaDB can't handle
+                metadata = {k: v for k, v in metadata.items() if v is not None}
+                
+                segment_data = {
+                    "id": f"segment_{segment.thread_id or 'unknown'}_{int(segment.timestamp.timestamp())}",
+                    "content": segment.text or "",
+                    "metadata": metadata,
+                    "source": f"conversation_segment_{segment.thread_id or 'unknown'}",
+                    "confidence": 0.8,
+                    "timestamp": segment.timestamp
+                }
+                
+                if await self.store(segment_data):
+                    segments_stored += 1
+                    logger.debug(f"🧠 [SEMANTIC_MEMORY] ✅ Stored segment with {sum(len(v) if isinstance(v, list) else 0 for v in entities.values())} entities")
+            
+            logger.info(f"🧠 [SEMANTIC_MEMORY] ✅ Stored {segments_stored} conversation segments")
+            return segments_stored
+            
+        except Exception as e:
+            logger.error(f"🧠 [SEMANTIC_MEMORY] ❌ Failed to store conversation segments: {e}")
+            return 0
+
     async def cleanup_old_facts(self, days_old: int = 90) -> int:
         """Clean up old temporary facts (scheduled maintenance)"""
         if not self._initialized:

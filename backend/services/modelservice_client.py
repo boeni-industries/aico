@@ -69,7 +69,7 @@ class ModelServiceClient:
         correlation_id = str(uuid.uuid4())
         
         # Create proper protobuf message based on request type
-        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest, EmbeddingsRequest
+        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest, EmbeddingsRequest, NerRequest
         
         if "completions" in request_topic or "chat" in request_topic:
             # Create CompletionsRequest protobuf
@@ -98,6 +98,10 @@ class ModelServiceClient:
             request_proto = EmbeddingsRequest()
             request_proto.model = data.get("model", "")
             request_proto.prompt = data.get("prompt", "")
+        elif "ner" in request_topic:
+            # Create NerRequest protobuf
+            request_proto = NerRequest()
+            request_proto.text = data.get("text", "")
         elif "health" in request_topic:
             request_proto = HealthRequest()
         elif "models" in request_topic:
@@ -130,7 +134,7 @@ class ModelServiceClient:
                 self.logger.debug(f"Processing response for correlation_id: {correlation_id}")
                 
                 if hasattr(message, 'any_payload'):
-                    # Handle different response types based on response topic
+                    # Handle embeddings responses
                     if "embeddings" in response_topic:
                         from aico.proto.aico_modelservice_pb2 import EmbeddingsResponse
                         embeddings_response = EmbeddingsResponse()
@@ -146,6 +150,28 @@ class ModelServiceClient:
                             response_received.set()
                         else:
                             self.logger.error("Failed to unpack EmbeddingsResponse")
+                            response_data = {'success': False, 'error': 'Failed to unpack response'}
+                            response_received.set()
+                    # Handle NER responses
+                    elif "ner" in response_topic:
+                        from aico.proto.aico_modelservice_pb2 import NerResponse
+                        ner_response = NerResponse()
+                        if message.any_payload.Unpack(ner_response):
+                            self.logger.debug(f"Successfully unpacked NerResponse: success={ner_response.success}")
+                            response_data = {
+                                'success': ner_response.success,
+                                'error': ner_response.error if ner_response.HasField('error') else None
+                            }
+                            if ner_response.success:
+                                # Convert protobuf map to Python dict
+                                entities = {}
+                                for entity_type, entity_list in ner_response.entities.items():
+                                    entities[entity_type] = list(entity_list.entities)
+                                response_data['data'] = {'entities': entities}
+                                self.logger.debug(f"Extracted {len(entities)} entity types")
+                            response_received.set()
+                        else:
+                            self.logger.error("Failed to unpack NerResponse")
                             response_data = {'success': False, 'error': 'Failed to unpack response'}
                             response_received.set()
                     else:

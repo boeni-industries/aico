@@ -8,6 +8,9 @@ Following AICO domain-based API organization patterns.
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from datetime import datetime
+import gzip
+import base64
+import json
 
 from aico.core.logging import get_logger
 from .schemas import (
@@ -91,9 +94,30 @@ async def submit_log_batch(
     
     This endpoint accepts batches of log entries for efficient processing.
     Useful for frontend applications that buffer logs locally.
+    Supports both raw log entries and compressed log data.
     """
     try:
-        if len(log_batch.logs) > 1000:
+        # Handle compressed logs if present
+        if log_batch.compressed_logs:
+            try:
+                # Decode base64 and decompress
+                compressed_data = base64.b64decode(log_batch.compressed_logs)
+                decompressed_data = gzip.decompress(compressed_data)
+                logs_data = json.loads(decompressed_data.decode('utf-8'))
+                
+                # Convert to LogEntryRequest objects
+                log_entries = []
+                for log_data in logs_data:
+                    log_entries.append(LogEntryRequest(**log_data))
+                    
+            except Exception as e:
+                logger.error(f"Failed to decompress log batch: {e}")
+                raise LogValidationError(f"Invalid compressed log data: {e}")
+        else:
+            # Use regular logs field
+            log_entries = log_batch.logs
+        
+        if len(log_entries) > 1000:
             raise LogBatchTooLargeError()
         
         accepted_logs = []
@@ -101,7 +125,7 @@ async def submit_log_batch(
         errors = []
         
         # Validate each log entry
-        for i, log_entry in enumerate(log_batch.logs):
+        for i, log_entry in enumerate(log_entries):
             try:
                 validate_module_name(log_entry.module)
                 validate_topic(log_entry.topic)
@@ -127,9 +151,10 @@ async def submit_log_batch(
             background_tasks.add_task(process_log_batch, accepted_logs)
         
         
+        total_entries = len(log_entries)
         return LogSubmissionResponse(
             success=len(accepted_logs) > 0,
-            message=f"Processed {len(accepted_logs)} of {len(log_batch.logs)} log entries",
+            message=f"Processed {len(accepted_logs)} of {total_entries} log entries",
             accepted_count=len(accepted_logs),
             rejected_count=len(rejected_logs),
             errors=errors if errors else None
