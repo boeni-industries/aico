@@ -215,9 +215,27 @@ class TransformersManager:
             self.logger.error(f"Failed to initialize Transformers models: {e}")
             return False
     
+    async def ensure_models_loaded(self) -> bool:
+        """Ensure all required models are loaded (alias for ensure_models_available)."""
+        return await self.ensure_models_available()
+    
     async def _ensure_model_available(self, model_config: TransformerModelConfig) -> bool:
         """Ensure a model is downloaded and available."""
         try:
+            # Special handling for GLiNER models
+            if model_config.name == "entity_extraction" and "gliner" in model_config.model_id.lower():
+                self.logger.info(f"Checking GLiNER model availability: {model_config.model_id}")
+                try:
+                    from gliner import GLiNER
+                    # Try to load GLiNER model (this will download if needed)
+                    model = GLiNER.from_pretrained(model_config.model_id)
+                    self.logger.info(f"✅ GLiNER model {model_config.name} is available")
+                    return True
+                except Exception as e:
+                    self.logger.error(f"Failed to load GLiNER model {model_config.name}: {e}")
+                    return False
+            
+            # Standard transformers models
             from transformers import pipeline, AutoTokenizer, AutoModel
             
             self.logger.info(f"Checking model availability: {model_config.model_id}")
