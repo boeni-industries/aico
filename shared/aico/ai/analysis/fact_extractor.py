@@ -91,8 +91,7 @@ class AdvancedFactExtractor:
         self.config = config_manager
         self.logger = logger
         
-        # GLiNER model (loaded via modelservice)
-        self._gliner_model = None
+        # Modelservice client for NER requests
         self._modelservice_client = None
         
         # Dynamic entity types for conversation analysis
@@ -150,17 +149,14 @@ class AdvancedFactExtractor:
     async def initialize(self):
         """Initialize the fact extractor with modelservice integration."""
         try:
-            # Import GLiNER (will be installed as dependency)
-            from gliner import GLiNER
+            # Import modelservice client for NER requests
+            from backend.services.modelservice_client import ModelServiceClient
             
-            # Load GLiNER model
-            self._gliner_model = GLiNER.from_pretrained("urchade/gliner_medium-v2.1")
+            # Initialize modelservice client
+            self._modelservice_client = ModelServiceClient(self.config)
             
-            self.logger.info("🔍 [FACT_EXTRACTOR] GLiNER model loaded successfully")
+            self.logger.info("🔍 [FACT_EXTRACTOR] Modelservice client initialized successfully")
             
-        except ImportError:
-            self.logger.error("🔍 [FACT_EXTRACTOR] GLiNER not installed. Run: pip install gliner")
-            raise
         except Exception as e:
             self.logger.error(f"🔍 [FACT_EXTRACTOR] Failed to initialize: {e}")
             raise
@@ -175,7 +171,7 @@ class AdvancedFactExtractor:
         Returns:
             List of ExtractedFact objects with confidence scores
         """
-        if not self._gliner_model:
+        if not self._modelservice_client:
             await self.initialize()
         
         text = conversation_segment.text
@@ -201,25 +197,29 @@ class AdvancedFactExtractor:
             return []
     
     async def _extract_entities(self, text: str) -> List[ExtractedEntity]:
-        """Extract entities using GLiNER."""
+        """Extract entities using modelservice NER endpoint."""
         try:
-            # Use GLiNER to extract entities with dynamic types
-            raw_entities = self._gliner_model.predict_entities(
-                text,
-                labels=self.conversation_entity_types,
-                threshold=0.3  # Lower threshold for better recall
-            )
+            # Use modelservice NER endpoint (which uses GLiNER internally)
+            ner_result = await self._modelservice_client.get_ner_entities(text)
             
-            # Convert to our format
+            if not ner_result.get("success", False):
+                self.logger.error(f"🔍 [ENTITIES] NER request failed: {ner_result.get('error', 'Unknown error')}")
+                return []
+            
+            # Convert modelservice NER result to our format
             entities = []
-            for entity in raw_entities:
-                entities.append(ExtractedEntity(
-                    text=entity["text"],
-                    label=entity["label"],
-                    start=entity["start"],
-                    end=entity["end"],
-                    confidence=entity["score"]
-                ))
+            ner_data = ner_result.get("data", {}).get("entities", {})
+            
+            for entity_type, entity_list in ner_data.items():
+                for entity_text in entity_list:
+                    # Note: modelservice NER doesn't return positions/confidence, so we use defaults
+                    entities.append(ExtractedEntity(
+                        text=entity_text,
+                        label=entity_type.lower(),
+                        start=0,  # Position not available from modelservice
+                        end=len(entity_text),
+                        confidence=0.8  # Default confidence since not returned by modelservice
+                    ))
             
             self.logger.debug(f"🔍 [ENTITIES] Extracted {len(entities)} entities: {[e.text for e in entities]}")
             return entities

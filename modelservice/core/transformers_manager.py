@@ -62,12 +62,12 @@ class TransformersManager:
     DEFAULT_MODELS = {
         "sentiment_multilingual": TransformerModelConfig(
             name="sentiment_multilingual",
-            model_id="cardiffnlp/twitter-roberta-base-sentiment-latest",
+            model_id="nlptown/bert-base-multilingual-uncased-sentiment",
             task=ModelTask.SENTIMENT_ANALYSIS,
             priority=1,
             required=True,
-            description="RoBERTa sentiment analysis (compatible with transformers v4.51.0)",
-            multilingual=False,
+            description="Multilingual BERT sentiment analysis",
+            multilingual=True,
             memory_mb=500,
             config_overrides={"return_all_scores": False}
         ),
