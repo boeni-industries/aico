@@ -421,7 +421,8 @@ class SemanticMemoryStore:
                     "segment_type": "general",
                     "entities_json": json.dumps(segment.entities) if segment.entities else "{}",
                     "topics_json": json.dumps([]),
-                    "sentiment": "neutral",
+                    "sentiment": segment.sentiment or "neutral",
+                    "sentiment_confidence": segment.sentiment_confidence if segment.sentiment_confidence is not None else 0.5,
                     "importance": 0.5,
                     "turn_range_json": json.dumps(list(segment.turn_range)) if segment.turn_range else "[0,0]",
                     "message_count": len(segment.messages) if segment.messages else 0

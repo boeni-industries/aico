@@ -554,6 +554,67 @@ class ModelserviceZMQHandlers:
             self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
             return response
     
+    async def handle_sentiment_request(self, request_payload) -> Any:
+        """Handle sentiment analysis requests via Protocol Buffers."""
+        try:
+            from aico.proto.aico_modelservice_pb2 import SentimentResponse
+            
+            response = SentimentResponse()
+            text = request_payload.text
+            
+            if not text:
+                response.success = False
+                response.error = "text is required"
+                return response
+            
+            self.logger.info(f"Processing sentiment for text: {text[:50]}...")
+            
+            # Get sentiment pipeline (lazy load)
+            sentiment_pipeline = self._get_sentiment_pipeline()
+            if sentiment_pipeline is None:
+                response.success = False
+                response.error = "Sentiment analysis model not available"
+                return response
+            
+            # Analyze sentiment
+            result = sentiment_pipeline(text)
+            
+            # Extract sentiment and confidence
+            if result and len(result) > 0:
+                sentiment_result = result[0]
+                label = sentiment_result['label'].lower()
+                confidence = sentiment_result['score']
+                
+                # Map model labels to standard format
+                if label in ['positive', 'pos']:
+                    sentiment = 'positive'
+                elif label in ['negative', 'neg']:
+                    sentiment = 'negative'
+                else:
+                    sentiment = 'neutral'
+                
+                response.success = True
+                response.sentiment = sentiment
+                response.confidence = confidence
+                
+                self.logger.info(
+                    f"Sentiment analysis complete: {sentiment} (confidence: {confidence:.3f})",
+                    extra={"topic": AICOTopics.LOGS_ENTRY}
+                )
+            else:
+                response.success = False
+                response.error = "No sentiment result returned"
+            
+            return response
+            
+        except Exception as e:
+            from aico.proto.aico_modelservice_pb2 import SentimentResponse
+            response = SentimentResponse()
+            response.success = False
+            response.error = f"Sentiment analysis failed: {str(e)}"
+            self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+            return response
+    
     async def handle_status_request(self, request_payload) -> StatusResponse:
         """Handle status requests via Protocol Buffers."""
         response = StatusResponse()
@@ -689,3 +750,31 @@ class ModelserviceZMQHandlers:
                 "available": False,
                 "error": str(e)
             }
+    
+    def _get_sentiment_pipeline(self):
+        """Get or initialize the sentiment analysis pipeline."""
+        if not hasattr(self, '_sentiment_pipeline'):
+            self._sentiment_pipeline = None
+            try:
+                from transformers import pipeline
+                
+                # Use multilingual BERT model for sentiment analysis
+                model_name = "nlptown/bert-base-multilingual-uncased-sentiment"
+                
+                self.logger.info(f"Loading sentiment analysis model: {model_name}")
+                self._sentiment_pipeline = pipeline(
+                    "sentiment-analysis",
+                    model=model_name,
+                    tokenizer=model_name,
+                    return_all_scores=False  # Only return the top prediction
+                )
+                self.logger.info("Sentiment analysis model loaded successfully")
+                
+            except ImportError:
+                self.logger.error("transformers library not available for sentiment analysis")
+                return None
+            except Exception as e:
+                self.logger.error(f"Failed to load sentiment analysis model: {e}")
+                return None
+        
+        return self._sentiment_pipeline

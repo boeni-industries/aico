@@ -31,6 +31,8 @@ class ConversationSegment:
     text: str
     messages: List[Dict[str, Any]]
     entities: Dict[str, List[str]]
+    sentiment: str  # "positive", "negative", "neutral"
+    sentiment_confidence: float  # confidence score 0.0-1.0
     thread_id: str
     user_id: str
     timestamp: datetime
@@ -128,6 +130,11 @@ class ConversationSegmentProcessor:
             entity_count = sum(len(v) for v in entities.values())
             logger.info(f"🔄 [CONVERSATION_PROCESSOR] ✅ Extracted {entity_count} entities from segment")
             
+            # Extract sentiment using modelservice
+            logger.info(f"🔄 [CONVERSATION_PROCESSOR] → Analyzing sentiment for segment")
+            sentiment, sentiment_confidence = await self._extract_sentiment_via_modelservice(segment_text)
+            logger.info(f"🔄 [CONVERSATION_PROCESSOR] ✅ Sentiment: {sentiment} (confidence: {sentiment_confidence:.3f})")
+            
             # Get timestamp from first message
             timestamp = datetime.utcnow()
             if messages and "timestamp" in messages[0]:
@@ -143,6 +150,8 @@ class ConversationSegmentProcessor:
                 text=segment_text,
                 messages=messages,
                 entities=entities,
+                sentiment=sentiment,
+                sentiment_confidence=sentiment_confidence,
                 thread_id=thread_id,
                 user_id=user_id,
                 timestamp=timestamp,
@@ -233,3 +242,29 @@ class ConversationSegmentProcessor:
         Useful for real-time entity extraction during conversation.
         """
         return await self._extract_entities_via_modelservice(message)
+    
+    async def _extract_sentiment_via_modelservice(self, text: str) -> Tuple[str, float]:
+        """Extract sentiment from text using modelservice sentiment analysis endpoint."""
+        try:
+            if not self.modelservice_client:
+                logger.warning("No modelservice client available for sentiment analysis")
+                return "neutral", 0.5
+            
+            # Call modelservice for sentiment analysis
+            result = await self.modelservice_client.get_sentiment_analysis(text)
+            
+            if result.get('success', False) and 'data' in result:
+                sentiment_data = result['data']
+                sentiment = sentiment_data.get('sentiment', 'neutral')
+                confidence = sentiment_data.get('confidence', 0.5)
+                
+                logger.debug(f"[SENTIMENT] Modelservice result: {sentiment} (confidence: {confidence:.3f})")
+                return sentiment, confidence
+            else:
+                error_msg = result.get('error', 'Unknown error')
+                logger.error(f"Modelservice sentiment analysis failed: {error_msg}")
+                return "neutral", 0.5
+                
+        except Exception as e:
+            logger.error(f"Sentiment analysis error: {e}")
+            return "neutral", 0.5

@@ -69,7 +69,7 @@ class ModelServiceClient:
         correlation_id = str(uuid.uuid4())
         
         # Create proper protobuf message based on request type
-        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest, EmbeddingsRequest, NerRequest
+        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest, EmbeddingsRequest, NerRequest, SentimentRequest
         
         if "completions" in request_topic or "chat" in request_topic:
             # Create CompletionsRequest protobuf
@@ -101,6 +101,10 @@ class ModelServiceClient:
         elif "ner" in request_topic:
             # Create NerRequest protobuf
             request_proto = NerRequest()
+            request_proto.text = data.get("text", "")
+        elif "sentiment" in request_topic:
+            # Create SentimentRequest protobuf
+            request_proto = SentimentRequest()
             request_proto.text = data.get("text", "")
         elif "health" in request_topic:
             request_proto = HealthRequest()
@@ -172,6 +176,27 @@ class ModelServiceClient:
                             response_received.set()
                         else:
                             self.logger.error("Failed to unpack NerResponse")
+                            response_data = {'success': False, 'error': 'Failed to unpack response'}
+                            response_received.set()
+                    # Handle Sentiment responses
+                    elif "sentiment" in response_topic:
+                        from aico.proto.aico_modelservice_pb2 import SentimentResponse
+                        sentiment_response = SentimentResponse()
+                        if message.any_payload.Unpack(sentiment_response):
+                            self.logger.debug(f"Successfully unpacked SentimentResponse: success={sentiment_response.success}")
+                            response_data = {
+                                'success': sentiment_response.success,
+                                'error': sentiment_response.error if sentiment_response.HasField('error') else None
+                            }
+                            if sentiment_response.success:
+                                response_data['data'] = {
+                                    'sentiment': sentiment_response.sentiment,
+                                    'confidence': sentiment_response.confidence
+                                }
+                                self.logger.debug(f"Extracted sentiment: {sentiment_response.sentiment} (confidence: {sentiment_response.confidence:.3f})")
+                            response_received.set()
+                        else:
+                            self.logger.error("Failed to unpack SentimentResponse")
                             response_data = {'success': False, 'error': 'Failed to unpack response'}
                             response_received.set()
                     else:
@@ -311,6 +336,18 @@ class ModelServiceClient:
         return await self._send_request(
             AICOTopics.MODELSERVICE_NER_REQUEST,
             AICOTopics.MODELSERVICE_NER_RESPONSE,
+            request_data
+        )
+    
+    async def get_sentiment_analysis(self, text: str) -> Dict[str, Any]:
+        """Get sentiment analysis from modelservice."""
+        request_data = {
+            "text": text
+        }
+        
+        return await self._send_request(
+            AICOTopics.MODELSERVICE_SENTIMENT_REQUEST,
+            AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE,
             request_data
         )
     

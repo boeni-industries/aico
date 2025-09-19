@@ -49,6 +49,8 @@ cli = [
 
 modelservice = [
     "spacy>=3.7.0",  # NER for conversation segment processing
+    "transformers>=4.21.0",  # Sentiment analysis with multilingual BERT
+    "torch>=1.12.0",  # Required by transformers for model inference
 ]
 
 test = [
