@@ -245,6 +245,28 @@ modelservice:
       timeout_seconds: 300  # 5 minutes timeout for model downloads
       retry_attempts: 3
       use_direct_urls: true  # Use GitHub release URLs for better UV compatibility
+  
+  # Hugging Face Transformers configuration
+  transformers:
+    # Memory management settings
+    max_memory_mb: 2048  # Maximum memory for all transformers models
+    max_concurrent_models: 3  # Maximum number of models loaded simultaneously
+    auto_unload: true  # Automatically unload models when memory is low
+    
+    # Model configurations (can override defaults)
+    models:
+      sentiment_multilingual:
+        required: true
+        priority: 1
+        memory_mb: 500
+      sentiment_english:
+        required: false
+        priority: 2
+        memory_mb: 400
+      emotion_analysis:
+        required: false
+        priority: 3
+        memory_mb: 300
 
 # Task Scheduler configuration
 scheduler:

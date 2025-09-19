@@ -114,14 +114,18 @@ class ModelserviceZMQService:
                 self.logger.error("No existing bus client found - start_early() must be called first")
                 raise RuntimeError("start_early() must be called before start()")
             
-            # Subscribe to remaining topics that require Ollama
-            ollama_topics = [
+            # Subscribe to remaining topics that require full modelservice initialization
+            modelservice_topics = [
+                # LLM and chat topics (require Ollama)
                 AICOTopics.MODELSERVICE_CHAT_REQUEST,
                 AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST,
                 AICOTopics.MODELSERVICE_MODELS_REQUEST,
                 AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST,
                 AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
+                # NLP analysis topics (require spaCy and Transformers)
                 AICOTopics.MODELSERVICE_NER_REQUEST,
+                AICOTopics.MODELSERVICE_SENTIMENT_REQUEST,
+                # Ollama management topics
                 AICOTopics.OLLAMA_STATUS_REQUEST,
                 AICOTopics.OLLAMA_MODELS_REQUEST,
                 AICOTopics.OLLAMA_MODELS_PULL_REQUEST,
@@ -130,7 +134,7 @@ class ModelserviceZMQService:
                 AICOTopics.OLLAMA_SHUTDOWN_REQUEST,
             ]
             
-            for topic in ollama_topics:
+            for topic in modelservice_topics:
                 if topic in self.topic_handlers:
                     await self.bus_client.subscribe(topic, self._handle_message)
                     self.logger.info(f"Subscribed to topic: {topic}")
@@ -140,6 +144,10 @@ class ModelserviceZMQService:
             # Initialize NER system now that all services are ready
             self.logger.info("Initializing NER system...")
             await self.handlers.initialize_ner_system()
+            
+            # Initialize Transformers system
+            self.logger.info("Initializing Transformers system...")
+            await self.handlers.initialize_transformers_system()
             
             self.logger.info("Modelservice ZMQ service fully initialized")
             
@@ -289,6 +297,7 @@ class ModelserviceZMQService:
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE,
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
             AICOTopics.MODELSERVICE_NER_REQUEST: AICOTopics.MODELSERVICE_NER_RESPONSE,
+            AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: AICOTopics.MODELSERVICE_STATUS_RESPONSE,
             AICOTopics.OLLAMA_STATUS_REQUEST: AICOTopics.OLLAMA_STATUS_RESPONSE,
             AICOTopics.OLLAMA_MODELS_REQUEST: AICOTopics.OLLAMA_MODELS_RESPONSE,
@@ -354,6 +363,7 @@ class ModelserviceZMQService:
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE,
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
             AICOTopics.MODELSERVICE_NER_REQUEST: AICOTopics.MODELSERVICE_NER_RESPONSE,
+            AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: AICOTopics.MODELSERVICE_STATUS_RESPONSE,
             AICOTopics.OLLAMA_STATUS_REQUEST: AICOTopics.OLLAMA_STATUS_RESPONSE,
             AICOTopics.OLLAMA_MODELS_REQUEST: AICOTopics.OLLAMA_MODELS_RESPONSE,

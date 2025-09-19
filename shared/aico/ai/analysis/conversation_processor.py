@@ -246,12 +246,12 @@ class ConversationSegmentProcessor:
     async def _extract_sentiment_via_modelservice(self, text: str) -> Tuple[str, float]:
         """Extract sentiment from text using modelservice sentiment analysis endpoint."""
         try:
-            if not self.modelservice_client:
+            if not self.modelservice:
                 logger.warning("No modelservice client available for sentiment analysis")
                 return "neutral", 0.5
             
             # Call modelservice for sentiment analysis
-            result = await self.modelservice_client.get_sentiment_analysis(text)
+            result = await self.modelservice.get_sentiment_analysis(text)
             
             if result.get('success', False) and 'data' in result:
                 sentiment_data = result['data']

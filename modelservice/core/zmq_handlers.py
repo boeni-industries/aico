@@ -9,17 +9,20 @@ import asyncio
 import time
 import httpx
 from datetime import datetime
-from typing import Optional, Dict, Any
-
+from typing import Any, Dict
+from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
-from aico.core.topics import AICOTopics
+from aico.core.topics import AICOTopics as AICOTopics
+from .spacy_manager import SpaCyManager
+from .ollama_manager import OllamaManager
+from .transformers_manager import TransformersManager
 from aico.core.version import get_modelservice_version
 from aico.proto.aico_modelservice_pb2 import (
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
-    EmbeddingsResponse, NerResponse, EntityList, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus
+    EmbeddingsResponse, NerResponse, EntityList, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus,
+    SentimentRequest, SentimentResponse
 )
 from google.protobuf.timestamp_pb2 import Timestamp
-from .spacy_manager import SpaCyManager
 
 # Logger will be initialized in class constructor to avoid import-time issues
 
@@ -45,9 +48,15 @@ class ModelserviceZMQHandlers:
         # Initialize spaCy manager
         self.spacy_manager = SpaCyManager()
         
+        # Initialize Transformers manager
+        from aico.core.config import ConfigurationManager
+        config_manager = ConfigurationManager()
+        self.transformers_manager = TransformersManager(config_manager)
+        
         self.logger.info("About to initialize NER system...")
         # Initialize spaCy models asynchronously - will be done during startup
         self.ner_initialized = False
+        self.transformers_initialized = False
         self.logger.info("ModelserviceZMQHandlers initialization complete")
     
     async def initialize_ner_system(self):
@@ -72,7 +81,27 @@ class ModelserviceZMQHandlers:
             import traceback
             self.logger.error(f"NER initialization traceback: {traceback.format_exc()}")
     
-    
+    async def initialize_transformers_system(self):
+        """Initialize the Transformers system asynchronously using TransformersManager."""
+        if self.transformers_initialized:
+            return
+        
+        try:
+            self.logger.info("Starting Transformers system initialization...")
+            
+            # Initialize transformers models
+            success = await self.transformers_manager.initialize_models()
+            
+            if success:
+                self.transformers_initialized = True
+                self.logger.info("✅ Transformers system initialized successfully")
+            else:
+                self.logger.error("❌ Transformers system initialization failed")
+                
+        except Exception as e:
+            import traceback
+            self.logger.error(f"Failed to initialize Transformers system: {e}")
+            self.logger.error(f"Transformers initialization traceback: {traceback.format_exc()}")
     
     def _get_nlp_model(self, text: str):
         """Get appropriate spaCy model for the given text."""
@@ -557,8 +586,6 @@ class ModelserviceZMQHandlers:
     async def handle_sentiment_request(self, request_payload) -> Any:
         """Handle sentiment analysis requests via Protocol Buffers."""
         try:
-            from aico.proto.aico_modelservice_pb2 import SentimentResponse
-            
             response = SentimentResponse()
             text = request_payload.text
             
@@ -569,8 +596,17 @@ class ModelserviceZMQHandlers:
             
             self.logger.info(f"Processing sentiment for text: {text[:50]}...")
             
-            # Get sentiment pipeline (lazy load)
-            sentiment_pipeline = self._get_sentiment_pipeline()
+            # Ensure transformers system is initialized
+            if not self.transformers_initialized:
+                await self.initialize_transformers_system()
+            
+            if not self.transformers_initialized:
+                response.success = False
+                response.error = "Transformers system not available"
+                return response
+            
+            # Get sentiment pipeline from TransformersManager
+            sentiment_pipeline = await self.transformers_manager.get_pipeline("sentiment_multilingual")
             if sentiment_pipeline is None:
                 response.success = False
                 response.error = "Sentiment analysis model not available"
@@ -586,12 +622,21 @@ class ModelserviceZMQHandlers:
                 confidence = sentiment_result['score']
                 
                 # Map model labels to standard format
-                if label in ['positive', 'pos']:
+                # nlptown/bert-base-multilingual-uncased-sentiment uses star ratings
+                if label in ['5 stars', '4 stars']:
                     sentiment = 'positive'
-                elif label in ['negative', 'neg']:
+                elif label in ['1 star', '2 stars']:
                     sentiment = 'negative'
-                else:
+                elif label in ['3 stars']:
                     sentiment = 'neutral'
+                else:
+                    # Fallback for other models that might use different labels
+                    if label in ['positive', 'pos']:
+                        sentiment = 'positive'
+                    elif label in ['negative', 'neg']:
+                        sentiment = 'negative'
+                    else:
+                        sentiment = 'neutral'
                 
                 response.success = True
                 response.sentiment = sentiment
@@ -608,7 +653,6 @@ class ModelserviceZMQHandlers:
             return response
             
         except Exception as e:
-            from aico.proto.aico_modelservice_pb2 import SentimentResponse
             response = SentimentResponse()
             response.success = False
             response.error = f"Sentiment analysis failed: {str(e)}"
@@ -751,30 +795,3 @@ class ModelserviceZMQHandlers:
                 "error": str(e)
             }
     
-    def _get_sentiment_pipeline(self):
-        """Get or initialize the sentiment analysis pipeline."""
-        if not hasattr(self, '_sentiment_pipeline'):
-            self._sentiment_pipeline = None
-            try:
-                from transformers import pipeline
-                
-                # Use multilingual BERT model for sentiment analysis
-                model_name = "nlptown/bert-base-multilingual-uncased-sentiment"
-                
-                self.logger.info(f"Loading sentiment analysis model: {model_name}")
-                self._sentiment_pipeline = pipeline(
-                    "sentiment-analysis",
-                    model=model_name,
-                    tokenizer=model_name,
-                    return_all_scores=False  # Only return the top prediction
-                )
-                self.logger.info("Sentiment analysis model loaded successfully")
-                
-            except ImportError:
-                self.logger.error("transformers library not available for sentiment analysis")
-                return None
-            except Exception as e:
-                self.logger.error(f"Failed to load sentiment analysis model: {e}")
-                return None
-        
-        return self._sentiment_pipeline

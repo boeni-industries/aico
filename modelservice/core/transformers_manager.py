@@ -1,0 +1,375 @@
+"""
+TransformersManager - Hugging Face Transformers model management and lifecycle control.
+
+This module handles complete Transformers model lifecycle management including:
+- Multi-model support for various NLP tasks (sentiment, classification, etc.)
+- Automatic model download and caching at startup
+- Memory-efficient model loading and unloading
+- Integration with AICO's unified logging system
+- Support for multilingual models
+"""
+
+import asyncio
+import json
+import os
+import shutil
+import sys
+from pathlib import Path
+from typing import Dict, List, Optional, Any, Union
+from dataclasses import dataclass
+from enum import Enum
+
+from aico.core.logging import get_logger
+from aico.core.config import ConfigurationManager
+from aico.core.paths import AICOPaths
+
+
+class ModelTask(Enum):
+    """Supported Transformers model tasks."""
+    SENTIMENT_ANALYSIS = "sentiment-analysis"
+    TEXT_CLASSIFICATION = "text-classification"
+    TOKEN_CLASSIFICATION = "token-classification"
+    QUESTION_ANSWERING = "question-answering"
+    SUMMARIZATION = "summarization"
+    TRANSLATION = "translation"
+    TEXT_GENERATION = "text-generation"
+
+
+@dataclass
+class TransformerModelConfig:
+    """Configuration for a Transformers model."""
+    name: str
+    model_id: str
+    task: ModelTask
+    priority: int
+    required: bool
+    description: str
+    multilingual: bool = False
+    memory_mb: int = 500  # Estimated memory usage
+    config_overrides: Dict[str, Any] = None
+    
+    def __post_init__(self):
+        if self.config_overrides is None:
+            self.config_overrides = {}
+
+
+class TransformersManager:
+    """Manages Hugging Face Transformers model installation, updates, and lifecycle."""
+    
+    # Default model configurations
+    DEFAULT_MODELS = {
+        "sentiment_multilingual": TransformerModelConfig(
+            name="sentiment_multilingual",
+            model_id="nlptown/bert-base-multilingual-uncased-sentiment",
+            task=ModelTask.SENTIMENT_ANALYSIS,
+            priority=1,
+            required=True,
+            description="Multilingual BERT sentiment analysis",
+            multilingual=True,
+            memory_mb=500,
+            config_overrides={"return_all_scores": False}
+        ),
+        "sentiment_english": TransformerModelConfig(
+            name="sentiment_english",
+            model_id="cardiffnlp/twitter-roberta-base-sentiment-latest",
+            task=ModelTask.SENTIMENT_ANALYSIS,
+            priority=2,
+            required=False,
+            description="English Twitter sentiment analysis",
+            multilingual=False,
+            memory_mb=400
+        ),
+        "emotion_analysis": TransformerModelConfig(
+            name="emotion_analysis",
+            model_id="j-hartmann/emotion-english-distilroberta-base",
+            task=ModelTask.TEXT_CLASSIFICATION,
+            priority=3,
+            required=False,
+            description="English emotion classification",
+            multilingual=False,
+            memory_mb=300
+        ),
+        "text_classification": TransformerModelConfig(
+            name="text_classification",
+            model_id="microsoft/DialoGPT-medium",
+            task=ModelTask.TEXT_CLASSIFICATION,
+            priority=4,
+            required=False,
+            description="General text classification",
+            multilingual=False,
+            memory_mb=600
+        )
+    }
+    
+    def __init__(self, config_manager: ConfigurationManager):
+        """Initialize TransformersManager with configuration."""
+        self.config_manager = config_manager
+        self.logger = None  # Lazy initialization
+        
+        # Get transformers configuration
+        self.transformers_config = self.config_manager.get("core.modelservice.transformers", {})
+        
+        # Loaded models cache
+        self.loaded_models: Dict[str, Any] = {}
+        self.model_configs: Dict[str, TransformerModelConfig] = {}
+        
+        # Memory management
+        self.max_memory_mb = self.transformers_config.get("max_memory_mb", 2048)
+        self.auto_unload = self.transformers_config.get("auto_unload", True)
+        self.max_concurrent_models = self.transformers_config.get("max_concurrent_models", 3)
+        
+        # Initialize model configurations
+        self._initialize_model_configs()
+    
+    def _ensure_logger(self):
+        """Ensure logger is initialized (lazy initialization)."""
+        if self.logger is None:
+            try:
+                self.logger = get_logger("modelservice", "core.transformers_manager")
+            except RuntimeError:
+                # Logging not initialized yet, use basic Python logger as fallback
+                import logging
+                self.logger = logging.getLogger("transformers_manager")
+                self.logger.setLevel(logging.INFO)
+    
+    def _initialize_model_configs(self):
+        """Initialize model configurations from defaults and config."""
+        self._ensure_logger()
+        
+        # Start with default models
+        self.model_configs = self.DEFAULT_MODELS.copy()
+        
+        # Override with configuration
+        config_models = self.transformers_config.get("models", {})
+        for model_name, config in config_models.items():
+            if model_name in self.model_configs:
+                # Update existing model config
+                existing = self.model_configs[model_name]
+                for key, value in config.items():
+                    if hasattr(existing, key):
+                        setattr(existing, key, value)
+            else:
+                # Add new model config
+                self.model_configs[model_name] = TransformerModelConfig(**config)
+        
+        self.logger.info(f"Initialized {len(self.model_configs)} transformer model configurations")
+    
+    async def initialize_models(self) -> bool:
+        """Initialize and download required models at startup."""
+        self._ensure_logger()
+        
+        # Beautiful startup messages like Ollama
+        print("🤖 Initializing Transformers Models")
+        self.logger.info("Initializing Transformers models...")
+        
+        try:
+            # Check if transformers is available
+            try:
+                import transformers
+                print(f"✅ Transformers library v{transformers.__version__} ready")
+                self.logger.info(f"Transformers library version: {transformers.__version__}")
+            except ImportError:
+                print("❌ Transformers library not available")
+                self.logger.error("Transformers library not available. Install with: uv sync --extra modelservice")
+                return False
+            
+            # Download required models
+            required_models = [
+                config for config in self.model_configs.values() 
+                if config.required
+            ]
+            
+            if required_models:
+                print(f"📥 Downloading {len(required_models)} required model(s)...")
+                self.logger.info(f"Downloading {len(required_models)} required models...")
+                
+                for model_config in sorted(required_models, key=lambda x: x.priority):
+                    print(f"   → {model_config.description} ({model_config.model_id})")
+                    success = await self._ensure_model_available(model_config)
+                    if success:
+                        print(f"   ✅ {model_config.name} ready")
+                    else:
+                        print(f"   ❌ {model_config.name} failed")
+                        if model_config.required:
+                            self.logger.error(f"Failed to initialize required model: {model_config.name}")
+                            return False
+            
+            print("✅ All Transformers models initialized successfully")
+            self.logger.info("✅ All required Transformers models initialized successfully")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Transformers initialization failed: {e}")
+            self.logger.error(f"Failed to initialize Transformers models: {e}")
+            return False
+    
+    async def _ensure_model_available(self, model_config: TransformerModelConfig) -> bool:
+        """Ensure a model is downloaded and available."""
+        try:
+            from transformers import pipeline, AutoTokenizer, AutoModel
+            
+            self.logger.info(f"Checking model availability: {model_config.model_id}")
+            
+            # Try to load tokenizer first (lightweight check)
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(model_config.model_id)
+                self.logger.info(f"✅ Model {model_config.name} is available")
+                return True
+            except Exception as e:
+                # Model needs to be downloaded
+                self.logger.info(f"Downloading model {model_config.name}: {model_config.model_id}")
+                
+                # Download model and tokenizer (this will show progress bars)
+                tokenizer = AutoTokenizer.from_pretrained(model_config.model_id)
+                model = AutoModel.from_pretrained(model_config.model_id)
+                
+                self.logger.info(f"✅ Downloaded model {model_config.name} successfully")
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Failed to ensure model {model_config.name} availability: {e}")
+            return False
+    
+    async def get_pipeline(self, model_name: str, **kwargs) -> Optional[Any]:
+        """Get or create a pipeline for the specified model."""
+        self._ensure_logger()
+        
+        if model_name not in self.model_configs:
+            self.logger.error(f"Unknown model: {model_name}")
+            return None
+        
+        # Check if already loaded
+        if model_name in self.loaded_models:
+            self.logger.debug(f"Using cached pipeline for {model_name}")
+            return self.loaded_models[model_name]
+        
+        # Check memory constraints
+        if len(self.loaded_models) >= self.max_concurrent_models:
+            if self.auto_unload:
+                await self._unload_least_used_model()
+            else:
+                self.logger.warning(f"Max concurrent models ({self.max_concurrent_models}) reached")
+                return None
+        
+        try:
+            from transformers import pipeline
+            
+            model_config = self.model_configs[model_name]
+            
+            self.logger.info(f"Loading pipeline for {model_name}: {model_config.model_id}")
+            
+            # Merge config overrides with kwargs
+            pipeline_kwargs = model_config.config_overrides.copy()
+            pipeline_kwargs.update(kwargs)
+            
+            # Create pipeline
+            pipe = pipeline(
+                model_config.task.value,
+                model=model_config.model_id,
+                tokenizer=model_config.model_id,
+                **pipeline_kwargs
+            )
+            
+            self.loaded_models[model_name] = pipe
+            self.logger.info(f"✅ Pipeline loaded for {model_name}")
+            
+            return pipe
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load pipeline for {model_name}: {e}")
+            return None
+    
+    async def _unload_least_used_model(self):
+        """Unload the least recently used model to free memory."""
+        if not self.loaded_models:
+            return
+        
+        # For now, unload the first model (FIFO)
+        # TODO: Implement proper LRU tracking
+        model_name = next(iter(self.loaded_models))
+        await self.unload_model(model_name)
+    
+    async def unload_model(self, model_name: str):
+        """Unload a specific model from memory."""
+        if model_name in self.loaded_models:
+            del self.loaded_models[model_name]
+            self.logger.info(f"Unloaded model: {model_name}")
+            
+            # Force garbage collection
+            import gc
+            gc.collect()
+    
+    async def unload_all_models(self):
+        """Unload all models from memory."""
+        model_names = list(self.loaded_models.keys())
+        for model_name in model_names:
+            await self.unload_model(model_name)
+        
+        self.logger.info("All models unloaded")
+    
+    def get_model_info(self) -> Dict[str, Any]:
+        """Get information about available and loaded models."""
+        return {
+            "available_models": {
+                name: {
+                    "model_id": config.model_id,
+                    "task": config.task.value,
+                    "description": config.description,
+                    "required": config.required,
+                    "multilingual": config.multilingual,
+                    "memory_mb": config.memory_mb
+                }
+                for name, config in self.model_configs.items()
+            },
+            "loaded_models": list(self.loaded_models.keys()),
+            "memory_config": {
+                "max_memory_mb": self.max_memory_mb,
+                "max_concurrent_models": self.max_concurrent_models,
+                "auto_unload": self.auto_unload
+            }
+        }
+    
+    def add_model_config(self, model_config: TransformerModelConfig):
+        """Add a new model configuration."""
+        self.model_configs[model_config.name] = model_config
+        self.logger.info(f"Added model configuration: {model_config.name}")
+    
+    async def health_check(self) -> Dict[str, Any]:
+        """Perform health check on the transformers system."""
+        try:
+            import transformers
+            
+            # Check if required models are available
+            required_models = [
+                config for config in self.model_configs.values() 
+                if config.required
+            ]
+            
+            available_count = 0
+            for model_config in required_models:
+                try:
+                    from transformers import AutoTokenizer
+                    AutoTokenizer.from_pretrained(model_config.model_id)
+                    available_count += 1
+                except:
+                    pass
+            
+            return {
+                "status": "healthy" if available_count == len(required_models) else "degraded",
+                "transformers_version": transformers.__version__,
+                "required_models": len(required_models),
+                "available_models": available_count,
+                "loaded_models": len(self.loaded_models),
+                "memory_usage": f"{len(self.loaded_models)}/{self.max_concurrent_models} models"
+            }
+            
+        except ImportError:
+            return {
+                "status": "unhealthy",
+                "error": "Transformers library not available"
+            }
+        except Exception as e:
+            return {
+                "status": "unhealthy",
+                "error": str(e)
+            }
