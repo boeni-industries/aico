@@ -59,47 +59,58 @@ class ConversationSegmentProcessor:
     
     async def process_conversation_history(self, messages: List[Dict[str, Any]], thread_id: str, user_id: str) -> List[ConversationSegment]:
         """
-        Process conversation history into semantic segments.
+        Process a conversation history into semantic segments.
         
         Args:
-            messages: List of conversation messages with metadata
-            thread_id: Thread identifier
+            messages: List of conversation messages
+            thread_id: Conversation thread identifier
             user_id: User identifier
             
         Returns:
-            List of conversation segments ready for embedding storage
+            List of conversation segments with extracted entities and metadata
         """
+        logger.info(f" [CONVERSATION_PROCESSOR_DEBUG] process_conversation_history CALLED with {len(messages) if messages else 0} messages")
+        logger.info(f" [CONVERSATION_PROCESSOR_DEBUG] thread_id: {thread_id}, user_id: {user_id}")
+        
         if not messages:
+            logger.info(f" [CONVERSATION_PROCESSOR_DEBUG] No messages provided, returning empty list")
             return []
             
         segments = []
         
-        logger.debug(f"🔄 [CONVERSATION_PROCESSOR] Processing {len(messages)} messages with chunk_size={self.chunk_size}, min_chunk_size={self.min_chunk_size}")
-        
-        # Create overlapping chunks of 3-5 messages
-        for i in range(0, len(messages), self.chunk_size - 1):  # Overlap by 1 message
-            chunk_messages = messages[i:i + self.chunk_size]
+        try:
+            logger.debug(f" [CONVERSATION_PROCESSOR] Processing {len(messages)} messages with chunk_size={self.chunk_size}, min_chunk_size={self.min_chunk_size}")
             
-            logger.debug(f"🔄 [CONVERSATION_PROCESSOR] Created chunk {i} with {len(chunk_messages)} messages")
-            
-            # Skip if chunk is too small (but allow smaller chunks for short conversations)
-            if len(chunk_messages) < self.min_chunk_size:
-                # For short conversations (2 messages), allow smaller chunks
-                if len(messages) <= 2 and len(chunk_messages) >= 2:
-                    logger.debug(f"🔄 [CONVERSATION_PROCESSOR] Allowing small chunk for short conversation: {len(chunk_messages)} messages")
+            # Create overlapping chunks of 3-5 messages
+            for i in range(0, len(messages), self.chunk_size - 1):  # Overlap by 1 message
+                chunk_messages = messages[i:i + self.chunk_size]
+                
+                logger.debug(f" [CONVERSATION_PROCESSOR] Created chunk {i} with {len(chunk_messages)} messages")
+                
+                # Skip if chunk is too small (but allow smaller chunks for short conversations)
+                if len(chunk_messages) < self.min_chunk_size:
+                    # For short conversations (2 messages), allow smaller chunks
+                    if len(messages) <= 2 and len(chunk_messages) >= 2:
+                        logger.debug(f" [CONVERSATION_PROCESSOR] Allowing small chunk for short conversation: {len(chunk_messages)} messages")
+                    else:
+                        logger.debug(f" [CONVERSATION_PROCESSOR] Skipping chunk {i}: {len(chunk_messages)} < {self.min_chunk_size}")
+                        continue
+                    
+                segment = await self._create_segment(chunk_messages, thread_id, user_id, i)
+                if segment:
+                    segments.append(segment)
+                    logger.debug(f" [CONVERSATION_PROCESSOR] Created segment {i} successfully")
                 else:
-                    logger.debug(f"🔄 [CONVERSATION_PROCESSOR] Skipping chunk {i}: {len(chunk_messages)} < {self.min_chunk_size}")
-                    continue
+                    logger.debug(f" [CONVERSATION_PROCESSOR] Failed to create segment {i}")
                 
-            segment = await self._create_segment(chunk_messages, thread_id, user_id, i)
-            if segment:
-                segments.append(segment)
-                logger.debug(f"🔄 [CONVERSATION_PROCESSOR] ✅ Created segment {i} successfully")
-            else:
-                logger.debug(f"🔄 [CONVERSATION_PROCESSOR] ❌ Failed to create segment {i}")
-                
-        logger.info(f"🔄 [CONVERSATION_PROCESSOR] Created {len(segments)} conversation segments from {len(messages)} messages")
-        return segments
+            logger.info(f" [CONVERSATION_PROCESSOR] Created {len(segments)} conversation segments from {len(messages)} messages")
+            return segments
+            
+        except Exception as e:
+            logger.error(f" [CONVERSATION_PROCESSOR_DEBUG] EXCEPTION in process_conversation_history: {e}")
+            import traceback
+            logger.error(f"🔍 [CONVERSATION_PROCESSOR_DEBUG] ❌ Traceback: {traceback.format_exc()}")
+            return []
     
     async def _create_segment(self, messages: List[Dict[str, Any]], thread_id: str, user_id: str, start_index: int) -> Optional[ConversationSegment]:
         """Create a conversation segment from a chunk of messages."""
@@ -130,10 +141,20 @@ class ConversationSegmentProcessor:
             entity_count = sum(len(v) for v in entities.values())
             logger.info(f"🔄 [CONVERSATION_PROCESSOR] ✅ Extracted {entity_count} entities from segment")
             
+            logger.info(f"🔍 [CONVERSATION_PROCESSOR_DEBUG] About to start sentiment analysis...")
+            
             # Extract sentiment using modelservice
             logger.info(f"🔄 [CONVERSATION_PROCESSOR] → Analyzing sentiment for segment")
-            sentiment, sentiment_confidence = await self._extract_sentiment_via_modelservice(segment_text)
-            logger.info(f"🔄 [CONVERSATION_PROCESSOR] ✅ Sentiment: {sentiment} (confidence: {sentiment_confidence:.3f})")
+            try:
+                sentiment, sentiment_confidence = await self._extract_sentiment_via_modelservice(segment_text)
+                logger.info(f"🔄 [CONVERSATION_PROCESSOR] ✅ Sentiment: {sentiment} (confidence: {sentiment_confidence:.3f})")
+            except Exception as e:
+                logger.error(f"🔍 [CONVERSATION_PROCESSOR_DEBUG] ❌ EXCEPTION during sentiment analysis: {e}")
+                import traceback
+                logger.error(f"🔍 [CONVERSATION_PROCESSOR_DEBUG] ❌ Sentiment traceback: {traceback.format_exc()}")
+                sentiment, sentiment_confidence = "neutral", 0.5
+            
+            logger.info(f"🔍 [CONVERSATION_PROCESSOR_DEBUG] Sentiment analysis completed, continuing...")
             
             # Get timestamp from first message
             timestamp = datetime.utcnow()
@@ -247,24 +268,32 @@ class ConversationSegmentProcessor:
         """Extract sentiment from text using modelservice sentiment analysis endpoint."""
         try:
             if not self.modelservice:
-                logger.warning("No modelservice client available for sentiment analysis")
+                logger.warning("🔍 [SENTIMENT_DEBUG] No modelservice client available for sentiment analysis")
                 return "neutral", 0.5
             
+            logger.info(f"🔍 [SENTIMENT_DEBUG] Starting sentiment analysis for text: '{text[:100]}...'")
+            
             # Call modelservice for sentiment analysis
+            logger.info(f"🔍 [SENTIMENT_DEBUG] Calling modelservice.get_sentiment_analysis()")
             result = await self.modelservice.get_sentiment_analysis(text)
+            
+            logger.info(f"🔍 [SENTIMENT_DEBUG] Raw modelservice response: {result}")
             
             if result.get('success', False) and 'data' in result:
                 sentiment_data = result['data']
                 sentiment = sentiment_data.get('sentiment', 'neutral')
                 confidence = sentiment_data.get('confidence', 0.5)
                 
-                logger.debug(f"[SENTIMENT] Modelservice result: {sentiment} (confidence: {confidence:.3f})")
+                logger.info(f"🔍 [SENTIMENT_DEBUG] ✅ SUCCESS - Sentiment: {sentiment}, Confidence: {confidence:.3f}")
                 return sentiment, confidence
             else:
                 error_msg = result.get('error', 'Unknown error')
-                logger.error(f"Modelservice sentiment analysis failed: {error_msg}")
+                logger.error(f"🔍 [SENTIMENT_DEBUG] ❌ FAILED - Modelservice sentiment analysis failed: {error_msg}")
+                logger.error(f"🔍 [SENTIMENT_DEBUG] ❌ Full result: {result}")
                 return "neutral", 0.5
                 
         except Exception as e:
-            logger.error(f"Sentiment analysis error: {e}")
+            logger.error(f"🔍 [SENTIMENT_DEBUG] ❌ EXCEPTION - Sentiment analysis error: {e}")
+            import traceback
+            logger.error(f"🔍 [SENTIMENT_DEBUG] ❌ Traceback: {traceback.format_exc()}")
             return "neutral", 0.5

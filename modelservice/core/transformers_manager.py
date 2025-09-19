@@ -62,12 +62,12 @@ class TransformersManager:
     DEFAULT_MODELS = {
         "sentiment_multilingual": TransformerModelConfig(
             name="sentiment_multilingual",
-            model_id="nlptown/bert-base-multilingual-uncased-sentiment",
+            model_id="cardiffnlp/twitter-roberta-base-sentiment-latest",
             task=ModelTask.SENTIMENT_ANALYSIS,
             priority=1,
             required=True,
-            description="Multilingual BERT sentiment analysis",
-            multilingual=True,
+            description="RoBERTa sentiment analysis (compatible with transformers v4.51.0)",
+            multilingual=False,
             memory_mb=500,
             config_overrides={"return_all_scores": False}
         ),
@@ -264,8 +264,13 @@ class TransformersManager:
         """Get or create a pipeline for the specified model."""
         self._ensure_logger()
         
+        self.logger.info(f"🔍 [TRANSFORMERS_DEBUG] get_pipeline called for: {model_name}")
+        self.logger.info(f"🔍 [TRANSFORMERS_DEBUG] Available configs: {list(self.model_configs.keys())}")
+        self.logger.info(f"🔍 [TRANSFORMERS_DEBUG] Loaded models: {list(self.loaded_models.keys())}")
+        
         if model_name not in self.model_configs:
-            self.logger.error(f"Unknown model: {model_name}")
+            self.logger.error(f"🔍 [TRANSFORMERS_DEBUG] ❌ Unknown model: {model_name}")
+            self.logger.error(f"🔍 [TRANSFORMERS_DEBUG] ❌ Available: {list(self.model_configs.keys())}")
             return None
         
         # Check if already loaded
@@ -286,19 +291,25 @@ class TransformersManager:
             
             model_config = self.model_configs[model_name]
             
-            self.logger.info(f"Loading pipeline for {model_name}: {model_config.model_id}")
+            self.logger.info(f"🔍 [TRANSFORMERS_DEBUG] Loading pipeline for {model_name}: {model_config.model_id}")
+            self.logger.info(f"🔍 [TRANSFORMERS_DEBUG] Task: {model_config.task.value}")
+            self.logger.info(f"🔍 [TRANSFORMERS_DEBUG] Config overrides: {model_config.config_overrides}")
             
             # Merge config overrides with kwargs
             pipeline_kwargs = model_config.config_overrides.copy()
             pipeline_kwargs.update(kwargs)
             
+            self.logger.info(f"🔍 [TRANSFORMERS_DEBUG] Final pipeline kwargs: {pipeline_kwargs}")
+            
             # Create pipeline
+            self.logger.info(f"🔍 [TRANSFORMERS_DEBUG] Creating pipeline...")
             pipe = pipeline(
                 model_config.task.value,
                 model=model_config.model_id,
                 tokenizer=model_config.model_id,
                 **pipeline_kwargs
             )
+            self.logger.info(f"🔍 [TRANSFORMERS_DEBUG] ✅ Pipeline created successfully")
             
             self.loaded_models[model_name] = pipe
             self.logger.info(f"✅ Pipeline loaded for {model_name}")
@@ -306,7 +317,9 @@ class TransformersManager:
             return pipe
             
         except Exception as e:
-            self.logger.error(f"Failed to load pipeline for {model_name}: {e}")
+            self.logger.error(f"🔍 [TRANSFORMERS_DEBUG] ❌ Failed to load pipeline for {model_name}: {e}")
+            import traceback
+            self.logger.error(f"🔍 [TRANSFORMERS_DEBUG] ❌ Full traceback: {traceback.format_exc()}")
             return None
     
     async def _unload_least_used_model(self):

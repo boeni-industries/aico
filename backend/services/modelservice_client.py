@@ -180,10 +180,11 @@ class ModelServiceClient:
                             response_received.set()
                     # Handle Sentiment responses
                     elif "sentiment" in response_topic:
+                        self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] ✅ Received sentiment response!")
                         from aico.proto.aico_modelservice_pb2 import SentimentResponse
                         sentiment_response = SentimentResponse()
                         if message.any_payload.Unpack(sentiment_response):
-                            self.logger.debug(f"Successfully unpacked SentimentResponse: success={sentiment_response.success}")
+                            self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] ✅ Successfully unpacked SentimentResponse: success={sentiment_response.success}")
                             response_data = {
                                 'success': sentiment_response.success,
                                 'error': sentiment_response.error if sentiment_response.HasField('error') else None
@@ -193,10 +194,12 @@ class ModelServiceClient:
                                     'sentiment': sentiment_response.sentiment,
                                     'confidence': sentiment_response.confidence
                                 }
-                                self.logger.debug(f"Extracted sentiment: {sentiment_response.sentiment} (confidence: {sentiment_response.confidence:.3f})")
+                                self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] ✅ Extracted sentiment: {sentiment_response.sentiment} (confidence: {sentiment_response.confidence:.3f})")
+                            else:
+                                self.logger.error(f"🔍 [SENTIMENT_CLIENT_DEBUG] ❌ Sentiment response failed: {sentiment_response.error}")
                             response_received.set()
                         else:
-                            self.logger.error("Failed to unpack SentimentResponse")
+                            self.logger.error("🔍 [SENTIMENT_CLIENT_DEBUG] ❌ Failed to unpack SentimentResponse")
                             response_data = {'success': False, 'error': 'Failed to unpack response'}
                             response_received.set()
                     else:
@@ -345,11 +348,17 @@ class ModelServiceClient:
             "text": text
         }
         
-        return await self._send_request(
+        self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] Sending sentiment request for text: '{text[:50]}...'")
+        self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] Request data: {request_data}")
+        
+        result = await self._send_request(
             AICOTopics.MODELSERVICE_SENTIMENT_REQUEST,
             AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE,
             request_data
         )
+        
+        self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] Response received: {result}")
+        return result
     
     async def get_status(self) -> Dict[str, Any]:
         """Get modelservice status."""

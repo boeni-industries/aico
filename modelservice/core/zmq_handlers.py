@@ -618,40 +618,61 @@ class ModelserviceZMQHandlers:
     async def handle_sentiment_request(self, request_payload) -> Any:
         """Handle sentiment analysis requests via Protocol Buffers."""
         try:
+            self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] ✅ Sentiment request received!")
             response = SentimentResponse()
             text = request_payload.text
             
+            self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Request text: '{text[:100]}...'")
+            
             if not text:
+                self.logger.error(f"🔍 [SENTIMENT_HANDLER_DEBUG] ❌ No text provided in request")
                 response.success = False
                 response.error = "text is required"
                 return response
             
-            self.logger.info(f"Processing sentiment for text: {text[:50]}...")
+            self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Processing sentiment for text: {text[:50]}...")
             
             # Ensure transformers system is initialized
+            self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Checking transformers initialization: {self.transformers_initialized}")
             if not self.transformers_initialized:
+                self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Initializing transformers system...")
                 await self.initialize_transformers_system()
             
             if not self.transformers_initialized:
+                self.logger.error(f"🔍 [SENTIMENT_HANDLER_DEBUG] ❌ Transformers system not available after initialization")
                 response.success = False
                 response.error = "Transformers system not available"
                 return response
             
             # Get sentiment pipeline from TransformersManager
+            self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Getting sentiment pipeline...")
+            self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Available model configs: {list(self.transformers_manager.model_configs.keys())}")
+            self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Loaded models: {list(self.transformers_manager.loaded_models.keys())}")
+            
             sentiment_pipeline = await self.transformers_manager.get_pipeline("sentiment_multilingual")
             if sentiment_pipeline is None:
+                self.logger.error(f"🔍 [SENTIMENT_HANDLER_DEBUG] ❌ Sentiment pipeline not available")
+                self.logger.error(f"🔍 [SENTIMENT_HANDLER_DEBUG] ❌ Model configs: {list(self.transformers_manager.model_configs.keys())}")
+                self.logger.error(f"🔍 [SENTIMENT_HANDLER_DEBUG] ❌ Loaded models: {list(self.transformers_manager.loaded_models.keys())}")
                 response.success = False
                 response.error = "Sentiment analysis model not available"
                 return response
             
+            self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] ✅ Sentiment pipeline obtained successfully")
+            
             # Analyze sentiment
+            self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Running sentiment pipeline on text...")
             result = sentiment_pipeline(text)
+            
+            self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Raw pipeline result: {result}")
             
             # Extract sentiment and confidence
             if result and len(result) > 0:
                 sentiment_result = result[0]
                 label = sentiment_result['label'].lower()
                 confidence = sentiment_result['score']
+                
+                self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] Extracted - Label: '{label}', Confidence: {confidence}")
                 
                 # Map model labels to standard format
                 # nlptown/bert-base-multilingual-uncased-sentiment uses star ratings
@@ -669,6 +690,8 @@ class ModelserviceZMQHandlers:
                         sentiment = 'negative'
                     else:
                         sentiment = 'neutral'
+                
+                self.logger.info(f"🔍 [SENTIMENT_HANDLER_DEBUG] ✅ Mapped sentiment: '{sentiment}' (confidence: {confidence})")
                 
                 response.success = True
                 response.sentiment = sentiment

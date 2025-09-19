@@ -199,6 +199,12 @@ class ModelserviceZMQService:
             message_type = ModelserviceMessageParser.get_message_type(envelope)
             self.logger.info(f"[ZMQ_SERVICE] Extracted - correlation_id: '{correlation_id}', message_type: '{message_type}'")
             
+            # SPECIFIC DEBUGGING FOR SENTIMENT REQUESTS
+            if "sentiment" in message_type.lower():
+                self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] ✅ SENTIMENT MESSAGE RECEIVED in ZMQ service!")
+                self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] Message type: {message_type}")
+                self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] Correlation ID: {correlation_id}")
+            
             # Check for duplicate correlation ID to prevent processing the same message multiple times
             if correlation_id in self.processed_correlation_ids:
                 self.logger.warning(f"Duplicate correlation ID detected: {correlation_id}, skipping message processing")
@@ -226,10 +232,19 @@ class ModelserviceZMQService:
             
             # Route to appropriate handler
             self.logger.info(f"[ZMQ_SERVICE] Looking up handler for topic: {topic}")
+            
+            # SPECIFIC DEBUGGING FOR SENTIMENT REQUESTS
+            if "sentiment" in topic.lower():
+                self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] Looking up sentiment handler for topic: {topic}")
+                self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] Available topics: {list(self.topic_handlers.keys())}")
+                self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] Topic in handlers: {topic in self.topic_handlers}")
+            
             handler = self.topic_handlers.get(topic)
             if not handler:
                 self.logger.error(f"[ZMQ_SERVICE] ❌ CRITICAL: No handler found for topic: {topic}")
-                self.logger.info(f"[ZMQ_SERVICE] Looking up handler for topic: {topic}")
+                if "sentiment" in topic.lower():
+                    self.logger.error(f"🔍 [SENTIMENT_ZMQ_DEBUG] ❌ SENTIMENT HANDLER NOT FOUND!")
+                return
             
             if topic in self.topic_handlers:
                 handler_name = self.topic_handlers[topic].__name__

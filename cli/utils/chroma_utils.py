@@ -446,3 +446,132 @@ async def cleanup_old_facts_admin(days_old: int = 90) -> int:
     except Exception as e:
         console.print(f"[red]Error cleaning up facts: {e}[/red]")
         return 0
+
+def tail_chroma_collection(
+    collection_name: str,
+    limit: int = 10,
+    full: bool = False,
+    config: Optional[ConfigurationManager] = None
+) -> Dict[str, Any]:
+    """Get the last N documents from a ChromaDB collection."""
+    if config is None:
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+
+    semantic_memory_dir = AICOPaths.get_semantic_memory_path()
+    
+    if not semantic_memory_dir.exists():
+        return {"error": "ChromaDB directory not found. Run 'aico db init' first."}
+
+    try:
+        import chromadb
+        from chromadb.config import Settings
+        from rich.table import Table
+        from rich import box
+        
+        client = chromadb.PersistentClient(
+            path=str(semantic_memory_dir),
+            settings=Settings(allow_reset=True, anonymized_telemetry=False)
+        )
+        
+        try:
+            collection = client.get_collection(collection_name)
+            
+            # Get all documents first
+            all_results = collection.get(
+                include=["documents", "metadatas", "embeddings"]
+            )
+            
+            if not all_results["ids"] or len(all_results["ids"]) == 0:
+                return {"error": f"Collection '{collection_name}' is empty"}
+            
+            total_count = len(all_results["ids"])
+            
+            # Take the last N documents
+            start_idx = max(0, total_count - limit)
+            last_ids = all_results["ids"][start_idx:]
+            last_documents = all_results["documents"][start_idx:] if all_results["documents"] else []
+            last_metadatas = all_results["metadatas"][start_idx:] if all_results["metadatas"] else []
+            
+            # Create formatted table
+            table = Table(
+                title=f"✨ [bold cyan]Last {len(last_ids)} documents from '{collection_name}' Collection[/bold cyan]",
+                title_justify="left",
+                border_style="bright_blue",
+                header_style="bold yellow",
+                box=box.SIMPLE_HEAD,
+                padding=(0, 1),
+                expand=True
+            )
+            
+            table.add_column("ID", style="dim", width=20, no_wrap=True)
+            table.add_column("Document", style="cyan", no_wrap=False, min_width=40)
+            table.add_column("Metadata", style="bright_blue", no_wrap=False, width=30)
+            
+            for i, doc_id in enumerate(last_ids):
+                document_text = last_documents[i] if i < len(last_documents) else ""
+                metadata = last_metadatas[i] if i < len(last_metadatas) else {}
+                
+                # Format document ID (truncate if too long and not full mode)
+                if full or len(doc_id) <= 20:
+                    formatted_id = doc_id
+                else:
+                    formatted_id = doc_id[:17] + "..."
+                
+                # Format document text (show full if full mode, otherwise let table handle wrapping)
+                formatted_document = document_text
+                
+                # Format metadata as readable key-value pairs
+                if metadata:
+                    metadata_parts = []
+                    # Priority fields to show first
+                    priority_fields = ['entity_type', 'confidence', 'created_at', 'user_id', 'category']
+                    
+                    # Show priority fields first
+                    for key in priority_fields:
+                        if key in metadata:
+                            value = metadata[key]
+                            if key == 'confidence' and isinstance(value, (int, float)):
+                                metadata_parts.append(f"{key}: {value:.2f}")
+                            elif key == 'created_at' and isinstance(value, str):
+                                # Show only date part for brevity
+                                date_part = value.split('T')[0] if 'T' in value else value[:10]
+                                metadata_parts.append(f"{key}: {date_part}")
+                            elif isinstance(value, str) and len(value) > 15 and not full:
+                                metadata_parts.append(f"{key}: {value[:12]}...")
+                            else:
+                                metadata_parts.append(f"{key}: {value}")
+                    
+                    # Add other fields if in full mode
+                    if full:
+                        for key, value in metadata.items():
+                            if key not in priority_fields:
+                                if key in ['source_message', 'fact_extraction_id', 'reasoning']:
+                                    continue  # Skip very verbose internal fields
+                                if isinstance(value, str) and len(value) > 30:
+                                    value = value[:27] + "..."
+                                metadata_parts.append(f"{key}: {value}")
+                    
+                    formatted_metadata = "\n".join(metadata_parts) if metadata_parts else "[dim]none[/dim]"
+                else:
+                    formatted_metadata = "[dim]none[/dim]"
+                
+                table.add_row(
+                    formatted_id,
+                    formatted_document,
+                    formatted_metadata
+                )
+            
+            return {
+                "table": table,
+                "total_count": total_count,
+                "shown_count": len(last_ids)
+            }
+            
+        except Exception as e:
+            return {"error": f"Collection '{collection_name}' not found or error accessing it: {e}"}
+        
+    except ImportError:
+        return {"error": "ChromaDB not installed. Install with: pip install chromadb"}
+    except Exception as e:
+        return {"error": str(e)}

@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.13"
 
 [[package]]
@@ -22,6 +22,7 @@ dependencies = [
     { name = "pynacl" },
     { name = "pyyaml" },
     { name = "pyzmq" },
+    { name = "transformers" },
     { name = "uvicorn" },
     { name = "watchdog" },
 ]
@@ -85,6 +86,7 @@ requires-dist = [
     { name = "requests", marker = "extra == 'cli'", specifier = ">=2.31.0,<3.0.0" },
     { name = "rich", marker = "extra == 'cli'", specifier = ">=13.7.0,<14.0.0" },
     { name = "torch", marker = "extra == 'modelservice'", specifier = ">=1.12.0" },
+    { name = "transformers", specifier = "==4.50.3" },
     { name = "transformers", marker = "extra == 'modelservice'", specifier = ">=4.21.0" },
     { name = "typer", marker = "extra == 'cli'", specifier = ">=0.12.3,<1.0.0" },
     { name = "uvicorn", specifier = ">=0.35.0" },
@@ -2481,7 +2483,7 @@ wheels = [
 
 [[package]]
 name = "transformers"
-version = "4.51.0"
+version = "4.50.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
@@ -2495,9 +2497,9 @@ dependencies = [
     { name = "tokenizers" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/38/75/6ebdae4d6f4574f47139a070445245537e43482d006f615af8e23d5bf05e/transformers-4.51.0.tar.gz", hash = "sha256:2d302563ff6c2cc2d0e88ef352cf059f9a21ce18102fd43662bb1246f70b8a84", size = 8925571, upload-time = "2025-04-05T20:08:55.21Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/29/37877123d6633a188997d75dc17d6f526745d63361794348ce748db23d49/transformers-4.50.3.tar.gz", hash = "sha256:1d795d24925e615a8e63687d077e4f7348c2702eb87032286eaa76d83cdc684f", size = 8774363, upload-time = "2025-03-28T18:21:02.878Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6f/db/7ee15028d5130929aa0b1b85bab6d8bafe806254d3b5c56c42a0066cceb8/transformers-4.51.0-py3-none-any.whl", hash = "sha256:2e6baa476735ab8adccbaee6961525a0d1ce8c21d49293af30ef5ee4b082f64d", size = 10362017, upload-time = "2025-04-05T20:08:47.475Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/22/733a6fc4a6445d835242f64c490fdd30f4a08d58f2b788613de3f9170692/transformers-4.50.3-py3-none-any.whl", hash = "sha256:6111610a43dec24ef32c3df0632c6b25b07d9711c01d9e1077bdd2ff6b14a38c", size = 10180411, upload-time = "2025-03-28T18:20:59.265Z" },
 ]
 
 [[package]]

@@ -10,7 +10,8 @@ from typing import Optional
 
 from cli.utils.chroma_utils import (
     get_chroma_status_cli, clear_chroma_cli, list_chroma_collections,
-    query_chroma_collection, get_chroma_collection_stats, add_chroma_document
+    query_chroma_collection, get_chroma_collection_stats, add_chroma_document,
+    tail_chroma_collection
 )
 from cli.decorators.sensitive import destructive
 from cli.utils.help_formatter import format_subcommand_help
@@ -24,6 +25,7 @@ def chroma_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             ("count", "Count the number of documents in a specific collection."),
             ("query", "Query a collection for similar documents."),
             ("add", "Add a document to a collection for testing."),
+            ("tail", "View the last N documents from a collection."),
             ("clear", "Clear all data from the ChromaDB database.")
         ]
         
@@ -34,6 +36,8 @@ def chroma_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             "aico chroma query user_facts 'What is my name?'",
             "aico chroma add 'My name is John' --metadata '{\"type\": \"personal_info\"}'",
             "aico chroma add 'I like pizza' --collection user_facts --id my_preference",
+            "aico chroma tail user_facts --limit 5",
+            "aico chroma tail user_facts --limit 3 --full",
             "aico chroma clear"
         ]
         
@@ -203,12 +207,31 @@ def query(
         # Format metadata as readable key-value pairs
         if metadata:
             metadata_parts = []
+            # Priority fields to show first
+            priority_fields = ['entity_type', 'confidence', 'created_at', 'user_id', 'category']
+            
+            # Show priority fields first
+            for key in priority_fields:
+                if key in metadata:
+                    value = metadata[key]
+                    if key == 'confidence' and isinstance(value, (int, float)):
+                        metadata_parts.append(f"{key}: {value:.2f}")
+                    elif key == 'created_at' and isinstance(value, str):
+                        # Show only date part for brevity
+                        date_part = value.split('T')[0] if 'T' in value else value[:10]
+                        metadata_parts.append(f"{key}: {date_part}")
+                    elif isinstance(value, str) and len(value) > 15:
+                        metadata_parts.append(f"{key}: {value[:12]}...")
+                    else:
+                        metadata_parts.append(f"{key}: {value}")
+            
+            # Add other important fields (but skip very verbose ones)
             for key, value in metadata.items():
-                if key in ['source_message', 'fact_extraction_id', 'reasoning']:
-                    continue  # Skip internal fields
-                if isinstance(value, str) and len(value) > 20:
-                    value = value[:17] + "..."
-                metadata_parts.append(f"{key}: {value}")
+                if key not in priority_fields and key not in ['source_message', 'fact_extraction_id', 'reasoning']:
+                    if isinstance(value, str) and len(value) > 15:
+                        value = value[:12] + "..."
+                    metadata_parts.append(f"{key}: {value}")
+            
             formatted_metadata = "\n".join(metadata_parts) if metadata_parts else "[dim]none[/dim]"
         else:
             formatted_metadata = "[dim]none[/dim]"
@@ -240,6 +263,36 @@ def add(
     
     console.print(f"✅ [green]Added document to collection '[cyan]{collection_name}[/cyan]'[/green]")
     console.print(f"Document ID: [dim]{result.get('id', 'unknown')}[/dim]")
+
+@app.command(name="tail", help="View the last N documents from a collection.")
+def tail(
+    collection_name: str = typer.Argument(..., help="Name of the collection to tail"),
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of documents to show"),
+    full: bool = typer.Option(False, "--full", help="Show full content without truncation")
+):
+    """View the last N documents from a collection."""
+    try:
+        result = tail_chroma_collection(collection_name, limit, full)
+        
+        if result.get("error"):
+            console.print(f"[red]Error: {result['error']}[/red]")
+            raise typer.Exit(1)
+        
+        table = result.get("table")
+        total_count = result.get("total_count", 0)
+        shown_count = result.get("shown_count", 0)
+        
+        console.print()
+        console.print(table)
+        console.print()
+        console.print(f"[dim]Showing last {shown_count} of {total_count} total documents in collection '{collection_name}'[/dim]")
+        
+    except ValueError as e:
+        console.print(f"[yellow]{e}[/yellow]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error reading collection: {e}[/red]")
+        raise typer.Exit(1)
 
 @app.command(name="clear", help="Clear all data from the ChromaDB database.")
 @destructive

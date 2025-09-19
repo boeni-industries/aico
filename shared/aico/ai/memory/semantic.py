@@ -419,11 +419,28 @@ class SemanticMemoryStore:
             logger.error(f"Failed to delete user segments: {e}")
             return False
     
-    async def store_conversation_segments(self, messages: List[Dict[str, Any]], 
-                                        thread_id: str, user_id: str) -> int:
-        """Store conversation segments for semantic memory processing"""
+    async def store_conversation_segments(self, messages: List[Dict[str, Any]], thread_id: str, user_id: str) -> int:
+        """
+        Store conversation segments with advanced fact extraction.
+        
+        Args:
+            messages: List of conversation messages
+            thread_id: Conversation thread identifier  
+            user_id: User identifier
+            
+        Returns:
+            Number of segments successfully stored
+        """
+        logger.info(f"🔍 [SEMANTIC_MEMORY_DEBUG] ✅ store_conversation_segments CALLED with {len(messages) if messages else 0} messages")
+        logger.info(f"🔍 [SEMANTIC_MEMORY_DEBUG] thread_id: {thread_id}, user_id: {user_id}")
+        
         if not self._initialized:
+            logger.info(f"🔍 [SEMANTIC_MEMORY_DEBUG] Not initialized, calling initialize()")
             await self.initialize()
+            
+        if not messages:
+            logger.info(f"🔍 [SEMANTIC_MEMORY_DEBUG] No messages provided, returning 0")
+            return 0
         
         logger.info(f"🧠 [SEMANTIC_MEMORY] Processing {len(messages)} messages for conversation segments")
         

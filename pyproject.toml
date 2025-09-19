@@ -26,7 +26,8 @@ dependencies = [
     "uvicorn>=0.35.0",
     "pynacl>=1.5.0",
     "lmdb>=1.7.3",
-    "chromadb>=1.0.16",  # Phase 2 semantic memory - core functionality
+    "chromadb>=1.0.16", # Phase 2 semantic memory - core functionality
+    "transformers==4.50.3",
 ]
 
 [project.optional-dependencies]
