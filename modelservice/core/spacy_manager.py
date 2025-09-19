@@ -1,12 +1,21 @@
 """
-SpaCyManager - Cross-platform spaCy model management and lifecycle control.
+DEPRECATED: SpaCyManager - Cross-platform spaCy model management and lifecycle control.
 
-This module handles complete spaCy model lifecycle management including:
-- Cross-platform model detection and download
-- Installation in AICO directory structure using proper paths
-- Multi-language model support with fallback strategies
-- UV-compatible download mechanisms
-- Integration with AICO's unified logging system
+⚠️  THIS MODULE IS DEPRECATED AND WILL BE REMOVED ⚠️
+
+AICO has migrated from spaCy to GLiNER for entity extraction:
+- GLiNER provides superior performance and flexibility
+- No need for language-specific models
+- Better integration with transformer architecture
+- More accurate entity extraction for conversational AI
+
+This module is kept temporarily for backward compatibility but should not be used.
+Use GLiNER via TransformersManager instead.
+
+Migration path:
+- Replace spaCy NER calls with GLiNER via modelservice
+- Use AdvancedFactExtractor for fact extraction
+- Remove spaCy dependencies from your code
 """
 
 import asyncio

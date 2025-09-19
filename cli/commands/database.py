@@ -73,27 +73,46 @@ def initialize_chromadb_cli(config: Optional[ConfigurationManager] = None, verbo
             settings=Settings(allow_reset=True, anonymized_telemetry=False)
         )
         
-        # Create default collection for user facts with embedding model metadata
-        collection_name = config.get("memory.semantic.collection_name", "user_facts")
+        # Create all required collections for semantic memory
         embedding_model = config.get("core.modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
         dimensions = config.get("core.modelservice.ollama.default_models.embedding.dimensions", 768)
         
+        metadata = {
+            "embedding_model": embedding_model,
+            "dimensions": dimensions,
+            "created_by": "aico_db_init",
+            "version": "1.0"
+        }
+        
+        # Get collection names from new dual-collection config
+        collections_config = config.get("memory.semantic.collections", {})
+        user_facts_collection = collections_config.get("user_facts", "user_facts")
+        conversation_segments_collection = collections_config.get("conversation_segments", "conversation_segments")
+
+        # Collection 1: user_facts (personal information, preferences, relationships)
         try:
-            collection = client.get_collection(collection_name)
+            collection = client.get_collection(user_facts_collection)
             if verbose:
-                console.print(f"[blue]INFO[/blue] - ChromaDB collection '{collection_name}' already exists at [cyan]{semantic_memory_dir}[/cyan]")
+                console.print(f"[blue]INFO[/blue] - ChromaDB collection '{user_facts_collection}' already exists")
         except Exception:
-            # Collection doesn't exist, create it with metadata
-            metadata = {
-                "embedding_model": embedding_model,
-                "dimensions": dimensions,
-                "created_by": "aico_db_init",
-                "version": "1.0"
-            }
-            collection = client.create_collection(collection_name, metadata=metadata)
+            user_facts_metadata = {**metadata, "collection_type": "user_facts", "description": "Personal information, preferences, and relationships"}
+            collection = client.create_collection(user_facts_collection, metadata=user_facts_metadata)
             if verbose:
-                console.print(f"✅ [green]Successfully initialized ChromaDB semantic memory at[/green] [cyan]{semantic_memory_dir}[/cyan]")
-                console.print(f"📋 Created collection: [cyan]{collection_name}[/cyan] with model: [cyan]{embedding_model}[/cyan]")
+                console.print(f"✅ Created collection: [cyan]{user_facts_collection}[/cyan] (user facts) with model: [cyan]{embedding_model}[/cyan]")
+
+        # Collection 2: conversation_segments (processed conversation chunks with NER/sentiment)
+        try:
+            client.get_collection(conversation_segments_collection)
+            if verbose:
+                console.print(f"[blue]INFO[/blue] - ChromaDB collection '{conversation_segments_collection}' already exists")
+        except Exception:
+            segments_metadata = {**metadata, "collection_type": "conversation_segments", "description": "Processed conversation chunks with NER and sentiment analysis"}
+            client.create_collection(conversation_segments_collection, metadata=segments_metadata)
+            if verbose:
+                console.print(f"✅ Created collection: [cyan]{conversation_segments_collection}[/cyan] (conversation segments) with model: [cyan]{embedding_model}[/cyan]")
+        
+        if verbose:
+            console.print(f"✅ [green]ChromaDB semantic memory initialized at[/green] [cyan]{semantic_memory_dir}[/cyan]")
         
     except Exception as e:
         if verbose:

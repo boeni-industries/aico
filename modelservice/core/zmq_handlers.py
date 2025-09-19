@@ -13,7 +13,7 @@ from typing import Any, Dict
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.core.topics import AICOTopics as AICOTopics
-from .spacy_manager import SpaCyManager
+# SpaCy removed - now using GLiNER for entity extraction
 from .ollama_manager import OllamaManager
 from .transformers_manager import TransformersManager
 from aico.core.version import get_modelservice_version
@@ -45,8 +45,7 @@ class ModelserviceZMQHandlers:
         self.ollama_manager = ollama_manager
         self.version = get_modelservice_version()
         
-        # Initialize spaCy manager
-        self.spacy_manager = SpaCyManager()
+        # SpaCy manager removed - using GLiNER via TransformersManager
         
         # Initialize Transformers manager
         from aico.core.config import ConfigurationManager
@@ -54,30 +53,34 @@ class ModelserviceZMQHandlers:
         self.transformers_manager = TransformersManager(config_manager)
         
         self.logger.info("About to initialize NER system...")
-        # Initialize spaCy models asynchronously - will be done during startup
+        # Initialize GLiNER models asynchronously - will be done during startup
         self.ner_initialized = False
         self.transformers_initialized = False
         self.logger.info("ModelserviceZMQHandlers initialization complete")
     
     async def initialize_ner_system(self):
-        """Initialize the NER system asynchronously using SpaCyManager."""
+        """Initialize the NER system using GLiNER via TransformersManager."""
         if self.ner_initialized:
             return
         
         try:
-            self.logger.info("Starting NER system initialization...")
+            self.logger.info("Starting GLiNER NER system initialization...")
             
-            # Use SpaCy manager to ensure models are installed
-            installation_results = await self.spacy_manager.ensure_models_installed()
+            # Ensure GLiNER model is loaded via transformers manager
+            await self.transformers_manager.ensure_models_loaded()
             
-            if any(installation_results.values()):
-                self.logger.info("NER system initialization completed successfully")
+            # Check if entity extraction model is available
+            gliner_model = self.transformers_manager.get_model("entity_extraction")
+            if gliner_model is not None:
+                self.logger.info("GLiNER NER system initialization completed successfully")
                 self.ner_initialized = True
             else:
-                self.logger.warning("NER system initialization completed but no models were loaded")
+                self.logger.warning("GLiNER model not available - NER system not initialized")
+                self.ner_initialized = False
                 
         except Exception as e:
-            self.logger.error(f"CRITICAL: NER system initialization failed: {e}")
+            self.logger.error(f"Failed to initialize GLiNER NER system: {e}")
+            self.ner_initialized = False
             import traceback
             self.logger.error(f"NER initialization traceback: {traceback.format_exc()}")
     
@@ -103,9 +106,9 @@ class ModelserviceZMQHandlers:
             self.logger.error(f"Failed to initialize Transformers system: {e}")
             self.logger.error(f"Transformers initialization traceback: {traceback.format_exc()}")
     
-    def _get_nlp_model(self, text: str):
-        """Get appropriate spaCy model for the given text."""
-        return self.spacy_manager.get_model_for_text(text)
+    def _get_gliner_model(self):
+        """Get GLiNER model for entity extraction."""
+        return self.transformers_manager.get_model("entity_extraction")
         
     async def handle_health_request(self, request_payload) -> HealthResponse:
         """Handle health check requests via Protocol Buffers."""
@@ -516,7 +519,7 @@ class ModelserviceZMQHandlers:
         return response
     
     async def handle_ner_request(self, request_payload) -> Any:
-        """Handle NER (Named Entity Recognition) requests via Protocol Buffers."""
+        """Handle NER (Named Entity Recognition) requests via GLiNER."""
         try:
             from aico.proto.aico_modelservice_pb2 import NerResponse, EntityList
             
@@ -530,27 +533,56 @@ class ModelserviceZMQHandlers:
             
             self.logger.info(f"Processing NER for text: {text[:50]}...")
             
-            # Get appropriate spaCy model for the text language
-            nlp_model = self._get_nlp_model(text)
-            if nlp_model is None:
+            # Get GLiNER model from transformers manager
+            gliner_model = self.transformers_manager.get_model("entity_extraction")
+            if gliner_model is None:
                 response.success = False
-                response.error = "No spaCy NER models available"
+                response.error = "GLiNER model not available"
                 return response
             
-            doc = nlp_model(text)
-            entities = {}
+            # Define comprehensive entity types for conversation analysis (matches AdvancedFactExtractor)
+            entity_types = [
+                "person", "organization", "location", "date", "time",
+                "preference", "skill", "hobby", "relationship", "goal",
+                "experience", "opinion", "contact_info", "demographic",
+                "food", "activity", "place", "event", "emotion", "job",
+                "family_member", "friend", "colleague", "interest"
+            ]
             
-            # Extract entities by type
-            for ent in doc.ents:
-                # Focus on entities relevant for conversational memory
-                if ent.label_ in ["PERSON", "GPE", "ORG", "DATE", "TIME", "MONEY", "PRODUCT"]:
-                    if ent.label_ not in entities:
-                        entities[ent.label_] = []
-                    
-                    # Clean and deduplicate entities
-                    entity_text = ent.text.strip()
-                    if entity_text and entity_text not in entities[ent.label_]:
-                        entities[ent.label_].append(entity_text)
+            # Extract entities using GLiNER
+            raw_entities = gliner_model.predict_entities(
+                text,
+                labels=entity_types,
+                threshold=0.3
+            )
+            
+            # Group entities by type and convert to expected format
+            entities = {}
+            for entity in raw_entities:
+                entity_type = entity["label"].upper()
+                # Map GLiNER labels to standard NER labels for backward compatibility
+                # Standard NER types (mapped for compatibility)
+                if entity_type == "PERSON":
+                    entity_type = "PERSON"
+                elif entity_type == "LOCATION":
+                    entity_type = "GPE"  # Geopolitical entity
+                elif entity_type == "ORGANIZATION":
+                    entity_type = "ORG"
+                elif entity_type == "DATE":
+                    entity_type = "DATE"
+                elif entity_type == "TIME":
+                    entity_type = "TIME"
+                else:
+                    # Advanced GLiNER types (relationship, emotion, food, etc.) - keep as-is
+                    entity_type = entity["label"].upper()
+                
+                if entity_type not in entities:
+                    entities[entity_type] = []
+                
+                # Clean and deduplicate entities
+                entity_text = entity["text"].strip()
+                if entity_text and entity_text not in entities[entity_type]:
+                    entities[entity_type].append(entity_text)
             
             # Create protobuf response
             response.success = True
@@ -562,7 +594,7 @@ class ModelserviceZMQHandlers:
             # Log results
             total_entities = sum(len(v) for v in entities.values())
             self.logger.info(
-                f"Extracted {total_entities} entities",
+                f"Extracted {total_entities} entities using GLiNER",
                 extra={"topic": AICOTopics.LOGS_ENTRY}
             )
             

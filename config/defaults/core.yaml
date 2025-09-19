@@ -362,12 +362,16 @@ memory:
       - "message_index"
       - "user_state"
   
-  # Semantic Memory (ChromaDB) - User facts with vector embeddings
+  # Semantic Memory (ChromaDB) - Dual collection architecture for comprehensive memory
   semantic:
     enabled: true  # Enable semantic memory for Phase 2
-    collection_name: "user_facts"
+    # Dual collection architecture for different memory types
+    collections:
+      user_facts: "user_facts"                    # Personal info, preferences, relationships
+      conversation_segments: "conversation_segments"  # Processed conversation chunks with NER/sentiment
     # Embedding model configuration references core.modelservice.ollama.default_models.embedding
     max_results: 20
     confidence_threshold: 0.8
-    fact_retention_days: 365  # Long-term storage
+    fact_retention_days: 365  # Long-term storage for user facts
+    segment_retention_days: 90   # Medium-term storage for conversation segments
     supported_languages: ["en", "de", "es", "it", "fr"]

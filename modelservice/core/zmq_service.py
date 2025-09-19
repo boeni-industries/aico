@@ -122,7 +122,7 @@ class ModelserviceZMQService:
                 AICOTopics.MODELSERVICE_MODELS_REQUEST,
                 AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST,
                 AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
-                # NLP analysis topics (require spaCy and Transformers)
+                # NLP analysis topics (require GLiNER and Transformers)
                 AICOTopics.MODELSERVICE_NER_REQUEST,
                 AICOTopics.MODELSERVICE_SENTIMENT_REQUEST,
                 # Ollama management topics

@@ -33,6 +33,8 @@ class ModelTask(Enum):
     SUMMARIZATION = "summarization"
     TRANSLATION = "translation"
     TEXT_GENERATION = "text-generation"
+    ENTITY_EXTRACTION = "entity-extraction"  # For GLiNER
+    RELATION_EXTRACTION = "relation-extraction"
 
 
 @dataclass
@@ -98,6 +100,16 @@ class TransformersManager:
             description="General text classification",
             multilingual=False,
             memory_mb=600
+        ),
+        "entity_extraction": TransformerModelConfig(
+            name="entity_extraction",
+            model_id="urchade/gliner_medium-v2.1",
+            task=ModelTask.ENTITY_EXTRACTION,
+            priority=1,
+            required=True,
+            description="GLiNER generalist entity extraction",
+            multilingual=True,
+            memory_mb=400
         )
     }
     
@@ -306,6 +318,31 @@ class TransformersManager:
             await self.unload_model(model_name)
         
         self.logger.info("All models unloaded")
+    
+    def get_model(self, model_name: str) -> Optional[Any]:
+        """Get a loaded model instance."""
+        self._ensure_logger()
+        
+        if model_name == "entity_extraction":
+            # Load GLiNER model specifically
+            try:
+                if model_name not in self.loaded_models:
+                    from gliner import GLiNER
+                    print(f"🔍 Loading GLiNER model for advanced entity extraction...")
+                    self.logger.info(f"Loading GLiNER model for entity extraction...")
+                    model = GLiNER.from_pretrained("urchade/gliner_medium-v2.1")
+                    self.loaded_models[model_name] = model
+                    print(f"✅ GLiNER entity extraction ready (replacing legacy spaCy)")
+                    self.logger.info(f"✅ GLiNER model loaded successfully")
+                
+                return self.loaded_models[model_name]
+                
+            except Exception as e:
+                self.logger.error(f"Failed to load GLiNER model: {e}")
+                return None
+        
+        # For other models, return from loaded_models cache
+        return self.loaded_models.get(model_name)
     
     def get_model_info(self) -> Dict[str, Any]:
         """Get information about available and loaded models."""

@@ -492,13 +492,27 @@ class ConversationEngine(BaseService):
             
             try:
                 # Process memory operations (store and retrieve)
+                self.logger.info(f"[MEMORY_DEBUG] Calling memory_processor.process() for request {request_id}")
                 result = await memory_processor.process(context)
-                if request_id in self.pending_responses and result.success:
-                    # The result data is now in context.shared_state
-                    self.pending_responses[request_id]["memory_data"] = context.shared_state.get("memory_context")
-                    self.logger.debug(f"Memory processing completed for {request_id}")
+                self.logger.info(f"[MEMORY_DEBUG] Memory processor result: success={getattr(result, 'success', 'NO_SUCCESS_ATTR')}, type={type(result)}")
+                
+                if request_id in self.pending_responses:
+                    if hasattr(result, 'success') and result.success:
+                        # The result data is now in context.shared_state
+                        memory_context = context.shared_state.get("memory_context")
+                        self.pending_responses[request_id]["memory_data"] = memory_context
+                        self.logger.info(f"[MEMORY_DEBUG] Memory processing completed for {request_id}. Memory context: {type(memory_context)}, keys: {list(memory_context.keys()) if isinstance(memory_context, dict) else 'NOT_DICT'}")
+                    else:
+                        self.logger.error(f"[MEMORY_DEBUG] Memory processing failed for {request_id}: result.success={getattr(result, 'success', 'NO_SUCCESS_ATTR')}")
+                        # Store empty memory data to prevent blocking
+                        self.pending_responses[request_id]["memory_data"] = {}
+                else:
+                    self.logger.error(f"[MEMORY_DEBUG] Request {request_id} not found in pending_responses after memory processing")
             except Exception as e:
-                self.logger.error(f"Memory processing failed for {request_id}: {e}")
+                self.logger.error(f"[MEMORY_DEBUG] Memory processing exception for {request_id}: {e}", exc_info=True)
+                # Store empty memory data to prevent blocking
+                if request_id in self.pending_responses:
+                    self.pending_responses[request_id]["memory_data"] = {}
         
         # Always mark as ready (no blocking)
         if request_id in self.pending_responses:
@@ -570,8 +584,14 @@ class ConversationEngine(BaseService):
             # Include memory data in context if available
             if request_id in self.pending_responses and "memory_data" in self.pending_responses[request_id]:
                 memory_data = self.pending_responses[request_id]["memory_data"]
+                self.logger.info(f"[MEMORY_DEBUG] Found memory_data for request {request_id}: type={type(memory_data)}, keys={list(memory_data.keys()) if isinstance(memory_data, dict) else 'NOT_DICT'}")
                 if memory_data:
                     context["memory"] = memory_data
+                    self.logger.info(f"[MEMORY_DEBUG] Added memory data to LLM context for request {request_id}")
+                else:
+                    self.logger.warning(f"[MEMORY_DEBUG] Memory data exists but is empty for request {request_id}")
+            else:
+                self.logger.warning(f"[MEMORY_DEBUG] No memory data found for request {request_id}. Pending responses keys: {list(self.pending_responses.get(request_id, {}).keys()) if request_id in self.pending_responses else 'REQUEST_NOT_FOUND'}")
             
             # Build conversation history for LLM
             messages = []
@@ -580,42 +600,77 @@ class ConversationEngine(BaseService):
             system_prompt = self._build_system_prompt(thread, context)
             messages.append(ModelConversationMessage(role="system", content=system_prompt))
             
-            # Add conversation history from memory context if available
+            # CRITICAL FIX: PROPER SEPARATION - Context in system prompt, current input isolated
+            current_content = user_message.message.text.strip()
+            
+            # MODERN BEST PRACTICE: Structured XML formatting following Anthropic/Claude standards
+            context_xml = ""
             if "memory" in context and context["memory"]:
                 memory_data = context["memory"]
                 memories = memory_data.get("memories", [])
-                self.logger.info(f"[DEBUG] Using {len(memories)} memory items for conversation history")
+                self.logger.info(f"[CONTEXT_DEBUG] Available memory items: {len(memories)}")
                 
-                # Add memory items as conversation history
-                for memory_item in memories[-10:]:  # Use last 10 memory items
-                    self.logger.debug(f"[MEMORY_ITEM_DEBUG] memory_item type: {type(memory_item)}")
+                if memories:
+                    # Create structured XML context following industry standards
+                    recent_memories = memories[-2:] if memories else []  # Only 2 most recent
+                    context_items = []
                     
-                    if isinstance(memory_item, dict):
-                        # Serialized ContextItem - extract role from metadata
-                        content = memory_item.get("content", "")
-                        metadata = memory_item.get("metadata", {})
-                        
-                        self.logger.debug(f"[DICT_DEBUG] memory_item keys: {list(memory_item.keys())}")
-                        self.logger.debug(f"[METADATA_DEBUG] metadata: {metadata}")
-                        
-                        # Extract role from metadata (this is where the fix is!)
-                        role = metadata.get("role", "user") if isinstance(metadata, dict) else "user"
-                        self.logger.debug(f"[ROLE_EXTRACT_DEBUG] Extracted role='{role}' from metadata")
-                        
-                        if content.strip():
-                            messages.append(ModelConversationMessage(role=role, content=content))
-                            self.logger.debug(f"[DEBUG] Added memory: role={role}, content='{content[:50]}...'")
-                    else:
-                        self.logger.warning(f"[UNKNOWN_ITEM_DEBUG] Unknown memory_item type: {type(memory_item)}, value: {memory_item}")
-            else:
-                # Fallback to thread message history if no memory context
-                self.logger.info("[DEBUG] No memory context available, using thread message history")
-                for msg in thread.message_history[-5:]:
-                    role = "user" if msg.message.type == Message.MessageType.USER_INPUT else "assistant"
-                    messages.append(ModelConversationMessage(role=role, content=msg.message.text))
+                    for memory_item in recent_memories:
+                        if isinstance(memory_item, dict):
+                            content = memory_item.get("content", "").strip()
+                            metadata = memory_item.get("metadata", {})
+                            
+                            if content and len(content) < 150:  # Reasonable context length
+                                role = metadata.get("role", "unknown")
+                                # Clean and escape content for XML
+                                clean_content = content.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
+                                context_items.append(f'<message role="{role}">{clean_content}</message>')
+                    
+                    if context_items:
+                        context_xml = f"""
+<conversation_history>
+{chr(10).join(context_items)}
+</conversation_history>"""
+                        self.logger.info(f"[CONTEXT_DEBUG] Built structured XML context with {len(context_items)} items")
             
-            # Add current user message
-            messages.append(ModelConversationMessage(role="user", content=user_message.message.text))
+            # MODERN BEST PRACTICE: Enhanced system prompt with clear structure and instructions
+            if context_xml:
+                enhanced_system_prompt = f"""{system_prompt}
+
+{context_xml}
+
+<instructions>
+- The conversation_history above provides background context only
+- Respond directly and only to the user's current message below
+- Do not reference or repeat information from the conversation history unless directly relevant
+- Be concise, helpful, and natural in your response
+</instructions>"""
+                messages[0] = ModelConversationMessage(role="system", content=enhanced_system_prompt)
+                self.logger.info(f"[CONTEXT_DEBUG] Enhanced system prompt with structured XML context")
+            else:
+                # Add clear instructions even without context
+                enhanced_system_prompt = f"""{system_prompt}
+
+<instructions>
+- Respond directly to the user's message below
+- Be concise, helpful, and natural in your response
+</instructions>"""
+                messages[0] = ModelConversationMessage(role="system", content=enhanced_system_prompt)
+            
+            # MODERN BEST PRACTICE: Clean, isolated current user input
+            if current_content:
+                # Clean and validate user input
+                clean_current_content = current_content.strip()
+                if len(clean_current_content) > 2000:  # Prevent token overflow
+                    clean_current_content = clean_current_content[:2000] + "..."
+                    self.logger.warning(f"[CURRENT_MESSAGE] Truncated long user input to 2000 chars")
+                
+                messages.append(ModelConversationMessage(role="user", content=clean_current_content))
+                self.logger.info(f"[CURRENT_MESSAGE] Added clean isolated current input: '{clean_current_content[:50]}...'")
+            else:
+                self.logger.error("[CURRENT_MESSAGE] No current user content found!")
+                
+            # NO message limit needed - we only have system + current user message
             
             # Log final messages being sent to LLM
             self.logger.info(f"[DEBUG] Sending {len(messages)} messages to LLM:")
@@ -625,13 +680,13 @@ class ConversationEngine(BaseService):
             # Create completions request
             conversation_model = self.config.get("modelservice.ollama.default_models.conversation.name", "hermes3:8b")
             
-            # Create completions request
+            # Create completions request with ultra-focused parameters
             completions_request = CompletionsRequest(
                 model=conversation_model,
                 messages=messages,
                 stream=False,
-                temperature=0.7,
-                max_tokens=512
+                temperature=0.3,  # CRITICAL FIX: Lower temperature for more focused responses
+                max_tokens=150    # CRITICAL FIX: Even shorter responses to prevent rambling
             )
             
             # Publish to modelservice with correlation ID for proper response matching
@@ -649,46 +704,34 @@ class ConversationEngine(BaseService):
             await self._cleanup_request(request_id)
     
     def _build_system_prompt(self, thread: ConversationThread, context: Dict[str, Any]) -> str:
-        """Build system prompt with user and AI component context"""
+        """Build clean, focused system prompt for optimal LLM performance"""
         user = thread.user_context
         
+        # Core identity and behavior - clean and direct
         prompt_parts = [
-            "You are AICO, an AI companion designed to be helpful, empathetic, and engaging.",
-            f"You are talking to {user.username} ({user.relationship_type}).",
-            f"Current conversation topic: {thread.current_topic}",
-            f"Conversation phase: {thread.conversation_phase}",
-            f"User's preferred conversation style: {user.conversation_style}"
+            "You are AICO, an AI companion.",
+            "Respond directly to the user's current message.",
+            "Be helpful, concise, and natural."
         ]
         
-        # Add emotion context
-        if "emotion" in context:
-            emotion_data = context["emotion"]
-            prompt_parts.append(f"User's detected emotion: {emotion_data.get('emotion', 'neutral')}")
+        # User context - minimal and relevant
+        if user.username and not user.username.startswith("User_"):
+            prompt_parts.append(f"User: {user.username}")
         
-        # Add personality context
-        if "personality" in context:
-            personality_data = context["personality"]
-            style = personality_data.get("response_style", "friendly")
-            prompt_parts.append(f"Respond in a {style} manner")
+        # Conversation style hint - only if not default
+        if user.conversation_style and user.conversation_style != "friendly":
+            prompt_parts.append(f"Style: {user.conversation_style}")
         
-        # Add memory context
-        if "memory" in context:
+        # Memory context - ultra-minimal to prevent confusion
+        if "memory" in context and context["memory"]:
             memory_data = context["memory"]
-            if memory_data:
-                # Include memory context information
-                context_summary = memory_data.get("context_summary", "")
-                if context_summary:
-                    prompt_parts.append(f"Memory context: {context_summary}")
-                
-                # Include any available memories
-                memories = memory_data.get("memories", [])
-                if memories:
-                    prompt_parts.append("Relevant memories: " + str(memories))
-                
-                # Include personalization data if available
-                personalization = memory_data.get("personalization", {})
-                if personalization:
-                    prompt_parts.append(f"User personalization: {personalization}")
+            
+            # Only add context if it's very short and relevant
+            context_summary = memory_data.get("context_summary", "")
+            if context_summary and len(context_summary) < 80:  # Very short summaries only
+                # Clean up the summary to avoid redundant info
+                if "conversation messages" not in context_summary.lower():
+                    prompt_parts.append(f"Context: {context_summary}")
         
         return "\n".join(prompt_parts)
     

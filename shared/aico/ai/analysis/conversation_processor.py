@@ -7,9 +7,9 @@ retrieval and context understanding.
 
 Key Features:
 - Conversation segmentation (3-5 message chunks)
-- NER entity extraction using spaCy
+- NER entity extraction via modelservice
 - Metadata enrichment for semantic search
-- Clean, local-first processing (no LLM dependencies)
+- Clean, local-first processing (no external API dependencies)
 
 The processor creates semantically coherent conversation segments that
 can be stored with embeddings for long-term conversational memory.

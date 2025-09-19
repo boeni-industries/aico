@@ -332,7 +332,7 @@ def add_chroma_document(
         return {"error": str(e)}
 
 def clear_chroma_cli(config: Optional[ConfigurationManager] = None) -> None:
-    """Clear and re-initialize the ChromaDB database with CLI feedback."""
+    """Clear all documents from ChromaDB collections without deleting the collections themselves."""
     if config is None:
         config = ConfigurationManager()
         config.initialize(lightweight=True)
@@ -340,14 +340,10 @@ def clear_chroma_cli(config: Optional[ConfigurationManager] = None) -> None:
     semantic_memory_dir = AICOPaths.get_semantic_memory_path()
     
     try:
-        if semantic_memory_dir.exists():
-            # Remove the entire directory
-            import shutil
-            shutil.rmtree(semantic_memory_dir)
-            console.print(f"🗑️ [yellow]Cleared existing ChromaDB database at[/yellow] [cyan]{semantic_memory_dir}[/cyan]")
-        
-        # Recreate the directory and initialize ChromaDB
-        semantic_memory_dir.mkdir(parents=True, exist_ok=True)
+        if not semantic_memory_dir.exists():
+            console.print(f"❌ [red]ChromaDB database not found at[/red] [cyan]{semantic_memory_dir}[/cyan]")
+            console.print("💡 [yellow]Run 'aico db init' to create the database first[/yellow]")
+            return
         
         try:
             import chromadb
@@ -357,26 +353,38 @@ def clear_chroma_cli(config: Optional[ConfigurationManager] = None) -> None:
                 settings=Settings(allow_reset=True, anonymized_telemetry=False)
             )
             
-            # Create default collection with embedding model metadata
-            collection_name = config.get("memory.semantic.collection_name", "user_facts")
-            embedding_model = config.get("core.modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
-            dimensions = config.get("core.modelservice.ollama.default_models.embedding.dimensions", 768)
+            # Get all collections and clear their contents
+            collections = client.list_collections()
+            cleared_count = 0
             
-            metadata = {
-                "embedding_model": embedding_model,
-                "dimensions": dimensions,
-                "created_by": "aico_chroma_clear",
-                "version": "1.0"
-            }
-            client.create_collection(collection_name, metadata=metadata)
+            for collection in collections:
+                collection_name = collection.name
+                try:
+                    # Get all document IDs in the collection
+                    result = collection.get()
+                    if result['ids']:
+                        # Delete all documents in the collection
+                        collection.delete(ids=result['ids'])
+                        console.print(f"🗑️ [yellow]Cleared {len(result['ids'])} documents from collection[/yellow] [cyan]{collection_name}[/cyan]")
+                        cleared_count += len(result['ids'])
+                    else:
+                        console.print(f"ℹ️ [blue]Collection[/blue] [cyan]{collection_name}[/cyan] [blue]was already empty[/blue]")
+                        
+                except Exception as e:
+                    console.print(f"❌ [red]Error clearing collection {collection_name}: {e}[/red]")
             
-            console.print(f"✨ [green]ChromaDB database cleared and reinitialized[/green]")
+            if cleared_count > 0:
+                console.print(f"✅ [green]Successfully cleared {cleared_count} total documents from {len(collections)} collections[/green]")
+            else:
+                console.print(f"ℹ️ [blue]All {len(collections)} collections were already empty[/blue]")
+            
+            console.print(f"📋 [dim]Collections preserved: {', '.join([c.name for c in collections])}[/dim]")
             
         except ImportError:
-            console.print(f"✨ [green]ChromaDB database cleared and reinitialized[/green]")
+            console.print(f"❌ [red]ChromaDB not available - this should not happen with core dependencies[/red]")
             
         except Exception as e:
-            console.print(f"[red]Error initializing ChromaDB: {e}[/red]")
+            console.print(f"[red]Error accessing ChromaDB: {e}[/red]")
             
     except Exception as e:
         console.print(f"[red]Error clearing ChromaDB: {e}[/red]")

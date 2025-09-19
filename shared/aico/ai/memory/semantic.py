@@ -74,6 +74,7 @@ from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths
 from aico.ai.analysis.conversation_processor import ConversationSegmentProcessor
+from aico.ai.analysis.fact_extractor import AdvancedFactExtractor
 from aico.data.schemas.semantic import SemanticQuery, SemanticResult
 
 logger = get_logger("shared", "ai.memory.semantic")
@@ -113,16 +114,28 @@ class SemanticMemoryStore:
         # Configuration - use hierarchical paths and modelservice integration
         memory_config = self.config.get("memory.semantic", {})
         self._db_path = AICOPaths.get_semantic_memory_path()
-        self._collection_name = memory_config.get("collection_name", "conversation_segments")
+        
+        # Dual collection architecture for comprehensive memory
+        collections_config = memory_config.get("collections", {})
+        self._user_facts_collection = collections_config.get("user_facts", "user_facts")
+        self._conversation_segments_collection = collections_config.get("conversation_segments", "conversation_segments")
+        
+        # Validate collection names
+        if not self._user_facts_collection.strip():
+            self._user_facts_collection = "user_facts"
+        if not self._conversation_segments_collection.strip():
+            self._conversation_segments_collection = "conversation_segments"
+        
         # Use modelservice embedding model instead of sentence-transformers
         self._embedding_model = self.config.get("core.modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
         self._max_results = memory_config.get("max_results", 20)
         
-        # Initialize conversation processor
+        # Initialize conversation processor and fact extractor
         self.conversation_processor = ConversationSegmentProcessor(config_manager)
+        self.fact_extractor = AdvancedFactExtractor(config_manager)
         
         # ChromaDB is required - no fallback
-        logger.info("ChromaDB available - semantic memory ready")
+        logger.info(f"ChromaDB available - semantic memory ready with collections: user_facts='{self._user_facts_collection}', conversation_segments='{self._conversation_segments_collection}'")
     
     def set_modelservice(self, modelservice):
         """Inject modelservice dependency for embeddings and NER"""
@@ -146,24 +159,43 @@ class SemanticMemoryStore:
                 settings=Settings(allow_reset=True, anonymized_telemetry=False)
             )
             
-            # Get or create collection with modelservice metadata
+            # Get or create both collections with modelservice metadata
+            dimensions = self.config.get("core.modelservice.ollama.default_models.embedding.dimensions", 768)
+            collection_metadata = {
+                "embedding_model": self._embedding_model,
+                "dimensions": dimensions,
+                "created_by": "semantic_memory_store",
+                "version": "1.0"
+            }
+            
+            # Initialize user_facts collection
+            logger.info(f"Attempting to get user_facts collection: '{self._user_facts_collection}'")
             try:
-                self._collection = self._client.get_collection(self._collection_name)
-                logger.info(f"Using existing collection: {self._collection_name}")
-            except Exception:
-                # Collection doesn't exist, create it with metadata
-                dimensions = self.config.get("core.modelservice.ollama.default_models.embedding.dimensions", 768)
-                collection_metadata = {
-                    "embedding_model": self._embedding_model,
-                    "dimensions": dimensions,
-                    "created_by": "semantic_memory_store",
-                    "version": "1.0"
-                }
-                self._collection = self._client.create_collection(
-                    self._collection_name, 
-                    metadata=collection_metadata
+                self._user_facts_collection_obj = self._client.get_collection(self._user_facts_collection)
+                logger.info(f"Using existing user_facts collection: {self._user_facts_collection}")
+            except Exception as e:
+                logger.info(f"Creating new user_facts collection: {self._user_facts_collection}")
+                self._user_facts_collection_obj = self._client.create_collection(
+                    self._user_facts_collection, 
+                    metadata={**collection_metadata, "collection_type": "user_facts"}
                 )
-                logger.info(f"Created new collection: {self._collection_name} with model: {self._embedding_model}")
+                logger.info(f"Created user_facts collection: {self._user_facts_collection}")
+            
+            # Initialize conversation_segments collection  
+            logger.info(f"Attempting to get conversation_segments collection: '{self._conversation_segments_collection}'")
+            try:
+                self._conversation_segments_collection_obj = self._client.get_collection(self._conversation_segments_collection)
+                logger.info(f"Using existing conversation_segments collection: {self._conversation_segments_collection}")
+            except Exception as e:
+                logger.info(f"Creating new conversation_segments collection: {self._conversation_segments_collection}")
+                self._conversation_segments_collection_obj = self._client.create_collection(
+                    self._conversation_segments_collection,
+                    metadata={**collection_metadata, "collection_type": "conversation_segments"}
+                )
+                logger.info(f"Created conversation_segments collection: {self._conversation_segments_collection}")
+            
+            # Set primary collection for backward compatibility (use conversation_segments for main operations)
+            self._collection = self._conversation_segments_collection_obj
             
             # Modelservice dependency is handled directly in _generate_embedding
             
@@ -404,11 +436,19 @@ class SemanticMemoryStore:
             )
             
             segments_stored = 0
+            facts_extracted = 0
+            
             for segment in segments:
                 # Debug log segment details including entities
                 entities = segment.entities
                 logger.debug(f"🧠 [SEMANTIC_MEMORY] Processing segment with entities: {entities}")
                 logger.debug(f"🧠 [SEMANTIC_MEMORY] Segment fields - thread_id: {segment.thread_id}, user_id: {segment.user_id}, text: {segment.text[:50] if segment.text else 'None'}...")
+                
+                # Extract and store user facts using advanced fact extractor
+                extracted_facts = await self.fact_extractor.extract_facts(segment)
+                for fact in extracted_facts:
+                    if await self._store_user_fact_advanced(fact):
+                        facts_extracted += 1
                 
                 # Store each segment as semantic knowledge
                 # Serialize complex data types for ChromaDB compatibility
@@ -444,7 +484,7 @@ class SemanticMemoryStore:
                     segments_stored += 1
                     logger.debug(f"🧠 [SEMANTIC_MEMORY] ✅ Stored segment with {sum(len(v) if isinstance(v, list) else 0 for v in entities.values())} entities")
             
-            logger.info(f"🧠 [SEMANTIC_MEMORY] ✅ Stored {segments_stored} conversation segments")
+            logger.info(f"🧠 [SEMANTIC_MEMORY] ✅ Stored {segments_stored} conversation segments and extracted {facts_extracted} user facts")
             return segments_stored
             
         except Exception as e:
@@ -555,3 +595,46 @@ class SemanticMemoryStore:
             logger.error(f"Failed to generate embedding via modelservice: {e}")
             return None
     
+    async def _store_user_fact_advanced(self, extracted_fact) -> bool:
+        """Store an advanced extracted fact in the user_facts collection"""
+        try:
+            if not self._user_facts_collection_obj:
+                logger.error("User facts collection not initialized")
+                return False
+            
+            # Generate embedding for the fact content
+            embedding = await self._generate_embedding(extracted_fact.content)
+            if not embedding:
+                logger.error("Failed to generate embedding for user fact")
+                return False
+            
+            # Create unique ID for the fact
+            fact_id = f"fact_{extracted_fact.source_segment_id}_{hash(extracted_fact.content)}"
+            
+            # Create comprehensive metadata
+            metadata = {
+                "fact_type": extracted_fact.fact_type.value,
+                "confidence": extracted_fact.confidence,
+                "extraction_method": extracted_fact.extraction_method,
+                "source_segment_id": extracted_fact.source_segment_id,
+                "created_at": datetime.utcnow().isoformat(),
+                "entities_count": len(extracted_fact.entities),
+                "relations_count": len(extracted_fact.relations),
+                **extracted_fact.metadata  # Include all additional metadata
+            }
+            
+            # Store in ChromaDB user_facts collection
+            self._user_facts_collection_obj.add(
+                documents=[extracted_fact.content],
+                ids=[fact_id],
+                embeddings=[embedding],
+                metadatas=[metadata]
+            )
+            
+            logger.info(f"🧠 [USER_FACTS] ✅ Stored advanced fact: {extracted_fact.fact_type.value} - {extracted_fact.content[:50]}...")
+            return True
+            
+        except Exception as e:
+            logger.error(f"🧠 [USER_FACTS] ❌ Failed to store advanced fact: {e}")
+            return False
+

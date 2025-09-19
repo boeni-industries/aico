@@ -258,13 +258,14 @@ class ContextAssembler:
             recent_messages = await self.working_store._get_recent_user_messages(user_id, hours=24)
             logger.debug(f"Retrieved {len(recent_messages)} total messages for user {user_id}")
             
-            # Use ALL recent messages for context, not just current thread
-            # This enables cross-thread memory continuity (e.g., remembering name from previous conversations)
-            thread_messages = recent_messages
-            logger.debug(f"Using {len(thread_messages)} messages from all recent threads for context assembly")
+            # CRITICAL FIX: Limit and deduplicate messages to prevent context explosion
+            # Use only the most recent 10 messages to prevent overwhelming the LLM
+            thread_messages = recent_messages[-10:] if recent_messages else []
+            logger.debug(f"Using {len(thread_messages)} most recent messages for context assembly (limited from {len(recent_messages)})")
             
             context_items = []
             now = datetime.utcnow()
+            seen_content = set()  # Track content to prevent duplicates
             
             for msg in thread_messages:
                 # Calculate recency score with temporal wisdom
@@ -296,6 +297,17 @@ class ContextAssembler:
                 message_content = msg.get('message_content', '')
                 message_type = msg.get('message_type', 'text')
                 
+                # CRITICAL FIX: Skip empty messages and prevent duplicates
+                if not message_content.strip():
+                    continue
+                    
+                # Create a content hash to prevent duplicates
+                content_hash = hash(message_content.strip().lower())
+                if content_hash in seen_content:
+                    logger.debug(f"[DEDUP] Skipping duplicate content: '{message_content[:50]}...'")
+                    continue
+                seen_content.add(content_hash)
+                
                 # Determine role based on message type, not the user identifier
                 if message_type in ['user_input', 'text']:
                     role = 'user'
@@ -315,7 +327,7 @@ class ContextAssembler:
                     metadata={
                         "message_id": msg.get('message_id'),
                         "role": role,
-                        "thread_id": thread_id,
+                        "thread_id": msg.get('thread_id', thread_id),  # Use actual thread_id from message
                         "recency_hours": recency_hours,
                         "message_type": message_type
                     },
