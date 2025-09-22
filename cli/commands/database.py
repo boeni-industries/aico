@@ -17,7 +17,7 @@ from typing import Optional
 # Import decorators
 decorators_path = Path(__file__).parent.parent / "decorators"
 sys.path.insert(0, str(decorators_path))
-from cli.decorators.sensitive import sensitive, destructive
+from cli.decorators.sensitive import destructive
 
 # Add shared module to path for CLI usage
 if getattr(sys, 'frozen', False):

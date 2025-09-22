@@ -167,12 +167,9 @@ def tail(
 @destructive
 def clear():
     """Clear all data from the LMDB database."""
-    if typer.confirm("Are you sure you want to clear the LMDB working memory database? This cannot be undone."):
-        try:
-            clear_lmdb_cli()
-        except Exception as e:
-            console.print(f"[red]An error occurred: {e}[/red]")
-            raise typer.Exit(1)
-    else:
-        console.print("Operation cancelled.")
-        raise typer.Exit()
+    try:
+        clear_lmdb_cli()
+        console.print("✅ [green]LMDB database cleared successfully.[/green]")
+    except Exception as e:
+        console.print(f"[red]An error occurred: {e}[/red]")
+        raise typer.Exit(1)

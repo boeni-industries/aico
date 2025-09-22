@@ -13,7 +13,7 @@ from cli.utils.chroma_utils import (
     query_chroma_collection, get_chroma_collection_stats, add_chroma_document,
     tail_chroma_collection
 )
-from cli.decorators.sensitive import destructive
+from cli.decorators.sensitive import destructive, sensitive
 from cli.utils.help_formatter import format_subcommand_help
 
 def chroma_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit.")):
@@ -26,7 +26,8 @@ def chroma_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             ("query", "Query a collection for similar documents."),
             ("add", "Add a document to a collection for testing."),
             ("tail", "View the last N documents from a collection."),
-            ("clear", "Clear all data from the ChromaDB database.")
+            ("clear", "Clear all data from the ChromaDB database."),
+            ("cleanup", "Clean up old temporary facts (maintenance).")
         ]
         
         examples = [
@@ -355,6 +356,7 @@ def get_user_facts(
         raise typer.Exit(1)
 
 @app.command(name="delete-user")
+@sensitive
 def delete_user_facts(
     user_id: str = typer.Argument(..., help="User ID to delete facts for"),
     confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt")
@@ -383,6 +385,7 @@ def delete_user_facts(
         raise typer.Exit(1)
 
 @app.command(name="cleanup")
+@sensitive
 def cleanup_old_facts(
     days: int = typer.Option(90, "--days", "-d", help="Delete temporary facts older than N days"),
     confirm: bool = typer.Option(False, "--confirm", help="Skip confirmation prompt")

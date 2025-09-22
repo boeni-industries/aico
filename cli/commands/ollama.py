@@ -18,6 +18,7 @@ from rich.table import Table
 from rich import box
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from cli.decorators.sensitive import sensitive
 
 # Add shared module to path for CLI usage
 if getattr(sys, 'frozen', False):
@@ -462,6 +463,7 @@ def models_pull(model_name: str = typer.Argument(..., help="Name of the model to
 
 
 @models_app.command("remove")
+@sensitive
 def models_remove(
     model_name: str = typer.Argument(..., help="Name of the model to remove"),
     confirm: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt")
