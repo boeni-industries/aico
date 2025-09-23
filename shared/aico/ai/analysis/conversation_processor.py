@@ -117,8 +117,10 @@ class ConversationSegmentProcessor:
         try:
             logger.debug(f"🔄 [CONVERSATION_PROCESSOR] _create_segment: Processing {len(messages)} messages")
             
-            # Combine messages into coherent text
+            # Combine messages into coherent text for sentiment analysis
             text_parts = []
+            user_text_parts = []  # Separate collection for entity extraction
+            
             for i, msg in enumerate(messages):
                 role = msg.get("message_type", "unknown")
                 content = msg.get("message_content", "")
@@ -127,17 +129,21 @@ class ConversationSegmentProcessor:
                 
                 if role == "user_input":
                     text_parts.append(f"User: {content}")
+                    user_text_parts.append(content)  # Collect only user content for NER
                 elif role == "ai_response":
                     text_parts.append(f"AI: {content}")
                 else:
                     text_parts.append(content)
             
             segment_text = "\n".join(text_parts)
-            logger.debug(f"🔄 [CONVERSATION_PROCESSOR] Combined segment text length: {len(segment_text)}")
+            user_only_text = "\n".join(user_text_parts)  # Only user messages for entity extraction
             
-            # Extract entities using modelservice NER
-            logger.info(f"🔄 [CONVERSATION_PROCESSOR] → Extracting entities from segment ({len(segment_text)} chars)")
-            entities = await self._extract_entities_via_modelservice(segment_text)
+            logger.debug(f"🔄 [CONVERSATION_PROCESSOR] Combined segment text length: {len(segment_text)}")
+            logger.debug(f"🔄 [CONVERSATION_PROCESSOR] User-only text length: {len(user_only_text)}")
+            
+            # Extract entities using modelservice NER - ONLY from user messages
+            logger.info(f"🔄 [CONVERSATION_PROCESSOR] → Extracting entities from USER messages only ({len(user_only_text)} chars)")
+            entities = await self._extract_entities_via_modelservice(user_only_text)
             entity_count = sum(len(v) for v in entities.values())
             logger.info(f"🔄 [CONVERSATION_PROCESSOR] ✅ Extracted {entity_count} entities from segment")
             

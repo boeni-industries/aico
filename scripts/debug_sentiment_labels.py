@@ -75,17 +75,16 @@ async def debug_sentiment_labels():
             
             print(f"Current mapping: '{label}' -> '{mapped}'")
     
-    # Test with return_all_scores=True to see all possible labels
+    # Test with top_k=None to see all possible labels
     print("\n🔍 Testing with all scores to see possible labels:")
     
     try:
         from transformers import pipeline as transformers_pipeline
         
-        # Create pipeline with all scores
         debug_pipeline = transformers_pipeline(
             "sentiment-analysis",
             model="nlptown/bert-base-multilingual-uncased-sentiment",
-            return_all_scores=True
+            top_k=None
         )
         
         test_text = "I love this!"

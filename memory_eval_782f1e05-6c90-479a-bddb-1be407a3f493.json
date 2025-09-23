@@ -1,0 +1,895 @@
+{
+  "metadata": {
+    "session_id": "782f1e05-6c90-479a-bddb-1be407a3f493",
+    "scenario_name": "comprehensive_memory_test",
+    "timestamp": "2025-09-23T23:29:22.568109",
+    "conversation_turns": 6,
+    "total_duration_seconds": 18.245181,
+    "version": "1.0.0"
+  },
+  "scores": {
+    "overall": {
+      "score": 0.8250000000000001,
+      "percentage": 82.5,
+      "max_score": 1.0,
+      "explanation": "Weighted average of 7 metrics",
+      "details": {
+        "individual_scores": {
+          "metric_0": {
+            "score": 0.4,
+            "weight": 0.2,
+            "contribution": 0.08000000000000002
+          },
+          "metric_1": {
+            "score": 1.0,
+            "weight": 0.2,
+            "contribution": 0.2
+          },
+          "metric_2": {
+            "score": 1.0,
+            "weight": 0.15,
+            "contribution": 0.15
+          },
+          "metric_3": {
+            "score": 1.0,
+            "weight": 0.15,
+            "contribution": 0.15
+          },
+          "metric_4": {
+            "score": 0.7,
+            "weight": 0.15,
+            "contribution": 0.105
+          },
+          "metric_5": {
+            "score": 0.9,
+            "weight": 0.1,
+            "contribution": 0.09000000000000001
+          },
+          "metric_6": {
+            "score": 1.0,
+            "weight": 0.05,
+            "contribution": 0.05
+          }
+        },
+        "weights": {
+          "0": 0.2,
+          "1": 0.2,
+          "2": 0.15,
+          "3": 0.15,
+          "4": 0.15,
+          "5": 0.1,
+          "6": 0.05
+        }
+      }
+    },
+    "context_adherence": {
+      "score": 0.4,
+      "percentage": 40.0,
+      "max_score": 1.0,
+      "explanation": "Context adherence across 6 turns",
+      "details": {}
+    },
+    "knowledge_retention": {
+      "score": 1.0,
+      "percentage": 100.0,
+      "max_score": 1.0,
+      "explanation": "Real memory retention testing: 7 successful retrievals from ChromaDB",
+      "details": {
+        "stored_facts": [
+          {
+            "category": "unknown",
+            "content": "User mentioned new job",
+            "confidence": 0.6400000000000001,
+            "created_at": "2025-09-22T20:54:38.589003"
+          },
+          {
+            "category": "unknown",
+            "content": "User mentioned endless opportunities",
+            "confidence": 0.6400000000000001,
+            "created_at": "2025-09-22T20:54:38.721367"
+          },
+          {
+            "category": "unknown",
+            "content": "User mentioned tech job",
+            "confidence": 0.6400000000000001,
+            "created_at": "2025-09-22T20:54:39.032824"
+          },
+          {
+            "category": "unknown",
+            "content": "User mentioned Tech roles",
+            "confidence": 0.6400000000000001,
+            "created_at": "2025-09-22T20:54:39.106559"
+          },
+          {
+            "category": "unknown",
+            "content": "User mentioned software engineering role",
+            "confidence": 0.6400000000000001,
+            "created_at": "2025-09-22T20:54:39.177768"
+          },
+          {
+            "category": "unknown",
+            "content": "User mentioned User",
+            "confidence": 0.6400000000000001,
+            "created_at": "2025-09-22T20:54:39.250842"
+          },
+          {
+            "category": "unknown",
+            "content": "User mentioned Master the tools",
+            "confidence": 0.6400000000000001,
+            "created_at": "2025-09-22T20:54:39.327999"
+          },
+          {
+            "category": "unknown",
+            "content": "User mentioned Deliver results",
+            "confidence": 0.6400000000000001,
+            "created_at": "2025-09-22T20:54:39.401065"
+          },
+          {
+            "category": "unknown",
+            "content": "User mentioned Patience",
+            "confidence": 0.6400000000000001,
+            "created_at": "2025-09-22T20:54:39.474034"
+          },
+          {
+            "category": "unknown",
+            "content": "User mentioned persistence",
+            "confidence": 0.6400000000000001,
+            "created_at": "2025-09-22T20:54:39.548799"
+          }
+        ],
+        "memory_retrieval_tests": [
+          {
+            "turn": 1,
+            "message": "Hi AICO! I'm Michael, and I just moved to San Fran...",
+            "entities_found": 18,
+            "entities": {
+              "JOB": [
+                "new job"
+              ],
+              "SKILL": [
+                "Master the tools",
+                "Deliver results",
+                "Patience",
+                "persistence",
+                "willingness to learn"
+              ],
+              "RELATIONSHIP": [
+                "connections"
+              ],
+              "GOAL": [
+                "Socialization",
+                "goal"
+              ],
+              "ORG": [
+                "TechCorp"
+              ],
+              "PLACE": [
+                "water",
+                "litter box",
+                "old home",
+                "new place",
+                "new space",
+                "new home"
+              ],
+              "FAMILY_MEMBER": [
+                "User"
+              ],
+              "ACTIVITY": [
+                "Gentle playtime"
+              ],
+              "FOOD": [
+                "food"
+              ],
+              "FRIEND": [
+                "Whiskers"
+              ],
+              "EVENT": [
+                "Moving",
+                "move"
+              ],
+              "DATE": [
+                "Friday",
+                "October 13th"
+              ],
+              "GPE": [
+                "San Francisco"
+              ],
+              "PERSON": [
+                "I"
+              ],
+              "PREFERENCE": [
+                "your food preferences"
+              ],
+              "EXPERIENCE": [
+                "experience"
+              ],
+              "DEMOGRAPHIC": [
+                "humans"
+              ],
+              "EMOTION": [
+                "stress",
+                "anxiety"
+              ]
+            }
+          },
+          {
+            "turn": 2,
+            "message": "Thanks! I'm a bit nervous though. It's a software ...",
+            "entities_found": 18,
+            "entities": {
+              "JOB": [
+                "new job"
+              ],
+              "SKILL": [
+                "Master the tools",
+                "Deliver results",
+                "Patience",
+                "persistence",
+                "willingness to learn"
+              ],
+              "RELATIONSHIP": [
+                "connections"
+              ],
+              "GOAL": [
+                "Socialization",
+                "goal"
+              ],
+              "ORG": [
+                "TechCorp"
+              ],
+              "PLACE": [
+                "water",
+                "litter box",
+                "old home",
+                "new place",
+                "new space",
+                "new home"
+              ],
+              "FAMILY_MEMBER": [
+                "User"
+              ],
+              "ACTIVITY": [
+                "Gentle playtime"
+              ],
+              "FOOD": [
+                "food"
+              ],
+              "FRIEND": [
+                "Whiskers"
+              ],
+              "EVENT": [
+                "Moving",
+                "move"
+              ],
+              "DATE": [
+                "Friday",
+                "October 13th"
+              ],
+              "GPE": [
+                "San Francisco"
+              ],
+              "PERSON": [
+                "I"
+              ],
+              "PREFERENCE": [
+                "your food preferences"
+              ],
+              "EXPERIENCE": [
+                "experience"
+              ],
+              "DEMOGRAPHIC": [
+                "humans"
+              ],
+              "EMOTION": [
+                "stress",
+                "anxiety"
+              ]
+            }
+          },
+          {
+            "turn": 3,
+            "message": "That's great advice! By the way, I have a cat name...",
+            "entities_found": 18,
+            "entities": {
+              "JOB": [
+                "new job"
+              ],
+              "SKILL": [
+                "Master the tools",
+                "Deliver results",
+                "Patience",
+                "persistence",
+                "willingness to learn"
+              ],
+              "RELATIONSHIP": [
+                "connections"
+              ],
+              "GOAL": [
+                "Socialization",
+                "goal"
+              ],
+              "ORG": [
+                "TechCorp"
+              ],
+              "PLACE": [
+                "water",
+                "litter box",
+                "old home",
+                "new place",
+                "new space",
+                "new home"
+              ],
+              "FAMILY_MEMBER": [
+                "User"
+              ],
+              "ACTIVITY": [
+                "Gentle playtime"
+              ],
+              "FOOD": [
+                "food"
+              ],
+              "FRIEND": [
+                "Whiskers"
+              ],
+              "EVENT": [
+                "Moving",
+                "move"
+              ],
+              "DATE": [
+                "Friday",
+                "October 13th"
+              ],
+              "GPE": [
+                "San Francisco"
+              ],
+              "PERSON": [
+                "I"
+              ],
+              "PREFERENCE": [
+                "your food preferences"
+              ],
+              "EXPERIENCE": [
+                "experience"
+              ],
+              "DEMOGRAPHIC": [
+                "humans"
+              ],
+              "EMOTION": [
+                "stress",
+                "anxiety"
+              ]
+            }
+          },
+          {
+            "turn": 4,
+            "message": "Perfect! Oh, I almost forgot - my birthday is next...",
+            "entities_found": 18,
+            "entities": {
+              "JOB": [
+                "new job"
+              ],
+              "SKILL": [
+                "Master the tools",
+                "Deliver results",
+                "Patience",
+                "persistence",
+                "willingness to learn"
+              ],
+              "RELATIONSHIP": [
+                "connections"
+              ],
+              "GOAL": [
+                "Socialization",
+                "goal"
+              ],
+              "ORG": [
+                "TechCorp"
+              ],
+              "PLACE": [
+                "water",
+                "litter box",
+                "old home",
+                "new place",
+                "new space",
+                "new home"
+              ],
+              "FAMILY_MEMBER": [
+                "User"
+              ],
+              "ACTIVITY": [
+                "Gentle playtime"
+              ],
+              "FOOD": [
+                "food"
+              ],
+              "FRIEND": [
+                "Whiskers"
+              ],
+              "EVENT": [
+                "Moving",
+                "move"
+              ],
+              "DATE": [
+                "Friday",
+                "October 13th"
+              ],
+              "GPE": [
+                "San Francisco"
+              ],
+              "PERSON": [
+                "I"
+              ],
+              "PREFERENCE": [
+                "your food preferences"
+              ],
+              "EXPERIENCE": [
+                "experience"
+              ],
+              "DEMOGRAPHIC": [
+                "humans"
+              ],
+              "EMOTION": [
+                "stress",
+                "anxiety"
+              ]
+            }
+          },
+          {
+            "turn": 5,
+            "message": "Those sound amazing! I love Italian food. Actually...",
+            "entities_found": 18,
+            "entities": {
+              "JOB": [
+                "new job"
+              ],
+              "SKILL": [
+                "Master the tools",
+                "Deliver results",
+                "Patience",
+                "persistence",
+                "willingness to learn"
+              ],
+              "RELATIONSHIP": [
+                "connections"
+              ],
+              "GOAL": [
+                "Socialization",
+                "goal"
+              ],
+              "ORG": [
+                "TechCorp"
+              ],
+              "PLACE": [
+                "water",
+                "litter box",
+                "old home",
+                "new place",
+                "new space",
+                "new home"
+              ],
+              "FAMILY_MEMBER": [
+                "User"
+              ],
+              "ACTIVITY": [
+                "Gentle playtime"
+              ],
+              "FOOD": [
+                "food"
+              ],
+              "FRIEND": [
+                "Whiskers"
+              ],
+              "EVENT": [
+                "Moving",
+                "move"
+              ],
+              "DATE": [
+                "Friday",
+                "October 13th"
+              ],
+              "GPE": [
+                "San Francisco"
+              ],
+              "PERSON": [
+                "I"
+              ],
+              "PREFERENCE": [
+                "your food preferences"
+              ],
+              "EXPERIENCE": [
+                "experience"
+              ],
+              "DEMOGRAPHIC": [
+                "humans"
+              ],
+              "EMOTION": [
+                "stress",
+                "anxiety"
+              ]
+            }
+          },
+          {
+            "turn": 6,
+            "message": "Exactly! And what was my cat's name again? I want ...",
+            "entities_found": 18,
+            "entities": {
+              "JOB": [
+                "new job"
+              ],
+              "SKILL": [
+                "Master the tools",
+                "Deliver results",
+                "Patience",
+                "persistence",
+                "willingness to learn"
+              ],
+              "RELATIONSHIP": [
+                "connections"
+              ],
+              "GOAL": [
+                "Socialization",
+                "goal"
+              ],
+              "ORG": [
+                "TechCorp"
+              ],
+              "PLACE": [
+                "water",
+                "litter box",
+                "old home",
+                "new place",
+                "new space",
+                "new home"
+              ],
+              "FAMILY_MEMBER": [
+                "User"
+              ],
+              "ACTIVITY": [
+                "Gentle playtime"
+              ],
+              "FOOD": [
+                "food"
+              ],
+              "FRIEND": [
+                "Whiskers"
+              ],
+              "EVENT": [
+                "Moving",
+                "move"
+              ],
+              "DATE": [
+                "Friday",
+                "October 13th"
+              ],
+              "GPE": [
+                "San Francisco"
+              ],
+              "PERSON": [
+                "I"
+              ],
+              "PREFERENCE": [
+                "your food preferences"
+              ],
+              "EXPERIENCE": [
+                "experience"
+              ],
+              "DEMOGRAPHIC": [
+                "humans"
+              ],
+              "EMOTION": [
+                "stress",
+                "anxiety"
+              ]
+            }
+          }
+        ],
+        "total_facts_found": 10,
+        "successful_retrievals": 7
+      }
+    },
+    "entity_extraction": {
+      "score": 1.0,
+      "percentage": 100.0,
+      "max_score": 1.0,
+      "explanation": "Real entity extraction testing across 6 messages using GLiNER and ChromaDB",
+      "details": {
+        "gliner_tests": [
+          {
+            "turn": 1,
+            "message": "Hi AICO! I'm Michael, and I just moved to San Francisco last week. I'm really excited about starting...",
+            "stored_entities": {
+              "CONTACT_INFO": [
+                "User"
+              ],
+              "ORG": [
+                "coworkers"
+              ],
+              "ACTIVITY": [
+                "long naps",
+                "chasing string toys"
+              ],
+              "COLLEAGUE": [
+                "Your coworkers"
+              ]
+            },
+            "entities_count": 4,
+            "score": 1.0
+          },
+          {
+            "turn": 2,
+            "message": "Thanks! I'm a bit nervous though. It's a software engineering role, and I'll be working on their AI ...",
+            "stored_entities": {
+              "CONTACT_INFO": [
+                "User"
+              ],
+              "ORG": [
+                "coworkers"
+              ],
+              "ACTIVITY": [
+                "long naps",
+                "chasing string toys"
+              ],
+              "COLLEAGUE": [
+                "Your coworkers"
+              ]
+            },
+            "entities_count": 4,
+            "score": 1.0
+          },
+          {
+            "turn": 3,
+            "message": "That's great advice! By the way, I have a cat named Whiskers who's been stressed about the move. Any...",
+            "stored_entities": {
+              "CONTACT_INFO": [
+                "User"
+              ],
+              "ORG": [
+                "coworkers"
+              ],
+              "ACTIVITY": [
+                "long naps",
+                "chasing string toys"
+              ],
+              "COLLEAGUE": [
+                "Your coworkers"
+              ]
+            },
+            "entities_count": 4,
+            "score": 1.0
+          },
+          {
+            "turn": 4,
+            "message": "Perfect! Oh, I almost forgot - my birthday is next Friday, October 13th. I'm turning 28. I was think...",
+            "stored_entities": {
+              "CONTACT_INFO": [
+                "User"
+              ],
+              "ORG": [
+                "coworkers"
+              ],
+              "ACTIVITY": [
+                "long naps",
+                "chasing string toys"
+              ],
+              "COLLEAGUE": [
+                "Your coworkers"
+              ]
+            },
+            "entities_count": 4,
+            "score": 1.0
+          },
+          {
+            "turn": 5,
+            "message": "Those sound amazing! I love Italian food. Actually, can you remind me what my job title is again? I ...",
+            "stored_entities": {
+              "CONTACT_INFO": [
+                "User"
+              ],
+              "ORG": [
+                "coworkers"
+              ],
+              "ACTIVITY": [
+                "long naps",
+                "chasing string toys"
+              ],
+              "COLLEAGUE": [
+                "Your coworkers"
+              ]
+            },
+            "entities_count": 4,
+            "score": 1.0
+          },
+          {
+            "turn": 6,
+            "message": "Exactly! And what was my cat's name again? I want to tell my new coworkers about him.",
+            "stored_entities": {
+              "CONTACT_INFO": [
+                "User"
+              ],
+              "ORG": [
+                "coworkers"
+              ],
+              "ACTIVITY": [
+                "long naps",
+                "chasing string toys"
+              ],
+              "COLLEAGUE": [
+                "Your coworkers"
+              ]
+            },
+            "entities_count": 4,
+            "score": 1.0
+          }
+        ],
+        "chromadb_stored_entities": [],
+        "total_messages_tested": 6,
+        "successful_extractions": 6
+      }
+    },
+    "conversation_relevancy": {
+      "score": 1.0,
+      "percentage": 100.0,
+      "max_score": 1.0,
+      "explanation": "Conversation relevancy across 6 turns",
+      "details": {
+        "turn_evaluations": [
+          {
+            "turn": 1,
+            "rule_compliance": {}
+          },
+          {
+            "turn": 2,
+            "rule_compliance": {}
+          },
+          {
+            "turn": 3,
+            "rule_compliance": {}
+          },
+          {
+            "turn": 4,
+            "rule_compliance": {}
+          },
+          {
+            "turn": 5,
+            "rule_compliance": {}
+          },
+          {
+            "turn": 6,
+            "rule_compliance": {}
+          }
+        ]
+      }
+    },
+    "thread_management": {
+      "score": 0.7,
+      "percentage": 70.0,
+      "max_score": 1.0,
+      "explanation": "Thread management accuracy: 0/6",
+      "details": {
+        "thread_decisions": [
+          {
+            "turn": 1,
+            "expected": "continue",
+            "actual": "created",
+            "score": 0.7
+          },
+          {
+            "turn": 2,
+            "expected": "continue",
+            "actual": "created",
+            "score": 0.7
+          },
+          {
+            "turn": 3,
+            "expected": "continue",
+            "actual": "created",
+            "score": 0.7
+          },
+          {
+            "turn": 4,
+            "expected": "continue",
+            "actual": "created",
+            "score": 0.7
+          },
+          {
+            "turn": 5,
+            "expected": "continue",
+            "actual": "created",
+            "score": 0.7
+          },
+          {
+            "turn": 6,
+            "expected": "continue",
+            "actual": "created",
+            "score": 0.7
+          }
+        ],
+        "correct_decisions": 0,
+        "total_decisions": 6
+      }
+    },
+    "response_quality": {
+      "score": 0.9,
+      "percentage": 90.0,
+      "max_score": 1.0,
+      "explanation": "Response quality across 6 turns",
+      "details": {
+        "quality_assessments": [
+          {
+            "turn": 1,
+            "adequate_length": true,
+            "coherent": true,
+            "helpful": true,
+            "appropriate": true
+          },
+          {
+            "turn": 2,
+            "adequate_length": true,
+            "coherent": true,
+            "helpful": true,
+            "appropriate": true
+          },
+          {
+            "turn": 3,
+            "adequate_length": true,
+            "coherent": true,
+            "helpful": true,
+            "appropriate": true
+          },
+          {
+            "turn": 4,
+            "adequate_length": true,
+            "coherent": true,
+            "helpful": true,
+            "appropriate": true
+          },
+          {
+            "turn": 5,
+            "adequate_length": true,
+            "coherent": true,
+            "appropriate": true
+          },
+          {
+            "turn": 6,
+            "adequate_length": true,
+            "coherent": true,
+            "appropriate": true
+          }
+        ]
+      }
+    },
+    "memory_consistency": {
+      "score": 1.0,
+      "percentage": 100.0,
+      "max_score": 1.0,
+      "explanation": "Memory consistency with 0 contradictions found",
+      "details": {
+        "consistency_checks": [],
+        "inconsistencies_found": 0
+      }
+    }
+  },
+  "performance": {
+    "average_response_time_ms": 2374.3459781010947,
+    "max_response_time_ms": 5218.669891357422,
+    "min_response_time_ms": 969.8350429534912,
+    "total_conversation_time_seconds": 18.245181,
+    "turns_per_minute": 19.73123752513061
+  },
+  "errors": [],
+  "summary": {
+    "passed": false,
+    "grade": "B",
+    "key_strengths": [
+      "Knowledge Retention",
+      "Entity Extraction",
+      "Conversation Relevancy",
+      "Response Quality",
+      "Memory Consistency"
+    ],
+    "improvement_areas": [
+      "Context Adherence",
+      "Thread Management"
+    ]
+  }
+}

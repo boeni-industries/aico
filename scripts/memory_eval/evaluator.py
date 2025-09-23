@@ -47,6 +47,8 @@ class EvaluationSession:
     errors: List[str] = field(default_factory=list)
     performance_metrics: Dict[str, Any] = field(default_factory=dict)
     evaluation_result: Optional['EvaluationResult'] = None
+    user_id: Optional[str] = None
+    thread_id: Optional[str] = None
     
     @property
     def duration_seconds(self) -> float:
@@ -151,6 +153,12 @@ class MemoryIntelligenceEvaluator:
         if not self._test_user_uuid:
             return
             
+        # Only try to delete if we actually created a real user (not a fake UUID)
+        if len(self._test_user_uuid) != 36 or '-' not in self._test_user_uuid:
+            print(f"⚠️ Skipping cleanup of invalid UUID: {self._test_user_uuid}")
+            self._test_user_uuid = None
+            return
+            
         print(f"🧹 Cleaning up test user: {self._test_user_uuid}")
         
         try:
@@ -171,15 +179,17 @@ class MemoryIntelligenceEvaluator:
             )
             
             if result.returncode == 0:
-                print("✅ Test user cleaned up successfully")
+                print("✅ Test user deleted successfully")
             else:
-                print(f"⚠️ Test user cleanup failed (exit code {result.returncode})")
+                print(f"⚠️ Failed to delete test user (return code {result.returncode}):")
+                print(f"   stderr: {result.stderr}")
+                print(f"   stdout: {result.stdout}")
                 
         except Exception as e:
-            print(f"⚠️ Test user cleanup error: {e}")
+            print(f"⚠️ Error during test user cleanup: {e}")
         finally:
-            self._test_user_uuid = None
-            
+            self._test_user_uuid = None  # Always clear to prevent double deletion
+
     async def _perform_handshake(self):
         """Perform encryption handshake with AICO backend"""
         try:
@@ -288,14 +298,16 @@ class MemoryIntelligenceEvaluator:
                         self._test_user_uuid = test_uuid  # Store for cleanup
                         return test_uuid
                         
-            # Fallback to deterministic UUID if creation failed
-            test_uuid = self._generate_test_uuid("memory_evaluator_user")
-            self._test_user_uuid = test_uuid
-            return test_uuid
+            # If creation failed, show the error and don't create fake UUID
+            print(f"❌ User creation failed:")
+            print(f"   stdout: {result.stdout}")
+            print(f"   stderr: {result.stderr}")
+            print(f"   return code: {result.returncode}")
+            raise Exception(f"Failed to create test user: {result.stderr}")
             
         except Exception as e:
             print(f"⚠️ CLI user creation failed: {e}")
-            return self._generate_test_uuid("memory_evaluator_user")
+            raise
 
     async def _authenticate_user(self):
         """Authenticate with a test user for API access"""
@@ -318,6 +330,10 @@ class MemoryIntelligenceEvaluator:
             if response_data and response_data.get("success", False):
                 self.auth_token = response_data.get("jwt_token", "")
                 print("✅ Authentication successful")
+                
+                # Set user_id in current session if it exists
+                if self.current_session:
+                    self.current_session.user_id = test_user_uuid
             else:
                 error_msg = response_data.get('message', 'Unknown error') if response_data else 'No response'
                 print(f"❌ Authentication failed: {error_msg}")
@@ -436,6 +452,13 @@ class MemoryIntelligenceEvaluator:
                 session.errors.append(f"Evaluation failed: {str(e)}")
             raise
         finally:
+            # Clean up memory connections
+            if hasattr(self.metrics, 'cleanup'):
+                await self.metrics.cleanup()
+                
+            # Clean up test user
+            await self._cleanup_test_user()
+                
             if 'session' in locals():
                 session.end_time = datetime.now()
                 self.session_history.append(session)
@@ -496,6 +519,9 @@ class MemoryIntelligenceEvaluator:
             start_time=datetime.now()
         )
         
+        # Set as current session so authentication can set user_id
+        self.current_session = session
+        
         print(f"🧠 Starting conversation scenario: {scenario.name}")
         
         # Initialize HTTP session if not exists
@@ -527,20 +553,23 @@ class MemoryIntelligenceEvaluator:
                     "context": turn.context_hints or {}
                 }
                 print(f"💬 Turn {i+1}: {turn.user_message[:50]}...")
-                print(f"   🧠 Processing memory operations (may take up to 90s)...")
+                timeout_msg = "180s" if i == 1 else "90s"
+                print(f"   🧠 Processing memory operations (may take up to {timeout_msg})...")
                 
                 # Send encrypted message request with timeout (generous for memory processing)
+                # Use longer timeout for Turn 2 which has more complex processing
+                timeout_seconds = 180.0 if i == 1 else 90.0  # 3 minutes for Turn 2, 90s for others
                 try:
                     response_data = await asyncio.wait_for(
                         self._send_encrypted_request("/api/v1/conversation/messages", message_data),
-                        timeout=90.0  # 90 second timeout for memory-intensive operations
+                        timeout=timeout_seconds
                     )
                     
                     if not response_data:
                         raise Exception("No response from conversation API")
                         
                 except asyncio.TimeoutError:
-                    print(f"⏰ Turn {i+1} timed out after 90s")
+                    print(f"⏰ Turn {i+1} timed out after {timeout_seconds}s")
                     # Create a timeout response for evaluation
                     response_data = {
                         "success": False,
@@ -601,7 +630,7 @@ class MemoryIntelligenceEvaluator:
             pass
             
         session.end_time = datetime.now()
-        setattr(session, 'thread_id', thread_id)
+        session.thread_id = thread_id
         
         print(f"✅ Completed conversation scenario: {scenario.name}")
         return session
@@ -615,7 +644,11 @@ class MemoryIntelligenceEvaluator:
     async def _evaluate_memory_performance(self, session: EvaluationSession) -> EvaluationResult:
         """Evaluate memory system performance based on conversation data"""
         
-        # Calculate all metrics
+        # Initialize real memory system connections
+        print("🔗 Connecting to AICO memory systems...")
+        await self.metrics.initialize_memory_connections()
+        
+        # Calculate all metrics using REAL memory system integration
         context_adherence = await self.metrics.calculate_context_adherence(session)
         knowledge_retention = await self.metrics.calculate_knowledge_retention(session)
         entity_extraction = await self.metrics.calculate_entity_extraction_accuracy(session)

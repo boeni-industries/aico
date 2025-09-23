@@ -69,7 +69,7 @@ class TransformersManager:
             description="Multilingual BERT sentiment analysis",
             multilingual=True,
             memory_mb=500,
-            config_overrides={"return_all_scores": False}
+            config_overrides={"top_k": 1}
         ),
         "sentiment_english": TransformerModelConfig(
             name="sentiment_english",
