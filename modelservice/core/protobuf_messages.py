@@ -15,11 +15,11 @@ from aico.proto.aico_core_envelope_pb2 import AicoMessage, MessageMetadata
 from aico.proto.aico_modelservice_pb2 import (
     # Request messages
     HealthRequest, CompletionsRequest, ModelsRequest, ModelInfoRequest,
-    EmbeddingsRequest, NerRequest, SentimentRequest, StatusRequest, OllamaStatusRequest, OllamaModelsRequest,
+    EmbeddingsRequest, NerRequest, IntentClassificationRequest, SentimentRequest, StatusRequest, OllamaStatusRequest, OllamaModelsRequest,
     OllamaPullRequest, OllamaRemoveRequest, OllamaServeRequest, OllamaShutdownRequest,
     # Response messages
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
-    EmbeddingsResponse, NerResponse, SentimentResponse, StatusResponse, OllamaStatusResponse, OllamaModelsResponse,
+    EmbeddingsResponse, NerResponse, IntentClassificationResponse, SentimentResponse, StatusResponse, OllamaStatusResponse, OllamaModelsResponse,
     OllamaPullResponse, OllamaRemoveResponse, OllamaServeResponse, OllamaShutdownResponse,
     # Data structures
     ConversationMessage
@@ -254,6 +254,7 @@ class ModelserviceMessageParser:
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: ModelInfoRequest,
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: EmbeddingsRequest,
             AICOTopics.MODELSERVICE_NER_REQUEST: NerRequest,
+            AICOTopics.MODELSERVICE_INTENT_REQUEST: IntentClassificationRequest,
             AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: SentimentRequest,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: StatusRequest,
             AICOTopics.OLLAMA_STATUS_REQUEST: OllamaStatusRequest,
@@ -286,6 +287,7 @@ class ModelserviceMessageParser:
             AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE: ModelInfoResponse,
             AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE: EmbeddingsResponse,
             AICOTopics.MODELSERVICE_NER_RESPONSE: NerResponse,
+            AICOTopics.MODELSERVICE_INTENT_RESPONSE: IntentClassificationResponse,
             AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE: SentimentResponse,
             AICOTopics.MODELSERVICE_STATUS_RESPONSE: StatusResponse,
             AICOTopics.OLLAMA_STATUS_RESPONSE: OllamaStatusResponse,

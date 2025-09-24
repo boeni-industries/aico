@@ -69,7 +69,7 @@ class ModelServiceClient:
         correlation_id = str(uuid.uuid4())
         
         # Create proper protobuf message based on request type
-        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest, EmbeddingsRequest, NerRequest, SentimentRequest
+        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest, EmbeddingsRequest, NerRequest, IntentClassificationRequest, SentimentRequest
         
         if "completions" in request_topic or "chat" in request_topic:
             # Create CompletionsRequest protobuf
@@ -102,6 +102,14 @@ class ModelServiceClient:
             # Create NerRequest protobuf
             request_proto = NerRequest()
             request_proto.text = data.get("text", "")
+        elif "intent" in request_topic:
+            # Create IntentClassificationRequest protobuf
+            request_proto = IntentClassificationRequest()
+            request_proto.text = data.get("text", "")
+            if data.get("user_id"):
+                request_proto.user_id = data["user_id"]
+            if data.get("conversation_context"):
+                request_proto.conversation_context.extend(data["conversation_context"])
         elif "sentiment" in request_topic:
             # Create SentimentRequest protobuf
             request_proto = SentimentRequest()
@@ -176,6 +184,36 @@ class ModelServiceClient:
                             response_received.set()
                         else:
                             self.logger.error("Failed to unpack NerResponse")
+                            response_data = {'success': False, 'error': 'Failed to unpack response'}
+                            response_received.set()
+                    # Handle Intent Classification responses
+                    elif "intent" in response_topic:
+                        from aico.proto.aico_modelservice_pb2 import IntentClassificationResponse
+                        intent_response = IntentClassificationResponse()
+                        if message.any_payload.Unpack(intent_response):
+                            self.logger.debug(f"Successfully unpacked IntentClassificationResponse: success={intent_response.success}")
+                            response_data = {
+                                'success': intent_response.success,
+                                'error': intent_response.error if intent_response.HasField('error') else None
+                            }
+                            if intent_response.success:
+                                # Extract intent classification data
+                                alternatives = []
+                                for alt in intent_response.alternative_predictions:
+                                    alternatives.append((alt.intent, alt.confidence))
+                                
+                                response_data['data'] = {
+                                    'predicted_intent': intent_response.predicted_intent,
+                                    'confidence': intent_response.confidence,
+                                    'detected_language': intent_response.detected_language,
+                                    'inference_time_ms': intent_response.inference_time_ms,
+                                    'alternatives': alternatives,
+                                    'metadata': dict(intent_response.metadata)
+                                }
+                                self.logger.debug(f"Intent classified as: {intent_response.predicted_intent} (confidence={intent_response.confidence:.2f})")
+                            response_received.set()
+                        else:
+                            self.logger.error("Failed to unpack IntentClassificationResponse")
                             response_data = {'success': False, 'error': 'Failed to unpack response'}
                             response_received.set()
                     # Handle Sentiment responses
@@ -339,6 +377,24 @@ class ModelServiceClient:
         return await self._send_request(
             AICOTopics.MODELSERVICE_NER_REQUEST,
             AICOTopics.MODELSERVICE_NER_RESPONSE,
+            request_data
+        )
+    
+    async def classify_intent(self, text: str, user_id: Optional[str] = None, conversation_context: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Get intent classification from modelservice using advanced AI processor."""
+        request_data = {
+            "text": text
+        }
+        
+        if user_id:
+            request_data["user_id"] = user_id
+        
+        if conversation_context:
+            request_data["conversation_context"] = conversation_context
+        
+        return await self._send_request(
+            AICOTopics.MODELSERVICE_INTENT_REQUEST,
+            AICOTopics.MODELSERVICE_INTENT_RESPONSE,
             request_data
         )
     

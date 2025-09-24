@@ -110,6 +110,16 @@ class TransformersManager:
             description="GLiNER generalist entity extraction",
             multilingual=True,
             memory_mb=400
+        ),
+        "intent_classification": TransformerModelConfig(
+            name="intent_classification",
+            model_id="xlm-roberta-base",
+            task=ModelTask.TEXT_CLASSIFICATION,
+            priority=1,
+            required=True,
+            description="Multilingual intent classification using XLM-RoBERTa",
+            multilingual=True,
+            memory_mb=600
         )
     }
     
@@ -370,6 +380,38 @@ class TransformersManager:
                 
             except Exception as e:
                 self.logger.error(f"Failed to load GLiNER model: {e}")
+                return None
+        
+        elif model_name == "intent_classification":
+            # Load XLM-RoBERTa model for intent classification
+            try:
+                if model_name not in self.loaded_models:
+                    from transformers import AutoTokenizer, AutoModel
+                    from dataclasses import dataclass
+                    
+                    print(f"🔍 Loading XLM-RoBERTa model for intent classification...")
+                    self.logger.info(f"Loading XLM-RoBERTa model for intent classification...")
+                    
+                    # Load tokenizer and model
+                    tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
+                    model = AutoModel.from_pretrained("xlm-roberta-base")
+                    
+                    # Create a model wrapper with both components
+                    @dataclass
+                    class IntentModelWrapper:
+                        tokenizer: Any
+                        model: Any
+                    
+                    wrapper = IntentModelWrapper(tokenizer=tokenizer, model=model)
+                    self.loaded_models[model_name] = wrapper
+                    
+                    print(f"✅ XLM-RoBERTa intent classification ready (multilingual)")
+                    self.logger.info(f"✅ XLM-RoBERTa model loaded successfully")
+                
+                return self.loaded_models[model_name]
+                
+            except Exception as e:
+                self.logger.error(f"Failed to load XLM-RoBERTa model: {e}")
                 return None
         
         # For other models, return from loaded_models cache

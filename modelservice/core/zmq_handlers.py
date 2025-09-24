@@ -20,7 +20,7 @@ from aico.core.version import get_modelservice_version
 from aico.proto.aico_modelservice_pb2 import (
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
     EmbeddingsResponse, NerResponse, EntityList, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus,
-    SentimentRequest, SentimentResponse
+    SentimentRequest, SentimentResponse, IntentClassificationRequest, IntentClassificationResponse
 )
 from google.protobuf.timestamp_pb2 import Timestamp
 
@@ -471,7 +471,7 @@ class ModelserviceZMQHandlers:
         return response
     
     async def handle_embeddings_request(self, request_payload) -> EmbeddingsResponse:
-        """Handle embeddings requests via Protocol Buffers."""
+        """Handle embeddings requests via Protocol Buffers using TransformersManager."""
         response = EmbeddingsResponse()
         
         try:
@@ -483,33 +483,57 @@ class ModelserviceZMQHandlers:
                 response.error = "model and prompt are required"
                 return response
             
-            # Forward to Ollama
-            ollama_url = f"http://{self.config.get('ollama', {}).get('host', 'localhost')}:{self.config.get('ollama', {}).get('port', 11434)}"
+            # Use TransformersManager for all transformer models
+            transformer_model = self.get_transformer_model(model)
+            if transformer_model is None:
+                response.success = False
+                response.error = f"Transformer model '{model}' not available"
+                return response
             
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                ollama_response = await client.post(
-                    f"{ollama_url}/api/embeddings",
-                    json={
-                        "model": model,
-                        "prompt": prompt
-                    }
+            # Generate embedding using transformer model from TransformersManager
+            try:
+                # Import here to avoid circular dependencies
+                import torch
+                import numpy as np
+                
+                # Get model components from TransformersManager
+                model_components = transformer_model
+                
+                if not hasattr(model_components, 'tokenizer') or not hasattr(model_components, 'model'):
+                    response.success = False
+                    response.error = f"Model '{model}' not properly loaded"
+                    return response
+                
+                tokenizer = model_components.tokenizer
+                transformer = model_components.model
+                
+                # Tokenize and get embeddings
+                inputs = tokenizer(
+                    prompt,
+                    return_tensors="pt",
+                    max_length=512,
+                    truncation=True,
+                    padding=True
                 )
                 
-                if ollama_response.status_code != 200:
-                    raise Exception(f"Ollama error: {ollama_response.status_code} - {ollama_response.text}")
-                
-                ollama_data = ollama_response.json()
+                with torch.no_grad():
+                    outputs = transformer(**inputs)
+                    # Use [CLS] token embedding (first token)
+                    embedding = outputs.last_hidden_state[:, 0, :].numpy().flatten()
                 
                 # Add embeddings to response
-                if "embedding" in ollama_data:
-                    response.embedding.extend(ollama_data["embedding"])
-                
+                response.embedding.extend(embedding.tolist())
                 response.success = True
                 
                 self.logger.info(
-                    f"Generated embeddings for model {model}",
+                    f"Generated transformer embeddings for model {model}",
                     extra={"topic": AICOTopics.LOGS_ENTRY}
                 )
+                
+            except Exception as transformer_error:
+                response.success = False
+                response.error = f"Transformer embedding failed: {str(transformer_error)}"
+                self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
                 
         except Exception as e:
             response.success = False
@@ -712,6 +736,36 @@ class ModelserviceZMQHandlers:
             response.success = False
             response.error = f"Sentiment analysis failed: {str(e)}"
             self.logger.error(response.error, extra={"topic": AICOTopics.LOGS_ENTRY})
+            return response
+    
+    async def handle_intent_request(self, request_payload) -> IntentClassificationResponse:
+        """Handle intent classification requests via AICO AI processor."""
+        try:
+            self.logger.info("🔍 [INTENT_HANDLER] Intent classification request received")
+            
+            # Import and get the intent handler
+            from modelservice.handlers.intent_classification_handler import get_intent_classification_handler
+            handler = await get_intent_classification_handler()
+            
+            # Handle the request using the AI processor
+            response = await handler.handle_request(request_payload)
+            
+            self.logger.info(f"✅ [INTENT_HANDLER] Intent classified as: {response.predicted_intent} "
+                           f"(confidence={response.confidence:.2f})")
+            
+            return response
+            
+        except Exception as e:
+            self.logger.error(f"❌ [INTENT_HANDLER] Intent classification failed: {e}")
+            
+            # Return error response
+            response = IntentClassificationResponse()
+            response.success = False
+            response.predicted_intent = "general"
+            response.confidence = 0.0
+            response.detected_language = "unknown"
+            response.error = str(e)
+            
             return response
     
     async def handle_status_request(self, request_payload) -> StatusResponse:

@@ -282,56 +282,50 @@ class AICOThreadManagerIntegration(AdvancedThreadManager):
             self._metrics['service_errors']['embeddings'] = str(e)
             return np.zeros(768)
 
-    async def _get_aico_entities(self, message: str) -> Dict[str, List[str]]:
-        """Extract entities using AICO NER service"""
+    async def _classify_aico_intent(self, message: str, user_id: Optional[str] = None, context: Optional[List[str]] = None) -> str:
+        """
+        Classify message intent using AICO's AI processing architecture
+        
+        Uses the shared AI processor in /shared/aico/ai/ following AICO patterns
+        """
         try:
-            if self._modelservice_client:
-                # Use AICO NER service
-                response = await self._modelservice_client.extract_entities(message)
-                if response and hasattr(response, 'entities'):
-                    # Convert protobuf response to dict
-                    entities = {}
-                    for entity_type, entity_list in response.entities.items():
-                        entities[entity_type] = list(entity_list.entities)
-                    
-                    logger.debug(f"[AICO_THREAD_MANAGER] Extracted entities: {entities}")
-                    return entities
+            # Import here to avoid circular dependencies
+            from shared.aico.ai.analysis.intent_classifier import get_intent_classifier
+            from shared.aico.ai.base import ProcessingContext
             
-            # Fallback: return empty dict
-            return {}
+            # Get the AI processor
+            processor = await get_intent_classifier()
             
+            # Create processing context following AICO patterns
+            processing_context = ProcessingContext(
+                thread_id="intent_classification",  # Not thread-specific
+                user_id=user_id or "anonymous",
+                request_id=f"intent_{hash(message)}",
+                message_content=message,
+                shared_state={
+                    'recent_intents': context or []
+                }
+            )
+            
+            # Process using AI processor
+            result = await processor.process(processing_context)
+            
+            if result.success:
+                predicted_intent = result.data.get("predicted_intent", "general")
+                confidence = result.data.get("confidence", 0.0)
+                detected_language = result.data.get("detected_language", "unknown")
+                
+                logger.debug(f"[AICO_THREAD_MANAGER] Intent classified: {predicted_intent} "
+                           f"(confidence={confidence:.2f}, language={detected_language})")
+                return predicted_intent
+            else:
+                logger.warning(f"[AICO_THREAD_MANAGER] Intent classification failed: {result.error}")
+                return "general"
+                
         except Exception as e:
-            logger.error(f"[AICO_THREAD_MANAGER] Entity extraction failed: {e}")
-            self._metrics['service_errors']['entities'] = str(e)
-            return {}
-
-    async def _classify_aico_intent(self, message: str) -> str:
-        """Classify message intent using AICO services or heuristics"""
-        try:
-            # Simple intent classification based on message patterns
-            message_lower = message.lower().strip()
-            
-            # Question intents
-            if any(word in message_lower for word in ['what', 'how', 'why', 'when', 'where', 'who']):
-                return "question"
-            
-            # Greeting intents
-            if any(word in message_lower for word in ['hi', 'hello', 'hey', 'good morning', 'good afternoon']):
-                return "greeting"
-            
-            # Request intents
-            if any(word in message_lower for word in ['please', 'can you', 'could you', 'help me']):
-                return "request"
-            
-            # Information sharing
-            if any(word in message_lower for word in ['i am', 'i have', 'my', 'just', 'today']):
-                return "information_sharing"
-            
-            # Default
-            return "general"
-            
-        except Exception as e:
-            logger.error(f"[AICO_THREAD_MANAGER] Intent classification failed: {e}")
+            logger.error(f"[AICO_THREAD_MANAGER] Intent classification error: {e}")
+            # Graceful fallback without keyword matching
+            logger.info("[AICO_THREAD_MANAGER] Using 'general' intent as fallback")
             return "general"
 
     async def _calculate_aico_topic_shift(self, message: str, embedding: np.ndarray) -> float:

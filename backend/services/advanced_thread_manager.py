@@ -566,9 +566,35 @@ class AdvancedThreadManager:
         return np.random.random(768)  # Placeholder
 
     async def _classify_intent(self, message: str) -> str:
-        """Classify message intent"""
-        # Placeholder - could integrate with existing NER or add intent classification
-        return "general"
+        """Classify message intent using AICO's AI processing architecture"""
+        try:
+            # Import here to avoid circular dependencies
+            from shared.aico.ai.analysis.intent_classifier import get_intent_classifier
+            from shared.aico.ai.base import ProcessingContext
+            
+            # Get the AI processor
+            processor = await get_intent_classifier()
+            
+            # Create processing context following AICO patterns
+            processing_context = ProcessingContext(
+                thread_id="intent_classification",
+                user_id="anonymous",
+                request_id=f"intent_{hash(message)}",
+                message_content=message
+            )
+            
+            # Process using AI processor
+            result = await processor.process(processing_context)
+            
+            if result.success:
+                return result.data.get("predicted_intent", "general")
+            else:
+                logger.warning(f"[ADVANCED_THREAD_MANAGER] Intent classification failed: {result.error}")
+                return "general"
+                
+        except Exception as e:
+            logger.error(f"[ADVANCED_THREAD_MANAGER] Intent classification error: {e}")
+            return "general"
 
     async def _extract_entities(self, message: str) -> Dict[str, List[str]]:
         """Extract entities from message"""

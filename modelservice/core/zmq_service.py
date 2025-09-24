@@ -56,6 +56,7 @@ class ModelserviceZMQService:
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: self.handlers.handle_model_info_request,
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: self.handlers.handle_embeddings_request,
             AICOTopics.MODELSERVICE_NER_REQUEST: self.handlers.handle_ner_request,
+            AICOTopics.MODELSERVICE_INTENT_REQUEST: self.handlers.handle_intent_request,
             AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: self.handlers.handle_sentiment_request,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: self.handlers.handle_status_request,
             # Ollama management topics

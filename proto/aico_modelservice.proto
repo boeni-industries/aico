@@ -49,6 +49,14 @@ message NerRequest {
   string text = 1;
 }
 
+// Intent classification request
+message IntentClassificationRequest {
+  string text = 1;
+  optional string user_id = 2;
+  repeated string conversation_context = 3;
+  optional string language_hint = 4;
+}
+
 // Sentiment analysis request
 message SentimentRequest {
   string text = 1;
@@ -132,6 +140,23 @@ message NerResponse {
 
 message EntityList {
   repeated string entities = 1;
+}
+
+// Intent classification response
+message IntentClassificationResponse {
+  bool success = 1;
+  string predicted_intent = 2;
+  double confidence = 3;
+  string detected_language = 4;
+  double inference_time_ms = 5;
+  repeated IntentPrediction alternative_predictions = 6;
+  map<string, string> metadata = 7;
+  optional string error = 8;
+}
+
+message IntentPrediction {
+  string intent = 1;
+  double confidence = 2;
 }
 
 // Sentiment analysis response

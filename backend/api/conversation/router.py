@@ -15,7 +15,7 @@ from fastapi.security import HTTPBearer
 from aico.core.logging import get_logger
 from backend.api.conversation.dependencies import get_message_bus_client
 from backend.api.conversation.dependencies import get_current_user
-from backend.services.thread_manager import get_thread_manager
+from backend.services.thread_manager_integration import get_aico_thread_manager
 from aico.proto.aico_conversation_pb2 import ConversationMessage, Message, MessageAnalysis
 from aico.proto.aico_conversation_pb2 import ConversationContext, Context, RecentHistory
 from aico.proto.aico_conversation_pb2 import ResponseRequest, ResponseParameters
@@ -52,7 +52,7 @@ def get_service_container(request: Request):
 async def send_message_with_auto_thread(
     request: UnifiedMessageRequest,
     current_user = Depends(get_current_user),
-    thread_manager = Depends(get_thread_manager),
+    thread_manager = Depends(get_aico_thread_manager),
     bus_client = Depends(get_message_bus_client),
     container = Depends(get_service_container)
 ):
@@ -172,7 +172,7 @@ async def send_message_with_auto_thread(
 async def create_thread(
     request: ThreadCreateRequest,
     current_user = Depends(get_current_user),
-    thread_manager = Depends(get_thread_manager),
+    thread_manager = Depends(get_aico_thread_manager),
     bus_client = Depends(get_message_bus_client)
 ):
     """Create a new conversation thread explicitly (advanced endpoint)"""
@@ -227,7 +227,7 @@ async def send_message_to_thread(
     thread_id: str,
     request: MessageSendRequest,
     current_user = Depends(get_current_user),
-    thread_manager = Depends(get_thread_manager),
+    thread_manager = Depends(get_aico_thread_manager),
     bus_client = Depends(get_message_bus_client)
 ):
     """Send a message to a specific thread (advanced endpoint)"""
@@ -311,7 +311,7 @@ async def get_thread(
 @router.get("/threads", response_model=ThreadListResponse)
 async def list_threads(
     current_user = Depends(get_current_user),
-    thread_manager = Depends(get_thread_manager),
+    thread_manager = Depends(get_aico_thread_manager),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page")
 ):
@@ -544,7 +544,7 @@ async def health_check():
 async def start_conversation_legacy(
     request: UnifiedMessageRequest,
     current_user = Depends(get_current_user),
-    thread_manager = Depends(get_thread_manager),
+    thread_manager = Depends(get_aico_thread_manager),
     bus_client = Depends(get_message_bus_client)
 ):
     """Legacy start endpoint - redirects to unified messages endpoint"""
