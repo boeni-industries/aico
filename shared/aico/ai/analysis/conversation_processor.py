@@ -143,7 +143,21 @@ class ConversationSegmentProcessor:
             
             # Extract entities using modelservice NER - ONLY from user messages
             logger.info(f"🔄 [CONVERSATION_PROCESSOR] → Extracting entities from USER messages only ({len(user_only_text)} chars)")
-            entities = await self._extract_entities_via_modelservice(user_only_text)
+            logger.info(f"🔍 [CONVERSATION_PROCESSOR] User text for NER: '{user_only_text[:200]}...'")
+            
+            if not user_only_text.strip():
+                logger.warning(f"🔄 [CONVERSATION_PROCESSOR] ⚠️ No user text found for entity extraction!")
+                entities = {}
+            else:
+                try:
+                    logger.info(f"🔄 [CONVERSATION_PROCESSOR] ⚡ CALLING NER for user text: '{user_only_text[:100]}...'")
+                    entities = await self._extract_entities_via_modelservice(user_only_text)
+                    logger.info(f"🔄 [CONVERSATION_PROCESSOR] ⚡ NER RETURNED: {entities}")
+                except Exception as e:
+                    logger.error(f"🔄 [CONVERSATION_PROCESSOR] ❌ NER FAILED: {e}")
+                    import traceback
+                    logger.error(f"🔄 [CONVERSATION_PROCESSOR] ❌ NER TRACEBACK: {traceback.format_exc()}")
+                    entities = {}
             entity_count = sum(len(v) for v in entities.values())
             logger.info(f"🔄 [CONVERSATION_PROCESSOR] ✅ Extracted {entity_count} entities from segment")
             
@@ -207,12 +221,14 @@ class ConversationSegmentProcessor:
             entities = response.get("data", {}).get("entities", {})
             
             # Debug log raw NER response
-            logger.debug(f"[NER] Raw modelservice response: {entities}")
+            logger.info(f"🔍 [NER] Input text: '{text[:100]}...'")
+            logger.info(f"🔍 [NER] Raw modelservice response: {entities}")
             
             # Filter out common false positives
             filtered_entities = self._filter_entities(entities, text)
             
             # Debug log filtered results
+            logger.info(f"🔍 [NER] Filtered entities: {filtered_entities}")
             if filtered_entities:
                 logger.debug(f"[NER] Filtered entities: {filtered_entities}")
                 for entity_type, entity_list in filtered_entities.items():

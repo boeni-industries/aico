@@ -182,8 +182,10 @@ class MemoryMetrics:
             
         user_id = getattr(session, 'user_id', None)
         thread_id = getattr(session, 'thread_id', None)
+        all_thread_ids = getattr(session, 'all_thread_ids', [thread_id] if thread_id else [])
         
         print(f"🔍 Knowledge retention - user_id: {user_id}, thread_id: {thread_id}")
+        print(f"🔍 All thread_ids in conversation: {all_thread_ids}")
         
         if not user_id:
             return MetricScore(0.0, explanation="No user_id available for memory testing")
@@ -264,15 +266,28 @@ class MemoryMetrics:
         
         user_id = getattr(session, 'user_id', None)
         thread_id = getattr(session, 'thread_id', None)
+        all_thread_ids = getattr(session, 'all_thread_ids', [thread_id] if thread_id else [])
         
         print(f"🔍 Entity extraction - user_id: {user_id}, thread_id: {thread_id}")
+        print(f"🔍 All thread_ids in conversation: {all_thread_ids}")
         
         # Give a moment for async memory processing to complete
         await asyncio.sleep(2.0)
         
-        # Query entities once for the entire conversation to avoid spam
-        print(f"🔍 Querying entities for entire conversation...")
-        stored_entities = await self._query_stored_entities(user_id, thread_id, "")
+        # Query entities from ALL thread_ids used in the conversation
+        print(f"🔍 Querying entities from all conversation threads...")
+        stored_entities = {}
+        for tid in all_thread_ids:
+            if tid:
+                entities_from_thread = await self._query_stored_entities(user_id, tid, "")
+                if entities_from_thread:
+                    # Merge entities from this thread
+                    for entity_type, entity_list in entities_from_thread.items():
+                        if entity_type not in stored_entities:
+                            stored_entities[entity_type] = []
+                        stored_entities[entity_type].extend(entity_list)
+                        # Remove duplicates
+                        stored_entities[entity_type] = list(set(stored_entities[entity_type]))
         
         print(f"🔍 Total entities found: {len(stored_entities) if isinstance(stored_entities, dict) else 0} entity types")
         if stored_entities and isinstance(stored_entities, dict):

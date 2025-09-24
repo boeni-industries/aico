@@ -632,6 +632,13 @@ class MemoryIntelligenceEvaluator:
         session.end_time = datetime.now()
         session.thread_id = thread_id
         
+        # Collect all thread_ids used during the conversation for entity lookup
+        all_thread_ids = set()
+        for turn_log in session.conversation_log:
+            if turn_log.get("thread_id"):
+                all_thread_ids.add(turn_log["thread_id"])
+        session.all_thread_ids = list(all_thread_ids)
+        
         print(f"✅ Completed conversation scenario: {scenario.name}")
         return session
 
