@@ -561,38 +561,52 @@ class ModelserviceZMQHandlers:
             
             # Generate embedding using transformer model from TransformersManager
             try:
-                # Import here to avoid circular dependencies
-                import torch
-                import numpy as np
-                
-                # Get model components from TransformersManager
-                model_components = transformer_model
-                
-                if not hasattr(model_components, 'tokenizer') or not hasattr(model_components, 'model'):
+                # Check if this is a SentenceTransformer model (for paraphrase-multilingual)
+                if hasattr(transformer_model, 'encode'):
+                    # This is a SentenceTransformer model - use .encode() method
+                    self.logger.debug(f"Using SentenceTransformer.encode() for model {model}")
+                    embedding = transformer_model.encode(prompt)
+                    
+                    # Convert to list if it's a numpy array
+                    if hasattr(embedding, 'tolist'):
+                        embedding = embedding.tolist()
+                    
+                    response.embedding.extend(embedding)
+                    response.success = True
+                    
+                elif hasattr(transformer_model, 'tokenizer') and hasattr(transformer_model, 'model'):
+                    # This is a standard transformer model with tokenizer/model components
+                    self.logger.debug(f"Using standard transformer tokenizer/model for {model}")
+                    
+                    import torch
+                    import numpy as np
+                    
+                    tokenizer = transformer_model.tokenizer
+                    transformer = transformer_model.model
+                    
+                    # Tokenize and get embeddings
+                    inputs = tokenizer(
+                        prompt,
+                        return_tensors="pt",
+                        max_length=512,
+                        truncation=True,
+                        padding=True
+                    )
+                    
+                    with torch.no_grad():
+                        outputs = transformer(**inputs)
+                        # Use [CLS] token embedding (first token)
+                        embedding = outputs.last_hidden_state[:, 0, :].numpy().flatten()
+                    
+                    # Add embeddings to response
+                    response.embedding.extend(embedding.tolist())
+                    response.success = True
+                    
+                else:
                     response.success = False
-                    response.error = f"Model '{model}' not properly loaded"
+                    response.error = f"Model '{model}' type not supported for embeddings"
+                    self.logger.error(f"Model '{model}' does not have expected interface (encode() or tokenizer/model)")
                     return response
-                
-                tokenizer = model_components.tokenizer
-                transformer = model_components.model
-                
-                # Tokenize and get embeddings
-                inputs = tokenizer(
-                    prompt,
-                    return_tensors="pt",
-                    max_length=512,
-                    truncation=True,
-                    padding=True
-                )
-                
-                with torch.no_grad():
-                    outputs = transformer(**inputs)
-                    # Use [CLS] token embedding (first token)
-                    embedding = outputs.last_hidden_state[:, 0, :].numpy().flatten()
-                
-                # Add embeddings to response
-                response.embedding.extend(embedding.tolist())
-                response.success = True
                 
                 self.logger.info(
                     f"Generated transformer embeddings for model {model}",
