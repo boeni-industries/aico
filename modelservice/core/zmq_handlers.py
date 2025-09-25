@@ -47,16 +47,37 @@ class ModelserviceZMQHandlers:
         
         # SpaCy manager removed - using GLiNER via TransformersManager
         
-        # Initialize Transformers manager
-        from aico.core.config import ConfigurationManager
-        config_manager = ConfigurationManager()
-        self.transformers_manager = TransformersManager(config_manager)
+        # Initialize Transformers manager lazily (only when needed)
+        self.config_manager = None
+        self.transformers_manager = None
         
         self.logger.info("About to initialize NER system...")
         # Initialize GLiNER models asynchronously - will be done during startup
         self.ner_initialized = False
         self.transformers_initialized = False
         self.logger.info("ModelserviceZMQHandlers initialization complete")
+    
+    def get_transformer_model(self, model_name: str) -> Any:
+        """Get transformer model from TransformersManager.
+        
+        Args:
+            model_name: Name of the model to retrieve
+            
+        Returns:
+            Model instance or None if not available
+        """
+        try:
+            # Lazy initialization of TransformersManager
+            if self.transformers_manager is None:
+                from aico.core.config import ConfigurationManager
+                self.config_manager = ConfigurationManager()
+                self.transformers_manager = TransformersManager(self.config_manager)
+                
+            # Get the model from the transformers manager
+            return self.transformers_manager.get_model(model_name)
+        except Exception as e:
+            self.logger.error(f"Failed to get transformer model '{model_name}': {e}")
+            return None
     
     async def initialize_ner_system(self):
         """Initialize the NER system using GLiNER via TransformersManager."""
@@ -92,14 +113,53 @@ class ModelserviceZMQHandlers:
         try:
             self.logger.info("Starting Transformers system initialization...")
             
+            # Lazy initialization of TransformersManager
+            if self.transformers_manager is None:
+                from aico.core.config import ConfigurationManager
+                self.config_manager = ConfigurationManager()
+                self.transformers_manager = TransformersManager(self.config_manager)
+            
             # Initialize transformers models
             success = await self.transformers_manager.initialize_models()
             
             if success:
+                # Get all required models from the transformers manager
+                required_models = [
+                    config for config in self.transformers_manager.model_configs.values() 
+                    if config.required
+                ]
+                
+                loaded_models = []
+                failed_models = []
+                
+                # Check each required model
+                for model_config in required_models:
+                    model = self.transformers_manager.get_model(model_config.name)
+                    self.logger.debug(f"Checking model {model_config.name}: {model is not None}")
+                    if model is not None:
+                        self.logger.info(f"✅ {model_config.description} verified and ready")
+                        loaded_models.append(model_config.name)
+                    else:
+                        self.logger.warning(f"⚠️ {model_config.description} verification failed")
+                        failed_models.append(model_config.name)
+                
+                # Dynamic summary based on actual required models
+                loaded_count = len(loaded_models)
+                total_count = len(required_models)
+                
                 self.transformers_initialized = True
                 self.logger.info("✅ Transformers system initialized successfully")
+                print(f"✅ Transformers System Ready: {loaded_count}/{total_count} required models loaded")
+                
+                if loaded_count == total_count:
+                    print(f"🎯 All transformer models operational: {', '.join(loaded_models)}")
+                else:
+                    print(f"✅ Operational models: {', '.join(loaded_models)}")
+                    if failed_models:
+                        print(f"⚠️  Failed models: {', '.join(failed_models)} - some features may be limited")
             else:
                 self.logger.error("❌ Transformers system initialization failed")
+                print("❌ Transformers System Failed: Models not available")
                 
         except Exception as e:
             import traceback
@@ -482,12 +542,21 @@ class ModelserviceZMQHandlers:
                 response.success = False
                 response.error = "model and prompt are required"
                 return response
+                
+            # Ensure transformers system is initialized
+            if not self.transformers_initialized:
+                self.logger.info(f"Initializing transformers system for embeddings request (model={model})...")
+                await self.initialize_transformers_system()
             
             # Use TransformersManager for all transformer models
+            self.logger.debug(f"Getting transformer model: {model}")
             transformer_model = self.get_transformer_model(model)
+            self.logger.debug(f"Transformer model result: {transformer_model is not None}")
+            
             if transformer_model is None:
                 response.success = False
                 response.error = f"Transformer model '{model}' not available"
+                self.logger.error(f"Transformer model '{model}' not available")
                 return response
             
             # Generate embedding using transformer model from TransformersManager
@@ -692,7 +761,19 @@ class ModelserviceZMQHandlers:
             
             # Extract sentiment and confidence
             if result and len(result) > 0:
-                sentiment_result = result[0]
+                # Handle different result formats
+                if isinstance(result, list) and isinstance(result[0], list):
+                    # Format: [[{'label': '3 stars', 'score': 0.268}]]
+                    sentiment_result = result[0][0]
+                elif isinstance(result, list) and isinstance(result[0], dict):
+                    # Format: [{'label': '3 stars', 'score': 0.268}]
+                    sentiment_result = result[0]
+                else:
+                    self.logger.error(f"🔍 [SENTIMENT_HANDLER_DEBUG] ❌ Unexpected result format: {type(result)}")
+                    response.success = False
+                    response.error = f"Unexpected result format: {type(result)}"
+                    return response
+                    
                 label = sentiment_result['label'].lower()
                 confidence = sentiment_result['score']
                 
@@ -742,6 +823,17 @@ class ModelserviceZMQHandlers:
         """Handle intent classification requests via AICO AI processor."""
         try:
             self.logger.info("🔍 [INTENT_HANDLER] Intent classification request received")
+            
+            # Ensure transformers system is initialized
+            if not self.transformers_initialized:
+                self.logger.info("🔍 [INTENT_HANDLER] Initializing transformers system...")
+                await self.initialize_transformers_system()
+            
+            # Verify intent classification model is available
+            intent_model = self.get_transformer_model("intent_classification")
+            if intent_model is None:
+                self.logger.error("❌ [INTENT_HANDLER] Intent classification model not available")
+                raise Exception("Intent classification model not available")
             
             # Import and get the intent handler
             from modelservice.handlers.intent_classification_handler import get_intent_classification_handler

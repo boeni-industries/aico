@@ -49,9 +49,10 @@ cli = [
 ]
 
 modelservice = [
-    "transformers==4.50.3",  # Sentiment analysis with multilingual BERT (fixed version)
-    "torch>=1.12.0",  # Required by transformers for model inference
-    "gliner>=0.2.22",  # Advanced entity extraction for fact extraction
+    "transformers==4.50.3", # Sentiment analysis with multilingual BERT (fixed version)
+    "torch>=1.12.0", # Required by transformers for model inference
+    "gliner>=0.2.22", # Advanced entity extraction for fact extraction
+    "sentence-transformers>=5.1.1", # Multilingual embeddings for semantic memory
 ]
 
 test = [

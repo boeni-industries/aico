@@ -59,69 +59,35 @@ message_bus:
 api_gateway:
   enabled: true
   host: "127.0.0.1"
+  port: 8771  # Used by modelservice for backend health checks
   
-  # Main REST API configuration (handled by FastAPI backend)
+  # Main REST API configuration
   rest:
     port: 8771
     host: "127.0.0.1"
 
   # Protocol adapters
   protocols:
-    # REST endpoints handled by main FastAPI backend - no separate adapter needed
-    
     websocket:
       enabled: true
       port: 8772
       path: "/ws"
-      heartbeat_interval: 30
-      max_connections: 1000
     
     zeromq_ipc:
-      enabled: true  # Can be disabled for external-only deployments
-      
-    grpc:
-      enabled: false  # Optional protocol, disabled by default
-      port: 8774
+      enabled: true
   
-  # Authentication (both JWT and API key supported simultaneously)
+  # Authentication
   auth:
     jwt:
       algorithm: "HS256"
       expiry_hours: 24
-    api_key:
-      header_name: "X-API-Key"
     session:
       cookie_name: "aico_session"
       timeout_minutes: 1440  # 24 hours
   
-  # Input security
-  input_security:
-    max_request_size: 10485760  # 10MB
-    allowed_ips: []
-    blocked_ips: []
-  
   # Rate limiting
   rate_limiting:
     default_requests_per_minute: 100
-    burst_size: 20
-    cleanup_interval_minutes: 5
-    
-  # Log cleanup scheduling
-  log_cleanup:
-    cleanup_interval_hours: 24
-  
-  # Transport priority for client negotiation
-  transport:
-    priority:
-      - "zeromq_ipc"
-      - "websocket"
-      - "rest"
-  
-  # Message routing
-  routing:
-    timeout_seconds: 30
-    retry_attempts: 3
-    correlation_cleanup_minutes: 60
   
   # Plugin configuration
   plugins:
@@ -129,24 +95,13 @@ api_gateway:
       enabled: true
     log_consumer:
       enabled: true
-    encryption:
+    validation:
       enabled: true
     security:
       enabled: true
     rate_limiting:
       enabled: true
-    validation:
-      enabled: true
-    routing:
-      enabled: true
-    # AI Processing Plugins for Conversation Engine
-    embodiment:
-      enabled: true
-    agency:
-      enabled: true
-    emotion:
-      enabled: true
-    personality:
+    encryption:
       enabled: true
 
 # Modelservice configuration
@@ -160,18 +115,13 @@ modelservice:
     - "http://127.0.0.1:3000"
   # Ollama server configuration
   ollama:
-    # Connection settings
+    # Connection settings - used by OllamaManager.is_running()
     host: "127.0.0.1"
     port: 11434
-    url: "http://127.0.0.1:11434"
     
-    # Auto-management settings
+    # Auto-management settings - used by OllamaManager
     auto_install: true  # Automatically install Ollama binary if missing
     auto_start: true    # Start Ollama server with modelservice
-    auto_update: true   # Check for Ollama updates weekly
-    
-    # Model persistence settings
-    keep_alive: -1      # Keep models in memory indefinitely (-1) or specify seconds
     
     # Default models by capability role
     default_models:
@@ -181,21 +131,16 @@ modelservice:
         auto_pull: true
         priority: 1
       embedding:
-        name: "paraphrase-multilingual"
-        description: "Multilingual embedding model for semantic memory (Phase 2)"
-        auto_pull: true
+        name: "paraphrase-multilingual"  # Referenced by CLI tools and semantic memory
+        description: "Multilingual embedding model for semantic memory (via TransformersManager)"
+        auto_pull: false  # Not using Ollama for embeddings, using transformers instead
         priority: 1
-        dimensions: 768
+        dimensions: 768  # Used for ChromaDB collection creation
       vision:
         name: "llama3.2-vision:11b"
         description: "Scene understanding and emotional context"
         auto_pull: false
         priority: 2
-      vision_extended:
-        name: "qwen2.5-vl:7b"
-        description: "Advanced vision - OCR, documents, and object detection"
-        auto_pull: false
-        priority: 3
       lightweight:
         name: "llama3.2:1b"
         description: "Ultra-fast model for simple tasks"
@@ -213,38 +158,11 @@ modelservice:
     
     # Resource management
     resources:
-      # Unload models after inactivity to free memory
       auto_unload_minutes: 30
-      # Maximum concurrent model instances
       max_concurrent_models: 2
-      # Memory threshold to start unloading models (percentage)
       memory_threshold_percent: 85
-    
-    # Update and maintenance
-    updates:
-      check_interval_hours: 168  # Weekly (7 * 24)
-      auto_update_binary: true
-      backup_models_before_update: true
   
-  # spaCy NER (Named Entity Recognition) configuration
-  spacy:
-    # Auto-management settings
-    auto_install: true  # Automatically install spaCy models if missing
-    
-    # Language models to install and load
-    # Models are downloaded from GitHub releases using UV-compatible methods
-    languages:
-      - "en"  # English (required) - en_core_web_sm
-      - "de"  # German (optional) - de_core_news_sm
-      - "fr"  # French (optional) - fr_core_news_sm
-      - "es"  # Spanish (optional) - es_core_news_sm
-      - "it"  # Italian (optional) - it_core_news_sm
-    
-    # Model download settings
-    download:
-      timeout_seconds: 300  # 5 minutes timeout for model downloads
-      retry_attempts: 3
-      use_direct_urls: true  # Use GitHub release URLs for better UV compatibility
+  # Entity extraction is now handled by GLiNER via the transformers system
   
   # Hugging Face Transformers configuration
   transformers:
@@ -253,20 +171,22 @@ modelservice:
     max_concurrent_models: 3  # Maximum number of models loaded simultaneously
     auto_unload: true  # Automatically unload models when memory is low
     
-    # Model configurations (can override defaults)
+    # Model configurations (can override defaults in TransformersManager)
     models:
-      sentiment_multilingual:
-        required: true
-        priority: 1
-        memory_mb: 500
-      sentiment_english:
-        required: false
-        priority: 2
-        memory_mb: 400
-      emotion_analysis:
-        required: false
-        priority: 3
-        memory_mb: 300
+      # Only override default configurations when needed
+      # The default configurations are defined in modelservice/core/transformers_manager.py
+      
+      # Override model_id for entity extraction if needed
+      entity_extraction:
+        model_id: "urchade/gliner_medium-v2.1"
+        
+      # Override model_id for intent classification if needed
+      intent_classification:
+        model_id: "xlm-roberta-base"
+        
+      # Override model_id for embedding model if needed
+      paraphrase-multilingual:
+        model_id: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 
 # Task Scheduler configuration
 scheduler:
@@ -275,10 +195,7 @@ scheduler:
   max_cpu_percent: 80
   max_memory_percent: 80
   scheduler_interval: 1.0  # seconds
-  default_retry_count: 3
-  default_retry_delay: 60  # seconds
-  max_retry_delay: 3600   # 1 hour
-  resource_check_interval: 30  # seconds
+  task_timeout: 3600  # 1 hour
   idle_threshold_cpu: 20      # percent
   idle_threshold_memory: 70   # percent
 
@@ -287,7 +204,6 @@ user_profiles:
   default_user_type: "person"
 
 # Service Authentication Configuration
-# For automated service-to-service authentication (not user-based)
 service_auth:
   # Default settings for all service tokens
   defaults:
@@ -296,65 +212,47 @@ service_auth:
     require_component_identity: true
     validate_audience: true
     validate_expiry: true
-
+  
   # Service permissions for API Gateway access
-  # Note: All permissions relate to API Gateway endpoints
   services:
     modelservice:
       - "logs:write"
       - "health:read"
+    frontend:
+      - "logs:write"
+      - "conversation:read"
+      - "conversation:write"
+    cli:
+      - "admin:read"
+      - "admin:write"
+      - "logs:read"
+      - "system:read"
+    studio:
+      - "logs:write"
+      - "system:read"
+      - "admin:read"
 
 # Conversation Engine Configuration
 conversation:
-  max_context_messages: 20
+  max_context_messages: 10
   response_timeout_seconds: 30.0
-  default_response_mode: "multimodal"  # text-only, multimodal, proactive
+  default_response_mode: "text_only"  # Valid values: text_only, multimodal
   
   # Feature flags for AI components
   features:
-    enable_emotion_integration: false # TODO: Enable when implemented
-    enable_personality_integration: false # TODO: Enable when implemented
+    enable_emotion_integration: false
+    enable_personality_integration: false
     enable_memory_integration: true
-    enable_embodiment: false # TODO: Enable when implemented
-    enable_agency: false # TODO: Enable when implemented
+    enable_embodiment: false
+    enable_agency: false
 
-# Embodiment Engine Configuration
-embodiment:
-  enable_avatar_system: true
-  enable_voice_synthesis: true
-  enable_cross_device_sync: true
-  default_voice_model: "default"
-  avatar_response_timeout_seconds: 10.0
-
-# Agency Engine Configuration
-agency:
-  enable_proactive_engagement: true
-  enable_autonomous_learning: true
-  enable_goal_generation: true
-  proactive_check_interval_minutes: 30
-  max_active_goals: 5
-
-# Emotion Engine Configuration
-emotion:
-  enable_appraisal_processing: true
-  enable_crisis_detection: true
-  emotion_decay_rate: 0.1
-  crisis_threshold: 0.8
-  max_emotion_history: 50
-
-# Personality Engine Configuration
-personality:
-  enable_trait_evolution: true
-  enable_context_adaptation: true
-  evolution_learning_rate: 0.01
-  consistency_weight: 0.7
-  adaptation_weight: 0.3
+# These features will be implemented in future versions
+# For now, we keep the configuration lean and focused on what's actually used
 
 # Memory System Configuration
 memory:
   # Working Memory (LMDB) - Session context and conversation history
   working:
-    map_size_mb: 100 # Default LMDB map size
     ttl_seconds: 86400 # 24 hours TTL for conversation continuity
     # Named databases (sub-databases) within the LMDB environment
     named_databases:
@@ -364,14 +262,11 @@ memory:
   
   # Semantic Memory (ChromaDB) - Dual collection architecture for comprehensive memory
   semantic:
-    enabled: true  # Enable semantic memory for Phase 2
+    enabled: true  # Enable semantic memory
     # Dual collection architecture for different memory types
     collections:
       user_facts: "user_facts"                    # Personal info, preferences, relationships
       conversation_segments: "conversation_segments"  # Processed conversation chunks with NER/sentiment
-    # Embedding model configuration references core.modelservice.ollama.default_models.embedding
-    max_results: 20
-    confidence_threshold: 0.8
-    fact_retention_days: 365  # Long-term storage for user facts
-    segment_retention_days: 90   # Medium-term storage for conversation segments
-    supported_languages: ["en", "de", "es", "it", "fr"]
+    # Embedding model configuration
+    embedding_model: "paraphrase-multilingual"  # Uses transformers model
+    max_results: 20  # Maximum number of results to return from queries

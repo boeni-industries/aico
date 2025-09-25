@@ -11,7 +11,7 @@ Available processors:
 """
 
 from .conversation_processor import ConversationSegmentProcessor
-from .fact_extractor import FactExtractor
+from .fact_extractor import AdvancedFactExtractor as FactExtractor
 from .intent_classifier import IntentClassificationProcessor, get_intent_classifier
 
 __all__ = [

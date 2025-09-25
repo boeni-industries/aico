@@ -120,6 +120,16 @@ class TransformersManager:
             description="Multilingual intent classification using XLM-RoBERTa",
             multilingual=True,
             memory_mb=600
+        ),
+        "paraphrase-multilingual": TransformerModelConfig(
+            name="paraphrase-multilingual",
+            model_id="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+            task=ModelTask.TEXT_CLASSIFICATION,
+            priority=1,
+            required=True,
+            description="Multilingual sentence embeddings for semantic memory",
+            multilingual=True,
+            memory_mb=500
         )
     }
     
@@ -368,7 +378,13 @@ class TransformersManager:
             # Load GLiNER model specifically
             try:
                 if model_name not in self.loaded_models:
-                    from gliner import GLiNER
+                    try:
+                        from gliner import GLiNER
+                    except ImportError as e:
+                        self.logger.warning(f"GLiNER package not available: {e}")
+                        # Return None instead of dummy model - let the caller handle it
+                        return None
+                        
                     print(f"🔍 Loading GLiNER model for advanced entity extraction...")
                     self.logger.info(f"Loading GLiNER model for entity extraction...")
                     model = GLiNER.from_pretrained("urchade/gliner_medium-v2.1")
@@ -386,7 +402,13 @@ class TransformersManager:
             # Load XLM-RoBERTa model for intent classification
             try:
                 if model_name not in self.loaded_models:
-                    from transformers import AutoTokenizer, AutoModel
+                    try:
+                        from transformers import AutoTokenizer, AutoModel
+                    except ImportError as e:
+                        self.logger.warning(f"transformers package not available: {e}")
+                        # Return None instead of dummy model - let the caller handle it
+                        return None
+                        
                     from dataclasses import dataclass
                     
                     print(f"🔍 Loading XLM-RoBERTa model for intent classification...")
@@ -414,7 +436,66 @@ class TransformersManager:
                 self.logger.error(f"Failed to load XLM-RoBERTa model: {e}")
                 return None
         
-        # For other models, return from loaded_models cache
+        elif model_name == "paraphrase-multilingual":
+            # Load sentence-transformers model for embeddings
+            try:
+                if model_name not in self.loaded_models:
+                    try:
+                        from sentence_transformers import SentenceTransformer
+                    except ImportError as e:
+                        self.logger.error(f"sentence-transformers package not available: {e}")
+                        print(f"❌ sentence-transformers package missing - install with: pip install sentence-transformers")
+                        return None
+                    
+                    print(f"🔍 Loading sentence-transformers model for embeddings...")
+                    self.logger.info(f"Loading sentence-transformers model for embeddings...")
+                    
+                    # Load model
+                    model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-mpnet-base-v2")
+                    self.loaded_models[model_name] = model
+                    
+                    print(f"✅ sentence-transformers embedding model ready")
+                    self.logger.info(f"✅ sentence-transformers model loaded successfully")
+                
+                return self.loaded_models[model_name]
+                
+            except Exception as e:
+                self.logger.error(f"Failed to load sentence-transformers model: {e}")
+                print(f"❌ sentence-transformers model loading failed: {e}")
+                import traceback
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
+                return None
+        
+        # For other models that were downloaded during initialize_models but don't have specific loaders
+        # Check if the model was successfully downloaded and create a basic pipeline
+        if model_name in self.model_configs:
+            model_config = self.model_configs[model_name]
+            try:
+                if model_name not in self.loaded_models:
+                    try:
+                        from transformers import pipeline
+                    except ImportError as e:
+                        self.logger.warning(f"transformers package not available for {model_name}: {e}")
+                        return None
+                    
+                    self.logger.info(f"Loading pipeline for {model_name}: {model_config.model_id}")
+                    
+                    # Create pipeline based on task type
+                    pipe = pipeline(
+                        model_config.task.value,
+                        model=model_config.model_id,
+                        **model_config.config_overrides
+                    )
+                    self.loaded_models[model_name] = pipe
+                    self.logger.info(f"✅ Pipeline loaded for {model_name}")
+                
+                return self.loaded_models[model_name]
+                
+            except Exception as e:
+                self.logger.error(f"Failed to load pipeline for {model_name}: {e}")
+                return None
+        
+        # For models not in config, return from loaded_models cache
         return self.loaded_models.get(model_name)
     
     def get_model_info(self) -> Dict[str, Any]:

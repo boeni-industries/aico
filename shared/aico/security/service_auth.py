@@ -68,17 +68,45 @@ class ServiceAuthManager:
         self.identity_manager = identity_manager
         self.logger = get_logger("shared", "security.service_auth")
         
-        # Service permissions mapping
-        self.service_permissions = {
+        # Get configuration manager
+        from aico.core.config import ConfigurationManager
+        self.config = ConfigurationManager()
+        
+        # Load service permissions from configuration
+        self.service_permissions = self._load_service_permissions()
+        
+    def _load_service_permissions(self) -> Dict[str, List[str]]:
+        """Load service permissions from configuration"""
+        # Default permissions as fallback
+        default_permissions = {
             "modelservice": ["logs:write", "health:read"],
             "frontend": ["logs:write", "conversation:read", "conversation:write"],
             "cli": ["admin:read", "admin:write", "logs:read", "system:read"],
             "studio": ["logs:write", "system:read", "admin:read"]
         }
+        
+        try:
+            # Get permissions from configuration
+            config_permissions = self.config.get("service_auth.services", {})
+            
+            # If configuration exists, use it; otherwise use defaults
+            if config_permissions:
+                self.logger.info("Loaded service permissions from configuration")
+                return config_permissions
+            else:
+                self.logger.info("Using default service permissions (configuration not found)")
+                return default_permissions
+                
+        except Exception as e:
+            self.logger.error(f"Failed to load service permissions from configuration: {e}")
+            return default_permissions
     
     def generate_service_token(self, service_name: str, target_service: str = "api-gateway", 
-                             validity_hours: int = 8760) -> str:  # 1 year default
+                             validity_hours: int = None) -> str:
         """Generate service identity token"""
+        # Get token validity from configuration or use default
+        if validity_hours is None:
+            validity_hours = self.config.get("service_auth.defaults.token_validity_hours", 8760)  # 1 year default
         try:
             # Get component identity for signing
             identity = self.identity_manager.get_component_identity(service_name)
@@ -152,13 +180,26 @@ class ServiceAuthManager:
             verify_key_bytes = bytes(identity.verify_key)
             crypto_public_key = Ed25519PublicKey.from_public_bytes(verify_key_bytes)
             
+            # Get validation settings from configuration
+            issuer = self.config.get("service_auth.defaults.issuer", "aico-system")
+            validate_audience = self.config.get("service_auth.defaults.validate_audience", True)
+            validate_expiry = self.config.get("service_auth.defaults.validate_expiry", True)
+            
+            # Prepare JWT decode options
+            options = {
+                "verify_signature": True,
+                "verify_aud": validate_audience,
+                "verify_exp": validate_expiry
+            }
+            
             # Verify JWT signature
             claims = jwt.decode(
                 token,
                 crypto_public_key,
                 algorithms=["EdDSA"],
-                audience="api-gateway",
-                issuer="aico-system"
+                audience="api-gateway" if validate_audience else None,
+                issuer=issuer,
+                options=options
             )
             
             # Create service token from claims
@@ -168,8 +209,9 @@ class ServiceAuthManager:
             if expected_service and service_token.service_name != expected_service:
                 raise EncryptionError(f"Token service mismatch: expected {expected_service}, got {service_token.service_name}")
             
-            # Check component ID matches
-            if service_token.component_id != bytes(identity.verify_key).hex()[:16]:
+            # Check component ID matches if required by configuration
+            require_component_identity = self.config.get("service_auth.defaults.require_component_identity", True)
+            if require_component_identity and service_token.component_id != bytes(identity.verify_key).hex()[:16]:
                 raise EncryptionError("Component ID mismatch")
             
             self.logger.info("Service authentication successful", extra={

@@ -278,7 +278,7 @@ async def send_message_to_thread(
 async def get_thread(
     thread_id: str,
     current_user = Depends(get_current_user),
-    thread_manager = Depends(get_thread_manager)
+    thread_manager = Depends(get_aico_thread_manager)
 ):
     """Get thread metadata and status"""
     try:
