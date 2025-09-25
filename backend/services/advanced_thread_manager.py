@@ -212,8 +212,10 @@ class AdvancedThreadManager:
             # Get message embedding
             embedding = await self._get_message_embedding(message)
             
-            # Detect intent
-            intent = await self._classify_intent(message)
+            # Detect intent with context
+            user_id = context.get('user_id') if context else None
+            conversation_context = context.get('conversation_context', []) if context else []
+            intent = await self._classify_intent(message, user_id, conversation_context)
             
             # Extract entities (use existing AICO NER)
             entities = await self._extract_entities(message)
@@ -226,12 +228,13 @@ class AdvancedThreadManager:
             
             return ConversationAnalysis(
                 message_embedding=embedding,
-                detected_intent=intent,
+                detected_intent=intent['predicted_intent'],
                 topic_shift_score=topic_shift_score,
                 entities=entities,
                 conversation_boundary_score=boundary_score,
                 urgency_score=urgency_score,
-                context_dependency_score=context_dependency
+                context_dependency_score=context_dependency,
+                intent=intent  # Store full intent data
             )
             
         except Exception as e:
@@ -540,71 +543,246 @@ class AdvancedThreadManager:
         thread_context: ThreadContext
     ) -> float:
         """Calculate how well the message fits the conversation flow"""
-        # This is a placeholder for more sophisticated flow analysis
-        # Could analyze question-answer patterns, topic progression, etc.
-        return 0.5
+        try:
+            flow_score = 0.0
+            
+            # Check intent consistency
+            if hasattr(analysis, 'intent') and hasattr(thread_context, 'recent_intents'):
+                current_intent = analysis.intent.get('predicted_intent', 'general')
+                recent_intents = thread_context.recent_intents[-3:]  # Last 3 intents
+                
+                if recent_intents:
+                    # Check for natural conversation flow patterns
+                    if current_intent == 'greeting' and 'farewell' in recent_intents:
+                        flow_score += 0.3  # New conversation after farewell
+                    elif current_intent == 'question' and 'greeting' in recent_intents:
+                        flow_score += 0.4  # Question after greeting is natural
+                    elif current_intent == 'confirmation' and 'question' in recent_intents:
+                        flow_score += 0.5  # Confirmation after question is very natural
+                    elif current_intent in recent_intents:
+                        flow_score += 0.3  # Same intent type continues
+                    else:
+                        flow_score += 0.2  # Different intent, moderate flow
+                else:
+                    flow_score += 0.3  # No previous context
+            
+            # Check entity continuity
+            if hasattr(analysis, 'entities') and hasattr(thread_context, 'recent_entities'):
+                current_entities = set()
+                for entity_list in analysis.entities.values():
+                    current_entities.update(entity_list)
+                
+                recent_entities = set()
+                for entity_dict in thread_context.recent_entities[-3:]:
+                    for entity_list in entity_dict.values():
+                        recent_entities.update(entity_list)
+                
+                # Calculate entity overlap
+                if recent_entities:
+                    overlap = len(current_entities.intersection(recent_entities))
+                    total = len(current_entities.union(recent_entities))
+                    if total > 0:
+                        entity_continuity = overlap / total
+                        flow_score += entity_continuity * 0.3
+            
+            return min(flow_score, 1.0)
+            
+        except Exception as e:
+            logger.error(f"[ADVANCED_THREAD_MANAGER] Conversation flow calculation failed: {e}")
+            return 0.5
 
-    # Service initialization methods (simplified for brevity)
+    # Service initialization methods
     async def _initialize_embedding_service(self):
-        """Initialize embedding service"""
-        # Use existing AICO modelservice
-        pass
+        """Initialize embedding service using ModelService"""
+        try:
+            from backend.services.modelservice_client import ModelserviceClient
+            self._modelservice_client = ModelserviceClient()
+            
+            # Test connection
+            health_response = await self._modelservice_client.get_health()
+            if not health_response.get('success'):
+                raise Exception("ModelService not available")
+                
+            logger.info("[ADVANCED_THREAD_MANAGER] ✅ Embedding service initialized")
+            
+        except Exception as e:
+            logger.error(f"[ADVANCED_THREAD_MANAGER] Failed to initialize embedding service: {e}")
+            raise
 
     async def _initialize_intent_classifier(self):
-        """Initialize intent classifier"""
-        # Could use existing NER or add dedicated intent classification
-        pass
+        """Initialize sophisticated intent classifier"""
+        try:
+            from shared.aico.ai.analysis.intent_classifier import get_intent_classifier
+            
+            # Get the sophisticated AI processor we built
+            self._intent_processor = await get_intent_classifier()
+            
+            # Verify it's healthy
+            is_healthy = await self._intent_processor.health_check()
+            if not is_healthy:
+                raise Exception("Intent classifier not healthy")
+                
+            logger.info("[ADVANCED_THREAD_MANAGER] ✅ Sophisticated intent classifier initialized")
+            
+        except Exception as e:
+            logger.error(f"[ADVANCED_THREAD_MANAGER] Failed to initialize intent classifier: {e}")
+            raise
 
     async def _initialize_working_store(self):
         """Initialize working store connection"""
-        # Use existing AICO working memory
-        pass
+        try:
+            # Initialize conversation history storage
+            self._conversation_history = {}  # user_id -> List[messages]
+            self._thread_embeddings = {}     # thread_id -> List[embeddings]
+            self._thread_intents = {}        # thread_id -> List[intents]
+            
+            logger.info("[ADVANCED_THREAD_MANAGER] ✅ Working store initialized")
+            
+        except Exception as e:
+            logger.error(f"[ADVANCED_THREAD_MANAGER] Failed to initialize working store: {e}")
+            raise
 
     async def _get_message_embedding(self, message: str) -> np.ndarray:
-        """Get embedding for message"""
-        # Use existing AICO embedding service
-        return np.random.random(768)  # Placeholder
-
-    async def _classify_intent(self, message: str) -> str:
-        """Classify message intent using AICO's AI processing architecture"""
+        """Get embedding for message using ModelService"""
         try:
-            # Import here to avoid circular dependencies
-            from shared.aico.ai.analysis.intent_classifier import get_intent_classifier
-            from shared.aico.ai.base import ProcessingContext
+            # Use initialized ModelService client
+            if not hasattr(self, '_modelservice_client'):
+                await self._initialize_embedding_service()
             
-            # Get the AI processor
-            processor = await get_intent_classifier()
+            # Request embedding from ModelService
+            response = await self._modelservice_client.get_embeddings(
+                model="intent_classification",  # Use same model as intent classifier
+                prompt=message
+            )
+            
+            if response.get('success') and response.get('data', {}).get('embedding'):
+                embedding = np.array(response['data']['embedding'])
+                return embedding
+            else:
+                logger.warning(f"[ADVANCED_THREAD_MANAGER] Failed to get embedding: {response.get('error')}")
+                # Return zero vector as fallback
+                return np.zeros(768)
+                
+        except Exception as e:
+            logger.error(f"[ADVANCED_THREAD_MANAGER] Embedding request failed: {e}")
+            # Return zero vector as fallback
+            return np.zeros(768)
+
+    async def _classify_intent(self, message: str, user_id: Optional[str] = None, conversation_context: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Classify message intent using our sophisticated AI processor"""
+        try:
+            # Use initialized intent processor
+            if not hasattr(self, '_intent_processor'):
+                await self._initialize_intent_classifier()
+            
+            from shared.aico.ai.base import ProcessingContext
             
             # Create processing context following AICO patterns
             processing_context = ProcessingContext(
                 thread_id="intent_classification",
-                user_id="anonymous",
+                user_id=user_id or "anonymous",
                 request_id=f"intent_{hash(message)}",
-                message_content=message
+                message_content=message,
+                shared_state={
+                    'conversation_context': conversation_context or [],
+                    'recent_intents': self._get_recent_intents(user_id) if user_id else []
+                }
             )
             
-            # Process using AI processor
-            result = await processor.process(processing_context)
+            # Process using our sophisticated AI processor
+            result = await self._intent_processor.process(processing_context)
             
             if result.success:
-                return result.data.get("predicted_intent", "general")
+                intent_data = {
+                    'predicted_intent': result.data.get("predicted_intent", "general"),
+                    'confidence': result.data.get("confidence", 0.0),
+                    'detected_language': result.data.get("detected_language", "unknown"),
+                    'alternatives': result.data.get("alternatives", []),
+                    'processing_time_ms': result.processing_time_ms
+                }
+                
+                # Store intent for context
+                if user_id:
+                    self._store_intent_history(user_id, intent_data)
+                
+                return intent_data
             else:
                 logger.warning(f"[ADVANCED_THREAD_MANAGER] Intent classification failed: {result.error}")
-                return "general"
+                return {
+                    'predicted_intent': 'general',
+                    'confidence': 0.0,
+                    'detected_language': 'unknown',
+                    'alternatives': [],
+                    'processing_time_ms': 0.0
+                }
                 
         except Exception as e:
             logger.error(f"[ADVANCED_THREAD_MANAGER] Intent classification error: {e}")
-            return "general"
+            return {
+                'predicted_intent': 'general',
+                'confidence': 0.0,
+                'detected_language': 'unknown',
+                'alternatives': [],
+                'processing_time_ms': 0.0
+            }
 
     async def _extract_entities(self, message: str) -> Dict[str, List[str]]:
-        """Extract entities from message"""
-        # Use existing AICO NER
-        return {}
+        """Extract entities from message using ModelService NER"""
+        try:
+            # Use initialized ModelService client
+            if not hasattr(self, '_modelservice_client'):
+                await self._initialize_embedding_service()
+            
+            # Request entity extraction from ModelService
+            response = await self._modelservice_client.get_ner_entities(text=message)
+            
+            if response.get('success') and response.get('data', {}).get('entities'):
+                return response['data']['entities']
+            else:
+                logger.warning(f"[ADVANCED_THREAD_MANAGER] Failed to extract entities: {response.get('error')}")
+                return {}
+                
+        except Exception as e:
+            logger.error(f"[ADVANCED_THREAD_MANAGER] Entity extraction failed: {e}")
+            return {}
 
-    async def _calculate_topic_shift_score(self, message: str, embedding: np.ndarray) -> float:
-        """Calculate topic shift score"""
-        # Placeholder for topic shift detection
-        return 0.0
+    async def _calculate_topic_shift_score(self, message: str, embedding: np.ndarray, thread_id: Optional[str] = None) -> float:
+        """Calculate topic shift score using semantic similarity"""
+        try:
+            if not thread_id or thread_id not in self._thread_embeddings:
+                # No previous context, assume new topic
+                return 0.8
+            
+            # Get recent embeddings from this thread
+            recent_embeddings = self._thread_embeddings[thread_id][-5:]  # Last 5 messages
+            
+            if not recent_embeddings:
+                return 0.8
+            
+            # Calculate cosine similarity with recent messages
+            similarities = []
+            for prev_embedding in recent_embeddings:
+                similarity = self._cosine_similarity(embedding, prev_embedding)
+                similarities.append(similarity)
+            
+            # Average similarity with recent messages
+            avg_similarity = np.mean(similarities)
+            
+            # Convert similarity to topic shift score (inverse relationship)
+            # High similarity = low topic shift, Low similarity = high topic shift
+            topic_shift_score = 1.0 - avg_similarity
+            
+            # Apply threshold - if similarity is very low, it's definitely a topic shift
+            if avg_similarity < 0.3:
+                topic_shift_score = 0.9
+            elif avg_similarity > 0.8:
+                topic_shift_score = 0.1
+            
+            return float(np.clip(topic_shift_score, 0.0, 1.0))
+            
+        except Exception as e:
+            logger.error(f"[ADVANCED_THREAD_MANAGER] Topic shift calculation failed: {e}")
+            return 0.5  # Moderate uncertainty
 
     async def _calculate_conversation_boundary_score(self, message: str) -> float:
         """Calculate conversation boundary score"""
@@ -620,9 +798,23 @@ class AdvancedThreadManager:
         return 0.0
 
     async def _calculate_urgency_score(self, message: str) -> float:
-        """Calculate message urgency score"""
-        # Placeholder for urgency detection
-        return 0.5
+        """Calculate message urgency score using semantic analysis"""
+        try:
+            # Detect urgency indicators
+            urgent_keywords = ["urgent", "emergency", "asap", "immediately", "critical", "help", "problem", "error", "broken"]
+            message_lower = message.lower()
+            
+            urgency_score = 0.0
+            for keyword in urgent_keywords:
+                if keyword in message_lower:
+                    urgency_score += 0.2
+            
+            # Cap at 1.0
+            return min(urgency_score, 1.0)
+            
+        except Exception as e:
+            logger.error(f"[ADVANCED_THREAD_MANAGER] Urgency calculation failed: {e}")
+            return 0.5
 
     async def _calculate_context_dependency(self, message: str) -> float:
         """Calculate how much the message depends on previous context"""
@@ -632,15 +824,126 @@ class AdvancedThreadManager:
         dependency_count = sum(1 for dep in dependencies if dep in message_lower)
         return min(dependency_count / 5.0, 1.0)
 
+    def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
+        """Calculate cosine similarity between two vectors"""
+        try:
+            dot_product = np.dot(a, b)
+            norm_a = np.linalg.norm(a)
+            norm_b = np.linalg.norm(b)
+            
+            if norm_a == 0 or norm_b == 0:
+                return 0.0
+            
+            return float(dot_product / (norm_a * norm_b))
+        except Exception as e:
+            logger.error(f"[ADVANCED_THREAD_MANAGER] Cosine similarity calculation failed: {e}")
+            return 0.0
+
+    def _get_recent_intents(self, user_id: str) -> List[str]:
+        """Get recent intents for user context"""
+        if user_id not in self._conversation_history:
+            return []
+        
+        # Get last 5 intents from conversation history
+        recent_messages = self._conversation_history[user_id][-5:]
+        return [msg.get('intent', 'general') for msg in recent_messages if 'intent' in msg]
+
+    def _store_intent_history(self, user_id: str, intent_data: Dict[str, Any]):
+        """Store intent data for future context"""
+        if user_id not in self._conversation_history:
+            self._conversation_history[user_id] = []
+        
+        # Add intent to conversation history
+        self._conversation_history[user_id].append({
+            'timestamp': datetime.now(),
+            'intent': intent_data['predicted_intent'],
+            'confidence': intent_data['confidence'],
+            'language': intent_data['detected_language']
+        })
+        
+        # Keep only last 50 messages
+        if len(self._conversation_history[user_id]) > 50:
+            self._conversation_history[user_id] = self._conversation_history[user_id][-50:]
+
+    def _store_thread_embedding(self, thread_id: str, embedding: np.ndarray):
+        """Store embedding for thread context"""
+        if thread_id not in self._thread_embeddings:
+            self._thread_embeddings[thread_id] = []
+        
+        self._thread_embeddings[thread_id].append(embedding)
+        
+        # Keep only last 20 embeddings per thread
+        if len(self._thread_embeddings[thread_id]) > 20:
+            self._thread_embeddings[thread_id] = self._thread_embeddings[thread_id][-20:]
+
+    def _store_thread_intent(self, thread_id: str, intent_data: Dict[str, Any]):
+        """Store intent data for thread context"""
+        if thread_id not in self._thread_intents:
+            self._thread_intents[thread_id] = []
+        
+        self._thread_intents[thread_id].append({
+            'timestamp': datetime.now(),
+            'intent': intent_data['predicted_intent'],
+            'confidence': intent_data['confidence']
+        })
+        
+        # Keep only last 10 intents per thread
+        if len(self._thread_intents[thread_id]) > 10:
+            self._thread_intents[thread_id] = self._thread_intents[thread_id][-10:]
+
     async def _get_recent_user_messages(self, user_id: str, hours: int = 24) -> List[Dict[str, Any]]:
         """Get recent messages for user"""
-        # Use existing working store
-        return []
+        if user_id not in self._conversation_history:
+            return []
+        
+        cutoff_time = datetime.now() - timedelta(hours=hours)
+        recent_messages = []
+        
+        for msg in self._conversation_history[user_id]:
+            if msg.get('timestamp', datetime.min) > cutoff_time:
+                recent_messages.append(msg)
+        
+        return recent_messages
 
     async def _build_thread_contexts(self, messages: List[Dict[str, Any]]) -> List[ThreadContext]:
         """Build thread contexts from messages"""
         # Group messages by thread and build rich contexts
-        return []
+        thread_groups = defaultdict(list)
+        
+        for msg in messages:
+            thread_id = msg.get('thread_id')
+            if thread_id:
+                thread_groups[thread_id].append(msg)
+        
+        contexts = []
+        for thread_id, thread_messages in thread_groups.items():
+            # Build rich context for each thread
+            recent_intents = [msg.get('intent', 'general') for msg in thread_messages[-5:]]
+            recent_entities = [msg.get('entities', {}) for msg in thread_messages[-3:]]
+            
+            context = ThreadContext(
+                thread_id=thread_id,
+                message_count=len(thread_messages),
+                last_activity=max(msg.get('timestamp', datetime.min) for msg in thread_messages),
+                recent_intents=recent_intents,
+                recent_entities=recent_entities,
+                avg_response_time=timedelta(minutes=5),  # Placeholder
+                user_engagement_score=0.7  # Placeholder
+            )
+            contexts.append(context)
+        
+        return contexts
+
+    async def initialize_services(self):
+        """Initialize all required services"""
+        try:
+            await self._initialize_embedding_service()
+            await self._initialize_intent_classifier()
+            await self._initialize_working_store()
+            logger.info("[ADVANCED_THREAD_MANAGER] ✅ All services initialized successfully")
+        except Exception as e:
+            logger.error(f"[ADVANCED_THREAD_MANAGER] Service initialization failed: {e}")
+            raise
 
 
 # Dependency injection

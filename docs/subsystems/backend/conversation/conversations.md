@@ -18,11 +18,13 @@ The AICO conversation system provides REST API endpoints for managing conversati
 
 ### Current Implementation
 
-**ThreadManager Service**:
-- Simple time-based heuristics for thread resolution
-- In-memory storage for testing (no database persistence yet)
-- 2-hour dormancy threshold for creating new threads
-- UUID-based thread identifiers
+**AdvancedThreadManager Service**:
+- Multi-factor thread resolution (semantic + temporal + behavioral + intent-based)
+- Vector similarity engine using AICO embeddings for semantic thread matching
+- Advanced intent classification using XLM-RoBERTa transformer model
+- Entity extraction and context continuity analysis
+- Robust fallback chain with graceful degradation
+- UUID-based thread identifiers with confidence scoring
 
 **Thread Resolution Logic**:
 ```python
@@ -35,9 +37,19 @@ class ThreadResolution:
 ```
 
 **Thread States**:
-- **Active**: Recent activity within 2 hours
-- **Dormant**: No activity for 2+ hours
-- **Created**: New thread for user
+- **Active**: Recent activity with high semantic continuity
+- **Dormant**: No activity or low semantic similarity to recent messages
+- **Created**: New thread based on intent shift or topic boundary detection
+- **Branched**: New thread created from specific message with semantic clustering
+- **Reactivated**: Dormant thread resumed based on semantic similarity
+
+**Multi-Factor Scoring**:
+- **Semantic Similarity**: Vector similarity between message embeddings
+- **Temporal Continuity**: Exponential decay based on time gaps
+- **Intent Alignment**: Intent classification consistency across messages
+- **Entity Overlap**: Named entity recognition and continuity
+- **Conversation Flow**: Boundary detection and topic shift analysis
+- **User Pattern Match**: Behavioral pattern recognition
 
 ## User Management 🚧
 
