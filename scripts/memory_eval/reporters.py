@@ -129,7 +129,7 @@ class RichReporter:
             ("Knowledge Retention", result.knowledge_retention),
             ("Entity Extraction", result.entity_extraction),
             ("Conversation Relevancy", result.conversation_relevancy),
-            ("Thread Management", result.thread_management),
+            ("Semantic Memory Quality", result.semantic_memory_quality),
             ("Response Quality", result.response_quality),
             ("Memory Consistency", result.memory_consistency)
         ]
@@ -179,7 +179,6 @@ class RichReporter:
         if scenario.tests_episodic_memory: areas.append("Episodic")
         if scenario.tests_semantic_memory: areas.append("Semantic")
         if scenario.tests_procedural_memory: areas.append("Procedural")
-        if scenario.tests_thread_management: areas.append("Threads")
         if scenario.tests_entity_extraction: areas.append("Entities")
         return areas
         
@@ -231,7 +230,7 @@ class JSONReporter:
                 "knowledge_retention": self._metric_to_dict(result.knowledge_retention),
                 "entity_extraction": self._metric_to_dict(result.entity_extraction),
                 "conversation_relevancy": self._metric_to_dict(result.conversation_relevancy),
-                "thread_management": self._metric_to_dict(result.thread_management),
+                "semantic_memory_quality": self._metric_to_dict(result.semantic_memory_quality),
                 "response_quality": self._metric_to_dict(result.response_quality),
                 "memory_consistency": self._metric_to_dict(result.memory_consistency)
             },
@@ -278,7 +277,7 @@ class JSONReporter:
             ("Knowledge Retention", result.knowledge_retention.percentage),
             ("Entity Extraction", result.entity_extraction.percentage),
             ("Conversation Relevancy", result.conversation_relevancy.percentage),
-            ("Thread Management", result.thread_management.percentage),
+            ("Semantic Memory Quality", result.semantic_memory_quality.percentage),
             ("Response Quality", result.response_quality.percentage),
             ("Memory Consistency", result.memory_consistency.percentage)
         ]
@@ -298,7 +297,7 @@ class JSONReporter:
             ("Knowledge Retention", result.knowledge_retention.percentage),
             ("Entity Extraction", result.entity_extraction.percentage),
             ("Conversation Relevancy", result.conversation_relevancy.percentage),
-            ("Thread Management", result.thread_management.percentage),
+            ("Semantic Memory Quality", result.semantic_memory_quality.percentage),
             ("Response Quality", result.response_quality.percentage),
             ("Memory Consistency", result.memory_consistency.percentage)
         ]
@@ -344,7 +343,7 @@ class DetailedReporter:
             self._generate_metric_section("Knowledge Retention", result.knowledge_retention),
             self._generate_metric_section("Entity Extraction", result.entity_extraction),
             self._generate_metric_section("Conversation Relevancy", result.conversation_relevancy),
-            self._generate_metric_section("Thread Management", result.thread_management),
+            self._generate_metric_section("Semantic Memory Quality", result.semantic_memory_quality),
             self._generate_metric_section("Response Quality", result.response_quality),
             self._generate_metric_section("Memory Consistency", result.memory_consistency)
         ])
@@ -464,8 +463,8 @@ class DetailedReporter:
         if result.conversation_relevancy.percentage < 85:
             recommendations.append("- **Conversation Relevancy:** Improve response generation and topic coherence")
             
-        if result.thread_management.percentage < 95:
-            recommendations.append("- **Thread Management:** Fine-tune thread resolution algorithms and decision thresholds")
+        if result.semantic_memory_quality.percentage < 95:
+            recommendations.append("- **Semantic Memory Quality:** Fine-tune semantic memory retrieval and relevance scoring")
             
         if result.response_quality.percentage < 80:
             recommendations.append("- **Response Quality:** Enhance LLM prompting and response validation")

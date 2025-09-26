@@ -59,7 +59,7 @@ class EvaluationSession:
 
 class MemoryIntelligenceEvaluator:
     """
-    Comprehensive memory system evaluator that tests all aspects of AICO's memory
+    Comprehensive memory system evaluator that tests AICO's Enhanced Semantic Memory
     capabilities through realistic conversation scenarios.
     
     Features:
@@ -67,10 +67,16 @@ class MemoryIntelligenceEvaluator:
     - Context adherence evaluation
     - Entity extraction and retention testing
     - Semantic memory consistency checking
-    - Thread management evaluation
+    - Enhanced semantic memory evaluation (replaces thread management)
     - Working memory persistence testing
     - Conversation continuity scoring
     - Performance benchmarking
+    
+    Updated for Enhanced Semantic Memory Architecture:
+    - Tests conversation_id pattern (user_id + timestamp)
+    - Evaluates semantic context assembly
+    - Validates intent-based boundary detection
+    - Measures temporal + semantic relevance scoring
     """
     
     def __init__(self, 
@@ -553,12 +559,12 @@ class MemoryIntelligenceEvaluator:
                     "context": turn.context_hints or {}
                 }
                 print(f"💬 Turn {i+1}: {turn.user_message[:50]}...")
-                timeout_msg = "180s" if i == 1 else "90s"
+                timeout_msg = "180s"
                 print(f"   🧠 Processing memory operations (may take up to {timeout_msg})...")
                 
                 # Send encrypted message request with timeout (generous for memory processing)
                 # Use longer timeout for Turn 2 which has more complex processing
-                timeout_seconds = 180.0 if i == 1 else 90.0  # 3 minutes for Turn 2, 90s for others
+                timeout_seconds = 180.0  # 3 minutes for all turns due to embedding processing
                 try:
                     response_data = await asyncio.wait_for(
                         self._send_encrypted_request("/api/v1/conversation/messages", message_data),
@@ -660,7 +666,7 @@ class MemoryIntelligenceEvaluator:
         knowledge_retention = await self.metrics.calculate_knowledge_retention(session)
         entity_extraction = await self.metrics.calculate_entity_extraction_accuracy(session)
         conversation_relevancy = await self.metrics.calculate_conversation_relevancy(session)
-        thread_management = await self.metrics.calculate_thread_management_score(session)
+        semantic_memory_quality = await self.metrics.calculate_semantic_memory_quality(session)
         response_quality = await self.metrics.calculate_response_quality(session)
         memory_consistency = await self.metrics.calculate_memory_consistency(session)
         performance_metrics = await self.metrics.calculate_performance_metrics(session)
@@ -671,7 +677,7 @@ class MemoryIntelligenceEvaluator:
             knowledge_retention, 
             entity_extraction,
             conversation_relevancy,
-            thread_management,
+            semantic_memory_quality,
             response_quality,
             memory_consistency
         ])
@@ -684,7 +690,7 @@ class MemoryIntelligenceEvaluator:
             knowledge_retention=knowledge_retention,
             entity_extraction=entity_extraction,
             conversation_relevancy=conversation_relevancy,
-            thread_management=thread_management,
+            semantic_memory_quality=semantic_memory_quality,
             response_quality=response_quality,
             memory_consistency=memory_consistency,
             performance_metrics=performance_metrics,

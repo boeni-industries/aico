@@ -98,7 +98,7 @@ def create_metrics_panel(result) -> Panel:
         ("🧠 Knowledge Retention", result.knowledge_retention.percentage),
         ("🏷️  Entity Extraction", result.entity_extraction.percentage),
         ("💬 Conversation Relevancy", result.conversation_relevancy.percentage),
-        ("🧵 Thread Management", result.thread_management.percentage),
+        ("🧵 Semantic Memory Quality", result.semantic_memory_quality.percentage),
         ("✨ Response Quality", result.response_quality.percentage),
         ("🔒 Memory Consistency", result.memory_consistency.percentage)
     ]

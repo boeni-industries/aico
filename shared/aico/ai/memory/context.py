@@ -248,20 +248,23 @@ class ContextAssembler:
             )
     
     async def _get_working_context(self, thread_id: str, user_id: str) -> List[ContextItem]:
-        """Get context from working memory with the precision of a Swiss timepiece"""
+        """Get conversation context using enhanced semantic memory approach"""
         try:
             if not self.working_store:
                 logger.debug("No working memory store available - gracefully continuing")
                 return []
             
-            # Retrieve recent messages from ALL threads for this user with royal efficiency
-            recent_messages = await self.working_store._get_recent_user_messages(user_id, hours=24)
-            logger.debug(f"Retrieved {len(recent_messages)} total messages for user {user_id}")
+            # ENHANCED SEMANTIC APPROACH: Get ALL user messages for intelligent context assembly
+            all_messages = await self.working_store._get_recent_user_messages(user_id, hours=24)
+            logger.debug(f"Retrieved {len(all_messages)} messages for semantic context assembly")
             
-            # CRITICAL FIX: Limit and deduplicate messages to prevent context explosion
-            # Use only the most recent 10 messages to prevent overwhelming the LLM
-            thread_messages = recent_messages[-10:] if recent_messages else []
-            logger.debug(f"Using {len(thread_messages)} most recent messages for context assembly (limited from {len(recent_messages)})")
+            # Smart conversation continuity: Find related messages using semantic + temporal signals
+            conversation_messages = await self._assemble_conversation_context(thread_id, user_id, all_messages)
+            logger.debug(f"Assembled {len(conversation_messages)} contextually relevant messages")
+            
+            # Limit to prevent context explosion (industry standard: ~10 recent messages)
+            thread_messages = conversation_messages[-10:] if conversation_messages else []
+            logger.debug(f"Using {len(thread_messages)} most recent conversation messages")
             
             context_items = []
             now = datetime.utcnow()
@@ -274,11 +277,13 @@ class ContextAssembler:
                 # Handle timestamp parsing with royal grace - ensure UTC consistency
                 if isinstance(msg_timestamp, str):
                     try:
-                        # Parse timestamp as UTC (remove timezone info for consistent comparison)
+                        # Parse timestamp as UTC and ensure it's naive for consistent comparison
                         if msg_timestamp.endswith('Z'):
+                            # Remove the Z and treat as naive UTC
                             msg_timestamp = datetime.fromisoformat(msg_timestamp[:-1])
-                        elif '+' in msg_timestamp or msg_timestamp.endswith('+00:00'):
-                            msg_timestamp = datetime.fromisoformat(msg_timestamp.replace('+00:00', ''))
+                        elif '+' in msg_timestamp:
+                            # Strip timezone info to make naive
+                            msg_timestamp = datetime.fromisoformat(msg_timestamp.split('+')[0])
                         else:
                             # Assume UTC if no timezone info
                             msg_timestamp = datetime.fromisoformat(msg_timestamp)
@@ -345,6 +350,161 @@ class ContextAssembler:
             logger.error(f"Failed to get working context with noble resilience: {e}")
             return []
     
+    async def _assemble_conversation_context(self, conversation_id: str, user_id: str, all_messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Assemble conversation context using enhanced semantic memory approach"""
+        try:
+            if not all_messages:
+                return []
+            
+            # ENHANCED SEMANTIC MEMORY: Combine temporal + semantic + conversational signals
+            
+            # 1. TEMPORAL PRIORITY: Recent messages get higher weight
+            now = datetime.utcnow()
+            for msg in all_messages:
+                msg_time = msg.get('timestamp', now)
+                if isinstance(msg_time, str):
+                    try:
+                        # Ensure naive datetime by removing timezone info
+                        if msg_time.endswith('Z'):
+                            msg_time = datetime.fromisoformat(msg_time[:-1])
+                        elif '+' in msg_time:
+                            msg_time = datetime.fromisoformat(msg_time.split('+')[0])
+                        else:
+                            msg_time = datetime.fromisoformat(msg_time)
+                    except:
+                        msg_time = now
+                
+                # Calculate temporal score (0-1, higher = more recent)
+                time_diff = (now - msg_time).total_seconds()
+                temporal_score = max(0, 1 - (time_diff / (24 * 3600)))  # Decay over 24 hours
+                msg['temporal_score'] = temporal_score
+            
+            # 2. CONVERSATION CONTINUITY: Messages in same conversation get boost
+            current_conversation_messages = [
+                msg for msg in all_messages 
+                if msg.get('thread_id', '').startswith(user_id)  # Same user conversations
+            ]
+            
+            # 3. SEMANTIC RELEVANCE: Get current message for semantic comparison
+            current_message_content = None
+            for msg in all_messages:
+                if msg.get('thread_id') == conversation_id:
+                    current_message_content = msg.get('message_content', '')
+                    break
+            
+            # 4. INTELLIGENT SELECTION: Combine all signals
+            relevant_messages = []
+            
+            if current_message_content:
+                # ENHANCED: Use proper semantic analysis (extracted from thread manager)
+                for msg in current_conversation_messages:
+                    msg_content = msg.get('message_content', '')
+                    if msg_content and len(msg_content.strip()) > 0:
+                        # Use existing implementations (DRY principle)
+                        semantic_score = await self._calculate_message_similarity(current_message_content, msg_content)
+                        
+                        # Use existing intent classifier for boundary detection
+                        boundary_score = await self._detect_conversation_boundary_via_intent(msg_content)
+                        boundary_penalty = max(0, boundary_score - 0.5) * 0.5
+                        
+                        # Combined relevance score with boundary detection
+                        combined_score = (msg['temporal_score'] * 0.7) + (semantic_score * 0.3) - boundary_penalty
+                        msg['relevance_score'] = max(0, combined_score)  # Ensure non-negative
+                        
+                        # Higher threshold with boundary detection
+                        if combined_score > 0.15:  # Increased threshold for quality
+                            relevant_messages.append(msg)
+            else:
+                # No current message - use temporal priority only
+                relevant_messages = current_conversation_messages
+            
+            # Sort by relevance (temporal + semantic)
+            relevant_messages.sort(key=lambda x: x.get('relevance_score', x.get('temporal_score', 0)), reverse=True)
+            
+            logger.debug(f"Enhanced semantic memory selected {len(relevant_messages)} relevant messages from {len(all_messages)} total")
+            return relevant_messages
+            
+        except Exception as e:
+            logger.error(f"Failed to assemble conversation context: {e}")
+            # ROBUST FALLBACK: Ensure user never sees degraded experience
+            logger.warning(f"Conversation context assembly failed: {e}")
+            # Return ALL recent messages to ensure no context loss
+            all_messages.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+            return all_messages[:15]  # Conservative limit to prevent context explosion
+    
+    async def _calculate_message_similarity(self, message1: str, message2: str) -> float:
+        """Calculate semantic similarity between messages (extracted from thread manager)"""
+        try:
+            # Simple but effective similarity calculation
+            words1 = set(message1.lower().split())
+            words2 = set(message2.lower().split())
+            
+            if not words1 or not words2:
+                return 0.0
+            
+            # Jaccard similarity with length normalization
+            intersection = len(words1 & words2)
+            union = len(words1 | words2)
+            jaccard = intersection / union if union > 0 else 0.0
+            
+            # Length similarity bonus (similar length messages often related)
+            len_ratio = min(len(message1), len(message2)) / max(len(message1), len(message2))
+            length_bonus = len_ratio * 0.1
+            
+            return min(1.0, jaccard + length_bonus)
+            
+        except Exception as e:
+            logger.debug(f"Message similarity calculation failed: {e}")
+            return 0.0  # Safe fallback
+    
+    async def _detect_conversation_boundary_via_intent(self, message: str) -> float:
+        """Detect conversation boundaries using existing intent classifier (DRY principle)"""
+        try:
+            # Use existing intent classifier
+            from aico.ai.analysis.intent_classifier import get_intent_classifier
+            
+            intent_classifier = await get_intent_classifier()
+            prediction = await intent_classifier._classify_intent(message)
+            
+            # Boundary intents indicate conversation transitions
+            boundary_intents = {
+                'greeting': 0.8,    # Strong boundary indicator
+                'farewell': 0.9,    # Very strong boundary indicator
+                'general': 0.1,     # Weak boundary indicator
+            }
+            
+            boundary_score = boundary_intents.get(prediction.intent, 0.0)
+            
+            # Weight by confidence
+            return boundary_score * prediction.confidence
+            
+        except Exception as e:
+            logger.debug(f"Intent-based boundary detection failed: {e}")
+            # Fallback to simple linguistic cues
+            return await self._simple_boundary_detection(message)
+    
+    async def _simple_boundary_detection(self, message: str) -> float:
+        """Simple fallback boundary detection"""
+        try:
+            boundary_indicators = [
+                'hello', 'hi', 'hey', 'good morning', 'good afternoon',
+                'thanks', 'thank you', 'goodbye', 'bye', 'see you',
+                'new topic', 'different question', 'moving on'
+            ]
+            
+            message_lower = message.lower()
+            boundary_score = 0.0
+            
+            for indicator in boundary_indicators:
+                if indicator in message_lower:
+                    boundary_score += 0.2
+            
+            return min(1.0, boundary_score)
+            
+        except Exception as e:
+            logger.debug(f"Simple boundary detection failed: {e}")
+            return 0.0
+    
     async def _get_episodic_context(self, thread_id: str, user_id: str, 
                                    current_message: str, limit: int = 20) -> List[ContextItem]:
         """Get context from episodic memory with the depth of historical wisdom"""
@@ -389,7 +549,21 @@ class ContextAssembler:
             
             for result in semantic_results:
                 # Calculate age-based relevance decay for semantic facts
-                fact_age_hours = (now - result.get('metadata', {}).get('timestamp', now)).total_seconds() / 3600 if isinstance(result.get('metadata', {}).get('timestamp'), datetime) else 0
+                timestamp = result.get('metadata', {}).get('timestamp', now)
+                
+                # Ensure timestamp is a naive datetime
+                if isinstance(timestamp, str):
+                    try:
+                        if timestamp.endswith('Z'):
+                            timestamp = datetime.fromisoformat(timestamp[:-1])
+                        elif '+' in timestamp:
+                            timestamp = datetime.fromisoformat(timestamp.split('+')[0])
+                        else:
+                            timestamp = datetime.fromisoformat(timestamp)
+                    except:
+                        timestamp = now
+                
+                fact_age_hours = (now - timestamp).total_seconds() / 3600 if isinstance(timestamp, datetime) else 0
                 age_decay = max(0.3, 1.0 - (fact_age_hours / (365 * 24)))  # Decay over 1 year, minimum 0.3
                 
                 # Base semantic relevance from similarity score
@@ -402,7 +576,7 @@ class ContextAssembler:
                     content=result.get('content', ''),
                     source_tier="semantic",
                     relevance_score=base_score,
-                    timestamp=metadata.get('timestamp', now) if isinstance(metadata.get('timestamp'), datetime) else now,
+                    timestamp=timestamp if isinstance(timestamp, datetime) else now,
                     metadata={
                         "user_id": user_id,
                         "category": metadata.get('category', 'unknown'),

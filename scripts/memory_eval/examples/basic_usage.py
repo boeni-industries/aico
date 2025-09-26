@@ -198,7 +198,7 @@ async def scenario_library_example():
             if scenario.tests_working_memory: test_areas.append("Working")
             if scenario.tests_episodic_memory: test_areas.append("Episodic")
             if scenario.tests_semantic_memory: test_areas.append("Semantic")
-            if scenario.tests_thread_management: test_areas.append("Threads")
+            if scenario.tests_semantic_memory_quality: test_areas.append("Memory Quality")
             if scenario.tests_entity_extraction: test_areas.append("Entities")
             
             print(f"   Tests: {', '.join(test_areas)}")

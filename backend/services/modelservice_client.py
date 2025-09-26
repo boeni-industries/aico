@@ -48,6 +48,36 @@ class ModelServiceClient:
         self.logger = get_logger("backend", "services.modelservice_client")
         self.bus_client: Optional[MessageBusClient] = None
     
+    async def check_modelservice_health(self) -> bool:
+        """Check if the modelservice is running and responding.
+        
+        Returns:
+            bool: True if modelservice is healthy, False otherwise
+        """
+        try:
+            # Use a very short timeout for health check
+            original_timeout = self.config.timeout
+            self.config.timeout = 2.0
+            
+            # Send a simple ping request
+            result = await self._send_request(
+                "modelservice/health/request/v1", 
+                "modelservice/health/response/v1", 
+                {"check": "ping"}
+            )
+            
+            # Restore original timeout
+            self.config.timeout = original_timeout
+            return result.get('success', False)
+        except TimeoutError:
+            self.logger.error("⚠️ MODELSERVICE HEALTH CHECK FAILED - Service appears to be offline")
+            print("⚠️ MODELSERVICE HEALTH CHECK FAILED - Service appears to be offline")
+            return False
+        except Exception as e:
+            self.logger.error(f"⚠️ MODELSERVICE HEALTH CHECK FAILED: {e}")
+            print(f"⚠️ MODELSERVICE HEALTH CHECK FAILED: {e}")
+            return False
+    
     async def _ensure_connection(self):
         """Ensure ZMQ connection is established."""
         if self.bus_client is None:
@@ -293,8 +323,9 @@ class ModelServiceClient:
             return response_data
             
         except asyncio.TimeoutError:
-            error_msg = f"Request timed out after {self.config.timeout}s"
-            self.logger.error(error_msg, extra={"topic": AICOTopics.LOGS_ENTRY})
+            error_msg = f"Request timed out after {self.config.timeout}s - MODELSERVICE MAY BE OFFLINE"
+            self.logger.error(f"⚠️ {error_msg}", extra={"topic": AICOTopics.LOGS_ENTRY})
+            print(f"⚠️ {error_msg}")
             return {"success": False, "error": error_msg}
         except Exception as e:
             error_msg = f"ZMQ request failed: {str(e)}"
@@ -440,10 +471,18 @@ _modelservice_client: Optional[ModelServiceClient] = None
 
 
 def get_modelservice_client(config_manager: ConfigurationManager) -> ModelServiceClient:
-    """Get singleton modelservice client instance."""
+    """Get singleton modelservice client instance.
+    
+    This function returns a client that can communicate with the modelservice,
+    but does not guarantee that the modelservice is actually running.
+    Use client.check_modelservice_health() to verify the service is available.
+    """
     global _modelservice_client
     
     if _modelservice_client is None:
         _modelservice_client = ModelServiceClient(config_manager)
+        logger = get_logger("backend", "services.modelservice_client")
+        logger.info("Created modelservice client - Note: this does not guarantee the modelservice is running")
+        print("[i] Created modelservice client - use check_modelservice_health() to verify service availability")
     
     return _modelservice_client

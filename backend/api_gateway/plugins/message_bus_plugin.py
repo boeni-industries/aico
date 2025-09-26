@@ -57,22 +57,24 @@ class MessageBusPlugin(BasePlugin):
     async def start(self) -> None:
         """Start the message bus broker"""
         try:
-            #print(f"[MESSAGE BUS PLUGIN] start() called")
+            print(f"[MESSAGE BUS PLUGIN] start() called")
             
             # Get message bus configuration
             mb_config = self.get_config("message_bus", {})
             self.bind_address = mb_config.get("bind_address", "tcp://*:5555")
+            print(f"[MESSAGE BUS PLUGIN] Using bind address: {self.bind_address}")
             
             # Import and initialize message bus host
             from backend.message_bus_host import AICOMessageBusHost
             
+            print(f"[MESSAGE BUS PLUGIN] Creating message bus host...")
             self.message_bus_host = AICOMessageBusHost(self.bind_address)
-            #print(f"[MESSAGE BUS PLUGIN] Created message bus host on {self.bind_address}")
+            print(f"[MESSAGE BUS PLUGIN] Created message bus host on {self.bind_address}")
             
             # Start message bus host directly in current async context
-            #print(f"[MESSAGE BUS PLUGIN] Starting message bus host...")
+            print(f"[MESSAGE BUS PLUGIN] Starting message bus host...")
             await self.message_bus_host.start(db_connection=self.db_connection)
-            #print(f"[MESSAGE BUS PLUGIN] Message bus host started successfully")
+            print(f"[MESSAGE BUS PLUGIN] Message bus host started successfully")
             
             self.logger.info("Message bus plugin started", extra={
                 "bind_address": self.bind_address,

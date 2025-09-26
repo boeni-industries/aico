@@ -400,13 +400,13 @@ async def regression_testing_example():
     regression_scenarios = [
         "comprehensive_memory_test",
         "entity_extraction_intensive", 
-        "thread_management_test"
+        "semantic_memory_test"
     ]
     
     baseline_scores = {
         "comprehensive_memory_test": 85.0,
         "entity_extraction_intensive": 80.0,
-        "thread_management_test": 90.0
+        "semantic_memory_test": 90.0
     }
     
     regression_results = []

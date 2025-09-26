@@ -42,7 +42,7 @@ class EvaluationResult:
     knowledge_retention: MetricScore
     entity_extraction: MetricScore
     conversation_relevancy: MetricScore
-    thread_management: MetricScore
+    semantic_memory_quality: MetricScore  # Replaces thread_management
     response_quality: MetricScore
     memory_consistency: MetricScore
     
@@ -57,7 +57,7 @@ class EvaluationResult:
 
 
 class MemoryMetrics:
-    """Comprehensive memory evaluation metrics calculator"""
+    """Comprehensive memory evaluation metrics calculator for Enhanced Semantic Memory"""
     
     def __init__(self):
         """Initialize with real AICO memory system connections"""
@@ -380,7 +380,7 @@ class MemoryMetrics:
             explanation=f"Conversation relevancy across {len(relevancy_scores)} turns"
         )
         
-    async def calculate_thread_management_score(self, session) -> MetricScore:
+    async def calculate_semantic_memory_quality(self, session) -> MetricScore:
         """
         Evaluate thread management decisions (new, continue, reactivate).
         Measures accuracy of thread resolution logic.
@@ -530,7 +530,7 @@ class MemoryMetrics:
             1: 0.20,  # knowledge_retention  
             2: 0.15,  # entity_extraction
             3: 0.15,  # conversation_relevancy
-            4: 0.15,  # thread_management
+            4: 0.15,  # semantic_memory_quality
             5: 0.10,  # response_quality
             6: 0.05   # memory_consistency
         }

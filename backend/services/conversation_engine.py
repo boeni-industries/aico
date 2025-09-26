@@ -603,57 +603,82 @@ class ConversationEngine(BaseService):
             # CRITICAL FIX: PROPER SEPARATION - Context in system prompt, current input isolated
             current_content = user_message.message.text.strip()
             
-            # MODERN BEST PRACTICE: Structured XML formatting following Anthropic/Claude standards
+            # ENHANCED CONTEXT USAGE: Use more memory items and include semantic facts
             context_xml = ""
+            user_facts_xml = ""
+            
             if "memory" in context and context["memory"]:
                 memory_data = context["memory"]
                 memories = memory_data.get("memories", [])
                 self.logger.info(f"[CONTEXT_DEBUG] Available memory items: {len(memories)}")
                 
                 if memories:
-                    # Create structured XML context following industry standards
-                    recent_memories = memories[-2:] if memories else []  # Only 2 most recent
-                    context_items = []
+                    # Separate conversation messages from user facts
+                    conversation_items = []
+                    user_facts = []
+                    
+                    # Use more recent memories (up to 8 instead of 2)
+                    recent_memories = memories[-8:] if len(memories) > 8 else memories
                     
                     for memory_item in recent_memories:
                         if isinstance(memory_item, dict):
                             content = memory_item.get("content", "").strip()
                             metadata = memory_item.get("metadata", {})
+                            source_tier = memory_item.get("source_tier", "unknown")
                             
-                            if content and len(content) < 150:  # Reasonable context length
+                            if not content:
+                                continue
+                                
+                            # Separate semantic facts from conversation messages
+                            if source_tier == "semantic":
+                                # These are user facts - extract key information
+                                category = metadata.get("category", "unknown")
+                                if len(content) < 200:  # Reasonable fact length
+                                    user_facts.append(f"- {content}")
+                            elif source_tier == "working" and len(content) < 200:
+                                # These are conversation messages
                                 role = metadata.get("role", "unknown")
-                                # Clean and escape content for XML
                                 clean_content = content.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
-                                context_items.append(f'<message role="{role}">{clean_content}</message>')
+                                conversation_items.append(f'<message role="{role}">{clean_content}</message>')
                     
-                    if context_items:
+                    # Build conversation history XML
+                    if conversation_items:
                         context_xml = f"""
 <conversation_history>
-{chr(10).join(context_items)}
+{chr(10).join(conversation_items)}
 </conversation_history>"""
-                        self.logger.info(f"[CONTEXT_DEBUG] Built structured XML context with {len(context_items)} items")
+                        self.logger.info(f"[CONTEXT_DEBUG] Built conversation context with {len(conversation_items)} messages")
+                    
+                    # Build user facts XML
+                    if user_facts:
+                        user_facts_xml = f"""
+<user_facts>
+{chr(10).join(user_facts)}
+</user_facts>"""
+                        self.logger.info(f"[CONTEXT_DEBUG] Built user facts context with {len(user_facts)} facts")
             
             # MODERN BEST PRACTICE: Enhanced system prompt with clear structure and instructions
-            if context_xml:
+            if context_xml or user_facts_xml:
                 enhanced_system_prompt = f"""{system_prompt}
 
-{context_xml}
+{user_facts_xml}{context_xml}
 
 <instructions>
-- The conversation_history above provides background context only
-- Respond directly and only to the user's current message below
-- Do not reference or repeat information from the conversation history unless directly relevant
-- Be concise, helpful, and natural in your response
+- Use the user_facts above to personalize your response and remember important details about the user
+- The conversation_history provides recent context for natural conversation flow
+- Respond directly to the user's current message below using relevant information from the context
+- Be helpful, personalized, and natural in your response
+- Reference user facts when relevant (e.g., their name, preferences, pets, job, etc.)
 </instructions>"""
                 messages[0] = ModelConversationMessage(role="system", content=enhanced_system_prompt)
-                self.logger.info(f"[CONTEXT_DEBUG] Enhanced system prompt with structured XML context")
+                self.logger.info(f"[CONTEXT_DEBUG] Enhanced system prompt with user facts ({len(user_facts) if 'user_facts' in locals() else 0}) and conversation context ({len(conversation_items) if 'conversation_items' in locals() else 0})")
             else:
                 # Add clear instructions even without context
                 enhanced_system_prompt = f"""{system_prompt}
 
 <instructions>
 - Respond directly to the user's message below
-- Be concise, helpful, and natural in your response
+- Be helpful and natural in your response
 </instructions>"""
                 messages[0] = ModelConversationMessage(role="system", content=enhanced_system_prompt)
             
@@ -722,13 +747,13 @@ class ConversationEngine(BaseService):
         if user.conversation_style and user.conversation_style != "friendly":
             prompt_parts.append(f"Style: {user.conversation_style}")
         
-        # Memory context - ultra-minimal to prevent confusion
+        # Memory context - removed restrictive limitations
         if "memory" in context and context["memory"]:
             memory_data = context["memory"]
             
-            # Only add context if it's very short and relevant
+            # Add context summary if available (removed length restriction)
             context_summary = memory_data.get("context_summary", "")
-            if context_summary and len(context_summary) < 80:  # Very short summaries only
+            if context_summary:
                 # Clean up the summary to avoid redundant info
                 if "conversation messages" not in context_summary.lower():
                     prompt_parts.append(f"Context: {context_summary}")
@@ -907,16 +932,15 @@ class ConversationEngine(BaseService):
             ai_message.analysis.urgency = MessageAnalysis.Urgency.LOW
             ai_message.analysis.requires_response = False
             
-            # Add to thread history
+            # Publish AI response to conversation topic
+            await self.bus_client.publish(AICOTopics.CONVERSATION_AI_RESPONSE, ai_message)
+            
+            # Update thread state
+            thread.turn_number += 1
+            thread.last_activity = datetime.utcnow()
             thread.message_history.append(ai_message)
             
-            # Publish text response
-            await self.bus_client.publish(
-                AICOTopics.CONVERSATION_AI_RESPONSE,
-                ai_message
-            )
-            
-            # Publish embodiment data if enabled
+            # Optional multimodal components
             if self.enable_embodiment and response_components.avatar_actions:
                 # TODO: Publish to avatar system topic
                 pass
@@ -925,7 +949,7 @@ class ConversationEngine(BaseService):
                 # TODO: Publish to voice synthesis topic
                 pass
             
-            self.logger.info(f"Response delivered", extra={
+            self.logger.info(f"✅ Response delivered to conversation/ai/response/v1", extra={
                 "thread_id": thread.thread_id,
                 "response_length": len(response_components.text),
                 "multimodal": self.enable_embodiment
@@ -935,8 +959,7 @@ class ConversationEngine(BaseService):
             self.logger.error(f"Error delivering response: {e}")
     
     # ============================================================================
-    # UTILITY METHODS
-    # ============================================================================
+ 
     
     async def _response_timeout_handler(self, request_id: str) -> None:
         """Handle response timeout"""

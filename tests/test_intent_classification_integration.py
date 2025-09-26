@@ -1,11 +1,11 @@
 """
-Integration test for the new intent classification system
+Integration test for the intent classification system
 
 Tests the complete pipeline:
 - AICO AI processor in /shared/aico/ai/
 - ModelService handler delegation
 - ZMQ integration
-- Thread manager usage
+- Enhanced semantic memory usage
 """
 
 import pytest

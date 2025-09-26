@@ -116,7 +116,7 @@ def create_scenario_showcase():
     scenarios = [
         ("comprehensive_memory_test", "All Systems", "6", "[green]Easy[/green]", "Complete memory system evaluation"),
         ("entity_extraction_intensive", "NER Focus", "4", "[yellow]Medium[/yellow]", "Complex named entity recognition"),
-        ("thread_management_test", "Threading", "5", "[yellow]Medium[/yellow]", "Context switching & reactivation"),
+        ("semantic_memory_test", "Semantic", "5", "[yellow]Medium[/yellow]", "Context switching & reactivation"),
         ("long_term_memory_test", "Retention", "8", "[red]Hard[/red]", "Extended memory recall testing"),
         ("performance_stress_test", "Performance", "3", "[bold red]Expert[/bold red]", "High-volume processing benchmark")
     ]
@@ -193,7 +193,7 @@ def create_results_showcase():
         "knowledge_retention": 89.7,
         "entity_extraction": 85.4,
         "conversation_relevancy": 88.2,
-        "thread_management": 84.6,
+        "semantic_memory_quality": 84.6,
         "response_quality": 86.8,
         "memory_consistency": 91.3
     }
@@ -221,7 +221,7 @@ def create_results_showcase():
         ("🧠 Knowledge Retention", results["knowledge_retention"]),
         ("🏷️  Entity Extraction", results["entity_extraction"]),
         ("💬 Conversation Relevancy", results["conversation_relevancy"]),
-        ("🧵 Thread Management", results["thread_management"]),
+        ("🧵 Semantic Memory Quality", results["semantic_memory_quality"]),
         ("✨ Response Quality", results["response_quality"]),
         ("🔒 Memory Consistency", results["memory_consistency"])
     ]

@@ -594,7 +594,7 @@ class SemanticMemoryStore:
                     model=self._embedding_model,
                     prompt=text
                 ),
-                timeout=30.0  # Shorter timeout for background tasks
+                timeout=60.0  # Increased timeout for embedding generation
             )
             
             if response.get("success") and "embedding" in response.get("data", {}):
@@ -606,7 +606,7 @@ class SemanticMemoryStore:
                 return None
                 
         except asyncio.TimeoutError:
-            logger.warning(f"Embedding generation timed out after 30s - skipping fact storage")
+            logger.warning(f"Embedding generation timed out after 60s - skipping fact storage")
             return None
         except Exception as e:
             logger.error(f"Failed to generate embedding via modelservice: {e}")

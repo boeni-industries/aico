@@ -47,24 +47,35 @@ class AICOMessageBusHost:
     async def start(self, db_connection: Optional[EncryptedLibSQLConnection] = None):
         """Start the message bus host"""
         try:
+            print(f"[MESSAGE BUS HOST] Starting broker on {self.bind_address}...")
             # Start the broker
             await self.broker.start()
+            print(f"[MESSAGE BUS HOST] Broker started successfully")
             
             # Create internal client for system messages
+            print(f"[MESSAGE BUS HOST] Creating internal client...")
             self.internal_client = MessageBusClient("system.message_bus_host")
             await self.internal_client.connect()
+            print(f"[MESSAGE BUS HOST] Internal client connected successfully")
             
             # Enable persistence if database provided
             if db_connection:
+                print(f"[MESSAGE BUS HOST] Database connection provided, enabling persistence...")
                 self.db_connection = db_connection
                 persistence_handler = self._create_persistence_handler(db_connection)
                 self.internal_client.enable_persistence(persistence_handler)
+                print(f"[MESSAGE BUS HOST] Message persistence enabled")
                 self.logger.info("Message persistence enabled")
+            else:
+                print(f"[MESSAGE BUS HOST] No database connection provided, persistence disabled")
             
             # Set up system topic permissions
+            print(f"[MESSAGE BUS HOST] Setting up system topic permissions...")
             self._setup_system_permissions()
+            print(f"[MESSAGE BUS HOST] System topic permissions set up successfully")
             
             self.running = True
+            print(f"[MESSAGE BUS HOST] Message bus host started successfully on {self.bind_address}")
             self.logger.info(f"Message bus host started on {self.bind_address}")
             
             # Publish system startup event with proper protobuf message
@@ -91,6 +102,9 @@ class AICOMessageBusHost:
             self.logger.info("Message bus host started successfully")
             
         except Exception as e:
+            print(f"[MESSAGE BUS HOST ERROR] Failed to start message bus host: {e}")
+            import traceback
+            print(f"[MESSAGE BUS HOST ERROR] Traceback: {traceback.format_exc()}")
             self.logger.error(f"Failed to start message bus host: {e}")
             raise
     

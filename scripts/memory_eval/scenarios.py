@@ -40,7 +40,7 @@ class ConversationScenario:
     tests_episodic_memory: bool = True
     tests_semantic_memory: bool = True
     tests_procedural_memory: bool = False
-    tests_thread_management: bool = True
+    tests_semantic_memory_quality: bool = True
     tests_entity_extraction: bool = True
     
     # Scenario metadata
@@ -198,14 +198,14 @@ class ScenarioLibrary:
                 "knowledge_retention": 0.90,
                 "entity_extraction": 0.80,
                 "conversation_relevancy": 0.85,
-                "thread_management": 0.95,
+                "semantic_memory_quality": 0.95,
                 "overall_score": 0.85
             },
             tags=["comprehensive", "memory", "entities", "context", "6-turn"],
             tests_working_memory=True,
             tests_episodic_memory=True,
             tests_semantic_memory=True,
-            tests_thread_management=True,
+            tests_semantic_memory_quality=True,
             tests_entity_extraction=True,
             estimated_duration_minutes=8,
             difficulty_level="medium"
@@ -259,9 +259,9 @@ class ScenarioLibrary:
             difficulty_level="hard"
         )
         
-        # Thread Management Test
-        self.scenarios["thread_management_test"] = ConversationScenario(
-            name="thread_management_test", 
+        # Semantic Memory Quality Test
+        self.scenarios["semantic_memory_test"] = ConversationScenario(
+            name="semantic_memory_test", 
             description="Tests thread creation, continuation, and reactivation logic",
             conversation_turns=[
                 ConversationTurn(
@@ -282,11 +282,11 @@ class ScenarioLibrary:
                 )
             ],
             success_criteria={
-                "thread_management": 0.90,
+                "semantic_memory_quality": 0.90,
                 "context_adherence": 0.85
             },
             tags=["threads", "management", "context-switching"],
-            tests_thread_management=True,
+            tests_semantic_memory_quality=True,
             difficulty_level="medium"
         )
         
@@ -324,7 +324,7 @@ class ScenarioLibrary:
             ],
             success_criteria={
                 "knowledge_retention": 0.95,
-                "thread_management": 0.85,
+                "semantic_memory_quality": 0.85,
                 "context_adherence": 0.90
             },
             tags=["long-term", "retention", "recall"],

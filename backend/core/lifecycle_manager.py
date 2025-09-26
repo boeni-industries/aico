@@ -293,6 +293,18 @@ class BackendLifecycleManager:
             modelservice_client = get_modelservice_client(self.config)
             memory_manager.set_modelservice(modelservice_client)
             self.logger.info("✅ Injected modelservice dependency into MemoryManager")
+            
+            # Check modelservice health
+            print("[+] Checking modelservice health...")
+            is_healthy = await modelservice_client.check_modelservice_health()
+            if is_healthy:
+                print("[✓] Modelservice is running and healthy")
+                self.logger.info("✅ Modelservice health check passed")
+            else:
+                print("[✗] WARNING: Modelservice appears to be offline")
+                print("    This will cause timeouts for AI features like embeddings and NER")
+                print("    Start the modelservice with: python -m modelservice.main")
+                self.logger.warning("⚠️ Modelservice health check failed - service appears to be offline")
         except Exception as e:
             self.logger.error(f"❌ Failed to inject modelservice into MemoryManager: {e}")
             import traceback

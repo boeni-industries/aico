@@ -656,19 +656,53 @@ class ModelserviceZMQHandlers:
                 "family_member", "friend", "colleague", "interest"
             ]
             
-            # Extract entities using GLiNER
+            # IMPROVED: Use GLiNER's built-in filtering and higher threshold for quality
             raw_entities = gliner_model.predict_entities(
                 text,
                 labels=entity_types,
-                threshold=0.3
+                threshold=0.5,  # Raised from 0.3 to 0.5 for higher quality entities
+                flat_ner=True,  # Use flat NER for better entity boundaries
+                multi_label=False  # Avoid overlapping entity classifications
             )
             
-            # Group entities by type and convert to expected format
+            # Group entities by type with intelligent filtering
             entities = {}
+            
             for entity in raw_entities:
                 entity_type = entity["label"].upper()
+                entity_text = entity["text"].strip()
+                
+                # Skip empty entities
+                if not entity_text:
+                    continue
+                
+                # INTELLIGENT FILTERING: Use GLiNER confidence and linguistic rules
+                confidence = entity.get("score", 0.0)
+                
+                # Skip low-confidence entities (GLiNER handles this better than pattern matching)
+                if confidence < 0.6:
+                    self.logger.debug(f"[NER_FILTER] Skipping low-confidence entity: '{entity_text}' (confidence: {confidence:.2f})")
+                    continue
+                
+                # Skip single characters unless they're meaningful abbreviations
+                if len(entity_text) == 1 and not entity_text.isupper():
+                    continue
+                
+                # Clean possessive forms intelligently
+                if entity_text.lower().endswith(("'s", "'s")):
+                    entity_text = entity_text[:-2].strip()
+                
+                # Extract meaningful content from possessive constructions
+                possessive_prefixes = ["your ", "my ", "his ", "her ", "their ", "our "]
+                for prefix in possessive_prefixes:
+                    if entity_text.lower().startswith(prefix):
+                        clean_entity = entity_text[len(prefix):].strip()
+                        if len(clean_entity) > 1:
+                            entity_text = clean_entity
+                            self.logger.debug(f"[NER_FILTER] Cleaned possessive: '{entity['text']}' -> '{entity_text}'")
+                        break
+                
                 # Map GLiNER labels to standard NER labels for backward compatibility
-                # Standard NER types (mapped for compatibility)
                 if entity_type == "PERSON":
                     entity_type = "PERSON"
                 elif entity_type == "LOCATION":
@@ -686,10 +720,10 @@ class ModelserviceZMQHandlers:
                 if entity_type not in entities:
                     entities[entity_type] = []
                 
-                # Clean and deduplicate entities
-                entity_text = entity["text"].strip()
-                if entity_text and entity_text not in entities[entity_type]:
+                # Final deduplication check
+                if entity_text not in entities[entity_type]:
                     entities[entity_type].append(entity_text)
+                    self.logger.debug(f"[NER_FILTER] Added quality entity: '{entity_text}' (type: {entity_type})")
             
             # Create protobuf response
             response.success = True
