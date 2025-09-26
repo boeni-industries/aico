@@ -22,14 +22,14 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 # Thread access verification removed - Enhanced Semantic Memory handles access automatically
 from backend.api.conversation.schemas import (
-    ThreadCreateRequest, ThreadResponse,
+    ConversationResponse,
     MessageSendRequest, MessageResponse,
-    ThreadListResponse, MessageHistoryResponse,
+    ConversationListResponse, MessageHistoryResponse,
     UnifiedMessageRequest, UnifiedMessageResponse,
     HealthResponse
 )
 from backend.api.conversation.exceptions import (
-    ConversationNotFoundException, InvalidThreadException, ThreadAccessDeniedException,
+    ConversationNotFoundException, InvalidConversationException,
     MessageProcessingException, WebSocketAuthenticationException, MessageBusConnectionException
 )
 
@@ -157,124 +157,115 @@ async def send_message_with_auto_thread(
         response_data = UnifiedMessageResponse(
             success=True,
             message_id=message_id,
-            thread_id=conversation_id,
-            thread_action="conversation_started",
-            thread_reasoning="Conversation continuity handled via enhanced semantic memory",
+            conversation_id=conversation_id,
+            conversation_action="conversation_started",
+            conversation_reasoning="Conversation continuity handled via enhanced semantic memory",
             status="completed",
             ai_response=ai_response,
             timestamp=timestamp.isoformat()
         )
         
         return response_data
-        
     except Exception as e:
         logger.error(f"Failed to send message with auto-thread: {e}")
         raise HTTPException(status_code=500, detail="Failed to process message")
 
 
-# Advanced thread management endpoints removed - Enhanced Semantic Memory handles continuity automatically
+# User-scoped endpoints - no thread management needed with semantic memory
 
-@router.get("/threads/{thread_id}/messages", response_model=MessageHistoryResponse)
-async def get_thread_messages(
-    thread_id: str,
+@router.get("/messages", response_model=MessageHistoryResponse)
+async def get_my_messages(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=100, description="Messages per page"),
+    since: Optional[datetime] = Query(None, description="Show messages after this timestamp"),
     current_user = Depends(get_current_user)
 ):
     """
-    Get message history for a thread
+    Get my message history (user-scoped)
     
-    Returns paginated message history with metadata.
+    Returns paginated message history for the authenticated user.
+    Semantic memory provides context continuity without explicit thread management.
     """
     try:
-        # Validate thread ID format
-        try:
-            uuid.UUID(thread_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid thread ID format"
-            )
+        user_id = current_user['user_uuid']
         
-        # TODO: Retrieve messages from database with pagination
-        # For now, return mock data
+        # TODO: Retrieve user's messages from semantic memory system
+        # This would query the working memory and semantic memory stores
+        # for messages belonging to this user, with time-based pagination
         
         return MessageHistoryResponse(
             success=True,
             messages=[],
-            thread_id=thread_id,
+            conversation_id=f"user_{user_id}",  # User-scoped identifier
             total_count=0,
             page=page,
             page_size=page_size
         )
         
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Failed to get message history: {e}", extra={
+        logger.error(f"Failed to get user message history: {e}", extra={
             "user_id": current_user.get('user_uuid', 'unknown'),
-            "thread_id": thread_id,
             "error": str(e)
         })
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get message history: {str(e)}"
+            detail="Failed to retrieve message history"
         )
 
 
-@router.post("/status/{thread_id}")
-async def get_conversation_status(
-    thread_id: str,
+@router.get("/status")
+async def get_my_conversation_status(
     current_user = Depends(get_current_user)
 ):
     """
-    Get status of a conversation thread
+    Get my conversation status (user-scoped)
     
-    TODO: Implement real status logic by connecting to ConversationEngine service
-    - Access conversation_threads from ConversationEngine via service container
-    - Return actual message_count from thread.message_history
-    - Return real conversation_phase, current_topic, turn_number
-    - Return actual last_activity timestamp
+    Returns conversation activity and status for the authenticated user.
+    Semantic memory provides context without explicit thread management.
     """
     try:
-        logger.info(f"Getting status for thread: {thread_id}", extra={
-            "user_id": current_user['user_uuid'],
-            "thread_id": thread_id
-        })
+        user_id = current_user['user_uuid']
         
-        # Return placeholder response indicating not implemented
+        logger.info(f"Getting conversation status for user: {user_id}")
+        
+        # TODO: Get user's conversation status from semantic memory system
+        # This would query working memory and semantic memory for user activity
+        
         return {
             "success": True,
-            "message": "Status endpoint logic not implemented yet.",
-            "thread_id": thread_id,
-            "error": None
+            "user_id": user_id,
+            "active_conversations": 0,  # From semantic memory
+            "total_messages": 0,       # From working memory
+            "last_activity": None,     # From recent messages
+            "status": "ready"
         }
         
     except Exception as e:
-        logger.error(f"Failed to get conversation status: {e}", extra={
+        logger.error(f"Failed to get user conversation status: {e}", extra={
             "user_id": current_user['user_uuid'],
-            "thread_id": thread_id,
             "error": str(e)
         })
-        raise ConversationNotFoundException(thread_id=thread_id, user_id=current_user['user_uuid'])
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve conversation status"
+        )
 
 
-@router.websocket("/ws/{thread_id}")
-async def conversation_websocket(websocket: WebSocket, thread_id: str):
+@router.websocket("/ws")
+async def my_conversation_websocket(websocket: WebSocket):
     """
-    WebSocket endpoint for real-time conversation updates
+    WebSocket endpoint for real-time conversation updates (user-scoped)
     
     Provides real-time delivery of AI responses and conversation events
-    for the specified thread ID.
+    for the authenticated user. No thread management needed.
     """
-    # TODO: Add WebSocket authentication
+    # TODO: Add WebSocket authentication to get user_id
     # For now, accept connection without auth (security risk)
     await websocket.accept()
-    connection_id = f"{thread_id}_{uuid.uuid4()}"
+    connection_id = f"user_{uuid.uuid4()}"  # User-scoped connection
     active_connections[connection_id] = websocket
     
     logger.info(f"WebSocket connection established", extra={
-        "thread_id": thread_id,
         "connection_id": connection_id
     })
     
@@ -283,37 +274,35 @@ async def conversation_websocket(websocket: WebSocket, thread_id: str):
         bus_client = MessageBusClient(f"conversation_ws_{connection_id}")
         await bus_client.connect()
         
-        # Subscribe to conversation responses for this thread
+        # Subscribe to conversation responses for this user
         async def response_handler(topic: str, message: Any):
             """Handle incoming conversation responses"""
             try:
-                if hasattr(message, 'message') and hasattr(message.message, 'thread_id'):
-                    if message.message.thread_id == thread_id:
-                        # Create structured WebSocket response
-                        ai_response = WebSocketAIResponse(
-                            thread_id=thread_id,
-                            message_id=str(uuid.uuid4()),
-                            message=message.message.text,
-                            confidence=getattr(message, 'confidence', None),
-                            processing_time_ms=getattr(message, 'processing_time_ms', None)
-                        )
-                        
-                        await websocket.send_json(ai_response.dict())
-                        
-                        logger.info(f"Sent AI response via WebSocket", extra={
-                            "thread_id": thread_id,
-                            "connection_id": connection_id
-                        })
+                # TODO: Filter by user_id instead of thread_id once WebSocket auth is implemented
+                if hasattr(message, 'message') and hasattr(message.message, 'text'):
+                    # Create structured WebSocket response
+                    ai_response = WebSocketAIResponse(
+                        conversation_id=f"user_conversation_{connection_id}",
+                        message_id=str(uuid.uuid4()),
+                        message=message.message.text,
+                        confidence=getattr(message, 'confidence', None),
+                        processing_time_ms=getattr(message, 'processing_time_ms', None)
+                    )
+                    
+                    await websocket.send_json(ai_response.dict())
+                    
+                    logger.info(f"Sent AI response via WebSocket", extra={
+                        "connection_id": connection_id
+                    })
             except Exception as e:
                 logger.error(f"Error handling response: {e}", extra={
-                    "thread_id": thread_id,
                     "connection_id": connection_id
                 })
                 # Send error to client
                 error_response = WebSocketError(
                     error_code="RESPONSE_PROCESSING_ERROR",
                     error_message=str(e),
-                    thread_id=thread_id
+                    conversation_id=f"user_conversation_{connection_id}"
                 )
                 try:
                     await websocket.send_json(error_response.dict())

@@ -81,26 +81,26 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Authentication failed")
 
 
-def validate_thread_id(thread_id: str) -> str:
+def validate_conversation_id(conversation_id: str) -> str:
     """
-    Validate conversation thread ID format.
+    Validate conversation ID format.
+    Simple validation for conversation identifiers used with semantic memory.
     """
-    if not thread_id or len(thread_id.strip()) == 0:
+    if not conversation_id or len(conversation_id.strip()) == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Thread ID cannot be empty"
+            detail="Conversation ID cannot be empty"
         )
     
-    # Basic UUID format validation
-    import re
-    uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-    if not re.match(uuid_pattern, thread_id, re.IGNORECASE):
+    # Basic format validation - allow flexible conversation IDs
+    conversation_id = conversation_id.strip()
+    if len(conversation_id) > 255:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Thread ID must be a valid UUID format"
+            detail="Conversation ID too long (max 255 characters)"
         )
     
-    return thread_id.strip()
+    return conversation_id
 
 
 def validate_message_type(message_type: str) -> str:
@@ -116,55 +116,8 @@ def validate_message_type(message_type: str) -> str:
     return message_type
 
 
-def verify_thread_access(
-    thread_id: str,
-    request: Request,
-    current_user: Dict[str, Any] = Depends(get_current_user)
-) -> str:
-    """
-    Verify that the current user has access to the specified conversation thread.
-    
-    Args:
-        thread_id: The conversation thread ID to verify access for
-        current_user: Current authenticated user information
-        request: FastAPI request object for accessing app state
-        
-    Returns:
-        The validated thread_id if access is granted
-        
-    Raises:
-        HTTPException: If thread doesn't exist or user doesn't have access
-    """
-    from backend.api.conversation.exceptions import ThreadAccessDeniedException, ConversationNotFoundException
-    
-    # Validate thread ID format first
-    validated_thread_id = validate_thread_id(thread_id)
-    
-    try:
-        # Get conversation service from container
-        if not hasattr(request.app.state, 'service_container'):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Service container not initialized"
-            )
-        
-        container = request.app.state.service_container
-        
-        # TODO: Implement actual thread ownership verification
-        # This should check if the user owns or has access to the thread
-        # For now, we'll do basic validation and assume access is granted
-        # In a real implementation, this would:
-        # 1. Query the database for thread ownership
-        # 2. Check if user is the thread creator
-        # 3. Check if thread is shared with the user
-        # 4. Verify thread exists
-        
-        logger.debug(f"Thread access verified for user {current_user['user_uuid']} on thread {validated_thread_id}")
-        return validated_thread_id
-        
-    except Exception as e:
-        logger.error(f"Thread access verification failed: {e}")
-        raise ThreadAccessDeniedException(thread_id=thread_id, user_id=current_user['user_uuid'])
+# Thread access verification removed - conversations are now user-scoped through authentication
+# Semantic memory handles context continuity without explicit thread management
 
 
 async def get_message_bus_client(request: Request):

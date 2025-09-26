@@ -87,6 +87,12 @@ class ModelserviceZMQHandlers:
         try:
             self.logger.info("Starting GLiNER NER system initialization...")
             
+            # Lazy initialization of TransformersManager if not already done
+            if self.transformers_manager is None:
+                from aico.core.config import ConfigurationManager
+                self.config_manager = ConfigurationManager()
+                self.transformers_manager = TransformersManager(self.config_manager)
+            
             # Ensure GLiNER model is loaded via transformers manager
             await self.transformers_manager.ensure_models_loaded()
             
@@ -532,15 +538,23 @@ class ModelserviceZMQHandlers:
     
     async def handle_embeddings_request(self, request_payload) -> EmbeddingsResponse:
         """Handle embeddings requests via Protocol Buffers using TransformersManager."""
+        import time
+        start_time = time.time()
         response = EmbeddingsResponse()
         
         try:
             model = request_payload.model
             prompt = request_payload.prompt
+            text_length = len(prompt) if prompt else 0
+            text_preview = prompt[:50] + "..." if prompt and len(prompt) > 50 else prompt
+            
+            self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Starting embedding request for model={model}, text_length={text_length}")
+            self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Text preview: '{text_preview}'")
             
             if not model or not prompt:
                 response.success = False
                 response.error = "model and prompt are required"
+                self.logger.error(f"🔍 [EMBEDDING_HANDLER_DEBUG] ❌ Missing required parameters: model={model}, prompt_length={text_length}")
                 return response
                 
             # Ensure transformers system is initialized
@@ -561,18 +575,35 @@ class ModelserviceZMQHandlers:
             
             # Generate embedding using transformer model from TransformersManager
             try:
+                # Track model loading time
+                model_load_time = time.time() - start_time
+                self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Model preparation took {model_load_time:.4f}s")
+                
                 # Check if this is a SentenceTransformer model (for paraphrase-multilingual)
                 if hasattr(transformer_model, 'encode'):
                     # This is a SentenceTransformer model - use .encode() method
-                    self.logger.debug(f"Using SentenceTransformer.encode() for model {model}")
+                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Using SentenceTransformer.encode() for model {model}")
+                    
+                    # Track encoding time
+                    encode_start = time.time()
+                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Starting encoding for text of length {text_length}...")
                     embedding = transformer_model.encode(prompt)
+                    encode_time = time.time() - encode_start
+                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] ✅ Encoding completed in {encode_time:.4f}s ({text_length/encode_time:.1f} chars/sec)")
                     
                     # Convert to list if it's a numpy array
                     if hasattr(embedding, 'tolist'):
                         embedding = embedding.tolist()
                     
+                    embedding_dim = len(embedding)
+                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Generated {embedding_dim}-dimensional embedding")
+                    
                     response.embedding.extend(embedding)
                     response.success = True
+                    
+                    total_time = time.time() - start_time
+                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] ✅ Total embedding generation took {total_time:.4f}s")
+                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Performance: model_load={model_load_time:.4f}s, encode={encode_time:.4f}s, total={total_time:.4f}s")
                     
                 elif hasattr(transformer_model, 'tokenizer') and hasattr(transformer_model, 'model'):
                     # This is a standard transformer model with tokenizer/model components

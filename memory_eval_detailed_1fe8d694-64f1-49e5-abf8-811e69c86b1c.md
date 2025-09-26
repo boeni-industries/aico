@@ -1,14 +1,14 @@
 # AICO Memory System Evaluation Report
 
-**Session ID:** 8d30d4c5-06c9-437b-a26c-4a2528bdd096
+**Session ID:** 1fe8d694-64f1-49e5-abf8-811e69c86b1c
 **Scenario:** comprehensive_memory_test
-**Timestamp:** 2025-09-26 13:07:56
-**Duration:** 22.8 seconds
+**Timestamp:** 2025-09-26 16:57:19
+**Duration:** 40.9 seconds
 **Conversation Turns:** 6
 
 ## Executive Summary
 
-Overall Score: **55.9%** (D/F)
+Overall Score: **40.4%** (D/F)
 
 Weighted average of 7 metrics
 
@@ -136,7 +136,7 @@ Weighted average of 7 metrics
 
 ### Entity Extraction
 
-**Score:** 100.0% (1.000/1.000)
+**Score:** 0.0% (0.000/1.000)
 
 **Analysis:** Real entity extraction testing across 6 messages using GLiNER and ChromaDB
 
@@ -147,157 +147,49 @@ Weighted average of 7 metrics
     {
       "turn": 1,
       "message": "Hi AICO! I'm Michael, and I just moved to San Francisco last week. I'm really excited about starting...",
-      "stored_entities": {
-        "EVENT": [
-          "move"
-        ],
-        "EMOTION": [
-          "stressed"
-        ],
-        "GPE": [
-          "San Francisco"
-        ],
-        "ORG": [
-          "TechCorp"
-        ],
-        "DATE": [
-          "next Friday",
-          "October 13th",
-          "Monday"
-        ]
-      },
-      "entities_count": 5,
-      "score": 1.0
+      "stored_entities": {},
+      "entities_count": 0,
+      "score": 0.0
     },
     {
       "turn": 2,
       "message": "Thanks! I'm a bit nervous though. It's a software engineering role, and I'll be working on their AI ...",
-      "stored_entities": {
-        "EVENT": [
-          "move"
-        ],
-        "EMOTION": [
-          "stressed"
-        ],
-        "GPE": [
-          "San Francisco"
-        ],
-        "ORG": [
-          "TechCorp"
-        ],
-        "DATE": [
-          "next Friday",
-          "October 13th",
-          "Monday"
-        ]
-      },
-      "entities_count": 5,
-      "score": 1.0
+      "stored_entities": {},
+      "entities_count": 0,
+      "score": 0.0
     },
     {
       "turn": 3,
       "message": "That's great advice! By the way, I have a cat named Whiskers who's been stressed about the move. Any...",
-      "stored_entities": {
-        "EVENT": [
-          "move"
-        ],
-        "EMOTION": [
-          "stressed"
-        ],
-        "GPE": [
-          "San Francisco"
-        ],
-        "ORG": [
-          "TechCorp"
-        ],
-        "DATE": [
-          "next Friday",
-          "October 13th",
-          "Monday"
-        ]
-      },
-      "entities_count": 5,
-      "score": 1.0
+      "stored_entities": {},
+      "entities_count": 0,
+      "score": 0.0
     },
     {
       "turn": 4,
       "message": "Perfect! Oh, I almost forgot - my birthday is next Friday, October 13th. I'm turning 28. I was think...",
-      "stored_entities": {
-        "EVENT": [
-          "move"
-        ],
-        "EMOTION": [
-          "stressed"
-        ],
-        "GPE": [
-          "San Francisco"
-        ],
-        "ORG": [
-          "TechCorp"
-        ],
-        "DATE": [
-          "next Friday",
-          "October 13th",
-          "Monday"
-        ]
-      },
-      "entities_count": 5,
-      "score": 1.0
+      "stored_entities": {},
+      "entities_count": 0,
+      "score": 0.0
     },
     {
       "turn": 5,
       "message": "Those sound amazing! I love Italian food. Actually, can you remind me what my job title is again? I ...",
-      "stored_entities": {
-        "EVENT": [
-          "move"
-        ],
-        "EMOTION": [
-          "stressed"
-        ],
-        "GPE": [
-          "San Francisco"
-        ],
-        "ORG": [
-          "TechCorp"
-        ],
-        "DATE": [
-          "next Friday",
-          "October 13th",
-          "Monday"
-        ]
-      },
-      "entities_count": 5,
-      "score": 1.0
+      "stored_entities": {},
+      "entities_count": 0,
+      "score": 0.0
     },
     {
       "turn": 6,
       "message": "Exactly! And what was my cat's name again? I want to tell my new coworkers about him.",
-      "stored_entities": {
-        "EVENT": [
-          "move"
-        ],
-        "EMOTION": [
-          "stressed"
-        ],
-        "GPE": [
-          "San Francisco"
-        ],
-        "ORG": [
-          "TechCorp"
-        ],
-        "DATE": [
-          "next Friday",
-          "October 13th",
-          "Monday"
-        ]
-      },
-      "entities_count": 5,
-      "score": 1.0
+      "stored_entities": {},
+      "entities_count": 0,
+      "score": 0.0
     }
   ],
   "chromadb_stored_entities": [],
   "total_messages_tested": 6,
-  "successful_extractions": 6
+  "successful_extractions": 0
 }
 ```
 
@@ -352,37 +244,37 @@ Weighted average of 7 metrics
     {
       "turn": 1,
       "expected": "continue",
-      "actual": "conversation_started",
+      "actual": "unknown",
       "score": 0.0
     },
     {
       "turn": 2,
       "expected": "continue",
-      "actual": "conversation_started",
+      "actual": "unknown",
       "score": 0.0
     },
     {
       "turn": 3,
       "expected": "continue",
-      "actual": "conversation_started",
+      "actual": "unknown",
       "score": 0.0
     },
     {
       "turn": 4,
       "expected": "continue",
-      "actual": "conversation_started",
+      "actual": "unknown",
       "score": 0.0
     },
     {
       "turn": 5,
       "expected": "continue",
-      "actual": "conversation_started",
+      "actual": "unknown",
       "score": 0.0
     },
     {
       "turn": 6,
       "expected": "continue",
-      "actual": "conversation_started",
+      "actual": "unknown",
       "score": 0.0
     }
   ],
@@ -393,7 +285,7 @@ Weighted average of 7 metrics
 
 ### Response Quality
 
-**Score:** 100.0% (1.000/1.000)
+**Score:** 95.0% (0.950/1.000)
 
 **Analysis:** Response quality across 6 turns
 
@@ -440,7 +332,6 @@ Weighted average of 7 metrics
       "turn": 6,
       "adequate_length": true,
       "coherent": true,
-      "helpful": true,
       "appropriate": true
     }
   ]
@@ -465,10 +356,10 @@ Weighted average of 7 metrics
 
 | Metric | Value |
 |--------|-------|
-| Average Response Time | 3146ms |
-| Maximum Response Time | 4752ms |
-| Minimum Response Time | 2388ms |
-| Turns per Minute | 15.8 |
+| Average Response Time | 6126ms |
+| Maximum Response Time | 11805ms |
+| Minimum Response Time | 2300ms |
+| Turns per Minute | 8.8 |
 
 ## Conversation Flow Analysis
 
@@ -476,92 +367,101 @@ Weighted average of 7 metrics
 
 **User:** Hi AICO! I'm Michael, and I just moved to San Francisco last week. I'm really excited about starting my new job at TechCorp on Monday!
 
-**AICO:** Hello Michael! Welcome to San Francisco - it's a fantastic city filled with opportunities. I hope your move went smoothly. Starting a new job can be both exciting and nerve-wracking, but you seem well-prepared for the adventure ahead.
-
-I'm sure you'll fit right in at TechCorp. They're known for their innovative projects and supportive work environment. Remember to take some time to explore the city too - San Francisco has so much to offer! If you ever need recommendations on places to visit or things to do, feel free to ask. I'd be happy to help you make the most of your new life in the Bay Area.
-
-Good luck with your first week at TechCorp, Michael! Let's hope it's a great start to your journey there.
+**AICO:** Hello Michael! Welcome to San Francisco and congratulations on your new job at TechCorp. I hope you'll be very happy there. If you need any assistance with getting around the city, adjusting to a new job, or just want someone to talk to, feel free to reach out anytime. My goal is to help make your transition as smooth and enjoyable as possible.
 
 **Metadata:**
-- Response Time: 3233ms
-- Thread Action: conversation_started
+- Response Time: 11805ms
+- Thread Action: unknown
 - Expected Entities: 
 
 ### Turn 2
 
 **User:** Thanks! I'm a bit nervous though. It's a software engineering role, and I'll be working on their AI platform. Do you have any advice for starting a new tech job?
 
-**AICO:** Hello Michael! Congratulations on your new job at TechCorp! Starting a new tech job, especially one that involves working on an AI platform, can certainly feel exciting yet nerve-wracking. Here are some tips to help you get off to a great start:
+**AICO:** Hello Michael,
 
-1. Prepare beforehand: Review the basics of software engineering and AI to refresh your knowledge before starting.
+Congratulations on your new job at TechCorp! Starting a new tech job is always exciting but also comes with its own set of challenges. Here are some tips to help you get off to a great start:
 
-2. Learn about the company's culture: Understand TechCorp's work environment so that you can fit in well with their team dynamics.
+1. Get to know the team: Take time to meet everyone in the office. Understand their roles and how they contribute to the project.
 
-3. Familiarize yourself with their AI platform: If possible, get hands-on experience with the specific tools or systems they use for AI development.
+2. Learn the processes: Familiarize yourself with the company's development workflow, code review process, and collaboration tools. 
 
-4. Ask questions: Don't hesitate to ask your colleagues or mentors about anything you're unsure of. Everyone was new once!
+3. Stay curious: Show genuine interest in your work and ask questions when you're unsure about something. This will help you grow professionally.
 
-5. Be proactive and contribute ideas: Show initiative by suggesting improvements or solutions in team meetings or project discussions.
+4. Keep communication open: If you face any challenges or have ideas to contribute, don't hesitate to discuss them with your team members or managers.
 
-6. Network within the company: Get to know other employees, especially those who work on different parts of the AI platform. This can be very beneficial for your future career at TechCorp.
+5. Be patient and persistent: Learning a new technology stack takes time. Keep pushing yourself and remember that every small progress counts.
 
-Remember, everyone starts somewhere! Take it one day at a time, and don't forget to enjoy the journey. Good luck with your new job, Michael!
+I'm sure you'll do great at TechCorp! Remember, I'm here to help anytime you need advice or just want to chat. Welcome to San Francisco!
 
 **Metadata:**
-- Response Time: 4752ms
-- Thread Action: conversation_started
+- Response Time: 4267ms
+- Thread Action: unknown
 - Expected Entities: 
 
 ### Turn 3
 
 **User:** That's great advice! By the way, I have a cat named Whiskers who's been stressed about the move. Any tips for helping pets adjust to new places?
 
-**AICO:** It's wonderful that you're thinking of your feline friend during this transition. Pets can sometimes feel the stress and uncertainty just as we do. To help Whiskers adjust, try to maintain some of his familiar routines like feeding times and play sessions. Having a few of his favorite toys and a comforting blanket from your old home can also provide comfort. Gradually introduce him to his new surroundings, and if possible, let him explore at his own pace. You might also want to make a "safe space" for Whiskers in the new place, where he can retreat to when feeling overwhelmed. Remember, patience is key - it might take some time for Whiskers to feel at home, but you're doing a great job already!
+**AICO:** It's wonderful that you're considering ways to ease Whiskers' stress during this transition. Pets can find moving just as overwhelming as humans do. Here are a few suggestions:
+
+1. Keep Whiskers' routine as consistent as possible. Maintain the same feeding, playtime, and bedtime schedules.
+
+2. Create a cozy space for your cat with familiar items like their bed, toys, or a blanket that smells like you. This will provide a sense of security in an unfamiliar environment.
+
+3. Give Whiskers some quiet time to explore the new place at their own pace. They might need some alone time before feeling comfortable in their new home.
+
+4. Pheromone diffusers can help soothe anxious pets. These products release calming scents that can relieve stress.
+
+5. Be patient and understanding. It may take Whiskers a little longer to feel at ease, so try not to let your own stress affect your patience with them.
+
+Remember, Michael, every pet adjusts differently. The key is consistency in care and a lot of love. I'm sure you'll provide that for Whiskers!
 
 **Metadata:**
-- Response Time: 3178ms
-- Thread Action: conversation_started
+- Response Time: 4543ms
+- Thread Action: unknown
 - Expected Entities: 
 
 ### Turn 4
 
 **User:** Perfect! Oh, I almost forgot - my birthday is next Friday, October 13th. I'm turning 28. I was thinking of exploring some restaurants in the city to celebrate.
 
-**AICO:** Happy early birthday, Michael! Turning 28 is a significant milestone. As you plan your celebration, San Francisco has numerous fantastic dining options. Since it's your birthday, why not splurge on an exquisite meal? You might want to check out the French Laundry in Yountville for an unforgettable experience, or if you're looking for something more urban, Coi offers a unique fine dining adventure with a focus on local ingredients. Don't forget to make reservations well ahead of time as these places can be quite popular. Enjoy your special day!
+**AICO:** Happy early birthday! Exploring new restaurants sounds like a wonderful way to celebrate. If you're looking for recommendations, I can help find places that match your tastes and preferences. Just let me know if you have any dietary restrictions or specific cuisine types in mind.
 
 **Metadata:**
-- Response Time: 2574ms
-- Thread Action: conversation_started
+- Response Time: 11327ms
+- Thread Action: unknown
 - Expected Entities: 
 
 ### Turn 5
 
 **User:** Those sound amazing! I love Italian food. Actually, can you remind me what my job title is again? I want to make sure I introduce myself correctly on Monday.
 
-**AICO:** Of course, I'd be happy to help with that. Your job title at Innovate Tech is Software Engineer. Remember, the company is known for their cutting-edge AI platform which you'll be working on from day one. You're excited about this opportunity and looking forward to making a positive impact in your new role. So when you introduce yourself, feel free to mention how you're thrilled to join the team and contribute to such an innovative project. This will show confidence and enthusiasm while showcasing your passion for software engineering and AI. Good luck on Monday!
+**AICO:** Of course! Your job title at Innovate Tech Solutions is Software Engineer AI Platform. You've been excited about this role as it aligns perfectly with your passion for software engineering and interest in working on an innovative AI platform. Remembering that will help you present yourself confidently to your new colleagues on Monday. And while we're at it, how about we explore some authentic Italian restaurants in the city for your birthday celebration next Friday? I'm sure Whiskers would enjoy a relaxing weekend too after your first week at work!
 
 **Metadata:**
-- Response Time: 2388ms
-- Thread Action: conversation_started
+- Response Time: 2514ms
+- Thread Action: unknown
 - Expected Entities: 
 
 ### Turn 6
 
 **User:** Exactly! And what was my cat's name again? I want to tell my new coworkers about him.
 
-**AICO:** Your cat's name is Whiskers. He might enjoy having a comfortable pet bed and some calming pheromone diffusers in his new environment to help him feel more at home during the move. As for your birthday, have you considered trying out a trendy sushi place or an upscale Italian restaurant? Those tend to be popular spots for birthdays. And regarding your new job, it's great that you'll be working on an AI platform! Don't hesitate to ask questions and lean on your team for guidance - even if it feels daunting at first. Happy birthday and good luck with the move and the new job!
+**AICO:** Your cat's name is Whiskers. He may find the move stressful but he'll likely adjust with time and patience. As for your birthday, I'm sure you'll love exploring restaurants in the city to celebrate turning 28! Don't forget to take pictures to remember this special milestone. When starting your new tech job, especially working on an AI platform, it's important to be proactive and ask questions if something is unclear. Your curiosity will be valued there. Good luck with everything!
 
 **Metadata:**
-- Response Time: 2752ms
-- Thread Action: conversation_started
+- Response Time: 2300ms
+- Thread Action: unknown
 - Expected Entities: 
 
 ## Recommendations
 
 - **Context Adherence:** Improve context assembly and relevance scoring in memory system
 - **Knowledge Retention:** Enhance episodic memory storage and retrieval mechanisms
+- **Entity Extraction:** Review NER model performance and entity recognition patterns
 - **Semantic Memory Quality:** Fine-tune semantic memory retrieval and relevance scoring
-- **Performance:** Optimize response time (current: 3146ms)
+- **Performance:** Optimize response time (current: 6126ms)
 
 ## Conclusion
 

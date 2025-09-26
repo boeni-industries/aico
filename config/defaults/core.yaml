@@ -54,6 +54,7 @@ message_bus:
   bind_address: "tcp://*:5555"
   pub_port: 5555  # Frontend port for publishers (broker binds here)
   sub_port: 5556  # Backend port for subscribers (broker binds here)
+  timeout: 120.0  # Timeout for message bus requests (increased from 60s default)
 
 # API Gateway configuration
 api_gateway:
@@ -235,7 +236,7 @@ service_auth:
 # Conversation Engine Configuration
 conversation:
   max_context_messages: 10
-  response_timeout_seconds: 30.0
+  response_timeout_seconds: 120.0  # Increased from 30s to match message bus timeout
   default_response_mode: "text_only"  # Valid values: text_only, multimodal
   
   # Feature flags for AI components
@@ -263,6 +264,7 @@ memory:
   # Semantic Memory (ChromaDB) - Dual collection architecture for comprehensive memory
   semantic:
     enabled: true  # Enable semantic memory
+    embedding_timeout_seconds: 120.0  # Timeout for embedding generation (increased from 60s default)
     # Dual collection architecture for different memory types
     collections:
       user_facts: "user_facts"                    # Personal info, preferences, relationships

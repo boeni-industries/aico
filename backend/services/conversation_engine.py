@@ -152,22 +152,28 @@ class ConversationEngine(BaseService):
     async def start(self) -> None:
         """Start the conversation engine service"""
         try:
-            self.logger.info("Starting conversation engine...")
+            print("💬 [CONVERSATION_ENGINE] 🚀 STARTING CONVERSATION ENGINE...")
+            self.logger.info("💬 [CONVERSATION_ENGINE] 🚀 STARTING CONVERSATION ENGINE...")
             
             # Initialize message bus client
             self.bus_client = MessageBusClient("conversation_engine")
             await self.bus_client.connect()
+            print("💬 [CONVERSATION_ENGINE] ✅ Message bus client connected")
+            self.logger.info("💬 [CONVERSATION_ENGINE] ✅ Message bus client connected")
             
             # AI processors will be registered here when implemented
             # No initialization needed for empty registry
             
             # Subscribe to conversation topics
             await self._setup_subscriptions()
+            print("💬 [CONVERSATION_ENGINE] ✅ Subscriptions established")
+            self.logger.info("💬 [CONVERSATION_ENGINE] ✅ Subscriptions established")
             
-            self.logger.info("Conversation engine started successfully")
+            print("💬 [CONVERSATION_ENGINE] 🎉 CONVERSATION ENGINE STARTED SUCCESSFULLY!")
+            self.logger.info("💬 [CONVERSATION_ENGINE] 🎉 CONVERSATION ENGINE STARTED SUCCESSFULLY!")
             
         except Exception as e:
-            self.logger.error(f"Failed to start conversation engine: {e}")
+            self.logger.error(f"💬 [CONVERSATION_ENGINE] ❌ FAILED TO START: {e}")
             raise
     
     async def stop(self) -> None:
@@ -236,16 +242,27 @@ class ConversationEngine(BaseService):
     async def _handle_user_input(self, message) -> None:
         """Handle incoming user input message"""
         try:
+            print(f"💬 [CONVERSATION_ENGINE] 🔥 RECEIVED USER INPUT MESSAGE!")
+            print(f"💬 [CONVERSATION_ENGINE] Message type: {type(message)}")
+            self.logger.info(f"💬 [CONVERSATION_ENGINE] 🔥 RECEIVED USER INPUT MESSAGE!")
+            self.logger.info(f"💬 [CONVERSATION_ENGINE] Message type: {type(message)}")
+            
             # The message is an AicoMessage envelope, need to unpack the ConversationMessage
             from aico.proto.aico_conversation_pb2 import ConversationMessage
             
             # Unpack the ConversationMessage from the AicoMessage envelope
             conv_message = ConversationMessage()
             message.any_payload.Unpack(conv_message)
+            print(f"💬 [CONVERSATION_ENGINE] ✅ Unpacked ConversationMessage successfully")
             
-            # Extract data from the ConversationMessage protobuf
+            # Extract user information from the message
+            user_id = conv_message.source  # This should be the authenticated user ID
             thread_id = conv_message.message.thread_id
-            user_id = conv_message.user_id  # Use the actual user_id, not the source
+            print(f"💬 [CONVERSATION_ENGINE] 📋 User ID: {user_id}, Thread ID: {thread_id}")
+            
+            # Use the actual user_id field if available
+            if hasattr(conv_message, 'user_id') and conv_message.user_id:
+                user_id = conv_message.user_id
             
             self.logger.info(f"[DEBUG] ConversationEngine: Received user input.", extra={
                 "thread_id": thread_id,
@@ -267,9 +284,11 @@ class ConversationEngine(BaseService):
                 thread.message_history = thread.message_history[-self.max_context_messages:]
             
             # Analyze message and update context
+            print(f"💬 [CONVERSATION_ENGINE] 🔍 Analyzing message...")
             await self._analyze_message(thread, conv_message)
             
             # Generate response
+            print(f"💬 [CONVERSATION_ENGINE] 🤖 Generating response...")
             await self._generate_response(thread, conv_message)
             
         except Exception as e:
@@ -354,6 +373,7 @@ class ConversationEngine(BaseService):
         """Generate and deliver response based on enabled features"""
         try:
             request_id = str(uuid.uuid4())
+            print(f"💬 [CONVERSATION_ENGINE] 🎯 Request ID: {request_id}")
             
             # Initialize response tracking
             self.pending_responses[request_id] = {
@@ -366,6 +386,7 @@ class ConversationEngine(BaseService):
             
             # Determine what components we need
             components_needed = []
+            print(f"💬 [CONVERSATION_ENGINE] 🔧 Checking enabled features...")
             
             if self.enable_emotion_integration:
                 components_needed.append("emotion")
@@ -383,12 +404,16 @@ class ConversationEngine(BaseService):
                 self.logger.info(f"[DEBUG] ConversationEngine: Memory integration disabled (enable_memory_integration={self.enable_memory_integration})")
             
             self.pending_responses[request_id]["components_needed"] = components_needed
+            print(f"💬 [CONVERSATION_ENGINE] 📝 Components needed: {components_needed}")
             
             # If no components needed, generate LLM response directly
             if not components_needed:
+                print(f"💬 [CONVERSATION_ENGINE] ⚡ No components needed, generating LLM response directly")
                 await self._generate_llm_response(request_id, thread, user_message, {})
+            else:
+                print(f"💬 [CONVERSATION_ENGINE] ⏳ Waiting for {len(components_needed)} components to complete")
             
-            # Set timeout
+            # Set timeout - normal responses should be 1-6 seconds
             asyncio.create_task(self._response_timeout_handler(request_id))
             
         except Exception as e:
@@ -470,8 +495,13 @@ class ConversationEngine(BaseService):
     
     async def _request_memory_retrieval(self, request_id: str, thread: ConversationThread, message: ConversationMessage) -> None:
         """Request memory retrieval - ready for future AI processor integration"""
+        import time
+        start_time = time.time()
+        print(f"💬 [CONVERSATION_ENGINE] 🧠 REQUESTING MEMORY RETRIEVAL for {request_id} at {start_time}")
+        
         # Check if memory processor is available
         memory_processor = ai_registry.get("memory")
+        print(f"💬 [CONVERSATION_ENGINE] 🔍 Memory processor found: {memory_processor is not None}")
         
         self.logger.info(f"[DEBUG] ConversationEngine: Requesting memory retrieval. Memory processor found: {memory_processor is not None}")
         if memory_processor:
@@ -491,10 +521,26 @@ class ConversationEngine(BaseService):
             )
             
             try:
-                # Process memory operations (store and retrieve)
-                self.logger.info(f"[MEMORY_DEBUG] Calling memory_processor.process() for request {request_id}")
-                result = await memory_processor.process(context)
-                self.logger.info(f"[MEMORY_DEBUG] Memory processor result: success={getattr(result, 'success', 'NO_SUCCESS_ATTR')}, type={type(result)}")
+                print(f"💬 [CONVERSATION_ENGINE] ⚡ Calling memory_processor.process() for {request_id}")
+                process_start = time.time()
+                
+                # CRITICAL: Add timeout to prevent deadlocks
+                try:
+                    # Process memory operations (store and retrieve) with timeout
+                    self.logger.info(f"[MEMORY_DEBUG] Calling memory_processor.process() for request {request_id}")
+                    result = await asyncio.wait_for(memory_processor.process(context), timeout=10.0)
+                    
+                    process_end = time.time()
+                    process_duration = process_end - process_start
+                    print(f"💬 [CONVERSATION_ENGINE] ✅ Memory processor completed: success={getattr(result, 'success', 'NO_SUCCESS_ATTR')} in {process_duration:.2f}s")
+                    self.logger.info(f"[MEMORY_DEBUG] Memory processor result: success={getattr(result, 'success', 'NO_SUCCESS_ATTR')}, type={type(result)}, duration={process_duration:.2f}s")
+                    
+                except asyncio.TimeoutError:
+                    process_end = time.time()
+                    process_duration = process_end - process_start
+                    print(f"💬 [CONVERSATION_ENGINE] ⚠️ Memory processor TIMEOUT after {process_duration:.2f}s for {request_id}")
+                    self.logger.error(f"[MEMORY_DEBUG] Memory processor timeout after {process_duration:.2f}s for request {request_id}")
+                    result = None
                 
                 if request_id in self.pending_responses:
                     if hasattr(result, 'success') and result.success:
@@ -514,10 +560,21 @@ class ConversationEngine(BaseService):
                 if request_id in self.pending_responses:
                     self.pending_responses[request_id]["memory_data"] = {}
         
-        # Always mark as ready (no blocking)
+        # Always mark as ready (no blocking) - add to components_ready like other components
         if request_id in self.pending_responses:
-            self.pending_responses[request_id]["memory_ready"] = True
+            # Get the memory data we stored earlier (or empty dict if failed)
+            memory_data = self.pending_responses[request_id].get("memory_data", {})
+            self.pending_responses[request_id]["components_ready"]["memory"] = memory_data
+            
+            end_time = time.time()
+            total_duration = end_time - start_time
+            print(f"💬 [CONVERSATION_ENGINE] ✅ Memory component marked as ready for {request_id} (total: {total_duration:.2f}s)")
+            print(f"💬 [CONVERSATION_ENGINE] 🔄 Checking response completion for {request_id}")
             await self._check_response_completion(request_id)
+        else:
+            end_time = time.time()
+            total_duration = end_time - start_time
+            print(f"💬 [CONVERSATION_ENGINE] ❌ Request {request_id} not found in pending_responses! (total: {total_duration:.2f}s)")
     
     # ============================================================================
     # COMPONENT RESPONSE HANDLERS
@@ -556,20 +613,28 @@ class ConversationEngine(BaseService):
     async def _check_response_completion(self, request_id: str) -> None:
         """Check if all components are ready and generate final response"""
         try:
+            print(f"💬 [CONVERSATION_ENGINE] 🔍 Checking response completion for {request_id}")
+            
             if request_id not in self.pending_responses:
+                print(f"💬 [CONVERSATION_ENGINE] ❌ Request {request_id} not found in pending_responses")
                 return
             
             pending_data = self.pending_responses[request_id]
             needed = set(pending_data["components_needed"])
             ready = set(pending_data["components_ready"].keys())
             
+            print(f"💬 [CONVERSATION_ENGINE] 📊 Components needed: {needed}, ready: {ready}")
+            
             if needed.issubset(ready):
+                print(f"💬 [CONVERSATION_ENGINE] ✅ All components ready! Generating LLM response...")
                 # All components ready, generate LLM response
                 thread = pending_data["thread"]
                 user_message = pending_data["user_message"]
                 context = pending_data["components_ready"]
                 
                 await self._generate_llm_response(request_id, thread, user_message, context)
+            else:
+                print(f"💬 [CONVERSATION_ENGINE] ⏳ Still waiting for components: {needed - ready}")
                 
         except Exception as e:
             self.logger.error(f"Error checking response completion: {e}")
@@ -581,9 +646,14 @@ class ConversationEngine(BaseService):
     async def _generate_llm_response(self, request_id: str, thread: ConversationThread, user_message: ConversationMessage, context: Dict[str, Any]) -> None:
         """Generate LLM response with integrated context"""
         try:
+            import time
+            llm_start_time = time.time()
+            print(f"💬 [CONVERSATION_ENGINE] 🧠 GENERATING LLM RESPONSE for {request_id} at {llm_start_time}")
+            
             # Include memory data in context if available
             if request_id in self.pending_responses and "memory_data" in self.pending_responses[request_id]:
                 memory_data = self.pending_responses[request_id]["memory_data"]
+                print(f"💬 [CONVERSATION_ENGINE] 📚 Using memory data from pending responses")
                 self.logger.info(f"[MEMORY_DEBUG] Found memory_data for request {request_id}: type={type(memory_data)}, keys={list(memory_data.keys()) if isinstance(memory_data, dict) else 'NOT_DICT'}")
                 if memory_data:
                     context["memory"] = memory_data
@@ -608,11 +678,15 @@ class ConversationEngine(BaseService):
             user_facts_xml = ""
             
             if "memory" in context and context["memory"]:
+                print(f"💬 [CONVERSATION_ENGINE] 🧠 Processing memory context...")
                 memory_data = context["memory"]
+                print(f"💬 [CONVERSATION_ENGINE] 📋 Memory data type: {type(memory_data)}")
                 memories = memory_data.get("memories", [])
+                print(f"💬 [CONVERSATION_ENGINE] 📊 Available memory items: {len(memories)}")
                 self.logger.info(f"[CONTEXT_DEBUG] Available memory items: {len(memories)}")
                 
                 if memories:
+                    print(f"💬 [CONVERSATION_ENGINE] 🔄 Processing {len(memories)} memory items...")
                     # Separate conversation messages from user facts
                     conversation_items = []
                     user_facts = []
@@ -656,6 +730,10 @@ class ConversationEngine(BaseService):
 {chr(10).join(user_facts)}
 </user_facts>"""
                         self.logger.info(f"[CONTEXT_DEBUG] Built user facts context with {len(user_facts)} facts")
+                
+                print(f"💬 [CONVERSATION_ENGINE] ✅ Memory processing completed")
+            else:
+                print(f"💬 [CONVERSATION_ENGINE] ℹ️ No memory context available")
             
             # MODERN BEST PRACTICE: Enhanced system prompt with clear structure and instructions
             if context_xml or user_facts_xml:
@@ -702,8 +780,13 @@ class ConversationEngine(BaseService):
             for i, msg in enumerate(messages):
                 self.logger.info(f"[DEBUG] Message {i}: role={msg.role}, content='{msg.content[:100]}...'")
             
-            # Create completions request
-            conversation_model = self.config.get("modelservice.ollama.default_models.conversation.name", "hermes3:8b")
+            print(f"💬 [CONVERSATION_ENGINE] 🎯 Creating completions request...")
+            
+            # CRITICAL FIX: ServiceContainer doesn't have config_manager - use hardcoded model
+            conversation_model = "hermes3:8b"
+            print(f"💬 [CONVERSATION_ENGINE] 🤖 Using model: {conversation_model} (fixed - no config_manager)")
+            
+            print(f"💬 [CONVERSATION_ENGINE] 🔨 Creating CompletionsRequest object...")
             
             # Create completions request with ultra-focused parameters
             completions_request = CompletionsRequest(
@@ -714,17 +797,38 @@ class ConversationEngine(BaseService):
                 max_tokens=150    # CRITICAL FIX: Even shorter responses to prevent rambling
             )
             
+            print(f"💬 [CONVERSATION_ENGINE] ✅ CompletionsRequest created successfully")
+            
             # Publish to modelservice with correlation ID for proper response matching
+            self.logger.info(f"💬 [CONVERSATION_ENGINE] Sending chat request to modelservice with correlation_id: {request_id}")
+            self.logger.info(f"💬 [CONVERSATION_ENGINE] Model: {conversation_model}, Messages: {len(completions_request.messages)}")
+            self.logger.info(f"💬 [CONVERSATION_ENGINE] Topic: {AICOTopics.MODELSERVICE_CHAT_REQUEST}")
+            
+            print(f"💬 [CONVERSATION_ENGINE] 📡 PUBLISHING LLM REQUEST to {AICOTopics.MODELSERVICE_CHAT_REQUEST}")
+            print(f"💬 [CONVERSATION_ENGINE] 🆔 Correlation ID: {request_id}")
+            print(f"💬 [CONVERSATION_ENGINE] 📝 Messages count: {len(completions_request.messages)}")
+            
+            publish_start = time.time()
             await self.bus_client.publish(
                 AICOTopics.MODELSERVICE_CHAT_REQUEST,
                 completions_request,
                 correlation_id=request_id
             )
+            publish_end = time.time()
+            publish_duration = publish_end - publish_start
+            
+            print(f"💬 [CONVERSATION_ENGINE] ✅ Chat request published to modelservice in {publish_duration:.3f}s")
+            self.logger.info(f"💬 [CONVERSATION_ENGINE] ✅ Chat request published to modelservice")
             
             # Mark LLM request sent
             self.pending_responses[request_id]["llm_request_sent"] = True
             
+            llm_end_time = time.time()
+            llm_total_duration = llm_end_time - llm_start_time
+            print(f"💬 [CONVERSATION_ENGINE] 🏁 LLM request generation completed for {request_id} in {llm_total_duration:.2f}s")
+            
         except Exception as e:
+            print(f"💬 [CONVERSATION_ENGINE] ❌ EXCEPTION in _generate_llm_response: {e}")
             self.logger.error(f"Error generating LLM response: {e}", exc_info=True)
             await self._cleanup_request(request_id)
     
@@ -763,6 +867,10 @@ class ConversationEngine(BaseService):
     async def _handle_llm_response(self, response) -> None:
         """Handle LLM completion response and deliver final response"""
         try:
+            print(f"💬 [CONVERSATION_ENGINE] 🎉 RECEIVED LLM RESPONSE!")
+            print(f"💬 [CONVERSATION_ENGINE] Response type: {type(response)}")
+            print(f"💬 [CONVERSATION_ENGINE] 🔍 Unpacking CompletionsResponse...")
+            
             # Unpack the LLM response from AicoMessage envelope
             from aico.proto.aico_modelservice_pb2 import CompletionsResponse
             
@@ -773,18 +881,26 @@ class ConversationEngine(BaseService):
             completions_response = CompletionsResponse()
             response.any_payload.Unpack(completions_response)
             
+            print(f"💬 [CONVERSATION_ENGINE] ✅ CompletionsResponse unpacked successfully")
+            
             # Extract correlation ID from response for proper matching
             correlation_id = None
             try:
                 # Get correlation ID from envelope metadata
                 correlation_id = response.metadata.attributes.get("correlation_id")
+                print(f"💬 [CONVERSATION_ENGINE] 🆔 Extracted correlation_id: {correlation_id}")
                 self.logger.debug(f"Received LLM response with correlation_id: {correlation_id}")
             except Exception as e:
+                print(f"💬 [CONVERSATION_ENGINE] ❌ Failed to extract correlation_id: {e}")
                 self.logger.error(f"Failed to extract correlation_id from LLM response: {e}")
                 return
             
+            print(f"💬 [CONVERSATION_ENGINE] 🔍 Checking pending responses for {correlation_id}")
+            print(f"💬 [CONVERSATION_ENGINE] 📋 Pending requests: {list(self.pending_responses.keys())}")
+            
             # Find matching request using correlation ID
             if correlation_id and correlation_id in self.pending_responses:
+                print(f"💬 [CONVERSATION_ENGINE] ✅ Found matching request for {correlation_id}")
                 request_id = correlation_id
                 pending_data = self.pending_responses[request_id]
                 thread = pending_data["thread"]
@@ -843,7 +959,10 @@ class ConversationEngine(BaseService):
                 
                 # Clean up (but only if not being used by direct API)
                 if request_id in self.pending_responses and not self.pending_responses[request_id].get("direct_api_call"):
+                    print(f"💬 [CONVERSATION_ENGINE] 🧹 Cleaning up completed request {request_id}")
                     await self._cleanup_request(request_id)
+                else:
+                    print(f"💬 [CONVERSATION_ENGINE] 🔒 Keeping request {request_id} (direct_api_call or already cleaned)")
             else:
                 self.logger.warning(f"No matching request found for correlation_id: {correlation_id}")
                 self.logger.debug(f"Pending requests: {list(self.pending_responses.keys())}")
@@ -918,6 +1037,9 @@ class ConversationEngine(BaseService):
     async def _deliver_response(self, thread: ConversationThread, response_components: ResponseComponents) -> None:
         """Deliver multimodal response to user"""
         try:
+            print(f"💬 [CONVERSATION_ENGINE] 📤 DELIVERING RESPONSE!")
+            print(f"💬 [CONVERSATION_ENGINE] Response text: {response_components.text[:100]}...")
+            
             # Create AI response message
             ai_message = ConversationMessage()
             ai_message.timestamp.GetCurrentTime()

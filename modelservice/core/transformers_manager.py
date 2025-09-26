@@ -236,8 +236,8 @@ class TransformersManager:
             return False
     
     async def ensure_models_loaded(self) -> bool:
-        """Ensure all required models are loaded (alias for ensure_models_available)."""
-        return await self.ensure_models_available()
+        """Ensure all required models are loaded."""
+        return await self.initialize_models()
     
     async def _ensure_model_available(self, model_config: TransformerModelConfig) -> bool:
         """Ensure a model is downloaded and available."""
@@ -448,14 +448,24 @@ class TransformersManager:
                         return None
                     
                     print(f"🔍 Loading sentence-transformers model for embeddings...")
-                    self.logger.info(f"Loading sentence-transformers model for embeddings...")
+                    self.logger.info(f"🔍 [EMBEDDING_MODEL_DEBUG] Loading sentence-transformers model...")
+                    
+                    # Track loading time
+                    import time
+                    start_time = time.time()
                     
                     # Load model
-                    model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-mpnet-base-v2")
+                    model_id = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+                    self.logger.info(f"🔍 [EMBEDDING_MODEL_DEBUG] Loading model_id: {model_id}")
+                    model = SentenceTransformer(model_id)
                     self.loaded_models[model_name] = model
                     
-                    print(f"✅ sentence-transformers embedding model ready")
-                    self.logger.info(f"✅ sentence-transformers model loaded successfully")
+                    load_time = time.time() - start_time
+                    print(f"✅ sentence-transformers embedding model ready in {load_time:.2f}s")
+                    self.logger.info(f"🔍 [EMBEDDING_MODEL_DEBUG] ✅ Model loaded successfully in {load_time:.2f}s")
+                    self.logger.info(f"🔍 [EMBEDDING_MODEL_DEBUG] Model info: {model}")
+                else:
+                    self.logger.debug(f"🔍 [EMBEDDING_MODEL_DEBUG] Using cached embedding model: {model_name}")
                 
                 return self.loaded_models[model_name]
                 

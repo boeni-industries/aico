@@ -589,27 +589,63 @@ class SemanticMemoryStore:
             
             # Add timeout handling for background embedding generation
             import asyncio
-            response = await asyncio.wait_for(
-                self._modelservice.get_embeddings(
-                    model=self._embedding_model,
-                    prompt=text
-                ),
-                timeout=60.0  # Increased timeout for embedding generation
-            )
+            
+            # Get timeout from config or use default
+            embedding_timeout = self.config.get("memory", {}).get("semantic", {}).get("embedding_timeout_seconds", 120.0)
+            
+            # Track performance metrics
+            import time
+            start_time = time.time()
+            text_length = len(text)
+            text_preview = text[:50] + "..." if len(text) > 50 else text
+            
+            logger.debug(f"🔍 [EMBEDDING_DEBUG] Starting embedding generation for text ({text_length} chars): '{text_preview}'")
+            logger.debug(f"🔍 [EMBEDDING_DEBUG] Using model: {self._embedding_model}, timeout: {embedding_timeout}s")
+            
+            # Track the modelservice request start time
+            ms_request_start = time.time()
+            
+            try:
+                logger.debug(f"🔍 [EMBEDDING_DEBUG] Sending embedding request to modelservice...")
+                response = await asyncio.wait_for(
+                    self._modelservice.get_embeddings(
+                        model=self._embedding_model,
+                        prompt=text
+                    ),
+                    timeout=embedding_timeout
+                )
+                ms_request_time = time.time() - ms_request_start
+                logger.debug(f"🔍 [EMBEDDING_DEBUG] ✅ Modelservice responded in {ms_request_time:.2f}s")
+            except asyncio.TimeoutError:
+                ms_request_time = time.time() - ms_request_start
+                logger.warning(f"🔍 [EMBEDDING_DEBUG] ❌ Embedding request timed out after {ms_request_time:.2f}s (limit: {embedding_timeout}s)")
+                logger.warning(f"🔍 [EMBEDDING_DEBUG] Text that caused timeout: '{text_preview}'")
+                return None
             
             if response.get("success") and "embedding" in response.get("data", {}):
                 embedding = response["data"]["embedding"]
-                logger.debug(f"Generated {len(embedding)}-dimensional embedding via modelservice")
+                embedding_dim = len(embedding)
+                total_time = time.time() - start_time
+                
+                logger.debug(f"🔍 [EMBEDDING_DEBUG] ✅ Generated {embedding_dim}-dimensional embedding in {total_time:.2f}s total")
+                logger.debug(f"🔍 [EMBEDDING_DEBUG] Performance: {text_length} chars → {embedding_dim} dimensions in {total_time:.2f}s ({text_length/total_time:.1f} chars/sec)")
+                
                 return embedding
             else:
-                logger.error(f"Modelservice embedding generation failed: {response.get('error', 'Unknown error')}")
+                error_msg = response.get('error', 'Unknown error')
+                logger.error(f"🔍 [EMBEDDING_DEBUG] ❌ Modelservice embedding failed: {error_msg}")
+                logger.error(f"🔍 [EMBEDDING_DEBUG] Full response: {response}")
                 return None
                 
+        # This exception should never be reached since we have an inner try/except for TimeoutError
+        # But keeping it for safety
         except asyncio.TimeoutError:
-            logger.warning(f"Embedding generation timed out after 60s - skipping fact storage")
+            logger.warning(f"Embedding generation timed out - skipping fact storage")
             return None
         except Exception as e:
-            logger.error(f"Failed to generate embedding via modelservice: {e}")
+            import traceback
+            logger.error(f"🔍 [EMBEDDING_DEBUG] ❌ Error during embedding generation: {e}")
+            logger.error(f"🔍 [EMBEDDING_DEBUG] Traceback: {traceback.format_exc()}")
             return None
     
     async def _store_user_fact_advanced(self, extracted_fact) -> bool:

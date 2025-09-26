@@ -1,16 +1,16 @@
 {
   "metadata": {
-    "session_id": "8d30d4c5-06c9-437b-a26c-4a2528bdd096",
+    "session_id": "1fe8d694-64f1-49e5-abf8-811e69c86b1c",
     "scenario_name": "comprehensive_memory_test",
-    "timestamp": "2025-09-26T13:07:56.697778",
+    "timestamp": "2025-09-26T16:57:19.247930",
     "conversation_turns": 6,
-    "total_duration_seconds": 22.78373,
+    "total_duration_seconds": 40.874128,
     "version": "1.0.0"
   },
   "scores": {
     "overall": {
-      "score": 0.5585714285714286,
-      "percentage": 55.85714285714286,
+      "score": 0.4035714285714285,
+      "percentage": 40.357142857142854,
       "max_score": 1.0,
       "explanation": "Weighted average of 7 metrics",
       "details": {
@@ -26,9 +26,9 @@
             "contribution": 0.02857142857142857
           },
           "metric_2": {
-            "score": 1.0,
+            "score": 0.0,
             "weight": 0.15,
-            "contribution": 0.15
+            "contribution": 0.0
           },
           "metric_3": {
             "score": 1.0,
@@ -41,9 +41,9 @@
             "contribution": 0.0
           },
           "metric_5": {
-            "score": 1.0,
+            "score": 0.95,
             "weight": 0.1,
-            "contribution": 0.1
+            "contribution": 0.095
           },
           "metric_6": {
             "score": 1.0,
@@ -180,8 +180,8 @@
       }
     },
     "entity_extraction": {
-      "score": 1.0,
-      "percentage": 100.0,
+      "score": 0.0,
+      "percentage": 0.0,
       "max_score": 1.0,
       "explanation": "Real entity extraction testing across 6 messages using GLiNER and ChromaDB",
       "details": {
@@ -189,157 +189,49 @@
           {
             "turn": 1,
             "message": "Hi AICO! I'm Michael, and I just moved to San Francisco last week. I'm really excited about starting...",
-            "stored_entities": {
-              "EVENT": [
-                "move"
-              ],
-              "EMOTION": [
-                "stressed"
-              ],
-              "GPE": [
-                "San Francisco"
-              ],
-              "ORG": [
-                "TechCorp"
-              ],
-              "DATE": [
-                "next Friday",
-                "October 13th",
-                "Monday"
-              ]
-            },
-            "entities_count": 5,
-            "score": 1.0
+            "stored_entities": {},
+            "entities_count": 0,
+            "score": 0.0
           },
           {
             "turn": 2,
             "message": "Thanks! I'm a bit nervous though. It's a software engineering role, and I'll be working on their AI ...",
-            "stored_entities": {
-              "EVENT": [
-                "move"
-              ],
-              "EMOTION": [
-                "stressed"
-              ],
-              "GPE": [
-                "San Francisco"
-              ],
-              "ORG": [
-                "TechCorp"
-              ],
-              "DATE": [
-                "next Friday",
-                "October 13th",
-                "Monday"
-              ]
-            },
-            "entities_count": 5,
-            "score": 1.0
+            "stored_entities": {},
+            "entities_count": 0,
+            "score": 0.0
           },
           {
             "turn": 3,
             "message": "That's great advice! By the way, I have a cat named Whiskers who's been stressed about the move. Any...",
-            "stored_entities": {
-              "EVENT": [
-                "move"
-              ],
-              "EMOTION": [
-                "stressed"
-              ],
-              "GPE": [
-                "San Francisco"
-              ],
-              "ORG": [
-                "TechCorp"
-              ],
-              "DATE": [
-                "next Friday",
-                "October 13th",
-                "Monday"
-              ]
-            },
-            "entities_count": 5,
-            "score": 1.0
+            "stored_entities": {},
+            "entities_count": 0,
+            "score": 0.0
           },
           {
             "turn": 4,
             "message": "Perfect! Oh, I almost forgot - my birthday is next Friday, October 13th. I'm turning 28. I was think...",
-            "stored_entities": {
-              "EVENT": [
-                "move"
-              ],
-              "EMOTION": [
-                "stressed"
-              ],
-              "GPE": [
-                "San Francisco"
-              ],
-              "ORG": [
-                "TechCorp"
-              ],
-              "DATE": [
-                "next Friday",
-                "October 13th",
-                "Monday"
-              ]
-            },
-            "entities_count": 5,
-            "score": 1.0
+            "stored_entities": {},
+            "entities_count": 0,
+            "score": 0.0
           },
           {
             "turn": 5,
             "message": "Those sound amazing! I love Italian food. Actually, can you remind me what my job title is again? I ...",
-            "stored_entities": {
-              "EVENT": [
-                "move"
-              ],
-              "EMOTION": [
-                "stressed"
-              ],
-              "GPE": [
-                "San Francisco"
-              ],
-              "ORG": [
-                "TechCorp"
-              ],
-              "DATE": [
-                "next Friday",
-                "October 13th",
-                "Monday"
-              ]
-            },
-            "entities_count": 5,
-            "score": 1.0
+            "stored_entities": {},
+            "entities_count": 0,
+            "score": 0.0
           },
           {
             "turn": 6,
             "message": "Exactly! And what was my cat's name again? I want to tell my new coworkers about him.",
-            "stored_entities": {
-              "EVENT": [
-                "move"
-              ],
-              "EMOTION": [
-                "stressed"
-              ],
-              "GPE": [
-                "San Francisco"
-              ],
-              "ORG": [
-                "TechCorp"
-              ],
-              "DATE": [
-                "next Friday",
-                "October 13th",
-                "Monday"
-              ]
-            },
-            "entities_count": 5,
-            "score": 1.0
+            "stored_entities": {},
+            "entities_count": 0,
+            "score": 0.0
           }
         ],
         "chromadb_stored_entities": [],
         "total_messages_tested": 6,
-        "successful_extractions": 6
+        "successful_extractions": 0
       }
     },
     "conversation_relevancy": {
@@ -386,37 +278,37 @@
           {
             "turn": 1,
             "expected": "continue",
-            "actual": "conversation_started",
+            "actual": "unknown",
             "score": 0.0
           },
           {
             "turn": 2,
             "expected": "continue",
-            "actual": "conversation_started",
+            "actual": "unknown",
             "score": 0.0
           },
           {
             "turn": 3,
             "expected": "continue",
-            "actual": "conversation_started",
+            "actual": "unknown",
             "score": 0.0
           },
           {
             "turn": 4,
             "expected": "continue",
-            "actual": "conversation_started",
+            "actual": "unknown",
             "score": 0.0
           },
           {
             "turn": 5,
             "expected": "continue",
-            "actual": "conversation_started",
+            "actual": "unknown",
             "score": 0.0
           },
           {
             "turn": 6,
             "expected": "continue",
-            "actual": "conversation_started",
+            "actual": "unknown",
             "score": 0.0
           }
         ],
@@ -425,8 +317,8 @@
       }
     },
     "response_quality": {
-      "score": 1.0,
-      "percentage": 100.0,
+      "score": 0.95,
+      "percentage": 95.0,
       "max_score": 1.0,
       "explanation": "Response quality across 6 turns",
       "details": {
@@ -470,7 +362,6 @@
             "turn": 6,
             "adequate_length": true,
             "coherent": true,
-            "helpful": true,
             "appropriate": true
           }
         ]
@@ -488,18 +379,17 @@
     }
   },
   "performance": {
-    "average_response_time_ms": 3146.2480227152505,
-    "max_response_time_ms": 4752.177953720093,
-    "min_response_time_ms": 2387.6380920410156,
-    "total_conversation_time_seconds": 22.78373,
-    "turns_per_minute": 15.800749043286592
+    "average_response_time_ms": 6125.868519147237,
+    "max_response_time_ms": 11805.053234100342,
+    "min_response_time_ms": 2300.165891647339,
+    "total_conversation_time_seconds": 40.874128,
+    "turns_per_minute": 8.807527343457945
   },
   "errors": [],
   "summary": {
     "passed": false,
     "grade": "F",
     "key_strengths": [
-      "Entity Extraction",
       "Conversation Relevancy",
       "Response Quality",
       "Memory Consistency"
@@ -507,6 +397,7 @@
     "improvement_areas": [
       "Context Adherence",
       "Knowledge Retention",
+      "Entity Extraction",
       "Semantic Memory Quality"
     ]
   }

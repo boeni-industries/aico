@@ -294,17 +294,8 @@ class BackendLifecycleManager:
             memory_manager.set_modelservice(modelservice_client)
             self.logger.info("✅ Injected modelservice dependency into MemoryManager")
             
-            # Check modelservice health
-            print("[+] Checking modelservice health...")
-            is_healthy = await modelservice_client.check_modelservice_health()
-            if is_healthy:
-                print("[✓] Modelservice is running and healthy")
-                self.logger.info("✅ Modelservice health check passed")
-            else:
-                print("[✗] WARNING: Modelservice appears to be offline")
-                print("    This will cause timeouts for AI features like embeddings and NER")
-                print("    Start the modelservice with: python -m modelservice.main")
-                self.logger.warning("⚠️ Modelservice health check failed - service appears to be offline")
+            # Note: We don't check modelservice health here because the modelservice depends on the backend,
+            # not the other way around. The modelservice will connect to the backend's message bus when it starts.
         except Exception as e:
             self.logger.error(f"❌ Failed to inject modelservice into MemoryManager: {e}")
             import traceback
@@ -312,19 +303,22 @@ class BackendLifecycleManager:
         
         # Force initialization to see config logs
         try:
+            self.logger.info("🔧 [AI_PROCESSORS] Initializing MemoryManager...")
             import asyncio
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # Schedule initialization for later
-                asyncio.create_task(memory_manager.initialize())
+                # Schedule initialization for later and wait for it
+                self.logger.info("🔧 [AI_PROCESSORS] Event loop is running, scheduling MemoryManager initialization...")
+                await memory_manager.initialize()
             else:
                 # Initialize immediately
+                self.logger.info("🔧 [AI_PROCESSORS] Event loop not running, initializing MemoryManager immediately...")
                 loop.run_until_complete(memory_manager.initialize())
-            self.logger.info("✅ MemoryManager initialized during startup")
+            self.logger.info("✅ [AI_PROCESSORS] MemoryManager initialized during startup")
         except Exception as e:
-            self.logger.error(f"❌ Failed to initialize MemoryManager during startup: {e}")
+            self.logger.error(f"❌ [AI_PROCESSORS] Failed to initialize MemoryManager during startup: {e}")
             import traceback
-            self.logger.error(f"Full traceback: {traceback.format_exc()}")
+            self.logger.error(f"❌ [AI_PROCESSORS] Full traceback: {traceback.format_exc()}")
         
         ai_registry.register("memory", memory_manager)
         self.logger.info("Registered 'memory' processor.")

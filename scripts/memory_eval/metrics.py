@@ -181,11 +181,10 @@ class MemoryMetrics:
             await self.initialize_memory_connections()
             
         user_id = getattr(session, 'user_id', None)
-        thread_id = getattr(session, 'thread_id', None)
-        all_thread_ids = getattr(session, 'all_thread_ids', [thread_id] if thread_id else [])
+        conversation_id = getattr(session, 'conversation_id', None)
+        all_conversation_ids = getattr(session, 'all_conversation_ids', [conversation_id] if conversation_id else [])
         
-        print(f"🔍 Knowledge retention - user_id: {user_id}, thread_id: {thread_id}")
-        print(f"🔍 All thread_ids in conversation: {all_thread_ids}")
+        print(f"🔍 Knowledge retention - user_id: {user_id}, conversation_id: {conversation_id}")
         
         if not user_id:
             return MetricScore(0.0, explanation="No user_id available for memory testing")
@@ -220,7 +219,7 @@ class MemoryMetrics:
             if not user_message:
                 continue
                 
-            stored_entities = await self._query_stored_entities(user_id, thread_id, user_message)
+            stored_entities = await self._query_stored_entities(user_id, conversation_id, user_message)
             
             test_result = {
                 "turn": i + 1,
@@ -265,24 +264,23 @@ class MemoryMetrics:
         }
         
         user_id = getattr(session, 'user_id', None)
-        thread_id = getattr(session, 'thread_id', None)
-        all_thread_ids = getattr(session, 'all_thread_ids', [thread_id] if thread_id else [])
+        conversation_id = getattr(session, 'conversation_id', None)
+        all_conversation_ids = getattr(session, 'all_conversation_ids', [conversation_id] if conversation_id else [])
         
-        print(f"🔍 Entity extraction - user_id: {user_id}, thread_id: {thread_id}")
-        print(f"🔍 All thread_ids in conversation: {all_thread_ids}")
+        print(f"🔍 Entity extraction - user_id: {user_id}, conversation_id: {conversation_id}")
         
         # Give a moment for async memory processing to complete
         await asyncio.sleep(2.0)
         
-        # Query entities from ALL thread_ids used in the conversation
-        print(f"🔍 Querying entities from all conversation threads...")
+        # Query entities from all conversation_ids used in the conversation
+        print(f"🔍 Querying entities from all conversations...")
         stored_entities = {}
-        for tid in all_thread_ids:
-            if tid:
-                entities_from_thread = await self._query_stored_entities(user_id, tid, "")
-                if entities_from_thread:
-                    # Merge entities from this thread
-                    for entity_type, entity_list in entities_from_thread.items():
+        for conv_id in all_conversation_ids:
+            if conv_id:
+                entities_from_conv = await self._query_stored_entities(user_id, conv_id, "")
+                if entities_from_conv:
+                    # Merge entities from this conversation
+                    for entity_type, entity_list in entities_from_conv.items():
                         if entity_type not in stored_entities:
                             stored_entities[entity_type] = []
                         stored_entities[entity_type].extend(entity_list)
@@ -650,37 +648,36 @@ class MemoryMetrics:
         # If entities are stored in ChromaDB, we know GLiNER worked
         return {}
     
-    async def _query_stored_entities(self, user_id: str, thread_id: str, message_text: str) -> Dict[str, Any]:
+    async def _query_stored_entities(self, user_id: str, conversation_id: str, message_text: str) -> Dict[str, Any]:
         """Query ChromaDB for entities stored from this conversation"""
         try:
             if not self.conversation_segments_collection:
                 return {}
                 
-            # Debug: Show what we're looking for
-            print(f"   🔍 Looking for thread_id: {thread_id}, user_id: {user_id}")
+            print(f"   🔍 Looking for user_id: {user_id}, conversation_id: {conversation_id}")
             
-            # First try with thread_id filter (most specific)
-            results = self.conversation_segments_collection.get(
-                where={"thread_id": thread_id} if thread_id else None,
-                include=["metadatas", "documents"]
-            )
-            
-            print(f"   🔍 Thread query found {len(results.get('metadatas', []))} segments")
-            
-            # If no results with thread_id, try with user_id
-            if not results.get("metadatas") and user_id:
+            # Query by conversation_id first (most specific)
+            if conversation_id:
+                results = self.conversation_segments_collection.get(
+                    where={"conversation_id": conversation_id},
+                    include=["metadatas", "documents"],
+                    limit=50  # Reasonable limit for one conversation
+                )
+                print(f"   🔍 Conversation query found {len(results.get('metadatas', []))} segments")
+            elif user_id:
+                # Fallback to user_id if no conversation_id
                 results = self.conversation_segments_collection.get(
                     where={"user_id": user_id},
-                    include=["metadatas", "documents"]
+                    include=["metadatas", "documents"],
+                    limit=20  # Limit for user-wide query
                 )
                 print(f"   🔍 User query found {len(results.get('metadatas', []))} segments")
-                
-            # If still no results, get the most recent segments (last 5)
-            if not results.get("metadatas"):
-                print("   🔍 No specific results, getting recent segments...")
+            else:
+                # Last resort: get recent segments
+                print("   🔍 No conversation_id or user_id, getting recent segments...")
                 results = self.conversation_segments_collection.get(
                     include=["metadatas", "documents"],
-                    limit=5
+                    limit=10
                 )
                 print(f"   🔍 Recent query found {len(results.get('metadatas', []))} segments")
             
@@ -688,7 +685,7 @@ class MemoryMetrics:
             if results and "metadatas" in results:
                 print(f"   🔍 Processing {len(results['metadatas'])} segments:")
                 for i, metadata in enumerate(results["metadatas"]):
-                    print(f"      Segment {i+1}: thread_id={metadata.get('thread_id')}, user_id={metadata.get('user_id')}")
+                    print(f"      Segment {i+1}: conversation_id={metadata.get('conversation_id')}, user_id={metadata.get('user_id')}")
                     if "entities_json" in metadata:
                         try:
                             entities = json.loads(metadata["entities_json"])

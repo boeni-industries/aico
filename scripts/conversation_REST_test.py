@@ -274,13 +274,13 @@ class ConversationTester:
         response = self.send_encrypted_request("/api/v1/conversation/messages", request_data)
         if response and response.get("success", False):
             # Use correct field names from UnifiedMessageResponse schema
-            thread_id = response.get("thread_id")
-            thread_action = response.get("thread_action", "unknown")
-            thread_reasoning = response.get("thread_reasoning", "No reasoning provided")
+            conversation_id = response.get("conversation_id")
+            conversation_action = response.get("conversation_action", "unknown")
+            conversation_reasoning = response.get("conversation_reasoning", "No reasoning provided")
             
-            print(f"✅ Message sent to thread: {thread_id[:8] if thread_id else 'unknown'}...")
-            print(f"🔄 Action: {thread_action}")
-            print(f"💭 {thread_reasoning}")
+            print(f"✅ Message sent to conversation: {conversation_id[:8] if conversation_id else 'unknown'}...")
+            print(f"🔄 Action: {conversation_action}")
+            print(f"💭 {conversation_reasoning}")
             
             # Display AI response and status
             ai_response = response.get("ai_response", "No response available")

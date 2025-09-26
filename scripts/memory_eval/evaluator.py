@@ -48,7 +48,7 @@ class EvaluationSession:
     performance_metrics: Dict[str, Any] = field(default_factory=dict)
     evaluation_result: Optional['EvaluationResult'] = None
     user_id: Optional[str] = None
-    thread_id: Optional[str] = None
+    conversation_id: Optional[str] = None
     
     @property
     def duration_seconds(self) -> float:
@@ -547,7 +547,7 @@ class MemoryIntelligenceEvaluator:
         
         try:
             # Execute each conversation turn
-            thread_id = None
+            conversation_id = None
             
             for i, turn in enumerate(scenario.conversation_turns):
                 turn_start = time.time()
@@ -555,7 +555,7 @@ class MemoryIntelligenceEvaluator:
                 # Send message to AICO backend
                 message_data = {
                     "message": turn.user_message,
-                    "thread_id": thread_id,
+                    "conversation_id": conversation_id,
                     "context": turn.context_hints or {}
                 }
                 print(f"💬 Turn {i+1}: {turn.user_message[:50]}...")
@@ -580,8 +580,8 @@ class MemoryIntelligenceEvaluator:
                     response_data = {
                         "success": False,
                         "message": "[TIMEOUT] Request timed out",
-                        "thread_id": thread_id,
-                        "thread_action": "timeout",
+                        "conversation_id": conversation_id,
+                        "conversation_action": "timeout",
                         "ai_response": "[TIMEOUT] The AI response timed out"
                     }
                 
@@ -590,8 +590,8 @@ class MemoryIntelligenceEvaluator:
                 
                 # Extract response information
                 ai_message = response_data.get("ai_response", response_data.get("message", ""))
-                thread_id = response_data.get("thread_id", thread_id)
-                thread_action = response_data.get("thread_action", "continue")
+                conversation_id = response_data.get("conversation_id", conversation_id)
+                conversation_action = response_data.get("conversation_action", "continue")
                 
                 # Extract entities if available
                 entities = response_data.get("entities_extracted", {})
@@ -602,13 +602,13 @@ class MemoryIntelligenceEvaluator:
                     "user_message": turn.user_message,
                     "ai_response": ai_message,
                     "response_time_ms": response_time_ms,
-                    "thread_action": thread_action,
+                    "conversation_action": conversation_action,
                     "entities_extracted": entities,
-                    "thread_id": thread_id
+                    "conversation_id": conversation_id
                 }
                 
                 status = "✅" if response_time_ms < 10000 else "⏰" if response_time_ms < 30000 else "🐌"
-                print(f"{status} Turn {i+1}: {response_time_ms:.0f}ms | {thread_action}")
+                print(f"{status} Turn {i+1}: {response_time_ms:.0f}ms | {conversation_action}")
                 
                 if response_time_ms > 30000:
                     print(f"   ⚠️ Slow response detected")
@@ -636,14 +636,14 @@ class MemoryIntelligenceEvaluator:
             pass
             
         session.end_time = datetime.now()
-        session.thread_id = thread_id
+        session.conversation_id = conversation_id
         
-        # Collect all thread_ids used during the conversation for entity lookup
-        all_thread_ids = set()
+        # Collect all conversation_ids used during the conversation for entity lookup
+        all_conversation_ids = set()
         for turn_log in session.conversation_log:
-            if turn_log.get("thread_id"):
-                all_thread_ids.add(turn_log["thread_id"])
-        session.all_thread_ids = list(all_thread_ids)
+            if turn_log.get("conversation_id"):
+                all_conversation_ids.add(turn_log["conversation_id"])
+        session.all_conversation_ids = list(all_conversation_ids)
         
         print(f"✅ Completed conversation scenario: {scenario.name}")
         return session

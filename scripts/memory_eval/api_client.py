@@ -19,14 +19,14 @@ class MessageResponse:
     """Response from AICO conversation API"""
     success: bool
     message_id: str
-    thread_id: str
-    thread_action: str
-    thread_reasoning: str
+    conversation_id: str
+    conversation_action: str
+    conversation_reasoning: str
     status: str
-    timestamp: datetime
-    ai_response: str
+    ai_response: str = ""
+    timestamp: str = ""
+    error: str = ""
     response_time_ms: float = 0.0
-    error: Optional[str] = None
 
 
 @dataclass
@@ -119,14 +119,14 @@ class AICOTestClient:
     async def send_message(self, 
                           message: str,
                           context: Optional[Dict[str, Any]] = None,
-                          thread_id: Optional[str] = None) -> MessageResponse:
+                          conversation_id: Optional[str] = None) -> MessageResponse:
         """
         Send a message to AICO and get response.
         
         Args:
             message: User message text
             context: Optional context hints for the conversation
-            thread_id: Optional specific thread ID to use
+            conversation_id: Optional conversation ID for context (semantic memory handles continuity)
             
         Returns:
             MessageResponse with AI response and metadata
@@ -137,42 +137,40 @@ class AICOTestClient:
         start_time = asyncio.get_event_loop().time()
         
         try:
-            # Prepare request payload
-            payload = {
+            # Prepare request data
+            request_data = {
                 "message": message,
                 "message_type": "text",
                 "context": context or {}
             }
             
-            # Use specific thread endpoint if thread_id provided
-            if thread_id:
-                url = f"{self.backend_url}/api/v1/conversation/threads/{thread_id}/messages"
-            else:
-                url = f"{self.backend_url}/api/v1/conversation/messages"
-                
+            # Add conversation_id to context if provided (semantic memory will handle continuity)
+            if conversation_id:
+                request_data["context"]["conversation_id"] = conversation_id
+            
+            # Use user-scoped messages endpoint (no thread-specific endpoints needed)
+            url = f"{self.backend_url}/api/v1/conversation/messages"
             headers = {
                 "Authorization": f"Bearer {self.auth_token}",
                 "Content-Type": "application/json"
             }
             
             # Send message
-            async with self.session.post(url, json=payload, headers=headers) as response:
+            async with self.session.post(url, json=request_data, headers=headers) as response:
                 end_time = asyncio.get_event_loop().time()
                 response_time_ms = (end_time - start_time) * 1000
-                
                 if response.status != 200:
                     error_text = await response.text()
                     return MessageResponse(
                         success=False,
                         message_id="",
-                        thread_id="",
-                        thread_action="",
-                        thread_reasoning="",
+                        conversation_id="",
+                        conversation_action="",
+                        conversation_reasoning="",
                         status="error",
-                        timestamp=datetime.now(),
-                        ai_response="",
+                        error=f"HTTP {response.status}: {error_text}",
                         response_time_ms=response_time_ms,
-                        error=f"HTTP {response.status}: {error_text}"
+                        timestamp=datetime.now()
                     )
                     
                 response_data = await response.json()
@@ -180,38 +178,37 @@ class AICOTestClient:
                 return MessageResponse(
                     success=response_data.get("success", False),
                     message_id=response_data.get("message_id", ""),
-                    thread_id=response_data.get("thread_id", ""),
-                    thread_action=response_data.get("thread_action", ""),
-                    thread_reasoning=response_data.get("thread_reasoning", ""),
+                    conversation_id=response_data.get("conversation_id", ""),
+                    conversation_action=response_data.get("conversation_action", ""),
+                    conversation_reasoning=response_data.get("conversation_reasoning", ""),
                     status=response_data.get("status", ""),
-                    timestamp=datetime.fromisoformat(response_data.get("timestamp", datetime.now().isoformat())),
                     ai_response=response_data.get("ai_response", ""),
+                    timestamp=response_data.get("timestamp", ""),
                     response_time_ms=response_time_ms
                 )
                 
         except Exception as e:
-            end_time = asyncio.get_event_loop().time()
             response_time_ms = (end_time - start_time) * 1000
             
             return MessageResponse(
                 success=False,
                 message_id="",
-                thread_id="",
-                thread_action="",
-                thread_reasoning="",
+                conversation_id="",
+                conversation_action="",
+                conversation_reasoning="",
                 status="error",
-                timestamp=datetime.now(),
                 ai_response="",
+                timestamp=datetime.now().isoformat(),
                 response_time_ms=response_time_ms,
                 error=str(e)
             )
             
-    async def get_thread_info(self, thread_id: str) -> Dict[str, Any]:
-        """Get information about a specific conversation thread"""
+    async def get_conversation_status(self) -> Dict[str, Any]:
+        """Get my conversation status (user-scoped)"""
         if not self.authenticated or not self.session:
             raise Exception("Not connected to AICO backend")
             
-        url = f"{self.backend_url}/api/v1/conversation/threads/{thread_id}"
+        url = f"{self.backend_url}/api/v1/conversation/status"
         headers = {"Authorization": f"Bearer {self.auth_token}"}
         
         async with self.session.get(url, headers=headers) as response:
@@ -219,7 +216,7 @@ class AICOTestClient:
                 return await response.json()
             else:
                 error_text = await response.text()
-                raise Exception(f"Failed to get thread info: HTTP {response.status}: {error_text}")
+                raise Exception(f"Failed to get conversation status: HTTP {response.status}: {error_text}")
                 
     async def list_threads(self, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
         """List conversation threads for the current user"""
@@ -237,13 +234,15 @@ class AICOTestClient:
                 error_text = await response.text()
                 raise Exception(f"Failed to list threads: HTTP {response.status}: {error_text}")
                 
-    async def get_message_history(self, thread_id: str, page: int = 1, page_size: int = 50) -> Dict[str, Any]:
-        """Get message history for a specific thread"""
+    async def get_message_history(self, page: int = 1, page_size: int = 50, since: Optional[str] = None) -> Dict[str, Any]:
+        """Get my message history (user-scoped)"""
         if not self.authenticated or not self.session:
             raise Exception("Not connected to AICO backend")
             
-        url = f"{self.backend_url}/api/v1/conversation/threads/{thread_id}/messages"
+        url = f"{self.backend_url}/api/v1/conversation/messages"
         params = {"page": page, "page_size": page_size}
+        if since:
+            params["since"] = since
         headers = {"Authorization": f"Bearer {self.auth_token}"}
         
         async with self.session.get(url, params=params, headers=headers) as response:

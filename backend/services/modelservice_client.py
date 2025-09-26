@@ -93,10 +93,46 @@ class ModelServiceClient:
     
     async def _send_request(self, request_topic: str, response_topic: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Send a request via ZMQ and wait for response."""
+        import time
+        start_time = time.time()
+        
+        # Add detailed debugging for embedding and chat requests
+        is_embedding_request = "embeddings" in request_topic
+        is_chat_request = "chat" in request_topic
+        
+        if is_embedding_request:
+            self.logger.debug(f"🔍 [ZMQ_DEBUG] Starting {request_topic} request")
+            text = data.get("prompt", "")
+            text_length = len(text) if text else 0
+            text_preview = text[:50] + "..." if text and len(text) > 50 else text
+            self.logger.debug(f"🔍 [ZMQ_DEBUG] Text length: {text_length}, preview: '{text_preview}'")
+        elif is_chat_request:
+            self.logger.debug(f"💬 [CHAT_DEBUG] Starting {request_topic} request")
+            messages = data.get("messages", [])
+            message_count = len(messages)
+            model = data.get("model", "unknown")
+            self.logger.debug(f"💬 [CHAT_DEBUG] Model: {model}, Messages: {message_count}")
+            if messages:
+                last_msg = messages[-1]
+                last_msg_content = last_msg.get("content", "")[:50] + "..." if len(last_msg.get("content", "")) > 50 else last_msg.get("content", "")
+                self.logger.debug(f"💬 [CHAT_DEBUG] Last message: role='{last_msg.get('role', 'unknown')}', content='{last_msg_content}'")
+        
+        
+        # Connection setup timing
+        connection_start = time.time()
         await self._ensure_connection()
+        connection_time = time.time() - connection_start
+        if is_embedding_request:
+            self.logger.debug(f"🔍 [ZMQ_DEBUG] Connection setup took {connection_time:.4f}s")
+        elif is_chat_request:
+            self.logger.debug(f"💬 [CHAT_DEBUG] Connection setup took {connection_time:.4f}s")
         
         # Generate correlation ID for request/response matching
         correlation_id = str(uuid.uuid4())
+        if is_embedding_request:
+            self.logger.debug(f"🔍 [ZMQ_DEBUG] Using correlation_id: {correlation_id}")
+        elif is_chat_request:
+            self.logger.debug(f"💬 [CHAT_DEBUG] Using correlation_id: {correlation_id}")
         
         # Create proper protobuf message based on request type
         from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest, EmbeddingsRequest, NerRequest, IntentClassificationRequest, SentimentRequest
@@ -311,24 +347,72 @@ class ModelServiceClient:
                 response_received.set()
         
         # Subscribe to response topic
+        subscription_start = time.time()
         await self.bus_client.subscribe(response_topic, handle_response)
+        subscription_time = time.time() - subscription_start
+        
+        if is_embedding_request:
+            self.logger.debug(f"🔍 [ZMQ_DEBUG] Subscribed to {response_topic} in {subscription_time:.4f}s")
+        elif is_chat_request:
+            self.logger.debug(f"💬 [CHAT_DEBUG] Subscribed to {response_topic} in {subscription_time:.4f}s")
         
         try:
             # Send request with correlation ID
+            publish_start = time.time()
             await self.bus_client.publish(request_topic, request_proto, correlation_id=correlation_id)
+            publish_time = time.time() - publish_start
+            
+            if is_embedding_request:
+                self.logger.debug(f"🔍 [ZMQ_DEBUG] Published to {request_topic} in {publish_time:.4f}s")
+                self.logger.debug(f"🔍 [ZMQ_DEBUG] Waiting for response with timeout={self.config.timeout}s")
+            elif is_chat_request:
+                self.logger.debug(f"💬 [CHAT_DEBUG] Published to {request_topic} in {publish_time:.4f}s")
+                self.logger.debug(f"💬 [CHAT_DEBUG] Waiting for response with timeout={self.config.timeout}s")
             
             # Wait for response with timeout
+            wait_start = time.time()
             await asyncio.wait_for(response_received.wait(), timeout=self.config.timeout)
+            wait_time = time.time() - wait_start
+            total_time = time.time() - start_time
+            
+            if is_embedding_request:
+                self.logger.debug(f"🔍 [ZMQ_DEBUG] ✅ Response received in {wait_time:.4f}s (total: {total_time:.4f}s)")
+                self.logger.debug(f"🔍 [ZMQ_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={wait_time:.4f}s")
+            elif is_chat_request:
+                self.logger.debug(f"💬 [CHAT_DEBUG] ✅ Response received in {wait_time:.4f}s (total: {total_time:.4f}s)")
+                self.logger.debug(f"💬 [CHAT_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={wait_time:.4f}s")
             
             return response_data
             
         except asyncio.TimeoutError:
+            total_time = time.time() - start_time
             error_msg = f"Request timed out after {self.config.timeout}s - MODELSERVICE MAY BE OFFLINE"
+            
+            if is_embedding_request:
+                self.logger.error(f"🔍 [ZMQ_DEBUG] ❌ TIMEOUT after {total_time:.4f}s waiting for response")
+                self.logger.error(f"🔍 [ZMQ_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={self.config.timeout:.4f}s")
+            elif is_chat_request:
+                self.logger.error(f"💬 [CHAT_DEBUG] ❌ TIMEOUT after {total_time:.4f}s waiting for response")
+                self.logger.error(f"💬 [CHAT_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={self.config.timeout:.4f}s")
+                self.logger.error(f"💬 [CHAT_DEBUG] Model requested: {data.get('model', 'unknown')}. Check if this model is available in Ollama.")
+            
             self.logger.error(f"⚠️ {error_msg}", extra={"topic": AICOTopics.LOGS_ENTRY})
             print(f"⚠️ {error_msg}")
             return {"success": False, "error": error_msg}
+            
         except Exception as e:
+            total_time = time.time() - start_time
             error_msg = f"ZMQ request failed: {str(e)}"
+            
+            if is_embedding_request:
+                import traceback
+                self.logger.error(f"🔍 [ZMQ_DEBUG] ❌ Exception after {total_time:.4f}s: {e}")
+                self.logger.error(f"🔍 [ZMQ_DEBUG] Traceback: {traceback.format_exc()}")
+            elif is_chat_request:
+                import traceback
+                self.logger.error(f"💬 [CHAT_DEBUG] ❌ Exception after {total_time:.4f}s: {e}")
+                self.logger.error(f"💬 [CHAT_DEBUG] Traceback: {traceback.format_exc()}")
+            
             self.logger.error(error_msg, extra={"topic": AICOTopics.LOGS_ENTRY})
             return {"success": False, "error": error_msg}
     
@@ -388,16 +472,40 @@ class ModelServiceClient:
     
     async def get_embeddings(self, model: str, prompt: str) -> Dict[str, Any]:
         """Get embeddings from modelservice."""
+        import time
+        start_time = time.time()
+        text_length = len(prompt)
+        text_preview = prompt[:50] + "..." if len(prompt) > 50 else prompt
+        
+        self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] Starting embedding request for model={model}, text_length={text_length}")
+        self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] Text preview: '{text_preview}'")
+        
         request_data = {
             "model": model,
             "prompt": prompt
         }
         
-        return await self._send_request(
-            AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
-            AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
-            request_data
-        )
+        try:
+            result = await self._send_request(
+                AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
+                AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
+                request_data
+            )
+            
+            elapsed_time = time.time() - start_time
+            if result.get("success"):
+                embedding_dim = len(result.get("data", {}).get("embedding", []))
+                self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] ✅ Success! Got {embedding_dim}-dimensional embedding in {elapsed_time:.2f}s")
+            else:
+                self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] ❌ Failed to get embedding: {result.get('error')}")
+            
+            return result
+        except Exception as e:
+            import traceback
+            elapsed_time = time.time() - start_time
+            self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] ❌ Exception after {elapsed_time:.2f}s: {e}")
+            self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] Traceback: {traceback.format_exc()}")
+            raise
     
     async def get_ner_entities(self, text: str) -> Dict[str, Any]:
         """Get named entity recognition from modelservice."""

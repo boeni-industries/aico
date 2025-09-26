@@ -160,8 +160,10 @@ class MemoryManager(BaseAIProcessor):
     async def initialize(self) -> None:
         """Initialize memory components based on implementation phase"""
         if self._initialized:
+            logger.info("🧠 [MEMORY_MANAGER] Already initialized, skipping...")
             return
             
+        logger.info("🧠 [MEMORY_MANAGER] 🚀 Starting memory components initialization...")
         logger.info("[DEBUG] MemoryManager: Initializing memory components.")
         
         try:
@@ -218,12 +220,12 @@ class MemoryManager(BaseAIProcessor):
                 )
             
             self._initialized = True
+            logger.info("🧠 [MEMORY_MANAGER] ✅ Memory manager initialized successfully")
             logger.info("Memory manager initialized successfully")
             
         except Exception as e:
             logger.error(f"Failed to initialize memory manager: {e}")
             raise
-    
     async def process(self, context: ProcessingContext) -> ProcessingResult:
         """
         Process memory operations based on context.
