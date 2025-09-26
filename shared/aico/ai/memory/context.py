@@ -102,14 +102,14 @@ class ContextAssembler:
             "procedural": 0.7
         }
     
-    async def assemble_context(self, thread_id: str, user_id: str, 
-                              current_message: str, max_context_items: int = None) -> Dict[str, Any]:
+    async def assemble_context(self, user_id: str, current_message: str, 
+                              max_context_items: int = None) -> Dict[str, Any]:
         """Assemble comprehensive context from all memory tiers with royal precision and enlightened wisdom"""
         max_items = max_context_items or self._max_context_items
         assembly_start = datetime.utcnow()
         
         try:
-            logger.info(f"🧠 Assembling context for thread {thread_id} with sovereign excellence")
+            logger.info(f"🧠 Assembling context for user {user_id} with sovereign excellence")
             
             # Retrieve context from all available memory tiers
             logger.debug("Retrieving context from all available memory tiers")
@@ -118,7 +118,7 @@ class ContextAssembler:
             
             # Get working memory context (immediate conversation)
             try:
-                working_items = await self._get_working_context(thread_id, user_id)
+                working_items = await self._get_working_context(user_id)
                 all_items.extend(working_items or [])
                 logger.debug(f"Retrieved {len(working_items or [])} items from working memory")
             except Exception as e:
@@ -134,7 +134,7 @@ class ContextAssembler:
             
             # Get episodic memory context (historical conversations) - placeholder
             try:
-                episodic_items = await self._get_episodic_context(thread_id, user_id, current_message)
+                episodic_items = await self._get_episodic_context(user_id, current_message)
                 all_items.extend(episodic_items or [])
                 logger.debug(f"Retrieved {len(episodic_items or [])} items from episodic memory")
             except Exception as e:
@@ -167,7 +167,6 @@ class ContextAssembler:
             
             # Assemble the crown jewel of context structures
             context = {
-                "thread_id": thread_id,
                 "user_id": user_id,
                 "current_message": current_message,
                 "assembled_at": assembly_start.isoformat(),
@@ -189,7 +188,6 @@ class ContextAssembler:
             logger.error(f"Full traceback: {traceback.format_exc()}")
             
             return {
-                "thread_id": thread_id,
                 "user_id": user_id,
                 "current_message": current_message,
                 "assembled_at": assembly_start.isoformat(),
@@ -202,7 +200,7 @@ class ContextAssembler:
                 "thread_strength": 0.0
             }
     
-    async def get_thread_context(self, thread_id: str, user_id: str) -> Dict[str, Any]:
+    async def get_user_context(self, user_id: str) -> Dict[str, Any]:
         """Get context specifically for thread resolution - Phase 1 interface"""
         try:
             # TODO Phase 1: Implement thread-specific context
@@ -210,12 +208,12 @@ class ContextAssembler:
             # - Get temporal patterns for thread continuation
             # - Calculate context strength for thread resolution
             
-            logger.debug(f"Would retrieve thread context for: {thread_id}")
-            return {"thread_id": thread_id, "user_id": user_id, "context_strength": 0.0}
+            logger.debug(f"Would retrieve user context for: {user_id}")
+            return {"user_id": user_id, "context_strength": 0.0}
             
         except Exception as e:
-            logger.error(f"Failed to get thread context: {e}")
-            return {"thread_id": thread_id, "user_id": user_id, "context_strength": 0.0}
+            logger.error(f"Failed to get user context: {e}")
+            return {"user_id": user_id, "context_strength": 0.0}
     
     async def query_memories(self, query) -> Any:
         """Query memories across all tiers with unified interface - Phase 1 interface"""
@@ -247,7 +245,7 @@ class ContextAssembler:
                 processing_time_ms=0.0
             )
     
-    async def _get_working_context(self, thread_id: str, user_id: str) -> List[ContextItem]:
+    async def _get_working_context(self, user_id: str) -> List[ContextItem]:
         """Get conversation context using enhanced semantic memory approach"""
         try:
             if not self.working_store:
@@ -259,7 +257,7 @@ class ContextAssembler:
             logger.debug(f"Retrieved {len(all_messages)} messages for semantic context assembly")
             
             # Smart conversation continuity: Find related messages using semantic + temporal signals
-            conversation_messages = await self._assemble_conversation_context(thread_id, user_id, all_messages)
+            conversation_messages = await self._assemble_conversation_context(user_id, all_messages)
             logger.debug(f"Assembled {len(conversation_messages)} contextually relevant messages")
             
             # Limit to prevent context explosion (industry standard: ~10 recent messages)
@@ -332,7 +330,7 @@ class ContextAssembler:
                     metadata={
                         "message_id": msg.get('message_id'),
                         "role": role,
-                        "thread_id": msg.get('thread_id', thread_id),  # Use actual thread_id from message
+                        "conversation_id": msg.get('conversation_id', f"{user_id}_session"),  # Use actual conversation_id from message
                         "recency_hours": recency_hours,
                         "message_type": message_type
                     },
@@ -343,14 +341,14 @@ class ContextAssembler:
                 logger.debug(f"[METADATA_DEBUG] ContextItem created with metadata role='{role}', content='{message_content[:50]}...'")
                 context_items.append(context_item)
             
-            logger.debug(f"Retrieved {len(context_items)} working memory items for thread {thread_id}")
+            logger.debug(f"Retrieved {len(context_items)} working memory items for user {user_id}")
             return context_items
             
         except Exception as e:
             logger.error(f"Failed to get working context with noble resilience: {e}")
             return []
     
-    async def _assemble_conversation_context(self, conversation_id: str, user_id: str, all_messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _assemble_conversation_context(self, user_id: str, all_messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Assemble conversation context using enhanced semantic memory approach"""
         try:
             if not all_messages:
@@ -382,15 +380,14 @@ class ContextAssembler:
             # 2. CONVERSATION CONTINUITY: Messages in same conversation get boost
             current_conversation_messages = [
                 msg for msg in all_messages 
-                if msg.get('thread_id', '').startswith(user_id)  # Same user conversations
+                if msg.get('conversation_id', '').startswith(user_id)  # Same user conversations
             ]
             
-            # 3. SEMANTIC RELEVANCE: Get current message for semantic comparison
+            # 3. SEMANTIC RELEVANCE: Get most recent message for semantic comparison
             current_message_content = None
-            for msg in all_messages:
-                if msg.get('thread_id') == conversation_id:
-                    current_message_content = msg.get('message_content', '')
-                    break
+            if all_messages:
+                # Use most recent message as semantic anchor
+                current_message_content = all_messages[-1].get('message_content', '')
             
             # 4. INTELLIGENT SELECTION: Combine all signals
             relevant_messages = []
@@ -505,8 +502,8 @@ class ContextAssembler:
             logger.debug(f"Simple boundary detection failed: {e}")
             return 0.0
     
-    async def _get_episodic_context(self, thread_id: str, user_id: str, 
-                                   current_message: str, limit: int = 20) -> List[ContextItem]:
+    async def _get_episodic_context(self, user_id: str, current_message: str, 
+                                   limit: int = 20) -> List[ContextItem]:
         """Get context from episodic memory with the depth of historical wisdom"""
         try:
             if not self.episodic_store:

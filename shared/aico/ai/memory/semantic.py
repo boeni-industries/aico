@@ -349,7 +349,7 @@ class SemanticMemoryStore:
             logger.error(f"Failed to query semantic memory: {e}")
             return []
     
-    async def get_user_segments(self, user_id: str, thread_id: Optional[str] = None, 
+    async def get_user_segments(self, user_id: str, conversation_id: Optional[str] = None, 
                               entity_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get all conversation segments for a user with optional filtering (administrative query)"""
         if not self._initialized:
@@ -362,8 +362,8 @@ class SemanticMemoryStore:
             # Build where clause for metadata filtering
             where_clause = {"user_id": user_id, "type": "conversation_segment"}
             
-            if thread_id:
-                where_clause["thread_id"] = thread_id
+            if conversation_id:
+                where_clause["conversation_id"] = conversation_id
             
             if entity_filter:
                 # Filter by entity presence (simplified for now)
@@ -419,20 +419,20 @@ class SemanticMemoryStore:
             logger.error(f"Failed to delete user segments: {e}")
             return False
     
-    async def store_conversation_segments(self, messages: List[Dict[str, Any]], thread_id: str, user_id: str) -> int:
+    async def store_conversation_segments(self, messages: List[Dict[str, Any]], conversation_id: str, user_id: str) -> int:
         """
         Store conversation segments with advanced fact extraction.
         
         Args:
             messages: List of conversation messages
-            thread_id: Conversation thread identifier  
+            conversation_id: Conversation identifier  
             user_id: User identifier
             
         Returns:
             Number of segments successfully stored
         """
         logger.info(f"🔍 [SEMANTIC_MEMORY_DEBUG] ✅ store_conversation_segments CALLED with {len(messages) if messages else 0} messages")
-        logger.info(f"🔍 [SEMANTIC_MEMORY_DEBUG] thread_id: {thread_id}, user_id: {user_id}")
+        logger.info(f"🔍 [SEMANTIC_MEMORY_DEBUG] conversation_id: {conversation_id}, user_id: {user_id}")
         
         if not self._initialized:
             logger.info(f"🔍 [SEMANTIC_MEMORY_DEBUG] Not initialized, calling initialize()")
@@ -446,20 +446,20 @@ class SemanticMemoryStore:
         
         try:
             # Use conversation processor to create segments
-            segments = await self.conversation_processor.process_conversation_history(
+            conversation_segments = await self.conversation_processor.process_conversation_history(
                 messages=messages,
-                thread_id=thread_id,
+                conversation_id=conversation_id,
                 user_id=user_id
             )
             
             segments_stored = 0
             facts_extracted = 0
             
-            for segment in segments:
+            for segment in conversation_segments:
                 # Debug log segment details including entities
                 entities = segment.entities
                 logger.debug(f"🧠 [SEMANTIC_MEMORY] Processing segment with entities: {entities}")
-                logger.debug(f"🧠 [SEMANTIC_MEMORY] Segment fields - thread_id: {segment.thread_id}, user_id: {segment.user_id}, text: {segment.text[:50] if segment.text else 'None'}...")
+                logger.debug(f"🧠 [SEMANTIC_MEMORY] Segment fields - conversation_id: {segment.conversation_id}, user_id: {segment.user_id}, text: {segment.text[:50] if segment.text else 'None'}...")
                 
                 # Extract and store user facts using advanced fact extractor
                 extracted_facts = await self.fact_extractor.extract_facts(segment)
@@ -473,7 +473,7 @@ class SemanticMemoryStore:
                 # Create metadata dictionary and filter out None values
                 metadata = {
                     "type": "conversation_segment",
-                    "thread_id": segment.thread_id or "",
+                    "conversation_id": segment.conversation_id or conversation_id or "",
                     "user_id": segment.user_id or "",
                     "segment_type": "general",
                     "entities_json": json.dumps(segment.entities) if segment.entities else "{}",
@@ -489,10 +489,10 @@ class SemanticMemoryStore:
                 metadata = {k: v for k, v in metadata.items() if v is not None}
                 
                 segment_data = {
-                    "id": f"segment_{segment.thread_id or 'unknown'}_{int(segment.timestamp.timestamp())}",
+                    "id": f"segment_{conversation_id or 'unknown'}_{int(segment.timestamp.timestamp())}",
                     "content": segment.text or "",
                     "metadata": metadata,
-                    "source": f"conversation_segment_{segment.thread_id or 'unknown'}",
+                    "source": f"conversation_segment_{conversation_id or 'unknown'}",
                     "confidence": 0.8,
                     "timestamp": segment.timestamp
                 }

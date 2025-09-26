@@ -328,7 +328,7 @@ class MemoryConsolidator:
     def _should_transfer_to_episodic(self, entry: Dict[str, Any]) -> bool:
         """Determine if working memory entry should be transferred to episodic"""
         # Transfer if it's a conversation message
-        if entry.get("message_content") and entry.get("thread_id"):
+        if entry.get("message_content") and entry.get("conversation_id"):
             return True
         
         # Transfer if it has significant interaction data
@@ -341,7 +341,7 @@ class MemoryConsolidator:
         """Convert working memory entry to episodic memory format"""
         return {
             "id": working_entry.get("id"),
-            "thread_id": working_entry.get("thread_id"),
+            "conversation_id": working_entry.get("conversation_id"),
             "user_id": working_entry.get("user_id"),
             "message_content": working_entry.get("message_content", ""),
             "message_type": working_entry.get("message_type", "text"),

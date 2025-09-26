@@ -372,7 +372,7 @@ class AIProcessingCoordinator:
     def _serialize_context(self, context: ProcessingContext) -> Dict[str, Any]:
         """Serialize processing context for message bus."""
         return {
-            "thread_id": context.thread_id,
+            "conversation_id": context.conversation_id,
             "user_id": context.user_id,
             "request_id": context.request_id,
             "correlation_id": context.correlation_id,

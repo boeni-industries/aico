@@ -18,7 +18,7 @@ class ProcessingRequest:
     """Standard request contract for AI processing"""
     request_id: str
     user_id: str
-    thread_id: str
+    conversation_id: str
     text: str
     context: Dict[str, Any]
     timestamp: datetime

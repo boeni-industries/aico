@@ -84,7 +84,7 @@ class MemoryQuery:
     query_type: str = "semantic"  # semantic, temporal, behavioral
     max_results: int = 10
     time_range: Optional[tuple] = None
-    thread_id: Optional[str] = None
+    conversation_id: Optional[str] = None
     user_id: Optional[str] = None
     relevance_threshold: float = 0.7
 
@@ -237,7 +237,7 @@ class MemoryManager(BaseAIProcessor):
         - Phase 1: Working memory storage and basic context
         - Phase 2+: Multi-tier context assembly
         """
-        logger.info(f"🧠 [MEMORY_FLOW] Processing memory operation for thread {context.thread_id}")
+        logger.info(f"🧠 [MEMORY_FLOW] Processing memory operation for conversation {context.conversation_id}")
         logger.info(f"🧠 [MEMORY_FLOW] Message type: {context.message_type}, Turn: {context.turn_number}")
         
         if not self._initialized:
@@ -294,7 +294,7 @@ class MemoryManager(BaseAIProcessor):
                     "memory_context": memory_context,
                     "tiers_accessed": tiers_accessed,
                     "processing_time_ms": processing_time,
-                    "thread_id": context.thread_id,
+                    "conversation_id": context.conversation_id,
                     "user_id": context.user_id,
                     "timestamp": datetime.utcnow().isoformat()
                 },
@@ -371,24 +371,24 @@ class MemoryManager(BaseAIProcessor):
             logger.info("Memory consolidation not available in current phase")
             return {"status": "not_available", "phase": self._get_current_phase()}
     
-    async def get_thread_context(self, thread_id: str, user_id: str) -> Dict[str, Any]:
+    async def get_user_context(self, user_id: str) -> Dict[str, Any]:
         """Get context for thread resolution"""
         if not self._initialized:
             await self.initialize()
             
         if self._context_assembler:
-            return await self._context_assembler.get_thread_context(thread_id, user_id)
+            return await self._context_assembler.get_user_context(user_id)
         else:
             # Phase 1 fallback - basic working memory context
             if self._working_store:
-                context_data = await self._working_store.get_thread_context(thread_id)
+                # Get recent user messages as context
+                recent_messages = await self._working_store._get_recent_user_messages(user_id, hours=24)
                 return {
-                    "thread_id": thread_id,
                     "user_id": user_id,
-                    "working_memory": context_data,
-                    "context_strength": 0.5 if context_data else 0.0
+                    "working_memory": recent_messages,
+                    "context_strength": 0.5 if recent_messages else 0.0
                 }
-            return {"thread_id": thread_id, "user_id": user_id, "context_strength": 0.0}
+            return {"user_id": user_id, "context_strength": 0.0}
     
     def get_supported_operations(self) -> List[str]:
         """Return a list of supported memory operations."""
@@ -453,7 +453,7 @@ class MemoryManager(BaseAIProcessor):
             return
             
         interaction_data = {
-            "thread_id": context.thread_id,
+            "conversation_id": context.conversation_id,
             "user_id": context.user_id,
             "message_content": context.message_content,
             "message_type": context.message_type,
@@ -462,31 +462,31 @@ class MemoryManager(BaseAIProcessor):
             "conversation_phase": context.conversation_phase
         }
         
-        logger.info(f"[DEBUG] MemoryManager: Storing interaction for thread {context.thread_id}")
-        await self._working_store.store_message(context.thread_id, interaction_data)
+        logger.info(f"[DEBUG] MemoryManager: Storing interaction for conversation {context.conversation_id}")
+        await self._working_store.store_message(context.user_id, interaction_data)
         
         # Schedule conversation segment processing as background task (non-blocking)
         if context.message_type in ["user_input", "ai_response"] and self._semantic_store:
-            logger.debug(f"[SEMANTIC] Scheduling background conversation processing for thread {context.thread_id}")
+            logger.debug(f"[SEMANTIC] Scheduling background conversation processing for conversation {context.conversation_id}")
             import asyncio
             asyncio.create_task(self._process_conversation_segments_background(context))
     
     async def _process_conversation_segments_background(self, context: ProcessingContext) -> None:
         """Process conversation segments in background without blocking user response"""
         try:
-            logger.debug(f"[SEMANTIC] Background conversation processing started for thread {context.thread_id}")
+            logger.debug(f"[SEMANTIC] Background conversation processing started for conversation {context.conversation_id}")
             
             # Get recent conversation history from working memory
             if self._working_store:
-                recent_messages = await self._working_store.retrieve_thread_history(
-                    context.thread_id, 
+                recent_messages = await self._working_store.retrieve_user_history(
+                    context.user_id, 
                     limit=10  # Get last 10 messages for segmentation
                 )
                 
                 if recent_messages:
                     segments_stored = await self._semantic_store.store_conversation_segments(
                         messages=recent_messages,
-                        thread_id=context.thread_id,
+                        conversation_id=context.conversation_id,
                         user_id=context.user_id
                     )
                     
@@ -508,7 +508,6 @@ class MemoryManager(BaseAIProcessor):
         """Assemble relevant memory context for processing"""
         if self._context_assembler:
             return await self._context_assembler.assemble_context(
-                thread_id=context.thread_id,
                 user_id=context.user_id,
                 current_message=context.message_content,
                 max_context_items=self._memory_config.get("max_context_items", 20)
@@ -516,7 +515,7 @@ class MemoryManager(BaseAIProcessor):
         else:
             # Phase 1 fallback - basic context from working memory
             basic_context = {
-                "thread_id": context.thread_id,
+                "conversation_id": context.conversation_id,
                 "user_id": context.user_id,
                 "current_message": context.message_content,
                 "assembled_at": datetime.utcnow().isoformat(),
@@ -528,7 +527,7 @@ class MemoryManager(BaseAIProcessor):
             
             logger.info("[DEBUG] MemoryManager: Assembling context from working memory.")
             if self._working_store:
-                working_context = await self._working_store.retrieve_thread_history(context.thread_id)
+                working_context = await self._working_store.retrieve_user_history(context.user_id)
                 basic_context["memories"] = working_context
                 basic_context["total_items"] = len(working_context)
                 

@@ -70,7 +70,7 @@ async def send_message_with_auto_thread(
             if memory_processor:
                 from aico.ai.base import ProcessingContext
                 store_context = ProcessingContext(
-                    thread_id=conversation_id,  # Use conversation_id as thread_id
+                    conversation_id=conversation_id,
                     user_id=user_id,
                     request_id=message_id,
                     message_content=request.message,
@@ -101,7 +101,7 @@ async def send_message_with_auto_thread(
         # Update message content
         conv_message.message.text = request.message
         conv_message.message.type = conv_message.message.MessageType.USER_INPUT
-        conv_message.message.thread_id = conversation_id
+        conv_message.message.conversation_id = conversation_id
         conv_message.message.turn_number = 1  # TODO: Track actual turn numbers
         
         # Publish to conversation input topic (ConversationEngine will handle)
@@ -112,7 +112,7 @@ async def send_message_with_auto_thread(
         
         response_received = asyncio.Event()
         ai_response = "No response received"
-        response_thread_id = None
+        response_conversation_id = None
         
         async def handle_ai_response(envelope):
             try:
@@ -125,12 +125,12 @@ async def send_message_with_auto_thread(
                 
                 logger.debug(f"[API_GATEWAY] Extracted ConversationMessage: {type(conversation_message)}")
                 # Check if this response is for our conversation
-                if conversation_message.message.thread_id == conversation_id:
+                if conversation_message.message.conversation_id == conversation_id:
                     ai_response = conversation_message.message.text
                     logger.info(f"[API_GATEWAY] ✅ AI response extracted: '{ai_response[:100]}...'")
                     response_received.set()
                 else:
-                    logger.debug(f"[API_GATEWAY] Thread ID mismatch, ignoring response")
+                    logger.debug(f"[API_GATEWAY] Conversation ID mismatch, ignoring response")
                     
             except Exception as e:
                 logger.error(f"Error handling AI response: {e}")
@@ -278,7 +278,7 @@ async def my_conversation_websocket(websocket: WebSocket):
         async def response_handler(topic: str, message: Any):
             """Handle incoming conversation responses"""
             try:
-                # TODO: Filter by user_id instead of thread_id once WebSocket auth is implemented
+                # TODO: Filter by user_id instead of conversation_id once WebSocket auth is implemented
                 if hasattr(message, 'message') and hasattr(message.message, 'text'):
                     # Create structured WebSocket response
                     ai_response = WebSocketAIResponse(
@@ -325,19 +325,17 @@ async def my_conversation_websocket(websocket: WebSocket):
                 break
             except Exception as e:
                 logger.error(f"WebSocket error: {e}", extra={
-                    "thread_id": thread_id,
                     "connection_id": connection_id
                 })
                 break
     
     except Exception as e:
         logger.error(f"WebSocket connection error: {e}", extra={
-            "thread_id": thread_id,
             "connection_id": connection_id
         })
         raise WebSocketConnectionException(
             connection_error=str(e),
-            thread_id=thread_id
+            connection_id=connection_id
         )
     
     finally:
@@ -352,7 +350,6 @@ async def my_conversation_websocket(websocket: WebSocket):
             pass
         
         logger.info(f"WebSocket connection closed", extra={
-            "thread_id": thread_id,
             "connection_id": connection_id
         })
 

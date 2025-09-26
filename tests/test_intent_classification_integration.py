@@ -79,7 +79,7 @@ class TestIntentClassificationIntegration:
         
         # Create processing context
         context = ProcessingContext(
-            thread_id="test-thread",
+            conversation_id="test-thread",
             user_id="test-user",
             request_id="test-request",
             message_content="What is machine learning?",
@@ -215,7 +215,7 @@ class TestIntentClassificationIntegration:
         processor._classify_intent = mock_classify_intent
         
         context = ProcessingContext(
-            thread_id="perf-test",
+            conversation_id="perf-test",
             user_id="test",
             request_id="perf",
             message_content="Test message"

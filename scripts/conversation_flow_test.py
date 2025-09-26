@@ -56,7 +56,7 @@ class ConversationFlowTester:
         # For now, accept all responses in test mode
         self.responses_received.append({
             "timestamp": datetime.utcnow().isoformat(),
-            "conversation_id": getattr(message.message, 'thread_id', self.test_conversation_id),
+            "conversation_id": getattr(message.message, 'conversation_id', self.test_conversation_id),
             "text": message.message.text,
             "type": message.message.type,
             "turn_number": message.message.turn_number
@@ -76,7 +76,7 @@ class ConversationFlowTester:
         # Set message content
         conv_message.message.text = text
         conv_message.message.type = getattr(Message.MessageType, message_type.upper(), Message.MessageType.USER_INPUT)
-        conv_message.message.thread_id = self.test_conversation_id  # Note: Backend still uses thread_id in protobuf
+        conv_message.message.conversation_id = self.test_conversation_id
         conv_message.message.turn_number = len(self.responses_received) + 1
         
         # Set message analysis

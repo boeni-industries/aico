@@ -23,7 +23,7 @@ logger = get_logger("shared", "ai.memory.episodic")
 class ConversationEntry:
     """Structure for conversation history entries"""
     id: str
-    thread_id: str
+    conversation_id: str
     user_id: str
     message_content: str
     message_type: str
@@ -96,8 +96,8 @@ class EpisodicMemoryStore:
         try:
             # Extract conversation data
             entry = ConversationEntry(
-                id=data.get("id", f"{data['thread_id']}_{data.get('turn_number', 0)}"),
-                thread_id=data["thread_id"],
+                id=data.get("id", f"{data['conversation_id']}_{data.get('turn_number', 0)}"),
+                conversation_id=data["conversation_id"],
                 user_id=data["user_id"],
                 message_content=data["message_content"],
                 message_type=data.get("message_type", "text"),
@@ -119,7 +119,7 @@ class EpisodicMemoryStore:
             logger.error(f"Failed to store episodic memory: {e}")
             return False
     
-    async def get_thread_history(self, thread_id: str, limit: int = 50) -> List[ConversationEntry]:
+    async def get_conversation_history(self, conversation_id: str, limit: int = 50) -> List[ConversationEntry]:
         """Get conversation history for a thread - Phase 1 interface"""
         if not self._initialized:
             await self.initialize()
@@ -127,11 +127,11 @@ class EpisodicMemoryStore:
         try:
             # TODO Phase 1: Implement libSQL retrieval
             # - Query conversation_history table
-            # - Filter by thread_id
+            # - Filter by conversation_id
             # - Order by turn_number
             # - Return ConversationEntry objects
             
-            logger.debug(f"Would retrieve thread history for: {thread_id}")
+            logger.debug(f"Would retrieve conversation history for: {conversation_id}")
             return []  # Placeholder return
             
         except Exception as e:
@@ -174,7 +174,7 @@ class EpisodicMemoryStore:
             logger.error(f"Failed to search conversations: {e}")
             return []
     
-    async def get_thread_metadata(self, thread_id: str) -> Dict[str, Any]:
+    async def get_conversation_metadata(self, conversation_id: str) -> Dict[str, Any]:
         """Get metadata for a conversation thread - Phase 1 interface"""
         if not self._initialized:
             await self.initialize()
@@ -184,7 +184,7 @@ class EpisodicMemoryStore:
             # - Query thread_metadata table
             # - Return thread statistics and metadata
             
-            logger.debug(f"Would retrieve thread metadata for: {thread_id}")
+            logger.debug(f"Would retrieve conversation metadata for: {conversation_id}")
             return {}  # Placeholder return
             
         except Exception as e:
@@ -233,7 +233,7 @@ class EpisodicMemoryStore:
         # - Handle encryption requirements
         pass
     
-    async def _update_thread_metadata(self, thread_id: str, user_id: str) -> None:
+    async def _update_conversation_metadata(self, conversation_id: str, user_id: str) -> None:
         """Update thread metadata after storing a message - Phase 1 TODO"""
         try:
             # TODO Phase 1: Implement metadata updates

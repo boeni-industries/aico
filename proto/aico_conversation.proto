@@ -23,18 +23,18 @@ message ConversationMessage {
 }
 
 // Message content and metadata
-// Contains the actual text, type, thread information, and turn number for the conversation message.
+// Contains the actual text, type, conversation information, and turn number for the conversation message.
 // Fields:
 // - text: Actual message content (string)
 // - type: Message type (user_input, system_response, etc.)
-// - thread_id: Conversation thread identifier
+// - conversation_id: Conversation identifier
 // - turn_number: Sequential turn number in conversation
 // See emotion_sim_msg.md for examples.
 message Message {
   string text = 1;                   // Actual message content
   // Message type: user_input, system_response, system_notification, thinking_aloud, internal_reflection
   MessageType type = 2;              // Message type
-  string thread_id = 3;              // Conversation thread identifier
+  string conversation_id = 3;        // Conversation identifier
   int32 turn_number = 4;             // Sequential turn number in conversation
   
   enum MessageType {

@@ -46,7 +46,7 @@ class IntentClassificationHandler:
             
             # Create processing context following AICO patterns
             context = ProcessingContext(
-                thread_id="intent_classification",  # Not thread-specific
+                conversation_id="intent_classification",  # Not conversation-specific
                 user_id=request.user_id or "anonymous",
                 request_id=f"intent_{hash(request.text)}",
                 message_content=request.text,

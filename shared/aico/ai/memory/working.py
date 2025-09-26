@@ -79,19 +79,17 @@ class WorkingMemoryStore:
             for db_name in self._named_dbs:
                 self.dbs[db_name] = self.env.open_db(db_name.encode('utf-8'), create=True)
 
-            self._initialized = True
-            logger.info("[DEBUG] WorkingMemoryStore: Initialized successfully.")
 
         except Exception as e:
             logger.error(f"Failed to initialize working memory store: {e}")
             raise
 
-    async def store_message(self, thread_id: str, message: Dict[str, Any]) -> bool:
-        """Store a message in the conversation_history DB."""
+    async def store_message(self, user_id: str, message: Dict[str, Any]) -> bool:
+        """Store a message in the working memory store."""
         if not self._initialized:
             await self.initialize()
 
-        logger.info(f"💾 [WORKING_MEMORY] Storing message for thread {thread_id}")
+        logger.info(f"💾 [WORKING_MEMORY] Storing message for user {user_id}")
         logger.info(f"💾 [WORKING_MEMORY] Message type: {message.get('message_type', 'unknown')}")
 
         try:
@@ -100,7 +98,7 @@ class WorkingMemoryStore:
                 raise ConnectionError("conversation_history database not open.")
 
             timestamp = datetime.utcnow()
-            key_str = f"{thread_id}:{timestamp.isoformat()}Z"
+            key_str = f"{user_id}:{timestamp.isoformat()}Z"
             key = key_str.encode('utf-8')
 
             # Convert datetime objects to ISO format strings for JSON serialization
@@ -127,12 +125,12 @@ class WorkingMemoryStore:
             logger.error(f"💾 [WORKING_MEMORY] ❌ Failed to store message: {e}")
             return False
 
-    async def retrieve_thread_history(self, thread_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Retrieve recent messages for a given thread_id."""
+    async def retrieve_user_history(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Retrieve recent messages for a given user_id."""
         if not self._initialized:
             await self.initialize()
 
-        logger.info(f"🔍 [WORKING_MEMORY] Retrieving history for thread {thread_id} (limit: {limit})")
+        logger.info(f"🔍 [WORKING_MEMORY] Retrieving history for user {user_id} (limit: {limit})")
 
         history = []
         try:
@@ -140,15 +138,15 @@ class WorkingMemoryStore:
             if db is None:
                 raise ConnectionError("conversation_history database not open.")
 
-            logger.info(f"[DEBUG] WorkingMemoryStore: Retrieving history for thread {thread_id}.")
+            logger.info(f"[DEBUG] WorkingMemoryStore: Retrieving history for user {user_id}.")
             with self.env.begin(db=db) as txn:
                 cursor = txn.cursor()
-                # Seek to the start of the desired thread
-                prefix = f"{thread_id}:".encode('utf-8')
+                # Seek to the start of the desired user
+                prefix = f"{user_id}:".encode('utf-8')
                 if cursor.set_range(prefix):
                     for key, value in cursor:
                         if not key.startswith(prefix):
-                            break  # Moved past the desired thread
+                            break  # Moved past the desired user
 
                         data = json.loads(value.decode('utf-8'))
                         if self._is_expired(data):

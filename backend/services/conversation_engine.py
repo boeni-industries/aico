@@ -58,7 +58,7 @@ class UserContext:
 @dataclass
 class ConversationThread:
     """Individual conversation thread state"""
-    thread_id: str
+    conversation_id: str
     user_context: UserContext
     turn_number: int = 0
     current_topic: str = "general"
@@ -257,22 +257,22 @@ class ConversationEngine(BaseService):
             
             # Extract user information from the message
             user_id = conv_message.source  # This should be the authenticated user ID
-            thread_id = conv_message.message.thread_id
-            print(f"💬 [CONVERSATION_ENGINE] 📋 User ID: {user_id}, Thread ID: {thread_id}")
+            conversation_id = conv_message.message.conversation_id
+            print(f"💬 [CONVERSATION_ENGINE] 📋 User ID: {user_id}, Conversation ID: {conversation_id}")
             
             # Use the actual user_id field if available
             if hasattr(conv_message, 'user_id') and conv_message.user_id:
                 user_id = conv_message.user_id
             
             self.logger.info(f"[DEBUG] ConversationEngine: Received user input.", extra={
-                "thread_id": thread_id,
+                "conversation_id": conversation_id,
                 "user_id": user_id,
                 "message_type": conv_message.message.type
             })
             
             # Get or create user context and conversation thread
             user_context = self._get_or_create_user_context(user_id)
-            thread = self._get_or_create_thread(thread_id, user_context)
+            thread = self._get_or_create_thread(conversation_id, user_context)
             
             # Update thread state
             thread.turn_number += 1
@@ -322,20 +322,20 @@ class ConversationEngine(BaseService):
         
         return self.user_contexts[user_id]
     
-    def _get_or_create_thread(self, thread_id: str, user_context: UserContext) -> ConversationThread:
+    def _get_or_create_thread(self, conversation_id: str, user_context: UserContext) -> ConversationThread:
         """Get or create conversation thread"""
-        if thread_id not in self.conversation_threads:
-            self.conversation_threads[thread_id] = ConversationThread(
-                thread_id=thread_id,
+        if conversation_id not in self.conversation_threads:
+            self.conversation_threads[conversation_id] = ConversationThread(
+                conversation_id=conversation_id,
                 user_context=user_context
             )
             
             self.logger.info(f"Created new conversation thread", extra={
-                "thread_id": thread_id,
+                "conversation_id": conversation_id,
                 "user_id": user_context.user_id
             })
         
-        return self.conversation_threads[thread_id]
+        return self.conversation_threads[conversation_id]
     
     # ============================================================================
     # MESSAGE ANALYSIS & RESPONSE GENERATION
@@ -361,7 +361,7 @@ class ConversationEngine(BaseService):
                 thread.conversation_phase = "conversation"
             
             self.logger.debug(f"Message analyzed", extra={
-                "thread_id": thread.thread_id,
+                "conversation_id": thread.conversation_id,
                 "topic": thread.current_topic,
                 "phase": thread.conversation_phase
             })
@@ -418,7 +418,7 @@ class ConversationEngine(BaseService):
             
         except Exception as e:
             self.logger.error(f"Error generating response: {e}", extra={
-                "thread_id": thread.thread_id
+                "conversation_id": thread.conversation_id
             })
     
     # ============================================================================
@@ -433,7 +433,7 @@ class ConversationEngine(BaseService):
         if emotion_processor:
             # Create processing context for emotion analysis
             context = ProcessingContext(
-                thread_id=thread.thread_id,
+                conversation_id=thread.conversation_id,
                 user_id=thread.user_context.user_id,
                 request_id=request_id,
                 message_content=message.content,
@@ -467,7 +467,7 @@ class ConversationEngine(BaseService):
         if personality_processor:
             # Create processing context for personality expression
             context = ProcessingContext(
-                thread_id=thread.thread_id,
+                conversation_id=thread.conversation_id,
                 user_id=thread.user_context.user_id,
                 request_id=request_id,
                 message_content=message.content,
@@ -507,7 +507,7 @@ class ConversationEngine(BaseService):
         if memory_processor:
             # Create processing context for memory retrieval
             context = ProcessingContext(
-                thread_id=thread.thread_id,
+                conversation_id=thread.conversation_id,
                 user_id=thread.user_context.user_id,
                 request_id=request_id,
                 message_content=message.message.text, # Correctly access the text content
@@ -936,9 +936,9 @@ class ConversationEngine(BaseService):
                 if memory_processor:
                     try:
                         ai_context = ProcessingContext(
-                            thread_id=thread.thread_id,
+                            conversation_id=thread.conversation_id,
                             user_id=thread.user_context.user_id,
-                            request_id=f"ai_response_{thread.thread_id}_{thread.turn_number}",
+                            request_id=f"ai_response_{thread.conversation_id}_{thread.turn_number}",
                             message_content=response_text,
                             message_type="ai_response",
                             turn_number=thread.turn_number,
@@ -982,7 +982,7 @@ class ConversationEngine(BaseService):
         if embodiment_processor:
             # Create processing context for avatar generation
             context = ProcessingContext(
-                thread_id=thread.thread_id,
+                conversation_id=thread.conversation_id,
                 user_id=thread.user_context.user_id,
                 request_id=str(uuid.uuid4()),
                 message_content=response_text,
@@ -997,7 +997,7 @@ class ConversationEngine(BaseService):
             try:
                 # Generate avatar actions
                 result = await embodiment_processor.generate_avatar_actions(context)
-                self.logger.debug(f"Avatar actions generated for thread {thread.thread_id}")
+                self.logger.debug(f"Avatar actions generated for thread {thread.conversation_id}")
                 return result
             except Exception as e:
                 self.logger.error(f"Avatar action generation failed: {e}")
@@ -1012,7 +1012,7 @@ class ConversationEngine(BaseService):
         if embodiment_processor:
             # Create processing context for voice generation
             context = ProcessingContext(
-                thread_id=thread.thread_id,
+                conversation_id=thread.conversation_id,
                 user_id=thread.user_context.user_id,
                 request_id=str(uuid.uuid4()),
                 message_content=response_text,
@@ -1027,7 +1027,7 @@ class ConversationEngine(BaseService):
             try:
                 # Generate voice parameters
                 result = await embodiment_processor.generate_voice_parameters(context)
-                self.logger.debug(f"Voice parameters generated for thread {thread.thread_id}")
+                self.logger.debug(f"Voice parameters generated for thread {thread.conversation_id}")
                 return result
             except Exception as e:
                 self.logger.error(f"Voice parameter generation failed: {e}")
@@ -1047,7 +1047,7 @@ class ConversationEngine(BaseService):
             
             ai_message.message.text = response_components.text
             ai_message.message.type = Message.MessageType.SYSTEM_RESPONSE
-            ai_message.message.thread_id = thread.thread_id
+            ai_message.message.conversation_id = thread.conversation_id
             ai_message.message.turn_number = thread.turn_number
             
             ai_message.analysis.intent = "response"
@@ -1072,7 +1072,7 @@ class ConversationEngine(BaseService):
                 pass
             
             self.logger.info(f"✅ Response delivered to conversation/ai/response/v1", extra={
-                "thread_id": thread.thread_id,
+                "conversation_id": thread.conversation_id,
                 "response_length": len(response_components.text),
                 "multimodal": self.enable_embodiment
             })

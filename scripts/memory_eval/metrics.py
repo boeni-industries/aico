@@ -656,7 +656,7 @@ class MemoryMetrics:
                 
             print(f"   🔍 Looking for user_id: {user_id}, conversation_id: {conversation_id}")
             
-            # Query by conversation_id first (most specific)
+            # Query by conversation_id (now properly stored in memory system)
             if conversation_id:
                 results = self.conversation_segments_collection.get(
                     where={"conversation_id": conversation_id},

@@ -33,7 +33,7 @@ class ConversationSegment:
     entities: Dict[str, List[str]]
     sentiment: str  # "positive", "negative", "neutral"
     sentiment_confidence: float  # confidence score 0.0-1.0
-    thread_id: str
+    conversation_id: str
     user_id: str
     timestamp: datetime
     turn_range: Tuple[int, int]  # (start_turn, end_turn)
@@ -57,20 +57,20 @@ class ConversationSegmentProcessor:
         self.min_chunk_size = self.config.get("memory.semantic.min_chunk_size", 3)
         self.max_chunk_size = self.config.get("memory.semantic.max_chunk_size", 5)
     
-    async def process_conversation_history(self, messages: List[Dict[str, Any]], thread_id: str, user_id: str) -> List[ConversationSegment]:
+    async def process_conversation_history(self, messages: List[Dict[str, Any]], conversation_id: str, user_id: str) -> List[ConversationSegment]:
         """
         Process a conversation history into semantic segments.
         
         Args:
             messages: List of conversation messages
-            thread_id: Conversation thread identifier
+            conversation_id: Conversation identifier
             user_id: User identifier
             
         Returns:
             List of conversation segments with extracted entities and metadata
         """
         logger.info(f" [CONVERSATION_PROCESSOR_DEBUG] process_conversation_history CALLED with {len(messages) if messages else 0} messages")
-        logger.info(f" [CONVERSATION_PROCESSOR_DEBUG] thread_id: {thread_id}, user_id: {user_id}")
+        logger.info(f" [CONVERSATION_PROCESSOR_DEBUG] conversation_id: {conversation_id}, user_id: {user_id}")
         
         if not messages:
             logger.info(f" [CONVERSATION_PROCESSOR_DEBUG] No messages provided, returning empty list")
@@ -96,7 +96,7 @@ class ConversationSegmentProcessor:
                         logger.debug(f" [CONVERSATION_PROCESSOR] Skipping chunk {i}: {len(chunk_messages)} < {self.min_chunk_size}")
                         continue
                     
-                segment = await self._create_segment(chunk_messages, thread_id, user_id, i)
+                segment = await self._create_segment(chunk_messages, conversation_id, user_id, i)
                 if segment:
                     segments.append(segment)
                     logger.debug(f" [CONVERSATION_PROCESSOR] Created segment {i} successfully")
@@ -112,7 +112,7 @@ class ConversationSegmentProcessor:
             logger.error(f"🔍 [CONVERSATION_PROCESSOR_DEBUG] ❌ Traceback: {traceback.format_exc()}")
             return []
     
-    async def _create_segment(self, messages: List[Dict[str, Any]], thread_id: str, user_id: str, start_index: int) -> Optional[ConversationSegment]:
+    async def _create_segment(self, messages: List[Dict[str, Any]], conversation_id: str, user_id: str, start_index: int) -> Optional[ConversationSegment]:
         """Create a conversation segment from a chunk of messages."""
         try:
             logger.debug(f"🔄 [CONVERSATION_PROCESSOR] _create_segment: Processing {len(messages)} messages")
@@ -193,7 +193,7 @@ class ConversationSegmentProcessor:
                 entities=entities,
                 sentiment=sentiment,
                 sentiment_confidence=sentiment_confidence,
-                thread_id=thread_id,
+                conversation_id=conversation_id,
                 user_id=user_id,
                 timestamp=timestamp,
                 turn_range=turn_range
