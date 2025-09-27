@@ -66,12 +66,6 @@ class MemoryMetrics:
         self.user_facts_collection = None
         self.conversation_segments_collection = None
         
-        # HTTP client for AICO API calls
-        self.http_client = httpx.AsyncClient(timeout=30.0)
-        
-        # AICO backend endpoints
-        self.backend_base_url = "http://localhost:8000"
-        self.modelservice_base_url = "http://localhost:8001"
         
     async def initialize_memory_connections(self):
         """Initialize connections to AICO's memory systems"""
@@ -98,13 +92,25 @@ class MemoryMetrics:
             # Get the collections AICO uses for memory storage
             try:
                 self.user_facts_collection = self.chroma_client.get_collection("user_facts")
-                print(f"✅ Connected to user_facts collection ({self.user_facts_collection.count()} documents)")
+                # Add timeout to prevent hanging
+                count_task = asyncio.create_task(asyncio.to_thread(self.user_facts_collection.count))
+                count = await asyncio.wait_for(count_task, timeout=5.0)
+                print(f"✅ Connected to user_facts collection ({count} documents)")
+            except asyncio.TimeoutError:
+                print("⚠️ user_facts collection count timed out - continuing anyway")
+                self.user_facts_collection = self.chroma_client.get_collection("user_facts")
             except Exception:
                 print("⚠️ user_facts collection not found - may not be created yet")
                 
             try:
                 self.conversation_segments_collection = self.chroma_client.get_collection("conversation_segments")  
-                print(f"✅ Connected to conversation_segments collection ({self.conversation_segments_collection.count()} documents)")
+                # Add timeout to prevent hanging
+                count_task = asyncio.create_task(asyncio.to_thread(self.conversation_segments_collection.count))
+                count = await asyncio.wait_for(count_task, timeout=5.0)
+                print(f"✅ Connected to conversation_segments collection ({count} documents)")
+            except asyncio.TimeoutError:
+                print("⚠️ conversation_segments collection count timed out - continuing anyway")
+                self.conversation_segments_collection = self.chroma_client.get_collection("conversation_segments")
             except Exception:
                 print("⚠️ conversation_segments collection not found - may not be created yet")
                 
@@ -115,8 +121,7 @@ class MemoryMetrics:
             
     async def cleanup(self):
         """Cleanup connections"""
-        if self.http_client:
-            await self.http_client.aclose()
+        pass  # No HTTP connections to clean up
         
     async def calculate_context_adherence(self, session) -> MetricScore:
         """
@@ -219,7 +224,9 @@ class MemoryMetrics:
             if not user_message:
                 continue
                 
-            stored_entities = await self._query_stored_entities(user_id, conversation_id, user_message)
+            # Use the specific conversation_id for this turn if available
+            turn_conversation_id = turn.get("conversation_id", conversation_id)
+            stored_entities = await self._query_stored_entities(user_id, turn_conversation_id, user_message)
             
             test_result = {
                 "turn": i + 1,

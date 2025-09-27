@@ -120,11 +120,13 @@ class ModelServiceClient:
         
         # Connection setup timing
         connection_start = time.time()
+        # Reduced connection debug noise
         await self._ensure_connection()
         connection_time = time.time() - connection_start
-        if is_embedding_request:
+        # Only log slow connections
+        if is_embedding_request and connection_time > 0.1:
+            print(f"⏱️ [MODELSERVICE_TIMING] SLOW connection: {connection_time:.4f}s")
             self.logger.debug(f"🔍 [ZMQ_DEBUG] Connection setup took {connection_time:.4f}s")
-        elif is_chat_request:
             self.logger.debug(f"💬 [CHAT_DEBUG] Connection setup took {connection_time:.4f}s")
         
         # Generate correlation ID for request/response matching
@@ -161,9 +163,15 @@ class ModelServiceClient:
                 request_proto.max_tokens = data["options"]["max_tokens"]
         elif "embeddings" in request_topic:
             # Create EmbeddingsRequest protobuf
+            protobuf_start = time.time()
+            # Reduced protobuf debug noise
             request_proto = EmbeddingsRequest()
             request_proto.model = data.get("model", "")
             request_proto.prompt = data.get("prompt", "")
+            protobuf_time = time.time() - protobuf_start
+            # Only log slow protobuf creation
+            if is_embedding_request and protobuf_time > 0.01:
+                print(f"⏱️ [MODELSERVICE_TIMING] SLOW protobuf: {protobuf_time:.4f}s")
         elif "ner" in request_topic:
             # Create NerRequest protobuf
             request_proto = NerRequest()
@@ -348,10 +356,13 @@ class ModelServiceClient:
         
         # Subscribe to response topic
         subscription_start = time.time()
+        # Reduced subscription debug noise
         await self.bus_client.subscribe(response_topic, handle_response)
         subscription_time = time.time() - subscription_start
         
-        if is_embedding_request:
+        # Only log slow subscriptions
+        if is_embedding_request and subscription_time > 0.01:
+            print(f"⏱️ [MODELSERVICE_TIMING] SLOW subscription: {subscription_time:.4f}s")
             self.logger.debug(f"🔍 [ZMQ_DEBUG] Subscribed to {response_topic} in {subscription_time:.4f}s")
         elif is_chat_request:
             self.logger.debug(f"💬 [CHAT_DEBUG] Subscribed to {response_topic} in {subscription_time:.4f}s")
@@ -359,10 +370,13 @@ class ModelServiceClient:
         try:
             # Send request with correlation ID
             publish_start = time.time()
+            # Reduced publishing debug noise
             await self.bus_client.publish(request_topic, request_proto, correlation_id=correlation_id)
             publish_time = time.time() - publish_start
             
-            if is_embedding_request:
+            # Only log slow publishing
+            if is_embedding_request and publish_time > 0.01:
+                print(f"⏱️ [MODELSERVICE_TIMING] SLOW publish: {publish_time:.4f}s")
                 self.logger.debug(f"🔍 [ZMQ_DEBUG] Published to {request_topic} in {publish_time:.4f}s")
                 self.logger.debug(f"🔍 [ZMQ_DEBUG] Waiting for response with timeout={self.config.timeout}s")
             elif is_chat_request:
@@ -371,9 +385,13 @@ class ModelServiceClient:
             
             # Wait for response with timeout
             wait_start = time.time()
+            # Reduced wait debug noise
             await asyncio.wait_for(response_received.wait(), timeout=self.config.timeout)
             wait_time = time.time() - wait_start
             total_time = time.time() - start_time
+            # Only log slow responses
+            if is_embedding_request and wait_time > 0.2:
+                print(f"⏱️ [MODELSERVICE_TIMING] SLOW response: {wait_time:.4f}s wait")
             
             if is_embedding_request:
                 self.logger.debug(f"🔍 [ZMQ_DEBUG] ✅ Response received in {wait_time:.4f}s (total: {total_time:.4f}s)")
@@ -389,6 +407,8 @@ class ModelServiceClient:
             error_msg = f"Request timed out after {self.config.timeout}s - MODELSERVICE MAY BE OFFLINE"
             
             if is_embedding_request:
+                print(f"⏱️ [MODELSERVICE_TIMING] ❌ TIMEOUT after {total_time:.4f}s!")
+                print(f"⏱️ [MODELSERVICE_TIMING] Breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={self.config.timeout:.4f}s")
                 self.logger.error(f"🔍 [ZMQ_DEBUG] ❌ TIMEOUT after {total_time:.4f}s waiting for response")
                 self.logger.error(f"🔍 [ZMQ_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={self.config.timeout:.4f}s")
             elif is_chat_request:
@@ -477,6 +497,9 @@ class ModelServiceClient:
         text_length = len(prompt)
         text_preview = prompt[:50] + "..." if len(prompt) > 50 else prompt
         
+        # Reduced debug noise - only log if text is long or if there are issues
+        if text_length > 500:
+            print(f"⏱️ [MODELSERVICE_TIMING] Large embedding request: {text_length} chars")
         self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] Starting embedding request for model={model}, text_length={text_length}")
         self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] Text preview: '{text_preview}'")
         
@@ -486,17 +509,27 @@ class ModelServiceClient:
         }
         
         try:
+            send_request_start = time.time()
+            # Removed debug noise
+            
             result = await self._send_request(
                 AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
                 AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
                 request_data
             )
             
+            send_request_time = time.time() - send_request_start
             elapsed_time = time.time() - start_time
+            # Only log slow embeddings
+            if elapsed_time > 0.5:
+                print(f"⏱️ [MODELSERVICE_TIMING] SLOW embedding: {elapsed_time:.2f}s for {text_length} chars")
+            
             if result.get("success"):
                 embedding_dim = len(result.get("data", {}).get("embedding", []))
+                # Reduced success noise
                 self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] ✅ Success! Got {embedding_dim}-dimensional embedding in {elapsed_time:.2f}s")
             else:
+                print(f"⏱️ [MODELSERVICE_TIMING] ❌ FAILED! Error: {result.get('error')}")
                 self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] ❌ Failed to get embedding: {result.get('error')}")
             
             return result
@@ -507,10 +540,130 @@ class ModelServiceClient:
             self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] Traceback: {traceback.format_exc()}")
             raise
     
-    async def get_ner_entities(self, text: str) -> Dict[str, Any]:
-        """Get named entity recognition from modelservice."""
+    async def get_embeddings_batch(self, model: str, prompts: List[str]) -> Dict[str, Any]:
+        """EMERGENCY FIX: Skip batch processing - just do individual requests quickly."""
+        import time
+        start_time = time.time()
+        
+        try:
+            self.logger.warning(f"🚨 [BATCH_EMBEDDING_CLIENT] EMERGENCY MODE: Processing {len(prompts)} embeddings individually (batch disabled due to 30s delays)")
+            
+            # EMERGENCY: Just do individual requests sequentially to avoid timeout issues
+            embeddings = []
+            failed_count = 0
+            
+            for i, prompt in enumerate(prompts):
+                try:
+                    single_start = time.time()
+                    result = await self.get_embeddings(model=model, prompt=prompt)
+                    single_time = time.time() - single_start
+                    
+                    if result.get("success") and "embedding" in result.get("data", {}):
+                        embeddings.append(result["data"]["embedding"])
+                        if single_time > 3.0:
+                            self.logger.warning(f"🚨 [BATCH_EMBEDDING_CLIENT] SLOW individual embedding {i+1}/{len(prompts)}: {single_time:.2f}s")
+                    else:
+                        embeddings.append(None)
+                        failed_count += 1
+                        self.logger.error(f"🚨 [BATCH_EMBEDDING_CLIENT] Failed embedding {i+1}/{len(prompts)}: {result.get('error', 'Unknown error')}")
+                        
+                except Exception as e:
+                    embeddings.append(None)
+                    failed_count += 1
+                    self.logger.error(f"🚨 [BATCH_EMBEDDING_CLIENT] Exception on embedding {i+1}/{len(prompts)}: {e}")
+            
+            elapsed_time = time.time() - start_time
+            successful_count = len([e for e in embeddings if e is not None])
+            
+            self.logger.info(f"🚨 [BATCH_EMBEDDING_CLIENT] EMERGENCY COMPLETE: {successful_count}/{len(prompts)} embeddings in {elapsed_time:.2f}s")
+            
+            if elapsed_time > 10.0:
+                self.logger.error(f"🚨 [BATCH_EMBEDDING_CLIENT] ❌ STILL TOO SLOW: {elapsed_time:.2f}s for {len(prompts)} embeddings")
+            
+            return {
+                "success": True,
+                "data": {
+                    "embeddings": embeddings,
+                    "successful_count": successful_count,
+                    "failed_count": failed_count,
+                    "processing_time": elapsed_time
+                }
+            }
+        except Exception as e:
+            import traceback
+            elapsed_time = time.time() - start_time
+            self.logger.error(f"🚀 [BATCH_EMBEDDING_CLIENT] ❌ Exception after {elapsed_time:.2f}s: {e}")
+            self.logger.error(f"🚀 [BATCH_EMBEDDING_CLIENT] Traceback: {traceback.format_exc()}")
+            raise
+    
+    def _log_batch_performance(self, metrics: Dict[str, Any], total_time: float, 
+                              successful_count: int, failed_count: int, method: str) -> None:
+        """PERFORMANCE MONITORING: Log detailed batch processing metrics."""
+        batch_size = metrics["batch_size"]
+        individual_times = metrics.get("individual_times", [])
+        
+        # Calculate performance statistics
+        avg_time_per_embedding = total_time / batch_size if batch_size > 0 else 0
+        success_rate = (successful_count / batch_size * 100) if batch_size > 0 else 0
+        
+        # Individual timing statistics (for concurrent mode)
+        if individual_times:
+            avg_individual_time = sum(individual_times) / len(individual_times)
+            min_time = min(individual_times)
+            max_time = max(individual_times)
+            
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Method: {method}")
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Batch: {batch_size} items, {successful_count} success, {failed_count} failed ({success_rate:.1f}% success)")
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Total: {total_time:.2f}s, Avg per item: {avg_time_per_embedding:.3f}s")
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Individual times: avg={avg_individual_time:.3f}s, min={min_time:.3f}s, max={max_time:.3f}s")
+            
+            # Performance thresholds and warnings
+            if avg_time_per_embedding > 2.0:
+                self.logger.warning(f"📊 [BATCH_PERFORMANCE] ⚠️ SLOW BATCH: {avg_time_per_embedding:.3f}s per embedding (threshold: 2.0s)")
+            
+            if success_rate < 90:
+                self.logger.warning(f"📊 [BATCH_PERFORMANCE] ⚠️ LOW SUCCESS RATE: {success_rate:.1f}% (threshold: 90%)")
+                
+        else:
+            # True batch mode statistics
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Method: {method}")
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Batch: {batch_size} items, {successful_count} success, {failed_count} failed ({success_rate:.1f}% success)")
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Total: {total_time:.2f}s, Avg per item: {avg_time_per_embedding:.3f}s")
+            
+            # Performance comparison
+            estimated_individual_time = batch_size * 2.0  # Assume 2s per individual request
+            speedup = estimated_individual_time / total_time if total_time > 0 else 1
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Estimated speedup: {speedup:.1f}x vs individual requests")
+    
+    async def get_ner_entities(self, text: str, entity_types: List[str] = None) -> Dict[str, Any]:
+        """Get named entity recognition from modelservice with optional entity type filtering."""
         request_data = {
             "text": text
+        }
+        
+        # ROOT FIX: Pass specific entity types to GLiNER for focused extraction
+        if entity_types:
+            request_data["entity_types"] = entity_types
+        
+        return await self._send_request(
+            AICOTopics.MODELSERVICE_NER_REQUEST,
+            AICOTopics.MODELSERVICE_NER_RESPONSE,
+            request_data
+        )
+    
+    async def get_ner_entities_optimized(self, ner_request: Dict[str, Any]) -> Dict[str, Any]:
+        """REPURPOSED: Use existing NER endpoint with optimized parameters."""
+        self.logger.info(f"🔍 [GLINER_OPTIMIZED] Using existing NER endpoint with model: {ner_request.get('model_name', 'default')}")
+        
+        # REPURPOSE: Enhance existing NER request with optimization parameters
+        request_data = {
+            "text": ner_request.get("text", ""),
+            "entity_types": ner_request.get("entity_types", []),
+            # Add optimization parameters to existing endpoint
+            "threshold": ner_request.get("threshold", 0.35),
+            "model_name": ner_request.get("model_name", "urchade/gliner_multi-v2.1"),
+            "max_length": ner_request.get("max_length", 512),
+            "optimization_mode": True  # Signal to modelservice for optimized processing
         }
         
         return await self._send_request(

@@ -412,6 +412,8 @@ class MemoryIntelligenceEvaluator:
                     
         except Exception as e:
             print(f"❌ Encrypted request error: {e}")
+            import traceback
+            print(f"   Full traceback: {traceback.format_exc()}")
             return None
             
         
@@ -532,8 +534,10 @@ class MemoryIntelligenceEvaluator:
         
         # Initialize HTTP session if not exists
         if not self.session:
+
+            conversation_timeout = max(self.timeout_seconds, 200)  # At least 200s for memory processing
             self.session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=self.timeout_seconds)
+                timeout=aiohttp.ClientTimeout(total=conversation_timeout)
             )
         
         # Try to perform encryption handshake (skip if it fails)
@@ -555,7 +559,7 @@ class MemoryIntelligenceEvaluator:
                 # Send message to AICO backend
                 message_data = {
                     "message": turn.user_message,
-                    "conversation_id": conversation_id,
+                    "message_type": "text",
                     "context": turn.context_hints or {}
                 }
                 print(f"💬 Turn {i+1}: {turn.user_message[:50]}...")

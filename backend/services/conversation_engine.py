@@ -528,7 +528,7 @@ class ConversationEngine(BaseService):
                 try:
                     # Process memory operations (store and retrieve) with timeout
                     self.logger.info(f"[MEMORY_DEBUG] Calling memory_processor.process() for request {request_id}")
-                    result = await asyncio.wait_for(memory_processor.process(context), timeout=10.0)
+                    result = await asyncio.wait_for(memory_processor.process(context), timeout=30.0)
                     
                     process_end = time.time()
                     process_duration = process_end - process_start

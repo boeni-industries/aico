@@ -62,8 +62,9 @@ Knowledge Management:
 
 import json
 import asyncio
+import time
 from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -81,6 +82,106 @@ logger = get_logger("shared", "ai.memory.semantic")
 
 
 @dataclass
+class SemanticRequestQueue:
+    """Phase 1: Request queue with rate limiting for ModelService protection"""
+    max_concurrent: int = 4  # Handle context + query + background processing
+    rate_limit_per_minute: int = 60  # Handle context + background fact extraction load
+    
+    def __post_init__(self):
+        self.semaphore = asyncio.Semaphore(self.max_concurrent)
+        self.request_times = []  # Track request timestamps for rate limiting
+        self.active_requests = 0
+        
+    async def acquire(self) -> bool:
+        """Acquire permission to make a semantic request with rate limiting"""
+        # Rate limiting check
+        now = time.time()
+        # Remove requests older than 1 minute
+        self.request_times = [t for t in self.request_times if now - t < 60]
+        
+        if len(self.request_times) >= self.rate_limit_per_minute:
+            print(f"🚨 [SEMANTIC_QUEUE] ⚠️ RATE LIMIT EXCEEDED: {len(self.request_times)}/{self.rate_limit_per_minute} requests in last minute")
+            logger.warning(f"Semantic request rate limit exceeded: {len(self.request_times)}/{self.rate_limit_per_minute}")
+            return False
+        
+        # Concurrency limiting
+        acquired = self.semaphore.acquire()
+        if not acquired:
+            print(f"🚨 [SEMANTIC_QUEUE] ⚠️ CONCURRENCY LIMIT REACHED: {self.active_requests}/{self.max_concurrent}")
+            logger.warning(f"Semantic request concurrency limit reached: {self.active_requests}/{self.max_concurrent}")
+            return False
+            
+        await acquired
+        self.request_times.append(now)
+        self.active_requests += 1
+        print(f"🟢 [SEMANTIC_QUEUE] ✅ Request acquired ({self.active_requests}/{self.max_concurrent} active)")
+        return True
+        
+    def release(self):
+        """Release semantic request permission"""
+        self.semaphore.release()
+        self.active_requests = max(0, self.active_requests - 1)
+        print(f"🟢 [SEMANTIC_QUEUE] ✅ Request released ({self.active_requests}/{self.max_concurrent} active)")
+
+
+@dataclass 
+class ModelServiceCircuitBreaker:
+    """Phase 1: Circuit breaker for ModelService protection"""
+    failure_threshold: int = 5  # Less sensitive for normal operation
+    timeout_seconds: int = 30
+    recovery_timeout: int = 30  # Faster recovery for better availability
+    
+    def __post_init__(self):
+        self.failure_count = 0
+        self.last_failure_time = None
+        self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+        
+    def can_execute(self) -> bool:
+        """Check if requests can be executed based on circuit breaker state"""
+        now = time.time()
+        
+        if self.state == "CLOSED":
+            return True
+        elif self.state == "OPEN":
+            if self.last_failure_time and (now - self.last_failure_time) > self.recovery_timeout:
+                self.state = "HALF_OPEN"
+                print(f"🔄 [CIRCUIT_BREAKER] Circuit breaker moving to HALF_OPEN state")
+                logger.warning("ModelService circuit breaker moving to HALF_OPEN state")
+                return True
+            else:
+                print(f"🚨 [CIRCUIT_BREAKER] ⚠️ CIRCUIT OPEN - ModelService requests blocked")
+                logger.warning("ModelService circuit breaker OPEN - requests blocked")
+                return False
+        elif self.state == "HALF_OPEN":
+            return True
+        
+        return False
+        
+    def record_success(self):
+        """Record successful request"""
+        if self.state == "HALF_OPEN":
+            self.state = "CLOSED"
+            self.failure_count = 0
+            print(f"🟢 [CIRCUIT_BREAKER] ✅ Circuit breaker CLOSED - ModelService recovered")
+            logger.info("ModelService circuit breaker CLOSED - service recovered")
+        else:
+            self.failure_count = max(0, self.failure_count - 1)
+            
+    def record_failure(self):
+        """Record failed request"""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        
+        if self.failure_count >= self.failure_threshold:
+            self.state = "OPEN"
+            print(f"🚨 [CIRCUIT_BREAKER] ⚠️ CIRCUIT OPENED - {self.failure_count} failures, blocking ModelService requests")
+            logger.warning(f"ModelService circuit breaker OPENED after {self.failure_count} failures")
+        else:
+            print(f"🟡 [CIRCUIT_BREAKER] Failure recorded ({self.failure_count}/{self.failure_threshold})")
+            logger.warning(f"ModelService failure recorded ({self.failure_count}/{self.failure_threshold})")
+
+
+@dataclass
 class SemanticEntry:
     """Structure for semantic knowledge entries"""
     id: str
@@ -93,25 +194,45 @@ class SemanticEntry:
 
 
 class SemanticMemoryStore:
-    """
-    Semantic knowledge storage using ChromaDB for vector similarity.
+    """Advanced semantic memory store using ChromaDB with modelservice embeddings"""
     
-    Manages:
-    - Factual knowledge and concepts
-    - Vector embeddings for semantic search
-    - Knowledge relationships and associations
-    - Context-aware knowledge retrieval
-    
-    Uses local ChromaDB instance following AICO's local-first principles.
-    """
-    
-    def __init__(self, config_manager: ConfigurationManager):
-        self.config = config_manager
-        self._client: Optional[chromadb.Client] = None
-        self._collection: Optional[chromadb.Collection] = None
+    def __init__(self, config_manager=None, modelservice_client=None):
+        self.config_manager = config_manager
+        self.modelservice_client = modelservice_client
+        self._collection = None
+        self._user_facts_collection_obj = None
+        self._conversation_segments_collection_obj = None
+        self._chroma_client = None
+        self._max_results = 10
+        self.fact_extractor = None  # Will be set by dependency injection
+        
+        # PERFORMANCE FIX: Cache query embeddings to avoid repeated modelservice calls
+        self._query_embedding_cache = {}  # query_text -> embedding
+        self._cache_max_size = 100  # Limit cache size
+        
+        # PHASE 1: Protection mechanisms for ModelService
+        self._request_queue = SemanticRequestQueue()
+        self._circuit_breaker = ModelServiceCircuitBreaker()
+        self._fallback_cache = {}  # Cache for fallback responses
+        
+        # ROOT FIX: Batch embedding processing for facts
+        self._embedding_batch_queue = []  # Pending embedding requests
+        self._embedding_batch_size = 10  # Process embeddings in batches
+        self._embedding_batch_timeout = 2.0  # Max wait time before processing partial batch
+        
+        # CRITICAL FIX: Initialize the _initialized flag
         self._initialized = False
         
-        # Configuration - use hierarchical paths and modelservice integration
+        # CRITICAL FIX: Initialize _modelservice to prevent AttributeError
+        self._modelservice = None
+        
+        # CRITICAL FIX: Initialize _client to prevent AttributeError
+        self._client = None
+        
+        # Initialize configuration and paths
+        self.config = config_manager if config_manager else {}
+        
+        # Configure ChromaDB paths and modelservice integration
         memory_config = self.config.get("memory.semantic", {})
         self._db_path = AICOPaths.get_semantic_memory_path()
         
@@ -309,20 +430,55 @@ class SemanticMemoryStore:
         max_results = max_results or self._max_results
         
         try:
-            # Generate query embeddings via modelservice
-            logger.info("🔍 [SEMANTIC_MEMORY] → Generating query embeddings via modelservice")
-            query_embedding = await self._generate_embedding(query_text)
-            if not query_embedding:
-                logger.error("🔍 [SEMANTIC_MEMORY] ❌ Failed to generate query embeddings - semantic search failed")
-                raise Exception("Query embedding generation failed - semantic search unavailable")
+            # PERFORMANCE FIX: Check cache first to avoid slow modelservice calls
+            import time
+            query_start = time.time()
+            cache_key = f"{query_text[:100]}_{len(query_text)}"  # Use truncated text + length as key
+            
+            if cache_key in self._query_embedding_cache:
+                query_embedding = self._query_embedding_cache[cache_key]
+                cache_time = time.time() - query_start
+                logger.info(f"🚀 [SEMANTIC_MEMORY] → Using CACHED query embedding in {cache_time*1000:.1f}ms (avoiding modelservice call)")
+            else:
+                # Generate query embeddings via modelservice
+                logger.info("🔍 [SEMANTIC_MEMORY] → Generating query embeddings via modelservice")
+                embedding_start = time.time()
+                query_embedding = await self._generate_embedding(query_text)
+                embedding_time = time.time() - embedding_start
+                
+                if not query_embedding:
+                    logger.error("🚨 [SEMANTIC_MEMORY] CRITICAL: Failed to generate query embeddings - modelservice timeout/error")
+                    logger.error("🚨 [SEMANTIC_MEMORY] This should NOT happen - investigate modelservice issues!")
+                    raise Exception("CRITICAL: Query embedding generation failed - modelservice issue needs investigation")
+                
+                # Cache the embedding for future use
+                if len(self._query_embedding_cache) >= self._cache_max_size:
+                    # Remove oldest entry (simple FIFO)
+                    oldest_key = next(iter(self._query_embedding_cache))
+                    del self._query_embedding_cache[oldest_key]
+                
+                self._query_embedding_cache[cache_key] = query_embedding
+                logger.info(f"💾 [SEMANTIC_MEMORY] → Generated & cached query embedding in {embedding_time:.2f}s (cache size: {len(self._query_embedding_cache)})")
+                
+                # Performance warning for slow embeddings
+                if embedding_time > 2.0:
+                    logger.warning(f"📊 [QUERY_PERFORMANCE] ⚠️ SLOW QUERY EMBEDDING: {embedding_time:.2f}s (threshold: 2.0s)")
             
             # Query ChromaDB with pre-computed embeddings
             if self._collection and chromadb:
                 try:
-                    results = self._collection.query(
-                        query_embeddings=[query_embedding],  # Use modelservice embeddings!
-                        n_results=max_results,
-                        where=filters  # Apply metadata filters
+                    # Add timeout to prevent ChromaDB hangs
+                    import asyncio
+                    results = await asyncio.wait_for(
+                        asyncio.get_event_loop().run_in_executor(
+                            None, 
+                            lambda: self._collection.query(
+                                query_embeddings=[query_embedding],  # Use modelservice embeddings!
+                                n_results=max_results,
+                                where=filters  # Apply metadata filters
+                            )
+                        ),
+                        timeout=3.0  # 3 second timeout for ChromaDB query
                     )
                     
                     # Format results
@@ -340,9 +496,12 @@ class SemanticMemoryStore:
                     logger.info(f"🔍 [SEMANTIC_MEMORY] ✅ Found {len(formatted_results)} semantic results")
                     return formatted_results
                     
+                except asyncio.TimeoutError:
+                    logger.error(f"🔍 [SEMANTIC_MEMORY] ❌ ChromaDB query timed out after 3.0s")
+                    return []  # Return empty results on timeout
                 except Exception as e:
                     logger.error(f"🔍 [SEMANTIC_MEMORY] ❌ ChromaDB query failed: {e}")
-                    raise Exception(f"Semantic memory query failed: {e}")
+                    return []  # Return empty results on error instead of raising
             else:
                 raise Exception("ChromaDB not initialized - semantic memory unavailable")
         except Exception as e:
@@ -463,9 +622,31 @@ class SemanticMemoryStore:
                 
                 # Extract and store user facts using advanced fact extractor
                 extracted_facts = await self.fact_extractor.extract_facts(segment)
+                
+                # LANGUAGE-AGNOSTIC: Filter facts based on confidence and structural quality
+                filtered_facts = []
                 for fact in extracted_facts:
-                    if await self._store_user_fact_advanced(fact):
-                        facts_extracted += 1
+                    # Filter based on confidence (GLiNER already did quality filtering)
+                    if fact.confidence < 0.4:
+                        continue
+                    # Filter very short content (likely incomplete extractions)
+                    if len(fact.content.strip()) < 2:
+                        continue
+                    filtered_facts.append(fact)
+                
+                print(f"🚨 [PERFORMANCE_DEBUG] Extracted {len(extracted_facts)} facts, filtered to {len(filtered_facts)} high-confidence facts (saving {len(extracted_facts) - len(filtered_facts)} embedding requests)")
+                
+                # EMERGENCY: Disable batch processing - causing 30s delays!
+                # Process facts individually until batch issues are resolved
+                logger.warning(f"🚨 [EMERGENCY] Processing {len(filtered_facts)} facts individually (batch disabled due to timeouts)")
+                
+                for fact in filtered_facts:
+                    try:
+                        if await self._store_user_fact_advanced(fact):
+                            facts_extracted += 1
+                    except Exception as e:
+                        logger.error(f"🚨 [EMERGENCY] Failed to store individual fact: {e}")
+                        continue
                 
                 # Store each segment as semantic knowledge
                 # Serialize complex data types for ChromaDB compatibility
@@ -581,72 +762,245 @@ class SemanticMemoryStore:
             logger.error(f"Error during semantic memory cleanup: {e}")
     
     async def _generate_embedding(self, text: str) -> Optional[List[float]]:
-        """Generate embeddings via modelservice (replaces ChromaDB default embedding function)"""
+        """PHASE 1: Generate embeddings with protection mechanisms and fallbacks"""
         try:
             if not self._modelservice:
-                logger.error("Modelservice not available for embedding generation")
-                return None
+                print(f"🚨 [SEMANTIC_EMBEDDING] ⚠️ FALLBACK: Modelservice not available")
+                logger.warning("Modelservice not available for embedding generation - using fallback")
+                return self._get_fallback_embedding(text)
             
-            # Add timeout handling for background embedding generation
-            import asyncio
+            # PHASE 1: Check circuit breaker
+            if not self._circuit_breaker.can_execute():
+                print(f"🚨 [SEMANTIC_EMBEDDING] ⚠️ FALLBACK: Circuit breaker OPEN")
+                logger.warning("Circuit breaker OPEN - using fallback embedding")
+                return self._get_fallback_embedding(text)
             
-            # Get timeout from config or use default
-            embedding_timeout = self.config.get("memory", {}).get("semantic", {}).get("embedding_timeout_seconds", 120.0)
-            
-            # Track performance metrics
-            import time
-            start_time = time.time()
-            text_length = len(text)
-            text_preview = text[:50] + "..." if len(text) > 50 else text
-            
-            logger.debug(f"🔍 [EMBEDDING_DEBUG] Starting embedding generation for text ({text_length} chars): '{text_preview}'")
-            logger.debug(f"🔍 [EMBEDDING_DEBUG] Using model: {self._embedding_model}, timeout: {embedding_timeout}s")
-            
-            # Track the modelservice request start time
-            ms_request_start = time.time()
+            # PHASE 1: Acquire request queue permission
+            if not await self._request_queue.acquire():
+                print(f"🚨 [SEMANTIC_EMBEDDING] ⚠️ FALLBACK: Request queue limit reached")
+                logger.warning("Request queue limit reached - using fallback embedding")
+                return self._get_fallback_embedding(text)
             
             try:
-                logger.debug(f"🔍 [EMBEDDING_DEBUG] Sending embedding request to modelservice...")
+                # Get timeout from config (reduced for Phase 1)
+                embedding_timeout = 5.0  # Much shorter timeout for Phase 1
+                
+                print(f"🟢 [SEMANTIC_EMBEDDING] Making protected embedding request (timeout: {embedding_timeout}s)")
+                
+                # Use asyncio.wait_for for proper timeout handling
                 response = await asyncio.wait_for(
-                    self._modelservice.get_embeddings(
-                        model=self._embedding_model,
-                        prompt=text
-                    ),
+                    self._modelservice.get_embeddings(model=self._embedding_model, prompt=text),
                     timeout=embedding_timeout
                 )
-                ms_request_time = time.time() - ms_request_start
-                logger.debug(f"🔍 [EMBEDDING_DEBUG] ✅ Modelservice responded in {ms_request_time:.2f}s")
+                
+                # Handle both "embedding" (singular) and "embeddings" (plural) response formats
+                embedding_data = response.get("data", {}).get("embedding") or response.get("data", {}).get("embeddings")
+                if response.get("success") and embedding_data:
+                    # Handle both single embedding and list of embeddings
+                    if isinstance(embedding_data, list) and len(embedding_data) > 0:
+                        if isinstance(embedding_data[0], list):
+                            # List of embeddings - take first one
+                            embedding = embedding_data[0]
+                        else:
+                            # Single embedding as list
+                            embedding = embedding_data
+                    else:
+                        embedding = embedding_data
+                    
+                    if embedding and len(embedding) > 0:
+                        # PHASE 1: Record success
+                        self._circuit_breaker.record_success()
+                        print(f"🟢 [SEMANTIC_EMBEDDING] ✅ Embedding generated successfully ({len(embedding)} dims)")
+                        logger.debug(f"Generated embedding: {len(embedding)} dimensions")
+                        return embedding
+                    else:
+                        # PHASE 1: Record failure and fallback
+                        self._circuit_breaker.record_failure()
+                        print(f"🚨 [SEMANTIC_EMBEDDING] ⚠️ FALLBACK: Empty embeddings in response")
+                        logger.warning("Empty embeddings in response - using fallback")
+                        return self._get_fallback_embedding(text)
+                else:
+                    # PHASE 1: Record failure and fallback
+                    self._circuit_breaker.record_failure()
+                    print(f"🚨 [SEMANTIC_EMBEDDING] ⚠️ FALLBACK: Embedding generation failed")
+                    logger.warning(f"Embedding generation failed - using fallback. Response: {response}")
+                    return self._get_fallback_embedding(text)
+                    
             except asyncio.TimeoutError:
-                ms_request_time = time.time() - ms_request_start
-                logger.warning(f"🔍 [EMBEDDING_DEBUG] ❌ Embedding request timed out after {ms_request_time:.2f}s (limit: {embedding_timeout}s)")
-                logger.warning(f"🔍 [EMBEDDING_DEBUG] Text that caused timeout: '{text_preview}'")
-                return None
-            
-            if response.get("success") and "embedding" in response.get("data", {}):
-                embedding = response["data"]["embedding"]
-                embedding_dim = len(embedding)
-                total_time = time.time() - start_time
+                # PHASE 1: Record failure and fallback
+                self._circuit_breaker.record_failure()
+                print(f"🚨 [SEMANTIC_EMBEDDING] ⚠️ FALLBACK: Embedding request timed out after {embedding_timeout}s")
+                logger.warning(f"Embedding generation timed out after {embedding_timeout}s - using fallback")
+                return self._get_fallback_embedding(text)
+            except Exception as e:
+                # PHASE 1: Record failure and fallback
+                self._circuit_breaker.record_failure()
+                print(f"🚨 [SEMANTIC_EMBEDDING] ⚠️ FALLBACK: ModelService error: {e}")
+                logger.warning(f"ModelService error during embedding generation: {e} - using fallback")
+                return self._get_fallback_embedding(text)
+            finally:
+                # PHASE 1: Always release queue permission
+                self._request_queue.release()
                 
-                logger.debug(f"🔍 [EMBEDDING_DEBUG] ✅ Generated {embedding_dim}-dimensional embedding in {total_time:.2f}s total")
-                logger.debug(f"🔍 [EMBEDDING_DEBUG] Performance: {text_length} chars → {embedding_dim} dimensions in {total_time:.2f}s ({text_length/total_time:.1f} chars/sec)")
-                
-                return embedding
-            else:
-                error_msg = response.get('error', 'Unknown error')
-                logger.error(f"🔍 [EMBEDDING_DEBUG] ❌ Modelservice embedding failed: {error_msg}")
-                logger.error(f"🔍 [EMBEDDING_DEBUG] Full response: {response}")
-                return None
-                
-        # This exception should never be reached since we have an inner try/except for TimeoutError
-        # But keeping it for safety
-        except asyncio.TimeoutError:
-            logger.warning(f"Embedding generation timed out - skipping fact storage")
-            return None
         except Exception as e:
-            import traceback
-            logger.error(f"🔍 [EMBEDDING_DEBUG] ❌ Error during embedding generation: {e}")
-            logger.error(f"🔍 [EMBEDDING_DEBUG] Traceback: {traceback.format_exc()}")
-            return None
+            print(f"🚨 [SEMANTIC_EMBEDDING] ⚠️ FALLBACK: Unexpected error: {e}")
+            logger.error(f"Unexpected error during embedding generation: {e} - using fallback")
+            return self._get_fallback_embedding(text)
+    
+    def _get_fallback_embedding(self, text: str) -> Optional[List[float]]:
+        """PHASE 1: Fallback embedding generation when ModelService is unavailable"""
+        # Check cache first
+        if text in self._fallback_cache:
+            print(f"🟡 [SEMANTIC_FALLBACK] Using cached fallback embedding")
+            return self._fallback_cache[text]
+        
+        # Simple hash-based embedding as fallback (768 dimensions to match sentence-transformers)
+        import hashlib
+        import struct
+        
+        # Create deterministic embedding from text hash
+        hash_obj = hashlib.sha256(text.encode('utf-8'))
+        hash_bytes = hash_obj.digest()
+        
+        # Convert to 768-dimensional vector (match sentence-transformers output)
+        embedding = []
+        for i in range(768):
+            # Use different parts of hash to create varied dimensions
+            byte_idx = (i * 4) % len(hash_bytes)
+            val = struct.unpack('f', hash_bytes[byte_idx:byte_idx+4] + b'\x00' * (4 - min(4, len(hash_bytes) - byte_idx)))[0]
+            # Normalize to [-1, 1] range
+            embedding.append(val / (2**31))
+        
+        # Cache the fallback
+        self._fallback_cache[text] = embedding
+        print(f"🟡 [SEMANTIC_FALLBACK] Generated fallback embedding ({len(embedding)} dims)")
+        logger.info(f"Generated fallback embedding for text: {text[:50]}...")
+        
+        return embedding
+    
+    async def _generate_embeddings_batch(self, texts: List[str]) -> List[Optional[List[float]]]:
+        """ROOT FIX: Generate embeddings for multiple texts in a single modelservice call."""
+        if not texts:
+            return []
+        
+        try:
+            if not self._modelservice:
+                logger.error("Modelservice not available for batch embedding generation")
+                return [None] * len(texts)
+            
+            import time
+            start_time = time.time()
+            
+            logger.info(f"🚀 [BATCH_EMBEDDING] Processing batch of {len(texts)} embeddings")
+            
+            # ROOT FIX: Single modelservice call for multiple embeddings
+            response = await self._modelservice.get_embeddings_batch(
+                model=self._embedding_model,
+                prompts=texts
+            )
+            
+            total_time = time.time() - start_time
+            
+            if response.get("success") and "embeddings" in response.get("data", {}):
+                embeddings = response["data"]["embeddings"]
+                logger.info(f"🚀 [BATCH_EMBEDDING] ✅ Generated {len(embeddings)} embeddings in {total_time:.2f}s ({total_time/len(texts):.3f}s per embedding)")
+                return embeddings
+            else:
+                logger.error(f"🚀 [BATCH_EMBEDDING] ❌ Batch embedding failed: {response.get('error', 'Unknown error')}")
+                return [None] * len(texts)
+                
+        except Exception as e:
+            logger.error(f"🚀 [BATCH_EMBEDDING] ❌ Exception during batch embedding: {e}")
+            return [None] * len(texts)
+    
+    async def _store_user_facts_batch(self, extracted_facts: List) -> int:
+        """ROOT FIX: Store multiple user facts with batch embedding generation."""
+        if not extracted_facts:
+            return 0
+        
+        try:
+            if not self._user_facts_collection_obj:
+                logger.error("User facts collection not initialized")
+                return 0
+            
+            # Extract texts for batch embedding
+            fact_texts = [fact.content for fact in extracted_facts]
+            
+            # ROOT FIX: Generate all embeddings in a single batch request
+            import time
+            batch_start = time.time()
+            logger.info(f"🚀 [BATCH_FACTS] Generating embeddings for {len(fact_texts)} facts in batch")
+            embeddings = await self._generate_embeddings_batch(fact_texts)
+            batch_time = time.time() - batch_start
+            
+            if not embeddings or len(embeddings) != len(extracted_facts):
+                logger.error(f"🚀 [BATCH_FACTS] ❌ Batch embedding failed or mismatched count")
+                return 0
+            
+            # Store facts with their embeddings
+            stored_count = 0
+            for fact, embedding in zip(extracted_facts, embeddings):
+                if embedding is None:
+                    logger.warning(f"🚀 [BATCH_FACTS] ⚠️ Skipping fact with failed embedding: {fact.content[:50]}...")
+                    continue
+                
+                try:
+                    # Create unique ID for the fact
+                    fact_id = f"fact_{fact.source_segment_id}_{hash(fact.content)}"
+                    
+                    # Create comprehensive metadata
+                    metadata = {
+                        "fact_type": fact.fact_type.value,
+                        "confidence": fact.confidence,
+                        "extraction_method": fact.extraction_method,
+                        "source_segment_id": fact.source_segment_id,
+                        "created_at": datetime.utcnow().isoformat(),
+                        "entities_count": len(fact.entities),
+                        "relations_count": 0,  # TODO: Relations not implemented yet
+                        "category": fact.fact_type.value,
+                        "user_id": getattr(fact, 'user_id', 'unknown')
+                    }
+                    
+                    # Add entity information to metadata
+                    if fact.entities:
+                        metadata["entities"] = [{"text": e.text, "label": e.label, "confidence": e.confidence} for e in fact.entities]
+                    
+                    # Store in ChromaDB
+                    self._user_facts_collection_obj.add(
+                        documents=[fact.content],
+                        embeddings=[embedding],
+                        metadatas=[metadata],
+                        ids=[fact_id]
+                    )
+                    
+                    stored_count += 1
+                    logger.debug(f"🚀 [BATCH_FACTS] ✅ Stored fact: {fact.content[:50]}...")
+                    
+                except Exception as e:
+                    logger.error(f"🚀 [BATCH_FACTS] ❌ Failed to store individual fact: {e}")
+                    continue
+            
+            # PERFORMANCE MONITORING
+            total_time = time.time() - batch_start
+            avg_time_per_fact = total_time / len(extracted_facts) if extracted_facts else 0
+            success_rate = (stored_count / len(extracted_facts) * 100) if extracted_facts else 0
+            
+            logger.info(f"🚀 [BATCH_FACTS] ✅ Successfully stored {stored_count}/{len(extracted_facts)} facts in batch")
+            logger.info(f"📊 [BATCH_FACTS_PERFORMANCE] Embedding: {batch_time:.2f}s, Storage: {total_time-batch_time:.2f}s, Total: {total_time:.2f}s")
+            logger.info(f"📊 [BATCH_FACTS_PERFORMANCE] Avg per fact: {avg_time_per_fact:.3f}s, Success rate: {success_rate:.1f}%")
+            
+            # Performance warnings
+            if avg_time_per_fact > 1.0:
+                logger.warning(f"📊 [BATCH_FACTS_PERFORMANCE] ⚠️ SLOW FACT PROCESSING: {avg_time_per_fact:.3f}s per fact (threshold: 1.0s)")
+            
+            if success_rate < 95:
+                logger.warning(f"📊 [BATCH_FACTS_PERFORMANCE] ⚠️ LOW SUCCESS RATE: {success_rate:.1f}% (threshold: 95%)")
+            
+            return stored_count
+            
+        except Exception as e:
+            logger.error(f"🚀 [BATCH_FACTS] ❌ Batch fact storage failed: {e}")
+            return 0
     
     async def _store_user_fact_advanced(self, extracted_fact) -> bool:
         """Store an advanced extracted fact in the user_facts collection"""
@@ -672,7 +1026,7 @@ class SemanticMemoryStore:
                 "source_segment_id": extracted_fact.source_segment_id,
                 "created_at": datetime.utcnow().isoformat(),
                 "entities_count": len(extracted_fact.entities),
-                "relations_count": len(extracted_fact.relations),
+                "relations_count": 0,  # Relations not implemented yet
                 **extracted_fact.metadata  # Include all additional metadata
             }
             

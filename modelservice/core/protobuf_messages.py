@@ -269,7 +269,6 @@ class ModelserviceMessageParser:
         if not request_class:
             logger.error(f"[DEBUG] Unknown request type: {message_type}")
             raise ValueError(f"Unknown request type: {message_type}")
-        
         logger.info(f"[DEBUG] Found request class: {request_class.__name__} for message_type: {message_type}")
         return ModelserviceMessageFactory.extract_payload(envelope, request_class)
     

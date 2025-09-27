@@ -101,6 +101,16 @@ class ContextAssembler:
             "semantic": 0.6,
             "procedural": 0.7
         }
+        
+        # Smart caching for expensive operations
+        self._intent_classifier_cache = None
+        self._intent_classifier_initializing = False
+        self._similarity_cache = {}
+        self._boundary_cache = {}
+        
+        # Pre-initialize expensive components in background
+        import asyncio
+        asyncio.create_task(self._initialize_expensive_components())
     
     async def assemble_context(self, user_id: str, current_message: str, 
                               max_context_items: int = None) -> Dict[str, Any]:
@@ -109,6 +119,7 @@ class ContextAssembler:
         assembly_start = datetime.utcnow()
         
         try:
+            print(f"⏱️ [TIMING] Context assembly started for user {user_id}")
             logger.info(f"🧠 Assembling context for user {user_id} with sovereign excellence")
             
             # Retrieve context from all available memory tiers
@@ -118,23 +129,50 @@ class ContextAssembler:
             
             # Get working memory context (immediate conversation)
             try:
+                working_start = datetime.utcnow()
+                print(f"⏱️ [TIMING] Starting working memory retrieval...")
                 working_items = await self._get_working_context(user_id)
+                working_time = (datetime.utcnow() - working_start).total_seconds() * 1000
+                print(f"⏱️ [TIMING] Working memory completed in {working_time:.2f}ms")
                 all_items.extend(working_items or [])
                 logger.debug(f"Retrieved {len(working_items or [])} items from working memory")
             except Exception as e:
                 logger.warning(f"Working memory context retrieval failed: {e}")
             
-            # Get semantic memory context (long-term user facts)
+            # PHASE 1: Re-enable semantic context retrieval with timeout and fallback
             try:
-                semantic_items = await self._get_semantic_context(current_message, user_id)
+                semantic_start = datetime.utcnow()
+                print(f"⏱️ [TIMING] Starting PROTECTED semantic memory retrieval...")
+                
+                # PHASE 1: Use timeout to prevent blocking
+                semantic_timeout = 5.0  # Increased for normal operation with background processing
+                semantic_items = await asyncio.wait_for(
+                    self._get_semantic_context_safe(current_message, user_id),
+                    timeout=semantic_timeout
+                )
+                
+                semantic_time = (datetime.utcnow() - semantic_start).total_seconds() * 1000
+                print(f"⏱️ [TIMING] Protected semantic memory completed in {semantic_time:.2f}ms")
                 all_items.extend(semantic_items or [])
                 logger.debug(f"Retrieved {len(semantic_items or [])} items from semantic memory")
+                
+            except asyncio.TimeoutError:
+                semantic_time = (datetime.utcnow() - semantic_start).total_seconds() * 1000
+                print(f"🚨 [SEMANTIC_CONTEXT] ⚠️ FALLBACK: Semantic retrieval timed out after {semantic_time:.2f}ms")
+                logger.warning(f"Semantic context retrieval timed out after {semantic_time:.2f}ms - using fallback")
+                # Continue without semantic context (graceful degradation)
             except Exception as e:
-                logger.warning(f"Semantic memory context retrieval failed: {e}")
+                semantic_time = (datetime.utcnow() - semantic_start).total_seconds() * 1000
+                print(f"🚨 [SEMANTIC_CONTEXT] ⚠️ FALLBACK: Semantic retrieval failed after {semantic_time:.2f}ms: {e}")
+                logger.warning(f"Semantic memory context retrieval failed: {e} - using fallback")
             
             # Get episodic memory context (historical conversations) - placeholder
             try:
+                episodic_start = datetime.utcnow()
+                print(f"⏱️ [TIMING] Starting episodic memory retrieval...")
                 episodic_items = await self._get_episodic_context(user_id, current_message)
+                episodic_time = (datetime.utcnow() - episodic_start).total_seconds() * 1000
+                print(f"⏱️ [TIMING] Episodic memory completed in {episodic_time:.2f}ms")
                 all_items.extend(episodic_items or [])
                 logger.debug(f"Retrieved {len(episodic_items or [])} items from episodic memory")
             except Exception as e:
@@ -179,6 +217,8 @@ class ContextAssembler:
                 "thread_strength": self._calculate_thread_strength(final_items)
             }
             
+            total_time = (datetime.utcnow() - assembly_start).total_seconds() * 1000
+            print(f"⏱️ [TIMING] TOTAL context assembly completed in {total_time:.2f}ms")
             logger.info(f"✨ Context assembled with {len(final_items)} items in {context['assembly_time_ms']:.2f}ms")
             return context
             
@@ -248,16 +288,27 @@ class ContextAssembler:
     async def _get_working_context(self, user_id: str) -> List[ContextItem]:
         """Get conversation context using enhanced semantic memory approach"""
         try:
+            method_start = datetime.utcnow()
+            print(f"⏱️ [TIMING] _get_working_context started for user {user_id}")
+            
             if not self.working_store:
                 logger.debug("No working memory store available - gracefully continuing")
                 return []
             
             # ENHANCED SEMANTIC APPROACH: Get ALL user messages for intelligent context assembly
+            db_start = datetime.utcnow()
+            print(f"⏱️ [TIMING] Querying working store for user messages...")
             all_messages = await self.working_store._get_recent_user_messages(user_id, hours=24)
+            db_time = (datetime.utcnow() - db_start).total_seconds() * 1000
+            print(f"⏱️ [TIMING] Working store query completed in {db_time:.2f}ms - got {len(all_messages)} messages")
             logger.debug(f"Retrieved {len(all_messages)} messages for semantic context assembly")
             
             # Smart conversation continuity: Find related messages using semantic + temporal signals
+            assembly_start = datetime.utcnow()
+            print(f"⏱️ [TIMING] Starting conversation context assembly...")
             conversation_messages = await self._assemble_conversation_context(user_id, all_messages)
+            assembly_time = (datetime.utcnow() - assembly_start).total_seconds() * 1000
+            print(f"⏱️ [TIMING] Conversation context assembly completed in {assembly_time:.2f}ms")
             logger.debug(f"Assembled {len(conversation_messages)} contextually relevant messages")
             
             # Limit to prevent context explosion (industry standard: ~10 recent messages)
@@ -351,6 +402,9 @@ class ContextAssembler:
     async def _assemble_conversation_context(self, user_id: str, all_messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Assemble conversation context using enhanced semantic memory approach"""
         try:
+            method_start = datetime.utcnow()
+            print(f"⏱️ [TIMING] _assemble_conversation_context started with {len(all_messages)} messages")
+            
             if not all_messages:
                 return []
             
@@ -394,15 +448,31 @@ class ContextAssembler:
             
             if current_message_content:
                 # ENHANCED: Use proper semantic analysis (extracted from thread manager)
-                for msg in current_conversation_messages:
+                loop_start = datetime.utcnow()
+                print(f"⏱️ [TIMING] Starting message analysis loop for {len(current_conversation_messages)} messages")
+                
+                for i, msg in enumerate(current_conversation_messages):
+                    msg_start = datetime.utcnow()
                     msg_content = msg.get('message_content', '')
                     if msg_content and len(msg_content.strip()) > 0:
-                        # Use existing implementations (DRY principle)
-                        semantic_score = await self._calculate_message_similarity(current_message_content, msg_content)
+                        print(f"⏱️ [TIMING] Processing message {i+1}/{len(current_conversation_messages)}")
                         
-                        # Use existing intent classifier for boundary detection
-                        boundary_score = await self._detect_conversation_boundary_via_intent(msg_content)
+                        # Use proper semantic analysis with smart caching
+                        sim_start = datetime.utcnow()
+                        semantic_score = await self._calculate_message_similarity_cached(current_message_content, msg_content)
+                        sim_time = (datetime.utcnow() - sim_start).total_seconds() * 1000
+                        print(f"⏱️ [TIMING] Similarity calculation took {sim_time:.2f}ms")
+                        
+                        # Use intelligent boundary detection with timeout protection
+                        boundary_start = datetime.utcnow()
+                        boundary_score = await self._detect_conversation_boundary_safe(msg_content)
+                        boundary_time = (datetime.utcnow() - boundary_start).total_seconds() * 1000
+                        print(f"⏱️ [TIMING] Boundary detection took {boundary_time:.2f}ms")
+                        
                         boundary_penalty = max(0, boundary_score - 0.5) * 0.5
+                        
+                        msg_total_time = (datetime.utcnow() - msg_start).total_seconds() * 1000
+                        print(f"⏱️ [TIMING] Message {i+1} total processing: {msg_total_time:.2f}ms")
                         
                         # Combined relevance score with boundary detection
                         combined_score = (msg['temporal_score'] * 0.7) + (semantic_score * 0.3) - boundary_penalty
@@ -418,6 +488,8 @@ class ContextAssembler:
             # Sort by relevance (temporal + semantic)
             relevant_messages.sort(key=lambda x: x.get('relevance_score', x.get('temporal_score', 0)), reverse=True)
             
+            method_total_time = (datetime.utcnow() - method_start).total_seconds() * 1000
+            print(f"⏱️ [TIMING] _assemble_conversation_context completed in {method_total_time:.2f}ms")
             logger.debug(f"Enhanced semantic memory selected {len(relevant_messages)} relevant messages from {len(all_messages)} total")
             return relevant_messages
             
@@ -455,53 +527,169 @@ class ContextAssembler:
             return 0.0  # Safe fallback
     
     async def _detect_conversation_boundary_via_intent(self, message: str) -> float:
-        """Detect conversation boundaries using existing intent classifier (DRY principle)"""
+        """Detect conversation boundaries using FULL POWER of sophisticated intent classifier"""
         try:
-            # Use existing intent classifier
-            from aico.ai.analysis.intent_classifier import get_intent_classifier
+            # Check cache first
+            if message in self._boundary_cache:
+                return self._boundary_cache[message]
             
-            intent_classifier = await get_intent_classifier()
-            prediction = await intent_classifier._classify_intent(message)
+            # Use cached intent classifier with FULL ProcessingContext integration
+            if self._intent_classifier_cache is None:
+                if self._intent_classifier_initializing:
+                    # If still initializing, use fast fallback to avoid blocking
+                    logger.debug("Intent classifier still initializing, using fast fallback")
+                    return self._fast_boundary_fallback(message)
+                else:
+                    # Try to initialize quickly
+                    from aico.ai.analysis.intent_classifier import get_intent_classifier
+                    self._intent_classifier_cache = await get_intent_classifier()
             
-            # Boundary intents indicate conversation transitions
-            boundary_intents = {
-                'greeting': 0.8,    # Strong boundary indicator
-                'farewell': 0.9,    # Very strong boundary indicator
-                'general': 0.1,     # Weak boundary indicator
-            }
+            # 🚀 USE FULL POWER: Create proper ProcessingContext for sophisticated analysis
+            from ..base import ProcessingContext
+            from datetime import datetime
+            import uuid
             
-            boundary_score = boundary_intents.get(prediction.intent, 0.0)
+            context = ProcessingContext(
+                conversation_id="boundary_analysis",
+                user_id="context_assembly", 
+                request_id=str(uuid.uuid4()),
+                message_content=message,
+                message_type="boundary_detection",
+                timestamp=datetime.utcnow(),
+                shared_state={'recent_intents': []}  # Enable context awareness
+            )
             
-            # Weight by confidence
-            return boundary_score * prediction.confidence
+            # 🧠 SOPHISTICATED: Use full processor with context awareness, multilingual support, etc.
+            result = await self._intent_classifier_cache.process(context)
+            
+            if result.success and result.result_data:
+                prediction = result.result_data.get('prediction')
+                if prediction:
+                    # Enhanced boundary detection with sophisticated intent understanding
+                    boundary_intents = {
+                        'greeting': 0.9,           # Very strong boundary (conversation start)
+                        'farewell': 0.95,          # Strongest boundary (conversation end)  
+                        'question': 0.3,           # Medium boundary (topic shift)
+                        'information_sharing': 0.2, # Weak boundary (continuation)
+                        'request': 0.4,            # Medium boundary (new need)
+                        'complaint': 0.6,          # Strong boundary (mood shift)
+                        'confirmation': 0.1,       # Very weak (continuation)
+                        'negation': 0.3,           # Medium (disagreement)
+                        'general': 0.1,            # Weak boundary
+                    }
+                    
+                    boundary_score = boundary_intents.get(prediction.intent, 0.2)
+                    
+                    # 🎯 SOPHISTICATED: Weight by confidence AND consider alternatives
+                    confidence_weight = prediction.confidence
+                    
+                    # Boost confidence if alternatives are also boundary intents
+                    if hasattr(prediction, 'alternatives') and prediction.alternatives:
+                        alt_boundary_boost = 0
+                        for alt_intent, alt_conf in prediction.alternatives[:2]:  # Top 2 alternatives
+                            if alt_intent in boundary_intents and boundary_intents[alt_intent] > 0.5:
+                                alt_boundary_boost += alt_conf * 0.1  # Small boost for boundary alternatives
+                        confidence_weight = min(1.0, confidence_weight + alt_boundary_boost)
+                    
+                    final_score = boundary_score * confidence_weight
+                    
+                    # Cache the sophisticated result
+                    self._boundary_cache[message] = final_score
+                    return final_score
+            
+            # Fallback if sophisticated analysis fails
+            return self._fast_boundary_fallback(message)
             
         except Exception as e:
             logger.debug(f"Intent-based boundary detection failed: {e}")
-            # Fallback to simple linguistic cues
-            return await self._simple_boundary_detection(message)
+            # Fallback to simple linguistic cues (DRY: reuse sync method)
+            return self._fast_boundary_fallback(message)
     
-    async def _simple_boundary_detection(self, message: str) -> float:
-        """Simple fallback boundary detection"""
+    async def _calculate_message_similarity_cached(self, message1: str, message2: str) -> float:
+        """Smart cached semantic similarity with timeout protection"""
         try:
-            boundary_indicators = [
-                'hello', 'hi', 'hey', 'good morning', 'good afternoon',
-                'thanks', 'thank you', 'goodbye', 'bye', 'see you',
-                'new topic', 'different question', 'moving on'
-            ]
-            
-            message_lower = message.lower()
-            boundary_score = 0.0
-            
-            for indicator in boundary_indicators:
-                if indicator in message_lower:
-                    boundary_score += 0.2
-            
-            return min(1.0, boundary_score)
-            
+            # Use existing sophisticated method with timeout
+            import asyncio
+            return await asyncio.wait_for(
+                self._calculate_message_similarity(message1, message2),
+                timeout=0.5  # 500ms timeout per similarity calculation
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"🚨 DEGRADATION: Similarity calculation timed out (>500ms), using fast fallback")
+            print(f"🚨 [CONTEXT_ASSEMBLY] Similarity timeout - degrading to fast mode for: '{message1[:50]}...' vs '{message2[:50]}...'")
+            # Fallback to fast approximation only on timeout
+            return self._fast_similarity_fallback(message1, message2)
         except Exception as e:
-            logger.debug(f"Simple boundary detection failed: {e}")
+            logger.warning(f"🚨 DEGRADATION: Similarity calculation failed: {e}, using fast fallback")
+            print(f"🚨 [CONTEXT_ASSEMBLY] Similarity error - degrading to fast mode: {e}")
+            return self._fast_similarity_fallback(message1, message2)
+    
+    async def _detect_conversation_boundary_safe(self, message: str) -> float:
+        """Smart boundary detection with timeout protection and caching"""
+        try:
+            # Use existing sophisticated method with timeout
+            import asyncio
+            return await asyncio.wait_for(
+                self._detect_conversation_boundary_via_intent(message),
+                timeout=0.3  # 300ms timeout per boundary detection
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"🚨 DEGRADATION: Boundary detection timed out (>300ms), using fast fallback")
+            print(f"🚨 [CONTEXT_ASSEMBLY] Boundary timeout - degrading to fast mode for: '{message[:50]}...'")
+            # Fallback to fast approximation only on timeout
+            return self._fast_boundary_fallback(message)
+        except Exception as e:
+            logger.warning(f"🚨 DEGRADATION: Boundary detection failed: {e}, using fast fallback")
+            print(f"🚨 [CONTEXT_ASSEMBLY] Boundary error - degrading to fast mode: {e}")
+            return self._fast_boundary_fallback(message)
+    
+    def _fast_similarity_fallback(self, message1: str, message2: str) -> float:
+        """Fast fallback only used when sophisticated method times out"""
+        try:
+            words1 = set(message1.lower().split())
+            words2 = set(message2.lower().split())
+            if not words1 or not words2:
+                return 0.0
+            intersection = len(words1.intersection(words2))
+            union = len(words1.union(words2))
+            return intersection / union if union > 0 else 0.0
+        except Exception:
             return 0.0
     
+    def _fast_boundary_fallback(self, message: str) -> float:
+        """Fast fallback only used when sophisticated method times out"""
+        try:
+            message_lower = message.lower().strip()
+            if any(greeting in message_lower for greeting in ['hello', 'hi', 'hey']):
+                return 0.8
+            if any(farewell in message_lower for farewell in ['goodbye', 'bye']):
+                return 0.9
+            if any(topic_change in message_lower for topic_change in ['by the way', 'anyway']):
+                return 0.6
+            return 0.1
+        except Exception:
+            return 0.1
+    
+    async def _initialize_expensive_components(self):
+        """Pre-initialize expensive components in background to avoid timeouts"""
+        try:
+            logger.info("🚀 [CONTEXT_ASSEMBLY] Pre-initializing expensive components...")
+            
+            # Pre-initialize intent classifier
+            if not self._intent_classifier_initializing:
+                self._intent_classifier_initializing = True
+                try:
+                    from aico.ai.analysis.intent_classifier import get_intent_classifier
+                    self._intent_classifier_cache = await get_intent_classifier()
+                    logger.info("✅ [CONTEXT_ASSEMBLY] Intent classifier pre-initialized successfully")
+                except Exception as e:
+                    logger.warning(f"⚠️ [CONTEXT_ASSEMBLY] Intent classifier pre-initialization failed: {e}")
+                finally:
+                    self._intent_classifier_initializing = False
+                    
+        except Exception as e:
+            logger.error(f"❌ [CONTEXT_ASSEMBLY] Component pre-initialization failed: {e}")
+
     async def _get_episodic_context(self, user_id: str, current_message: str, 
                                    limit: int = 20) -> List[ContextItem]:
         """Get context from episodic memory with the depth of historical wisdom"""
@@ -591,6 +779,85 @@ class ContextAssembler:
             
         except Exception as e:
             logger.error(f"Failed to get semantic context with philosophical calm: {e}")
+            return []
+    
+    async def _get_semantic_context_safe(self, current_message: str, user_id: str) -> List[ContextItem]:
+        """PHASE 1: Get context from semantic memory with protection mechanisms"""
+        try:
+            if not self.semantic_store:
+                print(f"🚨 [SEMANTIC_CONTEXT] ⚠️ FALLBACK: No semantic store available")
+                logger.debug("No semantic memory store available - proceeding with mindfulness")
+                return []
+            
+            # Query semantic memory for relevant user facts with protection
+            print(f"🟢 [SEMANTIC_CONTEXT] Querying semantic memory for user {user_id}")
+            logger.debug(f"Querying semantic memory for user {user_id} with message: '{current_message[:50]}...'")
+            
+            # Use semantic store's query method to find relevant facts
+            semantic_results = await self.semantic_store.query(
+                query_text=current_message,
+                max_results=5,  # Reduced for Phase 1
+                filters={"user_id": user_id} if user_id else None
+            )
+            
+            if not semantic_results:
+                print(f"🟡 [SEMANTIC_CONTEXT] No relevant semantic facts found")
+                logger.debug("No relevant semantic facts found")
+                return []
+            
+            # Convert semantic results to ContextItem objects
+            context_items = []
+            now = datetime.utcnow()
+            
+            for result in semantic_results:
+                # Calculate age-based relevance decay for semantic facts
+                timestamp = result.get('metadata', {}).get('timestamp', now)
+                
+                # Ensure timestamp is a naive datetime
+                if isinstance(timestamp, str):
+                    try:
+                        if timestamp.endswith('Z'):
+                            timestamp = datetime.fromisoformat(timestamp[:-1])
+                        elif '+' in timestamp:
+                            timestamp = datetime.fromisoformat(timestamp.split('+')[0])
+                        else:
+                            timestamp = datetime.fromisoformat(timestamp)
+                    except:
+                        timestamp = now
+                
+                fact_age_hours = (now - timestamp).total_seconds() / 3600 if isinstance(timestamp, datetime) else 0
+                age_decay = max(0.3, 1.0 - (fact_age_hours / (365 * 24)))  # Decay over 1 year, minimum 0.3
+                
+                # Base semantic relevance from similarity score
+                base_score = result.get('similarity', 0.5) * self._tier_weights["semantic"] * age_decay
+                
+                # Extract metadata from result
+                metadata = result.get('metadata', {})
+                
+                context_item = ContextItem(
+                    content=result.get('content', ''),
+                    source_tier="semantic",
+                    relevance_score=base_score,
+                    timestamp=timestamp if isinstance(timestamp, datetime) else now,
+                    metadata={
+                        "user_id": user_id,
+                        "category": metadata.get('category', 'unknown'),
+                        "permanence": metadata.get('permanence', 'unknown'),
+                        "confidence": metadata.get('confidence', 0.5),
+                        "similarity": result.get('similarity', 0.5),
+                        "fact_age_hours": fact_age_hours
+                    },
+                    item_type="knowledge"
+                )
+                context_items.append(context_item)
+            
+            print(f"🟢 [SEMANTIC_CONTEXT] ✅ Retrieved {len(context_items)} semantic items")
+            logger.debug(f"Retrieved {len(context_items)} semantic memory items for user {user_id}")
+            return context_items
+            
+        except Exception as e:
+            print(f"🚨 [SEMANTIC_CONTEXT] ⚠️ FALLBACK: Semantic context failed: {e}")
+            logger.error(f"Failed to get semantic context: {e}")
             return []
     
     async def _get_procedural_context(self, user_id: str) -> List[ContextItem]:

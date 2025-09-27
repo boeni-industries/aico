@@ -19,9 +19,8 @@ Architecture:
 """
 
 import asyncio
-import re
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 
@@ -56,24 +55,12 @@ class ExtractedEntity:
 
 
 @dataclass
-class ExtractedRelation:
-    """A relationship between two entities."""
-    entity1: ExtractedEntity
-    entity2: Optional[ExtractedEntity]
-    relation_type: FactType
-    confidence: float
-    pattern_matched: str
-    context: str
-
-
-@dataclass
 class ExtractedFact:
     """A structured fact extracted from conversation."""
     content: str
     fact_type: FactType
     confidence: float
     entities: List[ExtractedEntity]
-    relations: List[ExtractedRelation]
     extraction_method: str
     source_segment_id: str
     metadata: Dict[str, Any]
@@ -94,57 +81,62 @@ class AdvancedFactExtractor:
         # Modelservice client for NER requests
         self._modelservice_client = None
         
-        # Dynamic entity types for conversation analysis
+        # OPTIMIZED GLiNER entity types for conversation facts (multilingual)
+        # Based on GLiNER research: specific, descriptive entity types work best
         self.conversation_entity_types = [
-            "person", "organization", "location", "date", "time",
-            "preference", "skill", "hobby", "relationship", "goal",
-            "experience", "opinion", "contact_info", "demographic",
-            "food", "activity", "place", "event", "emotion", "job",
-            "family_member", "friend", "colleague", "interest"
+            # Personal Identity (high-value persistent facts)
+            "person name", "full name", "first name", "last name", "nickname",
+            "age", "birth date", "nationality", "native language",
+            
+            # Professional Information
+            "job title", "profession", "occupation", "company name", "workplace",
+            "industry", "work experience", "salary", "career goal",
+            
+            # Geographic Information
+            "home address", "city", "country", "region", "hometown", 
+            "current location", "travel destination", "favorite place",
+            
+            # Relationships & Social
+            "family member", "spouse", "partner", "child", "parent", "sibling",
+            "friend", "colleague", "mentor", "pet name", "pet type",
+            
+            # Skills & Expertise
+            "programming language", "technical skill", "software tool", 
+            "certification", "degree", "qualification", "expertise area",
+            
+            # Interests & Preferences
+            "hobby", "sport", "music genre", "favorite band", "book title",
+            "movie title", "food preference", "cuisine type", "restaurant",
+            
+            # Goals & Projects
+            "personal goal", "project name", "learning objective", 
+            "career aspiration", "dream", "plan",
+            
+            # Contact & Digital Identity
+            "email address", "phone number", "social media handle", 
+            "username", "website", "linkedin profile",
+            
+            # Health & Personal
+            "medical condition", "allergy", "medication", "diet restriction",
+            "fitness goal", "health concern",
+            
+            # Education
+            "school name", "university", "degree program", "major", 
+            "graduation year", "academic achievement"
         ]
         
-        # Relation patterns for different fact types
-        self.relation_patterns = {
-            FactType.IDENTITY: [
-                r"(?:my name is|i'm|i am|call me|they call me)\s+([^,.!?]+)",
-                r"i'm\s+([^,.!?]+?)(?:\s+and|\s*[,.!?]|$)",
-                r"(?:this is|i'm)\s+([^,.!?]+)",
-            ],
-            FactType.PREFERENCE: [
-                r"i\s+(?:love|like|enjoy|prefer|adore|am into)\s+([^,.!?]+)",
-                r"([^,.!?]+)\s+is\s+my\s+favorite",
-                r"i\s+(?:hate|dislike|can't stand)\s+([^,.!?]+)",
-                r"i'm\s+(?:passionate about|interested in|into)\s+([^,.!?]+)",
-            ],
-            FactType.LOCATION: [
-                r"i\s+(?:live|work|am|stay)\s+in\s+([^,.!?]+)",
-                r"i'm\s+from\s+([^,.!?]+)",
-                r"(?:based|located)\s+in\s+([^,.!?]+)",
-                r"i\s+(?:grew up|was born)\s+in\s+([^,.!?]+)",
-            ],
-            FactType.RELATIONSHIP: [
-                r"my\s+([^,.!?]+?)\s+is\s+([^,.!?]+)",
-                r"([^,.!?]+)\s+is\s+my\s+([^,.!?]+)",
-                r"i\s+(?:have|got)\s+a\s+([^,.!?]+?)(?:\s+named\s+([^,.!?]+))?",
-            ],
-            FactType.DEMOGRAPHIC: [
-                r"i'm\s+(\d+)\s+years?\s+old",
-                r"i\s+work\s+as\s+(?:a|an)?\s*([^,.!?]+)",
-                r"i'm\s+(?:a|an)\s+([^,.!?]+?)(?:\s+[,.!?]|$)",
-                r"my\s+job\s+is\s+([^,.!?]+)",
-            ],
-            FactType.EXPERIENCE: [
-                r"i\s+(?:studied|graduated from|went to)\s+([^,.!?]+)",
-                r"i\s+(?:can|know how to)\s+([^,.!?]+)",
-                r"i\s+have\s+experience\s+(?:in|with)\s+([^,.!?]+)",
-                r"i\s+used to\s+([^,.!?]+)",
-            ],
-            FactType.TEMPORAL: [
-                r"(?:on|in|at|since|until|from)\s+([^,.!?]+)",
-                r"(?:every|each)\s+([^,.!?]+)",
-                r"(?:yesterday|today|tomorrow|last|next)\s+([^,.!?]*)",
-            ]
+        # GLiNER configuration for optimal performance
+        self.gliner_config = {
+            "model_name": "urchade/gliner_multi-v2.1",  # Multilingual Apache 2.0 model
+            "threshold": 0.35,  # Lower threshold for conversation facts (research-based)
+            "max_length": 512,  # Optimal for conversation segments
+            "batch_size": 1,    # Process one segment at a time for accuracy
+            "device": "auto"    # Let GLiNER decide CPU/GPU
         }
+        
+        # REMOVED: English-only regex patterns - GLiNER handles relations better
+        # These patterns were English-only hacks that violated multilingual principle
+        # GLiNER's ML-based approach is superior to fragile regex patterns
     
     async def initialize(self):
         """Initialize the fact extractor with modelservice integration."""
@@ -183,11 +175,9 @@ class AdvancedFactExtractor:
             # 1. Extract entities using GLiNER
             entities = await self._extract_entities(text)
             
-            # 2. Extract relations using pattern matching + context
-            relations = await self._extract_relations(text, entities)
-            
-            # 3. Synthesize structured facts
-            facts = await self._synthesize_facts(text, entities, relations, segment_id)
+            # 2. Synthesize structured facts directly from GLiNER entities
+            # REMOVED: English-only relation extraction - GLiNER handles this better
+            facts = await self._synthesize_facts(text, entities, segment_id)
             
             self.logger.info(f"🔍 [FACT_EXTRACTOR] Extracted {len(facts)} facts from segment")
             return facts
@@ -197,125 +187,200 @@ class AdvancedFactExtractor:
             return []
     
     async def _extract_entities(self, text: str) -> List[ExtractedEntity]:
-        """Extract entities using modelservice NER endpoint."""
+        """Extract HIGH-VALUE entities using OPTIMIZED GLiNER configuration."""
         try:
-            # Use modelservice NER endpoint (which uses GLiNER internally)
-            ner_result = await self._modelservice_client.get_ner_entities(text)
+            # RESEARCH-BASED GLiNER optimization: send configuration with entity types
+            ner_request = {
+                "text": text,
+                "entity_types": self.conversation_entity_types,
+                "threshold": self.gliner_config["threshold"],
+                "model_name": self.gliner_config["model_name"],
+                "max_length": self.gliner_config["max_length"]
+            }
+            
+            self.logger.debug(f"🔍 [GLINER_OPTIMIZED] Using model: {self.gliner_config['model_name']}, threshold: {self.gliner_config['threshold']}")
+            
+            ner_result = await self._modelservice_client.get_ner_entities_optimized(ner_request)
+            
+            # Debug: Check what we actually received from ModelService
+            self.logger.debug(f"🔍 [DEBUG] ner_result type: {type(ner_result)}, content: {ner_result}")
+            
+            # Handle case where ner_result might be a string instead of dict
+            if isinstance(ner_result, str):
+                self.logger.error(f"🔍 [ENTITIES] ner_result is string, not dict: {ner_result}")
+                return await self._extract_entities_fallback(text)
             
             if not ner_result.get("success", False):
-                self.logger.error(f"🔍 [ENTITIES] NER request failed: {ner_result.get('error', 'Unknown error')}")
+                self.logger.error(f"🔍 [ENTITIES] Optimized NER request failed: {ner_result.get('error', 'Unknown error')}")
+                # Fallback to basic NER
+                return await self._extract_entities_fallback(text)
+            
+            # Process GLiNER results with confidence-based filtering
+            entities = []
+            ner_data = ner_result.get("data", {})
+            
+            # Debug: Check what we actually received
+            self.logger.debug(f"🔍 [DEBUG] ner_data type: {type(ner_data)}, content: {ner_data}")
+            
+            # Handle case where ner_data might be a string instead of dict
+            if isinstance(ner_data, str):
+                self.logger.error(f"🔍 [ENTITIES] ner_data is string, not dict: {ner_data}")
+                return await self._extract_entities_fallback(text)
+            
+            # GLiNER returns entities with confidence scores
+            for entity_info in ner_data.get("entities", []):
+                entity_text = entity_info.get("text", "").strip()
+                entity_label = entity_info.get("label", "").lower()
+                confidence = entity_info.get("confidence", 0.0)
+                
+                # RESEARCH-BASED: Use confidence score instead of hardcoded filtering
+                if confidence >= self.gliner_config["threshold"] and self._is_high_value_entity(entity_text, entity_label):
+                    entities.append(ExtractedEntity(
+                        text=entity_text,
+                        label=entity_label,
+                        start=entity_info.get("start", 0),
+                        end=entity_info.get("end", len(entity_text)),
+                        confidence=confidence
+                    ))
+            
+            self.logger.info(f"🔍 [GLINER_OPTIMIZED] Extracted {len(entities)} high-confidence entities (threshold: {self.gliner_config['threshold']})")
+            self.logger.debug(f"🔍 [ENTITIES] Details: {[f'{e.label}:{e.text}({e.confidence:.2f})' for e in entities]}")
+            return entities
+            
+        except Exception as e:
+            self.logger.error(f"🔍 [ENTITIES] Optimized extraction failed: {e}")
+            return await self._extract_entities_fallback(text)
+    
+    async def _extract_entities_fallback(self, text: str) -> List[ExtractedEntity]:
+        """Fallback to basic NER if optimized version fails."""
+        try:
+            self.logger.warning("🔍 [ENTITIES] Using fallback NER extraction")
+            ner_result = await self._modelservice_client.get_ner_entities(
+                text, 
+                entity_types=self.conversation_entity_types
+            )
+            
+            if not ner_result.get("success", False):
+                self.logger.error(f"🔍 [ENTITIES] Fallback NER also failed: {ner_result.get('error', 'Unknown error')}")
                 return []
             
-            # Convert modelservice NER result to our format
             entities = []
             ner_data = ner_result.get("data", {}).get("entities", {})
             
             for entity_type, entity_list in ner_data.items():
-                for entity_text in entity_list:
-                    # Note: modelservice NER doesn't return positions/confidence, so we use defaults
-                    entities.append(ExtractedEntity(
-                        text=entity_text,
-                        label=entity_type.lower(),
-                        start=0,  # Position not available from modelservice
-                        end=len(entity_text),
-                        confidence=0.8  # Default confidence since not returned by modelservice
-                    ))
+                for entity_info in entity_list:
+                    if isinstance(entity_info, str):
+                        entity_text = entity_info
+                        confidence = 0.7  # Lower default for fallback
+                    else:
+                        entity_text = entity_info.get("text", "")
+                        confidence = entity_info.get("confidence", 0.7)
+                    
+                    if self._is_high_value_entity(entity_text, entity_type):
+                        entities.append(ExtractedEntity(
+                            text=entity_text,
+                            label=entity_type.lower(),
+                            start=entity_info.get("start", 0) if isinstance(entity_info, dict) else 0,
+                            end=entity_info.get("end", len(entity_text)) if isinstance(entity_info, dict) else len(entity_text),
+                            confidence=confidence
+                        ))
             
-            self.logger.debug(f"🔍 [ENTITIES] Extracted {len(entities)} entities: {[e.text for e in entities]}")
+            self.logger.info(f"🔍 [ENTITIES] Fallback extracted {len(entities)} entities")
             return entities
             
         except Exception as e:
-            self.logger.error(f"🔍 [ENTITIES] Failed to extract entities: {e}")
+            self.logger.error(f"🔍 [ENTITIES] Fallback extraction failed: {e}")
             return []
     
-    async def _extract_relations(self, text: str, entities: List[ExtractedEntity]) -> List[ExtractedRelation]:
-        """Extract relationships using pattern matching with context awareness."""
-        relations = []
-        text_lower = text.lower()
+    def _is_high_value_entity(self, text: str, entity_type: str) -> bool:
+        """Filter out low-value entities using language-agnostic rules."""
+        text_clean = text.strip()
         
-        try:
-            # Pattern-based relation extraction
-            for fact_type, patterns in self.relation_patterns.items():
-                for pattern in patterns:
-                    matches = re.finditer(pattern, text_lower, re.IGNORECASE)
-                    
-                    for match in matches:
-                        # Find relevant entities in the match context
-                        match_start, match_end = match.span()
-                        context = text[max(0, match_start-50):min(len(text), match_end+50)]
-                        
-                        # Get entities that overlap with the match
-                        relevant_entities = self._find_entities_in_range(
-                            entities, match_start, match_end
-                        )
-                        
-                        if relevant_entities:
-                            relation = ExtractedRelation(
-                                entity1=relevant_entities[0],
-                                entity2=relevant_entities[1] if len(relevant_entities) > 1 else None,
-                                relation_type=fact_type,
-                                confidence=self._calculate_pattern_confidence(pattern, context),
-                                pattern_matched=pattern,
-                                context=context.strip()
-                            )
-                            relations.append(relation)
-            
-            self.logger.debug(f"🔍 [RELATIONS] Extracted {len(relations)} relations")
-            return relations
-            
-        except Exception as e:
-            self.logger.error(f"🔍 [RELATIONS] Failed to extract relations: {e}")
-            return []
+        # LANGUAGE-AGNOSTIC filtering based on structural patterns
+        
+        # Filter out single characters (any language)
+        if len(text_clean) <= 1:
+            return False
+        
+        # Filter out pure numbers
+        if text_clean.isdigit():
+            return False
+        
+        # Filter out pure punctuation
+        if all(not c.isalnum() for c in text_clean):
+            return False
+        
+        # RESEARCH-BASED entity-type validation (language-agnostic, GLiNER-optimized)
+        
+        # Personal identity entities - high value for conversation facts
+        if entity_type in ["person name", "full name", "first name", "last name", "nickname"]:
+            return len(text_clean) >= 2 and any(c.isalpha() for c in text_clean) and not text_clean.isdigit()
+        
+        # Professional information - critical for user profiling
+        if entity_type in ["job title", "profession", "occupation", "company name", "workplace"]:
+            return len(text_clean) >= 2 and any(c.isalnum() for c in text_clean)
+        
+        # Geographic information - important for context
+        if entity_type in ["home address", "city", "country", "region", "hometown", "current location"]:
+            return len(text_clean) >= 2 and any(c.isalpha() for c in text_clean)
+        
+        # Relationships - high-value personal facts
+        if entity_type in ["family member", "spouse", "partner", "child", "parent", "sibling", "friend", "colleague"]:
+            return len(text_clean) >= 2 and any(c.isalpha() for c in text_clean)
+        
+        # Skills & expertise - valuable for personalization
+        if entity_type in ["programming language", "technical skill", "software tool", "certification"]:
+            return len(text_clean) >= 2 and any(c.isalnum() for c in text_clean)
+        
+        # Interests & preferences - good for conversation context
+        if entity_type in ["hobby", "sport", "music genre", "favorite band", "book title", "movie title"]:
+            return len(text_clean) >= 3 and any(c.isalpha() for c in text_clean)
+        
+        # Contact information - high-value structured data
+        if entity_type in ["email address", "phone number", "social media handle", "username"]:
+            if "email" in entity_type:
+                return "@" in text_clean and "." in text_clean and len(text_clean) >= 5
+            elif "phone" in entity_type:
+                return any(c.isdigit() for c in text_clean) and len(text_clean) >= 7
+            elif "username" in entity_type or "handle" in entity_type:
+                return len(text_clean) >= 3 and any(c.isalnum() for c in text_clean)
+        
+        # Goals & aspirations - valuable for long-term context
+        if entity_type in ["personal goal", "project name", "learning objective", "career aspiration"]:
+            return len(text_clean) >= 4 and any(c.isalpha() for c in text_clean)
+        
+        # Health & personal - sensitive but valuable
+        if entity_type in ["medical condition", "allergy", "medication", "diet restriction"]:
+            return len(text_clean) >= 3 and any(c.isalpha() for c in text_clean)
+        
+        # Education - important background information
+        if entity_type in ["school name", "university", "degree program", "major"]:
+            return len(text_clean) >= 2 and any(c.isalpha() for c in text_clean)
+        
+        # Default validation for any other entity types
+        return (len(text_clean) >= 2 and 
+                any(c.isalnum() for c in text_clean) and 
+                not text_clean.isdigit() and
+                len([c for c in text_clean if c.isalpha()]) >= 1)
     
-    def _find_entities_in_range(self, entities: List[ExtractedEntity], start: int, end: int) -> List[ExtractedEntity]:
-        """Find entities that overlap with a text range."""
-        relevant = []
-        for entity in entities:
-            if (entity.start >= start and entity.start <= end) or \
-               (entity.end >= start and entity.end <= end) or \
-               (entity.start <= start and entity.end >= end):
-                relevant.append(entity)
-        return relevant
-    
-    def _calculate_pattern_confidence(self, pattern: str, context: str) -> float:
-        """Calculate confidence score for a pattern match."""
-        base_confidence = 0.7
-        
-        # Boost confidence for explicit patterns
-        if any(explicit in pattern for explicit in ["my name is", "i am", "i live"]):
-            base_confidence += 0.2
-        
-        # Boost for first-person statements
-        if any(pronoun in context.lower() for pronoun in ["i ", "my ", "me "]):
-            base_confidence += 0.1
-        
-        # Reduce for uncertain patterns
-        if any(uncertain in pattern for uncertain in ["(?:", ".*", ".+"]):
-            base_confidence -= 0.1
-        
-        return min(0.95, max(0.3, base_confidence))
+    # REMOVED: All English-only pattern matching methods
+    # These were language-specific hacks that violated multilingual principle:
+    # - _extract_relations() - English regex patterns
+    # - _find_entities_in_range() - Only used by relation extraction
+    # - _calculate_pattern_confidence() - English-specific confidence boosting
+    # 
+    # GLiNER's ML-based approach handles relations and context better than regex
     
     async def _synthesize_facts(self, text: str, entities: List[ExtractedEntity], 
-                              relations: List[ExtractedRelation], segment_id: str) -> List[ExtractedFact]:
-        """Synthesize structured facts from entities and relations."""
+                              segment_id: str) -> List[ExtractedFact]:
+        """Synthesize structured facts directly from GLiNER entities."""
         facts = []
         
         try:
-            # Create facts from relations
-            for relation in relations:
-                fact = self._create_fact_from_relation(relation, segment_id)
-                if fact:
-                    facts.append(fact)
-            
-            # Handle standalone entities (no relations found)
-            used_entities = set()
-            for relation in relations:
-                used_entities.add(relation.entity1.text)
-                if relation.entity2:
-                    used_entities.add(relation.entity2.text)
-            
+            # SIMPLIFIED: Create facts directly from high-confidence entities
+            # GLiNER already provides context and relationships through entity extraction
             for entity in entities:
-                if entity.text not in used_entities and entity.confidence > 0.5:
+                if entity.confidence >= self.gliner_config["threshold"]:
                     fact = self._create_fact_from_entity(entity, text, segment_id)
                     if fact:
                         facts.append(fact)
@@ -326,52 +391,9 @@ class AdvancedFactExtractor:
             self.logger.error(f"🔍 [SYNTHESIS] Failed to synthesize facts: {e}")
             return []
     
-    def _create_fact_from_relation(self, relation: ExtractedRelation, segment_id: str) -> Optional[ExtractedFact]:
-        """Create a structured fact from a relation."""
-        try:
-            fact_templates = {
-                FactType.IDENTITY: "User's name is {entity1}",
-                FactType.PREFERENCE: "User likes {entity1}",
-                FactType.LOCATION: "User is located in {entity1}",
-                FactType.RELATIONSHIP: "User's {entity1} is {entity2}",
-                FactType.DEMOGRAPHIC: "User is {entity1}",
-                FactType.EXPERIENCE: "User has experience with {entity1}",
-                FactType.TEMPORAL: "User mentioned {entity1}",
-            }
-            
-            template = fact_templates.get(relation.relation_type)
-            if not template:
-                return None
-            
-            # Format the fact content
-            content = template.format(
-                entity1=relation.entity1.text,
-                entity2=relation.entity2.text if relation.entity2 else ""
-            ).strip()
-            
-            # Create metadata
-            metadata = {
-                "pattern_matched": relation.pattern_matched,
-                "context": relation.context,
-                "entity_confidence": relation.entity1.confidence,
-                "relation_confidence": relation.confidence,
-                "extraction_timestamp": datetime.utcnow().isoformat()
-            }
-            
-            return ExtractedFact(
-                content=content,
-                fact_type=relation.relation_type,
-                confidence=min(relation.confidence, relation.entity1.confidence),
-                entities=[relation.entity1] + ([relation.entity2] if relation.entity2 else []),
-                relations=[relation],
-                extraction_method="relation_synthesis",
-                source_segment_id=segment_id,
-                metadata=metadata
-            )
-            
-        except Exception as e:
-            self.logger.error(f"🔍 [FACT_CREATION] Failed to create fact from relation: {e}")
-            return None
+    # REMOVED: _create_fact_from_relation() - English-only templates
+    # Used hardcoded English templates like "User's name is {entity1}"
+    # Not needed since we removed relation extraction
     
     def _create_fact_from_entity(self, entity: ExtractedEntity, text: str, segment_id: str) -> Optional[ExtractedFact]:
         """Create a fact from a standalone entity."""
@@ -380,21 +402,48 @@ class AdvancedFactExtractor:
             if entity.confidence < 0.6:
                 return None
             
-            # Determine fact type based on entity label
+            # Map GLiNER entity types to fact types (language-agnostic)
             fact_type_mapping = {
-                "person": FactType.IDENTITY,
-                "location": FactType.LOCATION,
-                "organization": FactType.EXPERIENCE,
-                "date": FactType.TEMPORAL,
-                "preference": FactType.PREFERENCE,
-                "skill": FactType.EXPERIENCE,
+                # Personal identity
+                "person name": FactType.IDENTITY,
+                "full name": FactType.IDENTITY,
+                "first name": FactType.IDENTITY,
+                "last name": FactType.IDENTITY,
+                "nickname": FactType.IDENTITY,
+                
+                # Geographic
+                "city": FactType.LOCATION,
+                "country": FactType.LOCATION,
+                "home address": FactType.LOCATION,
+                "current location": FactType.LOCATION,
+                
+                # Professional
+                "job title": FactType.DEMOGRAPHIC,
+                "profession": FactType.DEMOGRAPHIC,
+                "company name": FactType.EXPERIENCE,
+                "workplace": FactType.LOCATION,
+                
+                # Skills & interests
+                "programming language": FactType.EXPERIENCE,
+                "technical skill": FactType.EXPERIENCE,
                 "hobby": FactType.PREFERENCE,
+                "sport": FactType.PREFERENCE,
+                
+                # Relationships
+                "family member": FactType.RELATIONSHIP,
+                "spouse": FactType.RELATIONSHIP,
+                "friend": FactType.RELATIONSHIP,
+                
+                # Contact
+                "email address": FactType.IDENTITY,
+                "phone number": FactType.IDENTITY,
             }
             
             fact_type = fact_type_mapping.get(entity.label.lower(), FactType.EXPERIENCE)
             
-            # Create generic fact content
-            content = f"User mentioned {entity.text}"
+            # LANGUAGE-AGNOSTIC: Use entity text directly as fact content
+            # This preserves the original language and context
+            content = entity.text
             
             metadata = {
                 "entity_label": entity.label,
@@ -408,8 +457,7 @@ class AdvancedFactExtractor:
                 fact_type=fact_type,
                 confidence=entity.confidence * 0.8,  # Reduce confidence for standalone entities
                 entities=[entity],
-                relations=[],
-                extraction_method="entity_inference",
+                extraction_method="gliner_entity_extraction",
                 source_segment_id=segment_id,
                 metadata=metadata
             )

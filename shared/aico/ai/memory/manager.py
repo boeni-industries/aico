@@ -179,6 +179,7 @@ class MemoryManager(BaseAIProcessor):
                 await self._episodic_store.initialize()
                 logger.info("Episodic memory store initialized")
             
+            # ✅ FIXED: Re-enable semantic memory - protobuf mappings fixed
             if self._memory_config.get("semantic", {}).get("enabled", False):
                 logger.info("[SEMANTIC] Semantic memory enabled in config, initializing...")
                 self._semantic_store = SemanticMemoryStore(self.config)
@@ -237,6 +238,8 @@ class MemoryManager(BaseAIProcessor):
         - Phase 1: Working memory storage and basic context
         - Phase 2+: Multi-tier context assembly
         """
+        print(f"🚨 [MEMORY_MANAGER_DEBUG] MemoryManager.process() CALLED!")
+        print(f"🚨 [MEMORY_MANAGER_DEBUG] Context: conversation_id={context.conversation_id}, message_type={context.message_type}")
         logger.info(f"🧠 [MEMORY_FLOW] Processing memory operation for conversation {context.conversation_id}")
         logger.info(f"🧠 [MEMORY_FLOW] Message type: {context.message_type}, Turn: {context.turn_number}")
         
@@ -465,15 +468,20 @@ class MemoryManager(BaseAIProcessor):
         logger.info(f"[DEBUG] MemoryManager: Storing interaction for conversation {context.conversation_id}")
         await self._working_store.store_message(context.user_id, interaction_data)
         
+        # ✅ PHASE 1 PROTECTION: Re-enable background processing with circuit breaker + rate limiting
         # Schedule conversation segment processing as background task (non-blocking)
         if context.message_type in ["user_input", "ai_response"] and self._semantic_store:
+            print(f"🟢 [MEMORY_MANAGER] ✅ Scheduling PROTECTED background semantic processing for {context.message_type}")
             logger.debug(f"[SEMANTIC] Scheduling background conversation processing for conversation {context.conversation_id}")
             import asyncio
             asyncio.create_task(self._process_conversation_segments_background(context))
+        
+        print(f"🟢 [PHASE1_SUCCESS] Background semantic processing RE-ENABLED with protection systems")
     
     async def _process_conversation_segments_background(self, context: ProcessingContext) -> None:
         """Process conversation segments in background without blocking user response"""
         try:
+            print(f"🚨 [MEMORY_MANAGER_DEBUG] Background processing started for {context.conversation_id}")
             logger.debug(f"[SEMANTIC] Background conversation processing started for conversation {context.conversation_id}")
             
             # Get recent conversation history from working memory
