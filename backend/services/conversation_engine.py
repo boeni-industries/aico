@@ -494,87 +494,33 @@ class ConversationEngine(BaseService):
             await self._check_response_completion(request_id)
     
     async def _request_memory_retrieval(self, request_id: str, thread: ConversationThread, message: ConversationMessage) -> None:
-        """Request memory retrieval - ready for future AI processor integration"""
-        import time
-        start_time = time.time()
-        print(f"💬 [CONVERSATION_ENGINE] 🧠 REQUESTING MEMORY RETRIEVAL for {request_id} at {start_time}")
-        
-        # Check if memory processor is available
-        memory_processor = ai_registry.get("memory")
-        print(f"💬 [CONVERSATION_ENGINE] 🔍 Memory processor found: {memory_processor is not None}")
-        
-        self.logger.info(f"[DEBUG] ConversationEngine: Requesting memory retrieval. Memory processor found: {memory_processor is not None}")
-        if memory_processor:
-            # Create processing context for memory retrieval
-            context = ProcessingContext(
-                conversation_id=thread.conversation_id,
-                user_id=thread.user_context.user_id,
-                request_id=request_id,
-                message_content=message.message.text, # Correctly access the text content
-                message_type="user_input",
-                turn_number=thread.turn_number,
-                conversation_phase=thread.conversation_phase,
-                user_name=thread.user_context.username,
-                relationship_type=thread.user_context.relationship_type,
-                conversation_style=thread.user_context.conversation_style,
-                shared_state={}
-            )
+        """Simple memory integration - store message and get context"""
+        try:
+            memory_manager = ai_registry.get("memory")
+            if not memory_manager:
+                raise RuntimeError("Memory manager required but not available")
             
-            try:
-                print(f"💬 [CONVERSATION_ENGINE] ⚡ Calling memory_processor.process() for {request_id}")
-                process_start = time.time()
-                
-                # CRITICAL: Add timeout to prevent deadlocks
-                try:
-                    # Process memory operations (store and retrieve) with timeout
-                    self.logger.info(f"[MEMORY_DEBUG] Calling memory_processor.process() for request {request_id}")
-                    result = await asyncio.wait_for(memory_processor.process(context), timeout=30.0)
-                    
-                    process_end = time.time()
-                    process_duration = process_end - process_start
-                    print(f"💬 [CONVERSATION_ENGINE] ✅ Memory processor completed: success={getattr(result, 'success', 'NO_SUCCESS_ATTR')} in {process_duration:.2f}s")
-                    self.logger.info(f"[MEMORY_DEBUG] Memory processor result: success={getattr(result, 'success', 'NO_SUCCESS_ATTR')}, type={type(result)}, duration={process_duration:.2f}s")
-                    
-                except asyncio.TimeoutError:
-                    process_end = time.time()
-                    process_duration = process_end - process_start
-                    print(f"💬 [CONVERSATION_ENGINE] ⚠️ Memory processor TIMEOUT after {process_duration:.2f}s for {request_id}")
-                    self.logger.error(f"[MEMORY_DEBUG] Memory processor timeout after {process_duration:.2f}s for request {request_id}")
-                    result = None
-                
-                if request_id in self.pending_responses:
-                    if hasattr(result, 'success') and result.success:
-                        # The result data is now in context.shared_state
-                        memory_context = context.shared_state.get("memory_context")
-                        self.pending_responses[request_id]["memory_data"] = memory_context
-                        self.logger.info(f"[MEMORY_DEBUG] Memory processing completed for {request_id}. Memory context: {type(memory_context)}, keys: {list(memory_context.keys()) if isinstance(memory_context, dict) else 'NOT_DICT'}")
-                    else:
-                        self.logger.error(f"[MEMORY_DEBUG] Memory processing failed for {request_id}: result.success={getattr(result, 'success', 'NO_SUCCESS_ATTR')}")
-                        # Store empty memory data to prevent blocking
-                        self.pending_responses[request_id]["memory_data"] = {}
-                else:
-                    self.logger.error(f"[MEMORY_DEBUG] Request {request_id} not found in pending_responses after memory processing")
-            except Exception as e:
-                self.logger.error(f"[MEMORY_DEBUG] Memory processing exception for {request_id}: {e}", exc_info=True)
-                # Store empty memory data to prevent blocking
-                if request_id in self.pending_responses:
-                    self.pending_responses[request_id]["memory_data"] = {}
-        
-        # Always mark as ready (no blocking) - add to components_ready like other components
-        if request_id in self.pending_responses:
-            # Get the memory data we stored earlier (or empty dict if failed)
-            memory_data = self.pending_responses[request_id].get("memory_data", {})
-            self.pending_responses[request_id]["components_ready"]["memory"] = memory_data
+            # Simple memory operations - no timeouts, no complex error handling
+            user_id = thread.user_context.user_id
+            conversation_id = thread.conversation_id
+            message_text = message.message.text
             
-            end_time = time.time()
-            total_duration = end_time - start_time
-            print(f"💬 [CONVERSATION_ENGINE] ✅ Memory component marked as ready for {request_id} (total: {total_duration:.2f}s)")
-            print(f"💬 [CONVERSATION_ENGINE] 🔄 Checking response completion for {request_id}")
-            await self._check_response_completion(request_id)
-        else:
-            end_time = time.time()
-            total_duration = end_time - start_time
-            print(f"💬 [CONVERSATION_ENGINE] ❌ Request {request_id} not found in pending_responses! (total: {total_duration:.2f}s)")
+            # Store user message
+            await memory_manager.store_message(user_id, conversation_id, message_text, "user")
+            
+            # Get context for response generation
+            context = await memory_manager.assemble_context(user_id, message_text)
+            
+            # Store context for LLM generation
+            if request_id in self.pending_responses:
+                self.pending_responses[request_id]["components_ready"]["memory"] = {"memory_context": context}
+                await self._check_response_completion(request_id)
+                
+        except Exception as e:
+            self.logger.error(f"Memory integration failed: {e}")
+            # Fail fast - no degraded functionality
+            if request_id in self.pending_responses:
+                self.pending_responses[request_id]["components_ready"]["memory"] = {"memory_context": {}}
     
     # ============================================================================
     # COMPONENT RESPONSE HANDLERS
@@ -600,15 +546,7 @@ class ConversationEngine(BaseService):
         except Exception as e:
             self.logger.error(f"Error handling personality response: {e}")
     
-    async def _handle_memory_response(self, topic: str, response: Any) -> None:
-        """Handle memory retrieval response"""
-        try:
-            request_id = response.get("request_id") if isinstance(response, dict) else None
-            if request_id and request_id in self.pending_responses:
-                self.pending_responses[request_id]["components_ready"]["memory"] = response
-                await self._check_response_completion(request_id)
-        except Exception as e:
-            self.logger.error(f"Error handling memory response: {e}")
+    # V2: Memory response handler removed - direct integration used instead
     
     async def _check_response_completion(self, request_id: str) -> None:
         """Check if all components are ready and generate final response"""
@@ -673,92 +611,32 @@ class ConversationEngine(BaseService):
             # CRITICAL FIX: PROPER SEPARATION - Context in system prompt, current input isolated
             current_content = user_message.message.text.strip()
             
-            # ENHANCED CONTEXT USAGE: Use more memory items and include semantic facts
-            context_xml = ""
-            user_facts_xml = ""
-            
+            # Simple context integration - no XML processing
             if "memory" in context and context["memory"]:
-                print(f"💬 [CONVERSATION_ENGINE] 🧠 Processing memory context...")
-                memory_data = context["memory"]
-                print(f"💬 [CONVERSATION_ENGINE] 📋 Memory data type: {type(memory_data)}")
-                memories = memory_data.get("memories", [])
-                print(f"💬 [CONVERSATION_ENGINE] 📊 Available memory items: {len(memories)}")
-                self.logger.info(f"[CONTEXT_DEBUG] Available memory items: {len(memories)}")
+                memory_context = context["memory"].get("memory_context", {})
                 
-                if memories:
-                    print(f"💬 [CONVERSATION_ENGINE] 🔄 Processing {len(memories)} memory items...")
-                    # Separate conversation messages from user facts
-                    conversation_items = []
-                    user_facts = []
-                    
-                    # Use more recent memories (up to 8 instead of 2)
-                    recent_memories = memories[-8:] if len(memories) > 8 else memories
-                    
-                    for memory_item in recent_memories:
-                        if isinstance(memory_item, dict):
-                            content = memory_item.get("content", "").strip()
-                            metadata = memory_item.get("metadata", {})
-                            source_tier = memory_item.get("source_tier", "unknown")
-                            
-                            if not content:
-                                continue
-                                
-                            # Separate semantic facts from conversation messages
-                            if source_tier == "semantic":
-                                # These are user facts - extract key information
-                                category = metadata.get("category", "unknown")
-                                if len(content) < 200:  # Reasonable fact length
-                                    user_facts.append(f"- {content}")
-                            elif source_tier == "working" and len(content) < 200:
-                                # These are conversation messages
-                                role = metadata.get("role", "unknown")
-                                clean_content = content.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
-                                conversation_items.append(f'<message role="{role}">{clean_content}</message>')
-                    
-                    # Build conversation history XML
-                    if conversation_items:
-                        context_xml = f"""
-<conversation_history>
-{chr(10).join(conversation_items)}
-</conversation_history>"""
-                        self.logger.info(f"[CONTEXT_DEBUG] Built conversation context with {len(conversation_items)} messages")
-                    
-                    # Build user facts XML
-                    if user_facts:
-                        user_facts_xml = f"""
-<user_facts>
-{chr(10).join(user_facts)}
-</user_facts>"""
-                        self.logger.info(f"[CONTEXT_DEBUG] Built user facts context with {len(user_facts)} facts")
+                # Simple fact integration
+                user_facts = memory_context.get("user_facts", [])
+                recent_context = memory_context.get("recent_context", [])
                 
-                print(f"💬 [CONVERSATION_ENGINE] ✅ Memory processing completed")
+                if user_facts or recent_context:
+                    facts_text = "\n".join([f"- {fact.get('content', '')}" for fact in user_facts[-5:]])
+                    recent_text = "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in recent_context[-3:]])
+                    
+                    enhanced_system_prompt = f"""{system_prompt}
+
+User Facts:
+{facts_text}
+
+Recent Context:
+{recent_text}
+
+Respond naturally using relevant context."""
+                    messages[0] = ModelConversationMessage(role="system", content=enhanced_system_prompt)
+                else:
+                    messages[0] = ModelConversationMessage(role="system", content=system_prompt)
             else:
-                print(f"💬 [CONVERSATION_ENGINE] ℹ️ No memory context available")
-            
-            # MODERN BEST PRACTICE: Enhanced system prompt with clear structure and instructions
-            if context_xml or user_facts_xml:
-                enhanced_system_prompt = f"""{system_prompt}
-
-{user_facts_xml}{context_xml}
-
-<instructions>
-- Use the user_facts above to personalize your response and remember important details about the user
-- The conversation_history provides recent context for natural conversation flow
-- Respond directly to the user's current message below using relevant information from the context
-- Be helpful, personalized, and natural in your response
-- Reference user facts when relevant (e.g., their name, preferences, pets, job, etc.)
-</instructions>"""
-                messages[0] = ModelConversationMessage(role="system", content=enhanced_system_prompt)
-                self.logger.info(f"[CONTEXT_DEBUG] Enhanced system prompt with user facts ({len(user_facts) if 'user_facts' in locals() else 0}) and conversation context ({len(conversation_items) if 'conversation_items' in locals() else 0})")
-            else:
-                # Add clear instructions even without context
-                enhanced_system_prompt = f"""{system_prompt}
-
-<instructions>
-- Respond directly to the user's message below
-- Be helpful and natural in your response
-</instructions>"""
-                messages[0] = ModelConversationMessage(role="system", content=enhanced_system_prompt)
+                messages[0] = ModelConversationMessage(role="system", content=system_prompt)
             
             # MODERN BEST PRACTICE: Clean, isolated current user input
             if current_content:
@@ -929,30 +807,18 @@ class ConversationEngine(BaseService):
                     self.pending_responses[request_id]["response_text"] = response_text
                     self.pending_responses[request_id]["response_ready"] = True
                 
-                # CRITICAL FIX: Store AI response in memory BEFORE delivery to prevent race condition
-                # This ensures the AI's response is available for context in the next user message
-                memory_processor = ai_registry.get("memory")
-                self.logger.info(f"[DEBUG] ConversationEngine: Storing AI response in memory BEFORE delivery. Memory processor found: {memory_processor is not None}")
-                if memory_processor:
+                # Simple AI response storage
+                memory_manager = ai_registry.get("memory")
+                if memory_manager:
                     try:
-                        ai_context = ProcessingContext(
-                            conversation_id=thread.conversation_id,
-                            user_id=thread.user_context.user_id,
-                            request_id=f"ai_response_{thread.conversation_id}_{thread.turn_number}",
-                            message_content=response_text,
-                            message_type="ai_response",
-                            turn_number=thread.turn_number,
-                            conversation_phase=thread.conversation_phase
+                        await memory_manager.store_message(
+                            thread.user_context.user_id, 
+                            thread.conversation_id, 
+                            response_text, 
+                            "assistant"
                         )
-                        self.logger.info(f"[DEBUG] ConversationEngine: Calling memory_processor.process() for AI response BEFORE delivery")
-                        await memory_processor.process(ai_context)
-                        self.logger.info(f"[DEBUG] ConversationEngine: AI response memory storage completed successfully BEFORE delivery")
                     except Exception as e:
-                        self.logger.error(f"Failed to store AI response in memory: {e}")
-                        import traceback
-                        self.logger.error(f"Full traceback: {traceback.format_exc()}")
-                else:
-                    self.logger.warning(f"[DEBUG] ConversationEngine: Memory processor not found for AI response storage!")
+                        self.logger.error(f"Failed to store AI response: {e}")
                 
                 # Deliver response
                 await self._deliver_response(thread, response_components)

@@ -26,10 +26,10 @@ def lmdb_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help",
         examples = [
             "aico lmdb status",
             "aico lmdb ls",
-            "aico lmdb count conversation_history",
-            "aico lmdb dump message_index --limit 10",
-            "aico lmdb tail conversation_history --limit 5",
-            "aico lmdb tail message_index --limit 3 --full"
+            "aico lmdb count session_memory",
+            "aico lmdb dump session_memory --limit 10",
+            "aico lmdb tail session_memory --limit 5",
+            "aico lmdb tail user_sessions --limit 3 --full"
         ]
         
         format_subcommand_help(

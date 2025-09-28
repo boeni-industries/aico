@@ -59,24 +59,27 @@ class EvaluationSession:
 
 class MemoryIntelligenceEvaluator:
     """
-    Comprehensive memory system evaluator that tests AICO's Enhanced Semantic Memory
-    capabilities through realistic conversation scenarios.
+    V2 Memory System Evaluator for AICO's Fact-Centric Architecture
     
-    Features:
-    - Multi-turn conversation testing (6+ turns)
-    - Context adherence evaluation
-    - Entity extraction and retention testing
-    - Semantic memory consistency checking
-    - Enhanced semantic memory evaluation (replaces thread management)
-    - Working memory persistence testing
-    - Conversation continuity scoring
-    - Performance benchmarking
+    Tests the sophisticated GLiNER + LLM fact extraction pipeline and 2-tier storage system.
     
-    Updated for Enhanced Semantic Memory Architecture:
-    - Tests conversation_id pattern (user_id + timestamp)
-    - Evaluates semantic context assembly
-    - Validates intent-based boundary detection
-    - Measures temporal + semantic relevance scoring
+    V2 Features:
+    - GLiNER multilingual entity extraction validation
+    - LLM fact classification accuracy testing
+    - Confidence-based fact storage verification
+    - Temporal validity and immutability testing
+    - ChromaDB semantic search performance
+    - LMDB session memory persistence
+    - Conversation-centric context assembly
+    - Zero pattern matching validation
+    
+    V2 Architecture Testing:
+    - Fact extraction pipeline (GLiNER → LLM → UserFact)
+    - 2-tier storage (Working LMDB + Semantic ChromaDB)
+    - Schema V5 libSQL metadata integration
+    - Direct modelservice integration via ZMQ
+    - Conversation strength calculation (not thread strength)
+    - Simplified conversation engine integration
     """
     
     def __init__(self, 
@@ -473,29 +476,7 @@ class MemoryIntelligenceEvaluator:
             # Clean up HTTP session
             await self.cleanup()
         
-    async def run_continuous_evaluation(self, 
-                                      scenarios: List[str],
-                                      iterations: int = 5,
-                                      delay_seconds: float = 2.0) -> List[EvaluationResult]:
-        """Run continuous evaluation for system improvement tracking"""
-        
-        results = []
-        
-        for iteration in range(iterations):
-            print(f"\n🔄 Iteration {iteration + 1}/{iterations}")
-            
-            for scenario_name in scenarios:
-                try:
-                    result = await self.run_comprehensive_evaluation(scenario_name)
-                    results.append(result)
-                    
-                    if delay_seconds > 0:
-                        await asyncio.sleep(delay_seconds)
-                        
-                except Exception as e:
-                    print(f"❌ Scenario {scenario_name} failed: {e}")
-                    
-        return results
+    # Removed duplicate method - using complete implementation below
         
     def get_performance_trends(self) -> Dict[str, Any]:
         """Get performance trends from session history"""
@@ -652,11 +633,7 @@ class MemoryIntelligenceEvaluator:
         print(f"✅ Completed conversation scenario: {scenario.name}")
         return session
 
-    async def _generate_reports(self, session: EvaluationSession):
-        """Generate evaluation reports"""
-        if hasattr(session, 'evaluation_result'):
-            # Print beautiful results using Rich reporter
-            self.rich_reporter.print_evaluation_summary(session.evaluation_result)
+    # Removed duplicate method - using complete implementation below
 
     async def _evaluate_memory_performance(self, session: EvaluationSession) -> EvaluationResult:
         """Evaluate memory system performance based on conversation data"""
@@ -785,3 +762,142 @@ class MemoryIntelligenceEvaluator:
             trends["average_overall_score"] = sum(scores) / len(scores)
             
         return trends
+
+    async def evaluate_v2_fact_extraction(self, test_messages: List[str]) -> Dict[str, Any]:
+        """
+        V2-specific evaluation: Test GLiNER + LLM fact extraction pipeline
+        
+        Args:
+            test_messages: List of messages to test fact extraction on
+            
+        Returns:
+            Detailed analysis of fact extraction performance
+        """
+        print("🧠 Testing V2 Fact Extraction Pipeline...")
+        
+        results = {
+            "total_messages": len(test_messages),
+            "facts_extracted": 0,
+            "entity_extraction_success": 0,
+            "llm_classification_success": 0,
+            "confidence_distribution": [],
+            "fact_types_found": {},
+            "multilingual_support": False,
+            "temporal_validity_correct": 0
+        }
+        
+        try:
+            # Test each message through the fact extraction pipeline
+            for i, message in enumerate(test_messages):
+                print(f"   Testing message {i+1}: {message[:50]}...")
+                
+                # Send message and check if facts are extracted
+                message_data = {
+                    "message": message,
+                    "message_type": "text",
+                    "test_fact_extraction": True  # Special flag for testing
+                }
+                
+                response = await self._send_encrypted_request("/api/v1/conversation/messages", message_data)
+                
+                if response and response.get("facts_extracted"):
+                    facts = response["facts_extracted"]
+                    results["facts_extracted"] += len(facts)
+                    
+                    # Analyze fact quality
+                    for fact in facts:
+                        confidence = fact.get("confidence", 0.0)
+                        results["confidence_distribution"].append(confidence)
+                        
+                        fact_type = fact.get("fact_type", "unknown")
+                        results["fact_types_found"][fact_type] = results["fact_types_found"].get(fact_type, 0) + 1
+                        
+                        # Check temporal validity logic
+                        is_immutable = fact.get("is_immutable", False)
+                        valid_until = fact.get("valid_until")
+                        
+                        if is_immutable and valid_until is None:
+                            results["temporal_validity_correct"] += 1
+                        elif not is_immutable and valid_until is not None:
+                            results["temporal_validity_correct"] += 1
+                
+                # Check entity extraction
+                if response and response.get("entities_extracted"):
+                    results["entity_extraction_success"] += 1
+                
+                await asyncio.sleep(0.5)  # Rate limiting
+                
+        except Exception as e:
+            print(f"❌ V2 fact extraction test failed: {e}")
+            
+        # Calculate success rates
+        if results["total_messages"] > 0:
+            results["entity_extraction_rate"] = results["entity_extraction_success"] / results["total_messages"]
+            results["fact_extraction_rate"] = results["facts_extracted"] / results["total_messages"]
+            
+        if results["confidence_distribution"]:
+            results["average_confidence"] = sum(results["confidence_distribution"]) / len(results["confidence_distribution"])
+            results["high_confidence_facts"] = sum(1 for c in results["confidence_distribution"] if c >= 0.7)
+            
+        return results
+
+    async def evaluate_v2_storage_performance(self) -> Dict[str, Any]:
+        """
+        V2-specific evaluation: Test 2-tier storage system performance
+        
+        Returns:
+            Performance metrics for LMDB + ChromaDB storage
+        """
+        print("💾 Testing V2 Storage Performance...")
+        
+        results = {
+            "lmdb_performance": {},
+            "chromadb_performance": {},
+            "schema_v5_integration": False,
+            "storage_consistency": True
+        }
+        
+        try:
+            # Test LMDB session memory performance
+            start_time = time.time()
+            
+            # Send test messages to populate session memory
+            test_messages = [
+                "My name is TestUser for evaluation",
+                "I really enjoy testing memory systems",
+                "This is a temporal fact that should expire"
+            ]
+            
+            for msg in test_messages:
+                await self._send_encrypted_request("/api/v1/conversation/messages", {
+                    "message": msg,
+                    "message_type": "text"
+                })
+                
+            lmdb_time = time.time() - start_time
+            results["lmdb_performance"] = {
+                "messages_stored": len(test_messages),
+                "total_time_seconds": lmdb_time,
+                "average_time_per_message": lmdb_time / len(test_messages)
+            }
+            
+            # Test ChromaDB semantic search performance
+            start_time = time.time()
+            
+            # Query for facts
+            search_response = await self._send_encrypted_request("/api/v1/memory/search", {
+                "query": "TestUser preferences",
+                "max_results": 10
+            })
+            
+            chromadb_time = time.time() - start_time
+            results["chromadb_performance"] = {
+                "search_time_seconds": chromadb_time,
+                "results_found": len(search_response.get("results", [])) if search_response else 0
+            }
+            
+        except Exception as e:
+            print(f"❌ V2 storage performance test failed: {e}")
+            results["error"] = str(e)
+            
+        return results

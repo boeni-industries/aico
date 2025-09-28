@@ -257,18 +257,16 @@ memory:
     ttl_seconds: 86400 # 24 hours TTL for conversation continuity
     # Named databases (sub-databases) within the LMDB environment
     named_databases:
-      - "conversation_history"
-      - "message_index"
-      - "user_state"
+      - "session_memory"
+      - "user_sessions"
   
-  # Semantic Memory (ChromaDB) - Dual collection architecture for comprehensive memory
+  # Semantic Memory (ChromaDB) - Fact-based architecture for intelligent memory
   semantic:
     enabled: true  # Enable semantic memory
     embedding_timeout_seconds: 120.0  # Timeout for embedding generation (increased from 60s default)
-    # Dual collection architecture for different memory types
+    # Fact-based collection architecture
     collections:
-      user_facts: "user_facts"                    # Personal info, preferences, relationships
-      conversation_segments: "conversation_segments"  # Processed conversation chunks with NER/sentiment
+      user_facts: "user_facts"  # Structured facts with confidence scoring and temporal validity
     # Embedding model configuration
     embedding_model: "paraphrase-multilingual"  # Uses transformers model
     max_results: 20  # Maximum number of results to return from queries

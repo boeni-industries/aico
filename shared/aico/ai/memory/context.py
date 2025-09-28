@@ -166,25 +166,7 @@ class ContextAssembler:
                 print(f"🚨 [SEMANTIC_CONTEXT] ⚠️ FALLBACK: Semantic retrieval failed after {semantic_time:.2f}ms: {e}")
                 logger.warning(f"Semantic memory context retrieval failed: {e} - using fallback")
             
-            # Get episodic memory context (historical conversations) - placeholder
-            try:
-                episodic_start = datetime.utcnow()
-                print(f"⏱️ [TIMING] Starting episodic memory retrieval...")
-                episodic_items = await self._get_episodic_context(user_id, current_message)
-                episodic_time = (datetime.utcnow() - episodic_start).total_seconds() * 1000
-                print(f"⏱️ [TIMING] Episodic memory completed in {episodic_time:.2f}ms")
-                all_items.extend(episodic_items or [])
-                logger.debug(f"Retrieved {len(episodic_items or [])} items from episodic memory")
-            except Exception as e:
-                logger.warning(f"Episodic memory context retrieval failed: {e}")
-            
-            # Get procedural memory context (user patterns) - placeholder
-            try:
-                procedural_items = await self._get_procedural_context(user_id)
-                all_items.extend(procedural_items or [])
-                logger.debug(f"Retrieved {len(procedural_items or [])} items from procedural memory")
-            except Exception as e:
-                logger.warning(f"Procedural memory context retrieval failed: {e}")
+            # V2: Episodic and procedural memory retrieval removed
             
             logger.debug(f"Retrieved {len(all_items)} total items from all memory tiers")
             
@@ -214,7 +196,7 @@ class ContextAssembler:
                 "tier_distribution": self._get_tier_distribution(final_items),
                 "personalization": self._extract_personalization_hints(final_items),
                 "assembly_time_ms": (datetime.utcnow() - assembly_start).total_seconds() * 1000,
-                "thread_strength": self._calculate_thread_strength(final_items)
+                "conversation_strength": self._calculate_conversation_strength(final_items)
             }
             
             total_time = (datetime.utcnow() - assembly_start).total_seconds() * 1000
@@ -237,7 +219,7 @@ class ContextAssembler:
                 "tier_distribution": {},
                 "personalization": {},
                 "assembly_time_ms": (datetime.utcnow() - assembly_start).total_seconds() * 1000,
-                "thread_strength": 0.0
+                "conversation_strength": 0.0
             }
     
     async def get_user_context(self, user_id: str) -> Dict[str, Any]:
@@ -690,22 +672,7 @@ class ContextAssembler:
         except Exception as e:
             logger.error(f"❌ [CONTEXT_ASSEMBLY] Component pre-initialization failed: {e}")
 
-    async def _get_episodic_context(self, user_id: str, current_message: str, 
-                                   limit: int = 20) -> List[ContextItem]:
-        """Get context from episodic memory with the depth of historical wisdom"""
-        try:
-            if not self.episodic_store:
-                logger.debug("No episodic memory store available - continuing with grace")
-                return []
-            
-            # For now, episodic memory is not yet implemented in the stores
-            # This is a placeholder for future episodic memory integration
-            logger.debug(f"Episodic memory context retrieval - awaiting future implementation")
-            return []
-            
-        except Exception as e:
-            logger.error(f"Failed to get episodic context with stoic acceptance: {e}")
-            return []
+    # V2: Episodic memory retrieval removed
     
     async def _get_semantic_context(self, current_message: str, user_id: str) -> List[ContextItem]:
         """Get context from semantic memory with the breadth of universal knowledge"""
@@ -860,21 +827,7 @@ class ContextAssembler:
             logger.error(f"Failed to get semantic context: {e}")
             return []
     
-    async def _get_procedural_context(self, user_id: str) -> List[ContextItem]:
-        """Get context from procedural memory with the intuition of learned patterns"""
-        try:
-            if not self.procedural_store:
-                logger.debug("No procedural memory store available - continuing with zen acceptance")
-                return []
-            
-            # For now, procedural memory is not yet implemented in the stores
-            # This is a placeholder for future procedural memory integration
-            logger.debug(f"Procedural memory context retrieval - patterns await discovery")
-            return []
-            
-        except Exception as e:
-            logger.error(f"Failed to get procedural context with patient understanding: {e}")
-            return []
+    # V2: Procedural memory retrieval removed
     
     def _score_context_items(self, items: List[ContextItem], current_message: str) -> List[ContextItem]:
         """Apply additional scoring with the mathematical precision of Newton and the intuition of Einstein"""
@@ -1008,12 +961,12 @@ class ContextAssembler:
             "item_type": item.item_type
         }
     
-    def _calculate_thread_strength(self, items: List[ContextItem]) -> float:
-        """Calculate thread continuation strength with the wisdom of ancient oracles"""
+    def _calculate_conversation_strength(self, items: List[ContextItem]) -> float:
+        """Calculate conversation context strength for V2 architecture"""
         if not items:
             return 0.0
         
-        # Calculate average relevance score with enlightened mathematics
+        # Calculate average relevance score
         avg_relevance = sum(item.relevance_score for item in items) / len(items)
         
         # Calculate recency factor based on most recent item
@@ -1023,10 +976,10 @@ class ContextAssembler:
         recency_hours = time_diff.total_seconds() / 3600
         recency_factor = max(0.1, 1.0 - (recency_hours / 48.0))  # Decay over 48 hours
         
-        # Calculate item density factor (more items = stronger thread)
+        # Calculate item density factor (more items = stronger context)
         density_factor = min(1.0, len(items) / 10.0)  # Normalize to 10 items
         
-        # Combine factors with royal mathematical precision
-        thread_strength = (avg_relevance * 0.5) + (recency_factor * 0.3) + (density_factor * 0.2)
+        # Combine factors for conversation strength
+        conversation_strength = (avg_relevance * 0.5) + (recency_factor * 0.3) + (density_factor * 0.2)
         
-        return round(min(1.0, thread_strength), 3)
+        return round(min(1.0, conversation_strength), 3)

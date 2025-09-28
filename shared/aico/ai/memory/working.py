@@ -93,9 +93,9 @@ class WorkingMemoryStore:
         logger.info(f"💾 [WORKING_MEMORY] Message type: {message.get('message_type', 'unknown')}")
 
         try:
-            db = self.dbs.get("conversation_history")
+            db = self.dbs.get("session_memory")
             if db is None:
-                raise ConnectionError("conversation_history database not open.")
+                raise ConnectionError("session_memory database not open.")
 
             timestamp = datetime.utcnow()
             key_str = f"{user_id}:{timestamp.isoformat()}Z"
@@ -134,9 +134,9 @@ class WorkingMemoryStore:
 
         history = []
         try:
-            db = self.dbs.get("conversation_history")
+            db = self.dbs.get("session_memory")
             if db is None:
-                raise ConnectionError("conversation_history database not open.")
+                raise ConnectionError("session_memory database not open.")
 
             logger.info(f"[DEBUG] WorkingMemoryStore: Retrieving history for user {user_id}.")
             with self.env.begin(db=db) as txn:
@@ -177,9 +177,9 @@ class WorkingMemoryStore:
         logger.debug(f"Cutoff time for recent messages: {cutoff_time} UTC")
         
         try:
-            db = self.dbs.get("conversation_history")
+            db = self.dbs.get("session_memory")
             if db is None:
-                raise ConnectionError("conversation_history database not open.")
+                raise ConnectionError("session_memory database not open.")
 
             with self.env.begin(db=db) as txn:
                 cursor = txn.cursor()

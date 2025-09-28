@@ -35,8 +35,8 @@ def chroma_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             "aico chroma ls",
             "aico chroma count user_facts",
             "aico chroma query user_facts 'What is my name?'",
-            "aico chroma add 'My name is John' --metadata '{\"type\": \"personal_info\"}'",
-            "aico chroma add 'I like pizza' --collection user_facts --id my_preference",
+            "aico chroma add 'User name is John' --metadata '{\"fact_type\": \"identity\", \"confidence\": 0.95}'",
+            "aico chroma add 'User likes pizza' --collection user_facts --id fact_preference_001",
             "aico chroma tail user_facts --limit 5",
             "aico chroma tail user_facts --limit 3 --full",
             "aico chroma clear"

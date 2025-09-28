@@ -84,32 +84,25 @@ def initialize_chromadb_cli(config: Optional[ConfigurationManager] = None, verbo
             "version": "1.0"
         }
         
-        # Get collection names from new dual-collection config
-        collections_config = config.get("memory.semantic.collections", {})
+        # Get collection names from fact-based config
+        collections_config = config.get("core.memory.semantic.collections", {})
         user_facts_collection = collections_config.get("user_facts", "user_facts")
-        conversation_segments_collection = collections_config.get("conversation_segments", "conversation_segments")
 
-        # Collection 1: user_facts (personal information, preferences, relationships)
+        # Collection: user_facts (structured facts with confidence scoring and temporal validity)
         try:
             collection = client.get_collection(user_facts_collection)
             if verbose:
                 console.print(f"[blue]INFO[/blue] - ChromaDB collection '{user_facts_collection}' already exists")
         except Exception:
-            user_facts_metadata = {**metadata, "collection_type": "user_facts", "description": "Personal information, preferences, and relationships"}
+            user_facts_metadata = {
+                **metadata, 
+                "collection_type": "user_facts", 
+                "description": "Structured facts with confidence scoring and temporal validity",
+                "schema_version": "2.0"  # New fact-based schema
+            }
             collection = client.create_collection(user_facts_collection, metadata=user_facts_metadata)
             if verbose:
-                console.print(f"✅ Created collection: [cyan]{user_facts_collection}[/cyan] (user facts) with model: [cyan]{embedding_model}[/cyan]")
-
-        # Collection 2: conversation_segments (processed conversation chunks with NER/sentiment)
-        try:
-            client.get_collection(conversation_segments_collection)
-            if verbose:
-                console.print(f"[blue]INFO[/blue] - ChromaDB collection '{conversation_segments_collection}' already exists")
-        except Exception:
-            segments_metadata = {**metadata, "collection_type": "conversation_segments", "description": "Processed conversation chunks with NER and sentiment analysis"}
-            client.create_collection(conversation_segments_collection, metadata=segments_metadata)
-            if verbose:
-                console.print(f"✅ Created collection: [cyan]{conversation_segments_collection}[/cyan] (conversation segments) with model: [cyan]{embedding_model}[/cyan]")
+                console.print(f"✅ Created collection: [cyan]{user_facts_collection}[/cyan] (structured facts) with model: [cyan]{embedding_model}[/cyan]")
         
         if verbose:
             console.print(f"✅ [green]ChromaDB semantic memory initialized at[/green] [cyan]{semantic_memory_dir}[/cyan]")

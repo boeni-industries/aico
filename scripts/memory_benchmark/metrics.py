@@ -57,14 +57,13 @@ class EvaluationResult:
 
 
 class MemoryMetrics:
-    """Comprehensive memory evaluation metrics calculator for Enhanced Semantic Memory"""
+    """Comprehensive memory benchmark metrics calculator for V2 fact-centric architecture"""
     
     def __init__(self):
         """Initialize with real AICO memory system connections"""
-        # ChromaDB client for querying stored entities and facts
+        # ChromaDB client for querying stored facts
         self.chroma_client = None
         self.user_facts_collection = None
-        self.conversation_segments_collection = None
         
         
     async def initialize_memory_connections(self):

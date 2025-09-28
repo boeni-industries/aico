@@ -166,25 +166,24 @@ class RichReporter:
     def print_iteration_start(self, iteration: int, total_iterations: int):
         """Print iteration start for continuous evaluation"""
         print(f"\n🔄 ITERATION {iteration}/{total_iterations}")
-        print(f"{'─'*40}")
         
     def print_error(self, error_message: str):
         """Print error message"""
         print(f"❌ ERROR: {error_message}")
         
-    def _get_test_areas(self, scenario: ConversationScenario) -> List[str]:
-        """Get list of test areas for scenario"""
+    def _get_test_areas(self, scenario):
+        """Get list of V2 test areas for scenario"""
         areas = []
-        if scenario.tests_working_memory: areas.append("Working")
-        if scenario.tests_episodic_memory: areas.append("Episodic")
-        if scenario.tests_semantic_memory: areas.append("Semantic")
-        if scenario.tests_procedural_memory: areas.append("Procedural")
-        if scenario.tests_entity_extraction: areas.append("Entities")
+        if scenario.tests_working_memory: areas.append("Working Memory (LMDB)")
+        if scenario.tests_semantic_memory: areas.append("Semantic Memory (ChromaDB)")
+        if scenario.tests_fact_extraction: areas.append("Fact Extraction (GLiNER + LLM)")
+        if scenario.tests_entity_extraction: areas.append("Entity Extraction")
+        if scenario.tests_conversation_strength: areas.append("Conversation Strength")
         return areas
         
     def _get_score_indicator(self, percentage: float) -> str:
         """Get visual indicator for score percentage"""
-        if percentage >= 90: return "🟢 Excellent"
+        if percentage >= 90: return "🟢Excellent"
         elif percentage >= 80: return "🟡 Good"
         elif percentage >= 70: return "🟠 Fair"
         elif percentage >= 60: return "🔴 Poor"

@@ -1,12 +1,12 @@
 """
-AICO Memory Intelligence Evaluator
+AICO Memory Benchmark Suite (V2)
 
-A comprehensive end-to-end testing framework for AICO's memory system that evaluates
-all aspects of memory performance including working memory, semantic memory, episodic
-memory, context adherence, entity extraction, and conversation continuity.
+Performance benchmarking framework for AICO's fact-centric memory system that measures
+GLiNER + LLM fact extraction performance, 2-tier storage efficiency (LMDB + ChromaDB), 
+context adherence accuracy, entity extraction precision, and conversation continuity.
 
-This framework leverages existing AICO shared modules and provides stunning visual
-output using Typer and Rich for an award-winning user experience.
+This framework provides comprehensive memory system performance analysis with stunning
+visual output using Rich for tracking memory improvements over time.
 """
 
 import sys
@@ -21,7 +21,7 @@ from .scenarios import ConversationScenario, ScenarioLibrary
 from .metrics import MemoryMetrics, EvaluationResult
 from .reporters import RichReporter, JSONReporter, DetailedReporter
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
 __all__ = [
     "MemoryIntelligenceEvaluator",

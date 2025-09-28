@@ -68,11 +68,8 @@ from aico.ai.base import ProcessingContext, ProcessingResult, BaseAIProcessor
 
 # Import memory stores (will be implemented in phases)
 from .working import WorkingMemoryStore
-from .episodic import EpisodicMemoryStore  
 from .semantic import SemanticMemoryStore
-from .procedural import ProceduralMemoryStore
 from .context import ContextAssembler
-from .consolidation import MemoryConsolidator
 
 logger = get_logger("shared", "ai.memory.manager")
 
@@ -124,15 +121,12 @@ class MemoryManager(BaseAIProcessor):
         self.config = config_manager
         self._initialized = False
         
-        # Memory stores (lazy initialization, implemented by phase)
+        # Memory stores (lazy initialization)
         self._working_store: Optional[WorkingMemoryStore] = None
-        self._episodic_store: Optional[EpisodicMemoryStore] = None
         self._semantic_store: Optional[SemanticMemoryStore] = None
-        self._procedural_store: Optional[ProceduralMemoryStore] = None
         
         # Processing components
         self._context_assembler: Optional[ContextAssembler] = None
-        self._consolidator: Optional[MemoryConsolidator] = None
         
         # Configuration following AICO patterns
         self._memory_config = self.config.get("core.memory", {})
@@ -173,13 +167,7 @@ class MemoryManager(BaseAIProcessor):
                 await self._working_store.initialize()
                 logger.info("Working memory store initialized")
             
-            # Phase 2: Initialize episodic and semantic stores (when implemented)
-            if self._memory_config.get("episodic", {}).get("enabled", False):
-                self._episodic_store = EpisodicMemoryStore(self.config)
-                await self._episodic_store.initialize()
-                logger.info("Episodic memory store initialized")
-            
-            # ✅ FIXED: Re-enable semantic memory - protobuf mappings fixed
+            # Initialize semantic memory if enabled
             if self._memory_config.get("semantic", {}).get("enabled", False):
                 logger.info("[SEMANTIC] Semantic memory enabled in config, initializing...")
                 self._semantic_store = SemanticMemoryStore(self.config)
@@ -196,29 +184,13 @@ class MemoryManager(BaseAIProcessor):
             else:
                 logger.info("[SEMANTIC] Semantic memory disabled in config")
             
-            # Phase 3: Initialize procedural store (when implemented)
-            if self._memory_config.get("procedural", {}).get("enabled", False):
-                self._procedural_store = ProceduralMemoryStore(self.config)
-                await self._procedural_store.initialize()
-                logger.info("Procedural memory store initialized")
-            
             # Initialize processing components based on available stores
             self._context_assembler = ContextAssembler(
                 working_store=self._working_store,
-                episodic_store=self._episodic_store,
+                episodic_store=None,
                 semantic_store=self._semantic_store,
-                procedural_store=self._procedural_store
+                procedural_store=None
             )
-            
-            # Initialize consolidator if multiple stores available
-            if any([self._episodic_store, self._semantic_store, self._procedural_store]):
-                self._consolidator = MemoryConsolidator(
-                    working_store=self._working_store,
-                    episodic_store=self._episodic_store,
-                    semantic_store=self._semantic_store,
-                    procedural_store=self._procedural_store,
-                    config_manager=self.config
-                )
             
             self._initialized = True
             logger.info("🧠 [MEMORY_MANAGER] ✅ Memory manager initialized successfully")
@@ -266,9 +238,8 @@ class MemoryManager(BaseAIProcessor):
             context_items = memory_context.get("items", [])
             working_items = [item for item in context_items if item.get("source_tier") == "working"]
             semantic_items = [item for item in context_items if item.get("source_tier") == "semantic"]
-            episodic_items = [item for item in context_items if item.get("source_tier") == "episodic"]
             
-            logger.info(f"🧠 [MEMORY_FLOW] ✅ Context assembled: {len(working_items)} working, {len(semantic_items)} semantic, {len(episodic_items)} episodic")
+            logger.info(f"🧠 [MEMORY_FLOW] ✅ Context assembled: {len(working_items)} working, {len(semantic_items)} semantic")
             
             # Update processing context with memory
             context.shared_state["memory_context"] = memory_context
@@ -279,12 +250,8 @@ class MemoryManager(BaseAIProcessor):
             tiers_accessed = []
             if self._working_store:
                 tiers_accessed.append("working")
-            if self._episodic_store:
-                tiers_accessed.append("episodic")
             if self._semantic_store:
                 tiers_accessed.append("semantic")
-            if self._procedural_store:
-                tiers_accessed.append("procedural")
             
             logger.info(f"🧠 [MEMORY_FLOW] ✅ Memory processing complete ({processing_time:.1f}ms)")
             logger.info(f"🧠 [MEMORY_FLOW] Tiers accessed: {', '.join(tiers_accessed)}")
@@ -331,7 +298,7 @@ class MemoryManager(BaseAIProcessor):
             result.processing_time_ms = processing_time
             return result
         else:
-            # Fallback for Phase 1 - basic working memory query
+            # Fallback - basic working memory query
             logger.warning("Context assembler not available, using basic query")
             return MemoryResult(
                 memories=[],
@@ -349,12 +316,8 @@ class MemoryManager(BaseAIProcessor):
         try:
             if memory_type == "working" and self._working_store:
                 return await self._working_store.store(memory_data)
-            elif memory_type == "episodic" and self._episodic_store:
-                return await self._episodic_store.store(memory_data)
             elif memory_type == "semantic" and self._semantic_store:
                 return await self._semantic_store.store(memory_data)
-            elif memory_type == "procedural" and self._procedural_store:
-                return await self._procedural_store.store(memory_data)
             else:
                 logger.warning(f"Memory type {memory_type} not available in current phase")
                 return False
@@ -364,15 +327,11 @@ class MemoryManager(BaseAIProcessor):
             return False
     
     async def consolidate_memories(self, force: bool = False) -> Dict[str, Any]:
-        """Trigger memory consolidation process (Phase 2+)"""
+        """Consolidation removed in V2 fact-centric architecture."""
         if not self._initialized:
             await self.initialize()
-            
-        if self._consolidator:
-            return await self._consolidator.consolidate(force=force)
-        else:
-            logger.info("Memory consolidation not available in current phase")
-            return {"status": "not_available", "phase": self._get_current_phase()}
+        logger.info("Memory consolidation is not part of the V2 architecture")
+        return {"status": "removed", "phase": self._get_current_phase()}
     
     async def get_user_context(self, user_id: str) -> Dict[str, Any]:
         """Get context for thread resolution"""
@@ -404,7 +363,6 @@ class MemoryManager(BaseAIProcessor):
 
         working_store_healthy = False
         if self._working_store:
-            # In a real scenario, this would be an async check to the store
             working_store_healthy = self._working_store._initialized
 
         return {
@@ -412,9 +370,7 @@ class MemoryManager(BaseAIProcessor):
             "phase": self._get_current_phase(),
             "stores": {
                 "working_memory": {"status": "ok" if working_store_healthy else "error"},
-                "episodic_memory": {"status": "ok" if self._episodic_store else "disabled"},
                 "semantic_memory": {"status": "ok" if self._semantic_store else "disabled"},
-                "procedural_memory": {"status": "ok" if self._procedural_store else "disabled"},
             }
         }
 
@@ -425,12 +381,8 @@ class MemoryManager(BaseAIProcessor):
         cleanup_tasks = []
         if self._working_store:
             cleanup_tasks.append(self._working_store.cleanup())
-        if self._episodic_store:
-            cleanup_tasks.append(self._episodic_store.cleanup())
         if self._semantic_store:
             cleanup_tasks.append(self._semantic_store.cleanup())
-        if self._procedural_store:
-            cleanup_tasks.append(self._procedural_store.cleanup())
             
         if cleanup_tasks:
             await asyncio.gather(*cleanup_tasks, return_exceptions=True)
@@ -440,9 +392,7 @@ class MemoryManager(BaseAIProcessor):
     
     def _get_current_phase(self) -> int:
         """Determine current implementation phase based on available stores"""
-        if self._procedural_store:
-            return 3
-        elif self._episodic_store or self._semantic_store:
+        if self._semantic_store:
             return 2
         elif self._working_store:
             return 1
@@ -468,49 +418,9 @@ class MemoryManager(BaseAIProcessor):
         logger.info(f"[DEBUG] MemoryManager: Storing interaction for conversation {context.conversation_id}")
         await self._working_store.store_message(context.user_id, interaction_data)
         
-        # ✅ PHASE 1 PROTECTION: Re-enable background processing with circuit breaker + rate limiting
-        # Schedule conversation segment processing as background task (non-blocking)
-        if context.message_type in ["user_input", "ai_response"] and self._semantic_store:
-            print(f"🟢 [MEMORY_MANAGER] ✅ Scheduling PROTECTED background semantic processing for {context.message_type}")
-            logger.debug(f"[SEMANTIC] Scheduling background conversation processing for conversation {context.conversation_id}")
-            import asyncio
-            asyncio.create_task(self._process_conversation_segments_background(context))
-        
-        print(f"🟢 [PHASE1_SUCCESS] Background semantic processing RE-ENABLED with protection systems")
+        # V2: Background conversation segment processing removed
     
-    async def _process_conversation_segments_background(self, context: ProcessingContext) -> None:
-        """Process conversation segments in background without blocking user response"""
-        try:
-            print(f"🚨 [MEMORY_MANAGER_DEBUG] Background processing started for {context.conversation_id}")
-            logger.debug(f"[SEMANTIC] Background conversation processing started for conversation {context.conversation_id}")
-            
-            # Get recent conversation history from working memory
-            if self._working_store:
-                recent_messages = await self._working_store.retrieve_user_history(
-                    context.user_id, 
-                    limit=10  # Get last 10 messages for segmentation
-                )
-                
-                if recent_messages:
-                    segments_stored = await self._semantic_store.store_conversation_segments(
-                        messages=recent_messages,
-                        conversation_id=context.conversation_id,
-                        user_id=context.user_id
-                    )
-                    
-                    if segments_stored > 0:
-                        logger.info(f"[SEMANTIC] ✅ Background processing: stored {segments_stored} conversation segments for user {context.user_id}")
-                    else:
-                        logger.debug(f"[SEMANTIC] Background processing: no new segments created")
-                else:
-                    logger.debug(f"[SEMANTIC] Background processing: no recent messages found")
-            else:
-                logger.warning(f"[SEMANTIC] Working memory store not available for conversation processing")
-                
-        except Exception as e:
-            logger.error(f"[SEMANTIC] ❌ Background conversation processing failed: {e}")
-            import traceback
-            logger.error(f"[SEMANTIC] Full traceback: {traceback.format_exc()}")
+    # V2: Background conversation segment processing method removed
     
     async def _assemble_context(self, context: ProcessingContext) -> Dict[str, Any]:
         """Assemble relevant memory context for processing"""

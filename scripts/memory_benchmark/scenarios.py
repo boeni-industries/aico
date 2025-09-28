@@ -35,13 +35,12 @@ class ConversationScenario:
     success_criteria: Dict[str, float] = field(default_factory=dict)
     tags: List[str] = field(default_factory=list)
     
-    # Memory testing focus areas
+    # V2 Memory testing focus areas
     tests_working_memory: bool = True
-    tests_episodic_memory: bool = True
     tests_semantic_memory: bool = True
-    tests_procedural_memory: bool = False
-    tests_semantic_memory_quality: bool = True
+    tests_fact_extraction: bool = True
     tests_entity_extraction: bool = True
+    tests_conversation_strength: bool = True
     
     # Scenario metadata
     estimated_duration_minutes: int = 5
@@ -203,10 +202,10 @@ class ScenarioLibrary:
             },
             tags=["comprehensive", "memory", "entities", "context", "6-turn"],
             tests_working_memory=True,
-            tests_episodic_memory=True,
             tests_semantic_memory=True,
-            tests_semantic_memory_quality=True,
+            tests_fact_extraction=True,
             tests_entity_extraction=True,
+            tests_conversation_strength=True,
             estimated_duration_minutes=8,
             difficulty_level="medium"
         )
@@ -328,8 +327,9 @@ class ScenarioLibrary:
                 "context_adherence": 0.90
             },
             tags=["long-term", "retention", "recall"],
-            tests_episodic_memory=True,
             tests_semantic_memory=True,
+            tests_fact_extraction=True,
+            tests_conversation_strength=True,
             difficulty_level="hard"
         )
         
