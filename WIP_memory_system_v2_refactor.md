@@ -526,14 +526,40 @@ async def _classify_facts_llm(self, content: str, entities: List[Dict]):
 
 **🎉 PHASE 2 COMPLETE: Memory components fully refactored with sophisticated fact extraction**
 
-### ✅ Next Step: Integration & Testing
-**Priority: Test the complete memory pipeline end-to-end**
+### ✅ Step 4: Memory Benchmark Suite - COMPLETED
+**✅ COMPREHENSIVE CLEANUP: Evaluation framework updated for V2 architecture**
 
-1. **✅ READY: Test conversation engine → memory manager → semantic store integration**
-2. **✅ READY: Validate GLiNER entity extraction via modelservice**
-3. **✅ READY: Test LLM fact classification and storage**
-4. **✅ READY: Verify ChromaDB fact storage with embeddings**
-5. **✅ READY: Test semantic context retrieval and assembly**
+```bash
+# ✅ COMPLETED: Directory and file renaming
+mv scripts/memory_eval → scripts/memory_benchmark
+mv scripts/run_memory_evaluation.py → scripts/run_memory_benchmark.py
+
+# ✅ COMPLETED: Legacy code removal
+rm scripts/memory_benchmark/api_client.py  # Duplicate HTTP client (391 lines)
+
+# ✅ COMPLETED: V2 architecture updates
+# Updated all docstrings to reflect fact-centric architecture
+# Removed episodic/procedural memory test flags
+# Added V2 test flags: tests_fact_extraction, tests_conversation_strength
+# Updated test area display: "GLiNER + LLM", "LMDB", "ChromaDB"
+```
+
+**✅ Benefits Achieved:**
+- **Clean Architecture**: Single HTTP implementation, no duplicates
+- **V2 Alignment**: All legacy memory tier references removed
+- **Performance Focus**: Benchmark suite ready for tracking improvements over time
+- **Maintainability**: Streamlined codebase (-400 lines duplicate code)
+
+**🎉 MEMORY SYSTEM V2 REFACTOR COMPLETE: READY FOR TESTING**
+
+### ✅ READY FOR COMPREHENSIVE TESTING
+**All components implemented and benchmark suite prepared**
+
+1. **✅ READY: GLiNER + LLM fact extraction pipeline**
+2. **✅ READY: 2-tier storage (LMDB + ChromaDB)**
+3. **✅ READY: Simplified conversation engine integration**
+4. **✅ READY: V2 benchmark suite for performance tracking**
+5. **✅ READY: End-to-end memory pipeline validation**
 
 ### Step 4: Integration
 1. **Update memory configuration**

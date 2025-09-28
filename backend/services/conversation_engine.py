@@ -222,11 +222,7 @@ class ConversationEngine(BaseService):
                 self._handle_personality_response
             )
         
-        if self.enable_memory_integration:
-            await self.bus_client.subscribe(
-                AICOTopics.MEMORY_RETRIEVE_RESPONSE,
-                self._handle_memory_response
-            )
+        # V2: Direct memory integration - no message bus subscriptions needed
         
         # Future: Agency proactive triggers
         if self.enable_agency:
