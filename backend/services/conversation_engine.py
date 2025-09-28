@@ -125,7 +125,7 @@ class ConversationEngine(BaseService):
         # Feature flags for gradual implementation
         self.enable_emotion_integration = features_config.get("enable_emotion_integration", False)
         self.enable_personality_integration = features_config.get("enable_personality_integration", False)
-        self.enable_memory_integration = features_config.get("enable_memory_integration", False)
+        self.enable_memory_integration = features_config.get("enable_memory_integration", True)  # RE-ENABLED - was disabled for test
         self.enable_embodiment = features_config.get("enable_embodiment", False)
         self.enable_agency = features_config.get("enable_agency", False)
         

@@ -72,13 +72,12 @@ async def send_message_with_auto_thread(
                 store_context = ProcessingContext(
                     conversation_id=conversation_id,
                     user_id=user_id,
-                    request_id=message_id,
                     message_content=request.message,
                     message_type="user_input",
                     turn_number=1,
                     conversation_phase="active"
                 )
-                # Fire-and-forget background processing - don't block API response
+                # RE-ENABLED - Fire-and-forget background processing - don't block API response
                 import asyncio
                 asyncio.create_task(memory_processor.process(store_context))
                 logger.debug(f"Memory processing started in background for {conversation_id}")

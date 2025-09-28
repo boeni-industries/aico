@@ -28,7 +28,7 @@ from chromadb.config import Settings
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths
-from .request_queue import SemanticRequestQueue
+# Queue system removed - using direct ModelService calls
 
 logger = get_logger("shared", "ai.memory.semantic")
 
@@ -56,22 +56,12 @@ class SemanticMemoryStore:
         self._initialized = False
         self._chroma_client = None
         self._collection = None
-        self._modelservice = None
         
-        # FIXED: Request queue with proper ModelService integration
-        self._request_queue = SemanticRequestQueue(
-            max_concurrent=2,  # Prevent ModelService overload
-            rate_limit_per_second=10.0,  # INCREASED: Allow burst processing
-            circuit_failure_threshold=5,  # More tolerant circuit breaker
-            circuit_timeout=15.0,  # Fast recovery
-            batch_size=5,  # RE-ENABLE batching for efficiency
-            batch_timeout=1.0,  # Allow time for batching
-            enable_threading=False  # Keep threading disabled for now
-        )
+        # Direct ModelService calls - no queue needed
+        self._modelservice = None  # Will be set during initialization
         
         # Configuration
         memory_config = self.config.get("core.memory.semantic", {})
-        
         # CRITICAL: Check for empty config - always indicates a major issue
         if not memory_config:
             logger.error("🚨 [CONFIG_ERROR] Semantic memory configuration is EMPTY! This indicates a critical config loading failure.")
@@ -84,17 +74,9 @@ class SemanticMemoryStore:
         self._max_results = memory_config.get("max_results", 20)
     
     def set_modelservice(self, modelservice):
-        """Inject modelservice dependency"""
+        """Set the ModelService instance for embedding generation"""
         self._modelservice = modelservice
-        # Inject into request queue for controlled processing
-        if self._request_queue:
-            self._request_queue._modelservice = modelservice
-    
-    def reset_circuit_breaker(self) -> None:
-        """Reset the circuit breaker in the request queue"""
-        if self._request_queue:
-            self._request_queue.reset_circuit_breaker()
-            logger.warning("🔄 SEMANTIC STORE: Circuit breaker reset")
+        logger.info("ModelService set for semantic memory store - using direct calls")
     
     async def initialize(self) -> None:
         """Initialize semantic memory store with request queue"""
@@ -102,9 +84,7 @@ class SemanticMemoryStore:
             return
             
         try:
-            # Start the request queue with proper configuration
-            await self._request_queue.start(num_workers=1)  # Single worker to avoid complexity
-            logger.info("Semantic request queue started with fixed configuration")
+            logger.info("Semantic memory store initializing with direct ModelService calls")
             
             # Initialize ChromaDB
             self._chroma_client = chromadb.PersistentClient(
@@ -187,22 +167,31 @@ class SemanticMemoryStore:
             raise RuntimeError("Modelservice required for fact storage")
         
         try:
-            # Generate embedding using FIXED request queue
+            # EMERGENCY BYPASS: Skip queue entirely and call ModelService directly
             embedding_start = time.time()
-            print(f"🔍 [FULL_TRACE] Starting QUEUE-BASED embedding generation [{embedding_start:.6f}]")
+            print(f"🔍 [FULL_TRACE] Starting DIRECT ModelService call (bypassing queue) [{embedding_start:.6f}]")
             try:
-                embedding = await self._request_queue.submit_request(
-                    operation='embedding',
-                    data={'text': fact.content},
-                    priority=1,  # High priority for fact storage
-                    timeout=10.0  # Increased timeout for reliability
+                # Direct call to ModelService - no queue at all
+                result = await self._modelservice.get_embeddings(
+                    model="paraphrase-multilingual",
+                    prompt=fact.content
                 )
-                embedding_duration = time.time() - embedding_start
-                print(f"🔍 [FULL_TRACE] QUEUE embedding completed in {embedding_duration*1000:.2f}ms [{time.time():.6f}]")
+                
+                if result and result.get('success'):
+                    embedding = result.get('data', {}).get('embedding')
+                    if embedding:
+                        embedding_duration = time.time() - embedding_start
+                        print(f"🔍 [FULL_TRACE] DIRECT embedding completed in {embedding_duration*1000:.2f}ms [{time.time():.6f}]")
+                    else:
+                        raise RuntimeError("No embedding data in successful response")
+                else:
+                    error_msg = result.get('error', 'Unknown error') if result else 'No result returned'
+                    raise RuntimeError(f"Embedding request failed: {error_msg}")
+                    
             except Exception as e:
                 embedding_duration = time.time() - embedding_start
-                print(f"🔍 [FULL_TRACE] QUEUE embedding FAILED in {embedding_duration*1000:.2f}ms: {e} [{time.time():.6f}]")
-                logger.error(f"Queue-based embedding failed: {e}")
+                print(f"🔍 [FULL_TRACE] DIRECT embedding FAILED in {embedding_duration*1000:.2f}ms: {e} [{time.time():.6f}]")
+                logger.error(f"Direct embedding failed: {e}")
                 return False
             
             if not embedding:

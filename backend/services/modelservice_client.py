@@ -538,49 +538,55 @@ class ModelServiceClient:
             raise
     
     async def get_embeddings_batch(self, model: str, prompts: List[str]) -> Dict[str, Any]:
-        """EMERGENCY FIX: Skip batch processing - just do individual requests quickly."""
+        """FIXED: Proper concurrent batch processing with controlled concurrency."""
         import time
+        import asyncio
         start_time = time.time()
         
         try:
-            self.logger.warning(f"🚨 [BATCH_EMBEDDING_CLIENT] EMERGENCY MODE: Processing {len(prompts)} embeddings individually (batch disabled due to 30s delays)")
+            self.logger.info(f"🔍 [BATCH_EMBEDDING_CLIENT] Processing {len(prompts)} embeddings with controlled concurrency")
             
-            # EMERGENCY: Just do individual requests sequentially to avoid timeout issues
-            embeddings = []
-            failed_count = 0
+            # FIXED: Use controlled concurrency instead of sequential processing
+            semaphore = asyncio.Semaphore(2)  # Max 2 concurrent requests to prevent overload
             
-            for i, prompt in enumerate(prompts):
-                try:
-                    single_start = time.time()
-                    result = await self.get_embeddings(model=model, prompt=prompt)
-                    single_time = time.time() - single_start
-                    
-                    if result.get("success") and "embedding" in result.get("data", {}):
-                        embeddings.append(result["data"]["embedding"])
-                        if single_time > 3.0:
-                            self.logger.warning(f"🚨 [BATCH_EMBEDDING_CLIENT] SLOW individual embedding {i+1}/{len(prompts)}: {single_time:.2f}s")
-                    else:
-                        embeddings.append(None)
-                        failed_count += 1
-                        self.logger.error(f"🚨 [BATCH_EMBEDDING_CLIENT] Failed embedding {i+1}/{len(prompts)}: {result.get('error', 'Unknown error')}")
+            async def process_single_embedding(prompt: str, index: int):
+                async with semaphore:
+                    try:
+                        single_start = time.time()
+                        result = await self.get_embeddings(model=model, prompt=prompt)
+                        single_time = time.time() - single_start
                         
-                except Exception as e:
-                    embeddings.append(None)
-                    failed_count += 1
-                    self.logger.error(f"🚨 [BATCH_EMBEDDING_CLIENT] Exception on embedding {i+1}/{len(prompts)}: {e}")
+                        if result.get("success") and "embedding" in result.get("data", {}):
+                            self.logger.debug(f"🔍 [BATCH_EMBEDDING_CLIENT] Embedding {index+1}/{len(prompts)} completed in {single_time:.3f}s")
+                            return result["data"]["embedding"]
+                        else:
+                            self.logger.warning(f"🔍 [BATCH_EMBEDDING_CLIENT] Embedding {index+1}/{len(prompts)} failed")
+                            return None
+                    except Exception as e:
+                        self.logger.error(f"🔍 [BATCH_EMBEDDING_CLIENT] Embedding {index+1}/{len(prompts)} error: {e}")
+                        return None
+            
+            # Process all embeddings concurrently with controlled concurrency
+            tasks = [process_single_embedding(prompt, i) for i, prompt in enumerate(prompts)]
+            embeddings = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Convert exceptions to None
+            embeddings = [emb if not isinstance(emb, Exception) else None for emb in embeddings]
+            failed_count = sum(1 for emb in embeddings if emb is None)
             
             elapsed_time = time.time() - start_time
             successful_count = len([e for e in embeddings if e is not None])
             
-            self.logger.info(f"🚨 [BATCH_EMBEDDING_CLIENT] EMERGENCY COMPLETE: {successful_count}/{len(prompts)} embeddings in {elapsed_time:.2f}s")
+            self.logger.info(f"🔍 [BATCH_EMBEDDING_CLIENT] BATCH COMPLETE: {successful_count}/{len(prompts)} embeddings in {elapsed_time:.2f}s (concurrent processing)")
             
-            if elapsed_time > 10.0:
-                self.logger.error(f"🚨 [BATCH_EMBEDDING_CLIENT] ❌ STILL TOO SLOW: {elapsed_time:.2f}s for {len(prompts)} embeddings")
+            if elapsed_time > 5.0:
+                self.logger.warning(f"🔍 [BATCH_EMBEDDING_CLIENT] Slow batch processing: {elapsed_time:.2f}s for {len(prompts)} embeddings")
             
             return {
                 "success": True,
                 "data": {
                     "embeddings": embeddings,
+                    "batch_size": len(prompts),
                     "successful_count": successful_count,
                     "failed_count": failed_count,
                     "processing_time": elapsed_time
