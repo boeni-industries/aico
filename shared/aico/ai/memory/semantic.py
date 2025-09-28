@@ -395,9 +395,12 @@ Format as JSON array of facts."""
         
         try:
             # Call modelservice for embedding generation
-            embedding_result = await self._modelservice.get_embeddings([text])
-            if embedding_result and len(embedding_result) > 0:
-                return embedding_result[0]
+            embedding_result = await self._modelservice.get_embeddings(
+                model=self._embedding_model, 
+                prompt=text
+            )
+            if embedding_result and embedding_result.get("success"):
+                return embedding_result.get("data", {}).get("embedding")
             return None
             
         except Exception as e:

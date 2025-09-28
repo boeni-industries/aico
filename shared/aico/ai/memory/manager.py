@@ -308,22 +308,60 @@ class MemoryManager(BaseAIProcessor):
                 processing_time_ms=0.0
             )
     
+    async def store_message(self, user_id: str, conversation_id: str, content: str, role: str) -> bool:
+        """V2 API: Store message with fact extraction"""
+        if not self._initialized:
+            await self.initialize()
+            
+        try:
+            # Store in working memory (LMDB)
+            if self._working_store:
+                await self._working_store.store_message(user_id, conversation_id, content, role)
+            
+            # Store in semantic memory with fact extraction (ChromaDB)
+            if self._semantic_store and role == "user":
+                await self._semantic_store.store_message(user_id, conversation_id, content, role)
+                
+            return True
+        except Exception as e:
+            logger.error(f"Failed to store message: {e}")
+            return False
+    
+    async def assemble_context(self, user_id: str, current_message: str) -> Dict[str, Any]:
+        """V2 API: Assemble context from working + semantic memory"""
+        if not self._initialized:
+            await self.initialize()
+            
+        try:
+            if self._context_assembler:
+                return await self._context_assembler.assemble_context(
+                    user_id=user_id,
+                    current_message=current_message,
+                    max_working_items=10,
+                    max_semantic_items=5
+                )
+            else:
+                logger.warning("Context assembler not available")
+                return {"working_memory": [], "semantic_memory": [], "total_items": 0}
+        except Exception as e:
+            logger.error(f"Failed to assemble context: {e}")
+            return {"working_memory": [], "semantic_memory": [], "total_items": 0}
+
     async def store_memory(self, memory_data: Dict[str, Any], memory_type: str = "working") -> bool:
-        """Store memory in appropriate tier (based on available stores)"""
+        """Legacy API: Store memory in appropriate tier (based on available stores)"""
         if not self._initialized:
             await self.initialize()
             
         try:
             if memory_type == "working" and self._working_store:
-                return await self._working_store.store(memory_data)
+                return await self._working_store.store_memory(memory_data)
             elif memory_type == "semantic" and self._semantic_store:
-                return await self._semantic_store.store(memory_data)
+                return await self._semantic_store.store_memory(memory_data)
             else:
-                logger.warning(f"Memory type {memory_type} not available in current phase")
+                logger.warning(f"No store available for memory type: {memory_type}")
                 return False
-                
         except Exception as e:
-            logger.error(f"Failed to store {memory_type} memory: {e}")
+            logger.error(f"Failed to store memory: {e}")
             return False
     
     async def consolidate_memories(self, force: bool = False) -> Dict[str, Any]:

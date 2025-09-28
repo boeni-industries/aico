@@ -285,7 +285,9 @@ class ScenarioLibrary:
                 "context_adherence": 0.85
             },
             tags=["threads", "management", "context-switching"],
-            tests_semantic_memory_quality=True,
+            tests_semantic_memory=True,
+            tests_fact_extraction=True,
+            tests_conversation_strength=True,
             difficulty_level="medium"
         )
         

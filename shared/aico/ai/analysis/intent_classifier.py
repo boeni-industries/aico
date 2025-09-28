@@ -105,7 +105,7 @@ class IntentClassificationProcessor(BaseAIProcessor):
         
         # Configuration
         self.config_manager = ConfigurationManager()
-        self.config = self.config_manager.get_config("ai.intent_classifier", {
+        self.config = self.config_manager.get("ai.intent_classifier", {
             "confidence_threshold": 0.7,
             "cache_size": 1000,
             "context_window": 10,

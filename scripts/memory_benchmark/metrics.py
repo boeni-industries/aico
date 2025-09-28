@@ -61,7 +61,7 @@ class MemoryMetrics:
     
     def __init__(self):
         """Initialize with real AICO memory system connections"""
-        # ChromaDB client for querying stored facts
+        # ChromaDB client for querying stored facts (V2 architecture)
         self.chroma_client = None
         self.user_facts_collection = None
         
@@ -101,17 +101,7 @@ class MemoryMetrics:
             except Exception:
                 print("⚠️ user_facts collection not found - may not be created yet")
                 
-            try:
-                self.conversation_segments_collection = self.chroma_client.get_collection("conversation_segments")  
-                # Add timeout to prevent hanging
-                count_task = asyncio.create_task(asyncio.to_thread(self.conversation_segments_collection.count))
-                count = await asyncio.wait_for(count_task, timeout=5.0)
-                print(f"✅ Connected to conversation_segments collection ({count} documents)")
-            except asyncio.TimeoutError:
-                print("⚠️ conversation_segments collection count timed out - continuing anyway")
-                self.conversation_segments_collection = self.chroma_client.get_collection("conversation_segments")
-            except Exception:
-                print("⚠️ conversation_segments collection not found - may not be created yet")
+            # V2: No conversation_segments collection - facts are stored directly
                 
             print("✅ Connected to AICO's file-based ChromaDB instance")
             
@@ -655,37 +645,29 @@ class MemoryMetrics:
         return {}
     
     async def _query_stored_entities(self, user_id: str, conversation_id: str, message_text: str) -> Dict[str, Any]:
-        """Query ChromaDB for entities stored from this conversation"""
+        """Query ChromaDB for facts stored from this conversation (V2)"""
         try:
-            if not self.conversation_segments_collection:
+            if not self.user_facts_collection:
                 return {}
                 
             print(f"   🔍 Looking for user_id: {user_id}, conversation_id: {conversation_id}")
             
-            # Query by conversation_id (now properly stored in memory system)
-            if conversation_id:
-                results = self.conversation_segments_collection.get(
-                    where={"conversation_id": conversation_id},
-                    include=["metadatas", "documents"],
-                    limit=50  # Reasonable limit for one conversation
-                )
-                print(f"   🔍 Conversation query found {len(results.get('metadatas', []))} segments")
-            elif user_id:
-                # Fallback to user_id if no conversation_id
-                results = self.conversation_segments_collection.get(
+            # Query user facts by user_id (V2 architecture)
+            if user_id:
+                results = self.user_facts_collection.get(
                     where={"user_id": user_id},
                     include=["metadatas", "documents"],
-                    limit=20  # Limit for user-wide query
+                    limit=50  # Reasonable limit for user facts
                 )
-                print(f"   🔍 User query found {len(results.get('metadatas', []))} segments")
+                print(f"   🔍 User facts query found {len(results.get('metadatas', []))} facts")
             else:
-                # Last resort: get recent segments
-                print("   🔍 No conversation_id or user_id, getting recent segments...")
-                results = self.conversation_segments_collection.get(
+                # Fallback: get recent facts
+                print("   🔍 No user_id, getting recent facts...")
+                results = self.user_facts_collection.get(
                     include=["metadatas", "documents"],
                     limit=10
                 )
-                print(f"   🔍 Recent query found {len(results.get('metadatas', []))} segments")
+                print(f"   🔍 Recent query found {len(results.get('metadatas', []))} facts")
             
             stored_entities = {}
             if results and "metadatas" in results:
