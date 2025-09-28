@@ -59,6 +59,13 @@ class SemanticMemoryStore:
         
         # Configuration
         memory_config = self.config.get("core.memory.semantic", {})
+        
+        # CRITICAL: Check for empty config - always indicates a major issue
+        if not memory_config:
+            logger.error("🚨 [CONFIG_ERROR] Semantic memory configuration is EMPTY! This indicates a critical config loading failure.")
+            logger.error(f"🚨 [CONFIG_ERROR] Attempted to load config key: 'core.memory.semantic'")
+            logger.error("🚨 [CONFIG_ERROR] This will cause semantic memory to use default values and may fail!")
+        
         self._db_path = AICOPaths.get_semantic_memory_path()
         self._collection_name = memory_config.get("collections", {}).get("user_facts", "user_facts")
         self._embedding_model = memory_config.get("embedding_model", "paraphrase-multilingual")
@@ -176,8 +183,10 @@ class SemanticMemoryStore:
                 if "category" in filters:
                     where_clause["category"] = filters["category"]
             
-            # Query ChromaDB
-            results = self._collection.query(
+            # Query ChromaDB (make async to prevent blocking)
+            import asyncio
+            results = await asyncio.to_thread(
+                self._collection.query,
                 query_embeddings=[query_embedding],
                 n_results=max_results or self._max_results,
                 where=where_clause if where_clause else None

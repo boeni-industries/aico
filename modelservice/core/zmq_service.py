@@ -135,12 +135,32 @@ class ModelserviceZMQService:
                 AICOTopics.OLLAMA_SHUTDOWN_REQUEST,
             ]
             
+            # DEBUG: Print all topics we're about to subscribe to
+            self.logger.info(f"🔍 [DEBUG] About to subscribe to {len(modelservice_topics)} topics:")
+            for topic in modelservice_topics:
+                handler_exists = topic in self.topic_handlers
+                self.logger.info(f"🔍 [DEBUG]   - {topic} (handler: {'✅' if handler_exists else '❌'})")
+            
+            subscribed_topics = []
             for topic in modelservice_topics:
                 if topic in self.topic_handlers:
                     await self.bus_client.subscribe(topic, self._handle_message)
+                    subscribed_topics.append(topic)
                     self.logger.info(f"Subscribed to topic: {topic}")
                 else:
                     self.logger.warning(f"No handler found for topic {topic} during subscription")
+            
+            # DEBUG: Final summary of subscribed topics
+            self.logger.info(f"🔍 [DEBUG] Successfully subscribed to {len(subscribed_topics)} topics:")
+            for topic in subscribed_topics:
+                self.logger.info(f"🔍 [DEBUG]   ✅ {topic}")
+            
+            # DEBUG: Check if embeddings topic is specifically subscribed
+            embeddings_topic = "modelservice/embeddings/request/v1"
+            if embeddings_topic in subscribed_topics:
+                self.logger.info(f"🔍 [DEBUG] ✅ EMBEDDINGS TOPIC IS SUBSCRIBED: {embeddings_topic}")
+            else:
+                self.logger.error(f"🔍 [DEBUG] ❌ EMBEDDINGS TOPIC NOT SUBSCRIBED: {embeddings_topic}")
             
             # Initialize NER system now that all services are ready
             self.logger.info("Initializing NER system...")
@@ -205,6 +225,13 @@ class ModelserviceZMQService:
                 self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] ✅ SENTIMENT MESSAGE RECEIVED in ZMQ service!")
                 self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] Message type: {message_type}")
                 self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] Correlation ID: {correlation_id}")
+            
+            # SPECIFIC DEBUGGING FOR EMBEDDINGS REQUESTS
+            if "embeddings" in message_type.lower():
+                self.logger.info(f"🔍 [EMBEDDINGS_ZMQ_DEBUG] ✅ EMBEDDINGS MESSAGE RECEIVED in ZMQ service!")
+                self.logger.info(f"🔍 [EMBEDDINGS_ZMQ_DEBUG] Message type: {message_type}")
+                self.logger.info(f"🔍 [EMBEDDINGS_ZMQ_DEBUG] Correlation ID: {correlation_id}")
+                self.logger.info(f"🔍 [EMBEDDINGS_ZMQ_DEBUG] About to route to handler...")
             
             # Check for duplicate correlation ID to prevent processing the same message multiple times
             if correlation_id in self.processed_correlation_ids:

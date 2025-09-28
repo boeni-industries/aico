@@ -1,0 +1,343 @@
+{
+  "metadata": {
+    "session_id": "4bc8a187-f035-43a3-830b-7422383c1028",
+    "scenario_name": "comprehensive_memory_test",
+    "timestamp": "2025-09-28T17:05:13.874761",
+    "conversation_turns": 6,
+    "total_duration_seconds": 17.289312,
+    "version": "1.0.0"
+  },
+  "scores": {
+    "overall": {
+      "score": 0.375,
+      "percentage": 37.5,
+      "max_score": 1.0,
+      "explanation": "Weighted average of 7 metrics",
+      "details": {
+        "individual_scores": {
+          "metric_0": {
+            "score": 0.4,
+            "weight": 0.2,
+            "contribution": 0.08000000000000002
+          },
+          "metric_1": {
+            "score": 0.0,
+            "weight": 0.2,
+            "contribution": 0.0
+          },
+          "metric_2": {
+            "score": 0.0,
+            "weight": 0.15,
+            "contribution": 0.0
+          },
+          "metric_3": {
+            "score": 1.0,
+            "weight": 0.15,
+            "contribution": 0.15
+          },
+          "metric_4": {
+            "score": 0.0,
+            "weight": 0.15,
+            "contribution": 0.0
+          },
+          "metric_5": {
+            "score": 0.95,
+            "weight": 0.1,
+            "contribution": 0.095
+          },
+          "metric_6": {
+            "score": 1.0,
+            "weight": 0.05,
+            "contribution": 0.05
+          }
+        },
+        "weights": {
+          "0": 0.2,
+          "1": 0.2,
+          "2": 0.15,
+          "3": 0.15,
+          "4": 0.15,
+          "5": 0.1,
+          "6": 0.05
+        }
+      }
+    },
+    "context_adherence": {
+      "score": 0.4,
+      "percentage": 40.0,
+      "max_score": 1.0,
+      "explanation": "Context adherence across 6 turns",
+      "details": {}
+    },
+    "knowledge_retention": {
+      "score": 0.0,
+      "percentage": 0.0,
+      "max_score": 1.0,
+      "explanation": "Real memory retention testing: 0 successful retrievals from ChromaDB",
+      "details": {
+        "stored_facts": [],
+        "memory_retrieval_tests": [
+          {
+            "turn": 1,
+            "message": "Hi AICO! I'm Michael, and I just moved to San Fran...",
+            "entities_found": 0,
+            "entities": {}
+          },
+          {
+            "turn": 2,
+            "message": "Thanks! I'm a bit nervous though. It's a software ...",
+            "entities_found": 0,
+            "entities": {}
+          },
+          {
+            "turn": 3,
+            "message": "That's great advice! By the way, I have a cat name...",
+            "entities_found": 0,
+            "entities": {}
+          },
+          {
+            "turn": 4,
+            "message": "Perfect! Oh, I almost forgot - my birthday is next...",
+            "entities_found": 0,
+            "entities": {}
+          },
+          {
+            "turn": 5,
+            "message": "Those sound amazing! I love Italian food. Actually...",
+            "entities_found": 0,
+            "entities": {}
+          },
+          {
+            "turn": 6,
+            "message": "Exactly! And what was my cat's name again? I want ...",
+            "entities_found": 0,
+            "entities": {}
+          }
+        ],
+        "total_facts_found": 0,
+        "successful_retrievals": 0
+      }
+    },
+    "entity_extraction": {
+      "score": 0.0,
+      "percentage": 0.0,
+      "max_score": 1.0,
+      "explanation": "Real entity extraction testing across 6 messages using GLiNER and ChromaDB",
+      "details": {
+        "gliner_tests": [
+          {
+            "turn": 1,
+            "message": "Hi AICO! I'm Michael, and I just moved to San Francisco last week. I'm really excited about starting...",
+            "stored_entities": {},
+            "entities_count": 0,
+            "score": 0.0
+          },
+          {
+            "turn": 2,
+            "message": "Thanks! I'm a bit nervous though. It's a software engineering role, and I'll be working on their AI ...",
+            "stored_entities": {},
+            "entities_count": 0,
+            "score": 0.0
+          },
+          {
+            "turn": 3,
+            "message": "That's great advice! By the way, I have a cat named Whiskers who's been stressed about the move. Any...",
+            "stored_entities": {},
+            "entities_count": 0,
+            "score": 0.0
+          },
+          {
+            "turn": 4,
+            "message": "Perfect! Oh, I almost forgot - my birthday is next Friday, October 13th. I'm turning 28. I was think...",
+            "stored_entities": {},
+            "entities_count": 0,
+            "score": 0.0
+          },
+          {
+            "turn": 5,
+            "message": "Those sound amazing! I love Italian food. Actually, can you remind me what my job title is again? I ...",
+            "stored_entities": {},
+            "entities_count": 0,
+            "score": 0.0
+          },
+          {
+            "turn": 6,
+            "message": "Exactly! And what was my cat's name again? I want to tell my new coworkers about him.",
+            "stored_entities": {},
+            "entities_count": 0,
+            "score": 0.0
+          }
+        ],
+        "chromadb_stored_entities": [],
+        "total_messages_tested": 6,
+        "successful_extractions": 0
+      }
+    },
+    "conversation_relevancy": {
+      "score": 1.0,
+      "percentage": 100.0,
+      "max_score": 1.0,
+      "explanation": "Conversation relevancy across 6 turns",
+      "details": {
+        "turn_evaluations": [
+          {
+            "turn": 1,
+            "rule_compliance": {}
+          },
+          {
+            "turn": 2,
+            "rule_compliance": {}
+          },
+          {
+            "turn": 3,
+            "rule_compliance": {}
+          },
+          {
+            "turn": 4,
+            "rule_compliance": {}
+          },
+          {
+            "turn": 5,
+            "rule_compliance": {}
+          },
+          {
+            "turn": 6,
+            "rule_compliance": {}
+          }
+        ]
+      }
+    },
+    "semantic_memory_quality": {
+      "score": 0.0,
+      "percentage": 0.0,
+      "max_score": 1.0,
+      "explanation": "Thread management accuracy: 0/6",
+      "details": {
+        "thread_decisions": [
+          {
+            "turn": 1,
+            "expected": "continue",
+            "actual": "unknown",
+            "score": 0.0
+          },
+          {
+            "turn": 2,
+            "expected": "continue",
+            "actual": "unknown",
+            "score": 0.0
+          },
+          {
+            "turn": 3,
+            "expected": "continue",
+            "actual": "unknown",
+            "score": 0.0
+          },
+          {
+            "turn": 4,
+            "expected": "continue",
+            "actual": "unknown",
+            "score": 0.0
+          },
+          {
+            "turn": 5,
+            "expected": "continue",
+            "actual": "unknown",
+            "score": 0.0
+          },
+          {
+            "turn": 6,
+            "expected": "continue",
+            "actual": "unknown",
+            "score": 0.0
+          }
+        ],
+        "correct_decisions": 0,
+        "total_decisions": 6
+      }
+    },
+    "response_quality": {
+      "score": 0.95,
+      "percentage": 95.0,
+      "max_score": 1.0,
+      "explanation": "Response quality across 6 turns",
+      "details": {
+        "quality_assessments": [
+          {
+            "turn": 1,
+            "adequate_length": true,
+            "coherent": true,
+            "helpful": true,
+            "appropriate": true
+          },
+          {
+            "turn": 2,
+            "adequate_length": true,
+            "coherent": true,
+            "helpful": true,
+            "appropriate": true
+          },
+          {
+            "turn": 3,
+            "adequate_length": true,
+            "coherent": true,
+            "helpful": true,
+            "appropriate": true
+          },
+          {
+            "turn": 4,
+            "adequate_length": true,
+            "coherent": true,
+            "helpful": true,
+            "appropriate": true
+          },
+          {
+            "turn": 5,
+            "adequate_length": true,
+            "coherent": true,
+            "appropriate": true
+          },
+          {
+            "turn": 6,
+            "adequate_length": true,
+            "coherent": true,
+            "helpful": true,
+            "appropriate": true
+          }
+        ]
+      }
+    },
+    "memory_consistency": {
+      "score": 1.0,
+      "percentage": 100.0,
+      "max_score": 1.0,
+      "explanation": "Memory consistency with 0 contradictions found",
+      "details": {
+        "consistency_checks": [],
+        "inconsistencies_found": 0
+      }
+    }
+  },
+  "performance": {
+    "average_response_time_ms": 2210.1423343022666,
+    "max_response_time_ms": 4760.767936706543,
+    "min_response_time_ms": 1011.1231803894043,
+    "total_conversation_time_seconds": 17.289312,
+    "turns_per_minute": 20.822112528248667
+  },
+  "errors": [],
+  "summary": {
+    "passed": false,
+    "grade": "F",
+    "key_strengths": [
+      "Conversation Relevancy",
+      "Response Quality",
+      "Memory Consistency"
+    ],
+    "improvement_areas": [
+      "Context Adherence",
+      "Knowledge Retention",
+      "Entity Extraction",
+      "Semantic Memory Quality"
+    ]
+  }
+}

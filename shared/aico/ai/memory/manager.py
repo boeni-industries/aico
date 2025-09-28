@@ -130,16 +130,27 @@ class MemoryManager(BaseAIProcessor):
         
         # Configuration following AICO patterns
         self._memory_config = self.config.get("core.memory", {})
+        
+        # CRITICAL: Check for empty config - always indicates a major issue
+        if not self._memory_config:
+            logger.error("🚨 [CONFIG_ERROR] Memory configuration is EMPTY! This indicates a critical config loading failure.")
+            logger.error(f"🚨 [CONFIG_ERROR] Attempted to load config key: 'core.memory'")
+            logger.error(f"🚨 [CONFIG_ERROR] Available config keys: {list(self.config._config.keys()) if hasattr(self.config, '_config') else 'No _config attribute'}")
+            logger.error("🚨 [CONFIG_ERROR] This will cause semantic memory initialization to fail silently!")
+        
         self._consolidation_interval = self._memory_config.get("consolidation_interval_hours", 24)
         
-        # Debug: Check full config tree
-        logger.debug(f"Full config keys: {list(self.config._config.keys()) if hasattr(self.config, '_config') else 'No _config attr'}")
-        logger.debug(f"Direct semantic check: {self.config.get('core.memory.semantic.enabled', 'NOT_FOUND')}")
+        # Additional validation for semantic config
+        semantic_config = self._memory_config.get("semantic", {})
+        if not semantic_config:
+            logger.error("🚨 [CONFIG_ERROR] Semantic memory configuration is EMPTY!")
+            logger.error(f"🚨 [CONFIG_ERROR] Memory config keys: {list(self._memory_config.keys())}")
+            logger.error("🚨 [CONFIG_ERROR] Expected 'semantic' key with 'enabled' setting")
         
         logger.info("[DEBUG] MemoryManager: Initialized with configuration")
         logger.debug(f"Memory config: {self._memory_config}")
-        logger.debug(f"Semantic config check: {self._memory_config.get('semantic', {})}")
-        logger.debug(f"Semantic enabled check: {self._memory_config.get('semantic', {}).get('enabled', False)}")
+        logger.debug(f"Semantic config check: {semantic_config}")
+        logger.debug(f"Semantic enabled check: {semantic_config.get('enabled', False)}")
         
         # Modelservice dependency (injected later)
         self._modelservice = None
@@ -316,11 +327,25 @@ class MemoryManager(BaseAIProcessor):
         try:
             # Store in working memory (LMDB)
             if self._working_store:
-                await self._working_store.store_message(user_id, conversation_id, content, role)
+                message_data = {
+                    "conversation_id": conversation_id,
+                    "content": content,
+                    "role": role,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "message_type": f"{role}_input" if role == "user" else f"{role}_response"
+                }
+                await self._working_store.store_message(user_id, message_data)
             
             # Store in semantic memory with fact extraction (ChromaDB)
             if self._semantic_store and role == "user":
+                logger.info(f"🔍 [MEMORY_DEBUG] Calling semantic store for user message: {content[:50]}...")
                 await self._semantic_store.store_message(user_id, conversation_id, content, role)
+                logger.info(f"🔍 [MEMORY_DEBUG] Semantic store completed for user message")
+            elif role == "user":
+                logger.warning(f"🔍 [MEMORY_DEBUG] No semantic store available for user message: {content[:50]}...")
+                logger.warning(f"🔍 [MEMORY_DEBUG] _semantic_store = {self._semantic_store}")
+            else:
+                logger.debug(f"🔍 [MEMORY_DEBUG] Skipping semantic storage for role: {role}")
                 
             return True
         except Exception as e:
@@ -337,8 +362,7 @@ class MemoryManager(BaseAIProcessor):
                 return await self._context_assembler.assemble_context(
                     user_id=user_id,
                     current_message=current_message,
-                    max_working_items=10,
-                    max_semantic_items=5
+                    max_context_items=15
                 )
             else:
                 logger.warning("Context assembler not available")

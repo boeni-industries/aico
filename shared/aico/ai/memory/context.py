@@ -108,9 +108,8 @@ class ContextAssembler:
         self._similarity_cache = {}
         self._boundary_cache = {}
         
-        # Pre-initialize expensive components in background
-        import asyncio
-        asyncio.create_task(self._initialize_expensive_components())
+        # V2: Removed automatic background initialization to prevent ModelService dependency issues
+        # Components will be initialized on-demand when ModelService is available
     
     async def assemble_context(self, user_id: str, current_message: str, 
                               max_context_items: int = None) -> Dict[str, Any]:
@@ -145,7 +144,7 @@ class ContextAssembler:
                 print(f"⏱️ [TIMING] Starting PROTECTED semantic memory retrieval...")
                 
                 # PHASE 1: Use timeout to prevent blocking
-                semantic_timeout = 5.0  # Increased for normal operation with background processing
+                semantic_timeout = 1.0  # Reduced timeout since embeddings work instantly
                 semantic_items = await asyncio.wait_for(
                     self._get_semantic_context_safe(current_message, user_id),
                     timeout=semantic_timeout
@@ -515,16 +514,10 @@ class ContextAssembler:
             if message in self._boundary_cache:
                 return self._boundary_cache[message]
             
-            # Use cached intent classifier with FULL ProcessingContext integration
+            # V2: Use fast fallback when ModelService unavailable - no automatic retries
             if self._intent_classifier_cache is None:
-                if self._intent_classifier_initializing:
-                    # If still initializing, use fast fallback to avoid blocking
-                    logger.debug("Intent classifier still initializing, using fast fallback")
-                    return self._fast_boundary_fallback(message)
-                else:
-                    # Try to initialize quickly
-                    from aico.ai.analysis.intent_classifier import get_intent_classifier
-                    self._intent_classifier_cache = await get_intent_classifier()
+                logger.debug("Intent classifier not available (ModelService offline), using fast fallback")
+                return self._fast_boundary_fallback(message)
             
             # 🚀 USE FULL POWER: Create proper ProcessingContext for sophisticated analysis
             from ..base import ProcessingContext
@@ -652,25 +645,7 @@ class ContextAssembler:
         except Exception:
             return 0.1
     
-    async def _initialize_expensive_components(self):
-        """Pre-initialize expensive components in background to avoid timeouts"""
-        try:
-            logger.info("🚀 [CONTEXT_ASSEMBLY] Pre-initializing expensive components...")
-            
-            # Pre-initialize intent classifier
-            if not self._intent_classifier_initializing:
-                self._intent_classifier_initializing = True
-                try:
-                    from aico.ai.analysis.intent_classifier import get_intent_classifier
-                    self._intent_classifier_cache = await get_intent_classifier()
-                    logger.info("✅ [CONTEXT_ASSEMBLY] Intent classifier pre-initialized successfully")
-                except Exception as e:
-                    logger.warning(f"⚠️ [CONTEXT_ASSEMBLY] Intent classifier pre-initialization failed: {e}")
-                finally:
-                    self._intent_classifier_initializing = False
-                    
-        except Exception as e:
-            logger.error(f"❌ [CONTEXT_ASSEMBLY] Component pre-initialization failed: {e}")
+    # V2: Removed _initialize_expensive_components() method - no automatic background initialization
 
     # V2: Episodic memory retrieval removed
     
@@ -761,11 +736,17 @@ class ContextAssembler:
             logger.debug(f"Querying semantic memory for user {user_id} with message: '{current_message[:50]}...'")
             
             # Use semantic store's query method to find relevant facts
+            print(f"🟢 [SEMANTIC_CONTEXT] About to call semantic_store.query()...")
+            query_start = datetime.utcnow()
+            
             semantic_results = await self.semantic_store.query(
                 query_text=current_message,
                 max_results=5,  # Reduced for Phase 1
                 filters={"user_id": user_id} if user_id else None
             )
+            
+            query_time = (datetime.utcnow() - query_start).total_seconds() * 1000
+            print(f"🟢 [SEMANTIC_CONTEXT] Semantic query completed in {query_time:.2f}ms")
             
             if not semantic_results:
                 print(f"🟡 [SEMANTIC_CONTEXT] No relevant semantic facts found")

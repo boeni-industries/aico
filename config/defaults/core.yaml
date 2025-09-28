@@ -250,6 +250,51 @@ conversation:
 # These features will be implemented in future versions
 # For now, we keep the configuration lean and focused on what's actually used
 
+# Core Services Configuration
+services:
+  # Message bus service configuration
+  message_bus:
+    enabled: true
+    bind_address: "tcp://*:5555"
+    timeout: 120.0
+  
+  # Task scheduler service configuration  
+  task_scheduler:
+    enabled: true
+    max_concurrent_tasks: 10
+    scheduler_interval: 1.0
+    
+  # Log consumer service configuration
+  log_consumer:
+    enabled: true
+    buffer_size: 1000
+    flush_interval: 5.0
+    
+  # Security service configuration
+  security:
+    enabled: true
+    encryption: true
+    
+  # Conversation engine service configuration
+  conversation_engine:
+    enabled: true
+    memory_integration: true
+    
+  # Rate limiting service configuration
+  rate_limiting:
+    enabled: true
+    default_requests_per_minute: 100
+    
+  # Validation service configuration
+  validation:
+    enabled: true
+    strict_mode: false
+    
+  # Encryption service configuration
+  encryption:
+    enabled: true
+    algorithm: "AES-256-GCM"
+
 # Memory System Configuration
 memory:
   # Working Memory (LMDB) - Session context and conversation history

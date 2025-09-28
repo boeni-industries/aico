@@ -542,6 +542,11 @@ class ModelserviceZMQHandlers:
         start_time = time.time()
         response = EmbeddingsResponse()
         
+        # DEBUG: Confirm handler is being called
+        self.logger.info(f"🔍 [EMBEDDINGS_HANDLER_DEBUG] ✅ EMBEDDINGS HANDLER CALLED!")
+        self.logger.info(f"🔍 [EMBEDDINGS_HANDLER_DEBUG] Request payload type: {type(request_payload)}")
+        self.logger.info(f"🔍 [EMBEDDINGS_HANDLER_DEBUG] Start time: {start_time}")
+        
         try:
             model = request_payload.model
             prompt = request_payload.prompt

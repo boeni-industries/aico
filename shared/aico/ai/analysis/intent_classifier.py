@@ -140,8 +140,8 @@ class IntentClassificationProcessor(BaseAIProcessor):
         """Get ModelService client (lazy initialization)"""
         if self._modelservice_client is None:
             try:
-                from backend.services.modelservice_client import ModelserviceClient
-                self._modelservice_client = ModelserviceClient()
+                from backend.services.modelservice_client import ModelServiceClient
+                self._modelservice_client = ModelServiceClient(self.config_manager)
                 logger.debug("[INTENT_CLASSIFIER] ModelService client initialized")
             except Exception as e:
                 logger.error(f"[INTENT_CLASSIFIER] Failed to initialize ModelService client: {e}")
@@ -188,21 +188,17 @@ class IntentClassificationProcessor(BaseAIProcessor):
             
             # Create result
             result = ProcessingResult(
+                component="intent_classifier",
+                operation="classify_intent",
                 success=True,
-                data={
+                result_data={
                     "predicted_intent": prediction.intent,
                     "confidence": prediction.confidence,
                     "detected_language": prediction.detected_language,
                     "alternatives": prediction.alternatives or [],
                     "inference_time_ms": prediction.inference_time_ms
                 },
-                metadata={
-                    "processor": self.component_name,
-                    "version": self.version,
-                    "model_name": self.model_name,
-                    "processing_time_ms": processing_time,
-                    "context_applied": bool(conversation_context)
-                },
+                confidence_score=prediction.confidence,
                 processing_time_ms=processing_time
             )
             
@@ -216,9 +212,11 @@ class IntentClassificationProcessor(BaseAIProcessor):
             self.error_count += 1
             
             return ProcessingResult(
+                component="intent_classifier",
+                operation="classify_intent",
                 success=False,
-                data={"predicted_intent": "general", "confidence": 0.0},
-                error=str(e),
+                result_data={"predicted_intent": "general", "confidence": 0.0},
+                error_message=str(e),
                 processing_time_ms=(time.time() - start_time) * 1000
             )
 
@@ -525,7 +523,13 @@ async def get_intent_classifier() -> IntentClassificationProcessor:
     global _intent_processor
     
     if _intent_processor is None:
-        _intent_processor = IntentClassificationProcessor()
-        await _intent_processor.initialize()
+        try:
+            _intent_processor = IntentClassificationProcessor()
+            await _intent_processor.initialize()
+        except Exception as e:
+            # Reset to None on initialization failure to prevent broken instance caching
+            _intent_processor = None
+            logger.error(f"[INTENT_CLASSIFIER] Failed to initialize processor: {e}")
+            raise
     
     return _intent_processor
