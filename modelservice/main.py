@@ -188,6 +188,16 @@ async def shutdown_modelservice(ollama_manager, process_manager):
     if logger:
         logger.info("Graceful shutdown initiated")
     
+    # Signal global shutdown to semantic memory components (if any)
+    try:
+        from aico.ai.memory.request_queue import _set_global_shutdown
+        _set_global_shutdown()
+        if logger:
+            logger.info("Global shutdown signal sent to semantic memory components")
+    except ImportError:
+        # Semantic memory not available in modelservice, that's OK
+        pass
+    
     print("[~] Stopping services...")
     if logger:
         logger.info("Stopping services")

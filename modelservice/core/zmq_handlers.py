@@ -664,6 +664,10 @@ class ModelserviceZMQHandlers:
     async def handle_ner_request(self, request_payload) -> Any:
         """Handle NER (Named Entity Recognition) requests via GLiNER."""
         try:
+            import time
+            handler_start = time.time()
+            print(f"🔍 [NER_DEEP_ANALYSIS] ModelService.handle_ner_request() STARTED [{handler_start:.6f}]")
+            
             from aico.proto.aico_modelservice_pb2 import NerResponse, EntityList
             
             response = NerResponse()
@@ -677,29 +681,45 @@ class ModelserviceZMQHandlers:
             self.logger.info(f"Processing NER for text: {text[:50]}...")
             
             # Get GLiNER model from transformers manager
+            model_start = time.time()
+            print(f"🔍 [NER_DEEP_ANALYSIS] Getting GLiNER model [{model_start:.6f}]")
             gliner_model = self.transformers_manager.get_model("entity_extraction")
+            model_end = time.time()
+            model_duration = model_end - model_start
+            print(f"🔍 [NER_DEEP_ANALYSIS] GLiNER model retrieved in {model_duration*1000:.2f}ms [{model_end:.6f}]")
             if gliner_model is None:
                 response.success = False
                 response.error = "GLiNER model not available"
                 return response
             
-            # Define comprehensive entity types for conversation analysis (matches AdvancedFactExtractor)
+            # V2: Comprehensive entity types for conversational fact extraction
             entity_types = [
                 "person", "organization", "location", "date", "time",
                 "preference", "skill", "hobby", "relationship", "goal",
                 "experience", "opinion", "contact_info", "demographic",
                 "food", "activity", "place", "event", "emotion", "job",
-                "family_member", "friend", "colleague", "interest"
+                "family_member", "friend", "colleague", "interest",
+                "pet", "animal", "cat", "dog", "name", "title"
             ]
             
-            # IMPROVED: Use GLiNER's built-in filtering and higher threshold for quality
+            # V2: Use lower threshold for conversational entity extraction
+            inference_start = time.time()
+            print(f"🔍 [NER_DEEP_ANALYSIS] Starting GLiNER inference [{inference_start:.6f}]")
             raw_entities = gliner_model.predict_entities(
                 text,
                 labels=entity_types,
-                threshold=0.5,  # Raised from 0.3 to 0.5 for higher quality entities
+                threshold=0.3,  # Lowered for conversational text (entities like "cat", "job")
                 flat_ner=True,  # Use flat NER for better entity boundaries
                 multi_label=False  # Avoid overlapping entity classifications
             )
+            inference_end = time.time()
+            inference_duration = inference_end - inference_start
+            print(f"🔍 [NER_DEEP_ANALYSIS] GLiNER inference COMPLETED in {inference_duration*1000:.2f}ms [{inference_end:.6f}]")
+            
+            # DEBUG: Log ALL raw entities before filtering
+            self.logger.info(f"🔍 [GLINER_DEBUG] Raw GLiNER extracted {len(raw_entities)} entities from text: '{text}'")
+            for i, entity in enumerate(raw_entities):
+                self.logger.info(f"🔍 [GLINER_RAW_{i}] text='{entity.get('text', '')}', label='{entity.get('label', '')}', confidence={entity.get('score', 0.0):.3f}")
             
             # Group entities by type with intelligent filtering
             entities = {}
@@ -710,18 +730,20 @@ class ModelserviceZMQHandlers:
                 
                 # Skip empty entities
                 if not entity_text:
+                    self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Empty entity text")
                     continue
                 
                 # INTELLIGENT FILTERING: Use GLiNER confidence and linguistic rules
                 confidence = entity.get("score", 0.0)
                 
-                # Skip low-confidence entities (GLiNER handles this better than pattern matching)
-                if confidence < 0.6:
-                    self.logger.debug(f"[NER_FILTER] Skipping low-confidence entity: '{entity_text}' (confidence: {confidence:.2f})")
+                # V2: Lower confidence threshold for conversational entities
+                if confidence < 0.4:
+                    self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Low confidence - '{entity_text}' (confidence: {confidence:.3f} < 0.4)")
                     continue
                 
                 # Skip single characters unless they're meaningful abbreviations
                 if len(entity_text) == 1 and not entity_text.isupper():
+                    self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Single character - '{entity_text}'")
                     continue
                 
                 # Clean possessive forms intelligently
@@ -759,7 +781,9 @@ class ModelserviceZMQHandlers:
                 # Final deduplication check
                 if entity_text not in entities[entity_type]:
                     entities[entity_type].append(entity_text)
-                    self.logger.debug(f"[NER_FILTER] Added quality entity: '{entity_text}' (type: {entity_type})")
+                    self.logger.info(f"🔍 [GLINER_FILTER] ✅ ACCEPTED: '{entity_text}' (type: {entity_type}, confidence: {confidence:.3f})")
+                else:
+                    self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Duplicate - '{entity_text}' (type: {entity_type})")
             
             # Create protobuf response
             response.success = True
@@ -768,8 +792,12 @@ class ModelserviceZMQHandlers:
                 # Access the map entry and set its entities field
                 response.entities[entity_type].entities.extend(entity_list)
             
-            # Log results
+            # Log results with detailed breakdown
             total_entities = sum(len(v) for v in entities.values())
+            self.logger.info(f"🔍 [GLINER_FINAL] ✅ FINAL RESULT: {total_entities} entities extracted from '{text}'")
+            for entity_type, entity_list in entities.items():
+                self.logger.info(f"🔍 [GLINER_FINAL] {entity_type}: {entity_list}")
+            
             self.logger.info(
                 f"Extracted {total_entities} entities using GLiNER",
                 extra={"topic": AICOTopics.LOGS_ENTRY}
@@ -782,6 +810,10 @@ class ModelserviceZMQHandlers:
                     self.logger.debug(f"[NER] {entity_type}: {entity_list}")
             else:
                 self.logger.debug(f"[NER] No entities extracted from text: '{text[:100]}...'")
+            
+            handler_end = time.time()
+            handler_duration = handler_end - handler_start
+            print(f"🔍 [NER_DEEP_ANALYSIS] ModelService.handle_ner_request() COMPLETED in {handler_duration*1000:.2f}ms [{handler_end:.6f}]")
             return response
             
         except Exception as e:

@@ -417,7 +417,9 @@ class ModelServiceClient:
                 self.logger.error(f"💬 [CHAT_DEBUG] Model requested: {data.get('model', 'unknown')}. Check if this model is available in Ollama.")
             
             self.logger.error(f"⚠️ {error_msg}", extra={"topic": AICOTopics.LOGS_ENTRY})
-            print(f"⚠️ {error_msg}")
+            import time
+            timestamp = time.time()
+            print(f"⚠️ {error_msg} [{timestamp:.6f}]")
             return {"success": False, "error": error_msg}
             
         except Exception as e:
@@ -495,13 +497,10 @@ class ModelServiceClient:
         import time
         start_time = time.time()
         text_length = len(prompt)
-        text_preview = prompt[:50] + "..." if len(prompt) > 50 else prompt
+        text_preview = prompt[:30] + "..." if len(prompt) > 30 else prompt
         
-        # Reduced debug noise - only log if text is long or if there are issues
-        if text_length > 500:
-            print(f"⏱️ [MODELSERVICE_TIMING] Large embedding request: {text_length} chars")
+        print(f"🔍 [FULL_TRACE] ModelServiceClient.get_embeddings() STARTED for: '{text_preview}' [{start_time:.6f}]")
         self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] Starting embedding request for model={model}, text_length={text_length}")
-        self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] Text preview: '{text_preview}'")
         
         request_data = {
             "model": model,
@@ -510,7 +509,7 @@ class ModelServiceClient:
         
         try:
             send_request_start = time.time()
-            # Removed debug noise
+            print(f"🔍 [FULL_TRACE] About to call _send_request() for embeddings [{send_request_start:.6f}]")
             
             result = await self._send_request(
                 AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
@@ -520,16 +519,14 @@ class ModelServiceClient:
             
             send_request_time = time.time() - send_request_start
             elapsed_time = time.time() - start_time
-            # Only log slow embeddings
-            if elapsed_time > 0.5:
-                print(f"⏱️ [MODELSERVICE_TIMING] SLOW embedding: {elapsed_time:.2f}s for {text_length} chars")
+            print(f"🔍 [FULL_TRACE] _send_request() for embeddings completed in {send_request_time*1000:.2f}ms [{time.time():.6f}]")
             
             if result.get("success"):
                 embedding_dim = len(result.get("data", {}).get("embedding", []))
-                # Reduced success noise
+                print(f"🔍 [FULL_TRACE] ModelServiceClient.get_embeddings() SUCCESS in {elapsed_time*1000:.2f}ms (dim: {embedding_dim}) [{time.time():.6f}]")
                 self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] ✅ Success! Got {embedding_dim}-dimensional embedding in {elapsed_time:.2f}s")
             else:
-                print(f"⏱️ [MODELSERVICE_TIMING] ❌ FAILED! Error: {result.get('error')}")
+                print(f"🔍 [FULL_TRACE] ModelServiceClient.get_embeddings() FAILED in {elapsed_time*1000:.2f}ms: {result.get('error')} [{time.time():.6f}]")
                 self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] ❌ Failed to get embedding: {result.get('error')}")
             
             return result
@@ -637,6 +634,10 @@ class ModelServiceClient:
     
     async def get_ner_entities(self, text: str, entity_types: List[str] = None) -> Dict[str, Any]:
         """Get named entity recognition from modelservice with optional entity type filtering."""
+        import time
+        client_start = time.time()
+        print(f"🔍 [NER_DEEP_ANALYSIS] ModelServiceClient.get_ner_entities() STARTED [{client_start:.6f}]")
+        
         request_data = {
             "text": text
         }
@@ -645,11 +646,17 @@ class ModelServiceClient:
         if entity_types:
             request_data["entity_types"] = entity_types
         
-        return await self._send_request(
+        zmq_start = time.time()
+        print(f"🔍 [NER_DEEP_ANALYSIS] About to call _send_request() [{zmq_start:.6f}]")
+        result = await self._send_request(
             AICOTopics.MODELSERVICE_NER_REQUEST,
             AICOTopics.MODELSERVICE_NER_RESPONSE,
             request_data
         )
+        client_end = time.time()
+        client_duration = client_end - client_start
+        print(f"🔍 [NER_DEEP_ANALYSIS] ModelServiceClient.get_ner_entities() COMPLETED in {client_duration*1000:.2f}ms [{client_end:.6f}]")
+        return result
     
     async def get_ner_entities_optimized(self, ner_request: Dict[str, Any]) -> Dict[str, Any]:
         """REPURPOSED: Use existing NER endpoint with optimized parameters."""

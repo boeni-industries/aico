@@ -124,13 +124,14 @@ async def send_message_with_auto_thread(
                 envelope.any_payload.Unpack(conversation_message)
                 
                 logger.debug(f"[API_GATEWAY] Extracted ConversationMessage: {type(conversation_message)}")
-                # Check if this response is for our conversation
-                if conversation_message.message.conversation_id == conversation_id:
+                # Check if this response is for our specific message
+                logger.debug(f"[API_GATEWAY] Response message_id: {conversation_message.message_id}, Expected: {message_id}")
+                if conversation_message.message_id == message_id:
                     ai_response = conversation_message.message.text
-                    logger.info(f"[API_GATEWAY] ✅ AI response extracted: '{ai_response[:100]}...'")
+                    logger.info(f"[API_GATEWAY] ✅ AI response extracted for message_id {message_id}: '{ai_response[:100]}...'")
                     response_received.set()
                 else:
-                    logger.debug(f"[API_GATEWAY] Conversation ID mismatch, ignoring response")
+                    logger.debug(f"[API_GATEWAY] Message ID mismatch (got: {conversation_message.message_id}, expected: {message_id}), ignoring response")
                     
             except Exception as e:
                 logger.error(f"Error handling AI response: {e}")
@@ -140,10 +141,13 @@ async def send_message_with_auto_thread(
         # Subscribe to AI response topic
         await bus_client.subscribe("conversation/ai/response/v1", handle_ai_response)
         
-        # Wait for response with timeout
+        # Wait for response with timeout (allow for unoptimized LLM processing)
         try:
-            await asyncio.wait_for(response_received.wait(), timeout=30.0)
+            logger.info(f"🔍 [CONVERSATION_TIMEOUT] Waiting for response with 15s timeout for request: {message_id}")
+            await asyncio.wait_for(response_received.wait(), timeout=15.0)
+            logger.info(f"🔍 [CONVERSATION_TIMEOUT] ✅ Response received within timeout for request: {message_id}")
         except asyncio.TimeoutError:
+            logger.error(f"🔍 [CONVERSATION_TIMEOUT] ❌ 15-SECOND TIMEOUT for request: {message_id}")
             ai_response = "Request timed out - please try again"
         finally:
             # Unsubscribe from the topic

@@ -118,7 +118,9 @@ class ContextAssembler:
         assembly_start = datetime.utcnow()
         
         try:
-            print(f"⏱️ [TIMING] Context assembly started for user {user_id}")
+            import time
+            timestamp = time.time()
+            print(f"⏱️ [TIMING] Context assembly started for user {user_id} [{timestamp:.6f}]")
             logger.info(f"🧠 Assembling context for user {user_id} with sovereign excellence")
             
             # Retrieve context from all available memory tiers
@@ -129,10 +131,14 @@ class ContextAssembler:
             # Get working memory context (immediate conversation)
             try:
                 working_start = datetime.utcnow()
-                print(f"⏱️ [TIMING] Starting working memory retrieval...")
+                import time
+                timestamp = time.time()
+                print(f"⏱️ [TIMING] Starting working memory retrieval... [{timestamp:.6f}]")
                 working_items = await self._get_working_context(user_id)
                 working_time = (datetime.utcnow() - working_start).total_seconds() * 1000
-                print(f"⏱️ [TIMING] Working memory completed in {working_time:.2f}ms")
+                import time
+                timestamp = time.time()
+                print(f"⏱️ [TIMING] Working memory completed in {working_time:.2f}ms [{timestamp:.6f}]")
                 all_items.extend(working_items or [])
                 logger.debug(f"Retrieved {len(working_items or [])} items from working memory")
             except Exception as e:
@@ -141,7 +147,9 @@ class ContextAssembler:
             # PHASE 1: Re-enable semantic context retrieval with timeout and fallback
             try:
                 semantic_start = datetime.utcnow()
-                print(f"⏱️ [TIMING] Starting PROTECTED semantic memory retrieval...")
+                import time
+                timestamp = time.time()
+                print(f"⏱️ [TIMING] Starting PROTECTED semantic memory retrieval... [{timestamp:.6f}]")
                 
                 # PHASE 1: Use timeout to prevent blocking
                 semantic_timeout = 1.0  # Reduced timeout since embeddings work instantly
@@ -151,19 +159,21 @@ class ContextAssembler:
                 )
                 
                 semantic_time = (datetime.utcnow() - semantic_start).total_seconds() * 1000
-                print(f"⏱️ [TIMING] Protected semantic memory completed in {semantic_time:.2f}ms")
+                import time
+                timestamp = time.time()
+                print(f"⏱️ [TIMING] Protected semantic memory completed in {semantic_time:.2f}ms [{timestamp:.6f}]")
                 all_items.extend(semantic_items or [])
                 logger.debug(f"Retrieved {len(semantic_items or [])} items from semantic memory")
                 
             except asyncio.TimeoutError:
                 semantic_time = (datetime.utcnow() - semantic_start).total_seconds() * 1000
                 print(f"🚨 [SEMANTIC_CONTEXT] ⚠️ FALLBACK: Semantic retrieval timed out after {semantic_time:.2f}ms")
-                logger.warning(f"Semantic context retrieval timed out after {semantic_time:.2f}ms - using fallback")
+                logger.warning(f"⚠️  SEMANTIC FALLBACK: Context retrieval timed out after {semantic_time:.2f}ms - graceful degradation active")
                 # Continue without semantic context (graceful degradation)
             except Exception as e:
                 semantic_time = (datetime.utcnow() - semantic_start).total_seconds() * 1000
                 print(f"🚨 [SEMANTIC_CONTEXT] ⚠️ FALLBACK: Semantic retrieval failed after {semantic_time:.2f}ms: {e}")
-                logger.warning(f"Semantic memory context retrieval failed: {e} - using fallback")
+                logger.warning(f"⚠️  SEMANTIC FALLBACK: Context retrieval failed: {e} - graceful degradation active")
             
             # V2: Episodic and procedural memory retrieval removed
             
@@ -199,7 +209,9 @@ class ContextAssembler:
             }
             
             total_time = (datetime.utcnow() - assembly_start).total_seconds() * 1000
-            print(f"⏱️ [TIMING] TOTAL context assembly completed in {total_time:.2f}ms")
+            import time
+            timestamp = time.time()
+            print(f"⏱️ [TIMING] TOTAL context assembly completed in {total_time:.2f}ms [{timestamp:.6f}]")
             logger.info(f"✨ Context assembled with {len(final_items)} items in {context['assembly_time_ms']:.2f}ms")
             return context
             

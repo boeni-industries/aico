@@ -14,6 +14,7 @@ Design Principles:
 import asyncio
 import logging
 import uuid
+import time
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
@@ -130,7 +131,7 @@ class ConversationEngine(BaseService):
         
         
         self.max_context_messages = engine_config.get("max_context_messages", 10)
-        self.response_timeout = engine_config.get("response_timeout_seconds", 30.0)
+        self.response_timeout = engine_config.get("response_timeout_seconds", 15.0)
         self.default_response_mode = ResponseMode(engine_config.get("default_response_mode", "text_only"))
         
 
@@ -238,7 +239,9 @@ class ConversationEngine(BaseService):
     async def _handle_user_input(self, message) -> None:
         """Handle incoming user input message"""
         try:
-            print(f"💬 [CONVERSATION_ENGINE] 🔥 RECEIVED USER INPUT MESSAGE!")
+            import time
+            timestamp = time.time()
+            print(f"💬 [CONVERSATION_ENGINE] 🔥 RECEIVED USER INPUT MESSAGE! [{timestamp:.6f}]")
             print(f"💬 [CONVERSATION_ENGINE] Message type: {type(message)}")
             self.logger.info(f"💬 [CONVERSATION_ENGINE] 🔥 RECEIVED USER INPUT MESSAGE!")
             self.logger.info(f"💬 [CONVERSATION_ENGINE] Message type: {type(message)}")
@@ -368,8 +371,9 @@ class ConversationEngine(BaseService):
     async def _generate_response(self, thread: ConversationThread, user_message: ConversationMessage) -> None:
         """Generate and deliver response based on enabled features"""
         try:
-            request_id = str(uuid.uuid4())
-            print(f"💬 [CONVERSATION_ENGINE] 🎯 Request ID: {request_id}")
+            # Use the message_id from the API Gateway as request_id for proper correlation
+            request_id = user_message.message_id if user_message.message_id else str(uuid.uuid4())
+            print(f"💬 [CONVERSATION_ENGINE] 🎯 Request ID: {request_id} (from API Gateway: {user_message.message_id})")
             
             # Initialize response tracking
             self.pending_responses[request_id] = {
@@ -410,6 +414,7 @@ class ConversationEngine(BaseService):
                 print(f"💬 [CONVERSATION_ENGINE] ⏳ Waiting for {len(components_needed)} components to complete")
             
             # Set timeout - normal responses should be 1-6 seconds
+            self.logger.info(f"🔍 [ENGINE_FLOW] Request {request_id} created, starting timeout handler")
             asyncio.create_task(self._response_timeout_handler(request_id))
             
         except Exception as e:
@@ -491,6 +496,10 @@ class ConversationEngine(BaseService):
     
     async def _request_memory_retrieval(self, request_id: str, thread: ConversationThread, message: ConversationMessage) -> None:
         """Simple memory integration - store message and get context"""
+        import time
+        start_time = time.time()
+        self.logger.info(f"🔍 [MEMORY_TIMING] Starting memory retrieval for request {request_id}")
+        
         try:
             memory_manager = ai_registry.get("memory")
             if not memory_manager:
@@ -502,18 +511,30 @@ class ConversationEngine(BaseService):
             message_text = message.message.text
             
             # Store user message
+            store_start = time.time()
+            self.logger.info(f"🔍 [MEMORY_TIMING] Starting store_message for request {request_id}")
             await memory_manager.store_message(user_id, conversation_id, message_text, "user")
+            store_duration = time.time() - store_start
+            self.logger.info(f"🔍 [MEMORY_TIMING] store_message completed in {store_duration:.3f}s for request {request_id}")
             
             # Get context for response generation
+            context_start = time.time()
+            self.logger.info(f"🔍 [MEMORY_TIMING] Starting assemble_context for request {request_id}")
             context = await memory_manager.assemble_context(user_id, message_text)
+            context_duration = time.time() - context_start
+            self.logger.info(f"🔍 [MEMORY_TIMING] assemble_context completed in {context_duration:.3f}s for request {request_id}")
             
             # Store context for LLM generation
             if request_id in self.pending_responses:
                 self.pending_responses[request_id]["components_ready"]["memory"] = {"memory_context": context}
                 await self._check_response_completion(request_id)
                 
+            total_duration = time.time() - start_time
+            self.logger.info(f"🔍 [MEMORY_TIMING] Total memory retrieval completed in {total_duration:.3f}s for request {request_id}")
+                
         except Exception as e:
-            self.logger.error(f"Memory integration failed: {e}")
+            total_duration = time.time() - start_time
+            self.logger.error(f"🔍 [MEMORY_TIMING] Memory integration failed after {total_duration:.3f}s: {e}")
             # Fail fast - no degraded functionality
             if request_id in self.pending_responses:
                 self.pending_responses[request_id]["components_ready"]["memory"] = {"memory_context": {}}
@@ -547,7 +568,9 @@ class ConversationEngine(BaseService):
     async def _check_response_completion(self, request_id: str) -> None:
         """Check if all components are ready and generate final response"""
         try:
-            print(f"💬 [CONVERSATION_ENGINE] 🔍 Checking response completion for {request_id}")
+            import time
+            timestamp = time.time()
+            print(f"💬 [CONVERSATION_ENGINE] 🔍 Checking response completion for {request_id} [{timestamp:.6f}]")
             
             if request_id not in self.pending_responses:
                 print(f"💬 [CONVERSATION_ENGINE] ❌ Request {request_id} not found in pending_responses")
@@ -557,10 +580,14 @@ class ConversationEngine(BaseService):
             needed = set(pending_data["components_needed"])
             ready = set(pending_data["components_ready"].keys())
             
-            print(f"💬 [CONVERSATION_ENGINE] 📊 Components needed: {needed}, ready: {ready}")
+            import time
+            timestamp = time.time()
+            print(f"💬 [CONVERSATION_ENGINE] 📊 Components needed: {needed}, ready: {ready} [{timestamp:.6f}]")
             
             if needed.issubset(ready):
-                print(f"💬 [CONVERSATION_ENGINE] ✅ All components ready! Generating LLM response...")
+                import time
+                timestamp = time.time()
+                print(f"💬 [CONVERSATION_ENGINE] ✅ All components ready! Generating LLM response... [{timestamp:.6f}]")
                 # All components ready, generate LLM response
                 thread = pending_data["thread"]
                 user_message = pending_data["user_message"]
@@ -582,7 +609,7 @@ class ConversationEngine(BaseService):
         try:
             import time
             llm_start_time = time.time()
-            print(f"💬 [CONVERSATION_ENGINE] 🧠 GENERATING LLM RESPONSE for {request_id} at {llm_start_time}")
+            print(f"💬 [CONVERSATION_ENGINE] 🧠 GENERATING LLM RESPONSE for {request_id} at {llm_start_time} [{llm_start_time:.6f}]")
             
             # Include memory data in context if available
             if request_id in self.pending_responses and "memory_data" in self.pending_responses[request_id]:
@@ -741,8 +768,11 @@ Respond naturally using relevant context."""
     async def _handle_llm_response(self, response) -> None:
         """Handle LLM completion response and deliver final response"""
         try:
-            print(f"💬 [CONVERSATION_ENGINE] 🎉 RECEIVED LLM RESPONSE!")
+            import time
+            timestamp = time.time()
+            print(f"💬 [CONVERSATION_ENGINE] 🎉 RECEIVED LLM RESPONSE! [{timestamp:.6f}]")
             print(f"💬 [CONVERSATION_ENGINE] Response type: {type(response)}")
+            self.logger.info(f"🔍 [ENGINE_FLOW] LLM response received, processing...")
             print(f"💬 [CONVERSATION_ENGINE] 🔍 Unpacking CompletionsResponse...")
             
             # Unpack the LLM response from AicoMessage envelope
@@ -763,6 +793,7 @@ Respond naturally using relevant context."""
                 # Get correlation ID from envelope metadata
                 correlation_id = response.metadata.attributes.get("correlation_id")
                 print(f"💬 [CONVERSATION_ENGINE] 🆔 Extracted correlation_id: {correlation_id}")
+                self.logger.info(f"🔍 [ENGINE_FLOW] LLM response correlation_id: {correlation_id}")
                 self.logger.debug(f"Received LLM response with correlation_id: {correlation_id}")
             except Exception as e:
                 print(f"💬 [CONVERSATION_ENGINE] ❌ Failed to extract correlation_id: {e}")
@@ -775,6 +806,7 @@ Respond naturally using relevant context."""
             # Find matching request using correlation ID
             if correlation_id and correlation_id in self.pending_responses:
                 print(f"💬 [CONVERSATION_ENGINE] ✅ Found matching request for {correlation_id}")
+                self.logger.info(f"🔍 [ENGINE_FLOW] ✅ Found matching request for correlation_id: {correlation_id}")
                 request_id = correlation_id
                 pending_data = self.pending_responses[request_id]
                 thread = pending_data["thread"]
@@ -817,7 +849,8 @@ Respond naturally using relevant context."""
                         self.logger.error(f"Failed to store AI response: {e}")
                 
                 # Deliver response
-                await self._deliver_response(thread, response_components)
+                self.logger.info(f"🔍 [ENGINE_FLOW] ✅ Delivering response for correlation_id: {correlation_id}")
+                await self._deliver_response(thread, response_components, correlation_id)
                 
                 # Clean up (but only if not being used by direct API)
                 if request_id in self.pending_responses and not self.pending_responses[request_id].get("direct_api_call"):
@@ -826,6 +859,8 @@ Respond naturally using relevant context."""
                 else:
                     print(f"💬 [CONVERSATION_ENGINE] 🔒 Keeping request {request_id} (direct_api_call or already cleaned)")
             else:
+                self.logger.error(f"🔍 [ENGINE_FLOW] ❌ NO MATCHING REQUEST for correlation_id: {correlation_id}")
+                self.logger.error(f"🔍 [ENGINE_FLOW] Available pending requests: {list(self.pending_responses.keys())}")
                 self.logger.warning(f"No matching request found for correlation_id: {correlation_id}")
                 self.logger.debug(f"Pending requests: {list(self.pending_responses.keys())}")
                     
@@ -896,16 +931,23 @@ Respond naturally using relevant context."""
         
         return None
     
-    async def _deliver_response(self, thread: ConversationThread, response_components: ResponseComponents) -> None:
+    async def _deliver_response(self, thread: ConversationThread, response_components: ResponseComponents, message_id: str = None) -> None:
         """Deliver multimodal response to user"""
         try:
-            print(f"💬 [CONVERSATION_ENGINE] 📤 DELIVERING RESPONSE!")
+            import time
+            timestamp = time.time()
+            print(f"💬 [CONVERSATION_ENGINE] 📤 DELIVERING RESPONSE! [{timestamp:.6f}]")
             print(f"💬 [CONVERSATION_ENGINE] Response text: {response_components.text[:100]}...")
             
             # Create AI response message
             ai_message = ConversationMessage()
             ai_message.timestamp.GetCurrentTime()
             ai_message.source = "conversation_engine"
+            
+            # Set the message_id to match the original request for proper correlation
+            if message_id:
+                ai_message.message_id = message_id
+                print(f"💬 [CONVERSATION_ENGINE] 🆔 Setting response message_id: {message_id}")
             
             ai_message.message.text = response_components.text
             ai_message.message.type = Message.MessageType.SYSTEM_RESPONSE
@@ -946,12 +988,20 @@ Respond naturally using relevant context."""
  
     
     async def _response_timeout_handler(self, request_id: str) -> None:
-        """Handle response timeout"""
-        await asyncio.sleep(self.response_timeout)
-        
-        if request_id in self.pending_responses:
-            self.logger.warning(f"Response timeout for request {request_id}")
-            await self._cleanup_request(request_id)
+        """Handle response timeout for a specific request"""
+        try:
+            self.logger.info(f"🔍 [ENGINE_TIMEOUT] Starting timeout handler for request: {request_id}")
+            await asyncio.sleep(self.response_timeout)
+            
+            # Check if request is still pending after timeout
+            if request_id in self.pending_responses:
+                self.logger.error(f"🔍 [ENGINE_TIMEOUT] ❌ REQUEST TIMED OUT after {self.response_timeout}s: {request_id}")
+                await self._cleanup_request(request_id)
+            else:
+                self.logger.info(f"🔍 [ENGINE_TIMEOUT] ✅ Request completed before timeout: {request_id}")
+                
+        except Exception as e:
+            self.logger.error(f"Error in timeout handler for {request_id}: {e}")
     
     async def _cleanup_request(self, request_id: str) -> None:
         """Clean up completed or timed out request"""
@@ -974,3 +1024,37 @@ Respond naturally using relevant context."""
                 "agency": self.enable_agency
             }
         }
+    
+    async def stop(self) -> None:
+        """Stop service operations - integrates with AICO service container shutdown"""
+        self.logger.warning(f"🔄 CONVERSATION ENGINE: Stopping service and AI components")
+        start_time = time.time()
+        
+        try:
+            # Signal global shutdown to semantic memory components
+            from aico.ai.memory.request_queue import _set_global_shutdown
+            _set_global_shutdown()
+            
+            # Shutdown memory manager (includes semantic memory with thread pools)
+            memory_manager = ai_registry.get("memory")
+            if memory_manager and hasattr(memory_manager, 'shutdown'):
+                await memory_manager.shutdown(timeout=20.0)  # Leave time for other services
+                self.logger.info("Memory manager shutdown completed")
+            
+            # Shutdown message bus client
+            if self.bus_client:
+                # MessageBusClient doesn't have async shutdown, but we should close it
+                # TODO: Add proper shutdown to MessageBusClient if needed
+                self.bus_client = None
+            
+            # Clear conversation state
+            self.user_contexts.clear()
+            self.conversation_threads.clear()
+            self.pending_responses.clear()
+            
+            total_time = time.time() - start_time
+            self.logger.warning(f"✅ CONVERSATION ENGINE: Service stopped in {total_time:.2f}s")
+            
+        except Exception as e:
+            self.logger.error(f"Error during conversation engine stop: {e}")
+            raise

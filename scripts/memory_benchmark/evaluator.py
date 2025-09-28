@@ -527,8 +527,10 @@ class MemoryIntelligenceEvaluator:
             # Authenticate user after successful handshake
             await self._authenticate_user()
         except Exception as e:
-            print(f"⚠️ Handshake/auth failed, trying direct connection: {e}")
-            # Continue without encryption for testing
+            print(f"❌ Handshake/auth FAILED: {e}")
+            import traceback
+            print(f"   Full traceback: {traceback.format_exc()}")
+            raise  # Don't continue without proper auth - this causes 500 errors
         
         try:
             # Execute each conversation turn
@@ -541,15 +543,15 @@ class MemoryIntelligenceEvaluator:
                 message_data = {
                     "message": turn.user_message,
                     "message_type": "text",
-                    "context": turn.context_hints or {}
+                    "metadata": turn.context_hints or {}  # Fixed: "context" -> "metadata"
                 }
                 print(f"💬 Turn {i+1}: {turn.user_message[:50]}...")
-                timeout_msg = "180s"
+                timeout_msg = "20s"
                 print(f"   🧠 Processing memory operations (may take up to {timeout_msg})...")
                 
-                # Send encrypted message request with timeout (generous for memory processing)
-                # Use longer timeout for Turn 2 which has more complex processing
-                timeout_seconds = 180.0  # 3 minutes for all turns due to embedding processing
+                # Send encrypted message request with timeout (match backend timeout)
+                # Allow for unoptimized LLM processing + buffer
+                timeout_seconds = 20.0  # 20 seconds to match backend 15s timeout + buffer
                 try:
                     response_data = await asyncio.wait_for(
                         self._send_encrypted_request("/api/v1/conversation/messages", message_data),

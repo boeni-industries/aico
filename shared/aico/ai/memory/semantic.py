@@ -28,6 +28,7 @@ from chromadb.config import Settings
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths
+from .request_queue import SemanticRequestQueue
 
 logger = get_logger("shared", "ai.memory.semantic")
 
@@ -57,6 +58,16 @@ class SemanticMemoryStore:
         self._collection = None
         self._modelservice = None
         
+        # Modern async request queue for controlled processing
+        self._request_queue = SemanticRequestQueue(
+            max_concurrent=2,  # Limit concurrent requests to prevent overload
+            rate_limit_per_second=3.0,  # Conservative rate limiting
+            circuit_failure_threshold=3,  # Quick circuit breaker
+            circuit_timeout=15.0,  # Fast recovery
+            batch_size=5,  # Smaller batches for responsiveness
+            batch_timeout=0.5  # Quick batch processing
+        )
+        
         # Configuration
         memory_config = self.config.get("core.memory.semantic", {})
         
@@ -74,13 +85,19 @@ class SemanticMemoryStore:
     def set_modelservice(self, modelservice):
         """Inject modelservice dependency"""
         self._modelservice = modelservice
+        # Inject into request queue for batch processing
+        self._request_queue._modelservice = modelservice
     
     async def initialize(self) -> None:
-        """Initialize ChromaDB connection"""
+        """Initialize semantic memory store with request queue"""
         if self._initialized:
             return
             
         try:
+            # Start the request queue first
+            await self._request_queue.start(num_workers=2)
+            logger.info("Semantic request queue started with controlled processing")
+            
             # Initialize ChromaDB
             self._chroma_client = chromadb.PersistentClient(
                 path=str(self._db_path),
@@ -110,17 +127,80 @@ class SemanticMemoryStore:
             logger.error(f"Failed to initialize semantic memory store: {e}")
             raise
     
+    async def shutdown(self, timeout: float = 20.0) -> None:
+        """Gracefully shutdown semantic memory store - integrates with AICO service shutdown"""
+        if not self._initialized:
+            return
+            
+        logger.warning(f"🔄 SEMANTIC STORE: Shutting down with {timeout}s timeout")
+        start_time = time.time()
+        
+        try:
+            # Stop the request queue with timeout
+            if self._request_queue:
+                remaining_time = max(5.0, timeout - (time.time() - start_time))  # Minimum 5s for queue
+                await self._request_queue.stop(timeout=remaining_time)
+                logger.info("Semantic request queue stopped")
+            
+            # Close ChromaDB connection
+            if self._chroma_client:
+                # ChromaDB doesn't need explicit closing
+                self._chroma_client = None
+                self._collection = None
+            
+            self._initialized = False
+            
+            total_time = time.time() - start_time
+            logger.warning(f"✅ SEMANTIC STORE: Shutdown completed in {total_time:.2f}s")
+            
+        except Exception as e:
+            logger.error(f"Error during semantic memory shutdown: {e}")
+            raise
+    
     async def store_fact(self, fact: UserFact) -> bool:
         """Store a single user fact"""
+        import time
+        store_fact_start = time.time()
+        print(f"🔍 [FULL_TRACE] store_fact() STARTED for: '{fact.content[:30]}...' [{store_fact_start:.6f}]")
+        
         if not self._initialized:
+            init_start = time.time()
             await self.initialize()
+            init_duration = time.time() - init_start
+            print(f"🔍 [FULL_TRACE] Initialization took {init_duration*1000:.2f}ms [{time.time():.6f}]")
         
         if not self._modelservice:
             raise RuntimeError("Modelservice required for fact storage")
         
         try:
-            # Generate embedding for fact content
-            embedding = await self._generate_embedding(fact.content)
+            # Generate embedding using request queue (controlled, rate-limited)
+            embedding_start = time.time()
+            print(f"🔍 [FULL_TRACE] Starting QUEUE-BASED embedding generation [{embedding_start:.6f}]")
+            try:
+                embedding = await self._request_queue.submit_request(
+                    operation='embedding',
+                    data={'text': fact.content},
+                    priority=1,  # High priority for fact storage
+                    timeout=5.0  # Reasonable timeout
+                )
+                embedding_duration = time.time() - embedding_start
+                print(f"🔍 [FULL_TRACE] QUEUE embedding completed in {embedding_duration*1000:.2f}ms [{time.time():.6f}]")
+            except RuntimeError as e:
+                embedding_duration = time.time() - embedding_start
+                if "shutdown" in str(e).lower():
+                    print(f"🔍 [FULL_TRACE] QUEUE embedding CANCELLED due to shutdown in {embedding_duration*1000:.2f}ms [{time.time():.6f}]")
+                    logger.warning(f"⚠️  SEMANTIC SHUTDOWN: Fact storage cancelled during shutdown: {e}")
+                    return False
+                else:
+                    print(f"🔍 [FULL_TRACE] QUEUE embedding FAILED in {embedding_duration*1000:.2f}ms: {e} [{time.time():.6f}]")
+                    logger.error(f"Queue-based embedding failed: {e}")
+                    return False
+            except Exception as e:
+                embedding_duration = time.time() - embedding_start
+                print(f"🔍 [FULL_TRACE] QUEUE embedding FAILED in {embedding_duration*1000:.2f}ms: {e} [{time.time():.6f}]")
+                logger.error(f"Queue-based embedding failed: {e}")
+                return False
+            
             if not embedding:
                 logger.error(f"Failed to generate embedding for fact: {fact.content[:50]}...")
                 return False
@@ -128,33 +208,45 @@ class SemanticMemoryStore:
             # Create fact ID
             fact_id = f"fact_{fact.user_id}_{int(fact.valid_from.timestamp())}"
             
-            # Prepare metadata for ChromaDB
+            # Prepare metadata for ChromaDB (no None values allowed)
             metadata = {
                 "user_id": fact.user_id,
                 "fact_type": fact.fact_type,
                 "category": fact.category,
                 "confidence": fact.confidence,
-                "is_immutable": fact.is_immutable,
+                "is_immutable": str(fact.is_immutable),  # Convert bool to string
                 "valid_from": fact.valid_from.isoformat(),
-                "valid_until": fact.valid_until.isoformat() if fact.valid_until else None,
                 "entities": json.dumps(fact.entities),
                 "source_conversation_id": fact.source_conversation_id,
                 "created_at": datetime.utcnow().isoformat()
             }
             
+            # Only add valid_until if it exists (ChromaDB doesn't accept None)
+            if fact.valid_until:
+                metadata["valid_until"] = fact.valid_until.isoformat()
+            
             # Store in ChromaDB
+            chromadb_start = time.time()
+            print(f"🔍 [FULL_TRACE] Starting ChromaDB storage [{chromadb_start:.6f}]")
+            logger.info(f"🔍 [CHROMADB_STORE] Attempting to store fact with metadata: {metadata}")
             self._collection.add(
                 documents=[fact.content],
                 embeddings=[embedding],
                 metadatas=[metadata],
                 ids=[fact_id]
             )
+            chromadb_duration = time.time() - chromadb_start
+            print(f"🔍 [FULL_TRACE] ChromaDB storage completed in {chromadb_duration*1000:.2f}ms [{time.time():.6f}]")
             
-            logger.info(f"Stored fact: {fact.content[:50]}... (confidence: {fact.confidence})")
+            store_fact_total = time.time() - store_fact_start
+            print(f"🔍 [FULL_TRACE] store_fact() COMPLETED in {store_fact_total*1000:.2f}ms [{time.time():.6f}]")
+            logger.info(f"🔍 [CHROMADB_STORE] ✅ SUCCESS: Stored fact: {fact.content[:50]}... (confidence: {fact.confidence})")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to store fact: {e}")
+            logger.error(f"🔍 [CHROMADB_STORE] ❌ FAILED to store fact: {e}")
+            logger.error(f"🔍 [CHROMADB_STORE] Fact content: {fact.content}")
+            logger.error(f"🔍 [CHROMADB_STORE] Metadata: {metadata}")
             return False
     
     async def query(self, query_text: str, max_results: int = None, 
@@ -167,10 +259,26 @@ class SemanticMemoryStore:
             raise RuntimeError("Modelservice required for querying")
         
         try:
-            # Generate query embedding
-            query_embedding = await self._generate_embedding(query_text)
-            if not query_embedding:
-                logger.error("Failed to generate query embedding")
+            # Generate query embedding using request queue
+            try:
+                query_embedding = await self._request_queue.submit_request(
+                    operation='embedding',
+                    data={'text': query_text},
+                    priority=2,  # High priority for queries
+                    timeout=2.0  # Fast timeout for queries
+                )
+                if not query_embedding:
+                    logger.error("Failed to generate query embedding")
+                    return []
+            except RuntimeError as e:
+                if "shutdown" in str(e).lower():
+                    logger.warning(f"⚠️  SEMANTIC SHUTDOWN: Query cancelled during shutdown: {e}")
+                    return []
+                else:
+                    logger.error(f"Queue-based query embedding failed: {e}")
+                    return []
+            except Exception as e:
+                logger.error(f"Queue-based query embedding failed: {e}")
                 return []
             
             # Prepare ChromaDB filters
@@ -183,14 +291,21 @@ class SemanticMemoryStore:
                 if "category" in filters:
                     where_clause["category"] = filters["category"]
             
-            # Query ChromaDB (make async to prevent blocking)
+            # Query ChromaDB with timeout protection
             import asyncio
-            results = await asyncio.to_thread(
-                self._collection.query,
-                query_embeddings=[query_embedding],
-                n_results=max_results or self._max_results,
-                where=where_clause if where_clause else None
-            )
+            try:
+                results = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self._collection.query,
+                        query_embeddings=[query_embedding],
+                        n_results=max_results or self._max_results,
+                        where=where_clause if where_clause else None
+                    ),
+                    timeout=0.5  # 500ms timeout for ChromaDB queries
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"ChromaDB query timed out after 500ms for query: {query_text[:50]}...")
+                return []
             
             # Format results
             formatted_results = []
@@ -198,180 +313,155 @@ class SemanticMemoryStore:
                 for i, doc in enumerate(results["documents"][0]):
                     metadata = results["metadatas"][0][i] if results["metadatas"] else {}
                     distance = results["distances"][0][i] if results["distances"] else 0.0
-                    similarity = 1.0 - distance  # Convert distance to similarity
-                    
                     formatted_results.append({
                         "content": doc,
-                        "similarity": similarity,
-                        "metadata": metadata
+                        "metadata": metadata,
+                        "distance": distance
                     })
             
-            logger.debug(f"Query '{query_text}' returned {len(formatted_results)} results")
             return formatted_results
             
         except Exception as e:
-            logger.error(f"Failed to query facts: {e}")
+            logger.error(f"Failed to query semantic memory: {e}")
             return []
     
-    async def store_message(self, user_id: str, conversation_id: str, 
-                          content: str, role: str) -> bool:
-        """Store message with fact extraction using GLiNER + LLM"""
+    async def store_message(self, user_id: str, conversation_id: str, content: str, role: str) -> bool:
+        """Store message and extract facts"""
+        import time
+        start_time = time.time()
+        print(f"🔍 [NER_DEEP_ANALYSIS] SemanticMemoryStore.store_message() STARTED [{start_time:.6f}]")
+        logger.info(f"🔍 [SEMANTIC_TIMING] SemanticMemoryStore.store_message() started")
+        
         try:
-            # Only extract facts from user messages
             if role == "user" and content.strip() and len(content.strip()) > 5:
-                facts = await self._extract_facts(content, user_id, conversation_id)
+                logger.info(f"🔍 [FACT_PIPELINE] ✅ STARTING fact extraction for user message: '{content[:100]}...'")
                 
-                # Store extracted facts
+                extract_start = time.time()
+                logger.info(f"🔍 [SEMANTIC_TIMING] Starting fact extraction...")
+                facts = await self._extract_facts(content, user_id, conversation_id)
+                extract_duration = time.time() - extract_start
+                logger.info(f"🔍 [SEMANTIC_TIMING] Fact extraction completed in {extract_duration:.3f}s, found {len(facts)} facts")
+                
+                if not facts:
+                    logger.info(f"🔍 [FACT_PIPELINE] ❌ NO FACTS extracted - nothing to store")
+                    total_duration = time.time() - start_time
+                    logger.info(f"🔍 [SEMANTIC_TIMING] SemanticMemoryStore.store_message() completed in {total_duration:.3f}s")
+                    return True
+                
+                store_start = time.time()
+                print(f"🔍 [FULL_TRACE] Starting storage of {len(facts)} facts [{store_start:.6f}]")
+                logger.info(f"🔍 [SEMANTIC_TIMING] Starting fact storage for {len(facts)} facts...")
                 stored_count = 0
-                for fact in facts:
-                    if await self.store_fact(fact):
+                for i, fact in enumerate(facts):
+                    fact_start = time.time()
+                    print(f"🔍 [FULL_TRACE] Storing fact {i+1}/{len(facts)}: '{fact.content[:30]}...' [{fact_start:.6f}]")
+                    success = await self.store_fact(fact)
+                    fact_duration = time.time() - fact_start
+                    print(f"🔍 [FULL_TRACE] Fact {i+1} storage completed in {fact_duration*1000:.2f}ms (success: {success}) [{time.time():.6f}]")
+                    if success:
                         stored_count += 1
+                        logger.info(f"🔍 [SEMANTIC_TIMING] Fact {i+1}/{len(facts)} stored in {fact_duration:.3f}s")
+                    else:
+                        logger.error(f"🔍 [SEMANTIC_TIMING] Fact {i+1}/{len(facts)} failed to store in {fact_duration:.3f}s")
+                
+                store_duration = time.time() - store_start
+                logger.info(f"🔍 [SEMANTIC_TIMING] All fact storage completed in {store_duration:.3f}s")
                 
                 if stored_count > 0:
                     logger.info(f"Extracted and stored {stored_count} facts using fact extraction pipeline")
-                
+            else:
+                logger.info(f"🔍 [FACT_PIPELINE] ❌ SKIPPED - role='{role}', content_length={len(content.strip()) if content else 0}")
+            
+            total_duration = time.time() - start_time
+            logger.info(f"🔍 [SEMANTIC_TIMING] SemanticMemoryStore.store_message() completed in {total_duration:.3f}s")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to extract facts using fact extraction pipeline: {e}")
+            total_duration = time.time() - start_time
+            logger.error(f"🔍 [SEMANTIC_TIMING] Failed to store message after {total_duration:.3f}s: {e}")
             return False
     
     async def _extract_facts(self, content: str, user_id: str, conversation_id: str) -> List[UserFact]:
-        """Fact extraction using GLiNER + LLM via modelservice"""
+        """V2: Simple direct fact extraction using basic NER"""
         if not self._modelservice:
             logger.warning("Modelservice not available for fact extraction")
             return []
         
         try:
-            # Step 1: Extract entities using GLiNER via modelservice
-            entities = await self._extract_entities_gliner(content)
+            import time
+            ner_start = time.time()
+            print(f"🔍 [NER_DEEP_ANALYSIS] _extract_facts() STARTING NER call [{ner_start:.6f}]")
+            logger.info(f"🔍 [FACT_EXTRACTION] Starting simple fact extraction for: {content[:50]}...")
             
-            # Step 2: Classify facts using LLM via modelservice  
-            facts = await self._classify_facts_llm(content, entities, user_id, conversation_id)
+            # Simple NER call without complex optimization
+            ner_result = await self._modelservice.get_ner_entities(content)
+            ner_end = time.time()
+            ner_duration = ner_end - ner_start
+            print(f"🔍 [NER_DEEP_ANALYSIS] NER call COMPLETED in {ner_duration*1000:.2f}ms [{ner_end:.6f}]")
             
+            if not ner_result.get("success", False):
+                logger.warning(f"🔍 [FACT_EXTRACTION] NER failed: {ner_result.get('error', 'Unknown error')}")
+                return []
+            
+            entities_dict = ner_result.get("data", {}).get("entities", {})
+            logger.info(f"🔍 [FACT_EXTRACTION] Extracted entities by type: {entities_dict}")
+            
+            # Convert entities dict to list of entity objects
+            entities = []
+            for entity_type, entity_texts in entities_dict.items():
+                for entity_text in entity_texts:
+                    entities.append({
+                        'text': entity_text,
+                        'label': entity_type.lower(),
+                        'confidence': 0.8  # Default confidence since GLiNER filtered already
+                    })
+            
+            logger.info(f"🔍 [FACT_EXTRACTION] Converted to {len(entities)} entity objects: {entities}")
+            
+            if not entities:
+                logger.info(f"🔍 [FACT_STORAGE] ❌ NO ENTITIES - No facts will be created from text: '{content[:100]}...'")
+                return []
+            
+            facts_start = time.time()
+            print(f"🔍 [FULL_TRACE] Starting fact creation from {len(entities)} entities [{facts_start:.6f}]")
+            
+            facts = []
+            for i, entity in enumerate(entities):
+                entity_start = time.time()
+                entity_text = entity.get('text', '')
+                entity_label = entity.get('label', 'unknown')
+                entity_confidence = entity.get('confidence', 0.8)
+                
+                print(f"🔍 [FULL_TRACE] Creating fact {i+1}/{len(entities)}: '{entity_text}' [{entity_start:.6f}]")
+                logger.info(f"🔍 [FACT_CREATION_{i}] Creating fact from entity: text='{entity_text}', label='{entity_label}', confidence={entity_confidence}")
+                
+                # Create simple facts from entities
+                fact = UserFact(
+                    user_id=user_id,
+                    content=f"{entity_label}: {entity_text}",
+                    fact_type="entity",
+                    category="personal",
+                    confidence=entity_confidence,
+                    source_conversation_id=conversation_id,
+                    is_immutable=False,  # Entity facts can change
+                    valid_from=datetime.utcnow(),
+                    valid_until=None,  # No expiration for entity facts
+                    entities=[entity_text]  # Store the entity text
+                )
+                facts.append(fact)
+                entity_end = time.time()
+                print(f"🔍 [FULL_TRACE] Fact {i+1} created in {(entity_end-entity_start)*1000:.2f}ms [{entity_end:.6f}]")
+                logger.info(f"🔍 [FACT_CREATION_{i}] ✅ Created fact: '{fact.content}'")
+            
+            logger.info(f"🔍 [FACT_EXTRACTION] ✅ Created {len(facts)} facts from {len(entities)} entities")
             return facts
             
         except Exception as e:
-            logger.error(f"Fact extraction failed: {e}")
+            logger.error(f"🔍 [FACT_EXTRACTION] Simple fact extraction failed: {e}")
             return []
     
-    async def _extract_entities_gliner(self, text: str) -> List[Dict[str, Any]]:
-        """Extract entities using GLiNER via modelservice NER endpoint"""
-        try:
-            # Call modelservice NER endpoint (GLiNER-based)
-            ner_result = await self._modelservice.get_ner_entities(text)
-            
-            if ner_result and "entities" in ner_result:
-                entities = []
-                for entity in ner_result["entities"]:
-                    entities.append({
-                        "text": entity.get("text", ""),
-                        "label": entity.get("label", ""),
-                        "confidence": entity.get("confidence", 0.0),
-                        "start": entity.get("start", 0),
-                        "end": entity.get("end", 0)
-                    })
-                
-                logger.debug(f"GLiNER extracted {len(entities)} entities: {[e['text'] for e in entities]}")
-                return entities
-            
-            return []
-            
-        except Exception as e:
-            logger.error(f"GLiNER entity extraction failed: {e}")
-            return []
-    
-    async def _classify_facts_llm(self, content: str, entities: List[Dict], 
-                                 user_id: str, conversation_id: str) -> List[UserFact]:
-        """Classify extracted entities into structured facts using LLM"""
-        if not entities:
-            return []
-        
-        try:
-            # Build LLM prompt for fact classification
-            entities_text = ", ".join([f"{e['text']} ({e['label']})" for e in entities])
-            
-            classification_prompt = f"""Analyze this user message and extracted entities to create structured facts.
-
-Message: "{content}"
-Entities: {entities_text}
-
-For each meaningful fact, provide:
-1. fact_type: identity, preference, relationship, or temporal
-2. category: personal_info, preferences, relationships, or general
-3. confidence: 0.0-1.0 based on certainty
-4. is_immutable: true for identity facts, false for preferences
-5. content: clean factual statement
-
-Only extract clear, meaningful facts. Ignore casual mentions.
-
-Format as JSON array of facts."""
-
-            # Call modelservice LLM endpoint
-            llm_result = await self._modelservice.get_completions([{
-                "role": "user", 
-                "content": classification_prompt
-            }])
-            
-            if llm_result and len(llm_result) > 0:
-                response_text = llm_result[0].get("content", "")
-                facts = await self._parse_llm_facts(response_text, entities, user_id, conversation_id)
-                
-                logger.debug(f"LLM classified {len(facts)} facts from entities")
-                return facts
-            
-            return []
-            
-        except Exception as e:
-            logger.error(f"LLM fact classification failed: {e}")
-            return []
-    
-    async def _parse_llm_facts(self, llm_response: str, entities: List[Dict], 
-                              user_id: str, conversation_id: str) -> List[UserFact]:
-        """Parse LLM response into UserFact objects"""
-        facts = []
-        now = datetime.utcnow()
-        
-        try:
-            # Try to extract JSON from LLM response
-            import re
-            json_match = re.search(r'\[.*\]', llm_response, re.DOTALL)
-            if json_match:
-                facts_data = json.loads(json_match.group())
-                
-                for fact_data in facts_data:
-                    if isinstance(fact_data, dict) and "content" in fact_data:
-                        # Extract entity names for this fact
-                        fact_entities = [e["text"] for e in entities 
-                                       if e["text"].lower() in fact_data["content"].lower()]
-                        
-                        # Determine temporal validity
-                        is_immutable = fact_data.get("is_immutable", False)
-                        valid_until = None if is_immutable else now + timedelta(days=365)
-                        
-                        fact = UserFact(
-                            content=fact_data["content"],
-                            fact_type=fact_data.get("fact_type", "temporal"),
-                            category=fact_data.get("category", "general"),
-                            confidence=min(1.0, max(0.0, fact_data.get("confidence", 0.5))),
-                            is_immutable=is_immutable,
-                            valid_from=now,
-                            valid_until=valid_until,
-                            entities=fact_entities,
-                            source_conversation_id=conversation_id,
-                            user_id=user_id
-                        )
-                        
-                        # Only include facts with reasonable confidence
-                        if fact.confidence >= 0.3:
-                            facts.append(fact)
-                
-                logger.debug(f"Parsed {len(facts)} valid facts from LLM response")
-            
-        except Exception as e:
-            logger.error(f"Failed to parse LLM facts: {e}")
-        
-        return facts
+    # V2: Removed complex GLiNER and LLM fact classification methods
+    # Using simple direct NER-based fact extraction instead
     
     async def assemble_context(self, user_id: str, current_message: str) -> Dict[str, Any]:
         """Assemble context from stored facts"""
@@ -399,20 +489,35 @@ Format as JSON array of facts."""
     
     async def _generate_embedding(self, text: str) -> Optional[List[float]]:
         """Generate embedding using modelservice"""
+        import time
+        embed_start = time.time()
+        print(f"🔍 [FULL_TRACE] _generate_embedding() STARTED for: '{text[:30]}...' [{embed_start:.6f}]")
+        
         if not self._modelservice:
             return None
         
         try:
             # Call modelservice for embedding generation
+            modelservice_start = time.time()
+            print(f"🔍 [FULL_TRACE] Calling modelservice.get_embeddings() [{modelservice_start:.6f}]")
             embedding_result = await self._modelservice.get_embeddings(
                 model=self._embedding_model, 
                 prompt=text
             )
+            modelservice_duration = time.time() - modelservice_start
+            print(f"🔍 [FULL_TRACE] modelservice.get_embeddings() completed in {modelservice_duration*1000:.2f}ms [{time.time():.6f}]")
+            
             if embedding_result and embedding_result.get("success"):
+                embed_total = time.time() - embed_start
+                print(f"🔍 [FULL_TRACE] _generate_embedding() SUCCESS in {embed_total*1000:.2f}ms [{time.time():.6f}]")
                 return embedding_result.get("data", {}).get("embedding")
+            
+            print(f"🔍 [FULL_TRACE] _generate_embedding() FAILED - no success in result [{time.time():.6f}]")
             return None
             
         except Exception as e:
+            embed_total = time.time() - embed_start
+            print(f"🔍 [FULL_TRACE] _generate_embedding() EXCEPTION in {embed_total*1000:.2f}ms: {e} [{time.time():.6f}]")
             logger.error(f"Failed to generate embedding: {e}")
             return None
     

@@ -221,29 +221,56 @@ class MemoryManager(BaseAIProcessor):
         - Phase 1: Working memory storage and basic context
         - Phase 2+: Multi-tier context assembly
         """
-        print(f"🚨 [MEMORY_MANAGER_DEBUG] MemoryManager.process() CALLED!")
-        print(f"🚨 [MEMORY_MANAGER_DEBUG] Context: conversation_id={context.conversation_id}, message_type={context.message_type}")
+        import time
+        timestamp = time.time()
+        print(f"🚨 [MEMORY_MANAGER_DEBUG] MemoryManager.process() CALLED! [{timestamp:.6f}]")
+        import time
+        timestamp = time.time()
+        print(f"🚨 [MEMORY_MANAGER_DEBUG] Context: conversation_id={context.conversation_id}, message_type={context.message_type} [{timestamp:.6f}]")
+        
+        # DIAGNOSTIC: Track where the delay occurs
+        import time
+        before_init_check = time.time()
+        print(f"🔍 [ASYNC_DEBUG] Before initialization check [{before_init_check:.6f}]")
         logger.info(f"🧠 [MEMORY_FLOW] Processing memory operation for conversation {context.conversation_id}")
         logger.info(f"🧠 [MEMORY_FLOW] Message type: {context.message_type}, Turn: {context.turn_number}")
         
         if not self._initialized:
+            import time
+            before_init = time.time()
+            print(f"🔍 [ASYNC_DEBUG] Before initialize() [{before_init:.6f}]")
             logger.info("🧠 [MEMORY_FLOW] Lazy initializing memory system on first use")
             await self.initialize()
+            after_init = time.time()
+            print(f"🔍 [ASYNC_DEBUG] After initialize() [{after_init:.6f}] - took {(after_init-before_init)*1000:.2f}ms")
             
+        import time
+        before_context_assembly = time.time()
+        print(f"🔍 [ASYNC_DEBUG] Before context assembly [{before_context_assembly:.6f}]")
         start_time = datetime.utcnow()
         
         try:
             # Store current interaction (Phase 1+)
             if self._working_store:
+                import time
+                before_store = time.time()
+                print(f"🔍 [ASYNC_DEBUG] Before working memory store [{before_store:.6f}]")
                 logger.info("🧠 [MEMORY_FLOW] → Storing interaction in working memory")
                 await self._store_interaction(context)
+                after_store = time.time()
+                print(f"🔍 [ASYNC_DEBUG] After working memory store [{after_store:.6f}] - took {(after_store-before_store)*1000:.2f}ms")
                 logger.info("🧠 [MEMORY_FLOW] ✅ Working memory storage complete")
             else:
                 logger.warning("🧠 [MEMORY_FLOW] ⚠️  Working memory not available")
             
             # Assemble relevant context for processing
+            import time
+            before_assemble = time.time()
+            print(f"🔍 [ASYNC_DEBUG] Before _assemble_context() [{before_assemble:.6f}]")
             logger.info("🧠 [MEMORY_FLOW] → Assembling context from memory tiers")
             memory_context = await self._assemble_context(context)
+            after_assemble = time.time()
+            print(f"🔍 [ASYNC_DEBUG] After _assemble_context() [{after_assemble:.6f}] - took {(after_assemble-before_assemble)*1000:.2f}ms")
             
             # Log context assembly results
             context_items = memory_context.get("items", [])
@@ -321,12 +348,21 @@ class MemoryManager(BaseAIProcessor):
     
     async def store_message(self, user_id: str, conversation_id: str, content: str, role: str) -> bool:
         """V2 API: Store message with fact extraction"""
+        import time
+        start_time = time.time()
+        logger.info(f"🔍 [MEMORY_TIMING] MemoryManager.store_message() started for {role} message")
+        
         if not self._initialized:
+            init_start = time.time()
             await self.initialize()
+            init_duration = time.time() - init_start
+            logger.info(f"🔍 [MEMORY_TIMING] Memory initialization took {init_duration:.3f}s")
             
         try:
             # Store in working memory (LMDB)
             if self._working_store:
+                working_start = time.time()
+                logger.info(f"🔍 [MEMORY_TIMING] Starting working memory store...")
                 message_data = {
                     "conversation_id": conversation_id,
                     "content": content,
@@ -335,47 +371,97 @@ class MemoryManager(BaseAIProcessor):
                     "message_type": f"{role}_input" if role == "user" else f"{role}_response"
                 }
                 await self._working_store.store_message(user_id, message_data)
+                working_duration = time.time() - working_start
+                logger.info(f"🔍 [MEMORY_TIMING] Working memory store completed in {working_duration:.3f}s")
             
-            # Store in semantic memory with fact extraction (ChromaDB)
+            # Store in semantic memory with fact extraction (ChromaDB) - FULL TRACE
+            # TEMPORARILY BLOCKING TO GET FULL INSTRUMENTATION DATA
             if self._semantic_store and role == "user":
-                logger.info(f"🔍 [MEMORY_DEBUG] Calling semantic store for user message: {content[:50]}...")
+                semantic_start = time.time()
+                print(f"🔍 [FULL_TRACE] Starting BLOCKING semantic storage for full trace [{semantic_start:.6f}]")
+                logger.info(f"🔍 [MEMORY_TIMING] Starting semantic store for user message: {content[:50]}...")
                 await self._semantic_store.store_message(user_id, conversation_id, content, role)
-                logger.info(f"🔍 [MEMORY_DEBUG] Semantic store completed for user message")
+                semantic_duration = time.time() - semantic_start
+                print(f"🔍 [FULL_TRACE] Semantic storage COMPLETED in {semantic_duration*1000:.2f}ms [{time.time():.6f}]")
+                logger.info(f"🔍 [MEMORY_TIMING] Semantic store completed in {semantic_duration:.3f}s")
             elif role == "user":
                 logger.warning(f"🔍 [MEMORY_DEBUG] No semantic store available for user message: {content[:50]}...")
                 logger.warning(f"🔍 [MEMORY_DEBUG] _semantic_store = {self._semantic_store}")
             else:
                 logger.debug(f"🔍 [MEMORY_DEBUG] Skipping semantic storage for role: {role}")
-                
+            
+            total_duration = time.time() - start_time
+            logger.info(f"🔍 [MEMORY_TIMING] MemoryManager.store_message() completed in {total_duration:.3f}s")
             return True
         except Exception as e:
-            logger.error(f"Failed to store message: {e}")
+            total_duration = time.time() - start_time
+            logger.error(f"🔍 [MEMORY_TIMING] MemoryManager.store_message() failed after {total_duration:.3f}s: {e}")
             return False
     
     async def assemble_context(self, user_id: str, current_message: str) -> Dict[str, Any]:
         """V2 API: Assemble context from working + semantic memory"""
+        import time
+        start_time = time.time()
+        logger.info(f"🔍 [MEMORY_TIMING] MemoryManager.assemble_context() started")
+        
         if not self._initialized:
+            init_start = time.time()
             await self.initialize()
+            init_duration = time.time() - init_start
+            logger.info(f"🔍 [MEMORY_TIMING] Context assembly initialization took {init_duration:.3f}s")
             
         try:
+            # Use the context assembler if available
             if self._context_assembler:
-                return await self._context_assembler.assemble_context(
+                assembler_start = time.time()
+                logger.info(f"🔍 [MEMORY_TIMING] Starting context assembler...")
+                context = await self._context_assembler.assemble_context(
                     user_id=user_id,
                     current_message=current_message,
-                    max_context_items=15
+                    max_context_items=20
                 )
+                assembler_duration = time.time() - assembler_start
+                logger.info(f"🔍 [MEMORY_TIMING] Context assembler completed in {assembler_duration:.3f}s")
+                
+                total_duration = time.time() - start_time
+                logger.info(f"🔍 [MEMORY_TIMING] MemoryManager.assemble_context() completed in {total_duration:.3f}s")
+                return context
             else:
-                logger.warning("Context assembler not available")
-                return {"working_memory": [], "semantic_memory": [], "total_items": 0}
+                # Fallback: Direct store access
+                logger.info(f"🔍 [MEMORY_TIMING] No context assembler, using direct store access...")
+                context = {}
+                
+                # Get working memory (recent conversation)
+                if self._working_store:
+                    working_start = time.time()
+                    logger.info(f"🔍 [MEMORY_TIMING] Starting working memory context retrieval...")
+                    working_context = await self._working_store.get_context(user_id)
+                    working_duration = time.time() - working_start
+                    logger.info(f"🔍 [MEMORY_TIMING] Working memory context completed in {working_duration:.3f}s")
+                    context["working"] = working_context
+                
+                # Get semantic memory (facts and entities)
+                if self._semantic_store:
+                    semantic_start = time.time()
+                    logger.info(f"🔍 [MEMORY_TIMING] Starting semantic memory query...")
+                    semantic_context = await self._semantic_store.query(user_id, current_message, limit=5)
+                    semantic_duration = time.time() - semantic_start
+                    logger.info(f"🔍 [MEMORY_TIMING] Semantic memory query completed in {semantic_duration:.3f}s")
+                    context["semantic"] = semantic_context
+                
+                total_duration = time.time() - start_time
+                logger.info(f"🔍 [MEMORY_TIMING] MemoryManager.assemble_context() completed in {total_duration:.3f}s")
+                return context
+            
         except Exception as e:
-            logger.error(f"Failed to assemble context: {e}")
-            return {"working_memory": [], "semantic_memory": [], "total_items": 0}
+            total_duration = time.time() - start_time
+            logger.error(f"🔍 [MEMORY_TIMING] Failed to assemble context after {total_duration:.3f}s: {e}")
+            return {}
 
     async def store_memory(self, memory_data: Dict[str, Any], memory_type: str = "working") -> bool:
         """Legacy API: Store memory in appropriate tier (based on available stores)"""
         if not self._initialized:
             await self.initialize()
-            
         try:
             if memory_type == "working" and self._working_store:
                 return await self._working_store.store_memory(memory_data)
@@ -462,27 +548,21 @@ class MemoryManager(BaseAIProcessor):
             return 0
     
     async def _store_interaction(self, context: ProcessingContext) -> None:
-        """Store current interaction in working memory (fast, blocking)"""
-        if not self._working_store:
-            logger.warning("Working memory store not available")
-            return
-            
-        interaction_data = {
-            "conversation_id": context.conversation_id,
-            "user_id": context.user_id,
-            "message_content": context.message_content,
-            "message_type": context.message_type,
-            "timestamp": context.timestamp,
-            "turn_number": context.turn_number,
-            "conversation_phase": context.conversation_phase
-        }
+        """V2: Use unified store_message() API for consistent fact extraction"""
+        logger.info(f"[DEBUG] MemoryManager: Using unified storage path for conversation {context.conversation_id}")
         
-        logger.info(f"[DEBUG] MemoryManager: Storing interaction for conversation {context.conversation_id}")
-        await self._working_store.store_message(context.user_id, interaction_data)
+        # V2: Use the unified store_message API that includes fact extraction
+        role = "user" if context.message_type == "user_input" else "assistant"
+        await self.store_message(
+            user_id=context.user_id,
+            conversation_id=context.conversation_id,
+            content=context.message_content,
+            role=role
+        )
         
         # V2: Background conversation segment processing removed
     
-    # V2: Background conversation segment processing method removed
+    # V2: Removed duplicate fact extraction method - handled by semantic store
     
     async def _assemble_context(self, context: ProcessingContext) -> Dict[str, Any]:
         """Assemble relevant memory context for processing"""
@@ -512,3 +592,30 @@ class MemoryManager(BaseAIProcessor):
                 basic_context["total_items"] = len(working_context)
                 
             return basic_context
+    
+    async def shutdown(self, timeout: float = 20.0) -> None:
+        """Gracefully shutdown all memory stores - integrates with AICO service container"""
+        if not self._initialized:
+            return
+            
+        logger.warning(f"🔄 MEMORY MANAGER: Shutting down with {timeout}s timeout")
+        start_time = time.time()
+        
+        try:
+            # Shutdown semantic store (includes request queue and thread pools)
+            if self._semantic_store:
+                remaining_time = max(5.0, timeout - (time.time() - start_time))  # Minimum 5s
+                await self._semantic_store.shutdown(timeout=remaining_time)
+            
+            # Shutdown other stores (they don't have async shutdown currently)
+            # Working and episodic stores use synchronous cleanup
+            # TODO: Add proper shutdown for working/episodic stores if needed
+            
+            self._initialized = False
+            
+            total_time = time.time() - start_time
+            logger.warning(f"✅ MEMORY MANAGER: Shutdown completed in {total_time:.2f}s")
+            
+        except Exception as e:
+            logger.error(f"Error during memory manager shutdown: {e}")
+            raise

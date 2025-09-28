@@ -233,6 +233,13 @@ class ModelserviceZMQService:
                 self.logger.info(f"🔍 [EMBEDDINGS_ZMQ_DEBUG] Correlation ID: {correlation_id}")
                 self.logger.info(f"🔍 [EMBEDDINGS_ZMQ_DEBUG] About to route to handler...")
             
+            # SPECIFIC DEBUGGING FOR CHAT REQUESTS
+            if "chat" in message_type.lower():
+                self.logger.info(f"🔍 [CHAT_ZMQ_DEBUG] ✅ CHAT MESSAGE RECEIVED in ZMQ service!")
+                self.logger.info(f"🔍 [CHAT_ZMQ_DEBUG] Message type: {message_type}")
+                self.logger.info(f"🔍 [CHAT_ZMQ_DEBUG] Correlation ID: {correlation_id}")
+                self.logger.info(f"🔍 [CHAT_ZMQ_DEBUG] About to route to handler...")
+            
             # Check for duplicate correlation ID to prevent processing the same message multiple times
             if correlation_id in self.processed_correlation_ids:
                 self.logger.warning(f"Duplicate correlation ID detected: {correlation_id}, skipping message processing")
@@ -267,11 +274,19 @@ class ModelserviceZMQService:
                 self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] Available topics: {list(self.topic_handlers.keys())}")
                 self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] Topic in handlers: {topic in self.topic_handlers}")
             
+            # SPECIFIC DEBUGGING FOR CHAT REQUESTS
+            if "chat" in topic.lower():
+                self.logger.info(f"🔍 [CHAT_ZMQ_DEBUG] Looking up chat handler for topic: {topic}")
+                self.logger.info(f"🔍 [CHAT_ZMQ_DEBUG] Available topics: {list(self.topic_handlers.keys())}")
+                self.logger.info(f"🔍 [CHAT_ZMQ_DEBUG] Topic in handlers: {topic in self.topic_handlers}")
+            
             handler = self.topic_handlers.get(topic)
             if not handler:
                 self.logger.error(f"[ZMQ_SERVICE] ❌ CRITICAL: No handler found for topic: {topic}")
                 if "sentiment" in topic.lower():
                     self.logger.error(f"🔍 [SENTIMENT_ZMQ_DEBUG] ❌ SENTIMENT HANDLER NOT FOUND!")
+                if "chat" in topic.lower():
+                    self.logger.error(f"🔍 [CHAT_ZMQ_DEBUG] ❌ CHAT HANDLER NOT FOUND!")
                 return
             
             if topic in self.topic_handlers:
