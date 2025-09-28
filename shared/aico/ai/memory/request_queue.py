@@ -5,19 +5,17 @@ Replaces fire-and-forget tasks with controlled, scalable processing.
 
 import asyncio
 import time
-from typing import Dict, List, Any, Optional, Callable, Union
-from dataclasses import dataclass, field
+import uuid
+from typing import Dict, Any, List, Optional, Callable
+from dataclasses import dataclass
 from enum import Enum
-import logging
-from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
-import multiprocessing
 import threading
+from collections import defaultdict
 import os
 import signal
 import atexit
 from contextlib import asynccontextmanager
-
 logger = logging.getLogger(__name__)
 
 
@@ -245,8 +243,13 @@ class SemanticRequestQueue:
         Submit a request to the queue
         Returns: Future that resolves with the result
         """
+        logger.info(f"🔍 [QUEUE_DEBUG] submit_request called: operation={operation}, timeout={timeout}")
+        
         if not self._running:
+            logger.error(f"🔍 [QUEUE_DEBUG] Request queue not started!")
             raise RuntimeError("Request queue not started")
+        
+        logger.info(f"🔍 [QUEUE_DEBUG] Queue is running, workers: {len(self._workers)}, active: {len([w for w in self._workers if not w.done()])}")
         
         # Check if global shutdown is in progress
         if _is_global_shutdown_requested():
@@ -254,54 +257,73 @@ class SemanticRequestQueue:
         
         # Check if modelservice is available
         if not hasattr(self, '_modelservice') or not self._modelservice:
+            logger.error(f"🔍 [QUEUE_DEBUG] Modelservice not available!")
             raise RuntimeError("Modelservice not available - cannot process requests")
+        
+        logger.info(f"🔍 [QUEUE_DEBUG] Modelservice available: {type(self._modelservice)}")
         
         # Check circuit breaker
         if not self._is_circuit_closed():
             self._stats['requests_circuit_broken'] += 1
+            logger.warning(f"🔍 [QUEUE_DEBUG] Circuit breaker is open! State: {self._circuit_state.value}")
             raise RuntimeError("Circuit breaker is open - service unavailable")
+        
+        logger.info(f"🔍 [QUEUE_DEBUG] Circuit breaker is closed, proceeding")
         
         # Check rate limit
         if not await self._acquire_rate_limit():
             self._stats['requests_rate_limited'] += 1
             raise RuntimeError("Rate limit exceeded")
         
-        # Create request
-        request_id = f"{operation}-{int(time.time() * 1000000)}"
+        # Create request item
+        request_id = str(uuid.uuid4())
         future = asyncio.Future()
-        
         request = RequestItem(
             id=request_id,
             operation=operation,
             data=data,
             priority=priority,
-            future=future
+            future=future,
+            created_at=time.time()
         )
         
-        # Add to queue (priority queue uses negative priority for max-heap behavior)
-        await self._queue.put((-priority, time.time(), request))
+        logger.info(f"🔍 [QUEUE_DEBUG] Created request {request_id}, adding to queue")
         
-        # Wait for result with timeout
+        # Track active request
+        self._active_requests[request_id] = request
+        
+        # Add to queue with priority (negative for max-heap behavior)
+        await self._queue.put((-priority, time.time(), request))
+        self._stats['requests_processed'] += 1
+        
+        logger.info(f"🔍 [QUEUE_DEBUG] Request {request_id} added to queue, queue size: {self._queue.qsize()}")
+        
         try:
-            return await asyncio.wait_for(future, timeout=timeout)
+            # Wait for result with timeout
+            logger.info(f"🔍 [QUEUE_DEBUG] Waiting for result for request {request_id} with timeout {timeout}s")
+            result = await asyncio.wait_for(future, timeout=timeout)
+            logger.info(f"🔍 [QUEUE_DEBUG] Request {request_id} completed successfully")
+            return result
         except asyncio.TimeoutError:
+            logger.error(f"🔍 [QUEUE_DEBUG] Request {request_id} timed out after {timeout}s")
             # Cancel the request if still pending
             if request_id in self._active_requests:
                 del self._active_requests[request_id]
             raise
-    
     async def _worker(self, worker_name: str):
         """Worker coroutine that processes requests from the queue"""
-        logger.debug(f"Worker {worker_name} started")
+        logger.info(f"🔍 [WORKER_DEBUG] Worker {worker_name} started")
         
         while not self._shutdown_event.is_set() and not _is_global_shutdown_requested():
             try:
                 # Get request from queue with timeout
                 try:
+                    logger.debug(f"🔍 [WORKER_DEBUG] {worker_name} waiting for request, queue size: {self._queue.qsize()}")
                     _, _, request = await asyncio.wait_for(
                         self._queue.get(),
                         timeout=1.0
                     )
+                    logger.info(f"🔍 [WORKER_DEBUG] {worker_name} got request {request.id}, operation: {request.operation}")
                 except asyncio.TimeoutError:
                     continue
                 
@@ -314,10 +336,14 @@ class SemanticRequestQueue:
                 
                 # Skip if request was cancelled
                 if request.future.cancelled():
+                    logger.warning(f"🔍 [WORKER_DEBUG] {worker_name} skipping cancelled request {request.id}")
                     continue
+                
+                logger.info(f"🔍 [WORKER_DEBUG] {worker_name} processing request {request.id}")
                 
                 # Process request with semaphore (concurrency control)
                 async with self._semaphore:
+                    logger.info(f"🔍 [WORKER_DEBUG] {worker_name} calling _process_request for {request.operation}")
                     await self._process_request(request)
                 
             except Exception as e:
@@ -327,14 +353,17 @@ class SemanticRequestQueue:
     
     async def _process_request(self, request: RequestItem):
         """Process a single request"""
+        logger.info(f"🔍 [PROCESS_DEBUG] _process_request called for {request.id}, operation: {request.operation}")
         start_time = time.time()
         self._active_requests[request.id] = request
         
         try:
             # Determine if this should be batched
             if self._should_batch(request.operation):
+                logger.info(f"🔍 [PROCESS_DEBUG] Request {request.id} should be batched")
                 result = await self._process_batched_request(request)
             else:
+                logger.info(f"🔍 [PROCESS_DEBUG] Request {request.id} will be processed individually")
                 result = await self._process_individual_request(request)
             
             # Success - reset circuit breaker
@@ -365,7 +394,10 @@ class SemanticRequestQueue:
     
     def _should_batch(self, operation: str) -> bool:
         """Determine if operation should be batched"""
-        return operation in ['embedding', 'ner']  # These benefit from batching
+        # RE-ENABLED: Batch embedding operations for efficiency
+        if operation == 'embedding':
+            return self._queue.qsize() >= self._batch_size or len(self._pending_batches.get(operation, [])) >= self._batch_size
+        return False
     
     async def _process_batched_request(self, request: RequestItem) -> Any:
         """Process request as part of a batch"""
@@ -471,23 +503,31 @@ class SemanticRequestQueue:
         logger.info(f"Processing embedding batch of {batch_size} texts with threading optimization")
         
         try:
+            logger.info(f"🔍 [BATCH_DEBUG] Processing batch of {batch_size} embeddings")
+            
             # Use modelservice batch embedding (it handles individual requests internally)
             if hasattr(self._modelservice, 'get_embeddings_batch'):
-                logger.info(f"Using modelservice batch processing for {batch_size} embeddings")
+                logger.info(f"🔍 [BATCH_DEBUG] Using modelservice batch processing")
                 # ModelServiceClient.get_embeddings_batch(model, prompts) signature
                 result = await self._modelservice.get_embeddings_batch(
                     model="paraphrase-multilingual",  # Default embedding model
                     prompts=texts
                 )
+                logger.info(f"🔍 [BATCH_DEBUG] Batch result: success={result.get('success') if result else 'None'}")
+                
                 if result and result.get('success'):
-                    return result.get('data', {}).get('embeddings', [])
+                    embeddings = result.get('data', {}).get('embeddings', [])
+                    logger.info(f"🔍 [BATCH_DEBUG] Got {len(embeddings)} embeddings from batch")
+                    return embeddings
                 else:
-                    raise RuntimeError(f"Batch embedding failed: {result.get('error', 'Unknown error')}")
+                    error_msg = result.get('error', 'Unknown error') if result else 'No result returned'
+                    raise RuntimeError(f"Batch embedding failed: {error_msg}")
             
             # Fallback to individual async requests if batch not available
-            logger.info(f"Fallback to individual requests for {batch_size} embeddings")
+            logger.info(f"🔍 [BATCH_DEBUG] Fallback to individual requests for {batch_size} embeddings")
             embeddings = []
-            for text in texts:
+            for i, text in enumerate(texts):
+                logger.info(f"🔍 [BATCH_DEBUG] Processing individual request {i+1}/{batch_size}")
                 result = await self._modelservice.get_embeddings(
                     model="paraphrase-multilingual",
                     prompt=text
@@ -495,8 +535,10 @@ class SemanticRequestQueue:
                 if result and result.get('success'):
                     embedding = result.get('data', {}).get('embedding')
                     embeddings.append(embedding)
+                    logger.info(f"🔍 [BATCH_DEBUG] Individual request {i+1} succeeded")
                 else:
                     embeddings.append(None)
+                    logger.warning(f"🔍 [BATCH_DEBUG] Individual request {i+1} failed")
             return embeddings
                 
         except Exception as e:
@@ -518,24 +560,22 @@ class SemanticRequestQueue:
         return results
     
     async def _process_individual_request(self, request: RequestItem) -> Any:
-        """Process a single request individually"""
-        operation = request.operation
-        data = request.data
+        """Process a single request immediately"""
+        logger.info(f"Processing {request.operation} request {request.id}")
         
-        if operation == 'embedding':
-            return await self._process_single_embedding(data)
-        elif operation == 'ner':
-            return await self._process_single_ner(data)
-        elif operation == 'sentiment':
-            return await self._process_single_sentiment(data)
+        if request.operation == 'embedding':
+            return await self._process_single_embedding(request.data)
+        elif request.operation == 'ner':
+            return await self._process_single_ner(request.data)
+        elif request.operation == 'sentiment':
+            return await self._process_single_sentiment(request.data)
         else:
-            raise ValueError(f"Unsupported operation: {operation}")
+            raise ValueError(f"Unsupported operation: {request.operation}")
     
     async def _process_single_embedding(self, data: Dict[str, Any]) -> Any:
         """Process single embedding request using modelservice"""
         if not hasattr(self, '_modelservice') or not self._modelservice:
             raise RuntimeError("Modelservice not available for embedding")
-        
         # Check for shutdown before processing
         if self._shutdown_event.is_set() or _is_global_shutdown_requested():
             raise RuntimeError("Shutdown in progress - cancelling embedding request")
@@ -545,21 +585,28 @@ class SemanticRequestQueue:
             raise ValueError("No text provided for embedding")
         
         try:
+            logger.info(f"🔍 [EMBEDDING_DEBUG] Calling ModelService.get_embeddings for: '{text[:30]}...'")
+            
             # Use correct ModelServiceClient.get_embeddings(model, prompt) signature
             result = await self._modelservice.get_embeddings(
                 model="paraphrase-multilingual",
                 prompt=text
             )
+            
+            logger.info(f"🔍 [EMBEDDING_DEBUG] ModelService result: success={result.get('success') if result else 'None'}")
+            
             if result and result.get('success'):
                 embedding = result.get('data', {}).get('embedding')
                 if embedding:
+                    logger.info(f"🔍 [EMBEDDING_DEBUG] Got embedding with {len(embedding)} dimensions")
                     return embedding
                 else:
                     raise RuntimeError("No embedding data in successful response")
             else:
-                raise RuntimeError(f"Embedding request failed: {result}")
+                error_msg = result.get('error', 'Unknown error') if result else 'No result returned'
+                raise RuntimeError(f"Embedding request failed: {error_msg}")
         except Exception as e:
-            logger.error(f"Single embedding failed for text '{text[:50]}...': {e}")
+            logger.error(f"🔍 [EMBEDDING_DEBUG] Single embedding failed for text '{text[:50]}...': {e}")
             raise
     
     async def _process_single_ner(self, data: Dict[str, Any]) -> Any:

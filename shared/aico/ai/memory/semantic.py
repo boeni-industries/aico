@@ -58,14 +58,15 @@ class SemanticMemoryStore:
         self._collection = None
         self._modelservice = None
         
-        # Modern async request queue for controlled processing
+        # FIXED: Request queue with proper ModelService integration
         self._request_queue = SemanticRequestQueue(
-            max_concurrent=2,  # Limit concurrent requests to prevent overload
-            rate_limit_per_second=3.0,  # Conservative rate limiting
-            circuit_failure_threshold=3,  # Quick circuit breaker
+            max_concurrent=2,  # Prevent ModelService overload
+            rate_limit_per_second=10.0,  # INCREASED: Allow burst processing
+            circuit_failure_threshold=5,  # More tolerant circuit breaker
             circuit_timeout=15.0,  # Fast recovery
-            batch_size=5,  # Smaller batches for responsiveness
-            batch_timeout=0.5  # Quick batch processing
+            batch_size=5,  # RE-ENABLE batching for efficiency
+            batch_timeout=1.0,  # Allow time for batching
+            enable_threading=False  # Keep threading disabled for now
         )
         
         # Configuration
@@ -85,8 +86,9 @@ class SemanticMemoryStore:
     def set_modelservice(self, modelservice):
         """Inject modelservice dependency"""
         self._modelservice = modelservice
-        # Inject into request queue for batch processing
-        self._request_queue._modelservice = modelservice
+        # Inject into request queue for controlled processing
+        if self._request_queue:
+            self._request_queue._modelservice = modelservice
     
     def reset_circuit_breaker(self) -> None:
         """Reset the circuit breaker in the request queue"""
@@ -100,9 +102,9 @@ class SemanticMemoryStore:
             return
             
         try:
-            # Start the request queue first
-            await self._request_queue.start(num_workers=2)
-            logger.info("Semantic request queue started with controlled processing")
+            # Start the request queue with proper configuration
+            await self._request_queue.start(num_workers=1)  # Single worker to avoid complexity
+            logger.info("Semantic request queue started with fixed configuration")
             
             # Initialize ChromaDB
             self._chroma_client = chromadb.PersistentClient(
@@ -144,7 +146,7 @@ class SemanticMemoryStore:
         try:
             # Stop the request queue with timeout
             if self._request_queue:
-                remaining_time = max(5.0, timeout - (time.time() - start_time))  # Minimum 5s for queue
+                remaining_time = max(5.0, timeout - (time.time() - start_time))
                 await self._request_queue.stop(timeout=remaining_time)
                 logger.info("Semantic request queue stopped")
             
@@ -185,7 +187,7 @@ class SemanticMemoryStore:
             raise RuntimeError("Modelservice required for fact storage")
         
         try:
-            # Generate embedding using request queue (controlled, rate-limited)
+            # Generate embedding using FIXED request queue
             embedding_start = time.time()
             print(f"🔍 [FULL_TRACE] Starting QUEUE-BASED embedding generation [{embedding_start:.6f}]")
             try:
@@ -193,20 +195,10 @@ class SemanticMemoryStore:
                     operation='embedding',
                     data={'text': fact.content},
                     priority=1,  # High priority for fact storage
-                    timeout=5.0  # Reasonable timeout
+                    timeout=10.0  # Increased timeout for reliability
                 )
                 embedding_duration = time.time() - embedding_start
                 print(f"🔍 [FULL_TRACE] QUEUE embedding completed in {embedding_duration*1000:.2f}ms [{time.time():.6f}]")
-            except RuntimeError as e:
-                embedding_duration = time.time() - embedding_start
-                if "shutdown" in str(e).lower():
-                    print(f"🔍 [FULL_TRACE] QUEUE embedding CANCELLED due to shutdown in {embedding_duration*1000:.2f}ms [{time.time():.6f}]")
-                    logger.warning(f"⚠️  SEMANTIC SHUTDOWN: Fact storage cancelled during shutdown: {e}")
-                    return False
-                else:
-                    print(f"🔍 [FULL_TRACE] QUEUE embedding FAILED in {embedding_duration*1000:.2f}ms: {e} [{time.time():.6f}]")
-                    logger.error(f"Queue-based embedding failed: {e}")
-                    return False
             except Exception as e:
                 embedding_duration = time.time() - embedding_start
                 print(f"🔍 [FULL_TRACE] QUEUE embedding FAILED in {embedding_duration*1000:.2f}ms: {e} [{time.time():.6f}]")
@@ -277,17 +269,10 @@ class SemanticMemoryStore:
                     operation='embedding',
                     data={'text': query_text},
                     priority=2,  # High priority for queries
-                    timeout=2.0  # Fast timeout for queries
+                    timeout=5.0  # Fast timeout for queries
                 )
                 if not query_embedding:
                     logger.error("Failed to generate query embedding")
-                    return []
-            except RuntimeError as e:
-                if "shutdown" in str(e).lower():
-                    logger.warning(f"⚠️  SEMANTIC SHUTDOWN: Query cancelled during shutdown: {e}")
-                    return []
-                else:
-                    logger.error(f"Queue-based query embedding failed: {e}")
                     return []
             except Exception as e:
                 logger.error(f"Queue-based query embedding failed: {e}")
