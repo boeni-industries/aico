@@ -88,6 +88,12 @@ class SemanticMemoryStore:
         # Inject into request queue for batch processing
         self._request_queue._modelservice = modelservice
     
+    def reset_circuit_breaker(self) -> None:
+        """Reset the circuit breaker in the request queue"""
+        if self._request_queue:
+            self._request_queue.reset_circuit_breaker()
+            logger.warning("🔄 SEMANTIC STORE: Circuit breaker reset")
+    
     async def initialize(self) -> None:
         """Initialize semantic memory store with request queue"""
         if self._initialized:
@@ -156,6 +162,12 @@ class SemanticMemoryStore:
         except Exception as e:
             logger.error(f"Error during semantic memory shutdown: {e}")
             raise
+    
+    def get_queue_stats(self) -> Dict[str, Any]:
+        """Get request queue statistics for monitoring"""
+        if self._request_queue:
+            return self._request_queue.get_queue_stats()
+        return {'error': 'Request queue not available'}
     
     async def store_fact(self, fact: UserFact) -> bool:
         """Store a single user fact"""

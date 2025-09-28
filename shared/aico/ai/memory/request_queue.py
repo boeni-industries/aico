@@ -252,6 +252,10 @@ class SemanticRequestQueue:
         if _is_global_shutdown_requested():
             raise RuntimeError("Global shutdown in progress - rejecting new requests")
         
+        # Check if modelservice is available
+        if not hasattr(self, '_modelservice') or not self._modelservice:
+            raise RuntimeError("Modelservice not available - cannot process requests")
+        
         # Check circuit breaker
         if not self._is_circuit_closed():
             self._stats['requests_circuit_broken'] += 1
@@ -430,17 +434,25 @@ class SemanticRequestQueue:
             
             # Set results for all requests in batch
             for i, request in enumerate(batch):
-                if not request.future.cancelled():
-                    request.future.set_result(results[i])
+                if not request.future.cancelled() and not request.future.done():
+                    try:
+                        request.future.set_result(results[i])
+                    except asyncio.InvalidStateError:
+                        # Future was already resolved, ignore
+                        pass
             
             # Update batch efficiency stats
             self._stats['batch_efficiency'] = len(batch) / self._batch_size
             
         except Exception as e:
-            # Set exception for all requests in batch
+            # Set exception for all requests in batch (check if future is still valid)
             for request in batch:
-                if not request.future.cancelled():
-                    request.future.set_exception(e)
+                if not request.future.cancelled() and not request.future.done():
+                    try:
+                        request.future.set_exception(e)
+                    except asyncio.InvalidStateError:
+                        # Future was already resolved, ignore
+                        pass
             raise
     
     async def _process_embedding_batch(self, batch: List[RequestItem]) -> List[Any]:
@@ -459,73 +471,33 @@ class SemanticRequestQueue:
         logger.info(f"Processing embedding batch of {batch_size} texts with threading optimization")
         
         try:
-            # For large batches, use process pool for CPU-intensive work
-            if batch_size >= 10 and self._cpu_intensive_pool:
-                logger.info(f"Using process pool for large batch ({batch_size} embeddings)")
-                # Process in process pool for CPU-intensive operations
-                loop = asyncio.get_event_loop()
-                embeddings = await loop.run_in_executor(
-                    self._cpu_intensive_pool,
-                    self._process_large_embedding_batch,
-                    texts
+            # Use modelservice batch embedding (it handles individual requests internally)
+            if hasattr(self._modelservice, 'get_embeddings_batch'):
+                logger.info(f"Using modelservice batch processing for {batch_size} embeddings")
+                # ModelServiceClient.get_embeddings_batch(model, prompts) signature
+                result = await self._modelservice.get_embeddings_batch(
+                    model="paraphrase-multilingual",  # Default embedding model
+                    prompts=texts
                 )
-                return embeddings
+                if result and result.get('success'):
+                    return result.get('data', {}).get('embeddings', [])
+                else:
+                    raise RuntimeError(f"Batch embedding failed: {result.get('error', 'Unknown error')}")
             
-            # For medium batches, use thread pool
-            elif batch_size >= 3 and self._thread_pool:
-                logger.info(f"Using thread pool for medium batch ({batch_size} embeddings)")
-                # Use modelservice batch embedding if available
-                if hasattr(self._modelservice, 'get_embeddings_batch'):
-                    loop = asyncio.get_event_loop()
-                    result = await loop.run_in_executor(
-                        self._thread_pool,
-                        self._sync_batch_embeddings,
-                        texts
-                    )
-                    if result and result.get('success'):
-                        return result.get('data', {}).get('embeddings', [])
-                
-                # Parallel individual requests using thread pool
-                loop = asyncio.get_event_loop()
-                tasks = [
-                    loop.run_in_executor(
-                        self._thread_pool,
-                        self._sync_single_embedding,
-                        text
-                    )
-                    for text in texts
-                ]
-                embeddings = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                # Handle exceptions in results
-                clean_embeddings = []
-                for i, result in enumerate(embeddings):
-                    if isinstance(result, Exception):
-                        logger.warning(f"Embedding failed for text {i}: {result}")
-                        clean_embeddings.append(None)
-                    else:
-                        clean_embeddings.append(result)
-                
-                return clean_embeddings
-            
-            else:
-                # Small batches - use regular async processing
-                logger.debug(f"Using async processing for small batch ({batch_size} embeddings)")
-                if hasattr(self._modelservice, 'get_embeddings_batch'):
-                    result = await self._modelservice.get_embeddings_batch(texts)
-                    if result and result.get('success'):
-                        return result.get('data', {}).get('embeddings', [])
-                
-                # Fall back to individual async requests
-                embeddings = []
-                for text in texts:
-                    result = await self._modelservice.get_embeddings(text)
-                    if result and result.get('success'):
-                        embedding = result.get('data', {}).get('embedding')
-                        embeddings.append(embedding)
-                    else:
-                        embeddings.append(None)
-                return embeddings
+            # Fallback to individual async requests if batch not available
+            logger.info(f"Fallback to individual requests for {batch_size} embeddings")
+            embeddings = []
+            for text in texts:
+                result = await self._modelservice.get_embeddings(
+                    model="paraphrase-multilingual",
+                    prompt=text
+                )
+                if result and result.get('success'):
+                    embedding = result.get('data', {}).get('embedding')
+                    embeddings.append(embedding)
+                else:
+                    embeddings.append(None)
+            return embeddings
                 
         except Exception as e:
             logger.error(f"Threaded batch embedding failed: {e}")
@@ -573,7 +545,11 @@ class SemanticRequestQueue:
             raise ValueError("No text provided for embedding")
         
         try:
-            result = await self._modelservice.get_embeddings(text)
+            # Use correct ModelServiceClient.get_embeddings(model, prompt) signature
+            result = await self._modelservice.get_embeddings(
+                model="paraphrase-multilingual",
+                prompt=text
+            )
             if result and result.get('success'):
                 embedding = result.get('data', {}).get('embedding')
                 if embedding:
@@ -596,24 +572,6 @@ class SemanticRequestQueue:
         # Placeholder - would use modelservice client
         return {'sentiment': 'positive', 'confidence': 0.8}
     
-    def _sync_batch_embeddings(self, texts: List[str]) -> Dict[str, Any]:
-        """Synchronous batch embedding for thread pool execution"""
-        # This runs in a thread, so we need to handle the async modelservice call
-        # For now, this is a placeholder - would need proper sync wrapper
-        return {'success': False, 'error': 'Sync batch not implemented'}
-    
-    def _sync_single_embedding(self, text: str) -> Optional[List[float]]:
-        """Synchronous single embedding for thread pool execution"""
-        # This runs in a thread, so we need to handle the async modelservice call
-        # For now, this is a placeholder - would need proper sync wrapper
-        return None
-    
-    def _process_large_embedding_batch(self, texts: List[str]) -> List[Optional[List[float]]]:
-        """Process large embedding batch in separate process"""
-        # This runs in a separate process for CPU-intensive work
-        # Would need to implement actual embedding logic here
-        # For now, return placeholder
-        return [None] * len(texts)
     
     def get_queue_stats(self) -> Dict[str, Any]:
         """Get detailed queue statistics for monitoring"""
@@ -625,6 +583,7 @@ class SemanticRequestQueue:
             'modelservice_available': hasattr(self, '_modelservice') and self._modelservice is not None,
             'threading_enabled': self._enable_threading,
             'thread_pool_size': self._thread_pool_size if self._enable_threading else 0,
+            'circuit_breaker_can_reset': True,
         }
         
         # Add thread pool statistics if available
@@ -715,12 +674,24 @@ class SemanticRequestQueue:
             )
     
     def get_stats(self) -> Dict[str, Any]:
-        """Get queue statistics"""
+        """Get basic queue statistics"""
         return {
-            **self._stats,
-            'queue_size': self._queue.qsize(),
-            'active_requests': len(self._active_requests),
+            'requests_processed': self._stats['requests_processed'],
+            'requests_failed': self._stats['requests_failed'],
+            'requests_circuit_broken': self._stats['requests_circuit_broken'],
+            'requests_rate_limited': self._stats['requests_rate_limited'],
+            'average_processing_time': self._stats['average_processing_time'],
+            'batch_efficiency': self._stats['batch_efficiency'],
             'circuit_state': self._circuit_state.value,
             'failure_count': self._failure_count,
+            'queue_size': self._queue.qsize(),
+            'active_requests': len(self._active_requests),
             'tokens_available': self._tokens
         }
+    
+    def reset_circuit_breaker(self) -> None:
+        """Manually reset the circuit breaker to closed state"""
+        self._circuit_state = CircuitState.CLOSED
+        self._failure_count = 0
+        self._last_failure_time = None
+        logger.warning(f" CIRCUIT BREAKER RESET: Manually reset to CLOSED state")
