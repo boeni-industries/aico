@@ -552,17 +552,48 @@ class MemoryMetrics:
     def _check_context_element_present(self, response: str, context_element: str) -> bool:
         """Check if a context element is present in the response"""
         element_keywords = {
+            # Turn 1 context elements
             "user_name_michael": ["michael"],
             "location_san_francisco": ["san francisco", "sf"],
             "new_job_techcorp": ["techcorp", "job", "work"],
             "recent_move": ["move", "moved", "relocat"],
             "excitement_emotion": ["excit", "great", "wonderful", "amazing"],
+            
+            # Turn 2 context elements
             "job_role_software_engineer": ["software", "engineer", "developer"],
             "nervous_emotion": ["nervous", "anxious", "worry"],
             "ai_platform_work": ["ai", "platform", "artificial intelligence"],
+            "seeking_advice": ["advice", "tips", "help", "suggest"],
+            
+            # Turn 3 context elements
             "pet_cat_whiskers": ["whiskers", "cat", "pet"],
+            "pet_stress": ["stress", "nervous", "anxious", "upset"],
+            "move_adjustment": ["adjust", "settling", "getting used", "adapting"],
+            
+            # Turn 4 context elements
             "birthday_october_13": ["birthday", "october", "13th"],
-            "italian_food_preference": ["italian", "food", "cuisine"]
+            "age_28": ["28", "twenty-eight", "age"],
+            "restaurant_celebration": ["restaurant", "celebrate", "dinner", "meal"],
+            
+            # Turn 5 context elements
+            "italian_food_preference": ["italian", "food", "cuisine"],
+            "job_title_verification": ["job title", "position", "role"],
+            "monday_start_reminder": ["monday", "start", "beginning"],
+            
+            # Turn 6 context elements
+            "cat_name_recall": ["whiskers", "cat", "name", "called"],
+            "coworker_sharing": ["coworker", "colleague", "tell", "share"],
+            "pet_introduction": ["pet", "cat", "introduce", "about him"],
+            
+            # Additional scenario context elements
+            "programming_help": ["programming", "code", "help", "assist"],
+            "python_project": ["python", "project"],
+            "topic_change": ["different", "change", "instead"],
+            "weather_inquiry": ["weather", "climate", "temperature"],
+            "async_functions": ["async", "asynchronous", "await"],
+            "cooking": ["cook", "cooking", "recipe"],
+            "italian_cuisine": ["italian", "cuisine", "food"],
+            "pasta": ["pasta", "noodles", "spaghetti"]
         }
         
         keywords = element_keywords.get(context_element, [context_element.lower()])

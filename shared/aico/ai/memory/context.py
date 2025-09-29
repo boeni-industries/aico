@@ -194,25 +194,54 @@ class ContextAssembler:
             # Apply limits with Elizabeth II's measured restraint
             final_items = relevant_items[:max_items]
             
-            # Assemble the crown jewel of context structures
+            # Transform ContextItem objects into ConversationEngine-compatible format
+            user_facts = []
+            recent_context = []
+            
+            for item in final_items:
+                if item.source_tier == "semantic" and item.item_type == "knowledge":
+                    # Convert semantic facts to user_facts format
+                    user_facts.append({
+                        "content": item.content,
+                        "confidence": item.metadata.get("confidence", 0.5),
+                        "category": item.metadata.get("category", "personal"),
+                        "relevance_score": item.relevance_score,
+                        "timestamp": item.timestamp.isoformat()
+                    })
+                elif item.source_tier == "working" and item.item_type == "message":
+                    # Convert working memory to recent_context format
+                    recent_context.append({
+                        "role": item.metadata.get("role", "user"),
+                        "content": item.content,
+                        "timestamp": item.timestamp.isoformat(),
+                        "relevance_score": item.relevance_score
+                    })
+            
+            # Assemble context in ConversationEngine-compatible format
             context = {
-                "user_id": user_id,
-                "current_message": current_message,
-                "assembled_at": assembly_start.isoformat(),
-                "total_items": len(final_items),
-                "context_summary": self._generate_context_summary(final_items),
-                "memories": [self._context_item_to_dict(item) for item in final_items],
-                "tier_distribution": self._get_tier_distribution(final_items),
-                "personalization": self._extract_personalization_hints(final_items),
-                "assembly_time_ms": (datetime.utcnow() - assembly_start).total_seconds() * 1000,
-                "conversation_strength": self._calculate_conversation_strength(final_items)
+                "memory_context": {
+                    "user_facts": user_facts,
+                    "recent_context": recent_context
+                },
+                # Keep original metadata for debugging and future use
+                "metadata": {
+                    "user_id": user_id,
+                    "current_message": current_message,
+                    "assembled_at": assembly_start.isoformat(),
+                    "total_items": len(final_items),
+                    "context_summary": self._generate_context_summary(final_items),
+                    "tier_distribution": self._get_tier_distribution(final_items),
+                    "personalization": self._extract_personalization_hints(final_items),
+                    "assembly_time_ms": (datetime.utcnow() - assembly_start).total_seconds() * 1000,
+                    "conversation_strength": self._calculate_conversation_strength(final_items)
+                }
             }
             
             total_time = (datetime.utcnow() - assembly_start).total_seconds() * 1000
             import time
             timestamp = time.time()
             print(f"⏱️ [TIMING] TOTAL context assembly completed in {total_time:.2f}ms [{timestamp:.6f}]")
-            logger.info(f"✨ Context assembled with {len(final_items)} items in {context['assembly_time_ms']:.2f}ms")
+            logger.info(f"✨ Context assembled with {len(final_items)} items in {context['metadata']['assembly_time_ms']:.2f}ms")
             return context
             
         except Exception as e:
@@ -221,16 +250,21 @@ class ContextAssembler:
             logger.error(f"Full traceback: {traceback.format_exc()}")
             
             return {
-                "user_id": user_id,
-                "current_message": current_message,
-                "assembled_at": assembly_start.isoformat(),
-                "total_items": 0,
-                "context_summary": "Context assembly failed with grace",
-                "memories": [],
-                "tier_distribution": {},
-                "personalization": {},
-                "assembly_time_ms": (datetime.utcnow() - assembly_start).total_seconds() * 1000,
-                "conversation_strength": 0.0
+                "memory_context": {
+                    "user_facts": [],
+                    "recent_context": []
+                },
+                "metadata": {
+                    "user_id": user_id,
+                    "current_message": current_message,
+                    "assembled_at": assembly_start.isoformat(),
+                    "total_items": 0,
+                    "context_summary": "Context assembly failed with grace",
+                    "tier_distribution": {},
+                    "personalization": {},
+                    "assembly_time_ms": (datetime.utcnow() - assembly_start).total_seconds() * 1000,
+                    "conversation_strength": 0.0
+                }
             }
     
     async def get_user_context(self, user_id: str) -> Dict[str, Any]:

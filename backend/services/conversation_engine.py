@@ -526,7 +526,16 @@ class ConversationEngine(BaseService):
             
             # Store context for LLM generation
             if request_id in self.pending_responses:
-                self.pending_responses[request_id]["components_ready"]["memory"] = {"memory_context": context}
+                self.pending_responses[request_id]["components_ready"]["memory"] = context
+                
+                # Debug: Log what we're storing
+                memory_context = context.get("memory_context", {})
+                user_facts = memory_context.get("user_facts", [])
+                recent_context = memory_context.get("recent_context", [])
+                self.logger.info(f"🔍 [MEMORY_DEBUG] Stored context: {len(user_facts)} user_facts, {len(recent_context)} recent_context")
+                if user_facts:
+                    self.logger.info(f"🔍 [MEMORY_DEBUG] Sample user fact: {user_facts[0].get('content', 'NO_CONTENT')[:50]}...")
+                
                 await self._check_response_completion(request_id)
                 
             total_duration = time.time() - start_time
@@ -537,7 +546,7 @@ class ConversationEngine(BaseService):
             self.logger.error(f"🔍 [MEMORY_TIMING] Memory integration failed after {total_duration:.3f}s: {e}")
             # Fail fast - no degraded functionality
             if request_id in self.pending_responses:
-                self.pending_responses[request_id]["components_ready"]["memory"] = {"memory_context": {}}
+                self.pending_responses[request_id]["components_ready"]["memory"] = {"memory_context": {"user_facts": [], "recent_context": []}, "metadata": {}}
     
     # ============================================================================
     # COMPONENT RESPONSE HANDLERS
@@ -638,9 +647,15 @@ class ConversationEngine(BaseService):
             if "memory" in context and context["memory"]:
                 memory_context = context["memory"].get("memory_context", {})
                 
+                # Debug: Log what we're receiving
+                self.logger.info(f"🔍 [LLM_DEBUG] Memory context keys: {list(context['memory'].keys())}")
+                self.logger.info(f"🔍 [LLM_DEBUG] Memory_context keys: {list(memory_context.keys())}")
+                
                 # Simple fact integration
                 user_facts = memory_context.get("user_facts", [])
                 recent_context = memory_context.get("recent_context", [])
+                
+                self.logger.info(f"🔍 [LLM_DEBUG] Retrieved: {len(user_facts)} user_facts, {len(recent_context)} recent_context")
                 
                 if user_facts or recent_context:
                     facts_text = "\n".join([f"- {fact.get('content', '')}" for fact in user_facts[-5:]])
