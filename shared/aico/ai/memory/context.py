@@ -182,17 +182,10 @@ class ContextAssembler:
             # Score and filter with Gandhian non-violence toward irrelevant context
             scored_items = self._score_context_items(all_items, current_message)
             
-            # Apply relevance threshold with the wisdom of ages
-            relevant_items = [
-                item for item in scored_items 
-                if item.relevance_score >= self._relevance_threshold
-            ]
+            # Apply graduated relevance filtering for optimal context diversity
+            final_items = self._select_diverse_context(scored_items, max_items)
             
-            # Sort by relevance with royal decree
-            relevant_items.sort(key=lambda x: x.relevance_score, reverse=True)
-            
-            # Apply limits with Elizabeth II's measured restraint
-            final_items = relevant_items[:max_items]
+            logger.debug(f"Selected {len(final_items)} items using graduated threshold approach")
             
             # Transform ContextItem objects into ConversationEngine-compatible format
             user_facts = []
@@ -901,6 +894,44 @@ class ContextAssembler:
             scored_items.append(scored_item)
         
         return scored_items
+    
+    def _select_diverse_context(self, scored_items: List[ContextItem], max_items: int) -> List[ContextItem]:
+        """
+        Select context items using graduated thresholds to ensure minimum context diversity
+        while respecting quality standards. Balances relevance with comprehensiveness.
+        """
+        if not scored_items:
+            return []
+        
+        # Sort by relevance score (highest first)
+        sorted_items = sorted(scored_items, key=lambda x: x.relevance_score, reverse=True)
+        
+        # Configuration for graduated selection
+        min_items = min(3, len(sorted_items))  # Ensure at least 3 items when available
+        quality_threshold = self._relevance_threshold  # 0.3 by default
+        
+        selected = []
+        
+        # Phase 1: Always include the top item (if any)
+        if sorted_items:
+            selected.append(sorted_items[0])
+        
+        # Phase 2: Add high-quality items that pass threshold
+        for item in sorted_items[1:]:
+            if len(selected) >= max_items:
+                break
+            if item.relevance_score >= quality_threshold:
+                selected.append(item)
+        
+        # Phase 3: Fill minimum quota with lower-quality items if needed
+        if len(selected) < min_items:
+            for item in sorted_items[len(selected):]:
+                if len(selected) >= min_items or len(selected) >= max_items:
+                    break
+                selected.append(item)
+        
+        logger.debug(f"Graduated selection: {len(selected)} items selected (min={min_items}, threshold={quality_threshold})")
+        return selected
     
     def _generate_context_summary(self, items: List[ContextItem]) -> str:
         """Generate human-readable context summary with the eloquence of Shakespeare and clarity of Churchill"""

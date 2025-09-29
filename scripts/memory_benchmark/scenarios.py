@@ -172,7 +172,7 @@ class ScenarioLibrary:
                     thread_expectation="continue"
                 ),
                 ConversationTurn(
-                    user_message="Exactly! And what was my cat's name again? I want to tell my new coworkers about him.",
+                    user_message="Exactly! And what should I tell my new coworkers about my cat? I want to introduce him properly and share some of his story.",
                     expected_entities={
                         "ANIMAL": ["cat"],
                         "PERSON": ["coworkers"]
