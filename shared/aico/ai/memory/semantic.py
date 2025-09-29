@@ -210,6 +210,7 @@ class SemanticMemoryStore:
                 "is_immutable": str(fact.is_immutable),  # Convert bool to string
                 "valid_from": fact.valid_from.isoformat(),
                 "entities": json.dumps(fact.entities),
+                "entities_json": json.dumps(fact.entities),  # For evaluation compatibility
                 "source_conversation_id": fact.source_conversation_id,
                 "created_at": datetime.utcnow().isoformat()
             }
@@ -442,7 +443,7 @@ class SemanticMemoryStore:
                     is_immutable=False,  # Entity facts can change
                     valid_from=datetime.utcnow(),
                     valid_until=None,  # No expiration for entity facts
-                    entities=[entity_text]  # Store the entity text
+                    entities=entities_dict  # Store the original entities by type for evaluation compatibility
                 )
                 facts.append(fact)
                 entity_end = time.time()
