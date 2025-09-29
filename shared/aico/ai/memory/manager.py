@@ -157,10 +157,14 @@ class MemoryManager(BaseAIProcessor):
     
     def set_modelservice(self, modelservice):
         """Inject modelservice dependency for semantic memory operations"""
+        logger.info("[SEMANTIC] 🔧 LEGACY: set_modelservice() called - injecting dependency")
         self._modelservice = modelservice
         # If semantic store is already initialized, inject dependency
         if self._semantic_store:
+            logger.info("[SEMANTIC] 🔧 LEGACY: Injecting modelservice into existing semantic store")
             self._semantic_store.set_modelservice(modelservice)
+        else:
+            logger.info("[SEMANTIC] 🔧 LEGACY: Semantic store not yet initialized, dependency will be injected during init")
         
     async def initialize(self) -> None:
         """Initialize memory components based on implementation phase"""
@@ -183,12 +187,16 @@ class MemoryManager(BaseAIProcessor):
                 logger.info("[SEMANTIC] Semantic memory enabled in config, initializing...")
                 self._semantic_store = SemanticMemoryStore(self.config)
                 
-                # Inject modelservice dependency if available
-                if hasattr(self, '_modelservice') and self._modelservice:
-                    logger.info("[SEMANTIC] Injecting modelservice dependency")
-                    self._semantic_store.set_modelservice(self._modelservice)
-                else:
-                    logger.warning("[SEMANTIC] No modelservice available for injection")
+                # CRITICAL FIX: Get modelservice from backend services and inject dependency
+                try:
+                    from backend.services import get_modelservice_client
+                    modelservice_client = get_modelservice_client(self.config)
+                    logger.info("[SEMANTIC] 🔧 INJECTING MODELSERVICE DEPENDENCY")
+                    self._semantic_store.set_modelservice(modelservice_client)
+                    logger.info("[SEMANTIC] ✅ Modelservice dependency injected successfully")
+                except Exception as e:
+                    logger.error(f"[SEMANTIC] ❌ FAILED to inject modelservice dependency: {e}")
+                    logger.error("[SEMANTIC] ⚠️  Semantic memory will not be able to query facts!")
                 
                 await self._semantic_store.initialize()
                 logger.info("[SEMANTIC] ✅ Semantic memory store initialized successfully")

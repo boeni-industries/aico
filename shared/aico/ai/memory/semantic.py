@@ -124,11 +124,8 @@ class SemanticMemoryStore:
         start_time = time.time()
         
         try:
-            # Stop the request queue with timeout
-            if self._request_queue:
-                remaining_time = max(5.0, timeout - (time.time() - start_time))
-                await self._request_queue.stop(timeout=remaining_time)
-                logger.info("Semantic request queue stopped")
+            # Direct ModelService calls - no queue to stop
+            logger.info("Semantic memory store shutdown (direct ModelService calls)")
             
             # Close ChromaDB connection
             if self._chroma_client:
@@ -146,10 +143,13 @@ class SemanticMemoryStore:
             raise
     
     def get_queue_stats(self) -> Dict[str, Any]:
-        """Get request queue statistics for monitoring"""
-        if self._request_queue:
-            return self._request_queue.get_queue_stats()
-        return {'error': 'Request queue not available'}
+        """Get statistics for monitoring (direct ModelService calls)"""
+        return {
+            'mode': 'direct_modelservice_calls',
+            'initialized': self._initialized,
+            'modelservice_available': self._modelservice is not None,
+            'collection_name': self._collection_name
+        }
     
     async def store_fact(self, fact: UserFact) -> bool:
         """Store a single user fact"""
@@ -249,22 +249,32 @@ class SemanticMemoryStore:
             await self.initialize()
         
         if not self._modelservice:
+            logger.error("🚨 [SEMANTIC_QUERY] CRITICAL: Modelservice required for querying but not available!")
+            logger.error("🚨 [SEMANTIC_QUERY] This means stored facts cannot be retrieved!")
+            logger.error("🚨 [SEMANTIC_QUERY] Check memory manager modelservice injection during initialization!")
             raise RuntimeError("Modelservice required for querying")
         
         try:
-            # Generate query embedding using request queue
+            # Generate query embedding using direct ModelService calls
             try:
-                query_embedding = await self._request_queue.submit_request(
-                    operation='embedding',
-                    data={'text': query_text},
-                    priority=2,  # High priority for queries
-                    timeout=5.0  # Fast timeout for queries
+                logger.debug(f"🔍 [SEMANTIC_QUERY] Generating embedding for query: '{query_text[:50]}...'")
+                embedding_result = await self._modelservice.get_embeddings(
+                    prompt=query_text,
+                    model=self._embedding_model
                 )
-                if not query_embedding:
-                    logger.error("Failed to generate query embedding")
+                
+                if not embedding_result.get("success", False):
+                    logger.error(f"🔍 [SEMANTIC_QUERY] Failed to generate query embedding: {embedding_result.get('error', 'Unknown error')}")
                     return []
+                
+                query_embedding = embedding_result.get("data", {}).get("embedding")
+                if not query_embedding:
+                    logger.error("🔍 [SEMANTIC_QUERY] No embedding data in response")
+                    return []
+                    
+                logger.debug(f"🔍 [SEMANTIC_QUERY] ✅ Generated {len(query_embedding)}-dimensional embedding")
             except Exception as e:
-                logger.error(f"Queue-based query embedding failed: {e}")
+                logger.error(f"🔍 [SEMANTIC_QUERY] Direct ModelService embedding failed: {e}")
                 return []
             
             # Prepare ChromaDB filters

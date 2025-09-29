@@ -817,7 +817,11 @@ class ContextAssembler:
             
         except Exception as e:
             print(f"🚨 [SEMANTIC_CONTEXT] ⚠️ FALLBACK: Semantic context failed: {e}")
-            logger.error(f"Failed to get semantic context: {e}")
+            logger.error(f"🚨 [SEMANTIC_CONTEXT] CRITICAL ERROR: Failed to get semantic context: {e}")
+            logger.error(f"🚨 [SEMANTIC_CONTEXT] Error type: {type(e).__name__}")
+            if "Modelservice required" in str(e):
+                logger.error("🚨 [SEMANTIC_CONTEXT] ROOT CAUSE: Semantic store has no modelservice dependency!")
+                logger.error("🚨 [SEMANTIC_CONTEXT] This means stored facts cannot be retrieved for AI context!")
             return []
     
     # V2: Procedural memory retrieval removed
