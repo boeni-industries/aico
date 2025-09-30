@@ -87,8 +87,8 @@ class ScenarioLibrary:
                 ConversationTurn(
                     user_message="Thanks! I'm a bit nervous though. It's a software engineering role, and I'll be working on their AI platform. Do you have any advice for starting a new tech job?",
                     expected_entities={
-                        "WORK_OF_ART": ["AI platform"],
-                        "PERSON": ["software engineer"]
+                        "SKILL": ["software engineering"],
+                        "EMOTION": ["nervous"]
                     },
                     expected_context_elements=[
                         "job_role_software_engineer",
@@ -300,8 +300,8 @@ class ScenarioLibrary:
                     user_message="I'm Sarah, a marine biologist studying coral reefs in the Great Barrier Reef. I've been working on this research for 3 years.",
                     expected_entities={
                         "PERSON": ["Sarah"],
-                        "WORK_OF_ART": ["marine biologist"],
-                        "LOC": ["Great Barrier Reef"],
+                        "SKILL": ["marine biologist"],
+                        "GPE": ["Great Barrier Reef"],
                         "DATE": ["3 years"]
                     },
                     thread_expectation="new"
@@ -376,9 +376,7 @@ class ScenarioLibrary:
                 ConversationTurn(
                     user_message="I'm working on a React app and getting this error: 'Cannot read property of undefined'. It's happening in my UserProfile component when I try to access user.email.",
                     expected_entities={
-                        "PRODUCT": ["React"],
-                        "PERSON": ["UserProfile"],
-                        "WORK_OF_ART": ["user.email"]
+                        # Removed unrealistic code variable expectations
                     },
                     expected_context_elements=[
                         "react_error",
@@ -396,7 +394,7 @@ class ScenarioLibrary:
                 ConversationTurn(
                     user_message="Here's my code: const UserProfile = ({userId}) => { const user = users.find(u => u.id === userId); return <div>{user.email}</div>; }. The users array comes from an API call.",
                     expected_entities={
-                        "WORK_OF_ART": ["UserProfile", "userId", "users", "API"]
+                        # Removed unrealistic code variable expectations
                     },
                     expected_context_elements=[
                         "code_snippet_provided",
@@ -433,7 +431,7 @@ class ScenarioLibrary:
                 ConversationTurn(
                     user_message="Perfect! One last thing - should I use useState or useReducer for managing the loading, error, and data states?",
                     expected_entities={
-                        "WORK_OF_ART": ["useState", "useReducer"]
+                        # Removed unrealistic React hook expectations
                     },
                     expected_context_elements=[
                         "state_management_question",
@@ -493,8 +491,8 @@ class ScenarioLibrary:
                 ConversationTurn(
                     user_message="Alex is very organized and I'm more... chaotic. They get frustrated when I leave dishes in the sink or forget to make the bed. I don't want this to hurt our relationship.",
                     expected_entities={
-                        "EMOTION": ["frustrated"],
-                        "WORK_OF_ART": ["dishes", "bed"]
+                        "PERSON": ["Alex"],
+                        "EMOTION": ["frustrated", "chaotic"]
                     },
                     expected_context_elements=[
                         "personality_differences",
@@ -514,7 +512,8 @@ class ScenarioLibrary:
                 ConversationTurn(
                     user_message="We talked about it and decided to create a chore schedule. Alex will handle laundry and I'll do dishes and cooking. Do you think that's fair?",
                     expected_entities={
-                        "WORK_OF_ART": ["chore schedule", "laundry", "dishes", "cooking"]
+                        "PERSON": ["Alex"],
+                        "ACTIVITY": ["laundry", "dishes", "cooking"]
                     },
                     expected_context_elements=[
                         "communication_success",

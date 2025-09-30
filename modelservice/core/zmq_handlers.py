@@ -692,16 +692,17 @@ class ModelserviceZMQHandlers:
                 response.error = "GLiNER model not available"
                 return response
             
-            # V3: Optimized entity types using Title Case (GLiNER best practice)
-            # Reduced to core + conversational types, removed redundant/overlapping types
+            # V5: Balanced entity types (12 types) - optimized from testing
+            # Core standard types + proven conversational types
             entity_types = [
-                # Core entities (standard NER)
+                # Core standard (5) - industry baseline
                 "Person", "Organization", "Location", "Date", "Time",
                 
-                # Conversational entities (AICO-specific for memory)
-                "Emotion", "Preference", "Skill", "Hobby", "Goal",
-                "Relationship", "Activity", "Event", "Job",
-                "Opinion", "Experience", "Contact Info"
+                # Conversational context (4) - proven effective in testing
+                "Event", "Activity", "Emotion", "Relationship",
+                
+                # User preferences/goals (3) - important for memory personalization
+                "Preference", "Skill", "Goal"
             ]
             
             # V3.1: Balanced threshold for conversational entity extraction
@@ -763,26 +764,21 @@ class ModelserviceZMQHandlers:
                             self.logger.debug(f"[NER_FILTER] Cleaned possessive: '{entity['text']}' -> '{entity_text}'")
                         break
                 
-                # V3: Normalize GLiNER Title Case outputs to standard NER types
-                # This ensures consistency with evaluation expectations and storage
+                # V5: Normalize GLiNER Title Case outputs to standard NER types
+                # Balanced set (12 types) optimized from testing
                 type_normalization = {
                     "PERSON": "PERSON",
                     "ORGANIZATION": "ORG",
                     "LOCATION": "GPE",  # Geopolitical entity
                     "DATE": "DATE",
                     "TIME": "TIME",
+                    "EVENT": "EVENT",
+                    "ACTIVITY": "ACTIVITY",
                     "EMOTION": "EMOTION",
+                    "RELATIONSHIP": "RELATIONSHIP",
                     "PREFERENCE": "PREFERENCE",
                     "SKILL": "SKILL",
-                    "HOBBY": "HOBBY",
-                    "GOAL": "GOAL",
-                    "RELATIONSHIP": "RELATIONSHIP",
-                    "ACTIVITY": "ACTIVITY",
-                    "EVENT": "EVENT",
-                    "JOB": "JOB",
-                    "OPINION": "OPINION",
-                    "EXPERIENCE": "EXPERIENCE",
-                    "CONTACT INFO": "CONTACT_INFO"
+                    "GOAL": "GOAL"
                 }
                 
                 entity_type = type_normalization.get(entity_type, entity_type)
