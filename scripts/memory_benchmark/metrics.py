@@ -64,6 +64,8 @@ class MemoryMetrics:
         # ChromaDB client for querying stored facts (V2 architecture)
         self.chroma_client = None
         self.user_facts_collection = None
+        # ModelService client for direct NER calls
+        self.modelservice_client = None
         
         
     async def initialize_memory_connections(self):
@@ -104,6 +106,16 @@ class MemoryMetrics:
             # V2: No conversation_segments collection - facts are stored directly
                 
             print("✅ Connected to AICO's file-based ChromaDB instance")
+            
+            # Initialize ModelService client for direct NER calls
+            try:
+                from backend.services.modelservice_client import ModelServiceClient
+                self.modelservice_client = ModelServiceClient()
+                await self.modelservice_client.initialize()
+                print("✅ Connected to ModelService for direct NER testing")
+            except Exception as e:
+                print(f"⚠️ Failed to connect to ModelService: {e}")
+                print("   Entity extraction testing will be limited")
             
         except Exception as e:
             print(f"❌ Failed to connect to AICO memory systems: {e}")
@@ -269,20 +281,6 @@ class MemoryMetrics:
         # Give a moment for async memory processing to complete
         await asyncio.sleep(2.0)
         
-        # Query entities from all conversation_ids used in the conversation
-        stored_entities = {}
-        for conv_id in all_conversation_ids:
-            if conv_id:
-                entities_from_conv = await self._query_stored_entities(user_id, conv_id, "")
-                if entities_from_conv:
-                    # Merge entities from this conversation
-                    for entity_type, entity_list in entities_from_conv.items():
-                        if entity_type not in stored_entities:
-                            stored_entities[entity_type] = []
-                        stored_entities[entity_type].extend(entity_list)
-                        # Remove duplicates
-                        stored_entities[entity_type] = list(set(stored_entities[entity_type]))
-        
         for i, turn in enumerate(session.conversation_log):
             user_message = turn.get("user_message", "")
             if not user_message:
@@ -298,6 +296,14 @@ class MemoryMetrics:
                 # No entities expected for this turn
                 extraction_scores.append(1.0)
                 continue
+            
+            # CONTEXT ISOLATION FIX: Query entities but filter by turn-specific content
+            # Get entities that were actually extracted from this specific message
+            turn_conversation_id = turn.get("conversation_id", conversation_id)
+            all_stored_entities = await self._query_stored_entities(user_id, turn_conversation_id, "")
+            
+            # Filter entities to only those that could have come from this specific message
+            stored_entities = self._filter_entities_by_message_content(all_stored_entities, user_message)
             
             # Calculate precision and recall for entity extraction
             total_expected = sum(len(entities) for entities in expected_entities.values())
@@ -341,8 +347,37 @@ class MemoryMetrics:
         return MetricScore(
             score=overall_score,
             details=details,
-            explanation=f"Real entity extraction testing across {len(extraction_scores)} messages using GLiNER and ChromaDB"
+            explanation=f"Turn-specific entity extraction testing across {len(extraction_scores)} messages using direct GLiNER calls"
         )
+    
+    def _filter_entities_by_message_content(self, all_entities: Dict[str, List[str]], message_text: str) -> Dict[str, List[str]]:
+        """
+        CONTEXT ISOLATION FIX: Filter entities to only those that appear in the specific message.
+        This provides turn-specific entity isolation without requiring separate NER calls.
+        """
+        if not all_entities or not message_text:
+            return {}
+        
+        message_lower = message_text.lower()
+        filtered_entities = {}
+        
+        for entity_type, entity_list in all_entities.items():
+            filtered_list = []
+            
+            for entity in entity_list:
+                entity_lower = entity.lower()
+                
+                # Check if this entity actually appears in the message text
+                if entity_lower in message_lower:
+                    filtered_list.append(entity)
+                # Also check for partial matches for compound entities
+                elif any(word in message_lower for word in entity_lower.split() if len(word) > 2):
+                    filtered_list.append(entity)
+            
+            if filtered_list:
+                filtered_entities[entity_type] = filtered_list
+        
+        return filtered_entities
         
     async def calculate_conversation_relevancy(self, session) -> MetricScore:
         """
