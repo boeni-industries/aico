@@ -545,9 +545,8 @@ class MemoryIntelligenceEvaluator:
                     "message_type": "text",
                     "metadata": turn.context_hints or {}  # Fixed: "context" -> "metadata"
                 }
+                # Reduced noise - only show turn progress
                 print(f"💬 Turn {i+1}: {turn.user_message[:50]}...")
-                timeout_msg = "20s"
-                print(f"   🧠 Processing memory operations (may take up to {timeout_msg})...")
                 
                 # Send encrypted message request with timeout (match backend timeout)
                 # Allow for unoptimized LLM processing + buffer
@@ -591,21 +590,16 @@ class MemoryIntelligenceEvaluator:
                     "response_time_ms": response_time_ms,
                     "conversation_action": conversation_action,
                     "entities_extracted": entities,
-                    "conversation_id": conversation_id
+                    "conversation_id": conversation_id,
+                    # Include scenario expectations for evaluation
+                    "expected_entities": turn.expected_entities or {},
+                    "expected_context_elements": turn.expected_context_elements or [],
+                    "should_remember_from_turns": turn.should_remember_from_turns or [],
+                    "should_reference_entities": turn.should_reference_entities or []
                 }
                 
-                status = "✅" if response_time_ms < 10000 else "⏰" if response_time_ms < 30000 else "🐌"
-                print(f"{status} Turn {i+1}: {response_time_ms:.0f}ms | {conversation_action}")
-                
-                if response_time_ms > 30000:
-                    print(f"   ⚠️ Slow response detected")
-                if entities:
-                    entity_summary = []
-                    for entity_type, entity_list in entities.items():
-                        if entity_list:
-                            entity_summary.append(f"{entity_type}:{len(entity_list)}")
-                    if entity_summary:
-                        print(f"   🏷️ Entities: {', '.join(entity_summary)}")
+                status = "✅" if response_time_ms < 5000 else "⏰" if response_time_ms < 10000 else "🐌"
+                print(f"{status} Turn {i+1}: {response_time_ms}ms | {conversation_action}")
                 session.conversation_log.append(turn_log)
                 
                 # Print real-time feedback using Rich reporter

@@ -181,9 +181,17 @@ class ContextAssembler:
             
             # Score and filter with Gandhian non-violence toward irrelevant context
             scored_items = self._score_context_items(all_items, current_message)
+            print(f"🔍 [CONTEXT_PIPELINE] After scoring: {len(scored_items)} items")
+            
+            # Apply entity boost for items containing query entities
+            print(f"🔍 [CONTEXT_PIPELINE] Starting entity boost phase...")
+            boosted_items = self._apply_entity_boost(scored_items, current_message)
+            print(f"🔍 [CONTEXT_PIPELINE] After entity boost: {len(boosted_items)} items")
             
             # Apply graduated relevance filtering for optimal context diversity
-            final_items = self._select_diverse_context(scored_items, max_items)
+            print(f"🔍 [CONTEXT_PIPELINE] Starting graduated selection...")
+            final_items = self._select_diverse_context(boosted_items, max_items)
+            print(f"🔍 [CONTEXT_PIPELINE] Final selection: {len(final_items)} items")
             
             logger.debug(f"Selected {len(final_items)} items using graduated threshold approach")
             
@@ -749,7 +757,9 @@ class ContextAssembler:
                         "permanence": metadata.get('permanence', 'unknown'),
                         "confidence": metadata.get('confidence', 0.5),
                         "similarity": result.get('similarity', 0.5),
-                        "fact_age_hours": fact_age_hours
+                        "fact_age_hours": fact_age_hours,
+                        "entities": metadata.get("entities", "{}"),
+                        "entities_json": metadata.get("entities_json", "{}")
                     },
                     item_type="knowledge"
                 )
@@ -832,7 +842,9 @@ class ContextAssembler:
                         "permanence": metadata.get('permanence', 'unknown'),
                         "confidence": metadata.get('confidence', 0.5),
                         "similarity": result.get('similarity', 0.5),
-                        "fact_age_hours": fact_age_hours
+                        "fact_age_hours": fact_age_hours,
+                        "entities": metadata.get("entities", "{}"),
+                        "entities_json": metadata.get("entities_json", "{}")
                     },
                     item_type="knowledge"
                 )
@@ -894,6 +906,90 @@ class ContextAssembler:
             scored_items.append(scored_item)
         
         return scored_items
+    
+    def _apply_entity_boost(self, items: List[ContextItem], current_message: str) -> List[ContextItem]:
+        """Boost items containing entities mentioned in query (language-agnostic)"""
+        message_lower = current_message.lower()
+        
+        print(f"🔍 [ENTITY_BOOST] Starting entity boost analysis")
+        print(f"🔍 [ENTITY_BOOST] Query: '{current_message}'")
+        print(f"🔍 [ENTITY_BOOST] Query (lowercase): '{message_lower}'")
+        print(f"🔍 [ENTITY_BOOST] Processing {len(items)} items")
+        
+        boosted_items = []
+        boost_count = 0
+        
+        for i, item in enumerate(items):
+            boost_applied = False
+            matched_entity = None
+            
+            print(f"🔍 [ENTITY_BOOST] Item {i+1}/{len(items)}: '{item.content[:50]}...' (score: {item.relevance_score:.3f})")
+            
+            # Check if item contains entities mentioned in query
+            if hasattr(item, 'metadata') and item.metadata:
+                entities_json = item.metadata.get('entities', '{}')
+                print(f"🔍 [ENTITY_BOOST] Item {i+1} entities JSON: {entities_json}")
+                
+                try:
+                    import json
+                    entities = json.loads(entities_json)
+                    print(f"🔍 [ENTITY_BOOST] Item {i+1} parsed entities: {entities}")
+                    
+                    # Check if any entity VALUE appears in query
+                    for entity_type, entity_list in entities.items():
+                        print(f"🔍 [ENTITY_BOOST] Item {i+1} checking {entity_type}: {entity_list}")
+                        for entity_value in entity_list:
+                            entity_lower = entity_value.lower()
+                            print(f"🔍 [ENTITY_BOOST] Item {i+1} checking if '{entity_lower}' in '{message_lower}'")
+                            
+                            if entity_lower in message_lower:
+                                # Boost this item
+                                original_score = item.relevance_score
+                                boosted_score = min(1.0, item.relevance_score * 2.5)
+                                matched_entity = entity_value
+                                
+                                print(f"🔍 [ENTITY_BOOST] ✅ MATCH FOUND! Item {i+1}")
+                                print(f"🔍 [ENTITY_BOOST] ✅ Matched entity: '{entity_value}'")
+                                print(f"🔍 [ENTITY_BOOST] ✅ Score boost: {original_score:.3f} → {boosted_score:.3f}")
+                                
+                                logger.debug(f"Entity boost: '{item.content[:30]}...' {original_score:.3f} → {boosted_score:.3f} (matched: {entity_value})")
+                                
+                                item = ContextItem(
+                                    content=item.content,
+                                    source_tier=item.source_tier,
+                                    relevance_score=boosted_score,
+                                    timestamp=item.timestamp,
+                                    metadata=item.metadata,
+                                    item_type=item.item_type
+                                )
+                                boost_applied = True
+                                boost_count += 1
+                                break
+                        if boost_applied:
+                            break
+                            
+                except Exception as e:
+                    print(f"🔍 [ENTITY_BOOST] Item {i+1} JSON parse error: {e}")
+                    pass
+            else:
+                print(f"🔍 [ENTITY_BOOST] Item {i+1} has no metadata or entities")
+            
+            if not boost_applied:
+                print(f"🔍 [ENTITY_BOOST] Item {i+1} no boost applied")
+            
+            boosted_items.append(item)
+        
+        print(f"🔍 [ENTITY_BOOST] Summary: {boost_count}/{len(items)} items boosted")
+        
+        # Log score comparison
+        print(f"🔍 [ENTITY_BOOST] Score comparison:")
+        for i, (original, boosted) in enumerate(zip(items, boosted_items)):
+            if original.relevance_score != boosted.relevance_score:
+                print(f"🔍 [ENTITY_BOOST] Item {i+1}: {original.relevance_score:.3f} → {boosted.relevance_score:.3f} (+{((boosted.relevance_score/original.relevance_score)-1)*100:.1f}%)")
+        
+        logger.debug(f"Entity boost summary: {boost_count}/{len(items)} items boosted")
+        
+        return boosted_items
     
     def _select_diverse_context(self, scored_items: List[ContextItem], max_items: int) -> List[ContextItem]:
         """

@@ -368,6 +368,209 @@ class ScenarioLibrary:
             difficulty_level="expert"
         )
         
+        # Technical Problem-Solving Scenario
+        self.scenarios["technical_problem_solving"] = ConversationScenario(
+            name="technical_problem_solving",
+            description="Technical discussion with code snippets, debugging, and solution tracking",
+            conversation_turns=[
+                ConversationTurn(
+                    user_message="I'm working on a React app and getting this error: 'Cannot read property of undefined'. It's happening in my UserProfile component when I try to access user.email.",
+                    expected_entities={
+                        "PRODUCT": ["React"],
+                        "PERSON": ["UserProfile"],
+                        "WORK_OF_ART": ["user.email"]
+                    },
+                    expected_context_elements=[
+                        "react_error",
+                        "undefined_property",
+                        "user_profile_component",
+                        "email_access_issue"
+                    ],
+                    validation_rules=[
+                        "should_identify_react_context",
+                        "should_suggest_debugging_steps",
+                        "should_ask_for_code_details"
+                    ],
+                    thread_expectation="new"
+                ),
+                ConversationTurn(
+                    user_message="Here's my code: const UserProfile = ({userId}) => { const user = users.find(u => u.id === userId); return <div>{user.email}</div>; }. The users array comes from an API call.",
+                    expected_entities={
+                        "WORK_OF_ART": ["UserProfile", "userId", "users", "API"]
+                    },
+                    expected_context_elements=[
+                        "code_snippet_provided",
+                        "users_array_context",
+                        "api_dependency",
+                        "find_method_usage"
+                    ],
+                    should_remember_from_turns=[1],
+                    should_reference_entities=["React", "user.email"],
+                    validation_rules=[
+                        "should_analyze_code_structure",
+                        "should_identify_potential_causes",
+                        "should_suggest_null_checks"
+                    ],
+                    thread_expectation="continue"
+                ),
+                ConversationTurn(
+                    user_message="That fixed it! Now I have another issue - the API call is slow and users see a blank screen. How can I add a loading state?",
+                    expected_context_elements=[
+                        "problem_solved_acknowledgment",
+                        "new_performance_issue",
+                        "loading_state_request",
+                        "user_experience_concern"
+                    ],
+                    should_remember_from_turns=[1, 2],
+                    should_reference_entities=["React", "API", "UserProfile"],
+                    validation_rules=[
+                        "should_acknowledge_fix",
+                        "should_suggest_loading_patterns",
+                        "should_reference_previous_context"
+                    ],
+                    thread_expectation="continue"
+                ),
+                ConversationTurn(
+                    user_message="Perfect! One last thing - should I use useState or useReducer for managing the loading, error, and data states?",
+                    expected_entities={
+                        "WORK_OF_ART": ["useState", "useReducer"]
+                    },
+                    expected_context_elements=[
+                        "state_management_question",
+                        "hook_comparison_request",
+                        "complex_state_scenario"
+                    ],
+                    should_remember_from_turns=[1, 2, 3],
+                    validation_rules=[
+                        "should_compare_hooks",
+                        "should_consider_complexity",
+                        "should_provide_recommendations"
+                    ],
+                    thread_expectation="continue"
+                )
+            ],
+            success_criteria={
+                "context_adherence": 0.90,
+                "knowledge_retention": 0.85,
+                "conversation_relevancy": 0.95,
+                "response_quality": 0.90,
+                "overall_score": 0.88
+            },
+            tags=["technical", "programming", "problem-solving", "react", "debugging"],
+            tests_working_memory=True,
+            tests_semantic_memory=True,
+            tests_fact_extraction=True,
+            tests_conversation_strength=True,
+            estimated_duration_minutes=6,
+            difficulty_level="medium"
+        )
+        
+        # Personal Life & Relationships Scenario
+        self.scenarios["personal_relationships"] = ConversationScenario(
+            name="personal_relationships",
+            description="Personal conversation about relationships, emotions, and life events",
+            conversation_turns=[
+                ConversationTurn(
+                    user_message="I'm feeling really stressed lately. My partner Alex and I just moved in together last month, and we're having some adjustment issues.",
+                    expected_entities={
+                        "PERSON": ["Alex"],
+                        "DATE": ["last month"],
+                        "EMOTION": ["stressed"]
+                    },
+                    expected_context_elements=[
+                        "relationship_stress",
+                        "cohabitation_adjustment",
+                        "partner_alex",
+                        "recent_move_in"
+                    ],
+                    validation_rules=[
+                        "should_acknowledge_stress",
+                        "should_show_empathy",
+                        "should_ask_supportive_questions"
+                    ],
+                    thread_expectation="new"
+                ),
+                ConversationTurn(
+                    user_message="Alex is very organized and I'm more... chaotic. They get frustrated when I leave dishes in the sink or forget to make the bed. I don't want this to hurt our relationship.",
+                    expected_entities={
+                        "EMOTION": ["frustrated"],
+                        "WORK_OF_ART": ["dishes", "bed"]
+                    },
+                    expected_context_elements=[
+                        "personality_differences",
+                        "cleanliness_conflict",
+                        "relationship_concern",
+                        "domestic_habits"
+                    ],
+                    should_remember_from_turns=[1],
+                    should_reference_entities=["Alex", "stressed"],
+                    validation_rules=[
+                        "should_validate_concerns",
+                        "should_suggest_communication_strategies",
+                        "should_acknowledge_differences_normal"
+                    ],
+                    thread_expectation="continue"
+                ),
+                ConversationTurn(
+                    user_message="We talked about it and decided to create a chore schedule. Alex will handle laundry and I'll do dishes and cooking. Do you think that's fair?",
+                    expected_entities={
+                        "WORK_OF_ART": ["chore schedule", "laundry", "dishes", "cooking"]
+                    },
+                    expected_context_elements=[
+                        "communication_success",
+                        "compromise_solution",
+                        "task_division",
+                        "fairness_question"
+                    ],
+                    should_remember_from_turns=[1, 2],
+                    should_reference_entities=["Alex", "organized", "chaotic"],
+                    validation_rules=[
+                        "should_praise_communication",
+                        "should_evaluate_fairness",
+                        "should_encourage_flexibility"
+                    ],
+                    thread_expectation="continue"
+                ),
+                ConversationTurn(
+                    user_message="Thanks for the advice! By the way, Alex's birthday is coming up next week and I want to plan something special. They love hiking and photography.",
+                    expected_entities={
+                        "DATE": ["next week"],
+                        "EVENT": ["birthday"],
+                        "ACTIVITY": ["hiking", "photography"]
+                    },
+                    expected_context_elements=[
+                        "birthday_planning",
+                        "gift_ideas_request",
+                        "partner_interests",
+                        "special_occasion"
+                    ],
+                    should_remember_from_turns=[1, 2, 3],
+                    should_reference_entities=["Alex"],
+                    validation_rules=[
+                        "should_suggest_thoughtful_ideas",
+                        "should_incorporate_interests",
+                        "should_show_relationship_support"
+                    ],
+                    thread_expectation="continue"
+                )
+            ],
+            success_criteria={
+                "context_adherence": 0.85,
+                "knowledge_retention": 0.90,
+                "conversation_relevancy": 0.90,
+                "response_quality": 0.95,
+                "memory_consistency": 0.90,
+                "overall_score": 0.90
+            },
+            tags=["personal", "relationships", "emotions", "advice", "empathy"],
+            tests_working_memory=True,
+            tests_semantic_memory=True,
+            tests_fact_extraction=True,
+            tests_conversation_strength=True,
+            estimated_duration_minutes=7,
+            difficulty_level="medium"
+        )
+        
     def get_scenario(self, name: str) -> Optional[ConversationScenario]:
         """Get a scenario by name"""
         return self.scenarios.get(name)
@@ -387,3 +590,11 @@ class ScenarioLibrary:
     def add_custom_scenario(self, scenario: ConversationScenario):
         """Add a custom scenario to the library"""
         self.scenarios[scenario.name] = scenario
+        
+    def get_default_multi_scenario_set(self) -> List[str]:
+        """Get the default set of 3 diverse scenarios for multi-scenario testing"""
+        return [
+            "comprehensive_memory_test",    # Personal/professional life with entities
+            "technical_problem_solving",    # Technical discussion with code
+            "personal_relationships"        # Emotional/relationship conversation
+        ]

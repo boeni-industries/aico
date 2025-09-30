@@ -504,9 +504,16 @@ def tail_chroma_collection(
                 expand=True
             )
             
-            table.add_column("ID", style="dim", width=20, no_wrap=True)
-            table.add_column("Document", style="cyan", no_wrap=False, min_width=40)
-            table.add_column("Metadata", style="bright_blue", no_wrap=False, width=30)
+            if full:
+                # In full mode, allow columns to expand as needed
+                table.add_column("ID", style="dim", no_wrap=False)
+                table.add_column("Document", style="cyan", no_wrap=False)
+                table.add_column("Metadata", style="bright_blue", no_wrap=False)
+            else:
+                # In normal mode, use width constraints
+                table.add_column("ID", style="dim", width=20, no_wrap=True)
+                table.add_column("Document", style="cyan", no_wrap=False, min_width=40)
+                table.add_column("Metadata", style="bright_blue", no_wrap=False, width=30)
             
             for i, doc_id in enumerate(last_ids):
                 document_text = last_documents[i] if i < len(last_documents) else ""
@@ -548,8 +555,7 @@ def tail_chroma_collection(
                             if key not in priority_fields:
                                 if key in ['source_message', 'fact_extraction_id', 'reasoning']:
                                     continue  # Skip very verbose internal fields
-                                if isinstance(value, str) and len(value) > 30:
-                                    value = value[:27] + "..."
+                                # In full mode, don't truncate any values
                                 metadata_parts.append(f"{key}: {value}")
                     
                     formatted_metadata = "\n".join(metadata_parts) if metadata_parts else "[dim]none[/dim]"
