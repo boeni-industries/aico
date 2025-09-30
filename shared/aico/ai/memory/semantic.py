@@ -72,6 +72,12 @@ class SemanticMemoryStore:
         self._collection_name = memory_config.get("collections", {}).get("user_facts", "user_facts")
         self._embedding_model = memory_config.get("embedding_model", "paraphrase-multilingual")
         self._max_results = memory_config.get("max_results", 20)
+        
+        # Deduplication configuration
+        dedup_config = memory_config.get("deduplication", {})
+        self._dedup_enabled = dedup_config.get("enabled", True)
+        self._dedup_threshold = dedup_config.get("similarity_threshold", 0.92)
+        self._dedup_check_top_n = dedup_config.get("check_top_n", 5)
     
     def set_modelservice(self, modelservice):
         """Set the ModelService instance for embedding generation"""
@@ -152,52 +158,256 @@ class SemanticMemoryStore:
         }
     
     async def store_fact(self, fact: UserFact) -> bool:
-        """Store a single user fact"""
+        """
+        Store a fact in semantic memory with deduplication.
+        
+        Deduplication Strategy:
+        1. Generate embedding for the fact
+        2. Check for semantic duplicates (similarity >= threshold)
+        3. If duplicate found: update existing fact
+        4. If new: insert as new fact
+        
+        Args:
+            fact: UserFact to store
+            
+        Returns:
+            bool: True if stored/updated successfully
+        """
         import time
         store_fact_start = time.time()
-        print(f"🔍 [FULL_TRACE] store_fact() STARTED for: '{fact.content[:30]}...' [{store_fact_start:.6f}]")
         
         if not self._initialized:
-            init_start = time.time()
             await self.initialize()
-            init_duration = time.time() - init_start
-            print(f"🔍 [FULL_TRACE] Initialization took {init_duration*1000:.2f}ms [{time.time():.6f}]")
         
         if not self._modelservice:
             raise RuntimeError("Modelservice required for fact storage")
         
         try:
-            # EMERGENCY BYPASS: Skip queue entirely and call ModelService directly
-            embedding_start = time.time()
-            print(f"🔍 [FULL_TRACE] Starting DIRECT ModelService call (bypassing queue) [{embedding_start:.6f}]")
-            try:
-                # Direct call to ModelService - no queue at all
-                result = await self._modelservice.get_embeddings(
-                    model="paraphrase-multilingual",
-                    prompt=fact.content
-                )
-                
-                if result and result.get('success'):
-                    embedding = result.get('data', {}).get('embedding')
-                    if embedding:
-                        embedding_duration = time.time() - embedding_start
-                        print(f"🔍 [FULL_TRACE] DIRECT embedding completed in {embedding_duration*1000:.2f}ms [{time.time():.6f}]")
-                    else:
-                        raise RuntimeError("No embedding data in successful response")
-                else:
-                    error_msg = result.get('error', 'Unknown error') if result else 'No result returned'
-                    raise RuntimeError(f"Embedding request failed: {error_msg}")
-                    
-            except Exception as e:
-                embedding_duration = time.time() - embedding_start
-                print(f"🔍 [FULL_TRACE] DIRECT embedding FAILED in {embedding_duration*1000:.2f}ms: {e} [{time.time():.6f}]")
-                logger.error(f"Direct embedding failed: {e}")
-                return False
-            
+            # Stage 1: Generate embedding
+            embedding = await self._generate_embedding(fact.content)
             if not embedding:
                 logger.error(f"Failed to generate embedding for fact: {fact.content[:50]}...")
                 return False
             
+            # Stage 2: Check for duplicates (if enabled)
+            if self._dedup_enabled:
+                duplicate = await self._find_duplicate_fact(
+                    content=fact.content,
+                    embedding=embedding,
+                    user_id=fact.user_id
+                )
+                
+                if duplicate:
+                    # Update existing fact instead of creating duplicate
+                    logger.info(f"📋 [DEDUP] Duplicate detected (similarity: {duplicate['similarity']:.3f})")
+                    logger.info(f"📋 [DEDUP] Existing: {duplicate['content'][:50]}...")
+                    logger.info(f"📋 [DEDUP] New: {fact.content[:50]}...")
+                    
+                    success = await self._update_fact(
+                        fact_id=duplicate['id'],
+                        new_fact=fact,
+                        new_embedding=embedding
+                    )
+                    
+                    store_fact_total = time.time() - store_fact_start
+                    logger.info(f"🔍 [STORE] Fact updated in {store_fact_total*1000:.2f}ms")
+                    return success
+            
+            # Stage 3: No duplicate found, insert as new fact
+            success = await self._insert_new_fact(fact, embedding)
+            
+            store_fact_total = time.time() - store_fact_start
+            logger.info(f"🔍 [STORE] Fact stored in {store_fact_total*1000:.2f}ms")
+            return success
+            
+        except Exception as e:
+            logger.error(f"🔍 [CHROMADB_STORE] ❌ FAILED to store fact: {e}")
+            logger.error(f"🔍 [CHROMADB_STORE] Fact content: {fact.content}")
+            return False
+    
+    async def _generate_embedding(self, text: str) -> Optional[List[float]]:
+        """
+        Generate embedding for text using ModelService.
+        
+        Args:
+            text: Text to generate embedding for
+            
+        Returns:
+            List[float]: Embedding vector or None if failed
+        """
+        import time
+        try:
+            embedding_start = time.time()
+            result = await self._modelservice.get_embeddings(
+                model=self._embedding_model,
+                prompt=text
+            )
+            
+            if result and result.get('success'):
+                embedding = result.get('data', {}).get('embedding')
+                if embedding:
+                    embedding_duration = time.time() - embedding_start
+                    logger.debug(f"🔍 [EMBEDDING] Generated in {embedding_duration*1000:.2f}ms")
+                    return embedding
+                else:
+                    logger.error("No embedding data in successful response")
+                    return None
+            else:
+                error_msg = result.get('error', 'Unknown error') if result else 'No result returned'
+                logger.error(f"Embedding request failed: {error_msg}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Embedding generation failed: {e}")
+            return None
+    
+    async def _find_duplicate_fact(
+        self,
+        content: str,
+        embedding: List[float],
+        user_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Find duplicate fact using semantic similarity.
+        
+        Args:
+            content: Fact content to check
+            embedding: Pre-computed embedding
+            user_id: User ID to filter by
+            
+        Returns:
+            Dict with duplicate info if found, None otherwise
+        """
+        try:
+            # Query ChromaDB for similar facts (user-specific)
+            results = self._collection.query(
+                query_embeddings=[embedding],
+                n_results=self._dedup_check_top_n,
+                where={"user_id": user_id}
+            )
+            
+            if not results['ids'] or not results['ids'][0]:
+                return None
+            
+            # Check if any result exceeds similarity threshold
+            for i, (doc_id, distance, document, metadata) in enumerate(zip(
+                results['ids'][0],
+                results['distances'][0],
+                results['documents'][0],
+                results['metadatas'][0]
+            )):
+                # ChromaDB uses L2 distance - convert to cosine similarity
+                # For normalized embeddings: similarity ≈ 1 - (distance² / 2)
+                similarity = 1 - (distance * distance / 2)
+                
+                if similarity >= self._dedup_threshold:
+                    logger.debug(f"📋 [DEDUP] Found duplicate: similarity={similarity:.3f}, threshold={self._dedup_threshold}")
+                    return {
+                        'id': doc_id,
+                        'content': document,
+                        'similarity': similarity,
+                        'metadata': metadata
+                    }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Duplicate detection failed: {e}")
+            return None
+    
+    async def _update_fact(
+        self,
+        fact_id: str,
+        new_fact: UserFact,
+        new_embedding: List[float]
+    ) -> bool:
+        """
+        Update existing fact with new information.
+        
+        Strategy:
+        - Keep higher confidence value
+        - Update timestamp to most recent
+        - Preserve immutability flag if already set
+        
+        Args:
+            fact_id: ID of existing fact
+            new_fact: New fact data
+            new_embedding: New embedding
+            
+        Returns:
+            bool: True if updated successfully
+        """
+        try:
+            # Get existing fact
+            existing = self._collection.get(ids=[fact_id])
+            if not existing['ids']:
+                # Fact disappeared, insert as new
+                logger.warning(f"📋 [DEDUP] Fact {fact_id} not found, inserting as new")
+                return await self._insert_new_fact(new_fact, new_embedding)
+            
+            existing_metadata = existing['metadatas'][0]
+            
+            # Merge logic: keep higher confidence
+            updated_confidence = max(
+                float(existing_metadata.get('confidence', 0.0)),
+                new_fact.confidence
+            )
+            
+            # Preserve immutability if already set to True
+            is_immutable = existing_metadata.get('is_immutable', 'False')
+            if is_immutable == 'True' or new_fact.is_immutable:
+                is_immutable = 'True'
+            
+            # Update metadata
+            updated_metadata = {
+                "user_id": new_fact.user_id,
+                "fact_type": new_fact.fact_type,
+                "category": new_fact.category,
+                "confidence": updated_confidence,
+                "is_immutable": is_immutable,
+                "valid_from": new_fact.valid_from.isoformat(),
+                "entities": json.dumps(new_fact.entities),
+                "entities_json": json.dumps(new_fact.entities),
+                "source_conversation_id": new_fact.source_conversation_id,
+                "created_at": existing_metadata.get('created_at', datetime.utcnow().isoformat()),
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            
+            if new_fact.valid_until:
+                updated_metadata["valid_until"] = new_fact.valid_until.isoformat()
+            
+            # Update in ChromaDB
+            self._collection.update(
+                ids=[fact_id],
+                embeddings=[new_embedding],
+                metadatas=[updated_metadata],
+                documents=[new_fact.content]
+            )
+            
+            logger.info(f"✅ [DEDUP] Updated fact: {fact_id} (confidence: {updated_confidence:.2f})")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to update fact: {e}")
+            return False
+    
+    async def _insert_new_fact(
+        self,
+        fact: UserFact,
+        embedding: List[float]
+    ) -> bool:
+        """
+        Insert new fact into ChromaDB.
+        
+        Args:
+            fact: UserFact to insert
+            embedding: Pre-computed embedding
+            
+        Returns:
+            bool: True if inserted successfully
+        """
+        import time
+        try:
             # Create fact ID
             fact_id = f"fact_{fact.user_id}_{int(fact.valid_from.timestamp())}"
             
@@ -207,22 +417,19 @@ class SemanticMemoryStore:
                 "fact_type": fact.fact_type,
                 "category": fact.category,
                 "confidence": fact.confidence,
-                "is_immutable": str(fact.is_immutable),  # Convert bool to string
+                "is_immutable": str(fact.is_immutable),
                 "valid_from": fact.valid_from.isoformat(),
                 "entities": json.dumps(fact.entities),
-                "entities_json": json.dumps(fact.entities),  # For evaluation compatibility
+                "entities_json": json.dumps(fact.entities),
                 "source_conversation_id": fact.source_conversation_id,
                 "created_at": datetime.utcnow().isoformat()
             }
             
-            # Only add valid_until if it exists (ChromaDB doesn't accept None)
             if fact.valid_until:
                 metadata["valid_until"] = fact.valid_until.isoformat()
             
             # Store in ChromaDB
             chromadb_start = time.time()
-            print(f"🔍 [FULL_TRACE] Starting ChromaDB storage [{chromadb_start:.6f}]")
-            logger.info(f"🔍 [CHROMADB_STORE] Attempting to store fact with metadata: {metadata}")
             self._collection.add(
                 documents=[fact.content],
                 embeddings=[embedding],
@@ -230,17 +437,12 @@ class SemanticMemoryStore:
                 ids=[fact_id]
             )
             chromadb_duration = time.time() - chromadb_start
-            print(f"🔍 [FULL_TRACE] ChromaDB storage completed in {chromadb_duration*1000:.2f}ms [{time.time():.6f}]")
             
-            store_fact_total = time.time() - store_fact_start
-            print(f"🔍 [FULL_TRACE] store_fact() COMPLETED in {store_fact_total*1000:.2f}ms [{time.time():.6f}]")
-            logger.info(f"🔍 [CHROMADB_STORE] ✅ SUCCESS: Stored fact: {fact.content[:50]}... (confidence: {fact.confidence})")
+            logger.info(f"✅ [CHROMADB_STORE] Stored new fact in {chromadb_duration*1000:.2f}ms: {fact.content[:50]}... (confidence: {fact.confidence})")
             return True
             
         except Exception as e:
-            logger.error(f"🔍 [CHROMADB_STORE] ❌ FAILED to store fact: {e}")
-            logger.error(f"🔍 [CHROMADB_STORE] Fact content: {fact.content}")
-            logger.error(f"🔍 [CHROMADB_STORE] Metadata: {metadata}")
+            logger.error(f"Failed to insert fact: {e}")
             return False
     
     async def query(self, query_text: str, max_results: int = None, 

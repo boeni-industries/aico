@@ -315,3 +315,8 @@ memory:
     # Embedding model configuration
     embedding_model: "paraphrase-multilingual"  # Uses transformers model
     max_results: 20  # Maximum number of results to return from queries
+    # Deduplication configuration
+    deduplication:
+      enabled: true  # Enable semantic deduplication
+      similarity_threshold: 0.92  # Cosine similarity threshold (0.90-0.95 recommended, higher = stricter)
+      check_top_n: 5  # Check top N most similar facts for duplicates
