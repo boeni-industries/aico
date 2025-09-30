@@ -183,14 +183,23 @@ def scenarios_alias():
 def run_evaluation(
     scenarios: Optional[List[str]] = typer.Argument(None, help="Scenarios to run (default: all 3 diverse scenarios)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed output"),
-    single: Optional[str] = typer.Option(None, "--single", "-s", help="Run single scenario")
+    single: Optional[str] = typer.Option(None, "--single", "-s", help="Run single scenario"),
+    reuse_user: bool = typer.Option(False, "--reuse-user", help="Reuse same user across all scenarios (for deduplication testing)"),
+    user_id: Optional[str] = typer.Option(None, "--user-id", help="Use existing user ID (for persistent deduplication testing)")
 ):
     """Run memory evaluation test(s)"""
     
     print_header()
     
+    if user_id:
+        console.print(f"[bold cyan]🔒 PERSISTENT USER MODE: Using user {user_id[:8]}...[/bold cyan]")
+        console.print()
+    elif reuse_user:
+        console.print("[bold yellow]🔄 DEDUPLICATION TEST MODE: Reusing same user across all scenarios[/bold yellow]")
+        console.print()
+    
     async def run_async():
-        evaluator = MemoryIntelligenceEvaluator()
+        evaluator = MemoryIntelligenceEvaluator(reuse_user=reuse_user, user_id=user_id)
         library = ScenarioLibrary()
         
         try:

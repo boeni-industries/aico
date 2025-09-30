@@ -85,7 +85,9 @@ class MemoryIntelligenceEvaluator:
     def __init__(self, 
                  backend_url: str = "http://localhost:8771",
                  auth_token: Optional[str] = None,
-                 timeout_seconds: int = 30):
+                 timeout_seconds: int = 30,
+                 reuse_user: bool = False,
+                 user_id: Optional[str] = None):
         """
         Initialize the Memory Intelligence Evaluator.
         
@@ -93,10 +95,14 @@ class MemoryIntelligenceEvaluator:
             backend_url: AICO backend API URL
             auth_token: Authentication token (if None, will attempt auto-login)
             timeout_seconds: Request timeout for API calls
+            reuse_user: If True, reuse the same user across all scenarios (for deduplication testing)
+            user_id: If provided, use this existing user instead of creating a new one
         """
         self.backend_url = backend_url
         self.auth_token = auth_token
         self.timeout_seconds = timeout_seconds
+        self.reuse_user = reuse_user
+        self.persistent_user_id = user_id  # Use existing user if provided
         
         # Initialize AICO components (optional)
         self.config = ConfigurationManager() if ConfigurationManager else None
@@ -160,6 +166,11 @@ class MemoryIntelligenceEvaluator:
     async def _cleanup_test_user(self):
         """Clean up the test user created during testing"""
         if not self._test_user_uuid:
+            return
+        
+        # NEVER delete persistent user
+        if self.persistent_user_id:
+            print(f"🔒 Skipping cleanup of persistent user: {self._test_user_uuid}")
             return
             
         # Only try to delete if we actually created a real user (not a fake UUID)
@@ -323,8 +334,18 @@ class MemoryIntelligenceEvaluator:
         try:
             print("🔐 Authenticating user...")
             
-            # Ensure test user exists
-            test_user_uuid = await self._ensure_test_user()
+            # Priority 1: Use persistent user_id if provided
+            if self.persistent_user_id:
+                test_user_uuid = self.persistent_user_id
+                self._test_user_uuid = test_user_uuid  # Store it
+                print(f"🔒 Using persistent user: {test_user_uuid}")
+            # Priority 2: If reusing user and we already have a UUID, use it
+            elif self.reuse_user and self._test_user_uuid:
+                test_user_uuid = self._test_user_uuid
+                print(f"🔄 Reusing existing user: {test_user_uuid}")
+            # Priority 3: Create new user
+            else:
+                test_user_uuid = await self._ensure_test_user()
             
             # Now authenticate
             auth_request = {
@@ -467,14 +488,16 @@ class MemoryIntelligenceEvaluator:
             if hasattr(self.metrics, 'cleanup'):
                 await self.metrics.cleanup()
                 
-            # Clean up test user
-            await self._cleanup_test_user()
+            # Clean up test user (only if not reusing AND not using persistent user)
+            if not self.reuse_user and not self.persistent_user_id:
+                await self._cleanup_test_user()
                 
             if 'session' in locals():
                 session.end_time = datetime.now()
                 self.session_history.append(session)
-            # Clean up HTTP session
-            await self.cleanup()
+            # Clean up HTTP session (only if not reusing user AND not using persistent user)
+            if not self.reuse_user and not self.persistent_user_id:
+                await self.cleanup()
         
     # Removed duplicate method - using complete implementation below
         

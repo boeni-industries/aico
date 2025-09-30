@@ -296,11 +296,31 @@ class SemanticMemoryStore:
                 results['documents'][0],
                 results['metadatas'][0]
             )):
-                # ChromaDB uses L2 distance - convert to cosine similarity
-                # For normalized embeddings: similarity ≈ 1 - (distance² / 2)
-                similarity = 1 - (distance * distance / 2)
+                # ChromaDB uses L2 distance - convert to similarity score
+                # Lower distance = higher similarity
+                # For L2 distance: similarity = 1 / (1 + distance)
+                # This gives similarity in range [0, 1] where 0 = far, 1 = identical
+                similarity = 1 / (1 + distance)
                 
                 if similarity >= self._dedup_threshold:
+                    # Additional validation: check content overlap to avoid false positives
+                    # Extract the main content after the entity type prefix (e.g., "person: ")
+                    new_content = content.split(':', 1)[-1].strip().lower() if ':' in content else content.lower()
+                    existing_content = document.split(':', 1)[-1].strip().lower() if ':' in document else document.lower()
+                    
+                    # Calculate simple word overlap
+                    new_words = set(new_content.split())
+                    existing_words = set(existing_content.split())
+                    
+                    if new_words and existing_words:
+                        overlap = len(new_words & existing_words) / len(new_words | existing_words)
+                        
+                        # Require at least 30% word overlap to confirm it's a real duplicate
+                        if overlap < 0.3:
+                            logger.debug(f"📋 [DEDUP] Rejected: similarity={similarity:.3f} but word overlap={overlap:.3f} too low")
+                            logger.debug(f"📋 [DEDUP] Existing: {document[:50]}... vs New: {content[:50]}...")
+                            continue
+                    
                     logger.debug(f"📋 [DEDUP] Found duplicate: similarity={similarity:.3f}, threshold={self._dedup_threshold}")
                     return {
                         'id': doc_id,

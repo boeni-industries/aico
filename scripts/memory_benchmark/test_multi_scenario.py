@@ -14,13 +14,21 @@ sys.path.insert(0, str(shared_path))
 from .evaluator import MemoryIntelligenceEvaluator
 from .scenarios import ScenarioLibrary
 
-async def test_multi_scenario():
-    """Test the multi-scenario evaluation system"""
+async def test_multi_scenario(reuse_user: bool = False):
+    """
+    Test the multi-scenario evaluation system
+    
+    Args:
+        reuse_user: If True, reuse the same user across all scenarios (for deduplication testing)
+    """
     
     print("🧠 AICO Multi-Scenario Memory Evaluation Test")
     print("=" * 60)
+    if reuse_user:
+        print("🔄 DEDUPLICATION TEST MODE: Reusing same user across all scenarios")
+        print("=" * 60)
     
-    evaluator = MemoryIntelligenceEvaluator()
+    evaluator = MemoryIntelligenceEvaluator(reuse_user=reuse_user)
     library = ScenarioLibrary()
     
     try:
@@ -87,5 +95,11 @@ async def test_multi_scenario():
     return 0
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(test_multi_scenario())
+    import argparse
+    parser = argparse.ArgumentParser(description="AICO Multi-Scenario Memory Evaluation")
+    parser.add_argument("--reuse-user", action="store_true", 
+                       help="Reuse same user across all scenarios (for deduplication testing)")
+    args = parser.parse_args()
+    
+    exit_code = asyncio.run(test_multi_scenario(reuse_user=args.reuse_user))
     sys.exit(exit_code)
