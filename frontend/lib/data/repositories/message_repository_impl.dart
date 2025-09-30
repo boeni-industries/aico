@@ -46,20 +46,20 @@ class MessageRepositoryImpl implements MessageRepository {
 
       if (response != null) {
         // Backend returns UnifiedMessageResponse with fields:
-        // success, message_id, thread_id, thread_action, status, timestamp, ai_response
+        // success, message_id, conversation_id, conversation_action, status, timestamp, ai_response
         
         // Create a message entity from the backend response
         final sentMessage = Message(
           id: response['message_id'] as String,
           content: message.content, // Use original message content
           userId: message.userId,
-          conversationId: response['thread_id'] as String,
+          conversationId: response['conversation_id'] as String,
           type: message.type,
           status: MessageStatus.sent, // Message was successfully sent
           timestamp: message.timestamp, // Keep original frontend timestamp
           metadata: {
-            'thread_action': response['thread_action'] as String,
-            'thread_reasoning': response['thread_reasoning'] as String,
+            'conversation_action': response['conversation_action'] as String,
+            'conversation_reasoning': response['conversation_reasoning'] as String,
             'backend_status': response['status'] as String,
             'ai_response': response['ai_response'] as String?, // Store AI response for later use
             'backend_timestamp': response['timestamp'] as String, // Store backend timestamp separately
@@ -71,7 +71,7 @@ class MessageRepositoryImpl implements MessageRepository {
           extra: {
             'message_id': sentMessage.id,
             'conversation_id': sentMessage.conversationId,
-            'thread_action': response['thread_action'],
+            'conversation_action': response['conversation_action'],
             'has_ai_response': response.containsKey('ai_response') && response['ai_response'] != null,
           });
 
@@ -139,13 +139,15 @@ class MessageRepositoryImpl implements MessageRepository {
         });
 
       final queryParams = <String, String>{
+        'page': '1',
         if (limit != null) 'page_size': limit.toString(),
         if (beforeMessageId != null) 'before': beforeMessageId,
       };
 
+      // Use user-scoped endpoint - backend handles conversation filtering via auth
       final response = await _apiClient.request<Map<String, dynamic>>(
         'GET',
-        '/conversations/threads/$conversationId/messages',
+        '/conversation/messages',
         queryParameters: queryParams,
       );
 

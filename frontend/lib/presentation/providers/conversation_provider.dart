@@ -17,14 +17,14 @@ class ConversationState {
   final bool isLoading;
   final bool isSendingMessage;
   final String? error;
-  final String? currentThreadId;
+  final String? currentConversationId;
 
   const ConversationState({
     this.messages = const [],
     this.isLoading = false,
     this.isSendingMessage = false,
     this.error,
-    this.currentThreadId,
+    this.currentConversationId,
   });
 
   ConversationState copyWith({
@@ -32,14 +32,14 @@ class ConversationState {
     bool? isLoading,
     bool? isSendingMessage,
     String? error,
-    String? currentThreadId,
+    String? currentConversationId,
   }) {
     return ConversationState(
       messages: messages ?? this.messages,
       isLoading: isLoading ?? this.isLoading,
       isSendingMessage: isSendingMessage ?? this.isSendingMessage,
       error: error ?? this.error,
-      currentThreadId: currentThreadId ?? this.currentThreadId,
+      currentConversationId: currentConversationId ?? this.currentConversationId,
     );
   }
 
@@ -69,8 +69,8 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
       topic: 'conversation_provider/init',
       extra: {'user_id': _userId});
     
-    // Start with a default thread ID - backend will handle thread resolution
-    state = state.copyWith(currentThreadId: 'default');
+    // Start with a default conversation ID - backend will handle conversation resolution
+    state = state.copyWith(currentConversationId: 'default');
   }
 
   /// Send a message to AICO
@@ -89,7 +89,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
       id: messageId,
       content: content.trim(),
       userId: _userId,
-      conversationId: state.currentThreadId ?? 'default',
+      conversationId: state.currentConversationId ?? 'default',
       type: MessageType.text,
       status: MessageStatus.sending,
       timestamp: timestamp,
@@ -107,7 +107,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
       extra: {
         'message_id': messageId,
         'content_length': content.length,
-        'thread_id': state.currentThreadId,
+        'conversation_id': state.currentConversationId,
       });
 
     try {
@@ -115,7 +115,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
       final params = SendMessageParams(
         content: content.trim(),
         userId: _userId,
-        conversationId: state.currentThreadId ?? 'default',
+        conversationId: state.currentConversationId ?? 'default',
         type: MessageType.text,
       );
 
@@ -126,28 +126,28 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
         if (msg.id == messageId) {
           return msg.copyWith(
             status: MessageStatus.sent,
-            conversationId: sentMessage.conversationId, // Update thread ID if changed
+            conversationId: sentMessage.conversationId, // Update conversation ID if changed
           );
         }
         return msg;
       }).toList();
 
-      // Update thread ID if backend resolved to a different one
-      final newThreadId = sentMessage.conversationId != state.currentThreadId 
+      // Update conversation ID if backend resolved to a different one
+      final newConversationId = sentMessage.conversationId != state.currentConversationId 
           ? sentMessage.conversationId 
-          : state.currentThreadId;
+          : state.currentConversationId;
 
       state = state.copyWith(
         messages: updatedMessages,
         isSendingMessage: false,
-        currentThreadId: newThreadId,
+        currentConversationId: newConversationId,
       );
 
       AICOLog.info('Message sent successfully', 
         topic: 'conversation_provider/send_success',
         extra: {
           'message_id': sentMessage.id,
-          'thread_id': sentMessage.conversationId,
+          'conversation_id': sentMessage.conversationId,
         });
 
       // Handle AI response from backend using the backend response data
@@ -207,7 +207,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
           topic: 'conversation_provider/ai_response',
           extra: {
             'ai_message_id': aiMessage.id,
-            'thread_id': aiMessage.conversationId,
+            'conversation_id': aiMessage.conversationId,
             'content_length': aiResponseContent.length,
           });
       } else {
@@ -215,7 +215,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
           topic: 'conversation_provider/ai_response_missing',
           extra: {
             'user_message_id': userMessage.id,
-            'thread_id': userMessage.conversationId,
+            'conversation_id': userMessage.conversationId,
           });
       }
 
@@ -228,28 +228,28 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
   }
 
   /// Load conversation history
-  Future<void> loadMessages({String? threadId}) async {
-    final targetThreadId = threadId ?? state.currentThreadId ?? 'default';
+  Future<void> loadMessages({String? conversationId}) async {
+    final targetConversationId = conversationId ?? state.currentConversationId ?? 'default';
     
     state = state.copyWith(isLoading: true, error: null);
 
     AICOLog.info('Loading conversation messages', 
       topic: 'conversation_provider/load_messages',
-      extra: {'thread_id': targetThreadId});
+      extra: {'conversation_id': targetConversationId});
 
     try {
-      final messages = await _messageRepository.getMessages(targetThreadId);
+      final messages = await _messageRepository.getMessages(targetConversationId);
       
       state = state.copyWith(
         messages: messages,
         isLoading: false,
-        currentThreadId: targetThreadId,
+        currentConversationId: targetConversationId,
       );
 
       AICOLog.info('Messages loaded successfully', 
         topic: 'conversation_provider/load_success',
         extra: {
-          'thread_id': targetThreadId,
+          'conversation_id': targetConversationId,
           'message_count': messages.length,
         });
 
@@ -257,7 +257,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
       AICOLog.error('Failed to load messages', 
         topic: 'conversation_provider/load_error',
         error: e,
-        extra: {'thread_id': targetThreadId});
+        extra: {'conversation_id': targetConversationId});
 
       state = state.copyWith(
         isLoading: false,
@@ -271,7 +271,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
     AICOLog.info('Clearing conversation', 
       topic: 'conversation_provider/clear');
     
-    state = const ConversationState(currentThreadId: 'default');
+    state = const ConversationState(currentConversationId: 'default');
   }
 
   /// Clear error state
