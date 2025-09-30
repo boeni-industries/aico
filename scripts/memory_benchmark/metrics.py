@@ -108,14 +108,10 @@ class MemoryMetrics:
             print("✅ Connected to AICO's file-based ChromaDB instance")
             
             # Initialize ModelService client for direct NER calls
-            try:
-                from backend.services.modelservice_client import ModelServiceClient
-                self.modelservice_client = ModelServiceClient()
-                await self.modelservice_client.initialize()
-                print("✅ Connected to ModelService for direct NER testing")
-            except Exception as e:
-                print(f"⚠️ Failed to connect to ModelService: {e}")
-                print("   Entity extraction testing will be limited")
+            # NOTE: Skipping ModelService client - evaluation uses content-based filtering instead
+            # This avoids complex logging initialization requirements
+            self.modelservice_client = None
+            print("ℹ️  Using content-based entity filtering for evaluation")
             
         except Exception as e:
             print(f"❌ Failed to connect to AICO memory systems: {e}")

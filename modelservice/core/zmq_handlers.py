@@ -692,23 +692,25 @@ class ModelserviceZMQHandlers:
                 response.error = "GLiNER model not available"
                 return response
             
-            # V2: Comprehensive entity types for conversational fact extraction
+            # V3: Optimized entity types using Title Case (GLiNER best practice)
+            # Reduced to core + conversational types, removed redundant/overlapping types
             entity_types = [
-                "person", "organization", "location", "date", "time",
-                "preference", "skill", "hobby", "relationship", "goal",
-                "experience", "opinion", "contact_info", "demographic",
-                "food", "activity", "place", "event", "emotion", "job",
-                "family_member", "friend", "colleague", "interest",
-                "pet", "animal", "cat", "dog", "name", "title"
+                # Core entities (standard NER)
+                "Person", "Organization", "Location", "Date", "Time",
+                
+                # Conversational entities (AICO-specific for memory)
+                "Emotion", "Preference", "Skill", "Hobby", "Goal",
+                "Relationship", "Activity", "Event", "Job",
+                "Opinion", "Experience", "Contact Info"
             ]
             
-            # V2: Use lower threshold for conversational entity extraction
+            # V3.1: Balanced threshold for conversational entity extraction
             inference_start = time.time()
             print(f"🔍 [NER_DEEP_ANALYSIS] Starting GLiNER inference [{inference_start:.6f}]")
             raw_entities = gliner_model.predict_entities(
                 text,
                 labels=entity_types,
-                threshold=0.3,  # Lowered for conversational text (entities like "cat", "job")
+                threshold=0.4,  # Balanced: higher than 0.3 (too noisy) but lower than 0.5 (too strict)
                 flat_ner=True,  # Use flat NER for better entity boundaries
                 multi_label=False  # Avoid overlapping entity classifications
             )
@@ -736,7 +738,8 @@ class ModelserviceZMQHandlers:
                 # INTELLIGENT FILTERING: Use GLiNER confidence and linguistic rules
                 confidence = entity.get("score", 0.0)
                 
-                # V2: Lower confidence threshold for conversational entities
+                # V3.1: Confidence threshold aligned with GLiNER prediction threshold
+                # Balanced threshold for conversational entities
                 if confidence < 0.4:
                     self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Low confidence - '{entity_text}' (confidence: {confidence:.3f} < 0.4)")
                     continue
@@ -760,20 +763,29 @@ class ModelserviceZMQHandlers:
                             self.logger.debug(f"[NER_FILTER] Cleaned possessive: '{entity['text']}' -> '{entity_text}'")
                         break
                 
-                # Map GLiNER labels to standard NER labels for backward compatibility
-                if entity_type == "PERSON":
-                    entity_type = "PERSON"
-                elif entity_type == "LOCATION":
-                    entity_type = "GPE"  # Geopolitical entity
-                elif entity_type == "ORGANIZATION":
-                    entity_type = "ORG"
-                elif entity_type == "DATE":
-                    entity_type = "DATE"
-                elif entity_type == "TIME":
-                    entity_type = "TIME"
-                else:
-                    # Advanced GLiNER types (relationship, emotion, food, etc.) - keep as-is
-                    entity_type = entity["label"].upper()
+                # V3: Normalize GLiNER Title Case outputs to standard NER types
+                # This ensures consistency with evaluation expectations and storage
+                type_normalization = {
+                    "PERSON": "PERSON",
+                    "ORGANIZATION": "ORG",
+                    "LOCATION": "GPE",  # Geopolitical entity
+                    "DATE": "DATE",
+                    "TIME": "TIME",
+                    "EMOTION": "EMOTION",
+                    "PREFERENCE": "PREFERENCE",
+                    "SKILL": "SKILL",
+                    "HOBBY": "HOBBY",
+                    "GOAL": "GOAL",
+                    "RELATIONSHIP": "RELATIONSHIP",
+                    "ACTIVITY": "ACTIVITY",
+                    "EVENT": "EVENT",
+                    "JOB": "JOB",
+                    "OPINION": "OPINION",
+                    "EXPERIENCE": "EXPERIENCE",
+                    "CONTACT INFO": "CONTACT_INFO"
+                }
+                
+                entity_type = type_normalization.get(entity_type, entity_type)
                 
                 if entity_type not in entities:
                     entities[entity_type] = []
