@@ -16,7 +16,7 @@ import sys
 # Import decorators
 decorators_path = Path(__file__).parent.parent / "decorators"
 sys.path.insert(0, str(decorators_path))
-from cli.decorators.sensitive import sensitive
+from cli.decorators.sensitive import sensitive, destructive
 
 # Add shared module to path for CLI usage
 if getattr(sys, 'frozen', False):
@@ -58,6 +58,7 @@ def security_callback(ctx: typer.Context, help: bool = typer.Option(False, "--he
             ("user-list", "List all users with filtering options"),
             ("user-update", "Update user profile information"),
             ("user-delete", "Delete user (soft delete by default, --hard for permanent)"),
+            ("user-cleanup", "Remove all soft-deleted users from database (IRREVERSIBLE)"),
             ("user-auth", "Authenticate user with PIN"),
             ("user-set-pin", "Set or update user PIN"),
             ("user-stats", "Show user statistics and authentication info"),
@@ -1958,6 +1959,133 @@ def user_delete(
         
     except Exception as e:
         console.print(f"❌ [red]Failed to delete user: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("user-cleanup")
+@destructive("permanently removes all soft-deleted users from database")
+def user_cleanup():
+    """Remove all soft-deleted users from database (IRREVERSIBLE)"""
+    import asyncio
+    from pathlib import Path
+    from aico.core.config import ConfigurationManager
+    from aico.core.paths import AICOPaths
+    from aico.security.key_manager import AICOKeyManager
+    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    from aico.data.user import UserService
+    
+    try:
+        # Initialize configuration and paths
+        config_manager = ConfigurationManager()
+        
+        # Use configuration-based path resolution
+        db_config = config_manager.get("database.libsql", {})
+        filename = db_config.get("filename", "aico.db")
+        directory_mode = db_config.get("directory_mode", "auto")
+        
+        db_path = AICOPaths.resolve_database_path(filename, directory_mode)
+        
+        # Initialize key manager and get database key
+        key_manager = _get_key_manager()
+        master_key = key_manager.authenticate()
+        db_key = key_manager.derive_database_key(master_key, "libsql", db_path)
+        
+        # Connect to database
+        db_conn = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+        user_service = UserService(db_conn)
+        
+        # Get all soft-deleted users (is_active = FALSE)
+        async def get_soft_deleted_users():
+            users = await user_service.list_users(limit=10000)
+            return [u for u in users if not u.is_active]
+        
+        soft_deleted_users = asyncio.run(get_soft_deleted_users())
+        
+        if not soft_deleted_users:
+            console.print("\n✅ [green]No soft-deleted users found[/green]")
+            console.print("[dim]All users in the database are currently active[/dim]")
+            return
+        
+        # Display users to be permanently deleted
+        console.print(f"\n[bold red]⚠️  PERMANENT DELETION WARNING[/bold red]")
+        console.print(f"[bold white]Found {len(soft_deleted_users)} soft-deleted user(s) to be permanently removed:[/bold white]\n")
+        
+        # Create table showing users to be deleted
+        table = Table(
+            border_style="red",
+            header_style="bold yellow",
+            show_lines=False,
+            box=box.SIMPLE_HEAD,
+            padding=(0, 1)
+        )
+        table.add_column("UUID", style="dim", justify="left", no_wrap=True)
+        table.add_column("Name", style="white", justify="left")
+        table.add_column("Nickname", style="cyan", justify="left")
+        table.add_column("Type", style="dim", justify="left")
+        table.add_column("Deleted", style="dim", justify="left")
+        
+        for user in soft_deleted_users:
+            table.add_row(
+                user.uuid[:8] + "...",
+                user.full_name,
+                user.nickname or "-",
+                user.user_type,
+                str(user.updated_at)[:19] if user.updated_at else "-"
+            )
+        
+        console.print(table)
+        
+        console.print(f"\n[bold red]This will permanently delete:[/bold red]")
+        console.print("• User profiles and account data")
+        console.print("• Authentication data (PINs/passwords)")
+        console.print("• User relationships and connections")
+        console.print("• Access policies and permissions")
+        console.print("• ALL related data for these users")
+        console.print(f"\n[bold red]This action CANNOT be undone![/bold red]")
+        
+        # Require typing the number of users to confirm
+        console.print()
+        confirmation = typer.prompt(
+            f"Type the number '{len(soft_deleted_users)}' to confirm permanent deletion of {len(soft_deleted_users)} user(s)",
+            show_default=False
+        )
+        
+        if confirmation != str(len(soft_deleted_users)):
+            console.print("❌ [yellow]Confirmation failed. Operation cancelled.[/yellow]")
+            raise typer.Exit(0)
+        
+        # Permanently delete all soft-deleted users
+        console.print(f"\n🗑️  [yellow]Permanently deleting {len(soft_deleted_users)} user(s)...[/yellow]")
+        
+        deleted_count = 0
+        failed_count = 0
+        
+        async def cleanup_users():
+            nonlocal deleted_count, failed_count
+            for user in soft_deleted_users:
+                try:
+                    result = await user_service.hard_delete_user(user.uuid)
+                    if result:
+                        deleted_count += 1
+                        console.print(f"  ✓ Deleted: {user.full_name} ({user.uuid[:8]}...)")
+                    else:
+                        failed_count += 1
+                        console.print(f"  ✗ Failed: {user.full_name} ({user.uuid[:8]}...)")
+                except Exception as e:
+                    failed_count += 1
+                    console.print(f"  ✗ Error deleting {user.full_name}: {e}")
+        
+        asyncio.run(cleanup_users())
+        
+        # Summary
+        console.print(f"\n[bold green]Cleanup Complete[/bold green]")
+        console.print(f"✅ Successfully deleted: {deleted_count} user(s)")
+        if failed_count > 0:
+            console.print(f"❌ Failed to delete: {failed_count} user(s)")
+        console.print(f"\n[bold yellow]All soft-deleted users have been permanently removed from the database.[/bold yellow]")
+        
+    except Exception as e:
+        console.print(f"❌ [red]Cleanup failed: {e}[/red]")
         raise typer.Exit(1)
 
 
