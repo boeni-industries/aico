@@ -1034,46 +1034,37 @@ core:
 
 ## Configuration
 
+**Note:** Knowledge graph uses existing model configuration from `core.yaml`. Models are managed centrally:
+- **Entity extraction:** Uses `modelservice.transformers.models.entity_extraction` (GLiNER)
+- **Embeddings:** Uses `modelservice.default_models.embedding` (paraphrase-multilingual)
+- **LLM operations:** Uses `modelservice.default_models.conversation` (hermes3:8b)
+
 ```yaml
-core:
-  ai:
-    # Core knowledge graph module configuration
+memory:
+  semantic:
+    # Knowledge graph configuration
     knowledge_graph:
-      extraction:
-        max_gleanings: 2  # 0-2 recommended
-        enable_novel_inference: true
-        entity_types: ["PERSON", "PLACE", "ORGANIZATION", "EVENT"]
-        
-      models:
-        extraction: "llama3.2:3b"  # Local, fast
-        matching: "gpt-4o-mini"    # Cheap, accurate
-        merging: "gpt-4o-mini"     # Cheap, accurate
-        
-      entity_resolution:
+      # Extraction settings
+      max_gleanings: 2  # Number of gleaning passes (0-2 recommended)
+      
+      # Entity resolution (deduplication)
+      deduplication:
         enabled: true
-        blocking_threshold: 0.85  # Cosine similarity for clustering
-        matching_confidence: 0.8  # LLM confidence threshold
+        similarity_threshold: 0.85  # Cosine similarity for semantic blocking
         
-      fusion:
-        enable_conflict_resolution: true
-        enable_novel_inference: true
-        
-      processing:
-        # Implementation features are hardcoded (progressive response, parallel processing, background processing)
-        # Only performance tuning is configurable:
-        caching_enabled: true            # Enable entity resolution caching (recommended)
-        cache_size: 1000                 # Number of entities to cache (adjust based on memory)
-        
-      storage:
-        backend: "chromadb+libsql"  # Hybrid storage (required)
-        # Paths resolved via AICOPaths.get_semantic_memory_path()
-        # Collections: kg_nodes, kg_edges (both ChromaDB and libSQL)
-  
-  memory:
-    semantic:
-      # Uses core.ai.knowledge_graph config
-      # Property conventions documented in Phase 0 (temporal, provenance, emotional, etc.)
+      # Performance tuning
+      caching:
+        enabled: true  # Cache entity resolution results
+        cache_size: 1000  # Number of entities to cache
 ```
+
+**What's NOT configurable (hardcoded in implementation):**
+- Storage backend: `chromadb+libsql` (hybrid, required)
+- Processing mode: Progressive response with parallel processing
+- Property conventions: Documented in Phase 0
+- Model selection: Uses existing `modelservice` configuration
+- Collections: `kg_nodes`, `kg_edges` (both ChromaDB and libSQL)
+- Paths: Resolved via `AICOPaths.get_semantic_memory_path()`
 
 ---
 
