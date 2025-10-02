@@ -690,33 +690,6 @@ Edge(source="user", target="sarah", relation="DISCUSSED", properties={
 
 ---
 
-## Performance Characteristics
-
-### Latency
-- **Current:** ~800ms per conversation
-- **Proposed:** ~2500ms per conversation
-- **Breakdown:**
-  - Pass 1 extraction: 500ms
-  - Pass 2 gleaning: 400ms
-  - Novel inference: 300ms
-  - Semantic blocking: 100ms
-  - LLM matching: 200ms
-  - Merging: 200ms
-
-### Cost
-- **Current:** ~$0.001 per conversation
-- **Proposed:** ~$0.003 per conversation
-- **Mitigation:** Use local models (llama3.2:3b) + cheap cloud (gpt-4o-mini)
-
-### Accuracy
-- **Deduplication:** 95%+ (vs 0% current)
-- **Information capture:** 90%+ (vs 60-70% current)
-- **Fact stability:** Stable (vs unbounded growth)
-
-**Trade-off:** 3x latency/cost for infinite accuracy improvement and system-wide benefits.
-
----
-
 ## Performance Optimization Strategies
 
 The 2500ms latency is too high for conversational UX. However, **we will not dumb down the solution**. Instead, we decouple processing time from conversation flow using architectural strategies.
