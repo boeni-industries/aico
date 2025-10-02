@@ -1,0 +1,184 @@
+syntax = "proto3";
+
+package aico.state;
+
+option go_package = "github.com/boeni-industries/aico/proto/state";
+option java_package = "industries.boeni.aico.proto.state";
+option java_multiple_files = true;
+
+import "google/protobuf/struct.proto";
+
+// ============================================================================
+// ENUMS - Single Source of Truth for State Streaming Constants
+// ============================================================================
+
+// Priority level for state updates (affects UI display urgency)
+enum StatePriority {
+  PRIORITY_UNSPECIFIED = 0;
+  PRIORITY_DEBUG = 1;      // Only shown in debug/developer mode
+  PRIORITY_LOW = 2;        // Background information, low urgency
+  PRIORITY_NORMAL = 3;     // Standard state updates
+  PRIORITY_HIGH = 4;       // Important updates requiring attention
+  PRIORITY_CRITICAL = 5;   // Critical updates requiring immediate attention
+}
+
+// Detail level for state information (progressive disclosure)
+enum StateDetailLevel {
+  DETAIL_UNSPECIFIED = 0;
+  DETAIL_MINIMAL = 1;      // Minimal information for basic users
+  DETAIL_NORMAL = 2;       // Standard detail level
+  DETAIL_VERBOSE = 3;      // Detailed information for power users
+  DETAIL_DEBUG = 4;        // Full technical details for debugging
+}
+
+// Event severity (for event-type states)
+enum EventSeverity {
+  SEVERITY_UNSPECIFIED = 0;
+  SEVERITY_INFO = 1;       // Informational event
+  SEVERITY_WARNING = 2;    // Warning event
+  SEVERITY_ERROR = 3;      // Error event
+  SEVERITY_CRITICAL = 4;   // Critical error event
+}
+
+// Lifecycle status (for lifecycle-type states)
+enum LifecycleStatus {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_IDLE = 1;         // Not started
+  STATUS_STARTING = 2;     // Initialization phase
+  STATUS_IN_PROGRESS = 3;  // Actively processing
+  STATUS_COMPLETED = 4;    // Successfully completed
+  STATUS_FAILED = 5;       // Failed with error
+}
+
+// Progress type (how to display progress)
+enum ProgressType {
+  PROGRESS_UNSPECIFIED = 0;
+  PROGRESS_DETERMINATE = 1;    // Known progress (0-100%)
+  PROGRESS_INDETERMINATE = 2;  // Unknown progress (spinner)
+  PROGRESS_STEPPED = 3;        // Step-based progress (e.g., 3/5)
+}
+
+// State update type discriminator
+enum StateUpdateType {
+  STATE_TYPE_UNSPECIFIED = 0;
+  STATE_TYPE_LIFECYCLE = 1;    // Stateful operation with progress
+  STATE_TYPE_EVENT = 2;        // One-time notification
+  STATE_TYPE_SNAPSHOT = 3;     // Current state values
+}
+
+// ============================================================================
+// MESSAGES - State Update Structures
+// ============================================================================
+
+// Hybrid Logical Clock for distributed ordering
+message HybridLogicalClock {
+  int64 timestamp_ms = 1;      // UTC milliseconds since epoch
+  int32 counter = 2;           // Logical counter for same millisecond
+  string source = 3;           // Originating service (e.g., "conversation_engine")
+}
+
+// UI display hints
+message UIHints {
+  StatePriority priority = 1;
+  StateDetailLevel detail_level = 2;
+  string user_message = 3;     // Simplified message for end users
+}
+
+// Base fields common to all state updates
+message StateUpdateBase {
+  string version = 1;                    // Protocol version (e.g., "1.0")
+  string timestamp_utc = 2;              // ISO 8601 with Z suffix
+  HybridLogicalClock sequence = 3;       // For distributed ordering
+  string state_category = 4;             // Hierarchical category (e.g., "conversation.processing.llm")
+  string state_key = 5;                  // Unique ID for this state instance
+  string user_id = 6;                    // User identifier
+  string conversation_id = 7;            // Optional conversation context
+  string request_id = 8;                 // Optional request context
+  google.protobuf.Struct details = 9;    // Technical details for support/debug
+  UIHints ui = 10;                       // Display hints
+}
+
+// Lifecycle state update (stateful operations with progress)
+message LifecycleStateUpdate {
+  StateUpdateBase base = 1;
+  LifecycleStatus status = 2;
+  int32 progress = 3;                    // 0-100, -1 for null/indeterminate
+  ProgressType progress_type = 4;
+  int32 step_current = 5;                // For stepped progress (0 if not applicable)
+  int32 step_total = 6;                  // For stepped progress (0 if not applicable)
+  string started_at_utc = 7;             // ISO 8601 timestamp
+  string estimated_completion_utc = 8;   // ISO 8601 timestamp (empty if unknown)
+}
+
+// Event state update (one-time notifications)
+message EventStateUpdate {
+  StateUpdateBase base = 1;
+  EventSeverity severity = 2;
+  string message = 3;                    // User-friendly message
+  string support_code = 4;               // Support code (e.g., "LLM_TIMEOUT_001")
+}
+
+// Snapshot state update (current state values)
+message SnapshotStateUpdate {
+  StateUpdateBase base = 1;
+  google.protobuf.Struct snapshot = 2;   // Flexible snapshot data
+}
+
+// Discriminated union wrapper for all state update types
+message StateUpdate {
+  StateUpdateType type = 1;              // Discriminator field
+  
+  oneof state {
+    LifecycleStateUpdate lifecycle = 2;
+    EventStateUpdate event = 3;
+    SnapshotStateUpdate snapshot = 4;
+  }
+}
+
+// ============================================================================
+// WEBSOCKET MESSAGES - Transport Layer
+// ============================================================================
+
+// WebSocket message types
+enum WebSocketMessageType {
+  WS_MESSAGE_UNSPECIFIED = 0;
+  WS_AUTH = 1;                           // Authentication
+  WS_SUBSCRIBE = 2;                      // Subscribe to topics
+  WS_UNSUBSCRIBE = 3;                    // Unsubscribe from topics
+  WS_STATE_UPDATE = 4;                   // State update broadcast
+  WS_HEARTBEAT = 5;                      // Connection keepalive
+  WS_REQUEST = 6;                        // API request
+  WS_RESPONSE = 7;                       // API response
+}
+
+// WebSocket subscription request
+message SubscriptionRequest {
+  repeated string topics = 1;            // Topic patterns to subscribe to
+}
+
+// WebSocket unsubscribe request
+message UnsubscribeRequest {
+  repeated string topics = 1;            // Topic patterns to unsubscribe from
+}
+
+// WebSocket state update broadcast
+message StateUpdateBroadcast {
+  string topic = 1;                      // Topic this update was published to
+  StateUpdate state = 2;                 // The state update
+}
+
+// WebSocket message envelope
+message WebSocketMessage {
+  WebSocketMessageType type = 1;
+  string message_id = 2;                 // Unique message identifier
+  
+  oneof payload {
+    string auth_token = 3;               // JWT token for authentication
+    SubscriptionRequest subscribe = 4;
+    UnsubscribeRequest unsubscribe = 5;
+    StateUpdateBroadcast state_update = 6;
+    google.protobuf.Struct heartbeat = 7;
+    google.protobuf.Struct request = 8;
+    google.protobuf.Struct response = 9;
+  }
+}
