@@ -295,6 +295,7 @@ class ConversationEngine(BaseService):
             print(f"💬 [CONVERSATION_ENGINE] 🎯 Request ID: {request_id} (from API Gateway: {user_message.message_id})")
             
             # Initialize response tracking (simplified)
+            print(f"💬 [CONVERSATION_ENGINE] 📝 Creating pending request: {request_id}")
             self.pending_responses[request_id] = {
                 "user_context": user_context,
                 "user_message": user_message,
@@ -302,6 +303,7 @@ class ConversationEngine(BaseService):
                 "components_ready": {},
                 "started_at": datetime.utcnow()
             }
+            print(f"💬 [CONVERSATION_ENGINE] 📋 Total pending requests: {len(self.pending_responses)}")
             
             # Determine what components we need
             components_needed = []
@@ -323,12 +325,7 @@ class ConversationEngine(BaseService):
             self.pending_responses[request_id]["components_needed"] = components_needed
             print(f"💬 [CONVERSATION_ENGINE] 📝 Components needed: {components_needed}")
             
-            # If no components needed, generate LLM response directly
-            if not components_needed:
-                print(f"💬 [CONVERSATION_ENGINE] ⚡ No components needed, generating LLM response directly")
-                await self._generate_llm_response(request_id, user_context, user_message, {})
-            else:
-                print(f"💬 [CONVERSATION_ENGINE] ⏳ Waiting for {len(components_needed)} components to complete")
+            # Note: LLM response already generated above, no need for fallback logic
             
             # Set timeout - normal responses should be 1-6 seconds
             self.logger.info(f"🔍 [ENGINE_FLOW] Request {request_id} created, starting timeout handler")
@@ -456,6 +453,14 @@ class ConversationEngine(BaseService):
         """Generate LLM response with integrated context"""
         from aico.core.topics import AICOTopics
         try:
+            # Check if LLM request already sent to prevent duplicates
+            if request_id in self.pending_responses and self.pending_responses[request_id].get("llm_request_sent"):
+                print(f"💬 [CONVERSATION_ENGINE] ⚠️ LLM request already sent for {request_id}, skipping duplicate")
+                print(f"💬 [CONVERSATION_ENGINE] 🔍 Duplicate call stack info - this should help identify the source")
+                import traceback
+                print(f"💬 [CONVERSATION_ENGINE] 📋 Call stack: {traceback.format_stack()[-3:-1]}")
+                return
+            
             import time
             llm_start_time = time.time()
             print(f"💬 [CONVERSATION_ENGINE] 🧠 GENERATING LLM RESPONSE for {request_id} at {llm_start_time} [{llm_start_time:.6f}]")
@@ -728,8 +733,8 @@ Respond naturally using relevant context."""
             
             print(f"💬 [CONVERSATION_ENGINE] ✅ Final response delivered for {request_id}")
             
-            # Clean up
-            await self._cleanup_request(request_id)
+            # Don't clean up here - let the LLM response handler clean up
+            # This prevents race condition where LLM response arrives after cleanup
             
         except Exception as e:
             print(f"💬 [CONVERSATION_ENGINE] ❌ Error finalizing streaming response: {e}")
@@ -882,15 +887,17 @@ Respond naturally using relevant context."""
         """Clean up completed or timed out request"""
         if request_id in self.pending_responses:
             del self.pending_responses[request_id]
+            print(f"💬 [CONVERSATION_ENGINE] 🧹 Request {request_id} cleaned up")
+            print(f"💬 [CONVERSATION_ENGINE] 📋 Remaining pending requests: {len(self.pending_responses)}")
+        else:
+            print(f"💬 [CONVERSATION_ENGINE] ⚠️ Attempted to clean up non-existent request: {request_id}")
     
-
     async def health_check(self) -> Dict[str, Any]:
         """Health check for conversation engine"""
         return {
             "status": "healthy" if self.bus_client else "disconnected",
             "active_users": len(self.user_contexts),
             "active_threads": len(self.active_threads),
-            "pending_responses": len(self.pending_responses),
             "features_enabled": {
                 "emotion": self.enable_emotion_integration,
                 "personality": self.enable_personality_integration,

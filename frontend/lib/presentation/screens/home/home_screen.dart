@@ -622,8 +622,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Clear the input field immediately
     _messageController.clear();
     
-    // Send message through conversation provider
-    ref.read(conversationProvider.notifier).sendMessage(text.trim());
+    // Send message through conversation provider with streaming enabled
+    ref.read(conversationProvider.notifier).sendMessage(text.trim(), stream: true);
     
     // Scroll to bottom after sending
     _scrollToBottom();

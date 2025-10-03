@@ -43,18 +43,20 @@ security = HTTPBearer()
 # Active WebSocket connections for real-time updates
 active_connections: Dict[str, WebSocket] = {}
 
-
 # Unified endpoint with automatic thread management
-
 @router.post("/messages")
 async def send_message_with_auto_thread(
     request: UnifiedMessageRequest,
-    stream: bool = Query(False, description="Enable streaming response"),
+    stream: str = Query("false", description="Enable streaming response"),
     current_user = Depends(get_current_user),
     bus_client = Depends(get_message_bus_client)
 ):
+    logger.info(f"🔥 [API_ENDPOINT] /conversation/messages called with stream='{stream}'")
+    print(f"🚨 [CONSOLE] API ENDPOINT CALLED! stream='{stream}'")
     """Send message with lazy thread resolution via context assembly. Supports streaming with ?stream=true"""
     try:
+        logger.info(f"🔍 [API_DEBUG] Received request with stream parameter: '{stream}' (type: {type(stream)})")
+        print(f"🚨 [CONSOLE] Stream parameter: '{stream}' -> {stream.lower() in ('true', '1', 'yes', 'on')}")
         user_id = current_user['user_uuid']
         
         # INDUSTRY STANDARD: conversation_id pattern (user_id + session)
@@ -142,11 +144,18 @@ async def send_message_with_auto_thread(
                 logger.error(f"Full traceback: {traceback.format_exc()}")
         
         # Handle streaming vs non-streaming response
-        if stream:
+        # Convert string parameter to boolean
+        stream_enabled = stream.lower() in ('true', '1', 'yes', 'on')
+        logger.info(f"🔍 [API_STREAMING] Stream parameter: '{stream}' -> {stream_enabled} for request {message_id}")
+        if stream_enabled:
+            logger.info(f"🔍 [API_STREAMING] ✅ Taking streaming path for request {message_id}")
+            print(f"🚨 [CONSOLE] About to create StreamingResponse for {message_id}")
             # Return streaming response using event-driven approach
             async def stream_generator():
+                logger.info(f"🔍 [API_STREAMING] 🚀 Stream generator started for {message_id}")
                 try:
-                    # Send initial metadata
+                    # Send initial metadata (unencrypted for now - fix encryption later)
+                    logger.info(f"🔍 [API_STREAMING] 📤 Yielding metadata for {message_id}")
                     yield json.dumps({
                         "type": "metadata",
                         "message_id": message_id,
@@ -159,8 +168,7 @@ async def send_message_with_auto_thread(
                     from aico.proto.aico_conversation_pb2 import StreamingResponse as StreamingResponseProto
                     
                     streaming_complete = asyncio.Event()
-                    
-                    chunks_received = []
+                    chunk_queue = asyncio.Queue()
                     
                     async def handle_streaming_chunk(envelope):
                         try:
@@ -172,10 +180,10 @@ async def send_message_with_auto_thread(
                             if streaming_chunk.request_id != message_id:
                                 return  # Not for us, continue listening
                             
-                            logger.debug(f"API received streaming chunk for {message_id}: '{streaming_chunk.content}'")
+                            logger.info(f"🔍 [API_STREAMING] 📦 Received chunk for {message_id}: '{streaming_chunk.content}' (done: {streaming_chunk.done})")
                             
-                            # Store chunk for processing
-                            chunks_received.append({
+                            # Put chunk in queue for immediate processing
+                            await chunk_queue.put({
                                 "content": streaming_chunk.content,
                                 "accumulated": streaming_chunk.accumulated_content,
                                 "done": streaming_chunk.done
@@ -187,7 +195,7 @@ async def send_message_with_auto_thread(
                             
                         except Exception as e:
                             logger.error(f"Error processing streaming chunk: {e}")
-                            chunks_received.append({
+                            await chunk_queue.put({
                                 "type": "error",
                                 "error": str(e)
                             })
@@ -196,59 +204,69 @@ async def send_message_with_auto_thread(
                     # Subscribe to conversation streaming topic
                     await bus_client.subscribe(AICOTopics.CONVERSATION_STREAM, handle_streaming_chunk)
                     
-                    # Process chunks as they arrive
-                    last_chunk_count = 0
+                    # Process chunks from queue as they arrive - truly event-driven
                     timeout_start = asyncio.get_event_loop().time()
+                    logger.info(f"🔍 [API_STREAMING] 🎬 Starting streaming loop for {message_id}")
                     
                     while not streaming_complete.is_set():
-                        # Check for new chunks
-                        if len(chunks_received) > last_chunk_count:
-                            # Process new chunks
-                            for i in range(last_chunk_count, len(chunks_received)):
-                                chunk = chunks_received[i]
-                                if "type" in chunk and chunk["type"] == "error":
-                                    yield json.dumps(chunk) + "\n"
-                                else:
-                                    yield json.dumps({
-                                        "type": "chunk",
-                                        "content": chunk["content"],
-                                        "accumulated": chunk["accumulated"],
-                                        "done": chunk["done"]
-                                    }) + "\n"
-                            last_chunk_count = len(chunks_received)
-                        
-                        # Check timeout
-                        if asyncio.get_event_loop().time() - timeout_start > 30.0:
-                            yield json.dumps({
-                                "type": "error",
-                                "error": "Streaming timeout"
-                            }) + "\n"
-                            break
-                        
-                        # Small delay to avoid busy waiting
-                        await asyncio.sleep(0.01)
+                        try:
+                            # Wait for chunk with short timeout to check completion
+                            chunk = await asyncio.wait_for(chunk_queue.get(), timeout=0.1)
+                            logger.info(f"🔍 [API_STREAMING] 🎯 Got chunk from queue: {chunk}")
+                            
+                            if "type" in chunk and chunk["type"] == "error":
+                                logger.info(f"🔍 [API_STREAMING] ❌ Yielding error chunk")
+                                yield json.dumps(chunk) + "\n"
+                            else:
+                                logger.info(f"🔍 [API_STREAMING] ✅ Yielding content chunk: '{chunk['content']}'")
+                                yield json.dumps({
+                                    "type": "chunk",
+                                    "content": chunk["content"],
+                                    "accumulated": chunk["accumulated"],
+                                    "done": chunk["done"]
+                                }) + "\n"
+                                
+                        except asyncio.TimeoutError:
+                            # No chunk received, check overall timeout
+                            if asyncio.get_event_loop().time() - timeout_start > 30.0:
+                                yield json.dumps({
+                                    "type": "error",
+                                    "error": "Streaming timeout"
+                                }) + "\n"
+                                break
                     
                     # Unsubscribe
                     try:
                         await bus_client.unsubscribe(AICOTopics.CONVERSATION_STREAM)
+                        logger.info(f"🔍 [API_STREAMING] 🔌 Unsubscribed from streaming for {message_id}")
                     except Exception as e:
                         logger.error(f"Error unsubscribing from streaming: {e}")
+                    
+                    logger.info(f"🔍 [API_STREAMING] 🏁 Stream generator completed for {message_id}")
                         
                 except Exception as e:
                     logger.error(f"Stream generator error: {e}")
+                    logger.info(f"🔍 [API_STREAMING] ❌ Stream generator failed for {message_id}: {e}")
                     yield json.dumps({
                         "type": "error",
                         "error": str(e)
                     }) + "\n"
             
-            return StreamingResponse(
-                stream_generator(),
-                media_type="application/x-ndjson",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                }
-            )
+            print(f"🚨 [CONSOLE] Creating StreamingResponse object for {message_id}")
+            try:
+                response = StreamingResponse(
+                    stream_generator(),
+                    media_type="application/x-ndjson",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                    }
+                )
+                print(f"🚨 [CONSOLE] StreamingResponse created successfully for {message_id}")
+                return response
+            except Exception as e:
+                print(f"🚨 [CONSOLE] ERROR creating StreamingResponse: {e}")
+                raise
         else:
             # Non-streaming: Subscribe and wait for complete response
             await bus_client.subscribe("conversation/ai/response/v1", handle_ai_response)

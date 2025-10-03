@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/data/models/message_model.dart';
 import 'package:aico_frontend/domain/entities/message.dart';
@@ -146,7 +144,7 @@ class MessageRepositoryImpl implements MessageRepository {
           'conversation_id': message.conversationId,
         });
 
-      // Prepare request payload
+      // Prepare request payload - same as regular sendMessage
       final requestData = {
         'message': message.content,
         'message_type': 'text',
@@ -157,111 +155,48 @@ class MessageRepositoryImpl implements MessageRepository {
         'metadata': message.metadata ?? {},
       };
 
-      // Use UnifiedApiClient's internal Dio instance for streaming
-      // We'll need to access the base URL and build headers manually
-      const baseUrl = 'http://localhost:8771/api/v1'; // Default base URL
-      
-      // Create streaming request to same endpoint with stream=true parameter
-      final url = Uri.parse('$baseUrl/conversation/messages?stream=true');
-      final request = http.Request('POST', url);
-      
-      // Add basic headers
-      request.headers['Content-Type'] = 'application/json';
-      
-      // TODO: Add authentication header - for now, skip auth for streaming
-      // This would need to be implemented properly with token management
-      
-      request.body = jsonEncode(requestData);
+      String accumulatedContent = '';
 
-      // Send streaming request
-      final response = await request.send();
-      
-      if (response.statusCode == 200) {
-        String accumulatedContent = '';
-        
-        // Process streaming response
-        await for (final chunk in response.stream.transform(utf8.decoder).transform(const LineSplitter())) {
-          if (chunk.trim().isEmpty) continue;
-          
-          try {
-            final chunkData = jsonDecode(chunk) as Map<String, dynamic>;
-            final type = chunkData['type'] as String?;
-            
-            switch (type) {
-              case 'metadata':
-                AICOLog.info('Received streaming metadata', 
-                  topic: 'message_repository/streaming_metadata',
-                  extra: chunkData);
-                break;
-                
-              case 'chunk':
-                final content = chunkData['content'] as String? ?? '';
-                final accumulated = chunkData['accumulated'] as String? ?? accumulatedContent + content;
-                final isDone = chunkData['done'] as bool? ?? false;
-                
-                accumulatedContent = accumulated;
-                onChunk(content);
-                
-                if (isDone) {
-                  onComplete(accumulatedContent);
-                  AICOLog.info('Streaming completed successfully', 
-                    topic: 'message_repository/streaming_complete',
-                    extra: {
-                      'message_id': message.id,
-                      'final_length': accumulatedContent.length,
-                    });
-                  return;
-                }
-                break;
-                
-              case 'error':
-                final error = chunkData['error'] as String? ?? 'Unknown streaming error';
-                onError(error);
-                AICOLog.error('Streaming error received', 
-                  topic: 'message_repository/streaming_error',
-                  error: error,
-                  extra: {'message_id': message.id});
-                return;
-            }
-          } catch (e) {
-            AICOLog.warn('Failed to parse streaming chunk', 
-              topic: 'message_repository/streaming_parse_error',
-              error: e,
-              extra: {'chunk': chunk});
-          }
-        }
-        
-        // If we reach here without completion, it's an incomplete stream
-        onError('Stream ended without completion');
-        
-      } else {
-        final errorBody = await response.stream.bytesToString();
-        onError('HTTP ${response.statusCode}: $errorBody');
-        AICOLog.error('Streaming request failed', 
-          topic: 'message_repository/streaming_http_error',
-          error: 'HTTP ${response.statusCode}',
-          extra: {
-            'message_id': message.id,
-            'status_code': response.statusCode,
-            'error_body': errorBody,
-          });
-      }
+      // Use the new streaming method from UnifiedApiClient
+      await _apiClient.requestStream(
+        'POST',
+        '/conversation/messages',
+        data: requestData,
+        queryParameters: {'stream': 'true'},
+        onChunk: (String chunk) {
+          accumulatedContent += chunk;
+          onChunk(chunk);
+        },
+        onComplete: () {
+          onComplete(accumulatedContent);
+          AICOLog.info('Streaming completed successfully', 
+            topic: 'message_repository/streaming_complete',
+            extra: {
+              'message_id': message.id,
+              'total_length': accumulatedContent.length,
+            });
+        },
+        onError: (String error) {
+          AICOLog.error('Streaming failed', 
+            topic: 'message_repository/streaming_error',
+            error: error,
+            extra: {'message_id': message.id});
+          onError(error);
+        },
+      );
       
     } catch (e) {
-      onError(e.toString());
-      AICOLog.error('Failed to start streaming', 
-        topic: 'message_repository/streaming_start_error',
+      AICOLog.error('Streaming request failed', 
+        topic: 'message_repository/streaming_http_error',
         error: e,
         extra: {'message_id': message.id});
+      onError('Streaming request failed: ${e.toString()}');
     }
   }
 
+  /// Get messages for a conversation
   @override
-  Future<List<Message>> getMessages(
-    String conversationId, {
-    int? limit,
-    String? beforeMessageId,
-  }) async {
+  Future<List<Message>> getMessages(String conversationId, {int? limit, String? beforeMessageId}) async {
     try {
       AICOLog.info('Fetching messages from backend', 
         topic: 'message_repository/get_messages',

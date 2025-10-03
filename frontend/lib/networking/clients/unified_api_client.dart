@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -520,6 +521,124 @@ class UnifiedApiClient {
     }
   }
 
+  /// Make streaming request with proper HTTP streaming support
+  Future<void> requestStream(
+    String method,
+    String endpoint, {
+    Map<String, dynamic>? data,
+    Map<String, String>? queryParameters,
+    required Function(String chunk) onChunk,
+    required Function() onComplete,
+    required Function(String error) onError,
+    bool skipTokenRefresh = false,
+  }) async {
+    // Auto-initialize if not done yet
+    if (!_isInitialized) {
+      await initialize();
+    }
+
+    try {
+      // Build headers with authentication
+      final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh);
+      
+      // Check encryption session
+      if (!_encryptionService.isSessionActive) {
+        await _performHandshake();
+      }
+
+      // Prepare encrypted request data
+      final requestData = data != null 
+          ? _encryptionService.createEncryptedRequest(data) 
+          : _encryptionService.createEncryptedRequest({});
+
+      // Make streaming request using Dio
+      final response = await _dio!.request<ResponseBody>(
+        endpoint,
+        data: requestData,
+        queryParameters: queryParameters,
+        options: Options(
+          method: method,
+          headers: headers,
+          responseType: ResponseType.stream, // This enables streaming
+        ),
+      );
+
+      if (response.statusCode == 200 && response.data != null) {
+        // Handle streaming response
+        final stream = response.data!.stream;
+        String buffer = '';
+        
+        await for (final chunkBytes in stream) {
+          final chunk = utf8.decode(chunkBytes);
+          buffer += chunk;
+          
+          // Process complete lines (JSON objects)
+          final lines = buffer.split('\n');
+          buffer = lines.removeLast(); // Keep incomplete line in buffer
+          
+          for (final line in lines) {
+            if (line.trim().isNotEmpty) {
+              try {
+                final jsonData = jsonDecode(line);
+                
+                // ALL streaming responses MUST be encrypted per AICO security requirements
+                if (jsonData.containsKey('encrypted') && jsonData['encrypted'] == true) {
+                  final decryptedData = _encryptionService.decryptPayload(jsonData['payload']);
+                  if (decryptedData['type'] == 'chunk') {
+                    onChunk(decryptedData['content'] ?? '');
+                  } else if (decryptedData['type'] == 'error') {
+                    onError(decryptedData['error'] ?? 'Unknown streaming error');
+                    return;
+                  }
+                } else {
+                  // SECURITY VIOLATION: Unencrypted streaming response received
+                  AICOLog.error('Security violation: Unencrypted streaming response received', 
+                    topic: 'network/streaming/security_violation',
+                    extra: {'response_type': jsonData['type']});
+                  onError('Security violation: Unencrypted streaming response');
+                  return;
+                }
+              } catch (e) {
+                AICOLog.warn('Failed to parse streaming chunk: $line', 
+                  topic: 'network/streaming/parse_error',
+                  extra: {'error': e.toString()});
+              }
+            }
+          }
+        }
+        
+        // Process any remaining buffer content
+        if (buffer.trim().isNotEmpty) {
+          try {
+            final jsonData = jsonDecode(buffer);
+            if (jsonData.containsKey('encrypted') && jsonData['encrypted'] == true) {
+              final decryptedData = _encryptionService.decryptPayload(jsonData['payload']);
+              if (decryptedData['type'] == 'chunk') {
+                onChunk(decryptedData['content'] ?? '');
+              }
+            } else {
+              // SECURITY VIOLATION: Final buffer chunk is unencrypted
+              AICOLog.error('Security violation: Unencrypted final streaming chunk', 
+                topic: 'network/streaming/security_violation');
+            }
+          } catch (e) {
+            // Ignore final buffer parsing errors
+          }
+        }
+        
+        onComplete();
+        
+      } else {
+        onError('HTTP ${response.statusCode}: ${response.statusMessage}');
+      }
+      
+    } catch (e) {
+      AICOLog.error('Streaming request failed', 
+        topic: 'network/streaming/request_error',
+        extra: {'method': method, 'endpoint': endpoint, 'error': e.toString()});
+      onError('Streaming request failed: ${e.toString()}');
+    }
+  }
 
   /// Dispose of resources
   Future<void> dispose() async {
