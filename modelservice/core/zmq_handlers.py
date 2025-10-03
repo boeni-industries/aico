@@ -798,21 +798,10 @@ class ModelserviceZMQHandlers:
                 # INTELLIGENT FILTERING: Use GLiNER confidence and linguistic rules
                 confidence = entity.get("score", 0.0)
                 
-                # V6: Smart confidence filtering - different thresholds for different patterns
-                # Use higher threshold for likely pronouns, lower for likely names
-                min_confidence = 0.5  # Base threshold
-                
-                # Apply stricter filtering for likely pronouns/common words
-                if len(entity_text) <= 3 and entity_text.lower() in ["hi", "you", "me", "he", "she", "it", "we", "they"]:
-                    min_confidence = 0.7  # Much higher threshold for obvious non-names
-                
-                if confidence < min_confidence:
-                    self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Low confidence - '{entity_text}' (confidence: {confidence:.3f} < {min_confidence})")
-                    continue
-                
-                # Skip single characters unless they're meaningful abbreviations
-                if len(entity_text) == 1 and not entity_text.isupper():
-                    self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Single character - '{entity_text}'")
+                # V7: Clean confidence-only filtering - no language-specific patterns
+                # Let GLiNER's confidence scores do the work, as designed
+                if confidence < 0.5:
+                    self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Low confidence - '{entity_text}' (confidence: {confidence:.3f} < 0.5)")
                     continue
                 
                 # Clean possessive forms intelligently
