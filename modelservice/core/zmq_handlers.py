@@ -763,13 +763,14 @@ class ModelserviceZMQHandlers:
                 "Preference", "Skill", "Goal"
             ]
             
-            # V3.1: Balanced threshold for conversational entity extraction
+            # V4: Higher threshold for cleaner conversational entity extraction
+            # Research shows GLiNER works better with threshold 0.5+ for reducing false positives
             inference_start = time.time()
             print(f"🔍 [NER_DEEP_ANALYSIS] Starting GLiNER inference [{inference_start:.6f}]")
             raw_entities = gliner_model.predict_entities(
                 text,
                 labels=entity_types,
-                threshold=0.4,  # Balanced: higher than 0.3 (too noisy) but lower than 0.5 (too strict)
+                threshold=0.5,  # Higher threshold reduces false positives like "hi" -> PERSON
                 flat_ner=True,  # Use flat NER for better entity boundaries
                 multi_label=False  # Avoid overlapping entity classifications
             )
@@ -797,10 +798,10 @@ class ModelserviceZMQHandlers:
                 # INTELLIGENT FILTERING: Use GLiNER confidence and linguistic rules
                 confidence = entity.get("score", 0.0)
                 
-                # V3.1: Confidence threshold aligned with GLiNER prediction threshold
-                # Balanced threshold for conversational entities
-                if confidence < 0.4:
-                    self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Low confidence - '{entity_text}' (confidence: {confidence:.3f} < 0.4)")
+                # V4: Higher confidence threshold aligned with GLiNER prediction threshold
+                # Research-based threshold for reducing false positives
+                if confidence < 0.5:
+                    self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Low confidence - '{entity_text}' (confidence: {confidence:.3f} < 0.5)")
                     continue
                 
                 # Skip single characters unless they're meaningful abbreviations
@@ -812,15 +813,6 @@ class ModelserviceZMQHandlers:
                 if entity_text.lower().endswith(("'s", "'s")):
                     entity_text = entity_text[:-2].strip()
                 
-                # Extract meaningful content from possessive constructions
-                possessive_prefixes = ["your ", "my ", "his ", "her ", "their ", "our "]
-                for prefix in possessive_prefixes:
-                    if entity_text.lower().startswith(prefix):
-                        clean_entity = entity_text[len(prefix):].strip()
-                        if len(clean_entity) > 1:
-                            entity_text = clean_entity
-                            self.logger.debug(f"[NER_FILTER] Cleaned possessive: '{entity['text']}' -> '{entity_text}'")
-                        break
                 
                 # V5: Normalize GLiNER Title Case outputs to standard NER types
                 # Balanced set (12 types) optimized from testing
