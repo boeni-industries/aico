@@ -81,8 +81,8 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
       topic: 'conversation_provider/init',
       extra: {'user_id': _userId});
     
-    // Start with a default conversation ID - backend will handle conversation resolution
-    state = state.copyWith(currentConversationId: 'default');
+    // Start with null conversation ID - backend will assign one for the first message
+    state = state.copyWith(currentConversationId: null);
   }
 
 
@@ -102,7 +102,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
       id: messageId,
       content: content.trim(),
       userId: _userId,
-      conversationId: state.currentConversationId ?? 'default',
+      conversationId: state.currentConversationId ?? 'default', // Backend will assign if null
       type: MessageType.text,
       status: MessageStatus.sending,
       timestamp: timestamp,
@@ -119,17 +119,16 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
       topic: 'conversation_provider/send_message',
       extra: {
         'message_id': messageId,
-        'content_length': content.length,
         'conversation_id': state.currentConversationId,
         'streaming': stream,
       });
 
     try {
       if (stream) {
-        // Streaming path
+        // Always use streaming when requested - backend will handle conversation_id creation
         await _handleStreamingMessage(userMessage, messageId);
       } else {
-        // Non-streaming path (use existing legacy logic)
+        // Non-streaming path (when explicitly requested)
         await _handleNonStreamingMessage(userMessage, messageId);
       }
     } catch (e) {
@@ -400,7 +399,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
     AICOLog.info('Clearing conversation', 
       topic: 'conversation_provider/clear');
     
-    state = const ConversationState(currentConversationId: 'default');
+    state = const ConversationState(currentConversationId: null);
   }
 
   /// Clear error state

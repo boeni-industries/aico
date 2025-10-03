@@ -309,14 +309,17 @@ class ConversationEngine(BaseService):
             components_needed = []
             print(f"💬 [CONVERSATION_ENGINE] 🔧 Checking enabled features...")
             
-            # Simplified approach - start memory processing in background, generate LLM immediately
+            # FIXED: Get working memory immediately, process semantic memory in background
             if self.enable_memory_integration:
-                self.logger.info(f"[DEBUG] ConversationEngine: Memory integration enabled, starting background memory processing for request {request_id}")
-                # Start memory processing in background (non-blocking)
-                import asyncio
-                asyncio.create_task(self._process_memory_background(request_id, user_context, user_message))
-                # Generate LLM response immediately with empty context
-                await self._generate_llm_response(request_id, user_context, user_message, {"memory_context": {"user_facts": [], "recent_context": []}, "metadata": {}})
+                self.logger.info(f"[DEBUG] ConversationEngine: Memory integration enabled, getting immediate working memory context for request {request_id}")
+                
+                # Get immediate working memory context (fast, <1ms)
+                working_context = await self._get_immediate_working_context(request_id, user_context, user_message)
+                
+                # Background storage handled by memory manager - no need for separate background task
+                
+                # Generate LLM response with working memory context
+                await self._generate_llm_response(request_id, user_context, user_message, working_context)
             else:
                 self.logger.info(f"[DEBUG] ConversationEngine: Memory integration disabled, generating LLM response directly")
                 # If memory is disabled, generate LLM response immediately
@@ -343,8 +346,63 @@ class ConversationEngine(BaseService):
     # Emotion and personality integration removed - focusing on semantic memory approach
     
     
+    async def _get_immediate_working_context(self, request_id: str, user_context: UserContext, message: ConversationMessage) -> Dict[str, Any]:
+        """Get immediate context using proper memory manager API (working + semantic)"""
+        try:
+            memory_manager = ai_registry.get("memory")
+            if not memory_manager:
+                self.logger.warning(f"🔍 [IMMEDIATE_CONTEXT] Memory manager not available for {request_id}")
+                return {"memory": {"memory_context": {"user_facts": [], "recent_context": []}}, "metadata": {}}
+            
+            user_id = user_context.user_id
+            conversation_id = message.message.conversation_id
+            message_text = message.message.text
+            
+            self.logger.info(f"🔍 [IMMEDIATE_CONTEXT] Getting full context (working + semantic) for {request_id}")
+            
+            # Use proper memory manager API that combines working + semantic memory
+            context_result = await memory_manager.assemble_context(
+                user_id=user_id,
+                current_message=message_text,
+                conversation_id=conversation_id
+            )
+            
+            # Store user message in memory for future context
+            try:
+                await memory_manager.store_message(user_id, conversation_id, message_text, "user")
+                self.logger.info(f"🔍 [MEMORY_STORAGE] ✅ User message stored for {request_id}")
+            except Exception as e:
+                self.logger.warning(f"🔍 [MEMORY_STORAGE] ⚠️ Failed to store user message: {e}")
+            
+            # Extract memory_context from the result
+            memory_context = context_result.get("memory_context", {})
+            user_facts = memory_context.get("user_facts", [])
+            recent_context = memory_context.get("recent_context", [])
+            
+            # Format for conversation engine (match expected structure)
+            formatted_context = {
+                "memory": {
+                    "memory_context": {
+                        "user_facts": user_facts,
+                        "recent_context": recent_context
+                    }
+                },
+                "metadata": {
+                    "facts_count": len(user_facts),
+                    "context_messages": len(recent_context),
+                    "context_type": "working_and_semantic"
+                }
+            }
+            
+            self.logger.info(f"🔍 [IMMEDIATE_CONTEXT] ✅ Retrieved {len(recent_context)} messages, {len(user_facts)} facts for {request_id}")
+            return formatted_context
+                
+        except Exception as e:
+            self.logger.error(f"🔍 [IMMEDIATE_CONTEXT] ❌ Failed to get context for {request_id}: {e}")
+            return {"memory": {"memory_context": {"user_facts": [], "recent_context": []}}, "metadata": {}}
+
     async def _process_memory_background(self, request_id: str, user_context: UserContext, message: ConversationMessage):
-        """Process memory in background without blocking conversation - RESTORED NON-BLOCKING PATTERN"""
+        """Store user message in background for future context (storage only)"""
         try:
             start_time = time.time()
             memory_manager = ai_registry.get("memory")
@@ -356,29 +414,16 @@ class ConversationEngine(BaseService):
             conversation_id = message.message.conversation_id
             message_text = message.message.text
             
-            self.logger.info(f"🔍 [MEMORY_BACKGROUND] Starting background memory processing for {request_id}")
+            self.logger.info(f"🔍 [MEMORY_BACKGROUND] Starting background message storage for {request_id}")
             
-            # Store user message (let it take as long as needed - it's background)
+            # Store user message for future context (let it take as long as needed - it's background)
             try:
                 await memory_manager.store_message(user_id, conversation_id, message_text, "user")
-                self.logger.info(f"🔍 [MEMORY_BACKGROUND] ✅ User message stored for {request_id}")
-            except Exception as e:
-                self.logger.error(f"🔍 [MEMORY_BACKGROUND] ❌ Storage failed for {request_id}: {e}")
-            
-            # Get context (let it take as long as needed - it's background)
-            try:
-                context = await memory_manager.assemble_context(user_id, message_text)
-                memory_context = context.get("memory_context", {})
-                user_facts = memory_context.get("user_facts", [])
-                
                 total_duration = time.time() - start_time
-                self.logger.info(f"🔍 [MEMORY_BACKGROUND] ✅ Background processing completed in {total_duration:.3f}s for {request_id} - found {len(user_facts)} facts")
-                
-                # Memory processing complete - this could be used for future requests or analytics
-                
+                self.logger.info(f"🔍 [MEMORY_BACKGROUND] ✅ User message stored in {total_duration:.3f}s for {request_id}")
             except Exception as e:
                 total_duration = time.time() - start_time
-                self.logger.error(f"🔍 [MEMORY_BACKGROUND] ❌ Context assembly failed after {total_duration:.3f}s for {request_id}: {e}")
+                self.logger.error(f"🔍 [MEMORY_BACKGROUND] ❌ Storage failed after {total_duration:.3f}s for {request_id}: {e}")
                 
         except Exception as e:
             self.logger.error(f"🔍 [MEMORY_BACKGROUND] ❌ Background memory processing failed for {request_id}: {e}")

@@ -112,7 +112,7 @@ class ContextAssembler:
         # Components will be initialized on-demand when ModelService is available
     
     async def assemble_context(self, user_id: str, current_message: str, 
-                              max_context_items: int = None) -> Dict[str, Any]:
+                              max_context_items: int = None, conversation_id: str = None) -> Dict[str, Any]:
         """Assemble comprehensive context from all memory tiers with royal precision and enlightened wisdom"""
         max_items = max_context_items or self._max_context_items
         assembly_start = datetime.utcnow()
@@ -124,21 +124,18 @@ class ContextAssembler:
             logger.info(f"🧠 Assembling context for user {user_id} with sovereign excellence")
             
             # Retrieve context from all available memory tiers
-            logger.debug("Retrieving context from all available memory tiers")
             
             all_items = []
             
             # Get working memory context (immediate conversation)
             try:
+                # 1. Get working memory context
+                import time
                 working_start = datetime.utcnow()
-                import time
-                timestamp = time.time()
-                print(f"⏱️ [TIMING] Starting working memory retrieval... [{timestamp:.6f}]")
-                working_items = await self._get_working_context(user_id)
+                print(f"⏱️ [TIMING] Starting working memory retrieval... [{time.time():.6f}]")
+                working_items = await self._get_working_context(user_id, conversation_id)
                 working_time = (datetime.utcnow() - working_start).total_seconds() * 1000
-                import time
-                timestamp = time.time()
-                print(f"⏱️ [TIMING] Working memory completed in {working_time:.2f}ms [{timestamp:.6f}]")
+                print(f"⏱️ [TIMING] Working memory completed in {working_time:.2f}ms [{time.time():.6f}]")
                 all_items.extend(working_items or [])
                 logger.debug(f"Retrieved {len(working_items or [])} items from working memory")
             except Exception as e:
@@ -152,7 +149,7 @@ class ContextAssembler:
                 print(f"⏱️ [TIMING] Starting PROTECTED semantic memory retrieval... [{timestamp:.6f}]")
                 
                 # PHASE 1: Use timeout to prevent blocking
-                semantic_timeout = 1.0  # Reduced timeout since embeddings work instantly
+                semantic_timeout = 3.0  # Reasonable timeout - embeddings + ChromaDB query should be <2s
                 semantic_items = await asyncio.wait_for(
                     self._get_semantic_context_safe(current_message, user_id),
                     timeout=semantic_timeout
@@ -313,7 +310,7 @@ class ContextAssembler:
                 processing_time_ms=0.0
             )
     
-    async def _get_working_context(self, user_id: str) -> List[ContextItem]:
+    async def _get_working_context(self, user_id: str, conversation_id: str = None) -> List[ContextItem]:
         """Get conversation context using enhanced semantic memory approach"""
         try:
             method_start = datetime.utcnow()
@@ -323,10 +320,14 @@ class ContextAssembler:
                 logger.debug("No working memory store available - gracefully continuing")
                 return []
             
-            # ENHANCED SEMANTIC APPROACH: Get ALL user messages for intelligent context assembly
+            # ENHANCED SEMANTIC APPROACH: Get conversation or user messages for intelligent context assembly
             db_start = datetime.utcnow()
-            print(f"⏱️ [TIMING] Querying working store for user messages...")
-            all_messages = await self.working_store._get_recent_user_messages(user_id, hours=24)
+            if conversation_id:
+                print(f"⏱️ [TIMING] Querying working store for conversation {conversation_id}...")
+                all_messages = await self.working_store.retrieve_conversation_history(conversation_id, limit=100)
+            else:
+                print(f"⏱️ [TIMING] Querying working store for user messages...")
+                all_messages = await self.working_store.retrieve_user_history(user_id, limit=100)
             db_time = (datetime.utcnow() - db_start).total_seconds() * 1000
             print(f"⏱️ [TIMING] Working store query completed in {db_time:.2f}ms - got {len(all_messages)} messages")
             logger.debug(f"Retrieved {len(all_messages)} messages for semantic context assembly")

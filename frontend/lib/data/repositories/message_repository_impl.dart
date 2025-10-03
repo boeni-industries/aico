@@ -34,9 +34,9 @@ class MessageRepositoryImpl implements MessageRepository {
       final requestData = {
         'message': messageModel.content,
         'message_type': 'text', // Use literal string instead of enum
+        'conversation_id': messageModel.conversationId, // Top-level field for thread continuity
         'context': {
           'frontend_client': 'flutter',
-          'conversation_id': messageModel.conversationId, // For context only
         },
         'metadata': messageModel.metadata ?? {},
       };
@@ -139,7 +139,6 @@ class MessageRepositoryImpl implements MessageRepository {
       AICOLog.info('Starting streaming message send', 
         topic: 'message_repository/send_streaming',
         extra: {
-          'message_id': message.id,
           'content_length': message.content.length,
           'conversation_id': message.conversationId,
         });
@@ -148,9 +147,9 @@ class MessageRepositoryImpl implements MessageRepository {
       final requestData = {
         'message': message.content,
         'message_type': 'text',
+        'conversation_id': message.conversationId, // Top-level field for thread continuity
         'context': {
           'frontend_client': 'flutter',
-          'conversation_id': message.conversationId,
         },
         'metadata': message.metadata ?? {},
       };

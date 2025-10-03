@@ -162,6 +162,7 @@ class UnifiedMessageRequest(BaseModel):
     """Request for unified message endpoint with automatic thread resolution"""
     message: str = Field(..., description="Message content")
     message_type: str = Field("text", description="Message type")
+    conversation_id: Optional[str] = Field(None, description="Conversation ID for thread continuity")
     context: Optional[Dict[str, Any]] = Field(None, description="Optional context for thread resolution")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Message metadata")
 

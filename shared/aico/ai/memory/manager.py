@@ -378,7 +378,7 @@ class MemoryManager(BaseAIProcessor):
                     "timestamp": datetime.utcnow().isoformat(),
                     "message_type": f"{role}_input" if role == "user" else f"{role}_response"
                 }
-                await self._working_store.store_message(user_id, message_data)
+                await self._working_store.store_message(conversation_id, message_data)
                 working_duration = time.time() - working_start
                 logger.info(f"🔍 [MEMORY_TIMING] Working memory store completed in {working_duration:.3f}s")
             
@@ -406,7 +406,7 @@ class MemoryManager(BaseAIProcessor):
             logger.error(f"🔍 [MEMORY_TIMING] MemoryManager.store_message() failed after {total_duration:.3f}s: {e}")
             return False
     
-    async def assemble_context(self, user_id: str, current_message: str) -> Dict[str, Any]:
+    async def assemble_context(self, user_id: str, current_message: str, conversation_id: str = None) -> Dict[str, Any]:
         """V2 API: Assemble context from working + semantic memory"""
         import time
         start_time = time.time()
@@ -426,7 +426,8 @@ class MemoryManager(BaseAIProcessor):
                 context = await self._context_assembler.assemble_context(
                     user_id=user_id,
                     current_message=current_message,
-                    max_context_items=20
+                    max_context_items=20,
+                    conversation_id=conversation_id
                 )
                 assembler_duration = time.time() - assembler_start
                 logger.info(f"🔍 [MEMORY_TIMING] Context assembler completed in {assembler_duration:.3f}s")

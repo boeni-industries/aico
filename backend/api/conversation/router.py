@@ -61,34 +61,30 @@ async def send_message_with_auto_thread(
         
         # INDUSTRY STANDARD: conversation_id pattern (user_id + session)
         # This follows LangGraph, Azure AI Foundry, and OpenAI Assistant API patterns
-        import time
-        session_timestamp = int(time.time())
-        conversation_id = f"{user_id}_{session_timestamp}"
+        # Use conversation_id from request if provided and valid, otherwise create new session
+        request_conversation_id = getattr(request, 'conversation_id', None)
+        logger.info(f"🔍 [CONVERSATION_ID] Request conversation_id: '{request_conversation_id}'")
+        
+        if (hasattr(request, 'conversation_id') and 
+            request.conversation_id and 
+            request.conversation_id != 'default' and
+            '_' in request.conversation_id):
+            conversation_id = request.conversation_id
+            logger.info(f"🔍 [CONVERSATION_ID] ✅ Reusing existing conversation_id: '{conversation_id}'")
+        else:
+            # Create new conversation session (only for first message)
+            import time
+            session_timestamp = int(time.time())
+            conversation_id = f"{user_id}_{session_timestamp}"
+            logger.info(f"🔍 [CONVERSATION_ID] ✅ Generated new conversation_id: '{conversation_id}'")
+        
+        print(f"🚨 [CONSOLE] FINAL CONVERSATION_ID: {conversation_id}")
         
         message_id = str(uuid.uuid4())
         timestamp = datetime.utcnow()
         
-        # Simple message storage - semantic memory handles continuity (ASYNC - non-blocking)
-        try:
-            from aico.ai import ai_registry
-            memory_processor = ai_registry.get("memory")
-            if memory_processor:
-                from aico.ai.base import ProcessingContext
-                store_context = ProcessingContext(
-                    conversation_id=conversation_id,
-                    user_id=user_id,
-                    request_id=message_id,  # Add required request_id parameter
-                    message_content=request.message,
-                    message_type="user_input",
-                    turn_number=1,
-                    conversation_phase="active"
-                )
-                # RE-ENABLED - Fire-and-forget background processing - don't block API response
-                import asyncio
-                asyncio.create_task(memory_processor.process(store_context))
-                logger.debug(f"Memory processing started in background for {conversation_id}")
-        except Exception as e:
-            logger.warning(f"Memory processing failed to start: {e} - continuing without memory storage")
+        # Memory processing now handled by conversation engine - no duplicate background processing needed
+        logger.debug(f"Memory processing will be handled by conversation engine for {conversation_id}")
         
         # Create conversation message for message bus
         from google.protobuf.timestamp_pb2 import Timestamp
@@ -254,16 +250,16 @@ async def send_message_with_auto_thread(
             
             print(f"🚨 [CONSOLE] Creating StreamingResponse object for {message_id}")
             try:
-                response = StreamingResponse(
+                return StreamingResponse(
                     stream_generator(),
-                    media_type="application/x-ndjson",
+                    media_type="text/plain",
                     headers={
                         "Cache-Control": "no-cache",
                         "Connection": "keep-alive",
+                        "X-Request-ID": message_id,
+                        "X-Conversation-ID": conversation_id,
                     }
                 )
-                print(f"🚨 [CONSOLE] StreamingResponse created successfully for {message_id}")
-                return response
             except Exception as e:
                 print(f"🚨 [CONSOLE] ERROR creating StreamingResponse: {e}")
                 raise

@@ -84,12 +84,12 @@ class WorkingMemoryStore:
             logger.error(f"Failed to initialize working memory store: {e}")
             raise
 
-    async def store_message(self, user_id: str, message: Dict[str, Any]) -> bool:
-        """Store a message in the working memory store."""
+    async def store_message(self, conversation_id: str, message: Dict[str, Any]) -> bool:
+        """Store a message in the working memory store by conversation_id."""
         if not self._initialized:
             await self.initialize()
 
-        logger.info(f"💾 [WORKING_MEMORY] Storing message for user {user_id}")
+        logger.info(f"💾 [WORKING_MEMORY] Storing message for conversation {conversation_id}")
         logger.info(f"💾 [WORKING_MEMORY] Message type: {message.get('message_type', 'unknown')}")
 
         try:
@@ -98,7 +98,8 @@ class WorkingMemoryStore:
                 raise ConnectionError("session_memory database not open.")
 
             timestamp = datetime.utcnow()
-            key_str = f"{user_id}:{timestamp.isoformat()}Z"
+            # Use conversation_id as primary key with timestamp for ordering
+            key_str = f"{conversation_id}:{timestamp.isoformat()}Z"
             key = key_str.encode('utf-8')
 
             # Convert datetime objects to ISO format strings for JSON serialization
@@ -125,8 +126,50 @@ class WorkingMemoryStore:
             logger.error(f"💾 [WORKING_MEMORY] ❌ Failed to store message: {e}")
             return False
 
+    async def retrieve_conversation_history(self, conversation_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Retrieve recent messages for a given conversation_id."""
+        if not self._initialized:
+            await self.initialize()
+
+        logger.info(f"🔍 [WORKING_MEMORY] Retrieving history for conversation {conversation_id} (limit: {limit})")
+
+        history = []
+        try:
+            db = self.dbs.get("session_memory")
+            if db is None:
+                raise ConnectionError("session_memory database not open.")
+
+            logger.info(f"[DEBUG] WorkingMemoryStore: Retrieving history for conversation {conversation_id}.")
+            with self.env.begin(db=db) as txn:
+                cursor = txn.cursor()
+                # Seek to the start of the desired conversation
+                prefix = f"{conversation_id}:".encode('utf-8')
+                if cursor.set_range(prefix):
+                    for key, value in cursor:
+                        if not key.startswith(prefix):
+                            break  # Moved past the desired conversation
+
+                        data = json.loads(value.decode('utf-8'))
+                        if self._is_expired(data):
+                            # Optional: could delete expired entries here in a separate write txn
+                            continue
+
+                        history.append(data)
+                        if len(history) >= limit:
+                            break
+
+            # LMDB iterates in lexicographical order, so we need to sort by timestamp
+            history.sort(key=lambda x: x.get("_stored_at"), reverse=True)
+            
+            logger.info(f"🔍 [WORKING_MEMORY] ✅ Retrieved {len(history)} messages from conversation history")
+            return history
+
+        except Exception as e:
+            logger.error(f"🔍 [WORKING_MEMORY] ❌ Failed to retrieve conversation history: {e}")
+            return []
+
     async def retrieve_user_history(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Retrieve recent messages for a given user_id."""
+        """Retrieve recent messages for a given user_id across all conversations."""
         if not self._initialized:
             await self.initialize()
 
@@ -141,30 +184,27 @@ class WorkingMemoryStore:
             logger.info(f"[DEBUG] WorkingMemoryStore: Retrieving history for user {user_id}.")
             with self.env.begin(db=db) as txn:
                 cursor = txn.cursor()
-                # Seek to the start of the desired user
-                prefix = f"{user_id}:".encode('utf-8')
-                if cursor.set_range(prefix):
-                    for key, value in cursor:
-                        if not key.startswith(prefix):
-                            break  # Moved past the desired user
-
-                        data = json.loads(value.decode('utf-8'))
+                # Iterate through all keys to find messages for this user
+                for key, value in cursor:
+                    data = json.loads(value.decode('utf-8'))
+                    
+                    # Check if message belongs to this user
+                    if data.get('user_id') == user_id:
                         if self._is_expired(data):
-                            # Optional: could delete expired entries here in a separate write txn
                             continue
 
                         history.append(data)
                         if len(history) >= limit:
                             break
 
-            # LMDB iterates in lexicographical order, so we need to sort by timestamp
+            # Sort by timestamp
             history.sort(key=lambda x: x.get("_stored_at"), reverse=True)
             
-            logger.info(f"🔍 [WORKING_MEMORY] ✅ Retrieved {len(history)} messages from history")
+            logger.info(f"🔍 [WORKING_MEMORY] ✅ Retrieved {len(history)} messages from user history")
             return history
 
         except Exception as e:
-            logger.error(f"🔍 [WORKING_MEMORY] ❌ Failed to retrieve thread history: {e}")
+            logger.error(f"🔍 [WORKING_MEMORY] ❌ Failed to retrieve user history: {e}")
             return []
 
     async def _get_recent_user_messages(self, user_id: str, hours: int = 24) -> List[Dict[str, Any]]:

@@ -4,11 +4,10 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../core/logging/aico_log.dart';
-import '../../core/services/encryption_service.dart';
-import '../exceptions/api_exceptions.dart';
-import '../services/connection_manager.dart';
-import '../services/token_manager.dart';
+import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/core/services/encryption_service.dart';
+import 'package:aico_frontend/networking/services/connection_manager.dart';
+import 'package:aico_frontend/networking/services/token_manager.dart';
 
 /// Unified API client that handles both encrypted and unencrypted requests
 /// Uses Dio exclusively for all HTTP operations
@@ -30,9 +29,7 @@ class UnifiedApiClient {
     required ConnectionManager connectionManager,
   }) : _encryptionService = encryptionService,
        _tokenManager = tokenManager,
-       _connectionManager = connectionManager {
-    _tokenManager.setApiClient(this);
-  }
+       _connectionManager = connectionManager;
 
   /// Initialize the client with proper configuration
   Future<void> initialize() async {
@@ -53,19 +50,16 @@ class UnifiedApiClient {
           'Accept': 'application/json',
         },
         // Configure validateStatus to not throw exceptions for expected error codes
-        validateStatus: (status) {
-          // Don't throw exceptions for any status code - we'll handle them manually
-          return status != null && status < 500; // Only throw for server errors (500+)
-        },
+        validateStatus: (status) => status != null && status < 500,
       ));
 
-      // Add minimal logging interceptor for errors only
+      // Add logging interceptor
       _dio!.interceptors.add(LogInterceptor(
-        requestBody: false,
-        responseBody: false,
-        requestHeader: false,
-        responseHeader: false,
-        request: false,
+        request: true,
+        requestHeader: true,
+        requestBody: true,
+        responseHeader: true,
+        responseBody: true,
         error: true,
         logPrint: (obj) => AICOLog.debug(obj.toString(), topic: 'network/dio/error'),
       ));
@@ -114,214 +108,6 @@ class UnifiedApiClient {
     }
   }
 
-  /// Make encrypted request with proper error handling and retry logic
-  Future<T?> _makeEncryptedRequest<T>(
-    String method,
-    String endpoint, {
-    Map<String, dynamic>? data,
-    T Function(Map<String, dynamic>)? fromJson,
-    bool skipTokenRefresh = false,
-  }) async {
-    if (!_isInitialized) {
-      await initialize();
-    }
-
-    // Check if device is offline
-    if (!_connectionManager.isOnline) {
-      debugPrint('📱 [UnifiedApiClient] Device offline - returning null');
-      return null; // Return null instead of throwing
-    }
-
-    if (!_encryptionService.isSessionActive) {
-      await _performHandshake();
-    }
-
-    // Log request start
-    debugPrint('📡 [UnifiedApiClient] Starting $method request to: $endpoint');
-
-    final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh);
-    final requestData = data != null 
-        ? _encryptionService.createEncryptedRequest(data) 
-        : _encryptionService.createEncryptedRequest({});
-
-    try {
-      final response = await _dio!.request(
-        endpoint,
-        data: requestData,
-        options: Options(
-          method: method,
-          headers: headers,
-          receiveTimeout: const Duration(seconds: 120),
-          sendTimeout: const Duration(seconds: 120),
-        ),
-      );
-
-      debugPrint('📡 [UnifiedApiClient] Response status: ${response.statusCode}');
-
-      // Handle specific status codes manually since we disabled Dio's automatic throwing
-      if (response.statusCode == 401 && !skipTokenRefresh) {
-        debugPrint('🔄 [UnifiedApiClient] 401 Unauthorized - resetting encryption session');
-        AICOLog.warn('401 Unauthorized - resetting encryption session',
-          topic: 'network/request/encryption_session_reset',
-          extra: {'endpoint': endpoint, 'method': method});
-        
-        // Reset encryption session since backend likely lost it
-        _encryptionService.resetSession();
-        
-        // Retry the request once with new session
-        try {
-          debugPrint('🔄 [UnifiedApiClient] Retrying request after session reset');
-          return await _makeEncryptedRequest<T>(
-            method,
-            endpoint,
-            data: data,
-            fromJson: fromJson,
-            skipTokenRefresh: true, // Skip token refresh on retry to avoid infinite loop
-          );
-        } catch (retryError) {
-          debugPrint('💥 [UnifiedApiClient] Retry after session reset failed: $retryError');
-          return null;
-        }
-      }
-
-      if (response.statusCode == 422) {
-        debugPrint('⚠️ [UnifiedApiClient] 422 Validation error - handling gracefully');
-        AICOLog.warn('Validation error from server', 
-          topic: 'network/request/validation_error',
-          extra: {
-            'method': method,
-            'endpoint': endpoint,
-            'status_code': response.statusCode,
-            'response_data': response.data
-          });
-        return null;
-      }
-
-      if (response.statusCode! >= 400) {
-        debugPrint('❌ [UnifiedApiClient] Client error: ${response.statusCode}');
-        AICOLog.error('Client error response', 
-          topic: 'network/request/client_error',
-          extra: {
-            'method': method,
-            'endpoint': endpoint,
-            'status_code': response.statusCode,
-            'response_data': response.data
-          });
-        return null;
-      }
-
-      // Success response
-      debugPrint('✅ [UnifiedApiClient] Request successful: ${response.statusCode}');
-      
-      if (response.data != null && response.data is Map<String, dynamic>) {
-        if (response.data['encrypted'] == true && response.data.containsKey('payload')) {
-          final decryptedData = _encryptionService.decryptPayload(response.data['payload']);
-          return _processResponse<T>(decryptedData, fromJson);
-        }
-      }
-      
-      return _processResponse<T>(response.data, fromJson);
-    } on DioException catch (e) {
-      debugPrint('🚨 [UnifiedApiClient] Dio exception caught: ${e.type} - Status: ${e.response?.statusCode}');
-      
-      // Handle timeout exceptions specifically
-      if (e.type == DioExceptionType.receiveTimeout || 
-          e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.sendTimeout) {
-        debugPrint('⏰ [UnifiedApiClient] Request timeout - likely backend not running');
-        AICOLog.warn('Request timeout - backend may not be available',
-          topic: 'network/request/timeout',
-          extra: {
-            'method': method,
-            'endpoint': endpoint,
-            'timeout_type': e.type.toString(),
-            'duration': '${_defaultTimeout.inSeconds}s'
-          });
-        return null;
-      }
-      
-      // Handle connection errors
-      if (e.type == DioExceptionType.connectionError) {
-        debugPrint('🔌 [UnifiedApiClient] Connection error - backend not reachable');
-        AICOLog.warn('Connection error - backend not reachable',
-          topic: 'network/request/connection_error',
-          extra: {
-            'method': method,
-            'endpoint': endpoint,
-            'error': e.message
-          });
-        return null;
-      }
-      
-      // Handle 401 errors - reset encryption session and retry once
-      if (e.response?.statusCode == 401 && !skipTokenRefresh) {
-        debugPrint('🔄 [UnifiedApiClient] 401 Unauthorized - resetting encryption session');
-        AICOLog.warn('401 Unauthorized - resetting encryption session',
-          topic: 'network/request/encryption_session_reset',
-          extra: {'endpoint': endpoint, 'method': method});
-        
-        // Reset encryption session since backend likely lost it
-        _encryptionService.resetSession();
-        
-        // Retry the request once with new session
-        try {
-          debugPrint('🔄 [UnifiedApiClient] Retrying request after session reset');
-          return await _makeEncryptedRequest<T>(
-            method,
-            endpoint,
-            data: data,
-            fromJson: fromJson,
-            skipTokenRefresh: true, // Skip token refresh on retry to avoid infinite loop
-          );
-        } catch (retryError) {
-          debugPrint('💥 [UnifiedApiClient] Retry after session reset failed: $retryError');
-          return null;
-        }
-      }
-      
-      // Handle 422 errors gracefully (validation errors)
-      if (e.response?.statusCode == 422) {
-        debugPrint('⚠️ [UnifiedApiClient] 422 Validation error - handling gracefully');
-        AICOLog.warn('Validation error from server', 
-          topic: 'network/request/validation_error',
-          extra: {
-            'method': method,
-            'endpoint': endpoint,
-            'status_code': e.response?.statusCode,
-            'response_data': e.response?.data
-          });
-        return null;
-      }
-      
-      debugPrint('❌ [UnifiedApiClient] Request failed: ${e.response?.statusCode} - ${e.message}');
-      AICOLog.error('Encrypted request failed', 
-        topic: 'network/request/encrypted_error',
-        extra: {
-          'method': method,
-          'endpoint': endpoint,
-          'status_code': e.response?.statusCode,
-          'error': e.toString()
-        });
-      
-      // Convert to custom exception but don't re-throw - return null instead
-      final customException = _convertDioException(e);
-      debugPrint('🔄 [UnifiedApiClient] Converted to: ${customException.runtimeType}');
-      return null;
-    } catch (e) {
-      debugPrint('💥 [UnifiedApiClient] Unexpected error: $e');
-      AICOLog.error('Unexpected error in encrypted request', 
-        topic: 'network/request/unexpected_error',
-        extra: {
-          'method': method,
-          'endpoint': endpoint,
-          'error': e.toString()
-        });
-      return null; // Return null instead of rethrowing
-    }
-  }
-
-
-
   /// Convenience method for GET requests
   Future<T?> get<T>(String endpoint, {Map<String, dynamic>? queryParameters}) async {
     return _connectionManager.executeWithRetry(() => 
@@ -347,180 +133,6 @@ class UnifiedApiClient {
     );
   }
 
-  /// Special method for token refresh that bypasses token validation
-  Future<Map<String, dynamic>?> postForTokenRefresh(String endpoint, {Map<String, dynamic>? data}) async {
-    debugPrint('🔄 [UnifiedApiClient] Token refresh request to: $endpoint');
-    
-    // Check if we're offline
-    if (!_connectionManager.isOnline) {
-      debugPrint('📱 [UnifiedApiClient] Device offline - cannot refresh token');
-      return null;
-    }
-
-    if (!_encryptionService.isSessionActive) {
-      await _performHandshake();
-    }
-
-    // Build headers WITHOUT token refresh check (skipTokenRefresh: true)
-    final headers = await _buildHeaders(skipTokenRefresh: true);
-    final requestData = data != null 
-        ? _encryptionService.createEncryptedRequest(data) 
-        : _encryptionService.createEncryptedRequest({});
-
-    try {
-      final response = await _dio!.request(
-        endpoint,
-        data: requestData,
-        options: Options(
-          method: 'POST',
-          headers: headers,
-        ),
-      );
-
-      debugPrint('📡 [UnifiedApiClient] Token refresh response status: ${response.statusCode}');
-
-      // Handle specific status codes for token refresh
-      if (response.statusCode == 401) {
-        debugPrint('❌ [UnifiedApiClient] Token refresh failed - 401 Unauthorized');
-        return null;
-      }
-
-      if (response.statusCode == 422) {
-        debugPrint('⚠️ [UnifiedApiClient] Token refresh validation error - 422');
-        return null;
-      }
-
-      if (response.statusCode! >= 400) {
-        debugPrint('❌ [UnifiedApiClient] Token refresh client error: ${response.statusCode}');
-        return null;
-      }
-
-      // Success response - process normally
-      if (response.data != null && response.data is Map<String, dynamic>) {
-        if (response.data['encrypted'] == true && response.data.containsKey('payload')) {
-          final decryptedData = _encryptionService.decryptPayload(response.data['payload']);
-          debugPrint('✅ [UnifiedApiClient] Token refresh successful (encrypted)');
-          return decryptedData as Map<String, dynamic>?;
-        }
-        debugPrint('✅ [UnifiedApiClient] Token refresh successful (unencrypted)');
-        return response.data as Map<String, dynamic>?;
-      }
-      
-      return null;
-    } on DioException catch (e) {
-      debugPrint('🚨 [UnifiedApiClient] Token refresh Dio exception: ${e.type} - Status: ${e.response?.statusCode}');
-      
-      AICOLog.error('Token refresh request failed', 
-        topic: 'network/request/token_refresh_error',
-        extra: {
-          'endpoint': endpoint,
-          'status_code': e.response?.statusCode,
-          'error': e.toString()
-        });
-      
-      return null;
-    } catch (e) {
-      debugPrint('💥 [UnifiedApiClient] Token refresh unexpected error: $e');
-      AICOLog.error('Unexpected error in token refresh request', 
-        topic: 'network/request/token_refresh_unexpected_error',
-        extra: {
-          'endpoint': endpoint,
-          'error': e.toString()
-        });
-      return null;
-    }
-  }
-
-  /// Process response and handle decryption if needed
-  T? _processResponse<T>(
-    dynamic responseData,
-    T Function(Map<String, dynamic>)? fromJson,
-  ) {
-    if (responseData == null) return null;
-
-    Map<String, dynamic> data;
-    
-    // Handle encrypted responses
-    if (responseData is Map<String, dynamic> && 
-        responseData.containsKey('encrypted') && 
-        responseData['encrypted'] == true) {
-      data = _encryptionService.decryptPayload(responseData['payload']);
-    } else {
-      data = responseData;
-    }
-
-    // Apply JSON transformation if provided
-    if (fromJson != null) {
-      return fromJson(data);
-    }
-
-    return data as T?;
-  }
-
-  /// Perform encryption handshake with backend
-  Future<void> _performHandshake() async {
-    final handshakeRequest = await _encryptionService.createHandshakeRequest();
-    
-    final response = await _dio!.post(
-      '/handshake',
-      data: handshakeRequest,
-    );
-
-    await _encryptionService.processHandshakeResponse(response.data);
-  }
-
-  /// Build headers for HTTP requests
-  Future<Map<String, String>> _buildHeaders({bool skipTokenRefresh = false}) async {
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-    };
-
-    if (!skipTokenRefresh) {
-      final tokenFresh = await _tokenManager.ensureTokenFreshness();
-      if (!tokenFresh) {
-        AICOLog.info('Token freshness check failed',
-          topic: 'network/request/token_freshness_failed');
-      }
-    }
-    
-    final token = await _tokenManager.getValidToken();
-    if (token != null) {
-      headers['Authorization'] = 'Bearer $token';
-    } else {
-      AICOLog.warn('No valid token available for request',
-        topic: 'network/request/no_token');
-    }
-
-    return headers;
-  }
-
-
-  /// Convert DioException to appropriate exception type
-  Exception _convertDioException(DioException e) {
-    switch (e.type) {
-      case DioExceptionType.connectionTimeout:
-      case DioExceptionType.sendTimeout:
-      case DioExceptionType.receiveTimeout:
-        return const ConnectionException('Request timeout');
-      case DioExceptionType.connectionError:
-        return const ConnectionException('Connection failed');
-      case DioExceptionType.badResponse:
-        if (e.response?.statusCode == 401) {
-          return const AuthException('Authentication failed', statusCode: 401);
-        } else if (e.response?.statusCode == 403) {
-          return const AuthException('Access denied', statusCode: 403);
-        } else if (e.response?.statusCode != null && e.response!.statusCode! >= 500) {
-          return const ServerException('Server error'); // Return instead of throw
-        }
-        return HttpException('HTTP ${e.response?.statusCode}: ${e.response?.statusMessage}', statusCode: e.response?.statusCode ?? 0);
-      case DioExceptionType.cancel:
-        return const ConnectionException('Request cancelled');
-      case DioExceptionType.unknown:
-      default:
-        return ConnectionException('Network error: ${e.message}');
-    }
-  }
-
   /// Make streaming request with proper HTTP streaming support
   Future<void> requestStream(
     String method,
@@ -532,6 +144,10 @@ class UnifiedApiClient {
     required Function(String error) onError,
     bool skipTokenRefresh = false,
   }) async {
+    AICOLog.info('🚀 STARTING STREAMING REQUEST', 
+      topic: 'network/streaming/start',
+      extra: {'method': method, 'endpoint': endpoint});
+    
     // Auto-initialize if not done yet
     if (!_isInitialized) {
       await initialize();
@@ -552,6 +168,10 @@ class UnifiedApiClient {
           : _encryptionService.createEncryptedRequest({});
 
       // Make streaming request using Dio
+      AICOLog.info('📡 Making Dio streaming request', 
+        topic: 'network/streaming/dio_request',
+        extra: {'endpoint': endpoint, 'method': method});
+      
       final response = await _dio!.request<ResponseBody>(
         endpoint,
         data: requestData,
@@ -563,29 +183,85 @@ class UnifiedApiClient {
         ),
       );
 
+      AICOLog.info('📡 Dio response received', 
+        topic: 'network/streaming/dio_response',
+        extra: {'status_code': response.statusCode, 'has_data': response.data != null});
+
       if (response.statusCode == 200 && response.data != null) {
         // Handle streaming response
+        AICOLog.info('🔄 Starting stream processing', 
+          topic: 'network/streaming/stream_start');
+        
         final stream = response.data!.stream;
         String buffer = '';
         
         await for (final chunkBytes in stream) {
           final chunk = utf8.decode(chunkBytes);
+          AICOLog.info('📦 Raw chunk received', 
+            topic: 'network/streaming/raw_chunk',
+            extra: {'chunk_length': chunk.length, 'chunk_preview': chunk.length > 50 ? '${chunk.substring(0, 50)}...' : chunk});
+          
           buffer += chunk;
           
-          // Process complete lines (JSON objects)
-          final lines = buffer.split('\n');
-          buffer = lines.removeLast(); // Keep incomplete line in buffer
+          AICOLog.info('📋 Buffer updated', 
+            topic: 'network/streaming/buffer_update',
+            extra: {
+              'buffer_length': buffer.length, 
+              'newline_count': '\n'.allMatches(buffer).length,
+              'buffer_preview': buffer.length > 100 ? '${buffer.substring(0, 100)}...' : buffer
+            });
+          
+          // Process complete JSON objects (split on }{ since backend sends concatenated JSON without newlines)
+          final lines = <String>[];
+          String remaining = buffer;
+          
+          // Split concatenated JSON objects like: {"a":1}{"b":2}{"c":3}
+          while (remaining.contains('}{')) {
+            final splitIndex = remaining.indexOf('}{');
+            lines.add(remaining.substring(0, splitIndex + 1)); // Include the closing }
+            remaining = '{${remaining.substring(splitIndex + 2)}'; // Include the opening { for next object
+          }
+          
+          buffer = remaining; // Keep incomplete JSON in buffer
+          
+          AICOLog.info('📝 Lines split', 
+            topic: 'network/streaming/lines_split',
+            extra: {'lines_count': lines.length, 'remaining_buffer_length': buffer.length});
           
           for (final line in lines) {
             if (line.trim().isNotEmpty) {
+              AICOLog.info('🔍 Processing line', 
+                topic: 'network/streaming/line_process',
+                extra: {'line_length': line.length, 'line_preview': line.length > 100 ? '${line.substring(0, 100)}...' : line});
               try {
                 final jsonData = jsonDecode(line);
+                AICOLog.info('✅ JSON parsed successfully', 
+                  topic: 'network/streaming/json_parsed',
+                  extra: {'has_encrypted': jsonData.containsKey('encrypted')});
                 
                 // ALL streaming responses MUST be encrypted per AICO security requirements
                 if (jsonData.containsKey('encrypted') && jsonData['encrypted'] == true) {
+                  AICOLog.info('Decrypting streaming chunk', 
+                    topic: 'network/streaming/decrypt',
+                    extra: {'payload_length': jsonData['payload']?.toString().length ?? 0});
+                  
                   final decryptedData = _encryptionService.decryptPayload(jsonData['payload']);
+                  
+                  AICOLog.info('Decrypted streaming chunk', 
+                    topic: 'network/streaming/decrypted',
+                    extra: {
+                      'type': decryptedData['type'],
+                      'content_length': decryptedData['content']?.toString().length ?? 0,
+                      'content_preview': decryptedData['content']?.toString().substring(0, 
+                        (decryptedData['content']?.toString().length ?? 0) > 20 ? 20 : (decryptedData['content']?.toString().length ?? 0)) ?? ''
+                    });
+                  
                   if (decryptedData['type'] == 'chunk') {
-                    onChunk(decryptedData['content'] ?? '');
+                    final content = decryptedData['content'] ?? '';
+                    AICOLog.info('Passing chunk to onChunk', 
+                      topic: 'network/streaming/chunk_pass',
+                      extra: {'content': content});
+                    onChunk(content);
                   } else if (decryptedData['type'] == 'error') {
                     onError(decryptedData['error'] ?? 'Unknown streaming error');
                     return;
@@ -594,7 +270,7 @@ class UnifiedApiClient {
                   // SECURITY VIOLATION: Unencrypted streaming response received
                   AICOLog.error('Security violation: Unencrypted streaming response received', 
                     topic: 'network/streaming/security_violation',
-                    extra: {'response_type': jsonData['type']});
+                    extra: {'response_type': jsonData['type'], 'full_data': jsonData});
                   onError('Security violation: Unencrypted streaming response');
                   return;
                 }
@@ -637,6 +313,302 @@ class UnifiedApiClient {
         topic: 'network/streaming/request_error',
         extra: {'method': method, 'endpoint': endpoint, 'error': e.toString()});
       onError('Streaming request failed: ${e.toString()}');
+    }
+  }
+
+  /// Make encrypted request with proper error handling and retry logic
+  Future<T?> _makeEncryptedRequest<T>(
+    String method,
+    String endpoint, {
+    Map<String, dynamic>? data,
+    T Function(Map<String, dynamic>)? fromJson,
+    bool skipTokenRefresh = false,
+  }) async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+
+    // Check if device is offline
+    if (!_connectionManager.isOnline) {
+      debugPrint('📱 [UnifiedApiClient] Device offline - returning null');
+      return null; // Return null instead of throwing
+    }
+
+    if (!_encryptionService.isSessionActive) {
+      await _performHandshake();
+    }
+
+    // Log request start
+    debugPrint('📡 [UnifiedApiClient] Making encrypted request: $method $endpoint');
+
+    try {
+      // Build headers with authentication
+      final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh);
+
+      // Prepare encrypted request data
+      final requestData = data != null 
+          ? _encryptionService.createEncryptedRequest(data) 
+          : _encryptionService.createEncryptedRequest({});
+
+      // Make the request
+      final response = await _dio!.request(
+        endpoint,
+        data: requestData,
+        options: Options(
+          method: method,
+          headers: headers,
+          receiveTimeout: const Duration(seconds: 120),
+          sendTimeout: const Duration(seconds: 120),
+        ),
+      );
+
+      debugPrint('📡 [UnifiedApiClient] Response status: ${response.statusCode}');
+
+      // Handle specific status codes manually since we disabled Dio's automatic throwing
+      if (response.statusCode == 401 && !skipTokenRefresh) {
+        debugPrint('🔄 [UnifiedApiClient] 401 Unauthorized - resetting encryption session');
+        AICOLog.warn('401 Unauthorized - will reset encryption session and retry',
+          topic: 'network/request/unauthorized',
+          extra: {'endpoint': endpoint, 'method': method});
+        
+        // Reset encryption session and retry once
+        _encryptionService.resetSession();
+        return await _makeEncryptedRequest<T>(
+          method, 
+          endpoint, 
+          data: data, 
+          fromJson: fromJson, 
+          skipTokenRefresh: true
+        );
+      }
+
+      if (response.statusCode != null && response.statusCode! >= 400) {
+        debugPrint('❌ [UnifiedApiClient] HTTP error: ${response.statusCode}');
+        AICOLog.warn('HTTP error response',
+          topic: 'network/request/http_error',
+          extra: {
+            'status_code': response.statusCode,
+            'endpoint': endpoint,
+            'method': method,
+            'response_data': response.data?.toString()
+          });
+        return null; // Return null instead of throwing for HTTP errors
+      }
+
+      // Process successful response
+      return _processResponse<T>(response.data, fromJson);
+
+    } on DioException catch (e) {
+      return _handleDioException<T>(e, method, endpoint);
+    } catch (e) {
+      debugPrint('💥 [UnifiedApiClient] Unexpected error: $e');
+      AICOLog.error('Unexpected error in API request',
+        topic: 'network/request/unexpected_error',
+        extra: {
+          'method': method,
+          'endpoint': endpoint,
+          'error': e.toString()
+        });
+      return null;
+    }
+  }
+
+  /// Handle DioException with proper error categorization
+  T? _handleDioException<T>(DioException e, String method, String endpoint) {
+    // Handle timeout errors
+    if (e.type == DioExceptionType.receiveTimeout || 
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.connectionTimeout) {
+      debugPrint('⏱️ [UnifiedApiClient] Request timeout');
+      AICOLog.warn('Request timeout',
+        topic: 'network/request/timeout',
+        extra: {
+          'method': method,
+          'endpoint': endpoint,
+          'timeout_type': e.type.toString(),
+          'duration': '${_defaultTimeout.inSeconds}s'
+        });
+      return null;
+    }
+    
+    // Handle connection errors
+    if (e.type == DioExceptionType.connectionError) {
+      debugPrint('🔌 [UnifiedApiClient] Connection error - backend not reachable');
+      AICOLog.warn('Connection error - backend not reachable',
+        topic: 'network/request/connection_error',
+        extra: {
+          'method': method,
+          'endpoint': endpoint,
+          'error': e.message
+        });
+      return null;
+    }
+    
+    // Handle 401 errors - reset encryption session and retry
+    if (e.response?.statusCode == 401) {
+      debugPrint('🔐 [UnifiedApiClient] 401 Unauthorized - encryption session may be invalid');
+      AICOLog.warn('401 Unauthorized - encryption session invalid',
+        topic: 'network/request/unauthorized',
+        extra: {
+          'method': method,
+          'endpoint': endpoint
+        });
+      return null;
+    }
+    
+    // Handle other HTTP errors
+    if (e.response?.statusCode != null) {
+      debugPrint('❌ [UnifiedApiClient] HTTP ${e.response!.statusCode}: ${e.response!.statusMessage}');
+      AICOLog.warn('HTTP error response',
+        topic: 'network/request/http_error',
+        extra: {
+          'status_code': e.response!.statusCode,
+          'status_message': e.response!.statusMessage,
+          'method': method,
+          'endpoint': endpoint
+        });
+      return null;
+    }
+    
+    // Handle other errors
+    debugPrint('💥 [UnifiedApiClient] Request failed: ${e.message}');
+    AICOLog.error('Request failed',
+      topic: 'network/request/failed',
+      extra: {
+        'method': method,
+        'endpoint': endpoint,
+        'error_type': e.type.toString(),
+        'error_message': e.message
+      });
+    return null;
+  }
+
+  /// Process response and handle decryption if needed
+  T? _processResponse<T>(
+    dynamic responseData,
+    T Function(Map<String, dynamic>)? fromJson,
+  ) {
+    if (responseData == null) return null;
+
+    Map<String, dynamic> data;
+    
+    // Handle encrypted responses
+    if (responseData is Map<String, dynamic> && 
+        responseData.containsKey('encrypted') && 
+        responseData['encrypted'] == true) {
+      data = _encryptionService.decryptPayload(responseData['payload']);
+    } else {
+      data = responseData;
+    }
+
+    // Apply JSON transformation if provided
+    if (fromJson != null) {
+      return fromJson(data);
+    }
+
+    return data as T?;
+  }
+
+  /// Build headers for HTTP requests
+  Future<Map<String, String>> _buildHeaders({bool skipTokenRefresh = false}) async {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+    };
+
+    if (!skipTokenRefresh) {
+      final tokenFresh = await _tokenManager.ensureTokenFreshness();
+      if (!tokenFresh) {
+        AICOLog.info('Token freshness check failed',
+          topic: 'network/request/token_freshness_failed');
+      }
+    }
+    
+    final token = await _tokenManager.getValidToken();
+    if (token != null) {
+      headers['Authorization'] = 'Bearer $token';
+    } else {
+      AICOLog.warn('No valid token available for request',
+        topic: 'network/request/no_token');
+    }
+
+    return headers;
+  }
+
+  /// Perform encryption handshake with backend
+  Future<void> _performHandshake() async {
+    final handshakeRequest = await _encryptionService.createHandshakeRequest();
+    
+    final response = await _dio!.post(
+      '/handshake',
+      data: handshakeRequest,
+    );
+
+    await _encryptionService.processHandshakeResponse(response.data);
+  }
+
+  /// Special method for token refresh that bypasses token validation
+  Future<Map<String, dynamic>?> postForTokenRefresh(String endpoint, {Map<String, dynamic>? data}) async {
+    debugPrint('🔄 [UnifiedApiClient] Token refresh request to: $endpoint');
+    
+    // Check if we're offline
+    if (!_connectionManager.isOnline) {
+      debugPrint('📱 [UnifiedApiClient] Device offline - cannot refresh token');
+      return null;
+    }
+
+    if (!_encryptionService.isSessionActive) {
+      await _performHandshake();
+    }
+
+    // Build headers WITHOUT token refresh check (skipTokenRefresh: true)
+    final headers = await _buildHeaders(skipTokenRefresh: true);
+
+    try {
+      // Prepare encrypted request data
+      final requestData = data != null 
+          ? _encryptionService.createEncryptedRequest(data) 
+          : _encryptionService.createEncryptedRequest({});
+
+      final response = await _dio!.post(
+        endpoint,
+        data: requestData,
+        options: Options(
+          headers: headers,
+          receiveTimeout: const Duration(seconds: 30),
+          sendTimeout: const Duration(seconds: 30),
+        ),
+      );
+
+      debugPrint('🔄 [UnifiedApiClient] Token refresh response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        return _processResponse<Map<String, dynamic>>(response.data, null);
+      } else {
+        debugPrint('❌ [UnifiedApiClient] Token refresh failed: ${response.statusCode}');
+        return null;
+      }
+
+    } on DioException catch (e) {
+      debugPrint('💥 [UnifiedApiClient] Token refresh DioException: ${e.type} - ${e.message}');
+      
+      AICOLog.error('Token refresh request failed', 
+        topic: 'network/request/token_refresh_error',
+        extra: {
+          'endpoint': endpoint,
+          'status_code': e.response?.statusCode,
+          'error': e.toString()
+        });
+      
+      return null;
+    } catch (e) {
+      debugPrint('💥 [UnifiedApiClient] Token refresh unexpected error: $e');
+      AICOLog.error('Unexpected error in token refresh request', 
+        topic: 'network/request/token_refresh_unexpected_error',
+        extra: {
+          'endpoint': endpoint,
+          'error': e.toString()
+        });
+      return null;
     }
   }
 
