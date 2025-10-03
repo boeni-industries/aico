@@ -133,3 +133,12 @@ message ResponseParameters {
   int32 max_length = 5;              // Maximum response length
   float creativity = 6;              // Creativity level (0.0-1.0)
 }
+
+// Streaming chunk for real-time API responses
+message StreamingResponse {
+  string request_id = 1;           // Request correlation ID
+  string content = 2;              // Incremental content chunk
+  string accumulated_content = 3;  // Total content so far
+  bool done = 4;                   // True if this is the final chunk
+  optional int64 timestamp = 5;    // Chunk timestamp
+}

@@ -56,35 +56,7 @@ class UserContext:
     relationship_context: Dict[str, Any] = field(default_factory=dict)  # Family relationships (future)
 
 
-@dataclass
-class ConversationThread:
-    """Individual conversation thread state"""
-    conversation_id: str
-    user_context: UserContext
-    turn_number: int = 0
-    current_topic: str = "general"
-    conversation_phase: str = "active"
-    session_start: datetime = field(default_factory=datetime.utcnow)
-    last_activity: datetime = field(default_factory=datetime.utcnow)
-    message_history: List[ConversationMessage] = field(default_factory=list)
-    
-    # Context for AI components
-    emotion_context: Dict[str, Any] = field(default_factory=dict)
-    personality_context: Dict[str, Any] = field(default_factory=dict)
-    memory_context: Dict[str, Any] = field(default_factory=dict)
-    
-    # Embodiment state (scaffolding)
-    avatar_state: Dict[str, Any] = field(default_factory=dict)
-    voice_state: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class ResponseComponents:
-    """Components of a multimodal response"""
-    text: str
-    avatar_actions: Optional[Dict[str, Any]] = None  # Gestures, expressions (future)
-    voice_synthesis: Optional[Dict[str, Any]] = None  # TTS parameters (future)
-    proactive_triggers: Optional[List[str]] = None   # Agency triggers (future)
+# Deprecated thread management classes removed - using semantic memory approach
 
 
 class ConversationEngine(BaseService):
@@ -111,9 +83,8 @@ class ConversationEngine(BaseService):
         # AI Processing uses global registry
         # Processors registered via: ai_registry.register("emotion", processor_instance)
         
-        # Conversation state
+        # User context management (simplified)
         self.user_contexts: Dict[str, UserContext] = {}
-        self.conversation_threads: Dict[str, ConversationThread] = {}
         
         # AI processing coordination
         self.pending_responses: Dict[str, Dict[str, Any]] = {}  # request_id -> response data
@@ -269,26 +240,13 @@ class ConversationEngine(BaseService):
                 "message_type": conv_message.message.type
             })
             
-            # Get or create user context and conversation thread
+            # Get user context (simplified)
             user_context = self._get_or_create_user_context(user_id)
-            thread = self._get_or_create_thread(conversation_id, user_context)
             
-            # Update thread state
-            thread.turn_number += 1
-            thread.last_activity = datetime.utcnow()
-            thread.message_history.append(conv_message)
             
-            # Keep history manageable
-            if len(thread.message_history) > self.max_context_messages:
-                thread.message_history = thread.message_history[-self.max_context_messages:]
-            
-            # Analyze message and update context
-            print(f"💬 [CONVERSATION_ENGINE] 🔍 Analyzing message...")
-            await self._analyze_message(thread, conv_message)
-            
-            # Generate response
-            print(f"💬 [CONVERSATION_ENGINE] 🤖 Generating response...")
-            await self._generate_response(thread, conv_message)
+            # Generate response using semantic memory approach
+            print(f"💬 [CONVERSATION_ENGINE] 🎯 Generating response...")
+            await self._generate_response(user_context, conv_message)
             
         except Exception as e:
             self.logger.error(f"Error handling user input: {e}", extra={
@@ -321,63 +279,24 @@ class ConversationEngine(BaseService):
         
         return self.user_contexts[user_id]
     
-    def _get_or_create_thread(self, conversation_id: str, user_context: UserContext) -> ConversationThread:
-        """Get or create conversation thread"""
-        if conversation_id not in self.conversation_threads:
-            self.conversation_threads[conversation_id] = ConversationThread(
-                conversation_id=conversation_id,
-                user_context=user_context
-            )
-            
-            self.logger.info(f"Created new conversation thread", extra={
-                "conversation_id": conversation_id,
-                "user_id": user_context.user_id
-            })
-        
-        return self.conversation_threads[conversation_id]
+# Thread management removed - using semantic memory for conversation continuity
     
     # ============================================================================
     # MESSAGE ANALYSIS & RESPONSE GENERATION
     # ============================================================================
     
-    async def _analyze_message(self, thread: ConversationThread, message: ConversationMessage) -> None:
-        """Analyze message content and update conversation context"""
-        try:
-            text = message.message.text.lower()
-            
-            # Simple topic detection (will be more sophisticated later)
-            if any(word in text for word in ["hello", "hi", "hey"]):
-                thread.current_topic = "greeting"
-                thread.conversation_phase = "greeting"
-            elif any(word in text for word in ["help", "support", "problem"]):
-                thread.current_topic = "support"
-                thread.conversation_phase = "problem_solving"
-            elif any(word in text for word in ["bye", "goodbye", "see you"]):
-                thread.current_topic = "farewell"
-                thread.conversation_phase = "closing"
-            else:
-                thread.current_topic = "general"
-                thread.conversation_phase = "conversation"
-            
-            self.logger.debug(f"Message analyzed", extra={
-                "conversation_id": thread.conversation_id,
-                "topic": thread.current_topic,
-                "phase": thread.conversation_phase
-            })
-            
-        except Exception as e:
-            self.logger.error(f"Error analyzing message: {e}")
+    # Message analysis removed - semantic memory handles context automatically
     
-    async def _generate_response(self, thread: ConversationThread, user_message: ConversationMessage) -> None:
+    async def _generate_response(self, user_context: UserContext, user_message: ConversationMessage) -> None:
         """Generate and deliver response based on enabled features"""
         try:
             # Use the message_id from the API Gateway as request_id for proper correlation
             request_id = user_message.message_id if user_message.message_id else str(uuid.uuid4())
             print(f"💬 [CONVERSATION_ENGINE] 🎯 Request ID: {request_id} (from API Gateway: {user_message.message_id})")
             
-            # Initialize response tracking
+            # Initialize response tracking (simplified)
             self.pending_responses[request_id] = {
-                "thread": thread,
+                "user_context": user_context,
                 "user_message": user_message,
                 "components_needed": [],
                 "components_ready": {},
@@ -388,20 +307,18 @@ class ConversationEngine(BaseService):
             components_needed = []
             print(f"💬 [CONVERSATION_ENGINE] 🔧 Checking enabled features...")
             
-            if self.enable_emotion_integration:
-                components_needed.append("emotion")
-                await self._request_emotion_analysis(request_id, thread, user_message)
-            
-            if self.enable_personality_integration:
-                components_needed.append("personality")
-                await self._request_personality_expression(request_id, thread, user_message)
-            
+            # Simplified approach - start memory processing in background, generate LLM immediately
             if self.enable_memory_integration:
-                self.logger.info(f"[DEBUG] ConversationEngine: Memory integration enabled, requesting memory retrieval for request {request_id}")
-                components_needed.append("memory")
-                await self._request_memory_retrieval(request_id, thread, user_message)
+                self.logger.info(f"[DEBUG] ConversationEngine: Memory integration enabled, starting background memory processing for request {request_id}")
+                # Start memory processing in background (non-blocking)
+                import asyncio
+                asyncio.create_task(self._process_memory_background(request_id, user_context, user_message))
+                # Generate LLM response immediately with empty context
+                await self._generate_llm_response(request_id, user_context, user_message, {"memory_context": {"user_facts": [], "recent_context": []}, "metadata": {}})
             else:
-                self.logger.info(f"[DEBUG] ConversationEngine: Memory integration disabled (enable_memory_integration={self.enable_memory_integration})")
+                self.logger.info(f"[DEBUG] ConversationEngine: Memory integration disabled, generating LLM response directly")
+                # If memory is disabled, generate LLM response immediately
+                await self._generate_llm_response(request_id, user_context, user_message, {})
             
             self.pending_responses[request_id]["components_needed"] = components_needed
             print(f"💬 [CONVERSATION_ENGINE] 📝 Components needed: {components_needed}")
@@ -409,7 +326,7 @@ class ConversationEngine(BaseService):
             # If no components needed, generate LLM response directly
             if not components_needed:
                 print(f"💬 [CONVERSATION_ENGINE] ⚡ No components needed, generating LLM response directly")
-                await self._generate_llm_response(request_id, thread, user_message, {})
+                await self._generate_llm_response(request_id, user_context, user_message, {})
             else:
                 print(f"💬 [CONVERSATION_ENGINE] ⏳ Waiting for {len(components_needed)} components to complete")
             
@@ -419,135 +336,57 @@ class ConversationEngine(BaseService):
             
         except Exception as e:
             self.logger.error(f"Error generating response: {e}", extra={
-                "conversation_id": thread.conversation_id
+                "conversation_id": user_message.message.conversation_id
             })
     
     # ============================================================================
     # AI COMPONENT INTEGRATION (SCAFFOLDING)
     # ============================================================================
     
-    async def _request_emotion_analysis(self, request_id: str, thread: ConversationThread, message: ConversationMessage) -> None:
-        """Request emotion analysis - ready for future AI processor integration"""
-        # Check if emotion processor is available
-        emotion_processor = ai_registry.get("emotion")
-        
-        if emotion_processor:
-            # Create processing context for emotion analysis
-            context = ProcessingContext(
-                conversation_id=thread.conversation_id,
-                user_id=thread.user_context.user_id,
-                request_id=request_id,
-                message_content=message.content,
-                message_type="text",
-                turn_number=thread.turn_number,
-                conversation_phase=thread.conversation_phase,
-                user_name=thread.user_context.username,
-                relationship_type=thread.user_context.relationship_type,
-                conversation_style=thread.user_context.conversation_style
-            )
-            
-            try:
-                # Process emotion analysis
-                result = await emotion_processor.analyze_emotion(context)
-                if request_id in self.pending_responses:
-                    self.pending_responses[request_id]["emotion_data"] = result
-                    self.logger.debug(f"Emotion analysis completed for {request_id}")
-            except Exception as e:
-                self.logger.error(f"Emotion analysis failed for {request_id}: {e}")
-        
-        # Always mark as ready (no blocking)
-        if request_id in self.pending_responses:
-            self.pending_responses[request_id]["emotion_ready"] = True
-            await self._check_response_completion(request_id)
+    # Emotion and personality integration removed - focusing on semantic memory approach
     
-    async def _request_personality_expression(self, request_id: str, thread: ConversationThread, message: ConversationMessage) -> None:
-        """Request personality expression - ready for future AI processor integration"""
-        # Check if personality processor is available
-        personality_processor = ai_registry.get("personality")
-        
-        if personality_processor:
-            # Create processing context for personality expression
-            context = ProcessingContext(
-                conversation_id=thread.conversation_id,
-                user_id=thread.user_context.user_id,
-                request_id=request_id,
-                message_content=message.content,
-                message_type="text",
-                turn_number=thread.turn_number,
-                conversation_phase=thread.conversation_phase,
-                user_name=thread.user_context.username,
-                relationship_type=thread.user_context.relationship_type,
-                conversation_style=thread.user_context.conversation_style
-            )
-            
-            try:
-                # Process personality expression
-                result = await personality_processor.express_personality(context)
-                if request_id in self.pending_responses:
-                    self.pending_responses[request_id]["personality_data"] = result
-                    self.logger.debug(f"Personality expression completed for {request_id}")
-            except Exception as e:
-                self.logger.error(f"Personality expression failed for {request_id}: {e}")
-        
-        # Always mark as ready (no blocking)
-        if request_id in self.pending_responses:
-            self.pending_responses[request_id]["personality_ready"] = True
-            await self._check_response_completion(request_id)
     
-    async def _request_memory_retrieval(self, request_id: str, thread: ConversationThread, message: ConversationMessage) -> None:
-        """Simple memory integration - store message and get context"""
-        import time
-        start_time = time.time()
-        self.logger.info(f"🔍 [MEMORY_TIMING] Starting memory retrieval for request {request_id}")
-        
+    async def _process_memory_background(self, request_id: str, user_context: UserContext, message: ConversationMessage):
+        """Process memory in background without blocking conversation - RESTORED NON-BLOCKING PATTERN"""
         try:
+            start_time = time.time()
             memory_manager = ai_registry.get("memory")
             if not memory_manager:
-                raise RuntimeError("Memory manager required but not available")
+                self.logger.error(f"🔍 [MEMORY_BACKGROUND] Memory manager not available for {request_id}")
+                return
             
-            # Simple memory operations - no timeouts, no complex error handling
-            user_id = thread.user_context.user_id
-            conversation_id = thread.conversation_id
+            user_id = user_context.user_id
+            conversation_id = message.message.conversation_id
             message_text = message.message.text
             
-            # Store user message
-            store_start = time.time()
-            self.logger.info(f"🔍 [MEMORY_TIMING] Starting store_message for request {request_id}")
-            await memory_manager.store_message(user_id, conversation_id, message_text, "user")
-            store_duration = time.time() - store_start
-            self.logger.info(f"🔍 [MEMORY_TIMING] store_message completed in {store_duration:.3f}s for request {request_id}")
+            self.logger.info(f"🔍 [MEMORY_BACKGROUND] Starting background memory processing for {request_id}")
             
-            # Get context for response generation
-            context_start = time.time()
-            self.logger.info(f"🔍 [MEMORY_TIMING] Starting assemble_context for request {request_id}")
-            context = await memory_manager.assemble_context(user_id, message_text)
-            context_duration = time.time() - context_start
-            self.logger.info(f"🔍 [MEMORY_TIMING] assemble_context completed in {context_duration:.3f}s for request {request_id}")
+            # Store user message (let it take as long as needed - it's background)
+            try:
+                await memory_manager.store_message(user_id, conversation_id, message_text, "user")
+                self.logger.info(f"🔍 [MEMORY_BACKGROUND] ✅ User message stored for {request_id}")
+            except Exception as e:
+                self.logger.error(f"🔍 [MEMORY_BACKGROUND] ❌ Storage failed for {request_id}: {e}")
             
-            # Store context for LLM generation
-            if request_id in self.pending_responses:
-                self.pending_responses[request_id]["components_ready"]["memory"] = context
-                
-                # Debug: Log what we're storing
+            # Get context (let it take as long as needed - it's background)
+            try:
+                context = await memory_manager.assemble_context(user_id, message_text)
                 memory_context = context.get("memory_context", {})
                 user_facts = memory_context.get("user_facts", [])
-                recent_context = memory_context.get("recent_context", [])
-                self.logger.info(f"🔍 [MEMORY_DEBUG] Stored context: {len(user_facts)} user_facts, {len(recent_context)} recent_context")
-                if user_facts:
-                    self.logger.info(f"🔍 [MEMORY_DEBUG] Sample user fact: {user_facts[0].get('content', 'NO_CONTENT')[:50]}...")
                 
-                await self._check_response_completion(request_id)
+                total_duration = time.time() - start_time
+                self.logger.info(f"🔍 [MEMORY_BACKGROUND] ✅ Background processing completed in {total_duration:.3f}s for {request_id} - found {len(user_facts)} facts")
                 
-            total_duration = time.time() - start_time
-            self.logger.info(f"🔍 [MEMORY_TIMING] Total memory retrieval completed in {total_duration:.3f}s for request {request_id}")
+                # Memory processing complete - this could be used for future requests or analytics
+                
+            except Exception as e:
+                total_duration = time.time() - start_time
+                self.logger.error(f"🔍 [MEMORY_BACKGROUND] ❌ Context assembly failed after {total_duration:.3f}s for {request_id}: {e}")
                 
         except Exception as e:
-            total_duration = time.time() - start_time
-            self.logger.error(f"🔍 [MEMORY_TIMING] Memory integration failed after {total_duration:.3f}s: {e}")
-            # Fail fast - no degraded functionality
-            if request_id in self.pending_responses:
-                self.pending_responses[request_id]["components_ready"]["memory"] = {"memory_context": {"user_facts": [], "recent_context": []}, "metadata": {}}
-    
+            self.logger.error(f"🔍 [MEMORY_BACKGROUND] ❌ Background memory processing failed for {request_id}: {e}")
+
+
     # ============================================================================
     # COMPONENT RESPONSE HANDLERS
     # ============================================================================
@@ -598,11 +437,11 @@ class ConversationEngine(BaseService):
                 timestamp = time.time()
                 print(f"💬 [CONVERSATION_ENGINE] ✅ All components ready! Generating LLM response... [{timestamp:.6f}]")
                 # All components ready, generate LLM response
-                thread = pending_data["thread"]
+                user_context = pending_data["user_context"]
                 user_message = pending_data["user_message"]
                 context = pending_data["components_ready"]
                 
-                await self._generate_llm_response(request_id, thread, user_message, context)
+                await self._generate_llm_response(request_id, user_context, user_message, context)
             else:
                 print(f"💬 [CONVERSATION_ENGINE] ⏳ Still waiting for components: {needed - ready}")
                 
@@ -613,8 +452,9 @@ class ConversationEngine(BaseService):
     # LLM INTEGRATION & RESPONSE DELIVERY
     # ============================================================================
     
-    async def _generate_llm_response(self, request_id: str, thread: ConversationThread, user_message: ConversationMessage, context: Dict[str, Any]) -> None:
+    async def _generate_llm_response(self, request_id: str, user_context: UserContext, user_message: ConversationMessage, context: Dict[str, Any]) -> None:
         """Generate LLM response with integrated context"""
+        from aico.core.topics import AICOTopics
         try:
             import time
             llm_start_time = time.time()
@@ -637,7 +477,7 @@ class ConversationEngine(BaseService):
             messages = []
             
             # System prompt with context
-            system_prompt = self._build_system_prompt(thread, context)
+            system_prompt = self._build_system_prompt(user_context, context)
             messages.append(ModelConversationMessage(role="system", content=system_prompt))
             
             # CRITICAL FIX: PROPER SEPARATION - Context in system prompt, current input isolated
@@ -704,13 +544,13 @@ Respond naturally using relevant context."""
             
             print(f"💬 [CONVERSATION_ENGINE] 🔨 Creating CompletionsRequest object...")
             
-            # Create completions request with ultra-focused parameters
+            # Create completions request with streaming enabled
             completions_request = CompletionsRequest(
                 model=conversation_model,
                 messages=messages,
-                stream=False,
-                temperature=0.3,  # CRITICAL FIX: Lower temperature for more focused responses
-                max_tokens=150    # CRITICAL FIX: Even shorter responses to prevent rambling
+                stream=True,  # Enable streaming
+                temperature=0.3,
+                max_tokens=150
             )
             
             print(f"💬 [CONVERSATION_ENGINE] ✅ CompletionsRequest created successfully")
@@ -739,18 +579,165 @@ Respond naturally using relevant context."""
             # Mark LLM request sent
             self.pending_responses[request_id]["llm_request_sent"] = True
             
+            # Subscribe to streaming chunks from modelservice using proper topic
+            print(f"💬 [CONVERSATION_ENGINE] 📡 Subscribing to streaming chunks: {AICOTopics.MODELSERVICE_COMPLETIONS_STREAM}")
+            
+            # Start streaming handler as background task
+            asyncio.create_task(self._handle_streaming_response(request_id, AICOTopics.MODELSERVICE_COMPLETIONS_STREAM))
+            
             llm_end_time = time.time()
             llm_total_duration = llm_end_time - llm_start_time
             print(f"💬 [CONVERSATION_ENGINE] 🏁 LLM request generation completed for {request_id} in {llm_total_duration:.2f}s")
             
         except Exception as e:
             print(f"💬 [CONVERSATION_ENGINE] ❌ EXCEPTION in _generate_llm_response: {e}")
-            self.logger.error(f"Error generating LLM response: {e}", exc_info=True)
+            self.logger.error(f"Error generating LLM response: {e}")
             await self._cleanup_request(request_id)
     
-    def _build_system_prompt(self, thread: ConversationThread, context: Dict[str, Any]) -> str:
+    async def _handle_streaming_response(self, request_id: str, stream_topic: str) -> None:
+        """Handle streaming chunks from modelservice and forward to API layer"""
+        try:
+            print(f"💬 [CONVERSATION_ENGINE] 🔄 Starting streaming handler for {request_id}")
+            accumulated_content = ""
+            
+            # Subscribe to streaming chunks with callback
+            async def handle_chunk(envelope):
+                nonlocal accumulated_content
+                try:
+                    # Extract StreamingChunk from protobuf envelope
+                    from aico.proto.aico_modelservice_pb2 import StreamingChunk
+                    streaming_chunk = StreamingChunk()
+                    envelope.any_payload.Unpack(streaming_chunk)
+                    
+                    # Only process chunks for our specific request
+                    if streaming_chunk.request_id != request_id:
+                        return False  # Not for us, continue listening
+                    
+                    print(f"💬 [CONVERSATION_ENGINE] 📦 Received streaming chunk for {request_id}")
+                    
+                    # Extract chunk content from protobuf
+                    chunk_content = streaming_chunk.content
+                    accumulated_content = streaming_chunk.accumulated_content
+                    is_done = streaming_chunk.done
+                    
+                    # Publish streaming chunk directly to API layer via message bus
+                    if request_id in self.pending_responses:
+                        from aico.proto.aico_conversation_pb2 import StreamingResponse
+                        import time
+                        
+                        # Create proper protobuf streaming response
+                        streaming_response = StreamingResponse()
+                        streaming_response.request_id = request_id
+                        streaming_response.content = chunk_content
+                        streaming_response.accumulated_content = accumulated_content
+                        streaming_response.done = is_done
+                        streaming_response.timestamp = int(time.time() * 1000)  # milliseconds
+                        
+                        # Publish directly to API streaming topic
+                        await self.bus_client.publish(
+                            AICOTopics.CONVERSATION_STREAM,
+                            streaming_response,
+                            correlation_id=request_id
+                        )
+                        print(f"💬 [CONVERSATION_ENGINE] 📡 Published chunk to API: content='{chunk_content}', done={is_done}")
+                    
+                    print(f"💬 [CONVERSATION_ENGINE] 📝 Accumulated content length: {len(accumulated_content)}")
+                    
+                    # If this is the final chunk, handle completion
+                    if is_done:
+                        print(f"💬 [CONVERSATION_ENGINE] ✅ Streaming complete for {request_id}")
+                        await self._finalize_streaming_response(request_id, accumulated_content)
+                        return True  # Signal to stop subscription
+                    return False
+                    
+                except Exception as e:
+                    print(f"💬 [CONVERSATION_ENGINE] ❌ Error processing streaming chunk: {e}")
+                    return False
+            
+            # Subscribe with proper callback
+            await self.bus_client.subscribe(stream_topic, handle_chunk)
+                    
+        except Exception as e:
+            print(f"💬 [CONVERSATION_ENGINE] ❌ Error in streaming handler: {e}")
+            # Remove exc_info parameter - not supported by AICOLogger
+            self.logger.error(f"Streaming handler error for {request_id}: {e}")
+    
+    async def _finalize_streaming_response(self, request_id: str, final_content: str) -> None:
+        """Finalize streaming response and deliver to user (semantic memory approach)"""
+        try:
+            print(f"💬 [CONVERSATION_ENGINE] 🏁 Finalizing streaming response for {request_id}")
+            
+            if request_id not in self.pending_responses:
+                print(f"💬 [CONVERSATION_ENGINE] ⚠️ Request {request_id} not found in pending responses")
+                return
+            
+            request_data = self.pending_responses[request_id]
+            user_message = request_data["user_message"]
+            
+            # Extract user info from the original message
+            user_id = user_message.user_id
+            conversation_id = user_message.message.conversation_id
+            
+            # Store AI response in semantic memory (following current architecture)
+            memory_manager = ai_registry.get("memory")
+            if memory_manager:
+                try:
+                    await memory_manager.store_message(user_id, conversation_id, final_content, "assistant")
+                    print(f"💬 [CONVERSATION_ENGINE] 💾 Stored AI response in semantic memory")
+                except Exception as e:
+                    self.logger.error(f"Failed to store AI response in memory: {e}")
+            
+            # Create final response message for API layer
+            ai_message = Message()
+            ai_message.conversation_id = conversation_id
+            ai_message.type = Message.MessageType.SYSTEM_RESPONSE
+            ai_message.text = final_content
+            ai_message.turn_number = 1  # Simple turn tracking
+            
+            # Create ConversationMessage for API layer (with message_id)
+            from aico.proto.aico_conversation_pb2 import ConversationMessage
+            from google.protobuf.timestamp_pb2 import Timestamp
+            import time
+            
+            conv_message = ConversationMessage()
+            conv_message.message_id = request_id  # Set message_id for API layer
+            conv_message.user_id = user_id
+            conv_message.source = "conversation_engine"
+            
+            # Set timestamp
+            timestamp = Timestamp()
+            timestamp.FromSeconds(int(time.time()))
+            conv_message.timestamp.CopyFrom(timestamp)
+            
+            # Set the message content
+            conv_message.message.CopyFrom(ai_message)
+            
+            # Publish final response to both topics for compatibility
+            await self.bus_client.publish(
+                AICOTopics.CONVERSATION_RESPONSE,
+                conv_message,
+                correlation_id=request_id
+            )
+            
+            # Also publish to AI response topic for API layer
+            await self.bus_client.publish(
+                "conversation/ai/response/v1",
+                conv_message,
+                correlation_id=request_id
+            )
+            
+            print(f"💬 [CONVERSATION_ENGINE] ✅ Final response delivered for {request_id}")
+            
+            # Clean up
+            await self._cleanup_request(request_id)
+            
+        except Exception as e:
+            print(f"💬 [CONVERSATION_ENGINE] ❌ Error finalizing streaming response: {e}")
+            self.logger.error(f"Error finalizing streaming response for {request_id}: {e}")
+    
+    def _build_system_prompt(self, user_context: UserContext, context: Dict[str, Any]) -> str:
         """Build clean, focused system prompt for optimal LLM performance"""
-        user = thread.user_context
+        user = user_context
         
         # Core identity and behavior - clean and direct
         prompt_parts = [
@@ -824,7 +811,7 @@ Respond naturally using relevant context."""
                 self.logger.info(f"🔍 [ENGINE_FLOW] ✅ Found matching request for correlation_id: {correlation_id}")
                 request_id = correlation_id
                 pending_data = self.pending_responses[request_id]
-                thread = pending_data["thread"]
+                user_context = pending_data["user_context"]
                 
                 # Extract response text from the completion response
                 response_text = "I'm here to help!"  # Default fallback
@@ -837,35 +824,27 @@ Respond naturally using relevant context."""
                     self.logger.error(f"LLM completion error: {completions_response.error}")
                     response_text = "I apologize, but I encountered an error generating a response."
                 
-                # Store response for delivery
-                response_components = ResponseComponents(
-                    text=response_text,
-                    avatar_actions=None,
-                    voice_synthesis=None,
-                    proactive_triggers=None
-                )
-                
                 # Store response text for direct API access
                 if request_id in self.pending_responses:
                     self.pending_responses[request_id]["response_text"] = response_text
                     self.pending_responses[request_id]["response_ready"] = True
                 
-                # Simple AI response storage
+                # Store AI response in semantic memory
+                user_message = self.pending_responses[request_id]["user_message"]
                 memory_manager = ai_registry.get("memory")
                 if memory_manager:
                     try:
                         await memory_manager.store_message(
-                            thread.user_context.user_id, 
-                            thread.conversation_id, 
+                            user_message.user_id, 
+                            user_message.message.conversation_id, 
                             response_text, 
                             "assistant"
                         )
+                        self.logger.debug(f"AI response stored in semantic memory")
                     except Exception as e:
-                        self.logger.error(f"Failed to store AI response: {e}")
+                        self.logger.error(f"Failed to store AI response in memory: {e}")
                 
-                # Deliver response
-                self.logger.info(f"🔍 [ENGINE_FLOW] ✅ Delivering response for correlation_id: {correlation_id}")
-                await self._deliver_response(thread, response_components, correlation_id)
+                self.logger.info(f"🔍 [ENGINE_FLOW] ✅ Response processing complete for correlation_id: {correlation_id}")
                 
                 # Clean up (but only if not being used by direct API)
                 if request_id in self.pending_responses and not self.pending_responses[request_id].get("direct_api_call"):
@@ -882,126 +861,7 @@ Respond naturally using relevant context."""
         except Exception as e:
             self.logger.error(f"Error handling LLM response: {e}")
 
-    # ============================================================================
-    # EMBODIMENT SYSTEM (SCAFFOLDING)
-    # ============================================================================
-    
-    async def _generate_avatar_actions(self, thread: ConversationThread, response_text: str) -> Optional[Dict[str, Any]]:
-        """Generate avatar actions for embodied response"""
-        # Check if embodiment processor is available
-        embodiment_processor = self.ai_processors.get("embodiment")
-        
-        if embodiment_processor:
-            # Create processing context for avatar generation
-            context = ProcessingContext(
-                conversation_id=thread.conversation_id,
-                user_id=thread.user_context.user_id,
-                request_id=str(uuid.uuid4()),
-                message_content=response_text,
-                message_type="response",
-                turn_number=thread.turn_number,
-                conversation_phase=thread.conversation_phase,
-                user_name=thread.user_context.username,
-                relationship_type=thread.user_context.relationship_type,
-                conversation_style=thread.user_context.conversation_style
-            )
-            
-            try:
-                # Generate avatar actions
-                result = await embodiment_processor.generate_avatar_actions(context)
-                self.logger.debug(f"Avatar actions generated for thread {thread.conversation_id}")
-                return result
-            except Exception as e:
-                self.logger.error(f"Avatar action generation failed: {e}")
-        
-        return None
-    
-    async def _generate_voice_parameters(self, thread: ConversationThread, response_text: str) -> Optional[Dict[str, Any]]:
-        """Generate voice synthesis parameters for embodied response"""
-        # Check if embodiment processor is available
-        embodiment_processor = self.ai_processors.get("embodiment")
-        
-        if embodiment_processor:
-            # Create processing context for voice generation
-            context = ProcessingContext(
-                conversation_id=thread.conversation_id,
-                user_id=thread.user_context.user_id,
-                request_id=str(uuid.uuid4()),
-                message_content=response_text,
-                message_type="response",
-                turn_number=thread.turn_number,
-                conversation_phase=thread.conversation_phase,
-                user_name=thread.user_context.username,
-                relationship_type=thread.user_context.relationship_type,
-                conversation_style=thread.user_context.conversation_style
-            )
-            
-            try:
-                # Generate voice parameters
-                result = await embodiment_processor.generate_voice_parameters(context)
-                self.logger.debug(f"Voice parameters generated for thread {thread.conversation_id}")
-                return result
-            except Exception as e:
-                self.logger.error(f"Voice parameter generation failed: {e}")
-        
-        return None
-    
-    async def _deliver_response(self, thread: ConversationThread, response_components: ResponseComponents, message_id: str = None) -> None:
-        """Deliver multimodal response to user"""
-        try:
-            import time
-            timestamp = time.time()
-            print(f"💬 [CONVERSATION_ENGINE] 📤 DELIVERING RESPONSE! [{timestamp:.6f}]")
-            print(f"💬 [CONVERSATION_ENGINE] Response text: {response_components.text[:100]}...")
-            
-            # Create AI response message
-            ai_message = ConversationMessage()
-            ai_message.timestamp.GetCurrentTime()
-            ai_message.source = "conversation_engine"
-            
-            # Set the message_id to match the original request for proper correlation
-            if message_id:
-                ai_message.message_id = message_id
-                print(f"💬 [CONVERSATION_ENGINE] 🆔 Setting response message_id: {message_id}")
-            
-            ai_message.message.text = response_components.text
-            ai_message.message.type = Message.MessageType.SYSTEM_RESPONSE
-            ai_message.message.conversation_id = thread.conversation_id
-            ai_message.message.turn_number = thread.turn_number
-            
-            ai_message.analysis.intent = "response"
-            ai_message.analysis.urgency = MessageAnalysis.Urgency.LOW
-            ai_message.analysis.requires_response = False
-            
-            # Publish AI response to conversation topic
-            await self.bus_client.publish(AICOTopics.CONVERSATION_AI_RESPONSE, ai_message)
-            
-            # Update thread state
-            thread.turn_number += 1
-            thread.last_activity = datetime.utcnow()
-            thread.message_history.append(ai_message)
-            
-            # Optional multimodal components
-            if self.enable_embodiment and response_components.avatar_actions:
-                # TODO: Publish to avatar system topic
-                pass
-            
-            if self.enable_embodiment and response_components.voice_synthesis:
-                # TODO: Publish to voice synthesis topic
-                pass
-            
-            self.logger.info(f"✅ Response delivered to conversation/ai/response/v1", extra={
-                "conversation_id": thread.conversation_id,
-                "response_length": len(response_components.text),
-                "multimodal": self.enable_embodiment
-            })
-            
-        except Exception as e:
-            self.logger.error(f"Error delivering response: {e}")
-    
-    # ============================================================================
- 
-    
+    # Embodiment system removed - focusing on core conversation functionality
     async def _response_timeout_handler(self, request_id: str) -> None:
         """Handle response timeout for a specific request"""
         try:
@@ -1064,7 +924,6 @@ Respond naturally using relevant context."""
             
             # Clear conversation state
             self.user_contexts.clear()
-            self.conversation_threads.clear()
             self.pending_responses.clear()
             
             total_time = time.time() - start_time

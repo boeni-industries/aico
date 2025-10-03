@@ -16,6 +16,9 @@ class ConversationState {
   final List<Message> messages;
   final bool isLoading;
   final bool isSendingMessage;
+  final bool isStreaming;
+  final String? streamingContent;
+  final String? streamingMessageId;
   final String? error;
   final String? currentConversationId;
 
@@ -23,6 +26,9 @@ class ConversationState {
     this.messages = const [],
     this.isLoading = false,
     this.isSendingMessage = false,
+    this.isStreaming = false,
+    this.streamingContent,
+    this.streamingMessageId,
     this.error,
     this.currentConversationId,
   });
@@ -31,6 +37,9 @@ class ConversationState {
     List<Message>? messages,
     bool? isLoading,
     bool? isSendingMessage,
+    bool? isStreaming,
+    String? streamingContent,
+    String? streamingMessageId,
     String? error,
     String? currentConversationId,
   }) {
@@ -38,6 +47,9 @@ class ConversationState {
       messages: messages ?? this.messages,
       isLoading: isLoading ?? this.isLoading,
       isSendingMessage: isSendingMessage ?? this.isSendingMessage,
+      isStreaming: isStreaming ?? this.isStreaming,
+      streamingContent: streamingContent ?? this.streamingContent,
+      streamingMessageId: streamingMessageId ?? this.streamingMessageId,
       error: error ?? this.error,
       currentConversationId: currentConversationId ?? this.currentConversationId,
     );
@@ -73,8 +85,9 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
     state = state.copyWith(currentConversationId: 'default');
   }
 
-  /// Send a message to AICO
-  Future<void> sendMessage(String content) async {
+
+  /// Send message with optional streaming response
+  Future<void> sendMessage(String content, {bool stream = false}) async {
     if (content.trim().isEmpty) {
       AICOLog.warn('Attempted to send empty message', 
         topic: 'conversation_provider/send_empty');
@@ -108,58 +121,24 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
         'message_id': messageId,
         'content_length': content.length,
         'conversation_id': state.currentConversationId,
+        'streaming': stream,
       });
 
     try {
-      // Send message through use case with timeout to prevent UI freeze
-      final params = SendMessageParams(
-        content: content.trim(),
-        userId: _userId,
-        conversationId: state.currentConversationId ?? 'default',
-        type: MessageType.text,
-      );
-
-      final sentMessage = await _sendMessageUseCase.call(params);
-
-      // Only update user message status to "sent" - don't overwrite the entire message
-      final updatedMessages = state.messages.map((msg) {
-        if (msg.id == messageId) {
-          return msg.copyWith(
-            status: MessageStatus.sent,
-            conversationId: sentMessage.conversationId, // Update conversation ID if changed
-          );
-        }
-        return msg;
-      }).toList();
-
-      // Update conversation ID if backend resolved to a different one
-      final newConversationId = sentMessage.conversationId != state.currentConversationId 
-          ? sentMessage.conversationId 
-          : state.currentConversationId;
-
-      state = state.copyWith(
-        messages: updatedMessages,
-        isSendingMessage: false,
-        currentConversationId: newConversationId,
-      );
-
-      AICOLog.info('Message sent successfully', 
-        topic: 'conversation_provider/send_success',
-        extra: {
-          'message_id': sentMessage.id,
-          'conversation_id': sentMessage.conversationId,
-        });
-
-      // Handle AI response from backend using the backend response data
-      await _handleAIResponse(sentMessage);
-
+      if (stream) {
+        // Streaming path
+        await _handleStreamingMessage(userMessage, messageId);
+      } else {
+        // Non-streaming path (use existing legacy logic)
+        await _handleNonStreamingMessage(userMessage, messageId);
+      }
     } catch (e) {
       AICOLog.error('Failed to send message', 
         topic: 'conversation_provider/send_error',
         error: e,
         extra: {'message_id': messageId});
 
-      // Update message status to failed
+      // Update user message status to failed
       final updatedMessages = state.messages.map((msg) {
         if (msg.id == messageId) {
           return msg.copyWith(status: MessageStatus.failed);
@@ -170,9 +149,159 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
       state = state.copyWith(
         messages: updatedMessages,
         isSendingMessage: false,
+        isStreaming: false,
+        streamingContent: null,
+        streamingMessageId: null,
         error: 'Failed to send message: ${e.toString()}',
       );
     }
+  }
+
+  /// Handle streaming message flow
+  Future<void> _handleStreamingMessage(Message userMessage, String messageId) async {
+    // Create AI message placeholder for streaming
+    final aiMessageId = _uuid.v4();
+    final aiMessage = Message(
+      id: aiMessageId,
+      content: '', // Start with empty content
+      userId: 'aico',
+      conversationId: userMessage.conversationId,
+      type: MessageType.text,
+      status: MessageStatus.sending,
+      timestamp: DateTime.now().toUtc(),
+    );
+
+    // Add AI message placeholder and start streaming
+    state = state.copyWith(
+      messages: [...state.messages, aiMessage],
+      isSendingMessage: false,
+      isStreaming: true,
+      streamingMessageId: aiMessageId,
+      streamingContent: '',
+    );
+
+    // Update user message to sent
+    final updatedMessages = state.messages.map((msg) {
+      if (msg.id == messageId) {
+        return msg.copyWith(status: MessageStatus.sent);
+      }
+      return msg;
+    }).toList();
+
+    state = state.copyWith(messages: updatedMessages);
+
+    // Start streaming via repository
+    final repo = _messageRepository as MessageRepositoryImpl;
+    
+    await repo.sendMessageStreaming(
+      userMessage,
+      (String chunk) {
+        // Update streaming content with new chunk
+        final currentContent = state.streamingContent ?? '';
+        final newContent = currentContent + chunk;
+        
+        state = state.copyWith(streamingContent: newContent);
+        
+        // Update the AI message in the list
+        final updatedMessages = state.messages.map((msg) {
+          if (msg.id == aiMessageId) {
+            return msg.copyWith(content: newContent);
+          }
+          return msg;
+        }).toList();
+        
+        state = state.copyWith(messages: updatedMessages);
+      },
+      (String finalResponse) {
+        // Finalize the AI message
+        final updatedMessages = state.messages.map((msg) {
+          if (msg.id == aiMessageId) {
+            return msg.copyWith(
+              content: finalResponse,
+              status: MessageStatus.sent,
+            );
+          }
+          return msg;
+        }).toList();
+        
+        state = state.copyWith(
+          messages: updatedMessages,
+          isStreaming: false,
+          streamingContent: null,
+          streamingMessageId: null,
+        );
+        
+        AICOLog.info('Streaming completed successfully', 
+          topic: 'conversation_provider/streaming_complete',
+          extra: {
+            'ai_message_id': aiMessageId,
+            'final_length': finalResponse.length,
+          });
+      },
+      (String error) {
+        // Handle streaming error
+        final updatedMessages = state.messages.map((msg) {
+          if (msg.id == aiMessageId) {
+            return msg.copyWith(
+              content: 'Error: $error',
+              status: MessageStatus.failed,
+            );
+          }
+          return msg;
+        }).toList();
+        
+        state = state.copyWith(
+          messages: updatedMessages,
+          isStreaming: false,
+          streamingContent: null,
+          streamingMessageId: null,
+          error: 'Streaming failed: $error',
+        );
+        
+        AICOLog.error('Streaming failed', 
+          topic: 'conversation_provider/streaming_error',
+          error: error,
+          extra: {'ai_message_id': aiMessageId});
+      },
+    );
+  }
+
+  /// Handle non-streaming message flow (existing logic)
+  Future<void> _handleNonStreamingMessage(Message userMessage, String messageId) async {
+    // Use existing use case for non-streaming
+    final params = SendMessageParams(
+      content: userMessage.content,
+      userId: _userId,
+      conversationId: state.currentConversationId ?? 'default',
+      type: MessageType.text,
+    );
+
+    final sentMessage = await _sendMessageUseCase.call(params);
+
+    // Update user message status to "sent"
+    final updatedMessages = state.messages.map((msg) {
+      if (msg.id == messageId) {
+        return msg.copyWith(
+          status: MessageStatus.sent,
+          conversationId: sentMessage.conversationId,
+        );
+      }
+      return msg;
+    }).toList();
+
+    // Update conversation ID if backend resolved to a different one
+    final newConversationId = sentMessage.conversationId != state.currentConversationId 
+        ? sentMessage.conversationId 
+        : state.currentConversationId;
+
+    state = state.copyWith(
+      messages: updatedMessages,
+      isSendingMessage: false,
+      currentConversationId: newConversationId,
+    );
+
+    // Handle AI response from backend using the backend response data
+    await _handleAIResponse(sentMessage);
   }
 
   /// Handle AI response from backend

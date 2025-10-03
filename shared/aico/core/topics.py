@@ -78,22 +78,22 @@ class AICOTopics:
     AGENCY_INITIATIVE_START = "agency/initiative/start/v1"
     AGENCY_DECISION_REQUEST = "agency/decision/request/v1"
     AGENCY_DECISION_RESPONSE = "agency/decision/response/v1"
-    AGENCY_PLANNING_UPDATE = "agency/planning/update/v1"
     
     # Conversation Domain
     CONVERSATION_CONTEXT_CURRENT = "conversation/context/current/v1"
     CONVERSATION_CONTEXT_UPDATE = "conversation/context/update/v1"
     CONVERSATION_HISTORY_ADD = "conversation/history/add/v1"
     CONVERSATION_INTENT_DETECTED = "conversation/intent/detected/v1"
+    # Conversation endpoints
     CONVERSATION_USER_INPUT = "conversation/user/input/v1"
     CONVERSATION_AI_RESPONSE = "conversation/ai/response/v1"
-    
-    # Memory Domain
-    MEMORY_STORE_REQUEST = "memory/store/request/v1"
-    MEMORY_STORE_RESPONSE = "memory/store/response/v1"
-    MEMORY_RETRIEVE_REQUEST = "memory/retrieve/request/v1"
-    MEMORY_RETRIEVE_RESPONSE = "memory/retrieve/response/v1"
-    MEMORY_CONSOLIDATION_START = "memory/consolidation/start/v1"
+    CONVERSATION_RESPONSE = "conversation/response/v1"
+    CONVERSATION_STREAM = "conversation/stream/v1"  # For real-time streaming to API layer
+    Memory_STORE_REQUEST = "memory/store/request/v1"
+    Memory_STORE_RESPONSE = "memory/store/response/v1"
+    Memory_RETRIEVE_REQUEST = "memory/retrieve/request/v1"
+    Memory_RETRIEVE_RESPONSE = "memory/retrieve/response/v1"
+    Memory_CONSOLIDATION_START = "memory/consolidation/start/v1"
     MEMORY_CONSOLIDATION_COMPLETE = "memory/consolidation/complete/v1"
     
     # User Domain
@@ -518,7 +518,7 @@ class TopicMetadata:
         AICOTopics.SYSTEM_MODULE_REGISTERED,
         AICOTopics.CRISIS_DETECTION_ALERT,
         AICOTopics.CRISIS_RESPONSE_START,
-        AICOTopics.MEMORY_STORE_REQUEST,
+        AICOTopics.Memory_STORE_REQUEST,
         AICOTopics.USER_FEEDBACK_EXPLICIT,
     }
     

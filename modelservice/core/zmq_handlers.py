@@ -6,6 +6,7 @@ Protocol Buffer messages, providing type-safe message handling.
 """
 
 import asyncio
+import json
 import time
 import httpx
 from datetime import datetime
@@ -30,7 +31,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 class ModelserviceZMQHandlers:
     """ZeroMQ message handlers for modelservice functionality."""
     
-    def __init__(self, config: dict, ollama_manager):
+    def __init__(self, config: dict, ollama_manager, message_bus_client=None):
         # Initialize logger first
         self.logger = get_logger("modelservice", "core.zmq_handlers")
         
@@ -43,6 +44,7 @@ class ModelserviceZMQHandlers:
         self.logger.info("ModelserviceZMQHandlers constructor called - initializing...")
         self.config = config
         self.ollama_manager = ollama_manager
+        self.message_bus_client = message_bus_client
         self.version = get_modelservice_version()
         
         # SpaCy manager removed - using GLiNER via TransformersManager
@@ -200,7 +202,7 @@ class ModelserviceZMQHandlers:
         
         return response
     
-    async def handle_chat_request(self, request_payload) -> CompletionsResponse:
+    async def handle_chat_request(self, request_payload, correlation_id=None) -> CompletionsResponse:
         """Handle chat requests via Protocol Buffers (conversational with message arrays)."""
         response = CompletionsResponse()
         
@@ -237,79 +239,135 @@ class ModelserviceZMQHandlers:
             self.logger.info(f"[CHAT] Forwarding to Ollama at {ollama_url}")
             self.logger.info(f"[CHAT] Chat messages count: {len(chat_messages)}")
             
-            self.logger.info(f"[CHAT] Creating HTTP client...")
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                self.logger.info(f"[CHAT] HTTP client created, sending request to Ollama...")
+            self.logger.info(f"[CHAT] Creating HTTP client for streaming...")
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 request_data = {
                     "model": model,
                     "messages": chat_messages,
-                    "stream": False
+                    "stream": True  # Enable streaming
                 }
-                self.logger.info(f"[CHAT] Request data prepared: model={model}, messages_count={len(chat_messages)}")
+                self.logger.info(f"[CHAT] Request data prepared: model={model}, messages_count={len(chat_messages)}, streaming=True")
                 
                 try:
-                    self.logger.info(f"[CHAT] Making POST request to {ollama_url}/api/chat")
-                    ollama_response = await client.post(
-                        f"{ollama_url}/api/chat",
-                        json=request_data
+                    self.logger.info(f"[CHAT] Making streaming POST request to {ollama_url}/api/chat")
+                    
+                    # Stream response from Ollama and forward chunks immediately
+                    accumulated_content = ""
+                    from aico.proto.aico_modelservice_pb2 import CompletionResult, ConversationMessage
+                    
+                    async with client.stream("POST", f"{ollama_url}/api/chat", json=request_data) as stream_response:
+                        if stream_response.status_code != 200:
+                            error_text = await stream_response.aread()
+                            raise Exception(f"Ollama error: {stream_response.status_code} - {error_text.decode()}")
+                        
+                        self.logger.info(f"[CHAT] Streaming response started, forwarding chunks...")
+                        
+                        async for line in stream_response.aiter_lines():
+                            if not line.strip():
+                                continue
+                            
+                            try:
+                                chunk = json.loads(line)
+                                
+                                # Extract content from chunk
+                                if "message" in chunk and "content" in chunk["message"]:
+                                    chunk_content = chunk["message"]["content"]
+                                    accumulated_content += chunk_content
+                                    
+                                    # Publish streaming chunk using proper protobuf message
+                                    if self.message_bus_client and chunk_content and correlation_id:
+                                        from aico.proto.aico_modelservice_pb2 import StreamingChunk
+                                        from aico.core.topics import AICOTopics
+                                        import time
+                                        
+                                        # Create proper protobuf streaming chunk
+                                        streaming_chunk = StreamingChunk()
+                                        streaming_chunk.request_id = correlation_id
+                                        streaming_chunk.content = chunk_content
+                                        streaming_chunk.accumulated_content = accumulated_content
+                                        streaming_chunk.done = False
+                                        streaming_chunk.model = model
+                                        streaming_chunk.timestamp = int(time.time() * 1000)  # milliseconds
+                                        
+                                        # Publish using proper message bus pattern
+                                        await self.message_bus_client.publish(
+                                            AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
+                                            streaming_chunk,
+                                            correlation_id=correlation_id
+                                        )
+                                        self.logger.debug(f"[CHAT] Published streaming chunk for {correlation_id}")
+                                
+                                # Check if this is the final chunk
+                                if chunk.get("done", False):
+                                    self.logger.info(f"[CHAT] Streaming complete, total length: {len(accumulated_content)}")
+                                    
+                                    # Publish final completion signal
+                                    if self.message_bus_client and correlation_id:
+                                        from aico.proto.aico_modelservice_pb2 import StreamingChunk
+                                        from aico.core.topics import AICOTopics
+                                        import time
+                                        
+                                        # Create final streaming chunk
+                                        final_chunk = StreamingChunk()
+                                        final_chunk.request_id = correlation_id
+                                        final_chunk.content = ""  # No new content in final chunk
+                                        final_chunk.accumulated_content = accumulated_content
+                                        final_chunk.done = True
+                                        final_chunk.model = model
+                                        final_chunk.timestamp = int(time.time() * 1000)
+                                        
+                                        # Publish final chunk
+                                        await self.message_bus_client.publish(
+                                            AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
+                                            final_chunk,
+                                            correlation_id=correlation_id
+                                        )
+                                    
+                                    # Create final Protocol Buffer response for ZMQ
+                                    result = CompletionResult()
+                                    result.model = model
+                                    result.done = True
+                                    
+                                    response_msg = ConversationMessage()
+                                    response_msg.role = "assistant"
+                                    response_msg.content = accumulated_content
+                                    result.message.CopyFrom(response_msg)
+                                    
+                                    # Optional timing fields from final chunk
+                                    if "total_duration" in chunk:
+                                        result.total_duration = chunk["total_duration"]
+                                    if "load_duration" in chunk:
+                                        result.load_duration = chunk["load_duration"]
+                                    if "prompt_eval_count" in chunk:
+                                        result.prompt_eval_count = chunk["prompt_eval_count"]
+                                    if "prompt_eval_duration" in chunk:
+                                        result.prompt_eval_duration = chunk["prompt_eval_duration"]
+                                    if "eval_count" in chunk:
+                                        result.eval_count = chunk["eval_count"]
+                                    if "eval_duration" in chunk:
+                                        result.eval_duration = chunk["eval_duration"]
+                                    
+                                    response.success = True
+                                    response.result.CopyFrom(result)
+                                    break
+                                    
+                            except json.JSONDecodeError as je:
+                                self.logger.warning(f"[CHAT] Failed to parse chunk: {line[:100]}... - {je}")
+                                continue
+                    
+                    self.logger.info(f"[CHAT] ✅ Success! Streamed chat response for model {model}")
+                    self.logger.info(f"[CHAT] Final response length: {len(accumulated_content)} characters")
+                    self.logger.info(
+                        f"Completion streamed for model {model}",
+                        extra={"topic": AICOTopics.LOGS_ENTRY}
                     )
-                    self.logger.info(f"[CHAT] Ollama response received with status: {ollama_response.status_code}")
+                    
                 except httpx.ConnectError as conn_err:
                     raise Exception(f"Failed to connect to Ollama at {ollama_url}: {conn_err}")
                 except httpx.TimeoutException as timeout_err:
-                    raise Exception(f"Ollama request timed out after 30s: {timeout_err}")
+                    raise Exception(f"Ollama request timed out: {timeout_err}")
                 except Exception as req_err:
-                    raise Exception(f"HTTP request to Ollama failed: {req_err}")
-                
-                if ollama_response.status_code != 200:
-                    raise Exception(f"Ollama error: {ollama_response.status_code} - {ollama_response.text}")
-                
-                data = ollama_response.json()
-                self.logger.info(f"[DEBUG] Ollama raw response: {data}")
-                
-                # Create Protocol Buffer response
-                from aico.proto.aico_modelservice_pb2 import CompletionResult, ConversationMessage
-                result = CompletionResult()
-                result.model = model
-                result.done = data.get("done", True)
-                
-                # Create response message - extract from chat API response format
-                response_msg = ConversationMessage()
-                response_msg.role = "assistant"
-                # Chat API returns message in different format than generate API
-                if "message" in data and "content" in data["message"]:
-                    response_content = data["message"]["content"]
-                else:
-                    # Fallback for generate API format
-                    response_content = data.get("response", "")
-                self.logger.info(f"[DEBUG] Extracted response content: '{response_content}' (length: {len(response_content)})")
-                response_msg.content = response_content
-                result.message.CopyFrom(response_msg)
-                self.logger.info(f"[DEBUG] Final result message content: '{result.message.content}'")
-                
-                # Optional timing fields
-                if "total_duration" in data:
-                    result.total_duration = data["total_duration"]
-                if "load_duration" in data:
-                    result.load_duration = data["load_duration"]
-                if "prompt_eval_count" in data:
-                    result.prompt_eval_count = data["prompt_eval_count"]
-                if "prompt_eval_duration" in data:
-                    result.prompt_eval_duration = data["prompt_eval_duration"]
-                if "eval_count" in data:
-                    result.eval_count = data["eval_count"]
-                if "eval_duration" in data:
-                    result.eval_duration = data["eval_duration"]
-                
-                response.success = True
-                response.result.CopyFrom(result)
-                
-                self.logger.info(f"[CHAT] ✅ Success! Generated chat response for model {model}")
-                self.logger.info(f"[CHAT] Response length: {len(response_content)} characters")
-                self.logger.info(
-                    f"Completion generated for model {model}",
-                    extra={"topic": AICOTopics.LOGS_ENTRY}
-                )
+                    raise Exception(f"HTTP streaming request to Ollama failed: {req_err}")
                 
         except Exception as e:
             error_msg = f"Chat request failed: {str(e)}"

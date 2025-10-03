@@ -39,7 +39,8 @@ class ModelserviceZMQService:
         
         self.logger.info("About to instantiate ModelserviceZMQHandlers...")
         try:
-            self.handlers = ModelserviceZMQHandlers(self.config, ollama_manager)
+            # Pass the bus client to handlers for streaming support
+            self.handlers = ModelserviceZMQHandlers(self.config, ollama_manager, None)  # Will be set later
             self.logger.info("ModelserviceZMQHandlers instantiated successfully")
         except Exception as e:
             self.logger.error(f"CRITICAL: Failed to instantiate ModelserviceZMQHandlers: {e}")
@@ -83,6 +84,9 @@ class ModelserviceZMQService:
             self.bus_client = MessageBusClient("message_bus_client_modelservice")
             
             await self.bus_client.connect()
+            
+            # Pass bus client to handlers for streaming support
+            self.handlers.message_bus_client = self.bus_client
             
             basic_topics = [
                 AICOTopics.MODELSERVICE_HEALTH_REQUEST,
@@ -293,9 +297,14 @@ class ModelserviceZMQService:
                 handler_name = self.topic_handlers[topic].__name__
                 self.logger.info(f"[ZMQ_SERVICE] ✅ Handler found: {handler_name}")
                 
-                # Execute handler
+                # Execute handler with correlation_id for streaming support
                 self.logger.info(f"[ZMQ_SERVICE] Executing handler {handler_name} with payload type: {type(request_payload)}")
-                response = await self.topic_handlers[topic](request_payload)
+                if topic == AICOTopics.MODELSERVICE_CHAT_REQUEST:
+                    # Chat requests need correlation_id for streaming
+                    response = await self.topic_handlers[topic](request_payload, correlation_id)
+                else:
+                    # Other handlers don't need correlation_id yet
+                    response = await self.topic_handlers[topic](request_payload)
                 self.logger.info(f"[ZMQ_SERVICE] Handler completed, response type: {type(response)}")
                 
                 # Send Protocol Buffer response if correlation_id is provided

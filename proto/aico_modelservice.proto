@@ -28,6 +28,16 @@ message CompletionsRequest {
   optional string system = 7;
 }
 
+// Streaming chunk message for real-time completions
+message StreamingChunk {
+  string request_id = 1;           // Correlation ID for the request
+  string content = 2;              // Incremental content chunk
+  string accumulated_content = 3;  // Total content so far
+  bool done = 4;                   // True if this is the final chunk
+  string model = 5;                // Model that generated this chunk
+  optional int64 timestamp = 6;    // Chunk timestamp
+}
+
 // Available models request
 message ModelsRequest {
   // Empty - no parameters needed

@@ -10,7 +10,9 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, Query, Request
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer
+import json
 
 from aico.core.logging import get_logger
 from backend.api.conversation.dependencies import get_message_bus_client
@@ -44,13 +46,14 @@ active_connections: Dict[str, WebSocket] = {}
 
 # Unified endpoint with automatic thread management
 
-@router.post("/messages", response_model=UnifiedMessageResponse)
+@router.post("/messages")
 async def send_message_with_auto_thread(
     request: UnifiedMessageRequest,
+    stream: bool = Query(False, description="Enable streaming response"),
     current_user = Depends(get_current_user),
     bus_client = Depends(get_message_bus_client)
 ):
-    """Send message with lazy thread resolution via context assembly"""
+    """Send message with lazy thread resolution via context assembly. Supports streaming with ?stream=true"""
     try:
         user_id = current_user['user_uuid']
         
@@ -72,6 +75,7 @@ async def send_message_with_auto_thread(
                 store_context = ProcessingContext(
                     conversation_id=conversation_id,
                     user_id=user_id,
+                    request_id=message_id,  # Add required request_id parameter
                     message_content=request.message,
                     message_type="user_input",
                     turn_number=1,
@@ -137,38 +141,146 @@ async def send_message_with_auto_thread(
                 import traceback
                 logger.error(f"Full traceback: {traceback.format_exc()}")
         
-        # Subscribe to AI response topic
-        await bus_client.subscribe("conversation/ai/response/v1", handle_ai_response)
-        
-        # Wait for response with timeout (allow for unoptimized LLM processing)
-        try:
-            logger.info(f"🔍 [CONVERSATION_TIMEOUT] Waiting for response with 15s timeout for request: {message_id}")
-            await asyncio.wait_for(response_received.wait(), timeout=15.0)
-            logger.info(f"🔍 [CONVERSATION_TIMEOUT] ✅ Response received within timeout for request: {message_id}")
-        except asyncio.TimeoutError:
-            logger.error(f"🔍 [CONVERSATION_TIMEOUT] ❌ 15-SECOND TIMEOUT for request: {message_id}")
-            ai_response = "Request timed out - please try again"
-        finally:
-            # Unsubscribe from the topic
+        # Handle streaming vs non-streaming response
+        if stream:
+            # Return streaming response using event-driven approach
+            async def stream_generator():
+                try:
+                    # Send initial metadata
+                    yield json.dumps({
+                        "type": "metadata",
+                        "message_id": message_id,
+                        "conversation_id": conversation_id,
+                        "timestamp": timestamp.isoformat()
+                    }) + "\n"
+                    
+                    # Subscribe to streaming chunks from conversation engine
+                    from aico.core.topics import AICOTopics
+                    from aico.proto.aico_conversation_pb2 import StreamingResponse as StreamingResponseProto
+                    
+                    streaming_complete = asyncio.Event()
+                    
+                    chunks_received = []
+                    
+                    async def handle_streaming_chunk(envelope):
+                        try:
+                            # Extract StreamingResponse from protobuf envelope
+                            streaming_chunk = StreamingResponseProto()
+                            envelope.any_payload.Unpack(streaming_chunk)
+                            
+                            # Only process chunks for our specific request
+                            if streaming_chunk.request_id != message_id:
+                                return  # Not for us, continue listening
+                            
+                            logger.debug(f"API received streaming chunk for {message_id}: '{streaming_chunk.content}'")
+                            
+                            # Store chunk for processing
+                            chunks_received.append({
+                                "content": streaming_chunk.content,
+                                "accumulated": streaming_chunk.accumulated_content,
+                                "done": streaming_chunk.done
+                            })
+                            
+                            # If this is the final chunk, signal completion
+                            if streaming_chunk.done:
+                                streaming_complete.set()
+                            
+                        except Exception as e:
+                            logger.error(f"Error processing streaming chunk: {e}")
+                            chunks_received.append({
+                                "type": "error",
+                                "error": str(e)
+                            })
+                            streaming_complete.set()
+                    
+                    # Subscribe to conversation streaming topic
+                    await bus_client.subscribe(AICOTopics.CONVERSATION_STREAM, handle_streaming_chunk)
+                    
+                    # Process chunks as they arrive
+                    last_chunk_count = 0
+                    timeout_start = asyncio.get_event_loop().time()
+                    
+                    while not streaming_complete.is_set():
+                        # Check for new chunks
+                        if len(chunks_received) > last_chunk_count:
+                            # Process new chunks
+                            for i in range(last_chunk_count, len(chunks_received)):
+                                chunk = chunks_received[i]
+                                if "type" in chunk and chunk["type"] == "error":
+                                    yield json.dumps(chunk) + "\n"
+                                else:
+                                    yield json.dumps({
+                                        "type": "chunk",
+                                        "content": chunk["content"],
+                                        "accumulated": chunk["accumulated"],
+                                        "done": chunk["done"]
+                                    }) + "\n"
+                            last_chunk_count = len(chunks_received)
+                        
+                        # Check timeout
+                        if asyncio.get_event_loop().time() - timeout_start > 30.0:
+                            yield json.dumps({
+                                "type": "error",
+                                "error": "Streaming timeout"
+                            }) + "\n"
+                            break
+                        
+                        # Small delay to avoid busy waiting
+                        await asyncio.sleep(0.01)
+                    
+                    # Unsubscribe
+                    try:
+                        await bus_client.unsubscribe(AICOTopics.CONVERSATION_STREAM)
+                    except Exception as e:
+                        logger.error(f"Error unsubscribing from streaming: {e}")
+                        
+                except Exception as e:
+                    logger.error(f"Stream generator error: {e}")
+                    yield json.dumps({
+                        "type": "error",
+                        "error": str(e)
+                    }) + "\n"
+            
+            return StreamingResponse(
+                stream_generator(),
+                media_type="application/x-ndjson",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+        else:
+            # Non-streaming: Subscribe and wait for complete response
+            await bus_client.subscribe("conversation/ai/response/v1", handle_ai_response)
+            
+            # Wait for response with timeout (allow for unoptimized LLM processing)
             try:
-                await bus_client.unsubscribe("conversation/ai/response/v1")
-            except Exception as e:
-                logger.error(f"Error unsubscribing: {e}")
-        
-        
-        # Return response with actual AI reply
-        response_data = UnifiedMessageResponse(
-            success=True,
-            message_id=message_id,
-            conversation_id=conversation_id,
-            conversation_action="conversation_started",
-            conversation_reasoning="Conversation continuity handled via enhanced semantic memory",
-            status="completed",
-            ai_response=ai_response,
-            timestamp=timestamp.isoformat()
-        )
-        
-        return response_data
+                logger.info(f"🔍 [CONVERSATION_TIMEOUT] Waiting for response with 15s timeout for request: {message_id}")
+                await asyncio.wait_for(response_received.wait(), timeout=15.0)
+                logger.info(f"🔍 [CONVERSATION_TIMEOUT] ✅ Response received within timeout for request: {message_id}")
+            except asyncio.TimeoutError:
+                logger.error(f"🔍 [CONVERSATION_TIMEOUT] ❌ 15-SECOND TIMEOUT for request: {message_id}")
+                ai_response = "Request timed out - please try again"
+            finally:
+                # Unsubscribe from the topic
+                try:
+                    await bus_client.unsubscribe("conversation/ai/response/v1")
+                except Exception as e:
+                    logger.error(f"Error unsubscribing: {e}")
+            
+            # Return regular JSON response (existing logic)
+            response_data = UnifiedMessageResponse(
+                success=True,
+                message_id=message_id,
+                conversation_id=conversation_id,
+                conversation_action="conversation_started",
+                conversation_reasoning="Conversation continuity handled via enhanced semantic memory",
+                status="completed",
+                ai_response=ai_response,
+                timestamp=timestamp.isoformat()
+            )
+            
+            return response_data
     except Exception as e:
         logger.error(f"Failed to send message with auto-thread: {e}")
         raise HTTPException(status_code=500, detail="Failed to process message")
