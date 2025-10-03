@@ -43,9 +43,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Listen for conversation changes to auto-scroll
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.listenManual(conversationProvider, (previous, next) {
-        // Auto-scroll when new messages are added
-        if (previous != null && next.messages.length > previous.messages.length) {
-          _scrollToBottom();
+        // Auto-scroll when new messages are added OR when message content changes (streaming)
+        if (previous != null) {
+          bool shouldScroll = false;
+          
+          // New message added
+          if (next.messages.length > previous.messages.length) {
+            shouldScroll = true;
+          }
+          
+          // Message content updated (streaming)
+          else if (next.messages.length == previous.messages.length && next.messages.isNotEmpty) {
+            // Check if the last message content has changed (streaming update)
+            final lastMessage = next.messages.last;
+            final previousLastMessage = previous.messages.isNotEmpty ? previous.messages.last : null;
+            
+            if (previousLastMessage != null && 
+                lastMessage.content != previousLastMessage.content) {
+              shouldScroll = true;
+            }
+          }
+          
+          if (shouldScroll) {
+            _scrollToBottom();
+          }
         }
       });
     });
@@ -635,14 +656,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _scrollToBottom() {
+    // Use a slight delay to ensure content is fully rendered
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_conversationController.hasClients) {
-        _conversationController.animateTo(
-          _conversationController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
+      Future.delayed(const Duration(milliseconds: 50), () {
+        if (_conversationController.hasClients) {
+          _conversationController.animateTo(
+            _conversationController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     });
   }
 
