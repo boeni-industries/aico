@@ -20,7 +20,7 @@ from .transformers_manager import TransformersManager
 from aico.core.version import get_modelservice_version
 from aico.proto.aico_modelservice_pb2 import (
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
-    EmbeddingsResponse, NerResponse, EntityList, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus,
+    EmbeddingsResponse, NerResponse, EntityList, EntityWithConfidence, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus,
     SentimentRequest, SentimentResponse, IntentClassificationRequest, IntentClassificationResponse
 )
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -763,14 +763,14 @@ class ModelserviceZMQHandlers:
                 "Preference", "Skill", "Goal"
             ]
             
-            # V4: Higher threshold for cleaner conversational entity extraction
-            # Research shows GLiNER works better with threshold 0.5+ for reducing false positives
+            # V6: Balanced threshold - not too high to miss real names
+            # 0.6 was too aggressive and filtered out legitimate names like "michael"
             inference_start = time.time()
             print(f"🔍 [NER_DEEP_ANALYSIS] Starting GLiNER inference [{inference_start:.6f}]")
             raw_entities = gliner_model.predict_entities(
                 text,
                 labels=entity_types,
-                threshold=0.5,  # Higher threshold reduces false positives like "hi" -> PERSON
+                threshold=0.5,  # Back to 0.5 - will filter in post-processing instead
                 flat_ner=True,  # Use flat NER for better entity boundaries
                 multi_label=False  # Avoid overlapping entity classifications
             )
@@ -783,7 +783,7 @@ class ModelserviceZMQHandlers:
             for i, entity in enumerate(raw_entities):
                 self.logger.info(f"🔍 [GLINER_RAW_{i}] text='{entity.get('text', '')}', label='{entity.get('label', '')}', confidence={entity.get('score', 0.0):.3f}")
             
-            # Group entities by type with intelligent filtering
+            # Group entities by type with intelligent filtering - PRESERVE CONFIDENCE SCORES
             entities = {}
             
             for entity in raw_entities:
@@ -798,10 +798,16 @@ class ModelserviceZMQHandlers:
                 # INTELLIGENT FILTERING: Use GLiNER confidence and linguistic rules
                 confidence = entity.get("score", 0.0)
                 
-                # V4: Higher confidence threshold aligned with GLiNER prediction threshold
-                # Research-based threshold for reducing false positives
-                if confidence < 0.5:
-                    self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Low confidence - '{entity_text}' (confidence: {confidence:.3f} < 0.5)")
+                # V6: Smart confidence filtering - different thresholds for different patterns
+                # Use higher threshold for likely pronouns, lower for likely names
+                min_confidence = 0.5  # Base threshold
+                
+                # Apply stricter filtering for likely pronouns/common words
+                if len(entity_text) <= 3 and entity_text.lower() in ["hi", "you", "me", "he", "she", "it", "we", "they"]:
+                    min_confidence = 0.7  # Much higher threshold for obvious non-names
+                
+                if confidence < min_confidence:
+                    self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Low confidence - '{entity_text}' (confidence: {confidence:.3f} < {min_confidence})")
                     continue
                 
                 # Skip single characters unless they're meaningful abbreviations
@@ -836,9 +842,12 @@ class ModelserviceZMQHandlers:
                 if entity_type not in entities:
                     entities[entity_type] = []
                 
-                # Final deduplication check
-                if entity_text not in entities[entity_type]:
-                    entities[entity_type].append(entity_text)
+                # Store entity with confidence - check for duplicates by text only
+                entity_with_confidence = {"text": entity_text, "confidence": confidence}
+                existing_texts = [e["text"] if isinstance(e, dict) else e for e in entities[entity_type]]
+                
+                if entity_text not in existing_texts:
+                    entities[entity_type].append(entity_with_confidence)
                     self.logger.info(f"🔍 [GLINER_FILTER] ✅ ACCEPTED: '{entity_text}' (type: {entity_type}, confidence: {confidence:.3f})")
                 else:
                     self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Duplicate - '{entity_text}' (type: {entity_type})")
@@ -847,8 +856,12 @@ class ModelserviceZMQHandlers:
             response.success = True
             
             for entity_type, entity_list in entities.items():
-                # Access the map entry and set its entities field
-                response.entities[entity_type].entities.extend(entity_list)
+                # Create EntityWithConfidence objects for the new protobuf structure
+                for entity_data in entity_list:
+                    entity_with_conf = EntityWithConfidence()
+                    entity_with_conf.text = entity_data["text"]
+                    entity_with_conf.confidence = entity_data["confidence"]
+                    response.entities[entity_type].entities.append(entity_with_conf)
             
             # Log results with detailed breakdown
             total_entities = sum(len(v) for v in entities.values())

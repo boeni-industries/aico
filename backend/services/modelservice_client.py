@@ -249,12 +249,18 @@ class ModelServiceClient:
                                 'error': ner_response.error if ner_response.HasField('error') else None
                             }
                             if ner_response.success:
-                                # Convert protobuf map to Python dict
+                                # Convert protobuf map to Python dict with confidence scores
                                 entities = {}
                                 for entity_type, entity_list in ner_response.entities.items():
-                                    entities[entity_type] = list(entity_list.entities)
+                                    # Handle new EntityWithConfidence structure
+                                    entities[entity_type] = []
+                                    for entity_with_conf in entity_list.entities:
+                                        entities[entity_type].append({
+                                            'text': entity_with_conf.text,
+                                            'confidence': entity_with_conf.confidence
+                                        })
                                 response_data['data'] = {'entities': entities}
-                                self.logger.debug(f"Extracted {len(entities)} entity types")
+                                self.logger.debug(f"Extracted {len(entities)} entity types with confidence scores")
                             response_received.set()
                         else:
                             self.logger.error("Failed to unpack NerResponse")

@@ -149,7 +149,12 @@ message NerResponse {
 }
 
 message EntityList {
-  repeated string entities = 1;
+  repeated EntityWithConfidence entities = 1;
+}
+
+message EntityWithConfidence {
+  string text = 1;
+  float confidence = 2;
 }
 
 // Intent classification response

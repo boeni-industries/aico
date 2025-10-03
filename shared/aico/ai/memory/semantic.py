@@ -625,15 +625,26 @@ class SemanticMemoryStore:
             entities_dict = ner_result.get("data", {}).get("entities", {})
             logger.info(f"🔍 [FACT_EXTRACTION] Extracted entities by type: {entities_dict}")
             
-            # Convert entities dict to list of entity objects
+            # Convert entities dict to list of entity objects with proper confidence scores
             entities = []
-            for entity_type, entity_texts in entities_dict.items():
-                for entity_text in entity_texts:
-                    entities.append({
-                        'text': entity_text,
-                        'label': entity_type.lower(),
-                        'confidence': 0.8  # Default confidence since GLiNER filtered already
-                    })
+            for entity_type, entity_list in entities_dict.items():
+                # Handle both old format (list of strings) and new format (list of dicts with text/confidence)
+                if entity_list and isinstance(entity_list[0], dict) and 'text' in entity_list[0]:
+                    # New format with confidence scores from modelservice client
+                    for entity_data in entity_list:
+                        entities.append({
+                            'text': entity_data['text'],
+                            'label': entity_type.lower(),
+                            'confidence': entity_data['confidence']  # Use actual GLiNER confidence
+                        })
+                else:
+                    # Fallback for old format (list of strings)
+                    for entity_text in entity_list:
+                        entities.append({
+                            'text': entity_text,
+                            'label': entity_type.lower(),
+                            'confidence': 0.8  # Default confidence for backward compatibility
+                        })
             
             logger.info(f"🔍 [FACT_EXTRACTION] Converted to {len(entities)} entity objects: {entities}")
             
