@@ -84,25 +84,25 @@ def initialize_chromadb_cli(config: Optional[ConfigurationManager] = None, verbo
             "version": "1.0"
         }
         
-        # Get collection names from fact-based config
+        # Get collection names from V3 config
         collections_config = config.get("core.memory.semantic.collections", {})
-        user_facts_collection = collections_config.get("user_facts", "user_facts")
+        segments_collection = collections_config.get("conversation_segments", "conversation_segments")
 
-        # Collection: user_facts (structured facts with confidence scoring and temporal validity)
+        # Collection: conversation_segments (V3: conversation history with embeddings)
         try:
-            collection = client.get_collection(user_facts_collection)
+            collection = client.get_collection(segments_collection)
             if verbose:
-                console.print(f"[blue]INFO[/blue] - ChromaDB collection '{user_facts_collection}' already exists")
+                console.print(f"[blue]INFO[/blue] - ChromaDB collection '{segments_collection}' already exists")
         except Exception:
-            user_facts_metadata = {
+            segments_metadata = {
                 **metadata, 
-                "collection_type": "user_facts", 
-                "description": "Structured facts with confidence scoring and temporal validity",
-                "schema_version": "2.0"  # New fact-based schema
+                "collection_type": "conversation_segments", 
+                "description": "V3: Conversation segments with embeddings",
+                "schema_version": "3.0"  # V3 simplified schema
             }
-            collection = client.create_collection(user_facts_collection, metadata=user_facts_metadata)
+            collection = client.create_collection(segments_collection, metadata=segments_metadata)
             if verbose:
-                console.print(f"✅ Created collection: [cyan]{user_facts_collection}[/cyan] (structured facts) with model: [cyan]{embedding_model}[/cyan]")
+                console.print(f"✅ Created collection: [cyan]{segments_collection}[/cyan] (conversation segments) with model: [cyan]{embedding_model}[/cyan]")
         
         if verbose:
             console.print(f"✅ [green]ChromaDB semantic memory initialized at[/green] [cyan]{semantic_memory_dir}[/cyan]")
