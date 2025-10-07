@@ -309,29 +309,15 @@ memory:
       - "session_memory"
       - "user_sessions"
   
-  # Semantic Memory (ChromaDB) - Fact-based architecture for intelligent memory
+  # Semantic Memory (ChromaDB) - V3: Conversation segments with embeddings
   semantic:
     enabled: true  # Enable semantic memory
-    embedding_timeout_seconds: 120.0  # Timeout for embedding generation (increased from 60s default)
-    # Fact-based collection architecture
+    embedding_timeout_seconds: 120.0  # Timeout for embedding generation
+    # V3: Conversation segments collection
     collections:
-      user_facts: "user_facts"  # Structured facts with confidence scoring and temporal validity
+      conversation_segments: "conversation_segments"  # Conversation history with embeddings
     # Embedding model configuration
     embedding_model: "paraphrase-multilingual"  # Uses transformers model
-    max_results: 20  # Maximum number of results to return from queries
-    # Deduplication configuration
-    deduplication:
-      enabled: true  # Enable semantic deduplication
-      similarity_threshold: 0.40  # Similarity threshold using 1/(1+distance) formula with 30% word overlap validation
-      check_top_n: 20  # Check top N most similar facts for duplicates
+    max_results: 10  # Maximum number of segments to return from queries
 
 # AI Processing Configuration
-ai:
-  # Preprocessing configuration
-  preprocessing:
-    # Coreference resolution settings
-    coreference:
-      enabled: true  # Ready for single-turn coreference testing
-      model_name: "f-coref"  # "f-coref" or "lingmess-coref"
-      confidence_threshold: 0.5
-      max_text_length: 1000  # Maximum text length for coreference resolution
