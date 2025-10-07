@@ -21,8 +21,7 @@ from aico.core.version import get_modelservice_version
 from aico.proto.aico_modelservice_pb2 import (
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
     EmbeddingsResponse, NerResponse, EntityList, EntityWithConfidence, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus,
-    SentimentRequest, SentimentResponse, IntentClassificationRequest, IntentClassificationResponse,
-    CoreferenceRequest, CoreferenceResponse, CoreferenceCluster, CoreferenceMention
+    SentimentRequest, SentimentResponse, IntentClassificationRequest, IntentClassificationResponse
 )
 from google.protobuf.timestamp_pb2 import Timestamp
 

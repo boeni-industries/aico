@@ -213,8 +213,6 @@ class AICOTopics:
     MODELSERVICE_EMBEDDINGS_RESPONSE = "modelservice/embeddings/response/v1"
     MODELSERVICE_NER_REQUEST = "modelservice/ner/request/v1"
     MODELSERVICE_NER_RESPONSE = "modelservice/ner/response/v1"
-    MODELSERVICE_COREFERENCE_REQUEST = "modelservice/coreference/request/v1"
-    MODELSERVICE_COREFERENCE_RESPONSE = "modelservice/coreference/response/v1"
     MODELSERVICE_INTENT_REQUEST = "modelservice/intent/request/v1"
     MODELSERVICE_INTENT_RESPONSE = "modelservice/intent/response/v1"
     MODELSERVICE_SENTIMENT_REQUEST = "modelservice/sentiment/request/v1"
