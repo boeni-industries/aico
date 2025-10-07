@@ -124,11 +124,11 @@ class TransformersManager:
         ),
         "embeddings": TransformerModelConfig(
             name="embeddings",
-            model_id="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            model_id="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
             task=ModelTask.FEATURE_EXTRACTION,
             priority=1,
             required=True,
-            description="Multilingual sentence embeddings for semantic memory",
+            description="Multilingual sentence embeddings (768 dimensions) for semantic memory",
             multilingual=True,
             memory_mb=500
         )

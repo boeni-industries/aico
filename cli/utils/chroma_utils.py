@@ -57,12 +57,24 @@ def get_chroma_status_cli(config: Optional[ConfigurationManager] = None) -> Dict
         collections = client.list_collections()
         status["collection_count"] = len(collections)
         
+        # Check embedding dimensions from first collection with data
+        embedding_dimensions = None
         for collection in collections:
             try:
                 count = collection.count()
                 status["collections"][collection.name] = count
+                
+                # Get embedding dimensions from first document if available
+                if count > 0 and embedding_dimensions is None:
+                    result = collection.get(limit=1, include=['embeddings'])
+                    if result.get('embeddings') is not None and len(result['embeddings']) > 0:
+                        if result['embeddings'][0] is not None:
+                            embedding_dimensions = len(result['embeddings'][0])
             except Exception as e:
                 status["collections"][collection.name] = f"Error: {e}"
+        
+        if embedding_dimensions:
+            status["embedding_dimensions"] = embedding_dimensions
         
         status["exists"] = True
 
@@ -477,7 +489,7 @@ def tail_chroma_collection(
         try:
             collection = client.get_collection(collection_name)
             
-            # Get all documents first
+            # Get all documents first (including embeddings for --full mode)
             all_results = collection.get(
                 include=["documents", "metadatas", "embeddings"]
             )
@@ -490,83 +502,120 @@ def tail_chroma_collection(
             # Take the last N documents
             start_idx = max(0, total_count - limit)
             last_ids = all_results["ids"][start_idx:]
-            last_documents = all_results["documents"][start_idx:] if all_results["documents"] else []
-            last_metadatas = all_results["metadatas"][start_idx:] if all_results["metadatas"] else []
+            last_documents = all_results["documents"][start_idx:] if all_results.get("documents") is not None else []
+            last_metadatas = all_results["metadatas"][start_idx:] if all_results.get("metadatas") is not None else []
+            last_embeddings = all_results["embeddings"][start_idx:] if all_results.get("embeddings") is not None else []
             
-            # Create formatted table
-            table = Table(
-                title=f"✨ [bold cyan]Last {len(last_ids)} documents from '{collection_name}' Collection[/bold cyan]",
-                title_justify="left",
-                border_style="bright_blue",
-                header_style="bold yellow",
-                box=box.SIMPLE_HEAD,
-                padding=(0, 1),
-                expand=True
-            )
-            
+            # Create formatted output - vertical layout in full mode
             if full:
-                # In full mode, allow columns to expand as needed
-                table.add_column("ID", style="dim", no_wrap=False)
-                table.add_column("Document", style="cyan", no_wrap=False)
-                table.add_column("Metadata", style="bright_blue", no_wrap=False)
+                # Vertical layout for full mode
+                from rich.panel import Panel
+                from rich.columns import Columns
+                
+                panels = []
+                for i, doc_id in enumerate(last_ids):
+                    document_text = last_documents[i] if i < len(last_documents) else ""
+                    metadata = last_metadatas[i] if i < len(last_metadatas) else {}
+                    
+                    # Build vertical content
+                    content_parts = []
+                    content_parts.append(f"[bold cyan]ID:[/bold cyan] [dim]{doc_id}[/dim]")
+                    content_parts.append("")
+                    content_parts.append(f"[bold cyan]Document:[/bold cyan]")
+                    content_parts.append(f"  {document_text}")
+                    content_parts.append("")
+                    
+                    # Metadata - consistent order
+                    if metadata:
+                        content_parts.append(f"[bold cyan]Metadata:[/bold cyan]")
+                        # Define consistent order for metadata fields
+                        ordered_fields = ['role', 'timestamp', 'conversation_id', 'user_id']
+                        
+                        # Show ordered fields first
+                        for key in ordered_fields:
+                            if key in metadata:
+                                content_parts.append(f"  [yellow]{key}:[/yellow] {metadata[key]}")
+                        
+                        # Show any remaining fields (excluding verbose ones)
+                        for key, value in metadata.items():
+                            if key not in ordered_fields and key not in ['source_message', 'fact_extraction_id', 'reasoning']:
+                                content_parts.append(f"  [yellow]{key}:[/yellow] {value}")
+                        content_parts.append("")
+                    
+                    # Embedding info
+                    if len(last_embeddings) > 0 and i < len(last_embeddings):
+                        embedding = last_embeddings[i]
+                        if embedding is not None:
+                            try:
+                                emb_dim = len(embedding)
+                                # Convert numpy array to list and format nicely
+                                first_5 = [f"{x:.3f}" for x in embedding[:5]]
+                                last_5 = [f"{x:.3f}" for x in embedding[-5:]]
+                                
+                                content_parts.append(f"[bold cyan]Embedding:[/bold cyan]")
+                                content_parts.append(f"  [yellow]Dimensions:[/yellow] {emb_dim}")
+                                content_parts.append(f"  [yellow]First 5:[/yellow] [{', '.join(first_5)}]")
+                                content_parts.append(f"  [yellow]Last 5:[/yellow] [{', '.join(last_5)}]")
+                            except Exception as e:
+                                content_parts.append(f"[bold cyan]Embedding:[/bold cyan] [red]Error: {e}[/red]")
+                    
+                    panel = Panel(
+                        "\n".join(content_parts),
+                        title=f"[bold]Document {i+1}/{len(last_ids)}[/bold]",
+                        border_style="bright_blue",
+                        padding=(1, 2)
+                    )
+                    panels.append(panel)
+                
+                # Create container with title
+                from rich.console import Group
+                title = f"✨ [bold cyan]Last {len(last_ids)} documents from '{collection_name}' Collection[/bold cyan]"
+                output = Group(title, "", *panels)
+                
+                return {
+                    "table": output,
+                    "total_count": total_count,
+                    "shown_count": len(last_ids)
+                }
             else:
-                # In normal mode, use width constraints
+                # Horizontal table for normal mode
+                table = Table(
+                    title=f"✨ [bold cyan]Last {len(last_ids)} documents from '{collection_name}' Collection[/bold cyan]",
+                    title_justify="left",
+                    border_style="bright_blue",
+                    header_style="bold yellow",
+                    box=box.SIMPLE_HEAD,
+                    padding=(0, 1),
+                    expand=True
+                )
+                
                 table.add_column("ID", style="dim", width=20, no_wrap=True)
                 table.add_column("Document", style="cyan", no_wrap=False, min_width=40)
                 table.add_column("Metadata", style="bright_blue", no_wrap=False, width=30)
-            
-            for i, doc_id in enumerate(last_ids):
-                document_text = last_documents[i] if i < len(last_documents) else ""
-                metadata = last_metadatas[i] if i < len(last_metadatas) else {}
                 
-                # Format document ID (truncate if too long and not full mode)
-                if full or len(doc_id) <= 20:
-                    formatted_id = doc_id
-                else:
-                    formatted_id = doc_id[:17] + "..."
-                
-                # Format document text (show full if full mode, otherwise let table handle wrapping)
-                formatted_document = document_text
-                
-                # Format metadata as readable key-value pairs
-                if metadata:
-                    metadata_parts = []
-                    # Priority fields to show first
-                    priority_fields = ['entity_type', 'confidence', 'created_at', 'user_id', 'category']
+                for i, doc_id in enumerate(last_ids):
+                    document_text = last_documents[i] if i < len(last_documents) else ""
+                    metadata = last_metadatas[i] if i < len(last_metadatas) else {}
                     
-                    # Show priority fields first
-                    for key in priority_fields:
-                        if key in metadata:
-                            value = metadata[key]
-                            if key == 'confidence' and isinstance(value, (int, float)):
-                                metadata_parts.append(f"{key}: {value:.2f}")
-                            elif key == 'created_at' and isinstance(value, str):
-                                # Show only date part for brevity
-                                date_part = value.split('T')[0] if 'T' in value else value[:10]
-                                metadata_parts.append(f"{key}: {date_part}")
-                            elif isinstance(value, str) and len(value) > 15 and not full:
-                                metadata_parts.append(f"{key}: {value[:12]}...")
-                            else:
-                                metadata_parts.append(f"{key}: {value}")
+                    formatted_id = doc_id[:17] + "..." if len(doc_id) > 20 else doc_id
+                    formatted_document = document_text
                     
-                    # Add other fields if in full mode
-                    if full:
-                        for key, value in metadata.items():
-                            if key not in priority_fields:
-                                if key in ['source_message', 'fact_extraction_id', 'reasoning']:
-                                    continue  # Skip very verbose internal fields
-                                # In full mode, don't truncate any values
-                                metadata_parts.append(f"{key}: {value}")
+                    # Format metadata
+                    if metadata:
+                        metadata_parts = []
+                        priority_fields = ['user_id', 'role', 'timestamp', 'conversation_id']
+                        for key in priority_fields:
+                            if key in metadata:
+                                value = metadata[key]
+                                if isinstance(value, str) and len(value) > 15:
+                                    metadata_parts.append(f"{key}: {value[:12]}...")
+                                else:
+                                    metadata_parts.append(f"{key}: {value}")
+                        formatted_metadata = "\n".join(metadata_parts) if metadata_parts else "[dim]none[/dim]"
+                    else:
+                        formatted_metadata = "[dim]none[/dim]"
                     
-                    formatted_metadata = "\n".join(metadata_parts) if metadata_parts else "[dim]none[/dim]"
-                else:
-                    formatted_metadata = "[dim]none[/dim]"
-                
-                table.add_row(
-                    formatted_id,
-                    formatted_document,
-                    formatted_metadata
-                )
+                    table.add_row(formatted_id, formatted_document, formatted_metadata)
             
             return {
                 "table": table,

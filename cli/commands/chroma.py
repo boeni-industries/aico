@@ -82,12 +82,21 @@ def status():
         table.add_row("Size (MB)", str(status_data["size_mb"]))
         table.add_row("Collections", str(status_data.get("collection_count", 0)))
         
+        # Show embedding dimensions if available
+        if status_data.get("embedding_dimensions"):
+            dims = status_data["embedding_dimensions"]
+            table.add_row("Embedding Dimensions", f"[bold green]{dims}[/bold green] (768 = mpnet-base-v2 ✓)")
+        
         if status_data.get("collections"):
             collections_table = Table(title="Collection Document Counts", box=None, show_header=False)
             collections_table.add_column("Collection", style="cyan")
             collections_table.add_column("Documents", style="white")
             for name, count in status_data["collections"].items():
-                collections_table.add_row(name, f"{count:,}")
+                # Handle both numeric counts and error strings
+                if isinstance(count, int):
+                    collections_table.add_row(name, f"{count:,}")
+                else:
+                    collections_table.add_row(name, f"[red]{count}[/red]")
             table.add_row("Documents", collections_table)
 
     elif status_data.get("error"):

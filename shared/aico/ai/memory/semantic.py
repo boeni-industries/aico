@@ -69,7 +69,8 @@ class SemanticMemoryStore:
         memory_config = self.config.get("core.memory.semantic", {})
         self._db_path = AICOPaths.get_semantic_memory_path()
         self._collection_name = "conversation_segments"  # New collection name
-        self._embedding_model = memory_config.get("embedding_model", "paraphrase-multilingual")
+        # Embedding model name matches transformers manager key (configured in core.yaml line 190)
+        self._embedding_model = "paraphrase-multilingual"  # Maps to mpnet-base-v2 (768 dim)
         self._max_results = memory_config.get("max_results", 10)
         
         logger.info("✅ SemanticMemoryStore V3 initialized (simplified)")
@@ -146,17 +147,18 @@ class SemanticMemoryStore:
             )
             
             # Generate embedding
-            embedding_result = await self._modelservice.get_embeddings([content])
+            embedding_result = await self._modelservice.get_embeddings(
+                model=self._embedding_model,
+                prompt=content
+            )
             if not embedding_result.get("success", False):
                 logger.error(f"Failed to generate embedding: {embedding_result.get('error')}")
                 return False
             
-            embeddings = embedding_result.get("data", {}).get("embeddings", [])
-            if not embeddings:
-                logger.error("No embeddings returned from modelservice")
+            embedding = embedding_result.get("data", {}).get("embedding", [])
+            if not embedding:
+                logger.error("No embedding returned from modelservice")
                 return False
-            
-            embedding = embeddings[0]
             
             # Store in ChromaDB
             self._collection.add(
@@ -204,17 +206,18 @@ class SemanticMemoryStore:
         
         try:
             # Generate query embedding
-            embedding_result = await self._modelservice.get_embeddings([query_text])
+            embedding_result = await self._modelservice.get_embeddings(
+                model=self._embedding_model,
+                prompt=query_text
+            )
             if not embedding_result.get("success", False):
                 logger.error(f"Failed to generate query embedding: {embedding_result.get('error')}")
                 return []
             
-            embeddings = embedding_result.get("data", {}).get("embeddings", [])
-            if not embeddings:
-                logger.error("No embeddings returned for query")
+            query_embedding = embedding_result.get("data", {}).get("embedding", [])
+            if not query_embedding:
+                logger.error("No embedding returned for query")
                 return []
-            
-            query_embedding = embeddings[0]
             
             # Build filter
             where_filter = {"user_id": user_id} if user_id else None

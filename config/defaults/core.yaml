@@ -188,7 +188,7 @@ modelservice:
       # Override model_id for embedding model if needed
       # Note: Use 'embeddings' as the key name (matches DEFAULT_MODELS)
       embeddings:
-        model_id: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        model_id: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 
 # Task Scheduler configuration
 scheduler:
@@ -313,8 +313,7 @@ memory:
     # V3: Conversation segments collection
     collections:
       conversation_segments: "conversation_segments"  # Conversation history with embeddings
-    # Embedding model configuration
-    embedding_model: "paraphrase-multilingual"  # Uses transformers model
+    # Note: Embedding model configured in modelservice.transformers.models.embeddings (line 190)
     max_results: 10  # Maximum number of segments to return from queries
 
 # AI Processing Configuration
