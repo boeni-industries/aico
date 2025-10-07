@@ -231,10 +231,12 @@ def query_chroma_collection(
                     if doc:  # Skip empty documents
                         raw_distance = raw_distances[i] if i < len(raw_distances) else 0.0
                         
-                        # Convert distance to similarity score (0-1 range)
-                        # Using exponential decay: similarity = exp(-distance/scale)
-                        # Scale factor chosen to map typical distances (0-20) to meaningful similarities
-                        similarity = max(0.0, min(1.0, 1.0 / (1.0 + raw_distance / 5.0)))
+                        # Convert L2 distance to similarity score (0-1 range)
+                        # For 768-dim embeddings, L2 distances typically range 0-15
+                        # Using inverse linear mapping: similarity = 1 - (distance / max_distance)
+                        # This gives better discrimination than exponential decay
+                        max_distance = 15.0  # Empirically determined from 768-dim embeddings
+                        similarity = max(0.0, min(1.0, 1.0 - (raw_distance / max_distance)))
                         
                         documents.append({
                             "id": results["ids"][0][i] if results["ids"] and results["ids"][0] else f"doc_{i}",
