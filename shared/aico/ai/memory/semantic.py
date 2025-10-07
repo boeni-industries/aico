@@ -95,10 +95,13 @@ class SemanticMemoryStore:
                 )
             )
             
-            # Get or create collection
+            # Get or create collection with cosine similarity
             self._collection = self._chroma_client.get_or_create_collection(
                 name=self._collection_name,
-                metadata={"description": "Conversation segments with embeddings"}
+                metadata={
+                    "description": "Conversation segments with embeddings",
+                    "hnsw:space": "cosine"  # Use cosine similarity instead of L2
+                }
             )
             
             self._initialized = True
@@ -184,7 +187,8 @@ class SemanticMemoryStore:
         self,
         query_text: str,
         user_id: Optional[str] = None,
-        max_results: int = None
+        max_results: int = None,
+        min_similarity: float = 0.4
     ) -> List[Dict[str, Any]]:
         """
         Query conversation segments using semantic search.
@@ -193,6 +197,7 @@ class SemanticMemoryStore:
             query_text: Natural language query
             user_id: Optional user filter
             max_results: Maximum number of results (default: self._max_results)
+            min_similarity: Minimum similarity threshold (0-1, default: 0.4 for cosine)
             
         Returns:
             List of matching segments with metadata
