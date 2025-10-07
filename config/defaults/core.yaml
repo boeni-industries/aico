@@ -315,5 +315,6 @@ memory:
       conversation_segments: "conversation_segments"  # Conversation history with embeddings
     # Note: Embedding model configured in modelservice.transformers.models.embeddings (line 190)
     max_results: 10  # Maximum number of segments to return from queries
+    min_similarity: 0.4  # Minimum similarity threshold for cosine similarity (0-1, higher = more strict)
 
 # AI Processing Configuration

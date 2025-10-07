@@ -72,6 +72,7 @@ class SemanticMemoryStore:
         # Embedding model name matches transformers manager key (configured in core.yaml line 190)
         self._embedding_model = "paraphrase-multilingual"  # Maps to mpnet-base-v2 (768 dim)
         self._max_results = memory_config.get("max_results", 10)
+        self._min_similarity = memory_config.get("min_similarity", 0.4)  # Cosine similarity threshold
         
         logger.info("✅ SemanticMemoryStore V3 initialized (simplified)")
     
@@ -188,7 +189,7 @@ class SemanticMemoryStore:
         query_text: str,
         user_id: Optional[str] = None,
         max_results: int = None,
-        min_similarity: float = 0.4
+        min_similarity: float = None
     ) -> List[Dict[str, Any]]:
         """
         Query conversation segments using semantic search.
@@ -234,16 +235,25 @@ class SemanticMemoryStore:
                 where=where_filter
             )
             
-            # Format results
+            # Format results with similarity filtering
             segments = []
+            similarity_threshold = min_similarity if min_similarity is not None else self._min_similarity
+            
             if results and results.get('ids') and results['ids'][0]:
                 for i, segment_id in enumerate(results['ids'][0]):
-                    segments.append({
-                        'segment_id': segment_id,
-                        'content': results['documents'][0][i],
-                        'metadata': results['metadatas'][0][i],
-                        'distance': results['distances'][0][i] if 'distances' in results else None
-                    })
+                    # Get distance and convert to similarity (cosine: similarity = 1 - distance/2)
+                    distance = results['distances'][0][i] if 'distances' in results else 0.0
+                    similarity = 1.0 - (distance / 2.0)
+                    
+                    # Filter by minimum similarity threshold
+                    if similarity >= similarity_threshold:
+                        segments.append({
+                            'segment_id': segment_id,
+                            'content': results['documents'][0][i],
+                            'metadata': results['metadatas'][0][i],
+                            'distance': distance,
+                            'similarity': similarity
+                        })
             
             logger.info(f"Found {len(segments)} matching segments for query")
             return segments
