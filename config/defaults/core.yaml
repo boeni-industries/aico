@@ -186,12 +186,9 @@ modelservice:
         model_id: "xlm-roberta-base"
         
       # Override model_id for embedding model if needed
-      paraphrase-multilingual:
-        model_id: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
-        
-      # Coreference resolution model
-      coreference:
-        model_id: "biu-nlp/f-coref"  # or "biu-nlp/lingmess-coref" for better accuracy
+      # Note: Use 'embeddings' as the key name (matches DEFAULT_MODELS)
+      embeddings:
+        model_id: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 # Task Scheduler configuration
 scheduler:

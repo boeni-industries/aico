@@ -33,6 +33,7 @@ class ModelTask(Enum):
     SUMMARIZATION = "summarization"
     TRANSLATION = "translation"
     TEXT_GENERATION = "text-generation"
+    FEATURE_EXTRACTION = "feature-extraction"  # For embeddings
     ENTITY_EXTRACTION = "entity-extraction"  # For GLiNER
     RELATION_EXTRACTION = "relation-extraction"
 
@@ -115,6 +116,7 @@ class TransformersManager:
             name="intent_classification",
             model_id="xlm-roberta-base",
             task=ModelTask.TEXT_CLASSIFICATION,
+            priority=2,
             required=True,
             description="Multilingual intent classification using XLM-RoBERTa",
             multilingual=True,
@@ -180,8 +182,8 @@ class TransformersManager:
                     if hasattr(existing, key):
                         setattr(existing, key, value)
             else:
-                # Add new model config
-                self.model_configs[model_name] = TransformerModelConfig(**config)
+                # Skip models in config that aren't in defaults - they need full definitions
+                self.logger.warning(f"Skipping model '{model_name}' from config - not in default models and missing required fields")
         
         self.logger.info(f"Initialized {len(self.model_configs)} transformer model configurations")
     
@@ -190,17 +192,17 @@ class TransformersManager:
         self._ensure_logger()
         
         # Beautiful startup messages like Ollama
-        print("🤖 Initializing Transformers Models")
+        print("🤖 Initializing Transformers Models", flush=True)
         self.logger.info("Initializing Transformers models...")
         
         try:
             # Check if transformers is available
             try:
                 import transformers
-                print(f"✅ Transformers library v{transformers.__version__} ready")
+                print(f"✅ Transformers library v{transformers.__version__} ready", flush=True)
                 self.logger.info(f"Transformers library version: {transformers.__version__}")
             except ImportError:
-                print("❌ Transformers library not available")
+                print("❌ Transformers library not available", flush=True)
                 self.logger.error("Transformers library not available. Install with: uv sync --extra modelservice")
                 return False
             
@@ -211,26 +213,26 @@ class TransformersManager:
             ]
             
             if required_models:
-                print(f"📥 Downloading {len(required_models)} required model(s)...")
+                print(f"📥 Downloading {len(required_models)} required model(s)...", flush=True)
                 self.logger.info(f"Downloading {len(required_models)} required models...")
                 
                 for model_config in sorted(required_models, key=lambda x: x.priority):
-                    print(f"   → {model_config.description} ({model_config.model_id})")
+                    print(f"   → {model_config.description} ({model_config.model_id})", flush=True)
                     success = await self._ensure_model_available(model_config)
                     if success:
-                        print(f"   ✅ {model_config.name} ready")
+                        print(f"   ✅ {model_config.name} ready", flush=True)
                     else:
-                        print(f"   ❌ {model_config.name} failed")
+                        print(f"   ❌ {model_config.name} failed", flush=True)
                         if model_config.required:
                             self.logger.error(f"Failed to initialize required model: {model_config.name}")
                             return False
             
-            print("✅ All Transformers models initialized successfully")
+            print("✅ All Transformers models initialized successfully", flush=True)
             self.logger.info("✅ All required Transformers models initialized successfully")
             return True
             
         except Exception as e:
-            print(f"❌ Transformers initialization failed: {e}")
+            print(f"❌ Transformers initialization failed: {e}", flush=True)
             self.logger.error(f"Failed to initialize Transformers models: {e}")
             return False
     

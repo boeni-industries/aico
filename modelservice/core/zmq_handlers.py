@@ -21,8 +21,7 @@ from aico.core.version import get_modelservice_version
 from aico.proto.aico_modelservice_pb2 import (
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
     EmbeddingsResponse, NerResponse, EntityList, EntityWithConfidence, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus,
-    SentimentRequest, SentimentResponse, IntentClassificationRequest, IntentClassificationResponse,
-    CoreferenceRequest, CoreferenceResponse, CoreferenceCluster, CoreferenceMention
+    SentimentRequest, SentimentResponse, IntentClassificationRequest, IntentClassificationResponse
 )
 from google.protobuf.timestamp_pb2 import Timestamp
 
@@ -158,17 +157,17 @@ class ModelserviceZMQHandlers:
                 
                 self.transformers_initialized = True
                 self.logger.info("✅ Transformers system initialized successfully")
-                print(f"✅ Transformers System Ready: {loaded_count}/{total_count} required models loaded")
+                print(f"✅ Transformers System Ready: {loaded_count}/{total_count} required models loaded", flush=True)
                 
                 if loaded_count == total_count:
-                    print(f"🎯 All transformer models operational: {', '.join(loaded_models)}")
+                    print(f"🎯 All transformer models operational: {', '.join(loaded_models)}", flush=True)
                 else:
-                    print(f"✅ Operational models: {', '.join(loaded_models)}")
+                    print(f"✅ Operational models: {', '.join(loaded_models)}", flush=True)
                     if failed_models:
-                        print(f"⚠️  Failed models: {', '.join(failed_models)} - some features may be limited")
+                        print(f"⚠️  Failed models: {', '.join(failed_models)} - some features may be limited", flush=True)
             else:
                 self.logger.error("❌ Transformers system initialization failed")
-                print("❌ Transformers System Failed: Models not available")
+                print("❌ Transformers System Failed: Models not available", flush=True)
                 
         except Exception as e:
             import traceback
