@@ -970,20 +970,69 @@ core:
 - Test deduplication accuracy (target: 95%+)
 - Unit tests for entity resolution
 
-### Phase 4: Graph Fusion
-**Scope:** Implement graph fusion and conflict resolution
+### Future Enhancements
 
-**Deliverables:**
-- Implement `fusion.py`
-- Entity merging (normalize variants)
-- Conflict resolution (choose best relation)
-- Novel triplet discovery (infer implicit relations)
+- **Graph Algorithms**: Implement path finding, centrality measures, community detection
+- **Temporal Reasoning**: Add time-based relationship analysis
+- **Multi-hop Queries**: Enable complex relationship traversal
+- **Graph Visualization**: Add tools for exploring knowledge relationships
+- **Performance Optimization**: Implement graph indexing and caching strategies
+
+## Coreference Resolution Optimizations for Property Graph
+
+### Current Implementation Limitations
+
+The current coreference resolution approach has some challenges for optimal property graph construction:
+
+#### 1. Over-Resolution Problem
+```python
+# Input: "John and I are working together. We think it will succeed."
+# Current: "John and Michael are working together. John and Michael think it will succeed."
+# Issue: Loses collective relationship nature ("We" becomes individual actions)
+```
+
+#### 2. Relationship Ambiguity
+```python
+# Property Graph Issue:
+# Creates: Michael -[THINKS]-> "it will succeed"
+#         John -[THINKS]-> "it will succeed"
+# Should be: (John, Michael) -[COLLECTIVELY_THINK]-> "it will succeed"
+```
+
+### Required Optimizations
+
+#### 1. Selective Resolution Modes
+- **Full Resolution**: Complete pronoun resolution (current approach)
+- **Selective Resolution**: Only resolve entity-referring pronouns
+- **Graph-Optimized**: Preserve collective pronouns and relationship context
+
+#### 2. Enhanced Output Structure
+```python
+{
+    'resolved_text': str,           # Fully resolved text
+    'partial_resolution': str,      # Selectively resolved text  
+    'entity_mappings': dict,        # Pronoun -> Entity mappings
+    'collective_pronouns': list,    # Preserved group pronouns
+    'relationship_context': dict    # Relationship preservation info
+}
+```
+
+#### 3. Relationship Preservation
+- Maintain collective actions ("we", "us", "our")
+- Preserve temporal/causal sequences
+- Keep relationship context for proper graph edge creation
+
+#### 4. Implementation Strategy
+- **Phase 1**: Current cross-turn resolution (✅ implemented)
+- **Phase 2**: Add property graph optimization modes
+- **Phase 3**: Direct integration with graph construction
+
+This ensures clean entity resolution while preserving the relationship semantics needed for accurate property graph representation.ons)
 - Validate global perspective
 - Unit tests for fusion
 
 ### Phase 5: Semantic Memory Integration
 **Scope:** Integrate knowledge graph with semantic memory
-
 **Deliverables:**
 - Refactor `aico/ai/memory/semantic.py` to use knowledge graph module
 - Implement progressive response with parallel processing (required features)

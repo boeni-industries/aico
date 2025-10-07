@@ -188,6 +188,10 @@ modelservice:
       # Override model_id for embedding model if needed
       paraphrase-multilingual:
         model_id: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+        
+      # Coreference resolution model
+      coreference:
+        model_id: "biu-nlp/f-coref"  # or "biu-nlp/lingmess-coref" for better accuracy
 
 # Task Scheduler configuration
 scheduler:
@@ -320,3 +324,14 @@ memory:
       enabled: true  # Enable semantic deduplication
       similarity_threshold: 0.40  # Similarity threshold using 1/(1+distance) formula with 30% word overlap validation
       check_top_n: 20  # Check top N most similar facts for duplicates
+
+# AI Processing Configuration
+ai:
+  # Preprocessing configuration
+  preprocessing:
+    # Coreference resolution settings
+    coreference:
+      enabled: true  # Ready for single-turn coreference testing
+      model_name: "f-coref"  # "f-coref" or "lingmess-coref"
+      confidence_threshold: 0.5
+      max_text_length: 1000  # Maximum text length for coreference resolution

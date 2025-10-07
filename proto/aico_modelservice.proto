@@ -57,14 +57,13 @@ message EmbeddingsRequest {
 // NER request
 message NerRequest {
   string text = 1;
+  repeated string entity_types = 2;  // Optional: filter by specific entity types
 }
 
 // Intent classification request
 message IntentClassificationRequest {
   string text = 1;
-  optional string user_id = 2;
-  repeated string conversation_context = 3;
-  optional string language_hint = 4;
+  optional string model = 2;
 }
 
 // Sentiment analysis request

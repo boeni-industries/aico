@@ -185,7 +185,11 @@ class MemoryManager(BaseAIProcessor):
             # Initialize semantic memory if enabled
             if self._memory_config.get("semantic", {}).get("enabled", False):
                 logger.info("[SEMANTIC] Semantic memory enabled in config, initializing...")
+                print(f"🔍 [MEMORY_MANAGER] About to create SemanticMemoryStore...")
+                logger.info(f"🔍 [MEMORY_MANAGER] About to create SemanticMemoryStore...")
                 self._semantic_store = SemanticMemoryStore(self.config)
+                print(f"🔍 [MEMORY_MANAGER] ✅ SemanticMemoryStore created successfully")
+                logger.info(f"🔍 [MEMORY_MANAGER] ✅ SemanticMemoryStore created successfully")
                 
                 # CRITICAL FIX: Get modelservice from backend services and inject dependency
                 try:
@@ -216,7 +220,15 @@ class MemoryManager(BaseAIProcessor):
             logger.info("Memory manager initialized successfully")
             
         except Exception as e:
-            logger.error(f"Failed to initialize memory manager: {e}")
+            error_msg = f"Failed to initialize memory manager: {e}"
+            logger.error(error_msg)
+            print(f"🚨 [MEMORY_INIT_ERROR] {error_msg}")
+            
+            # Get full stack trace
+            import traceback
+            stack_trace = traceback.format_exc()
+            logger.error(f"🚨 [MEMORY_INIT_ERROR] Full stack trace:\n{stack_trace}")
+            print(f"🚨 [MEMORY_INIT_ERROR] Full stack trace:\n{stack_trace}")
             raise
     async def process(self, context: ProcessingContext) -> ProcessingResult:
         """
@@ -355,22 +367,13 @@ class MemoryManager(BaseAIProcessor):
             )
     
     async def store_message(self, user_id: str, conversation_id: str, content: str, role: str) -> bool:
-        """V2 API: Store message with fact extraction"""
-        import time
-        start_time = time.time()
-        logger.info(f"🔍 [MEMORY_TIMING] MemoryManager.store_message() started for {role} message")
-        
+        """V3 API: Store conversation segments (simplified)"""
         if not self._initialized:
-            init_start = time.time()
             await self.initialize()
-            init_duration = time.time() - init_start
-            logger.info(f"🔍 [MEMORY_TIMING] Memory initialization took {init_duration:.3f}s")
             
         try:
-            # Store in working memory (LMDB)
+            # Store in working memory (LMDB) - short-term conversation state
             if self._working_store:
-                working_start = time.time()
-                logger.info(f"🔍 [MEMORY_TIMING] Starting working memory store...")
                 message_data = {
                     "conversation_id": conversation_id,
                     "content": content,
@@ -379,31 +382,21 @@ class MemoryManager(BaseAIProcessor):
                     "message_type": f"{role}_input" if role == "user" else f"{role}_response"
                 }
                 await self._working_store.store_message(conversation_id, message_data)
-                working_duration = time.time() - working_start
-                logger.info(f"🔍 [MEMORY_TIMING] Working memory store completed in {working_duration:.3f}s")
             
-            # Store in semantic memory with fact extraction (ChromaDB) - FULL TRACE
-            # TEMPORARILY BLOCKING TO GET FULL INSTRUMENTATION DATA
-            if self._semantic_store and role == "user":
-                semantic_start = time.time()
-                print(f"🔍 [FULL_TRACE] Starting BLOCKING semantic storage for full trace [{semantic_start:.6f}]")
-                logger.info(f"🔍 [MEMORY_TIMING] Starting semantic store for user message: {content[:50]}...")
-                await self._semantic_store.store_message(user_id, conversation_id, content, role)
-                semantic_duration = time.time() - semantic_start
-                print(f"🔍 [FULL_TRACE] Semantic storage COMPLETED in {semantic_duration*1000:.2f}ms [{time.time():.6f}]")
-                logger.info(f"🔍 [MEMORY_TIMING] Semantic store completed in {semantic_duration:.3f}s")
-            elif role == "user":
-                logger.warning(f"🔍 [MEMORY_DEBUG] No semantic store available for user message: {content[:50]}...")
-                logger.warning(f"🔍 [MEMORY_DEBUG] _semantic_store = {self._semantic_store}")
-            else:
-                logger.debug(f"🔍 [MEMORY_DEBUG] Skipping semantic storage for role: {role}")
+            # Store in semantic memory (ChromaDB) - conversation segments for context retrieval
+            if self._semantic_store:
+                await self._semantic_store.store_segment(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    role=role,
+                    content=content
+                )
             
-            total_duration = time.time() - start_time
-            logger.info(f"🔍 [MEMORY_TIMING] MemoryManager.store_message() completed in {total_duration:.3f}s")
+            logger.info(f"✅ Stored {role} message in memory")
             return True
+            
         except Exception as e:
-            total_duration = time.time() - start_time
-            logger.error(f"🔍 [MEMORY_TIMING] MemoryManager.store_message() failed after {total_duration:.3f}s: {e}")
+            logger.error(f"Failed to store message: {e}")
             return False
     
     async def assemble_context(self, user_id: str, current_message: str, conversation_id: str = None) -> Dict[str, Any]:

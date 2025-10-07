@@ -57,6 +57,7 @@ class ModelserviceZMQService:
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: self.handlers.handle_model_info_request,
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: self.handlers.handle_embeddings_request,
             AICOTopics.MODELSERVICE_NER_REQUEST: self.handlers.handle_ner_request,
+            AICOTopics.MODELSERVICE_COREFERENCE_REQUEST: self.handlers.handle_coreference_request,
             AICOTopics.MODELSERVICE_INTENT_REQUEST: self.handlers.handle_intent_request,
             AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: self.handlers.handle_sentiment_request,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: self.handlers.handle_status_request,
@@ -129,6 +130,7 @@ class ModelserviceZMQService:
                 AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
                 # NLP analysis topics (require GLiNER and Transformers)
                 AICOTopics.MODELSERVICE_NER_REQUEST,
+                AICOTopics.MODELSERVICE_COREFERENCE_REQUEST,
                 AICOTopics.MODELSERVICE_SENTIMENT_REQUEST,
                 # Ollama management topics
                 AICOTopics.OLLAMA_STATUS_REQUEST,
@@ -364,6 +366,7 @@ class ModelserviceZMQService:
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE,
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
             AICOTopics.MODELSERVICE_NER_REQUEST: AICOTopics.MODELSERVICE_NER_RESPONSE,
+            AICOTopics.MODELSERVICE_COREFERENCE_REQUEST: AICOTopics.MODELSERVICE_COREFERENCE_RESPONSE,
             AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: AICOTopics.MODELSERVICE_STATUS_RESPONSE,
             AICOTopics.OLLAMA_STATUS_REQUEST: AICOTopics.OLLAMA_STATUS_RESPONSE,

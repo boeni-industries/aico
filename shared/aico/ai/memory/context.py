@@ -774,80 +774,66 @@ class ContextAssembler:
             return []
     
     async def _get_semantic_context_safe(self, current_message: str, user_id: str) -> List[ContextItem]:
-        """PHASE 1: Get context from semantic memory with protection mechanisms"""
+        """V3: Get context from semantic memory (conversation segments)"""
         try:
             if not self.semantic_store:
-                print(f"🚨 [SEMANTIC_CONTEXT] ⚠️ FALLBACK: No semantic store available")
-                logger.debug("No semantic memory store available - proceeding with mindfulness")
+                logger.debug("No semantic memory store available")
                 return []
             
-            # Query semantic memory for relevant user facts with protection
-            print(f"🟢 [SEMANTIC_CONTEXT] Querying semantic memory for user {user_id}")
-            logger.debug(f"Querying semantic memory for user {user_id} with message: '{current_message[:50]}...'")
+            # Query conversation segments
+            logger.debug(f"Querying semantic memory for user {user_id}")
             
-            # Use semantic store's query method to find relevant facts
-            print(f"🟢 [SEMANTIC_CONTEXT] About to call semantic_store.query()...")
-            query_start = datetime.utcnow()
-            
-            semantic_results = await self.semantic_store.query(
+            semantic_results = await self.semantic_store.query_segments(
                 query_text=current_message,
-                max_results=5,  # Reduced for Phase 1
-                filters={"user_id": user_id} if user_id else None
+                user_id=user_id,
+                max_results=5
             )
             
-            query_time = (datetime.utcnow() - query_start).total_seconds() * 1000
-            print(f"🟢 [SEMANTIC_CONTEXT] Semantic query completed in {query_time:.2f}ms")
-            
             if not semantic_results:
-                print(f"🟡 [SEMANTIC_CONTEXT] No relevant semantic facts found")
-                logger.debug("No relevant semantic facts found")
+                logger.debug("No relevant conversation segments found")
                 return []
             
-            # Convert semantic results to ContextItem objects
+            # Convert segments to ContextItem objects
             context_items = []
             now = datetime.utcnow()
             
             for result in semantic_results:
-                # Calculate age-based relevance decay for semantic facts
-                timestamp = result.get('metadata', {}).get('timestamp', now)
-                
-                # Ensure timestamp is a naive datetime
-                if isinstance(timestamp, str):
-                    try:
-                        if timestamp.endswith('Z'):
-                            timestamp = datetime.fromisoformat(timestamp[:-1])
-                        elif '+' in timestamp:
-                            timestamp = datetime.fromisoformat(timestamp.split('+')[0])
-                        else:
-                            timestamp = datetime.fromisoformat(timestamp)
-                    except:
-                        timestamp = now
-                
-                fact_age_hours = (now - timestamp).total_seconds() / 3600 if isinstance(timestamp, datetime) else 0
-                age_decay = max(0.3, 1.0 - (fact_age_hours / (365 * 24)))  # Decay over 1 year, minimum 0.3
-                
-                # Base semantic relevance from similarity score
-                base_score = result.get('similarity', 0.5) * self._tier_weights["semantic"] * age_decay
-                
-                # Extract metadata from result
                 metadata = result.get('metadata', {})
+                
+                # Parse timestamp
+                timestamp_str = metadata.get('timestamp', now.isoformat())
+                try:
+                    if timestamp_str.endswith('Z'):
+                        timestamp = datetime.fromisoformat(timestamp_str[:-1])
+                    elif '+' in timestamp_str:
+                        timestamp = datetime.fromisoformat(timestamp_str.split('+')[0])
+                    else:
+                        timestamp = datetime.fromisoformat(timestamp_str)
+                except:
+                    timestamp = now
+                
+                # Calculate relevance with age decay
+                segment_age_hours = (now - timestamp).total_seconds() / 3600
+                age_decay = max(0.5, 1.0 - (segment_age_hours / (30 * 24)))  # Decay over 30 days
+                
+                # Distance is similarity (lower = more similar in ChromaDB)
+                distance = result.get('distance', 1.0)
+                similarity = max(0.0, 1.0 - distance)  # Convert distance to similarity
+                base_score = similarity * self._tier_weights["semantic"] * age_decay
                 
                 context_item = ContextItem(
                     content=result.get('content', ''),
                     source_tier="semantic",
                     relevance_score=base_score,
-                    timestamp=timestamp if isinstance(timestamp, datetime) else now,
+                    timestamp=timestamp,
                     metadata={
                         "user_id": user_id,
-                        "category": metadata.get('category', 'unknown'),
-                        "permanence": metadata.get('permanence', 'unknown'),
-                        "confidence": metadata.get('confidence', 0.5),
-                        "similarity": result.get('similarity', 0.5),
-                        "fact_age_hours": fact_age_hours,
-                        "entities": metadata.get("entities", "{}"),
-                        "entities_json": metadata.get("entities_json", "{}")
+                        "conversation_id": metadata.get('conversation_id', ''),
+                        "role": metadata.get('role', 'unknown'),
+                        "similarity": similarity,
+                        "segment_age_hours": segment_age_hours
                     },
-                    item_type="knowledge"
+                    item_type="conversation_history"
                 )
                 context_items.append(context_item)
             

@@ -137,7 +137,7 @@ class ModelServiceClient:
             self.logger.debug(f"💬 [CHAT_DEBUG] Using correlation_id: {correlation_id}")
         
         # Create proper protobuf message based on request type
-        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest, EmbeddingsRequest, NerRequest, IntentClassificationRequest, SentimentRequest
+        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest, EmbeddingsRequest, NerRequest, CoreferenceRequest, IntentClassificationRequest, SentimentRequest
         
         if "completions" in request_topic or "chat" in request_topic:
             # Create CompletionsRequest protobuf
@@ -176,6 +176,18 @@ class ModelServiceClient:
             # Create NerRequest protobuf
             request_proto = NerRequest()
             request_proto.text = data.get("text", "")
+        elif "coreference" in request_topic:
+            # Create CoreferenceRequest protobuf
+            request_proto = CoreferenceRequest()
+            request_proto.text = data.get("text", "")
+            if data.get("model"):
+                request_proto.model = data["model"]
+            if data.get("confidence_threshold") is not None:
+                request_proto.confidence_threshold = data["confidence_threshold"]
+            if data.get("max_length") is not None:
+                request_proto.max_length = data["max_length"]
+            if data.get("return_clusters") is not None:
+                request_proto.return_clusters = data["return_clusters"]
         elif "intent" in request_topic:
             # Create IntentClassificationRequest protobuf
             request_proto = IntentClassificationRequest()
@@ -320,6 +332,46 @@ class ModelServiceClient:
                             self.logger.error("🔍 [SENTIMENT_CLIENT_DEBUG] ❌ Failed to unpack SentimentResponse")
                             response_data = {'success': False, 'error': 'Failed to unpack response'}
                             response_received.set()
+                    # Handle Coreference responses
+                    elif "coreference" in response_topic:
+                        self.logger.info(f"🔍 [COREF_CLIENT_DEBUG] ✅ Received coreference response!")
+                        from aico.proto.aico_modelservice_pb2 import CoreferenceResponse
+                        coref_response = CoreferenceResponse()
+                        if message.any_payload.Unpack(coref_response):
+                            self.logger.info(f"🔍 [COREF_CLIENT_DEBUG] ✅ Successfully unpacked CoreferenceResponse: success={coref_response.success}")
+                            if coref_response.success:
+                                # Convert protobuf response to Python dict
+                                clusters = []
+                                for cluster in coref_response.clusters:
+                                    cluster_data = {
+                                        'representative_mention': cluster.representative_mention,
+                                        'mentions': []
+                                    }
+                                    for mention in cluster.mentions:
+                                        mention_data = {
+                                            'text': mention.text,
+                                            'start_char': mention.start_char,
+                                            'end_char': mention.end_char,
+                                            'confidence': mention.confidence
+                                        }
+                                        cluster_data['mentions'].append(mention_data)
+                                    clusters.append(cluster_data)
+                                
+                                response_data['data'] = {
+                                    'resolved_text': coref_response.resolved_text,
+                                    'clusters': clusters,
+                                    'confidence': coref_response.confidence,
+                                    'processing_time_ms': coref_response.processing_time_ms
+                                }
+                                self.logger.debug(f"Coreference resolution completed: '{coref_response.resolved_text[:50]}...'")
+                            else:
+                                response_data['error'] = coref_response.error
+                                self.logger.error(f"Coreference resolution failed: {coref_response.error}")
+                        else:
+                            self.logger.error("🔍 [COREF_CLIENT_DEBUG] ❌ Failed to unpack CoreferenceResponse")
+                            response_data['error'] = "Failed to unpack coreference response"
+                        
+                        response_received.set()
                     else:
                         # Handle completions/chat responses
                         from aico.proto.aico_modelservice_pb2 import CompletionsResponse
@@ -690,6 +742,35 @@ class ModelServiceClient:
             AICOTopics.MODELSERVICE_NER_RESPONSE,
             request_data
         )
+    
+    async def resolve_coreferences(self, text: str, model: str = "f-coref", confidence_threshold: float = 0.5, 
+                                 max_length: int = 1000, return_clusters: bool = True) -> Dict[str, Any]:
+        """Get coreference resolution from modelservice using FastCoref."""
+        import time
+        client_start = time.time()
+        self.logger.info(f"🔍 [COREF_CLIENT] ModelServiceClient.resolve_coreferences() STARTED [{client_start:.6f}]")
+        
+        request_data = {
+            "text": text,
+            "model": model,
+            "confidence_threshold": confidence_threshold,
+            "max_length": max_length,
+            "return_clusters": return_clusters
+        }
+        
+        self.logger.info(f"🔍 [COREF_CLIENT] Sending coreference request for text: '{text[:50]}...'")
+        
+        zmq_start = time.time()
+        self.logger.info(f"🔍 [COREF_CLIENT] About to call _send_request() [{zmq_start:.6f}]")
+        result = await self._send_request(
+            AICOTopics.MODELSERVICE_COREFERENCE_REQUEST,
+            AICOTopics.MODELSERVICE_COREFERENCE_RESPONSE,
+            request_data
+        )
+        client_end = time.time()
+        client_duration = client_end - client_start
+        self.logger.info(f"🔍 [COREF_CLIENT] ModelServiceClient.resolve_coreferences() COMPLETED in {client_duration*1000:.2f}ms [{client_end:.6f}]")
+        return result
     
     async def classify_intent(self, text: str, user_id: Optional[str] = None, conversation_context: Optional[List[str]] = None) -> Dict[str, Any]:
         """Get intent classification from modelservice using advanced AI processor."""

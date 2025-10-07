@@ -115,16 +115,15 @@ class TransformersManager:
             name="intent_classification",
             model_id="xlm-roberta-base",
             task=ModelTask.TEXT_CLASSIFICATION,
-            priority=1,
             required=True,
             description="Multilingual intent classification using XLM-RoBERTa",
             multilingual=True,
             memory_mb=600
         ),
-        "paraphrase-multilingual": TransformerModelConfig(
-            name="paraphrase-multilingual",
-            model_id="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-            task=ModelTask.TEXT_CLASSIFICATION,
+        "embeddings": TransformerModelConfig(
+            name="embeddings",
+            model_id="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            task=ModelTask.FEATURE_EXTRACTION,
             priority=1,
             required=True,
             description="Multilingual sentence embeddings for semantic memory",
@@ -475,6 +474,8 @@ class TransformersManager:
                 import traceback
                 self.logger.error(f"Traceback: {traceback.format_exc()}")
                 return None
+        
+        # REMOVED: coreference model loader (V3 cleanup)
         
         # For other models that were downloaded during initialize_models but don't have specific loaders
         # Check if the model was successfully downloaded and create a basic pipeline

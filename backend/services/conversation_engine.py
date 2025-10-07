@@ -735,7 +735,15 @@ Respond naturally using relevant context."""
                     await memory_manager.store_message(user_id, conversation_id, final_content, "assistant")
                     print(f"💬 [CONVERSATION_ENGINE] 💾 Stored AI response in semantic memory")
                 except Exception as e:
-                    self.logger.error(f"Failed to store AI response in memory: {e}")
+                    error_msg = f"Failed to store AI response in memory: {e}"
+                    self.logger.error(error_msg)
+                    print(f"🚨 [CONVERSATION_ENGINE_MEMORY_ERROR] {error_msg}")
+                    
+                    # Get full stack trace
+                    import traceback
+                    stack_trace = traceback.format_exc()
+                    self.logger.error(f"🚨 [CONVERSATION_ENGINE_MEMORY_ERROR] Full stack trace:\n{stack_trace}")
+                    print(f"🚨 [CONVERSATION_ENGINE_MEMORY_ERROR] Full stack trace:\n{stack_trace}")
             
             # Create final response message for API layer
             ai_message = Message()

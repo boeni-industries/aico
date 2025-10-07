@@ -21,7 +21,8 @@ from aico.core.version import get_modelservice_version
 from aico.proto.aico_modelservice_pb2 import (
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
     EmbeddingsResponse, NerResponse, EntityList, EntityWithConfidence, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus,
-    SentimentRequest, SentimentResponse, IntentClassificationRequest, IntentClassificationResponse
+    SentimentRequest, SentimentResponse, IntentClassificationRequest, IntentClassificationResponse,
+    CoreferenceRequest, CoreferenceResponse, CoreferenceCluster, CoreferenceMention
 )
 from google.protobuf.timestamp_pb2 import Timestamp
 
@@ -730,8 +731,10 @@ class ModelserviceZMQHandlers:
             
             response = NerResponse()
             text = request_payload.text
+            print(f"🔍 [NER_DEEP_ANALYSIS] Extracted text from request: '{text}'")
             
             if not text:
+                print(f"🔍 [NER_DEEP_ANALYSIS] ERROR: No text provided")
                 response.success = False
                 response.error = "text is required"
                 return response
@@ -745,7 +748,9 @@ class ModelserviceZMQHandlers:
             model_end = time.time()
             model_duration = model_end - model_start
             print(f"🔍 [NER_DEEP_ANALYSIS] GLiNER model retrieved in {model_duration*1000:.2f}ms [{model_end:.6f}]")
+            print(f"🔍 [NER_DEEP_ANALYSIS] GLiNER model object: {gliner_model}")
             if gliner_model is None:
+                print(f"🔍 [NER_DEEP_ANALYSIS] ERROR: GLiNER model is None")
                 response.success = False
                 response.error = "GLiNER model not available"
                 return response
@@ -877,6 +882,9 @@ class ModelserviceZMQHandlers:
             return response
             
         except Exception as e:
+            import traceback
+            print(f"🔍 [NER_DEEP_ANALYSIS] EXCEPTION in handle_ner_request(): {str(e)}")
+            print(f"🔍 [NER_DEEP_ANALYSIS] TRACEBACK: {traceback.format_exc()}")
             from aico.proto.aico_modelservice_pb2 import NerResponse
             response = NerResponse()
             response.success = False
@@ -1171,4 +1179,7 @@ class ModelserviceZMQHandlers:
                 "available": False,
                 "error": str(e)
             }
+    
+    # REMOVED: Coreference resolution handler (V3 cleanup)
+    # FastCoref doesn't work for first-person pronouns - moved to future property graph implementation
     
