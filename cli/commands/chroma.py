@@ -160,6 +160,9 @@ def query(
     threshold: float = typer.Option(0.0, "--threshold", "-t", help="Minimum similarity threshold (0.0-1.0)")
 ):
     """Query a collection for similar documents."""
+    from rich.panel import Panel
+    from rich.console import Group
+    
     results = query_chroma_collection(collection_name, query_text, limit, threshold)
     
     if results.get("error"):
@@ -171,7 +174,7 @@ def query(
         console.print(f"[yellow]No documents found in collection '{collection_name}' matching '{query_text}'[/yellow]")
         return
     
-    # Add explanation about distance values
+    # Add explanation about similarity values
     console.print()
     console.print("[bold cyan]🔍 Semantic Search Results[/bold cyan]")
     console.print(f"[dim]Query: '{query_text}' in collection '{collection_name}'[/dim]")
@@ -183,88 +186,75 @@ def query(
     console.print("[dim]• Normalized from raw embedding distances for easier interpretation[/dim]")
     console.print()
     
-    table = Table(
-        border_style="bright_blue",
-        header_style="bold yellow",
-        box=box.SIMPLE_HEAD,
-        padding=(0, 1),
-        expand=True
-    )
-    table.add_column("ID", style="dim", width=12, no_wrap=True)
-    table.add_column("Document", style="cyan", no_wrap=False, min_width=50)
-    table.add_column("Similarity", style="green", justify="right", width=10)
-    table.add_column("Metadata", style="bright_blue", no_wrap=False, min_width=25)
-    
+    # Create vertical panels for each result (like tail --full)
+    panels = []
     for i, doc in enumerate(documents):
         doc_id = doc.get("id", f"doc_{i}")
         document_text = doc.get("document", "")
         semantic_score = doc.get('semantic_score', doc.get('similarity', 0.0))
         bm25_score = doc.get('bm25_score', 0.0)
+        bm25_normalized = doc.get('bm25_normalized', 0.0)
         hybrid_score = doc.get('hybrid_score', semantic_score)
         metadata = doc.get("metadata", {})
         
-        # Format document ID (truncate if too long)
-        formatted_id = doc_id if len(doc_id) <= 12 else doc_id[:9] + "..."
+        # Build vertical content
+        content_parts = []
+        content_parts.append(f"[bold cyan]ID:[/bold cyan] [dim]{doc_id}[/dim]")
+        content_parts.append("")
+        content_parts.append(f"[bold cyan]Document:[/bold cyan]")
+        content_parts.append(f"  {document_text}")
+        content_parts.append("")
         
-        # Format document text (don't truncate, let table handle wrapping)
-        formatted_document = document_text
-        
-        # Format scores with color coding
-        def format_score(score, label):
+        # Similarity scores with color coding
+        def format_score_value(score):
             if score > 0.7:
-                return f"[bright_green]{label}: {score:.3f}[/bright_green]"
+                return f"[bright_green]{score:.3f}[/bright_green]"
             elif score > 0.4:
-                return f"[yellow]{label}: {score:.3f}[/yellow]"
+                return f"[yellow]{score:.3f}[/yellow]"
             else:
-                return f"[red]{label}: {score:.3f}[/red]"
+                return f"[red]{score:.3f}[/red]"
         
-        # Build similarity display with all scores
-        similarity_parts = [
-            format_score(hybrid_score, "Hybrid"),
-            f"[dim](Sem: {semantic_score:.3f}, BM25: {bm25_score:.2f})[/dim]"
-        ]
-        similarity_str = "\n".join(similarity_parts)
+        content_parts.append(f"[bold cyan]Similarity:[/bold cyan]")
+        content_parts.append(f"  [yellow]Hybrid:[/yellow] {format_score_value(hybrid_score)}")
+        content_parts.append(f"  [dim](Semantic: {semantic_score:.3f}, BM25: {bm25_normalized:.3f})[/dim]")
+        content_parts.append("")
         
-        # Format metadata as readable key-value pairs
+        # Metadata - consistent order
         if metadata:
-            metadata_parts = []
-            # Priority fields to show first
-            priority_fields = ['entity_type', 'confidence', 'created_at', 'user_id', 'category']
+            content_parts.append(f"[bold cyan]Metadata:[/bold cyan]")
+            # Define consistent order for metadata fields
+            ordered_fields = ['role', 'timestamp', 'conversation_id', 'user_id', 'entity_type', 'confidence', 'category', 'created_at']
             
-            # Show priority fields first
-            for key in priority_fields:
+            # Show ordered fields first
+            for key in ordered_fields:
                 if key in metadata:
                     value = metadata[key]
                     if key == 'confidence' and isinstance(value, (int, float)):
-                        metadata_parts.append(f"{key}: {value:.2f}")
+                        content_parts.append(f"  [yellow]{key}:[/yellow] {value:.2f}")
                     elif key == 'created_at' and isinstance(value, str):
                         # Show only date part for brevity
                         date_part = value.split('T')[0] if 'T' in value else value[:10]
-                        metadata_parts.append(f"{key}: {date_part}")
-                    elif isinstance(value, str) and len(value) > 15:
-                        metadata_parts.append(f"{key}: {value[:12]}...")
+                        content_parts.append(f"  [yellow]{key}:[/yellow] {date_part}")
                     else:
-                        metadata_parts.append(f"{key}: {value}")
+                        content_parts.append(f"  [yellow]{key}:[/yellow] {value}")
             
-            # Add other important fields (but skip very verbose ones)
+            # Show any remaining fields (excluding verbose ones)
             for key, value in metadata.items():
-                if key not in priority_fields and key not in ['source_message', 'fact_extraction_id', 'reasoning']:
-                    if isinstance(value, str) and len(value) > 15:
-                        value = value[:12] + "..."
-                    metadata_parts.append(f"{key}: {value}")
-            
-            formatted_metadata = "\n".join(metadata_parts) if metadata_parts else "[dim]none[/dim]"
-        else:
-            formatted_metadata = "[dim]none[/dim]"
+                if key not in ordered_fields and key not in ['source_message', 'fact_extraction_id', 'reasoning']:
+                    content_parts.append(f"  [yellow]{key}:[/yellow] {value}")
         
-        table.add_row(
-            formatted_id,
-            formatted_document,
-            similarity_str,
-            formatted_metadata
+        panel = Panel(
+            "\n".join(content_parts),
+            title=f"[bold]Document {i+1}/{len(documents)}[/bold]",
+            border_style="bright_blue",
+            padding=(1, 2)
         )
+        panels.append(panel)
     
-    console.print(table)
+    # Display all panels
+    for panel in panels:
+        console.print(panel)
+    
     console.print()
     console.print(f"[dim]Found {len(documents)} result{'s' if len(documents) != 1 else ''} • Showing top {min(limit, len(documents))}[/dim]")
 
