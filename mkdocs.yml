@@ -163,6 +163,7 @@ nav:
       - Overview: architecture/architecture-overview.md
       - Configuration Management: architecture/configuration-management.md
       - Message Bus: architecture/message-bus.md
+      - State Streaming: architecture/state-streaming.md
       - Technology Stack: architecture/tech-stack.md
   - Subsystems:
       - Backend:
@@ -193,10 +194,22 @@ nav:
           - Admin UI: subsystems/studio/admin-ui.md
           - Master Admin UI: subsystems/studio/admin-ui-master.md
   - Concepts:
+      - AI:
+          - Intent Classification: concepts/ai/intent_classification.md
       - Data:
           - Data Layer: concepts/data/data-layer.md
           - Data Federation: concepts/data/data-federation.md
       - Embodiment: concepts/embodiment/embodiment.md
+      - Memory:
+          - Overview: concepts/memory/overview.md
+          - Architecture: concepts/memory/architecture.md
+          - Hybrid Search: concepts/memory/hybrid-search.md
+          - Context Management: concepts/memory/context-management.md
+          - Thread Resolution: concepts/memory/thread-resolution.md
+          - Implementation: concepts/memory/implementation.md
+          - Roadmap: concepts/memory/memory_roadmap.md
+          - Knowledge Graph: concepts/memory/semantic_knowledge_graph_memory.md
+          - Research Summary: concepts/memory/RESEARCH_SUMMARY.md
       - Emotion:
           - Architecture: concepts/emotion/emotion-sim-architecture.md
           - Messaging: concepts/emotion/emotion-sim-msg.md
