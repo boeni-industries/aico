@@ -76,6 +76,16 @@ def get_chroma_status_cli(config: Optional[ConfigurationManager] = None) -> Dict
         if embedding_dimensions:
             status["embedding_dimensions"] = embedding_dimensions
         
+        # Get embedding model name from config
+        try:
+            embedding_model = config.get("core.modelservice.transformers.models.embeddings.model_id", "unknown")
+            # Extract just the model name (last part after /)
+            if "/" in embedding_model:
+                embedding_model = embedding_model.split("/")[-1]
+            status["embedding_model"] = embedding_model
+        except Exception:
+            status["embedding_model"] = "unknown"
+        
         status["exists"] = True
 
     except ImportError:

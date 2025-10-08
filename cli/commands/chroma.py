@@ -85,7 +85,8 @@ def status():
         # Show embedding dimensions if available
         if status_data.get("embedding_dimensions"):
             dims = status_data["embedding_dimensions"]
-            table.add_row("Embedding Dimensions", f"[bold green]{dims}[/bold green] (768 = mpnet-base-v2 ✓)")
+            model_name = status_data.get("embedding_model", "unknown")
+            table.add_row("Embedding Dimensions", f"[bold green]{dims}[/bold green] ({model_name})")
         
         if status_data.get("collections"):
             collections_table = Table(title="Collection Document Counts", box=None, show_header=False)
