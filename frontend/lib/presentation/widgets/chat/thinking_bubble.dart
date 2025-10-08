@@ -19,56 +19,52 @@ class _ThinkingBubbleState extends State<ThinkingBubble>
   late Animation<double> _scaleAnimation;
 
   final List<ThinkingParticle> _particles = [];
-  Timer? _particleSpawnTimer;
   final Random _random = Random();
+  Timer? _particleSpawnTimer;
 
   @override
   void initState() {
     super.initState();
+    
+    print('🎨🎨🎨 [ThinkingBubble] WIDGET INITIALIZED - Particles should appear!');
 
-    // Scale animation (entrance with soft bounce)
+    // Scale animation for entrance
     _scaleController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
     _scaleAnimation = CurvedAnimation(
       parent: _scaleController,
-      curve: Curves.easeOutBack, // Soft bounce
+      curve: Curves.easeOutBack,
     );
+    _scaleController.forward();
 
-    // Glow breathing animation
+    // Glow pulse animation
     _glowController = AnimationController(
       duration: const Duration(milliseconds: 1800),
       vsync: this,
-    )..repeat(reverse: true);
+    );
+    _glowAnimation = Tween<double>(begin: 0.02, end: 0.05).animate(
+      CurvedAnimation(
+        parent: _glowController,
+        curve: Curves.easeInOut,
+      ),
+    );
+    _glowController.repeat(reverse: true);
 
-    _glowAnimation = Tween<double>(
-      begin: 0.02,
-      end: 0.05,
-    ).animate(CurvedAnimation(
-      parent: _glowController,
-      curve: Curves.easeInOut,
-    ));
-
-    // Start entrance
-    _scaleController.forward();
-
-    // Delay particle spawning slightly for elegance
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) {
-        _startParticleSystem();
-      }
-    });
+    // Start particles immediately
+    print('🎨🎨🎨 [ThinkingBubble] Starting particle system!');
+    _startParticleSystem();
   }
-
   void _startParticleSystem() {
-    // Spawn particles continuously
+    // Spawn particles more frequently
     _particleSpawnTimer = Timer.periodic(
-      const Duration(milliseconds: 400),
+      const Duration(milliseconds: 200), // Faster spawning (was 400ms)
       (timer) {
         if (mounted) {
           setState(() {
             _spawnParticle();
+            _spawnParticle(); // Spawn 2 particles at once
           });
         }
       },
@@ -97,15 +93,15 @@ class _ThinkingBubbleState extends State<ThinkingBubble>
     // Target position (text start area - left-center)
     final targetPos = Offset(0.15, 0.5);
 
-    // Create particle with unique properties
+    // Create particle with much more visible properties
     final particle = ThinkingParticle(
       id: DateTime.now().millisecondsSinceEpoch + _random.nextInt(1000),
       startPosition: startPos,
       targetPosition: targetPos,
-      size: 3.0 + _random.nextDouble() * 3.0, // 3-6px
-      opacity: 0.3 + _random.nextDouble() * 0.4, // 0.3-0.7
+      size: 6.0 + _random.nextDouble() * 6.0, // 6-12px (was 3-6px)
+      opacity: 0.6 + _random.nextDouble() * 0.4, // 0.6-1.0 (was 0.3-0.7)
       duration: Duration(
-        milliseconds: 800 + _random.nextInt(600), // 800-1400ms
+        milliseconds: 1000 + _random.nextInt(800), // 1000-1800ms (slower for visibility)
       ),
       color: Color.lerp(
         const Color(0xFF6B9BD1), // Sapphire
@@ -125,8 +121,8 @@ class _ThinkingBubbleState extends State<ThinkingBubble>
       }
     });
 
-    // Limit particle count
-    if (_particles.length > 12) {
+    // Allow more particles (was 12)
+    if (_particles.length > 24) {
       _particles.removeAt(0);
     }
   }
@@ -152,8 +148,6 @@ class _ThinkingBubbleState extends State<ThinkingBubble>
           return Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              // Match home screen styling exactly
-              color: surfaceColor,
               gradient: RadialGradient(
                 center: Alignment.center,
                 radius: 1.5,
@@ -162,23 +156,14 @@ class _ThinkingBubbleState extends State<ThinkingBubble>
                   surfaceColor.withOpacity(0.0),
                 ],
               ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: theme.dividerColor.withOpacity(0.1),
-                width: 1,
-              ),
             ),
-            child: SizedBox(
-              width: 200,
-              height: 40,
-              child: Stack(
-                children: [
-                  // Particle system
-                  ..._particles
-                      .map((particle) => ParticleWidget(particle: particle))
-                      .toList(),
-                ],
-              ),
+            child: Stack(
+              children: [
+                // Particle system - no size constraints, fills available space
+                ..._particles
+                    .map((particle) => ParticleWidget(particle: particle))
+                    .toList(),
+              ],
             ),
           );
         },
@@ -309,14 +294,17 @@ class _ParticleWidgetState extends State<ParticleWidget>
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    widget.particle.color.withOpacity(0.8),
+                    widget.particle.color.withOpacity(0.9),
+                    widget.particle.color.withOpacity(0.4),
+                    widget.particle.color.withOpacity(0.1),
                     widget.particle.color.withOpacity(0.0),
                   ],
+                  stops: const [0.0, 0.4, 0.7, 1.0],
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: widget.particle.color.withOpacity(0.6),
-                    blurRadius: widget.particle.size * 1.5,
+                    color: widget.particle.color.withOpacity(0.3),
+                    blurRadius: widget.particle.size * 2.0,
                     spreadRadius: 0,
                   ),
                 ],

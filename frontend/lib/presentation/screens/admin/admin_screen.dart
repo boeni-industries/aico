@@ -592,7 +592,7 @@ class _ThinkingBubbleDemoState extends State<_ThinkingBubbleDemo>
         const SizedBox(height: 32),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             CircleAvatar(
               radius: 16,
@@ -609,19 +609,28 @@ class _ThinkingBubbleDemoState extends State<_ThinkingBubbleDemo>
                 animation: _fadeController,
                 builder: (context, child) {
                   return Stack(
+                    alignment: Alignment.topLeft,
                     children: [
-                      // Thinking bubble fading out
+                      // Thinking bubble fading out - fixed height
                       if (!_showText || _bubbleFadeOut.value > 0)
                         Opacity(
                           opacity: _bubbleFadeOut.value,
-                          child: const ThinkingBubble(),
+                          child: const SizedBox(
+                            height: 72,
+                            child: ThinkingBubble(),
+                          ),
                         ),
                       
-                      // Text bubble fading in
+                      // Text bubble fading in - can expand
                       if (_showText && _textFadeIn.value > 0)
                         Opacity(
                           opacity: _textFadeIn.value,
                           child: Container(
+                            constraints: const BoxConstraints(
+                              minHeight: 72,
+                              maxHeight: 200, // Allow expansion up to 200px
+                            ),
+                            width: double.infinity,
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               color: theme.colorScheme.surface,
@@ -631,9 +640,11 @@ class _ThinkingBubbleDemoState extends State<_ThinkingBubbleDemo>
                                 width: 1,
                               ),
                             ),
-                            child: Text(
-                              _displayText,
-                              style: theme.textTheme.bodyMedium,
+                            child: SingleChildScrollView(
+                              child: Text(
+                                _displayText,
+                                style: theme.textTheme.bodyMedium,
+                              ),
                             ),
                           ),
                         ),

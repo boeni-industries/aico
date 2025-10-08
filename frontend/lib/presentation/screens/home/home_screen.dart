@@ -6,7 +6,7 @@ import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart';
-import 'package:aico_frontend/presentation/widgets/chat/thinking_bubble.dart';
+import 'package:aico_frontend/presentation/widgets/chat/message_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -370,62 +370,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget _buildMessageBubble(BuildContext context, ThemeData theme, Color accentColor, ConversationMessage message) {
     final conversationState = ref.watch(conversationProvider);
     
-    // Check if this is the last message and AICO is currently streaming/thinking
+    // Check if this is the last message and AICO is currently thinking/processing
     final isLastMessage = conversationState.messages.isNotEmpty && 
-                          conversationState.messages.last == message;
-    final showThinkingBubble = message.isFromAico && 
-                               isLastMessage && 
-                               message.message.isEmpty &&
-                               (conversationState.isSendingMessage || conversationState.isStreaming);
+                          conversationState.messages.last.timestamp == message.timestamp;
+    final isThinking = message.isFromAico && 
+                       isLastMessage && 
+                       (conversationState.isSendingMessage || 
+                        (conversationState.isStreaming && message.message.isEmpty));
     
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (message.isFromAico) ...[
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: accentColor.withValues(alpha: 0.1),
-              child: Icon(Icons.face, size: 16, color: accentColor),
-            ),
-            const SizedBox(width: 12),
-          ],
-          Expanded(
-            child: showThinkingBubble
-                ? const ThinkingBubble()
-                : Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: message.isFromAico 
-                          ? theme.colorScheme.surface
-                          : accentColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(16),
-                      border: message.isFromAico 
-                          ? Border.all(color: theme.dividerColor.withValues(alpha: 0.1))
-                          : null,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          message.message,
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _formatTimestamp(message.timestamp),
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-          ),
-          if (!message.isFromAico) const SizedBox(width: 48),
-        ],
-      ),
+    // Debug logging for thinking state
+    if (message.isFromAico && isLastMessage) {
+      print('🔍 [HomeScreen] Last AICO message:');
+      print('  - isSendingMessage: ${conversationState.isSendingMessage}');
+      print('  - isStreaming: ${conversationState.isStreaming}');
+      print('  - message.isEmpty: ${message.message.isEmpty}');
+      print('  - isThinking: $isThinking');
+    }
+    
+    return MessageBubble(
+      content: message.message,
+      isFromAico: message.isFromAico,
+      isThinking: isThinking,
+      timestamp: message.timestamp,
+      accentColor: accentColor,
     );
   }
 
@@ -683,17 +650,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
-  String _formatTimestamp(DateTime timestamp) {
-    // Handle both UTC and local timestamps properly
-    final localTimestamp = timestamp.isUtc ? timestamp.toLocal() : timestamp;
-    final now = DateTime.now();
-    final diff = now.difference(localTimestamp);
-    
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} minutes ago';
-    if (diff.inHours < 24) return '${diff.inHours} hours ago';
-    return '${diff.inDays} days ago';
-  }
 
   Widget _buildLeftDrawer(BuildContext context, ThemeData theme, Color accentColor) {
     return Container(
