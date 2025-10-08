@@ -30,7 +30,10 @@ Conversation-specific events with rich temporal and emotional metadata.
 - Thread-specific interaction patterns
 
 ### 3. Semantic Memory
-Knowledge base with vector embeddings for similarity-based retrieval.
+Knowledge base with hybrid search (semantic + BM25) for accurate retrieval.
+- **Hybrid Search**: Combines semantic similarity with keyword matching (BM25)
+- **IDF Filtering**: Removes overly common words for precise results
+- **Relevance Thresholds**: Filters out irrelevant matches automatically
 - User preferences, facts, and learned information
 - Cross-conversation knowledge accumulation
 - Domain-specific context (work, personal, technical topics)
@@ -105,10 +108,10 @@ The memory system implementation follows a phased approach, starting with essent
 This memory system documentation is organized into focused areas:
 
 - **[Architecture](architecture.md)**: Detailed technical architecture and component design
+- **[Hybrid Search](hybrid-search.md)**: **NEW** - Semantic + BM25 search implementation (V3)
 - **[Context Management](context-management.md)**: Context assembly, routing, and optimization
 - **[Thread Resolution](thread-resolution.md)**: Automatic thread management and decision logic
 - **[Implementation](implementation.md)**: Practical implementation guide and database schemas
-- **[Configuration](configuration.md)**: System configuration and performance tuning
 
 ## Integration Points
 

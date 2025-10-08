@@ -104,18 +104,57 @@ CREATE TABLE conversation_threads (
 - Preserve emotional context and personality snapshots
 - Enable conversation replay and analysis
 
-### 3. Semantic Memory (V2 Queue-Based Architecture)
+### 3. Semantic Memory (V3 Hybrid Search Architecture)
 
-**Purpose**: Knowledge base with vector embeddings for similarity-based retrieval
+**Purpose**: Knowledge base with hybrid search (semantic + BM25) for accurate retrieval
 
-**V2 Implementation**:
+**V3 Implementation**:
 - **Storage**: ChromaDB for vector operations, libSQL for structured data
+- **Search**: Hybrid search combining semantic similarity with BM25 keyword matching
+- **Fusion**: Reciprocal Rank Fusion (RRF) for robust score combination
+- **Filtering**: IDF-based term filtering + semantic relevance thresholds
 - **Processing**: SemanticRequestQueue with circuit breaker and rate limiting
 - **Concurrency**: Multi-threading optimization for CPU-intensive operations
 - **Embeddings**: Ollama-managed multilingual models via modelservice abstraction
 - **Scope**: Cross-conversation knowledge, user facts, preferences
 - **Lifecycle**: Accumulated knowledge with confidence scoring
-- **Performance**: Batch processing (600x improvement), controlled concurrency
+- **Performance**: Batch processing (600x improvement), controlled concurrency, full-corpus BM25
+
+**Hybrid Search Pipeline**:
+```python
+# Three-stage retrieval pipeline
+def query_semantic_memory(query_text: str, user_id: str):
+    # Stage 1: Full corpus retrieval for proper IDF statistics
+    all_documents = collection.query(
+        query_embeddings=[embedding],
+        n_results=collection.count()  # CRITICAL: Full corpus
+    )
+    
+    # Stage 2: Dual scoring (semantic + BM25 with IDF filtering)
+    scored_docs = calculate_scores(
+        documents=all_documents,
+        query_text=query_text,
+        min_idf=0.6  # Filter common terms
+    )
+    
+    # Stage 3: RRF fusion with semantic relevance filtering
+    results = fuse_with_rrf(
+        scored_docs,
+        k=60,  # Adaptive rank constant
+        min_semantic_score=0.35  # Relevance threshold
+    )
+    
+    return results[:max_results]
+```
+
+**Key Features**:
+- ✅ **Full corpus BM25**: Accurate IDF calculation on all documents
+- ✅ **IDF term filtering**: Removes overly common words (min_idf=0.6)
+- ✅ **Semantic threshold**: Filters irrelevant results (min_semantic_score=0.35)
+- ✅ **RRF fusion**: Industry-standard rank-based combination
+- ✅ **Configurable**: All thresholds tunable via config
+
+For detailed hybrid search documentation, see [Hybrid Search Guide](hybrid-search.md).
 
 **Multi-Threading Architecture**:
 ```python
@@ -452,6 +491,17 @@ memory:
     fallback_model: "all-minilm"
     fallback_dimensions: 384
     auto_model_download: true
+    
+    # Hybrid search configuration (V3)
+    fusion_method: "rrf"  # "rrf" (recommended) or "weighted" (legacy)
+    rrf_rank_constant: 0  # 0 = adaptive, or 10-60 manual
+    bm25_min_idf: 0.6     # Minimum IDF threshold for query term filtering
+    min_semantic_score: 0.35  # Minimum semantic score for relevance filtering
+    min_similarity: 0.4   # Minimum hybrid score for final results
+    
+    # Legacy weighted fusion (if fusion_method="weighted")
+    semantic_weight: 0.7  # Weight for semantic similarity
+    bm25_weight: 0.3      # Weight for BM25 score
 ```
 
 ### Deployment Considerations
@@ -536,6 +586,7 @@ This architecture provides the foundation for AICO's sophisticated memory capabi
 ## Related Documentation
 
 - [Memory System Overview](overview.md) - Core memory capabilities and integration points
+- [Hybrid Search Guide](hybrid-search.md) - **NEW**: Detailed hybrid search implementation (V3)
 - [Context Management](context-management.md) - Context assembly and thread resolution
 - [Implementation Concepts](implementation.md) - Conceptual implementation approach
 - [Thread Resolution](thread-resolution.md) - Integrated thread resolution system
