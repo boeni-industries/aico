@@ -201,10 +201,14 @@ def query_chroma_collection(
     try:
         import chromadb
         from chromadb.config import Settings
-        from aico.ai.memory.bm25 import calculate_bm25_scores
+        from aico.ai.memory.fusion import calculate_rrf_scores, calculate_weighted_scores
         
-        # Get hybrid search weights from config
+        # Get hybrid search configuration from config
         memory_config = config.get("core.memory.semantic", {})
+        fusion_method = memory_config.get("fusion_method", "rrf")
+        rrf_rank_constant = memory_config.get("rrf_rank_constant", 0)  # 0 = adaptive
+        bm25_min_idf = memory_config.get("bm25_min_idf", 0.6)  # IDF filtering threshold
+        min_semantic_score = memory_config.get("min_semantic_score", 0.35)  # Relevance threshold
         semantic_weight = memory_config.get("semantic_weight", 0.7)
         bm25_weight = memory_config.get("bm25_weight", 0.3)
         
@@ -222,7 +226,7 @@ def query_chroma_collection(
         except Exception as e:
             return {"error": f"Modelservice query embedding generation failed: {e}. Is modelservice running?"}
         
-        # Step 2: Query ChromaDB (fetch more for re-ranking)
+        # Step 2: Get ALL documents from ChromaDB for proper BM25 IDF calculation
         client = chromadb.PersistentClient(
             path=str(semantic_memory_dir),
             settings=Settings(allow_reset=True, anonymized_telemetry=False)
@@ -231,11 +235,13 @@ def query_chroma_collection(
         try:
             collection = client.get_collection(collection_name)
             
-            # Query with more results for hybrid re-ranking
-            fetch_count = limit * 2
+            # Get collection size to fetch ALL documents
+            collection_count = collection.count()
+            
+            # Query with ALL documents for proper BM25 calculation
             results = collection.query(
                 query_embeddings=[query_embedding],
-                n_results=fetch_count
+                n_results=collection_count  # Fetch ALL documents
             )
             
             if not results["documents"] or not results["documents"][0]:
@@ -252,13 +258,25 @@ def query_chroma_collection(
                         "metadata": results["metadatas"][0][i] if results["metadatas"] else {}
                     })
             
-            # Step 3: Calculate hybrid scores using pure function
-            scored_documents = calculate_bm25_scores(
-                documents=documents,
-                query_text=query_text,
-                semantic_weight=semantic_weight,
-                bm25_weight=bm25_weight
-            )
+            # Step 3: Calculate hybrid scores on FULL corpus using configured fusion method
+            if fusion_method == "rrf":
+                # Use adaptive k if config value is 0, otherwise use config value
+                k = None if rrf_rank_constant == 0 else rrf_rank_constant
+                scored_documents = calculate_rrf_scores(
+                    documents=documents,
+                    query_text=query_text,
+                    k=k,
+                    min_idf=bm25_min_idf,
+                    min_semantic_score=min_semantic_score
+                )
+            else:  # weighted (legacy)
+                scored_documents = calculate_weighted_scores(
+                    documents=documents,
+                    query_text=query_text,
+                    semantic_weight=semantic_weight,
+                    bm25_weight=bm25_weight,
+                    min_idf=bm25_min_idf
+                )
             
             # Limit results
             scored_documents = scored_documents[:limit]

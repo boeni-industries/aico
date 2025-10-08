@@ -1,82 +1,118 @@
 """
-BM25 scoring for hybrid search.
+BM25 keyword scoring algorithm.
 
-Pure functions for BM25 calculation - no async, no state, easy to test.
-Used by both SemanticMemoryStore and CLI tools.
+Pure BM25 implementation for keyword-based document ranking.
+BM25 (Best Matching 25) is a probabilistic ranking function that scores
+documents based on query term frequency, document length, and term rarity.
+
+This module provides ONLY the BM25 calculation. For combining BM25 with
+semantic search, see fusion.py.
 """
 
 import math
-from typing import List, Dict, Any
+from typing import List
 from collections import Counter
 
 
 def tokenize(text: str) -> List[str]:
-    """Simple tokenization for BM25."""
-    return text.lower().split()
+    """Simple tokenization for BM25 with punctuation removal."""
+    import re
+    # Lowercase and remove punctuation, then split
+    text = text.lower()
+    text = re.sub(r'[^\w\s]', ' ', text)  # Replace punctuation with spaces
+    return text.split()
 
 
-def calculate_bm25_scores(
-    documents: List[Dict[str, Any]],
+def calculate_bm25(
+    documents: List[str],
     query_text: str,
-    semantic_weight: float = 0.7,
-    bm25_weight: float = 0.3,
     k1: float = 1.5,
-    b: float = 0.75
-) -> List[Dict[str, Any]]:
+    b: float = 0.75,
+    min_idf: float = 0.6
+) -> List[float]:
     """
-    Calculate hybrid scores (BM25 + semantic) for documents.
+    Calculate BM25 scores for documents with IDF-based term filtering.
+    
+    Pure BM25 implementation with smart filtering of common terms.
+    Terms with low IDF (appearing in too many documents) are filtered
+    from the query to reduce false positives from common words.
+    
+    Mathematical formula:
+        score(D,Q) = Σ IDF(qi) × (f(qi,D) × (k1 + 1)) / (f(qi,D) + k1 × (1 - b + b × |D|/avgdl))
+    
+    Where:
+        - D = document
+        - Q = query (filtered by min_idf)
+        - qi = query term i
+        - f(qi,D) = frequency of qi in D
+        - |D| = length of D
+        - avgdl = average document length
+        - IDF(qi) = log((N - n(qi) + 0.5) / (n(qi) + 0.5) + 1)
+        - N = total number of documents
+        - n(qi) = number of documents containing qi
+    
+    IDF Filtering:
+        - Terms with IDF < min_idf are excluded from query
+        - Filters common words that appear in many documents
+        - Language-agnostic, adapts to corpus
+        - Example: "today" (IDF≈0.26) filtered, "Schaffhausen" (IDF≈2.38) kept
     
     Args:
-        documents: List of dicts with 'id', 'document', 'distance' keys
-        query_text: Search query
-        semantic_weight: Weight for semantic similarity (0-1)
-        bm25_weight: Weight for BM25 score (0-1)
-        k1: BM25 term frequency saturation parameter
-        b: BM25 length normalization parameter
+        documents: List of document text strings
+        query_text: Search query string
+        k1: Term frequency saturation parameter (default 1.5)
+            Higher values give more weight to term frequency
+        b: Length normalization parameter (default 0.75)
+            0 = no normalization, 1 = full normalization
+        min_idf: Minimum IDF threshold for query terms (default 0.5)
+            Terms with IDF below this are filtered out
+            0 = no filtering, higher = more aggressive filtering
         
     Returns:
-        List of documents with added score fields:
-        - semantic_score: Cosine similarity (0-1)
-        - bm25_score: Raw BM25 score
-        - bm25_normalized: BM25 normalized to 0-1
-        - hybrid_score: Combined score
+        List of BM25 scores (one per document), same order as input
     """
     if not documents:
         return []
     
-    # Calculate document stats for BM25
+    # Calculate document stats
     doc_count = len(documents)
     total_length = 0
     term_doc_count = Counter()
-    doc_lengths = {}
     
-    for doc in documents:
-        doc_id = doc.get('id', '')
-        doc_text = doc.get('document', '')
+    for doc_text in documents:
         terms = tokenize(doc_text)
-        
-        doc_lengths[doc_id] = len(terms)
         total_length += len(terms)
-        
-        # Count unique terms per document for IDF
         unique_terms = set(terms)
         for term in unique_terms:
             term_doc_count[term] += 1
     
     avg_doc_length = total_length / doc_count if doc_count > 0 else 0
-    query_terms = tokenize(query_text)
     
-    # First pass: Calculate raw BM25 scores
-    raw_scores = []
-    for doc in documents:
-        doc_id = doc.get('id', '')
-        doc_text = doc.get('document', '')
-        distance = doc.get('distance', 0.0)
+    # Filter query terms by IDF threshold
+    raw_query_terms = tokenize(query_text)
+    filtered_query_terms = []
+    
+    for term in raw_query_terms:
+        doc_freq = term_doc_count.get(term, 0)
         
-        # Semantic similarity (cosine distance to similarity)
-        semantic_sim = max(0.0, min(1.0, 1.0 - (distance / 2.0)))
+        # Calculate IDF for this term
+        if doc_freq == 0:
+            # Term not in corpus - keep it (might be important rare term)
+            filtered_query_terms.append(term)
+            continue
         
-        # BM25 score
+        idf = math.log((doc_count - doc_freq + 0.5) / (doc_freq + 0.5) + 1.0)
+        
+        # Filter out low-IDF terms (too common)
+        if idf >= min_idf:
+            filtered_query_terms.append(term)
+    
+    # Use filtered query terms for BM25 calculation
+    query_terms = filtered_query_terms
+    
+    # Calculate BM25 score for each document
+    scores = []
+    for doc_text in documents:
         doc_terms = tokenize(doc_text)
         doc_length = len(doc_terms)
         term_freqs = Counter(doc_terms)
@@ -97,46 +133,6 @@ def calculate_bm25_scores(
             denominator = tf + k1 * (1 - b + b * (doc_length / avg_doc_length))
             bm25_score += idf * (numerator / denominator)
         
-        raw_scores.append({
-            'id': doc_id,
-            'document': doc_text,
-            'distance': distance,
-            'semantic_score': semantic_sim,
-            'bm25_score': bm25_score,
-            'metadata': doc.get('metadata', {})
-        })
+        scores.append(bm25_score)
     
-    # Min-max normalization for BM25 scores
-    bm25_scores = [doc['bm25_score'] for doc in raw_scores]
-    min_bm25 = min(bm25_scores) if bm25_scores else 0.0
-    max_bm25 = max(bm25_scores) if bm25_scores else 1.0
-    bm25_range = max_bm25 - min_bm25
-    
-    # Second pass: Normalize and calculate hybrid scores
-    scored_documents = []
-    for doc in raw_scores:
-        # Min-max normalization: (score - min) / (max - min)
-        if bm25_range > 0:
-            bm25_normalized = (doc['bm25_score'] - min_bm25) / bm25_range
-        else:
-            bm25_normalized = 0.0
-        
-        # Hybrid score with normalized values
-        hybrid_score = (semantic_weight * doc['semantic_score'] + 
-                       bm25_weight * bm25_normalized)
-        
-        scored_documents.append({
-            'id': doc['id'],
-            'document': doc['document'],
-            'distance': doc['distance'],
-            'semantic_score': doc['semantic_score'],
-            'bm25_score': doc['bm25_score'],
-            'bm25_normalized': bm25_normalized,
-            'hybrid_score': hybrid_score,
-            'metadata': doc['metadata']
-        })
-    
-    # Sort by hybrid score
-    scored_documents.sort(key=lambda x: x['hybrid_score'], reverse=True)
-    
-    return scored_documents
+    return scores

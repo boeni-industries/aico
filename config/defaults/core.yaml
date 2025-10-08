@@ -316,7 +316,16 @@ memory:
     # Note: Embedding model configured in modelservice.transformers.models.embeddings (line 190)
     max_results: 10  # Maximum number of segments to return from queries
     min_similarity: 0.4  # Minimum similarity threshold for hybrid score (0-1, higher = more strict)
-    # Hybrid search weights (must sum to 1.0)
+    min_semantic_score: 0.35  # Minimum semantic score for relevance filtering (0-1)
+                              # Documents below this are filtered as irrelevant (no results returned)
+                              # Prevents false positives from keyword-only matches
+    # Hybrid search fusion method
+    fusion_method: "rrf"  # "rrf" (Reciprocal Rank Fusion) or "weighted" (score-based)
+    rrf_rank_constant: 0  # RRF rank constant (0 = adaptive based on dataset size, or set 10-60 manually)
+    # BM25 configuration
+    bm25_min_idf: 0.6  # Minimum IDF threshold for query terms (0 = no filtering, higher = more aggressive)
+                       # Filters common words (e.g., "today" with IDF≈0.55) to reduce false positives
+    # Weighted fusion (legacy, used if fusion_method="weighted")
     semantic_weight: 0.7  # Weight for semantic similarity (0-1)
     bm25_weight: 0.3  # Weight for BM25 keyword matching (0-1)
 

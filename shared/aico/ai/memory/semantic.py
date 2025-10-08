@@ -30,7 +30,7 @@ from chromadb.config import Settings
 from aico.core.config import ConfigurationManager
 from aico.core.paths import AICOPaths
 from aico.core.logging import get_logger
-from .bm25 import calculate_bm25_scores
+from .fusion import calculate_rrf_scores, calculate_weighted_scores
 
 logger = get_logger("shared", "ai.memory.semantic")
 
@@ -75,11 +75,17 @@ class SemanticMemoryStore:
         self._max_results = memory_config.get("max_results", 10)
         self._min_similarity = memory_config.get("min_similarity", 0.4)
         
-        # Hybrid search weights (semantic + BM25)
+        # Hybrid search configuration
+        self._fusion_method = memory_config.get("fusion_method", "rrf")
+        self._rrf_rank_constant = memory_config.get("rrf_rank_constant", 0)  # 0 = adaptive
+        self._bm25_min_idf = memory_config.get("bm25_min_idf", 0.6)  # IDF filtering threshold
+        self._min_semantic_score = memory_config.get("min_semantic_score", 0.35)  # Relevance threshold
         self._semantic_weight = memory_config.get("semantic_weight", 0.7)
         self._bm25_weight = memory_config.get("bm25_weight", 0.3)
         
-        logger.info("✅ SemanticMemoryStore V3 initialized (hybrid search)")
+        # CRITICAL: This log MUST show all three parameters to confirm code is loaded
+        logger.info(f"✅ SemanticMemoryStore V3 initialized (fusion={self._fusion_method}, rrf_k={self._rrf_rank_constant}, bm25_min_idf={self._bm25_min_idf})")
+        logger.warning(f"🔍 DEBUG: Config values loaded - fusion={self._fusion_method}, rrf_k={self._rrf_rank_constant}, bm25_min_idf={self._bm25_min_idf}")
     
     def set_modelservice(self, modelservice):
         """Set the ModelService instance for embedding generation"""
@@ -233,11 +239,13 @@ class SemanticMemoryStore:
             # Build filter
             where_filter = {"user_id": user_id} if user_id else None
             
-            # Query ChromaDB (get more results for re-ranking)
-            fetch_count = (max_results or self._max_results) * 2
+            # Get ALL documents for proper BM25 IDF calculation
+            # Note: If user_id filter is set, we get all docs for that user
+            collection_count = self._collection.count()
+            
             results = self._collection.query(
                 query_embeddings=[query_embedding],
-                n_results=fetch_count,
+                n_results=collection_count,  # Fetch ALL documents for proper BM25
                 where=where_filter
             )
             
@@ -255,13 +263,25 @@ class SemanticMemoryStore:
                     'distance': results['distances'][0][i] if 'distances' in results else 0.0
                 })
             
-            # Calculate hybrid scores using pure function
-            scored_docs = calculate_bm25_scores(
-                documents=documents,
-                query_text=query_text,
-                semantic_weight=self._semantic_weight,
-                bm25_weight=self._bm25_weight
-            )
+            # Calculate hybrid scores using configured fusion method
+            if self._fusion_method == "rrf":
+                # Use adaptive k if config value is 0, otherwise use config value
+                k = None if self._rrf_rank_constant == 0 else self._rrf_rank_constant
+                scored_docs = calculate_rrf_scores(
+                    documents=documents,
+                    query_text=query_text,
+                    k=k,
+                    min_idf=self._bm25_min_idf,
+                    min_semantic_score=self._min_semantic_score
+                )
+            else:  # weighted (legacy)
+                scored_docs = calculate_weighted_scores(
+                    documents=documents,
+                    query_text=query_text,
+                    semantic_weight=self._semantic_weight,
+                    bm25_weight=self._bm25_weight,
+                    min_idf=self._bm25_min_idf
+                )
             
             # Filter by threshold and format
             similarity_threshold = min_similarity if min_similarity is not None else self._min_similarity
