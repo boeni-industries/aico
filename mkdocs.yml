@@ -6,6 +6,11 @@ site_url: https://boeni-industries.github.io/aico
 # Configuration
 use_directory_urls: true
 
+# Set the welcome page as the home page
+# This makes /aico/welcome/ the default landing page
+docs_dir: docs
+site_dir: site
+
 # Repository
 repo_name: boeni-industries/aico
 repo_url: https://github.com/boeni-industries/aico
@@ -158,6 +163,7 @@ extra_css:
 extra_javascript:
   - assets/javascripts/extra.js
 nav:
+  - Home: index.md
   - Welcome: welcome.md
   - Architecture:
       - Overview: architecture/architecture-overview.md
