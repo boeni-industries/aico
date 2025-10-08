@@ -475,10 +475,29 @@ class ConversationEngine(BaseService):
             # Build messages for LLM
             messages = [ModelConversationMessage(role="system", content=system_prompt)]
             
-            # Add user message
+            # Add conversation history as actual messages (not just in system prompt)
+            if memory_context:
+                memory_data = memory_context.get("memory_context", {})
+                recent_context = memory_data.get("recent_context", [])
+                
+                # CRITICAL: recent_context is in REVERSE chronological order (newest first)
+                # We need to reverse it to get chronological order (oldest first) for LLM
+                # Take last 5 messages and reverse them
+                history_messages = list(reversed(recent_context[-5:]))
+                
+                print(f"🔍 [PROMPT_DEBUG] Processing {len(history_messages)} history messages")
+                for msg in history_messages:
+                    role = msg.get('role', 'user')
+                    content = msg.get('content', '').strip()
+                    if content:
+                        messages.append(ModelConversationMessage(role=role, content=content))
+                        print(f"🔍 [PROMPT_DEBUG] Added {role} message to LLM: {content[:50]}...")
+            
+            # Add current user message
             current_content = user_message.message.text.strip()
             if current_content:
                 messages.append(ModelConversationMessage(role="user", content=current_content))
+                print(f"🔍 [PROMPT_DEBUG] Added current user message: {current_content[:50]}...")
             
             # Create and publish LLM request
             completions_request = CompletionsRequest(
@@ -640,22 +659,25 @@ class ConversationEngine(BaseService):
     
     def _build_system_prompt(self, user_context: UserContext, memory_context: Optional[Dict[str, Any]]) -> str:
         """Build system prompt with memory context"""
-        prompt = "You are AICO, an AI companion. Be helpful, concise, and natural."
+        prompt = """You are AICO, an AI companion. Be helpful, concise, and natural.
+
+IMPORTANT: Pay close attention to the conversation history. When the user asks about "he", "she", "it", or "they", refer to the most recently mentioned person or thing in the conversation."""
         
         # Add memory context if available
         if memory_context:
             memory_data = memory_context.get("memory_context", {})
             user_facts = memory_data.get("user_facts", [])
-            recent_context = memory_data.get("recent_context", [])
+            
+            print(f"🔍 [PROMPT_DEBUG] user_facts count: {len(user_facts)}")
             
             if user_facts:
                 facts_text = "\n".join([f"- {fact.get('content', '')}" for fact in user_facts[-5:]])
-                prompt += f"\n\nUser Facts:\n{facts_text}"
-            
-            if recent_context:
-                context_text = "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in recent_context[-3:]])
-                prompt += f"\n\nRecent Context:\n{context_text}"
+                prompt += f"\n\nKnown Facts About User:\n{facts_text}"
+                print(f"🔍 [PROMPT_DEBUG] Added user facts to prompt")
+        else:
+            print(f"🔍 [PROMPT_DEBUG] NO memory_context provided!")
         
+        print(f"🔍 [PROMPT_DEBUG] Final system prompt:\n{prompt}")
         return prompt
     
     async def _handle_llm_response(self, response) -> None:

@@ -394,7 +394,7 @@ class ContextAssembler:
                 # Determine role based on message type, not the user identifier
                 if message_type in ['user_input', 'text']:
                     role = 'user'
-                elif message_type in ['ai_response', 'response']:
+                elif message_type in ['ai_response', 'response', 'assistant_response']:
                     role = 'assistant'
                 else:
                     role = 'user'  # Default fallback
