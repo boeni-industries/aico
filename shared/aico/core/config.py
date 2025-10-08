@@ -144,8 +144,22 @@ class ConfigurationManager:
             if isinstance(value, dict) and k in value:
                 value = value[k]
             else:
+                # Log when returning default for missing config keys
+                if default == {} and len(keys) > 1:
+                    # This is likely a config section that should exist
+                    import logging
+                    logger = logging.getLogger("shared.core.config")
+                    logger.error(f"🚨 [CONFIG_ERROR] Configuration key '{key}' not found! Returning empty dict.")
+                    logger.error(f"🚨 [CONFIG_ERROR] Available keys at root: {list(self.config_cache.keys()) if isinstance(self.config_cache, dict) else 'Not a dict'}")
+                    logger.error(f"🚨 [CONFIG_ERROR] This may cause silent initialization failures!")
                 return default
                 
+        # Additional check: warn if returning an empty dict for a config section
+        if isinstance(value, dict) and not value and len(keys) > 1:
+            import logging
+            logger = logging.getLogger("shared.core.config")
+            logger.warning(f"⚠️ [CONFIG_WARNING] Configuration section '{key}' exists but is EMPTY!")
+            
         return value
         
     def set(self, key: str, value: Any, persist: bool = True) -> None:

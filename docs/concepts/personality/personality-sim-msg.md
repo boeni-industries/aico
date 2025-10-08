@@ -27,11 +27,11 @@ All messages on the bus follow this common envelope structure:
 
 ## Input Message Formats
 
-> **Note**: In addition to the message formats described below, the Personality Simulation module also consumes integration-specific messages such as `crisis.detection`, `agency.initiative`, `expression.coordination`, and `learning.coordination`. These formats are defined in [`integration_msg.md`](./integration_msg.md).
+> **Note**: In addition to the message formats described below, the Personality Simulation module also consumes integration-specific messages such as `crisis/detection`, `agency/initiative`, `expression/coordination`, and `learning/coordination`. These formats are defined in integration documentation.
 
 ### User Interaction History
 
-**Topic**: `user.interaction.history`  
+**Topic**: `user/interaction/history`  
 **Description**: Historical interaction patterns and relationship development data from the Memory System.
 
 ```json
@@ -40,7 +40,7 @@ All messages on the bus follow this common envelope structure:
     "message_id": "7f9e8d7c-6b5a-4c3d-2e1f-0a9b8c7d6e5f",
     "timestamp": "2025-07-29T14:30:12.456Z",
     "source": "memory_system",
-    "message_type": "user.interaction.history",
+    "message_type": "user/interaction/history",
     "version": "1.0"
   },
   "payload": {
@@ -194,7 +194,7 @@ All messages on the bus follow this common envelope structure:
 
 ### Emotion State
 
-**Topic**: `emotion.state.current`  
+**Topic**: `emotion/state/current`  
 **Description**: Current emotional state from the Emotion Simulation module.
 
 ```json
@@ -203,7 +203,7 @@ All messages on the bus follow this common envelope structure:
     "message_id": "9a8b7c6d-5e4f-3g2h-1i0j-9k8l7m6n5o4p",
     "timestamp": "2025-07-29T14:47:45.123Z",
     "source": "emotion_simulation",
-    "message_type": "emotion.state.current",
+    "message_type": "emotion/state/current",
     "version": "1.0"
   },
   "payload": {
@@ -324,7 +324,7 @@ All messages on the bus follow this common envelope structure:
 
 ### Agency Goals
 
-**Topic**: `agency.goals.current`  
+**Topic**: `agency/goals/current`  
 **Description**: Current goals from the Autonomous Agent module.
 
 ```json
@@ -333,7 +333,7 @@ All messages on the bus follow this common envelope structure:
     "message_id": "0a1b2c3d-4e5f-6g7h-8i9j-0k1l2m3n4o5p",
     "timestamp": "2025-07-29T14:45:00.000Z",
     "source": "autonomous_agent",
-    "message_type": "agency.goals.current",
+    "message_type": "agency/goals/current",
     "version": "1.0"
   },
   "payload": {
@@ -439,7 +439,7 @@ All messages on the bus follow this common envelope structure:
 
 ### Personality State
 
-**Topic**: `personality.state.current`  
+**Topic**: `personality/state/current`  
 **Description**: Current personality state published by the Personality Simulation module.
 
 > **Note on Personality Models**: The personality state includes both Big Five and HEXACO trait models intentionally. While there is some overlap (e.g., both include "extraversion"), they serve complementary purposes. Big Five provides widely-validated general personality parameters, while HEXACO adds the crucial Honesty-Humility dimension missing from Big Five. This dual-model approach enables integration with various personality-aware systems, supports different use cases (general expression vs. ethical reasoning), and provides redundant but distinct measurements for more robust personality modeling.
@@ -450,7 +450,7 @@ All messages on the bus follow this common envelope structure:
     "message_id": "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p",
     "timestamp": "2025-07-29T14:48:30.123Z",
     "source": "personality_simulation",
-    "message_type": "personality.state.current",
+    "message_type": "personality/state/current",
     "version": "1.0"
   },
   "payload": {
@@ -555,7 +555,7 @@ All messages on the bus follow this common envelope structure:
 
 ### Communication Expression Parameters
 
-**Topic**: `personality.expression.communication`  
+**Topic**: `personality/expression/communication`  
 **Description**: Communication style parameters for the Conversation Engine.
 
 ```json
@@ -564,7 +564,7 @@ All messages on the bus follow this common envelope structure:
     "message_id": "2b3c4d5e-6f7g-8h9i-0j1k-2l3m4n5o6p7q",
     "timestamp": "2025-07-29T14:48:32.456Z",
     "source": "personality_simulation",
-    "message_type": "personality.expression.communication",
+    "message_type": "personality/expression/communication",
     "version": "1.0"
   },
   "payload": {
@@ -629,10 +629,10 @@ All messages on the bus follow this common envelope structure:
 
 ### Decision Expression Parameters
 
-**Topic**: `personality.expression.decision`  
+**Topic**: `personality/expression/decision`  
 **Description**: Decision-making parameters for Autonomous Agency module.
 
-> **Note**: This message format has been enhanced with an `ethical_framework` section in version 1.1. See [`integration_msg.md`](./integration_msg.md) for details on the enhanced format.
+> **Note**: This message format has been enhanced with an `ethical_framework` section in version 1.1. See integration documentation for details on the enhanced format.
 
 ```json
 {
@@ -640,7 +640,7 @@ All messages on the bus follow this common envelope structure:
     "message_id": "3c4d5e6f-7g8h-9i0j-1k2l-3m4n5o6p7q8r",
     "timestamp": "2025-07-29T14:48:34.789Z",
     "source": "personality_simulation",
-    "message_type": "personality.expression.decision",
+    "message_type": "personality/expression/decision",
     "version": "1.0"
   },
   "payload": {
@@ -705,7 +705,7 @@ All messages on the bus follow this common envelope structure:
 
 ### Emotional Expression Parameters
 
-**Topic**: `personality.expression.emotional`  
+**Topic**: `personality/expression/emotional`  
 **Description**: Emotional tendency parameters for the Emotion Simulation module.
 
 ```json
@@ -714,7 +714,7 @@ All messages on the bus follow this common envelope structure:
     "message_id": "4d5e6f7g-8h9i-0j1k-2l3m-4n5o6p7q8r9s",
     "timestamp": "2025-07-29T14:48:36.123Z",
     "source": "personality_simulation",
-    "message_type": "personality.expression.emotional",
+    "message_type": "personality/expression/emotional",
     "version": "1.0"
   },
   "payload": {
@@ -788,7 +788,7 @@ All messages on the bus follow this common envelope structure:
 
 ### Personality Memory Store
 
-**Topic**: `personality.memory.store`  
+**Topic**: `personality/memory/store`  
 **Description**: Personality experiences to store in the Memory System.
 
 ```json
@@ -797,7 +797,7 @@ All messages on the bus follow this common envelope structure:
     "message_id": "5e6f7g8h-9i0j-1k2l-3m4n-5o6p7q8r9s0t",
     "timestamp": "2025-07-29T14:48:38.456Z",
     "source": "personality_simulation",
-    "message_type": "personality.memory.store",
+    "message_type": "personality/memory/store",
     "version": "1.0"
   },
   "payload": {
@@ -868,32 +868,32 @@ All messages on the bus follow this common envelope structure:
 
 ### Input Topics (Subscriptions)
 ```
-- user.interaction.history     # From Memory System
-- conversation.context         # From Context Manager
-- emotion.state.current        # From Emotion Simulation
-- memory.consolidation         # From Memory System
-- agency.goals.current         # From Autonomous Agent
-- user.feedback                # From Conversation Engine
-- crisis.detection             # From any module detecting crisis
-- agency.initiative            # From Autonomous Agency
-- expression.coordination      # From Emotion Simulation
-- learning.coordination        # From Memory System
-- llm.conversation.events      # From Conversation Engine
-- llm.prompt.conditioning.request  # From Conversation Engine
+- user/interaction/history     # From Memory System
+- conversation/context         # From Context Manager
+- emotion/state/current        # From Emotion Simulation
+- memory/consolidation         # From Memory System
+- agency/goals/current         # From Autonomous Agent
+- user/feedback                # From Conversation Engine
+- crisis/detection             # From any module detecting crisis
+- agency/initiative            # From Autonomous Agency
+- expression/coordination      # From Emotion Simulation
+- learning/coordination        # From Memory System
+- llm/conversation/events      # From Conversation Engine
+- llm/prompt/conditioning/request  # From Conversation Engine
 ```
 
 ### Output Topics (Publications)
 ```
-- personality.state.current         # Current personality state
-- personality.expression.communication  # Communication parameters for LLM
-- personality.expression.decision   # Decision parameters for Agency
-- personality.expression.emotional  # Emotional tendency parameters
-- personality.memory.store          # Personality experiences to store
-- crisis.detection                  # Crisis detection (when detected by Personality)
-- agency.initiative                 # Proactive engagement (when initiated by Personality)
-- expression.coordination           # Cross-modal expression coordination
-- learning.coordination             # Learning feedback and coordination
-- llm.prompt.conditioning.response  # Personality conditioning parameters for LLM prompts
+- personality/state/current         # Current personality state
+- personality/expression/communication  # Communication parameters for LLM
+- personality/expression/decision   # Decision parameters for Agency
+- personality/expression/emotional  # Emotional tendency parameters
+- personality/memory/store          # Personality experiences to store
+- crisis/detection                  # Crisis detection (when detected by Personality)
+- agency/initiative                 # Proactive engagement (when initiated by Personality)
+- expression/coordination           # Cross-modal expression coordination
+- learning/coordination             # Learning feedback and coordination
+- llm/prompt/conditioning/response  # Personality conditioning parameters for LLM prompts
 ```
 
 ## Schema Validation

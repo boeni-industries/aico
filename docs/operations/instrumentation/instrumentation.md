@@ -5,7 +5,7 @@ title: Instrumentation Architecture
 # Instrumentation Architecture
 
 ## Overview
-AICO's instrumentation system provides unified, privacy-respecting observability across all modules, modes, and devices. It is designed to support both **coupled** (single-device) and **detached** (multi-device/federated) deployments, in line with AICO's core architectural principles as outlined in the [Architecture Overview](../architecture/architecture_overview.md).
+AICO's instrumentation system provides unified, privacy-respecting observability across all modules, modes, and devices. It is designed to support both **coupled** (single-device) and **detached** (multi-device/federated) deployments, in line with AICO's core architectural principles as outlined in the [Architecture Overview](../../architecture/architecture-overview.md).
 
 ## Design Goals
 - **Consistent Observability:** Unified approach for logging, metrics, tracing, and auditing across all modules and plugins.

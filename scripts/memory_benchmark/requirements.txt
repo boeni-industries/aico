@@ -1,0 +1,80 @@
+# AICO Memory Intelligence Evaluator Dependencies
+
+# Beautiful CLI and console output
+typer>=0.9.0
+rich>=13.0.0
+
+# HTTP client for AICO API
+httpx>=0.25.0
+asyncio-mqtt>=0.11.1
+rich>=13.7.0
+pynacl>=1.5.0
+chromadb>=0.4.0
+
+# Data processing and validation
+pydantic>=2.0.0
+python-dateutil>=2.8.0
+
+# Testing framework
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+
+# Data analysis (optional)
+pandas>=1.5.0
+numpy>=1.24.0
+
+# Configuration and logging (uses AICO's existing modules)
+pyyaml>=6.0
+
+# NLP evaluation (optional)
+spacy>=3.5.0
+
+# Note: This framework leverages existing AICO shared modules:
+# - aico.core.config (ConfigurationManager)
+# - aico.core.logging (get_logger)
+# - aico.core.bus (MessageBusClient)
+# - aico.ai.memory.* (Memory system components)
+# - aico.proto.* (Protobuf definitions)
+
+# JSON handling (built-in, but listed for completeness)
+# json - built-in module
+
+# Async support
+asyncio  # Built-in module
+
+# Regular expressions for entity extraction
+# re - built-in module
+
+# Statistics for metric calculations
+# statistics - built-in module
+
+# Date and time handling
+# datetime - built-in module
+
+# UUID generation
+# uuid - built-in module
+
+# Path handling
+# pathlib - built-in module
+
+# System utilities
+# sys - built-in module
+# os - built-in module
+
+# Optional: Enhanced entity extraction (if using spaCy directly)
+# spacy>=3.4.0
+# en_core_web_sm>=3.4.0
+
+# Optional: Advanced NLP metrics (if implementing semantic similarity)
+# sentence-transformers>=2.2.0
+# numpy>=1.21.0
+
+# Optional: Enhanced reporting
+# matplotlib>=3.5.0  # For visualization
+# pandas>=1.4.0      # For data analysis
+
+# Development dependencies (optional)
+# pytest>=7.0.0      # For unit testing
+# pytest-asyncio>=0.21.0  # For async test support
+# black>=22.0.0       # Code formatting
+# mypy>=0.991        # Type checking

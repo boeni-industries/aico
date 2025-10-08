@@ -67,15 +67,30 @@ class LogEntryRequest(BaseModel):
 
 class LogBatchRequest(BaseModel):
     """Batch log submission from frontend"""
-    logs: List[LogEntryRequest] = Field(..., description="List of log entries")
+    logs: Optional[List[LogEntryRequest]] = Field(None, description="List of log entries")
+    batch_size: Optional[int] = Field(None, description="Number of logs in batch")
+    timestamp: Optional[str] = Field(None, description="Batch submission timestamp")
+    compression: Optional[str] = Field(None, description="Compression type if used")
+    compressed_logs: Optional[str] = Field(None, description="Base64 encoded compressed logs")
 
     @validator('logs')
     def validate_logs_not_empty(cls, v):
         """Ensure batch is not empty"""
-        if not v:
-            raise ValueError('Log batch cannot be empty')
-        if len(v) > 10000:  # Reasonable batch size limit
-            raise ValueError('Log batch too large (max 10000 entries)')
+        if v is not None:
+            if not v:
+                raise ValueError('Log batch cannot be empty')
+            if len(v) > 10000:  # Reasonable batch size limit
+                raise ValueError('Log batch too large (max 10000 entries)')
+        return v
+    
+    @validator('compressed_logs')
+    def validate_either_logs_or_compressed(cls, v, values):
+        """Ensure either logs or compressed_logs is provided"""
+        logs = values.get('logs')
+        if not logs and not v:
+            raise ValueError('Either logs or compressed_logs must be provided')
+        if logs and v:
+            raise ValueError('Cannot provide both logs and compressed_logs')
         return v
 
 

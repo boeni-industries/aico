@@ -43,10 +43,17 @@ class EncryptionService {
   
   /// Initialize encryption service with libsodium
   Future<void> initialize() async {
-    // Initialize sodium with platform binaries
-    _sodium = await sodium_libs.SodiumInit.init();
-    
-    await _loadOrGenerateIdentityKeys();
+    try {
+      // Initialize sodium with platform binaries
+      _sodium = await sodium_libs.SodiumInit.init();
+      
+      await _loadOrGenerateIdentityKeys();
+    } catch (e) {
+      // Handle initialization errors gracefully - don't crash the app
+      debugPrint('EncryptionService initialization failed: $e');
+      // Set a minimal state so the app can continue without encryption
+      _sessionEstablished = false;
+    }
   }
   
   /// Load existing identity keys or generate new ones
@@ -216,8 +223,19 @@ class EncryptionService {
   /// Check if encryption session is active
   bool get isSessionActive => _sessionEstablished && _precalculatedBox != null;
   
+  /// Check if encryption service is initialized
+  bool get isInitialized => _sodium != null && _identityPrivateKey != null;
+  
   /// Get client ID for this session
   String? get clientId => _clientId;
+  
+  /// Get public key for handshake (base64 encoded)
+  String? getPublicKey() {
+    if (_sessionPublicKey != null) {
+      return base64Encode(_sessionPublicKey!);
+    }
+    return null;
+  }
   
   /// Reset session (for new handshake)
   void resetSession() {

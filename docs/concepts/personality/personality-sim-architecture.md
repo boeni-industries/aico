@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the technical architecture for AICO's Personality Simulation module, focusing on its integration with the message bus system and data exchange formats. For conceptual information about the personality model, see [`/docs/concepts/personality/personality_sim.md`](../concepts/personality/personality_sim.md).
+This document describes the technical architecture for AICO's Personality Simulation module, focusing on its integration with the message bus system and data exchange formats. For conceptual information about the personality model, see [`/docs/concepts/personality/personality-sim.md`](./personality-sim.md).
 
 ## Bus Integration Architecture
 
@@ -12,30 +12,30 @@ The Personality Simulation module participates in the following message bus topi
 
 #### Input Topics (Subscriptions)
 ```
-- user.interaction.history     # From Memory System
-- conversation.context        # From Context Manager
-- emotion.state.current       # From Emotion Simulation
-- memory.consolidation        # From Memory System
-- agency.goals.current        # From Autonomous Agent
-- user.feedback               # From Conversation Engine
+- user/interaction/history     # From Memory System
+- conversation/context        # From Context Manager
+- emotion/state/current       # From Emotion Simulation
+- memory/consolidation        # From Memory System
+- agency/goals/current        # From Autonomous Agent
+- user/feedback               # From Conversation Engine
 ```
 
 #### Output Topics (Publications)
 ```
-- personality.state.current   # Current personality state
-- personality.expression.communication  # Communication style parameters
-- personality.expression.decision       # Decision-making parameters
-- personality.expression.emotional      # Emotional tendency parameters
-- personality.memory.store             # Personality experiences to store
+- personality/state/current   # Current personality state
+- personality/expression/communication  # Communication style parameters
+- personality/expression/decision       # Decision-making parameters
+- personality/expression/emotional      # Emotional tendency parameters
+- personality/memory/store             # Personality experiences to store
 ```
 
 ## Message Schemas
 
-Detailed message format specifications are documented in [`personality_sim_msg.md`](./personality_sim_msg.md). These include illustrative JSON structures for all input and output message types used by the Personality Simulation module.
+Detailed message format specifications are documented in [`personality_sim_msg.md`](./personality-sim-msg.md). These include illustrative JSON structures for all input and output message types used by the Personality Simulation module.
 
 **Key Message Types:**
-- **Input**: `user.interaction.history`, `conversation.context`, `emotion.state.current`
-- **Output**: `personality.state.current`, `personality.expression.communication`, `personality.expression.decision`
+- **Input**: `user/interaction/history`, `conversation/context`, `emotion/state/current`
+- **Output**: `personality/state/current`, `personality/expression/communication`, `personality/expression/decision`
 
 ## Processing Pipeline
 
@@ -52,11 +52,11 @@ class PersonalitySimulationModule:
         self.value_system = ValueSystem()
         
         # Subscribe to input topics
-        self.bus.subscribe("user.interaction.history", self.on_interaction_history)
-        self.bus.subscribe("conversation.context", self.on_conversation_context)
-        self.bus.subscribe("emotion.state.current", self.on_emotion_state)
-        self.bus.subscribe("memory.consolidation", self.on_memory_consolidation)
-        self.bus.subscribe("user.feedback", self.on_user_feedback)
+        self.bus.subscribe("user/interaction/history", self.on_interaction_history)
+        self.bus.subscribe("conversation/context", self.on_conversation_context)
+        self.bus.subscribe("emotion/state/current", self.on_emotion_state)
+        self.bus.subscribe("memory/consolidation", self.on_memory_consolidation)
+        self.bus.subscribe("user/feedback", self.on_user_feedback)
         
     def on_interaction_history(self, message):
         self.current_context.interaction_patterns = message['patterns']
@@ -108,7 +108,7 @@ Generated personality states are published to multiple output topics:
 ```python
 def publish_personality_outputs(self, personality_state: PersonalityState):
     # Publish current personality state
-    self.bus.publish("personality.state.current", {
+    self.bus.publish("personality/state/current", {
         "timestamp": datetime.utcnow().isoformat(),
         "source": "personality_simulation",
         "personality_state": personality_state.to_dict()
@@ -116,19 +116,19 @@ def publish_personality_outputs(self, personality_state: PersonalityState):
     
     # Generate and publish communication style parameters
     comm_params = self.generate_communication_parameters(personality_state)
-    self.bus.publish("personality.expression.communication", comm_params)
+    self.bus.publish("personality/expression/communication", comm_params)
     
     # Generate and publish decision-making parameters
     decision_params = self.generate_decision_parameters(personality_state)
-    self.bus.publish("personality.expression.decision", decision_params)
+    self.bus.publish("personality/expression/decision", decision_params)
     
     # Generate and publish emotional tendency parameters
     emotional_params = self.generate_emotional_parameters(personality_state)
-    self.bus.publish("personality.expression.emotional", emotional_params)
+    self.bus.publish("personality/expression/emotional", emotional_params)
     
     # Store personality experience for learning
     experience = self.create_personality_experience(personality_state)
-    self.bus.publish("personality.memory.store", experience)
+    self.bus.publish("personality/memory/store", experience)
 ```
 
 ## Component Integration
@@ -136,22 +136,22 @@ def publish_personality_outputs(self, personality_state: PersonalityState):
 ### Downstream Consumers
 
 #### Conversation Engine
-- **Subscribes to**: `personality.expression.communication`
+- **Subscribes to**: `personality/expression/communication`
 - **Uses**: Communication style, topic preferences, interaction patterns
 - **Integration**: LLM prompt injection with personality context
 
 #### Emotion Simulation
-- **Subscribes to**: `personality.state.current`
+- **Subscribes to**: `personality/state/current`
 - **Uses**: Trait-based emotional tendencies, regulation parameters
 - **Integration**: Personality-influenced appraisal processing
 
 #### Autonomous Agent
-- **Subscribes to**: `personality.expression.decision`
+- **Subscribes to**: `personality/expression/decision`
 - **Uses**: Decision weights, goal alignment, value priorities
 - **Integration**: Personality-aligned goal generation and planning
 
 #### Memory System
-- **Subscribes to**: `personality.memory.store`
+- **Subscribes to**: `personality/memory/store`
 - **Uses**: Personality experiences for learning and pattern recognition
 - **Integration**: Encrypted storage of personality development patterns
 
@@ -358,16 +358,16 @@ personality_simulation:
   message_bus:
     broker_url: "tcp://localhost:5555"
     input_topics:
-      - "user.interaction.history"
-      - "conversation.context"
-      - "emotion.state.current"
-      - "memory.consolidation"
-      - "user.feedback"
+      - "user/interaction/history"
+      - "conversation/context"
+      - "emotion/state/current"
+      - "memory/consolidation"
+      - "user/feedback"
     output_topics:
-      - "personality.state.current"
-      - "personality.expression.communication"
-      - "personality.expression.decision"
-      - "personality.expression.emotional"
+      - "personality/state/current"
+      - "personality/expression/communication"
+      - "personality/expression/decision"
+      - "personality/expression/emotional"
       
   cloud_enhancement:
     enabled: false

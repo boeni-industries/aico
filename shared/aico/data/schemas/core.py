@@ -279,6 +279,99 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP TABLE IF EXISTS task_executions",
             "DROP TABLE IF EXISTS scheduled_tasks"
         ]
+    ),
+    
+    5: SchemaVersion(
+        version=5,
+        name="Fact-Centric Memory System",
+        description="Add tables for intelligent fact storage and management",
+        sql_statements=[
+            # Facts metadata table
+            """CREATE TABLE IF NOT EXISTS facts_metadata (
+                fact_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                fact_type TEXT NOT NULL,  -- identity, preference, relationship, temporal
+                category TEXT NOT NULL,   -- personal_info, preferences, relationships
+                confidence REAL NOT NULL,
+                is_immutable BOOLEAN NOT NULL DEFAULT FALSE,
+                
+                -- Temporal validity
+                valid_from TIMESTAMP NOT NULL,
+                valid_until TIMESTAMP,
+                
+                -- Content and extraction
+                content TEXT NOT NULL,
+                entities_json TEXT,  -- JSON array of extracted entities
+                extraction_method TEXT NOT NULL,
+                
+                -- Provenance
+                source_conversation_id TEXT NOT NULL,
+                source_message_id TEXT,
+                
+                -- Timestamps
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                
+                -- Foreign key
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            
+            # Fact relationships table (for multi-hop reasoning)
+            """CREATE TABLE IF NOT EXISTS fact_relationships (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_fact_id TEXT NOT NULL,
+                target_fact_id TEXT NOT NULL,
+                relationship_type TEXT NOT NULL,  -- contradicts, supports, relates_to
+                confidence REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                
+                FOREIGN KEY (source_fact_id) REFERENCES facts_metadata(fact_id) ON DELETE CASCADE,
+                FOREIGN KEY (target_fact_id) REFERENCES facts_metadata(fact_id) ON DELETE CASCADE,
+                UNIQUE(source_fact_id, target_fact_id, relationship_type)
+            )""",
+            
+            # Session memory metadata (LMDB coordination)
+            """CREATE TABLE IF NOT EXISTS session_metadata (
+                session_key TEXT PRIMARY KEY,  -- user_id_conversation_id
+                user_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                last_accessed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                message_count INTEGER DEFAULT 0,
+                context_summary TEXT,
+                
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            
+            # Indexes for performance
+            "CREATE INDEX IF NOT EXISTS idx_facts_user_type ON facts_metadata(user_id, fact_type)",
+            "CREATE INDEX IF NOT EXISTS idx_facts_category ON facts_metadata(category)",
+            "CREATE INDEX IF NOT EXISTS idx_facts_confidence ON facts_metadata(confidence)",
+            "CREATE INDEX IF NOT EXISTS idx_facts_immutable ON facts_metadata(is_immutable)",
+            "CREATE INDEX IF NOT EXISTS idx_facts_validity ON facts_metadata(valid_from, valid_until)",
+            "CREATE INDEX IF NOT EXISTS idx_facts_source ON facts_metadata(source_conversation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_fact_relationships_source ON fact_relationships(source_fact_id)",
+            "CREATE INDEX IF NOT EXISTS idx_fact_relationships_target ON fact_relationships(target_fact_id)",
+            "CREATE INDEX IF NOT EXISTS idx_session_metadata_user ON session_metadata(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_session_metadata_accessed ON session_metadata(last_accessed)"
+        ],
+        rollback_statements=[
+            # Drop indexes
+            "DROP INDEX IF EXISTS idx_session_metadata_accessed",
+            "DROP INDEX IF EXISTS idx_session_metadata_user", 
+            "DROP INDEX IF EXISTS idx_fact_relationships_target",
+            "DROP INDEX IF EXISTS idx_fact_relationships_source",
+            "DROP INDEX IF EXISTS idx_facts_source",
+            "DROP INDEX IF EXISTS idx_facts_validity",
+            "DROP INDEX IF EXISTS idx_facts_immutable",
+            "DROP INDEX IF EXISTS idx_facts_confidence",
+            "DROP INDEX IF EXISTS idx_facts_category",
+            "DROP INDEX IF EXISTS idx_facts_user_type",
+            
+            # Drop tables
+            "DROP TABLE IF EXISTS session_metadata",
+            "DROP TABLE IF EXISTS fact_relationships", 
+            "DROP TABLE IF EXISTS facts_metadata"
+        ]
     )
 })
 

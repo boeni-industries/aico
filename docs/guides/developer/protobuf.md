@@ -18,18 +18,18 @@ All Protocol Buffer definitions are located in the `/proto/` directory with the 
 
 ```
 /proto/
-  ├── core/           # Core message envelope and common types
-  │   ├── envelope.proto
-  │   ├── common.proto
-  │   └── api_gateway.proto
-  ├── conversation/   # Conversation-related messages
-  │   └── conversation.proto
-  ├── emotion/        # Emotion simulation and recognition messages
-  │   └── emotion.proto
-  ├── integration/    # Cross-module integration messages
-  │   └── integration.proto
-  └── personality/    # Personality simulation messages
-      └── personality.proto
+  ├── aico_core_envelope.proto      # Core message envelope
+  ├── aico_core_common.proto        # Common types and utilities
+  ├── aico_core_api_gateway.proto   # API Gateway messages
+  ├── aico_core_logging.proto       # Logging system messages
+  ├── aico_core_plugin_system.proto # Plugin system messages
+  ├── aico_core_update_system.proto # Update system messages
+  ├── aico_conversation.proto       # Conversation messages
+  ├── aico_emotion.proto            # Emotion simulation messages
+  ├── aico_integration.proto        # Cross-module integration
+  ├── aico_modelservice.proto       # Model service messages
+  ├── aico_personality.proto        # Personality simulation
+  └── aico_ui.proto                 # UI-related messages
 ```
 
 ## Code Generation
@@ -62,31 +62,40 @@ All Protocol Buffer definitions are located in the `/proto/` directory with the 
 
 ### Generating Code
 
-**Note:** All commands assume you're starting from the AICO project root directory (`d:/dev/aico` on Windows). For Python, you must ensure the `-I` (include) path points to both your `proto` directory and your Python venv's `site-packages`, where the Google well-known `.proto` files are located. See below for the exact command and troubleshooting.
+**Note:** All commands assume you're starting from the AICO project root directory. For Python, you must ensure the `-I` (include) path points to both your `proto` directory and your Python venv's `site-packages`, where the Google well-known `.proto` files are located. See below for the exact command and troubleshooting.
 
 #### Python (Backend & Shared)
 
-From the **project root** (`d:/dev/aico`), run:
+From the **project root**, run:
 
 ```sh
-protoc -I=proto -I=backend/.venv/Lib/site-packages --python_out=shared/aico/proto proto/aico_core_api_gateway.proto proto/aico_core_common.proto proto/aico_core_envelope.proto proto/aico_core_logging.proto proto/aico_core_plugin_system.proto proto/aico_core_update_system.proto proto/aico_emotion.proto proto/aico_integration.proto proto/aico_personality.proto proto/aico_conversation.proto
+# macOS/Linux
+protoc -I=proto -I=.venv/lib/python3.13/site-packages --python_out=shared/aico/proto proto/*.proto
+
+# Windows
+protoc -I=proto -I=.venv/Lib/site-packages --python_out=shared/aico/proto proto/*.proto
 ```
 
 - If you use a different venv location or OS, adjust the `-I` path accordingly.
 - If you get errors about missing `google/protobuf/*.proto` files, ensure your venv's `site-packages/google/protobuf/` contains the `.proto` files. See the troubleshooting section below.
 
+Note: you can also use the CLI to compile the proto files:
+```sh
+aico dev protoc
+```
+
 #### Dart (Flutter Frontend)
 
 ```bash
 cd proto
-protoc -I=. --dart_out=../frontend/lib/generated ./core/*.proto ./emotion/*.proto ./conversation/*.proto ./personality/*.proto ./integration/*.proto
+protoc -I=. --dart_out=../frontend/lib/generated ./*.proto
 ```
 
 #### JavaScript/TypeScript (Studio Admin Interface)
 
 ```bash
 cd proto
-protoc -I=. --js_out=import_style=commonjs,binary:../studio/src/generated --grpc-web_out=import_style=commonjs,mode=grpcwebtext:../studio/src/generated ./core/*.proto ./emotion/*.proto ./conversation/*.proto ./personality/*.proto ./integration/*.proto
+protoc -I=. --js_out=import_style=commonjs,binary:../studio/src/generated --grpc-web_out=import_style=commonjs,mode=grpcwebtext:../studio/src/generated ./*.proto
 ```
 
 ## Development Guidelines
@@ -172,11 +181,11 @@ message Result {
 
 ## Integration with Message Bus
 
-The ZeroMQ message bus uses these Protocol Buffer definitions for serialization and deserialization of all messages. See the [Message Bus Architecture](../architecture/message_bus.md) document for more details.
+The ZeroMQ message bus uses these Protocol Buffer definitions for serialization and deserialization of all messages. See the [Message Bus Architecture](../../architecture/message-bus.md) document for more details.
 
 ## Integration with API Gateway
 
-The API Gateway performs minimal transformation between external formats (JSON, gRPC) and internal Protocol Buffer messages. See the [API Gateway Architecture](../architecture/api_gateway.md) document for more details.
+The API Gateway performs minimal transformation between external formats (JSON, gRPC) and internal Protocol Buffer messages. See the API Gateway Architecture document for more details.
 
 ## Local-First and Federated Architecture Considerations
 

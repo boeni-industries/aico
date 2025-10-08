@@ -2,326 +2,143 @@
 title: Audit System Architecture
 ---
 
-# AICO Audit System
+# Security Audit & Monitoring
 
-## Overview
+AICO's security audit system provides comprehensive logging and monitoring of security events across all system components.
 
-The AICO Audit System provides comprehensive, privacy-respecting audit capabilities across all system components, user interactions, and data operations. It is designed to support both coupled (single-device) and detached (multi-device/federated) deployments while maintaining AICO's core principles of local-first processing, privacy by design, and zero-effort security.
+**Current Status**: ✅ Core audit logging operational via AICO logging system, advanced threat detection and compliance reporting planned.
 
-This document outlines the architecture, implementation, and best practices for AICO's audit system, which serves as the foundation for security monitoring, compliance verification, and operational transparency.
+## Current Implementation ✅
 
-## Core Principles
+### Operational Features
+- **Centralized Logging**: All security events logged via AICO logging system
+- **Message Bus Integration**: Audit events distributed through encrypted ZMQ message bus
+- **Database Storage**: Encrypted audit trail stored in libSQL database
+- **CLI Access**: `aico logs` command provides audit trail inspection
+- **Component Coverage**: Authentication, system operations, and configuration changes logged
 
-### 1. Privacy-First Auditing
-- All audit data is stored locally by default
-- No audit information leaves the device without explicit user consent
-- Sensitive data is redacted or encrypted in audit records
-- Users maintain full control over audit data retention and access
+### Security Features
+- **Encrypted Storage**: All audit data encrypted at rest using AES-256-GCM
+- **Structured Logging**: Consistent JSON format with metadata and context
+- **Access Control**: Admin-level permissions required for audit access
+- **Privacy Protection**: No sensitive user data included in audit records
 
-### 2. Comprehensive Coverage
-- Every security-relevant event is audited across all system components
-- All modules, plugins, and external integrations participate in the audit system
-- Both frontend and backend activities are captured with consistent schema
-- Audit coverage spans all deployment patterns (coupled and detached)
+## Current Audit Coverage
 
-### 3. Tamper-Evident Records
-- Audit logs are cryptographically protected against modification
-- Append-only storage prevents deletion or alteration of past records
-- Hash chaining ensures log integrity and sequence validation
-- Secure timestamps provide non-repudiation of event timing
+### Authentication Events ✅ Implemented
+- **Login Attempts**: Success/failure with user context and IP address
+- **Session Management**: JWT token creation, renewal, and expiration
+- **Admin Access**: CLI and backend administrative operations
+- **Account Security**: Lockout events and security violations
 
-### 4. Minimal Performance Impact
-- Efficient, asynchronous audit recording with minimal latency impact
-- Optimized storage and indexing for fast query performance
-- Configurable verbosity levels based on security context and user preferences
-- Background processing for audit analysis and aggregation
+### System Events ✅ Implemented
+- **Component Lifecycle**: Service startup, shutdown, and health status
+- **Configuration Changes**: Security setting modifications and updates
+- **Database Operations**: Encrypted data access patterns and schema changes
+- **Message Bus Activity**: Inter-component communication and security events
 
-### 5. Actionable Insights
-- Audit data supports real-time security monitoring and alerts
-- Historical analysis for pattern detection and anomaly identification
-- Clear correlation between audit events and system activities
-- Exportable audit reports for compliance and review
+### Planned Event Types 🚧
+- **Access Control**: Authorization decisions and policy violations
+- **Data Operations**: File access patterns and encryption operations
+- **Plugin Activity**: Third-party plugin security events and permissions
+- **Network Security**: Connection attempts, anomalies, and threat detection
 
-## Audit Categories
+## Implementation Examples
 
-The AICO Audit System captures events across six primary categories:
-
-### 1. Authentication & Authorization
-- User authentication attempts (success/failure)
-- Session creation, renewal, and termination
-- Permission grants and revocations
-- Access control decisions (allow/deny)
-- Role changes and privilege modifications
-- Device pairing and trust establishment
-
-### 2. Data Operations
-- Data access (read/write/delete)
-- Database schema changes
-- Encryption/decryption operations
-- Backup and restore activities
-- Data export and import
-- Federation and synchronization events
-
-### 3. System Operations
-- System startup and shutdown
-- Configuration changes
-- Plugin installation, activation, and removal
-- Updates and patches
-- Resource allocation and utilization thresholds
-- Health status changes and recovery actions
-
-### 4. User Interactions
-- Conversation history (metadata only, not content)
-- Feature usage patterns (privacy-preserving)
-- User preference changes
-- Consent grants and withdrawals
-- Profile modifications
-- Embodiment and presence changes
-
-### 5. Security Events
-- Security policy violations
-- Anomalous behavior detection
-- Rate limiting and throttling actions
-- Encryption key rotation
-- Certificate operations
-- Security-relevant configuration changes
-
-### 6. External Integrations
-- API access by external systems
-- Plugin activity and resource usage
-- Third-party service interactions
-- Data sharing events (when explicitly permitted)
-- Federation with other AICO instances
-- Cloud service utilization (when enabled)
-
-## Audit Record Schema
-
-All audit events conform to a standardized schema to ensure consistency across components:
-
-```json
-{
-  "audit_id": "uuid-v4-here",
-  "timestamp": "2025-08-04T07:35:54.123Z",
-  "category": "authentication",
-  "event_type": "login_attempt",
-  "outcome": "success|failure",
-  "severity": "info|warning|critical",
-  "source": {
-    "module": "backend.auth_service",
-    "component": "login_handler",
-    "function": "process_login",
-    "file": "auth_service.py",
-    "line": 142
-  },
-  "subject": {
-    "type": "user|system|plugin",
-    "id": "user-123",
-    "name": "admin",
-    "device_id": "device-456"
-  },
-  "object": {
-    "type": "resource|data|function",
-    "id": "resource-789",
-    "name": "user_database",
-    "path": "/data/users"
-  },
-  "context": {
-    "session_id": "session-abc",
-    "request_id": "req-xyz",
-    "trace_id": "trace-def",
-    "ip_address": "192.168.1.1",
-    "device_info": "MacBook Pro (2025)"
-  },
-  "details": {
-    // Event-specific details, varies by event type
-  },
-  "metadata": {
-    "record_hash": "sha256-hash-of-previous-record-plus-this-record",
-    "previous_hash": "sha256-hash-of-previous-record",
-    "sequence_number": 12345
-  }
-}
-```
-
-### Required Fields
-- `audit_id`: Unique identifier for the audit record
-- `timestamp`: ISO 8601 timestamp with millisecond precision
-- `category`: One of the six primary audit categories
-- `event_type`: Specific event identifier (e.g., "login_attempt")
-- `outcome`: Result of the audited action (success/failure/etc.)
-- `source`: Information about the code generating the audit event
-- `metadata`: Record integrity information
-
-### Optional Fields
-- `severity`: Importance level of the audit event
-- `subject`: Entity performing the action (user, system, plugin)
-- `object`: Target of the action (resource, data, function)
-- `context`: Additional environmental information
-- `details`: Event-specific details (varies by event type)
-
-## Architecture Integration
-
-The Audit System integrates with AICO's existing architecture through several key mechanisms:
-
-### 1. Message Bus Integration
-
-Audit events are published to dedicated topics on the ZeroMQ message bus:
-
-```
-audit.{category}.{event_type}
-```
-
-For example:
-- `audit.authentication.login_attempt`
-- `audit.data.database_access`
-- `audit.security.policy_violation`
-
-This allows the Audit Collector service to subscribe to all audit events while maintaining the system's message-driven architecture.
-
-### 2. Cross-Cutting Aspect
-
-The Audit System functions as a cross-cutting concern across all modules:
-
-```mermaid
-graph TD
-    subgraph Modules
-        Core[Core AI]
-        Embodiment[Embodiment]
-        Emotion[Emotion]
-        Plugins[Plugins]
-        Data[Data]
-    end
-    
-    Core -- Audit Events --> Bus[ZeroMQ Bus]
-    Embodiment -- Audit Events --> Bus
-    Emotion -- Audit Events --> Bus
-    Plugins -- Audit Events --> Bus
-    Data -- Audit Events --> Bus
-    
-    Bus -- Audit Topics --> Collector[Audit Collector]
-    Collector --> Store[Tamper-Evident Store]
-    Store -- Query API --> Admin[Admin UI/CLI]
-```
-
-### 3. Audit Collector Service
-
-The Audit Collector service:
-- Subscribes to all `audit.*` topics
-- Validates and enriches audit records
-- Computes integrity hashes and maintains chain
-- Stores records in the tamper-evident audit store
-- Provides query capabilities for authorized access
-
-### 4. Frontend-Backend Bridge
-
-For frontend audit events:
-1. Flutter emits audit events via secure WebSocket/HTTP
-2. Backend bridge validates and republishes to ZeroMQ
-3. Audit Collector processes events identically to backend events
-
-This ensures consistent audit coverage regardless of source.
-
-## Tamper-Evident Storage
-
-The Audit System uses OpenTelemetry's integrity verification with libSQL to ensure audit records cannot be modified or deleted:
-
-### 1. Simplified Hash Chaining
-
-- Each audit record includes a hash of the previous record
-- Hash chaining is implemented using OpenTelemetry's integrity extension
-- Verification can be performed on-demand rather than continuously
-
-```
-Record 1: Hash = H(Salt + Record1_Contents)
-Record 2: Hash = H(Record1_Hash + Record2_Contents)
-Record 3: Hash = H(Record2_Hash + Record3_Contents)
-```
-
-### 2. Storage Implementation
-
+### Current Audit Logging
 ```python
-def store_audit_record(record):
-    # Get the last record hash
-    previous_hash = get_last_record_hash()
-    
-    # Add metadata to the record
-    record['metadata'] = {
-        'previous_hash': previous_hash,
-        'sequence_number': get_next_sequence(),
-        'record_hash': None  # Placeholder
-    }
-    
-    # Calculate the record hash (excluding the hash field itself)
-    record_json = json.dumps(record, sort_keys=True)
-    record_hash = hashlib.sha256(record_json.encode()).hexdigest()
-    
-    # Update the record with its hash
-    record['metadata']['record_hash'] = record_hash
-    
-    # Store in append-only database
-    append_to_audit_store(record)
-    
-    # Return the hash for the next record
-    return record_hash
+# Authentication event logging
+from aico.core.logging import get_logger
+
+logger = get_logger('auth')
+logger.info('Authentication successful', extra={
+    'user_id': user.id,
+    'method': 'jwt_token',
+    'ip_address': request.client.host,
+    'user_agent': request.headers.get('user-agent'),
+    'session_id': session.id
+})
 ```
 
-### 3. Verification Process
-
-The system periodically verifies the integrity of the audit chain:
-
+### System Event Logging
 ```python
-def verify_audit_chain():
-    records = get_all_audit_records()
-    previous_hash = None
-    
-    for record in records:
-        # Verify sequence
-        if previous_hash and record['metadata']['previous_hash'] != previous_hash:
-            raise IntegrityError(f"Chain broken at record {record['audit_id']}")
-        
-        # Verify record hash
-        stored_hash = record['metadata']['record_hash']
-        calculated_hash = calculate_record_hash(record)
-        
-        if stored_hash != calculated_hash:
-            raise IntegrityError(f"Record tampered: {record['audit_id']}")
-        
-        previous_hash = stored_hash
-    
-    return True
+# Component lifecycle logging
+logger = get_logger('system')
+logger.info('Message bus broker started', extra={
+    'component': 'message_bus',
+    'ports': [5555, 5556],
+    'encryption': 'curve_zmq',
+    'startup_time': startup_duration
+})
 ```
 
-## Privacy Controls
+### CLI Audit Access
+```bash
+# View recent authentication events
+aico logs tail --filter="auth" --lines=50
 
-The Audit System implements several privacy safeguards:
+# Search for specific events
+aico logs search --query="Authentication successful" --since="1h"
 
-### 1. Data Minimization
+# Export audit logs
+aico logs export --format=json --output=audit.json
+```
 
-- Only security-relevant information is recorded
-- Personal data is excluded or redacted by default
-- Content of conversations is never included in audit logs
-- Configurable verbosity levels control detail capture
+## Planned Enhancements 🚧
 
-### 2. Access Controls
+### Advanced Threat Detection
+- **Pattern Analysis**: Real-time detection of suspicious behavior patterns
+- **Anomaly Detection**: ML-based identification of unusual access patterns
+- **Risk Scoring**: Dynamic risk assessment based on user behavior
+- **Automated Response**: Configurable responses to security threats
 
-- Audit data access requires elevated permissions
-- Role-based access controls limit visibility
-- All audit data access is itself audited (meta-auditing)
-- Time-limited access grants for review purposes
+### Compliance Reporting
+- **Audit Reports**: Pre-configured compliance reports for common frameworks
+- **Evidence Collection**: Automated gathering of audit evidence
+- **Retention Management**: Policy-based audit data retention and archival
+- **Export Capabilities**: Secure export of audit data for external review
 
-### 3. Retention Policies
+## Technical Architecture
 
-- Configurable retention periods (default: 90 days)
-- Automatic pruning of expired audit records
-- Option to archive rather than delete expired records
-- Legal hold capability for compliance scenarios
+### Current Integration ✅
+- **ZeroMQ Message Bus**: Audit events flow through encrypted message bus
+- **LibSQL Storage**: Encrypted audit trail in main database
+- **Structured Logging**: JSON format with consistent metadata
+- **CLI Interface**: Direct access via `aico logs` commands
 
-### 4. Encryption
+### Planned Architecture 🚧
+- **Dedicated Audit Collector**: Centralized audit event processing
+- **Tamper-Evident Storage**: Hash-chained audit records for integrity
+- **Real-Time Monitoring**: Live security event analysis
+- **Cross-Component Coverage**: Audit events from all system modules
 
-- Audit database encrypted at rest (gocryptfs)
-- Sensitive fields encrypted with separate keys
-- Export packages encrypted with recipient keys
-- Key rotation does not affect historical audit verification
+## Security Features
+
+### Current Security ✅
+- **Encrypted Storage**: All audit data encrypted at rest with AES-256-GCM
+- **Access Control**: Admin-level permissions required for audit access
+- **Structured Format**: Consistent JSON logging with metadata
+- **Privacy Protection**: No sensitive user data in audit records
+
+### Planned Security Enhancements 🚧
+- **Tamper-Evident Storage**: Hash-chained audit records for integrity verification
+- **Audit Trail Verification**: Cryptographic validation of audit record integrity
+- **Append-Only Storage**: Prevention of audit record modification or deletion
+- **Digital Signatures**: Cryptographic signing of critical audit events
+
+## Privacy & Compliance
+
+### Privacy Safeguards ✅
+- **Data Minimization**: Only security-relevant information recorded
+- **No Personal Data**: Conversation content never included in audit logs
+- **Encrypted Storage**: All audit data encrypted at rest
+- **Access Control**: Admin-level permissions required for audit access
+
+### Planned Privacy Features 🚧
+- **Configurable Retention**: Automatic pruning of expired audit records
+- **Data Redaction**: Automatic removal of sensitive information
+- **Export Controls**: Encrypted audit data export for compliance
+- **Legal Hold**: Compliance-driven audit data preservation
 
 ## Implementation Components
 
@@ -376,10 +193,6 @@ The central service responsible for collecting, validating, and storing audit ev
 ```python
 class AuditCollector:
     def __init__(self):
-        # Initialize OpenTelemetry with the audit processor
-        self.tracer_provider = TracerProvider()
-        self.tracer = self.tracer_provider.get_tracer("audit_system")
-        
         # Set up ZeroMQ subscription
         self.zmq_context = zmq.Context()
         self.socket = self.zmq_context.socket(zmq.SUB)
@@ -394,22 +207,17 @@ class AuditCollector:
             topic, message = self.socket.recv_multipart()
             audit_record = json.loads(message)
             
-            # Process with OpenTelemetry
-            with self.tracer.start_as_current_span("audit_record") as span:
-                span.set_attribute("audit.category", audit_record["category"])
-                span.set_attribute("audit.event_type", audit_record["event_type"])
-                
-                # Store with integrity verification
-                self.store.append(audit_record)
-                
-                # Check for alertable conditions
-                if audit_record.get("severity") == "critical":
-                    self.trigger_alert(audit_record)
+            # Store with integrity verification
+            self.store.append(audit_record)
+            
+            # Check for alertable conditions
+            if audit_record.get("severity") == "critical":
+                self.trigger_alert(audit_record)
 ```
 
 ### 3. Audit Store
 
-A simplified store that leverages libSQL with OpenTelemetry's integrity verification:
+A store that leverages libSQL with hash chaining for integrity verification:
 
 ```python
 class AuditStore:
@@ -739,7 +547,7 @@ The tamper-evident storage ensures the integrity of audit records, while the fle
 
 - [OWASP Logging Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html)
 - [NIST SP 800-92: Guide to Computer Security Log Management](https://csrc.nist.gov/publications/detail/sp/800-92/final)
-- [AICO Security Architecture](../security/security_overview.md)
-- [AICO Access Control](../security/access_control.md)
-- [AICO Instrumentation](../instrumentation/instrumentation.md)
-- [AICO Instrumentation Logging](../instrumentation/instrumentation_logging.md)
+- [AICO Security Architecture](./data-security.md)
+- AICO Access Control (file does not exist)
+- [AICO Instrumentation](../operations/instrumentation/instrumentation.md)
+- [AICO Instrumentation Logging](../operations/instrumentation/instrumentation-logging.md)

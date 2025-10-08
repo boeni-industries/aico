@@ -18,6 +18,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.text import Text
+from rich import box
 
 # Add shared module to path for CLI usage FIRST
 if getattr(sys, 'frozen', False):
@@ -278,13 +279,18 @@ def modelservice_callback(ctx: typer.Context, help: bool = typer.Option(False, "
             ("start", "Start the Modelservice"),
             ("stop", "Stop the Modelservice"),
             ("restart", "Restart the Modelservice"),
-            ("status", "Show Modelservice status and health")
+            ("status", "Show service status and health"),
+            ("models", "List available models"),
+            ("pull", "Download a model"),
+            ("embeddings", "Test embedding generation")
         ]
         
         examples = [
             "aico modelservice start",
             "aico modelservice status",
-            "aico modelservice restart"
+            "aico modelservice models",
+            "aico modelservice pull paraphrase-multilingual",
+            "aico modelservice embeddings 'test text'"
         ]
         
         format_subcommand_help(
@@ -718,4 +724,112 @@ def status():
         
     except Exception as e:
         console.print(f"{chars['cross']} [red]Error checking Modelservice status: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("models")
+def models():
+    """List available models in Ollama."""
+    try:
+        if not _is_modelservice_running():
+            console.print(f"[red]{chars['cross']} Modelservice is not running[/red]")
+            console.print("[dim]Start it with: aico modelservice start[/dim]")
+            raise typer.Exit(1)
+        
+        from cli.utils.zmq_client import get_ollama_models
+        response = get_ollama_models()
+        
+        if not response.get("success"):
+            console.print(f"[red]{chars['cross']} Failed to get models: {response.get('error', 'Unknown error')}[/red]")
+            raise typer.Exit(1)
+        
+        models_data = response.get("data", {}).get("models", [])
+        if not models_data:
+            console.print("[yellow]No models found[/yellow]")
+            return
+        
+        table = Table(
+            title="✨ [bold cyan]Available Models[/bold cyan]",
+            title_justify="left",
+            border_style="bright_blue",
+            header_style="bold yellow",
+            box=box.SIMPLE_HEAD,
+            padding=(0, 1)
+        )
+        table.add_column("Name", style="cyan", no_wrap=False, min_width=30)
+        table.add_column("Type", style="green", width=10)
+        table.add_column("Size", justify="right", style="bright_blue", width=12)
+        table.add_column("Modified", style="dim", width=12)
+        
+        for model in models_data:
+            name = model.get("name", "unknown")
+            model_type = "embedding" if any(emb in name.lower() for emb in ["embed", "minilm", "paraphrase", "bge"]) else "llm"
+            size = _format_size(model.get("size", 0))
+            modified = model.get("modified_at", "unknown")
+            if modified != "unknown" and len(modified) > 10:
+                modified = modified[:10]
+            
+            table.add_row(name, model_type, size, modified)
+        
+        console.print(table)
+        
+    except Exception as e:
+        console.print(f"[red]{chars['cross']} Error listing models: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("pull")
+def pull(model_name: str = typer.Argument(..., help="Name of the model to download")):
+    """Download a model via Ollama."""
+    try:
+        if not _is_modelservice_running():
+            console.print(f"[red]{chars['cross']} Modelservice is not running[/red]")
+            console.print("[dim]Start it with: aico modelservice start[/dim]")
+            raise typer.Exit(1)
+        
+        console.print(f"[yellow]📥 Pulling model: {model_name}[/yellow]")
+        
+        from cli.utils.zmq_client import pull_ollama_model
+        response = pull_ollama_model(model_name)
+        
+        if response.get("success"):
+            console.print(f"[green]{chars['check']} Successfully pulled model: {model_name}[/green]")
+        else:
+            console.print(f"[red]{chars['cross']} Failed to pull model: {response.get('error', 'Unknown error')}[/red]")
+            raise typer.Exit(1)
+            
+    except Exception as e:
+        console.print(f"[red]{chars['cross']} Error pulling model: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("embeddings")
+def embeddings(
+    text: str = typer.Argument(..., help="Text to generate embeddings for"),
+    model: str = typer.Option("paraphrase-multilingual", "--model", "-m", help="Embedding model to use")
+):
+    """Test embedding generation."""
+    try:
+        if not _is_modelservice_running():
+            console.print(f"[red]{chars['cross']} Modelservice is not running[/red]")
+            console.print("[dim]Start it with: aico modelservice start[/dim]")
+            raise typer.Exit(1)
+        
+        console.print(f"[yellow]🧠 Generating embeddings for: '{text[:50]}{'...' if len(text) > 50 else ''}'[/yellow]")
+        console.print(f"[dim]Using model: {model}[/dim]")
+        
+        from cli.utils.zmq_client import get_embeddings
+        response = get_embeddings(model, text)
+        
+        if response.get("success"):
+            embeddings = response.get("data", {}).get("embedding", [])
+            console.print(f"[green]{chars['check']} Generated embeddings successfully[/green]")
+            console.print(f"[dim]Dimensions: {len(embeddings)}[/dim]")
+            console.print(f"[dim]Sample values: {embeddings[:5]}...[/dim]")
+        else:
+            console.print(f"[red]{chars['cross']} Failed to generate embeddings: {response.get('error', 'Unknown error')}[/red]")
+            raise typer.Exit(1)
+            
+    except Exception as e:
+        console.print(f"[red]{chars['cross']} Error generating embeddings: {e}[/red]")
         raise typer.Exit(1)

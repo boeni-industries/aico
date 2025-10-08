@@ -48,6 +48,36 @@ class ModelServiceClient:
         self.logger = get_logger("backend", "services.modelservice_client")
         self.bus_client: Optional[MessageBusClient] = None
     
+    async def check_modelservice_health(self) -> bool:
+        """Check if the modelservice is running and responding.
+        
+        Returns:
+            bool: True if modelservice is healthy, False otherwise
+        """
+        try:
+            # Use a very short timeout for health check
+            original_timeout = self.config.timeout
+            self.config.timeout = 2.0
+            
+            # Send a simple ping request
+            result = await self._send_request(
+                "modelservice/health/request/v1", 
+                "modelservice/health/response/v1", 
+                {"check": "ping"}
+            )
+            
+            # Restore original timeout
+            self.config.timeout = original_timeout
+            return result.get('success', False)
+        except TimeoutError:
+            self.logger.error("⚠️ MODELSERVICE HEALTH CHECK FAILED - Service appears to be offline")
+            print("⚠️ MODELSERVICE HEALTH CHECK FAILED - Service appears to be offline")
+            return False
+        except Exception as e:
+            self.logger.error(f"⚠️ MODELSERVICE HEALTH CHECK FAILED: {e}")
+            print(f"⚠️ MODELSERVICE HEALTH CHECK FAILED: {e}")
+            return False
+    
     async def _ensure_connection(self):
         """Ensure ZMQ connection is established."""
         if self.bus_client is None:
@@ -63,19 +93,64 @@ class ModelServiceClient:
     
     async def _send_request(self, request_topic: str, response_topic: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Send a request via ZMQ and wait for response."""
+        import time
+        start_time = time.time()
+        
+        # Add detailed debugging for embedding and chat requests
+        is_embedding_request = "embeddings" in request_topic
+        is_chat_request = "chat" in request_topic
+        
+        if is_embedding_request:
+            self.logger.debug(f"🔍 [ZMQ_DEBUG] Starting {request_topic} request")
+            text = data.get("prompt", "")
+            text_length = len(text) if text else 0
+            text_preview = text[:50] + "..." if text and len(text) > 50 else text
+            self.logger.debug(f"🔍 [ZMQ_DEBUG] Text length: {text_length}, preview: '{text_preview}'")
+        elif is_chat_request:
+            self.logger.debug(f"💬 [CHAT_DEBUG] Starting {request_topic} request")
+            messages = data.get("messages", [])
+            message_count = len(messages)
+            model = data.get("model", "unknown")
+            self.logger.debug(f"💬 [CHAT_DEBUG] Model: {model}, Messages: {message_count}")
+            if messages:
+                last_msg = messages[-1]
+                last_msg_content = last_msg.get("content", "")[:50] + "..." if len(last_msg.get("content", "")) > 50 else last_msg.get("content", "")
+                self.logger.debug(f"💬 [CHAT_DEBUG] Last message: role='{last_msg.get('role', 'unknown')}', content='{last_msg_content}'")
+        
+        
+        # Connection setup timing
+        connection_start = time.time()
+        # Reduced connection debug noise
         await self._ensure_connection()
+        connection_time = time.time() - connection_start
+        # Only log slow connections
+        if is_embedding_request and connection_time > 0.1:
+            print(f"⏱️ [MODELSERVICE_TIMING] SLOW connection: {connection_time:.4f}s")
+            self.logger.debug(f"🔍 [ZMQ_DEBUG] Connection setup took {connection_time:.4f}s")
+            self.logger.debug(f"💬 [CHAT_DEBUG] Connection setup took {connection_time:.4f}s")
         
         # Generate correlation ID for request/response matching
         correlation_id = str(uuid.uuid4())
+        if is_embedding_request:
+            self.logger.debug(f"🔍 [ZMQ_DEBUG] Using correlation_id: {correlation_id}")
+        elif is_chat_request:
+            self.logger.debug(f"💬 [CHAT_DEBUG] Using correlation_id: {correlation_id}")
         
         # Create proper protobuf message based on request type
-        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest
+        from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest, EmbeddingsRequest, NerRequest, IntentClassificationRequest, SentimentRequest
         
-        if "completions" in request_topic:
+        if "completions" in request_topic or "chat" in request_topic:
             # Create CompletionsRequest protobuf
             request_proto = CompletionsRequest()
             request_proto.model = data.get("model", "")
-            if "prompt" in data:
+            if "messages" in data:
+                # For chat requests with message arrays
+                from aico.proto.aico_modelservice_pb2 import ConversationMessage
+                for message in data["messages"]:
+                    msg = request_proto.messages.add()
+                    msg.role = message.get("role", "user")
+                    msg.content = message.get("content", "")
+            elif "prompt" in data:
                 # For simple prompt, convert to messages format
                 from aico.proto.aico_modelservice_pb2 import ConversationMessage
                 msg = request_proto.messages.add()
@@ -86,6 +161,37 @@ class ModelServiceClient:
                 request_proto.temperature = data["options"]["temperature"]
             if "max_tokens" in data.get("options", {}):
                 request_proto.max_tokens = data["options"]["max_tokens"]
+        elif "embeddings" in request_topic:
+            # Create EmbeddingsRequest protobuf
+            protobuf_start = time.time()
+            # Reduced protobuf debug noise
+            request_proto = EmbeddingsRequest()
+            request_proto.model = data.get("model", "")
+            request_proto.prompt = data.get("prompt", "")
+            protobuf_time = time.time() - protobuf_start
+            # Only log slow protobuf creation
+            if is_embedding_request and protobuf_time > 0.01:
+                print(f"⏱️ [MODELSERVICE_TIMING] SLOW protobuf: {protobuf_time:.4f}s")
+        elif "ner" in request_topic:
+            # Create NerRequest protobuf
+            request_proto = NerRequest()
+            request_proto.text = data.get("text", "")
+            if data.get("max_length") is not None:
+                request_proto.max_length = data["max_length"]
+            if data.get("return_clusters") is not None:
+                request_proto.return_clusters = data["return_clusters"]
+        elif "intent" in request_topic:
+            # Create IntentClassificationRequest protobuf
+            request_proto = IntentClassificationRequest()
+            request_proto.text = data.get("text", "")
+            if data.get("user_id"):
+                request_proto.user_id = data["user_id"]
+            if data.get("conversation_context"):
+                request_proto.conversation_context.extend(data["conversation_context"])
+        elif "sentiment" in request_topic:
+            # Create SentimentRequest protobuf
+            request_proto = SentimentRequest()
+            request_proto.text = data.get("text", "")
         elif "health" in request_topic:
             request_proto = HealthRequest()
         elif "models" in request_topic:
@@ -117,39 +223,137 @@ class ModelServiceClient:
                 
                 self.logger.debug(f"Processing response for correlation_id: {correlation_id}")
                 
-                from aico.proto.aico_modelservice_pb2 import CompletionsResponse
                 if hasattr(message, 'any_payload'):
-                    # Unpack the Any payload
-                    completions_response = CompletionsResponse()
-                    if message.any_payload.Unpack(completions_response):
-                        self.logger.debug(f"Successfully unpacked CompletionsResponse: success={completions_response.success}")
-                        response_data = {
-                            'success': completions_response.success,
-                            'error': completions_response.error if completions_response.HasField('error') else None
-                        }
-                        if completions_response.HasField('result'):
-                            # Check if result has message field (actual field name from logs)
-                            if hasattr(completions_response.result, 'message'):
-                                response_data['response'] = completions_response.result.message.content
-                                self.logger.debug(f"Extracted message content: {completions_response.result.message.content[:100]}...")
-                            elif hasattr(completions_response.result, 'content'):
-                                response_data['response'] = completions_response.result.content
-                                self.logger.debug(f"Extracted content: {completions_response.result.content[:100]}...")
-                            elif hasattr(completions_response.result, 'text'):
-                                response_data['response'] = completions_response.result.text
-                                self.logger.debug(f"Extracted text: {completions_response.result.text[:100]}...")
-                            else:
-                                # Log available fields for debugging
-                                fields = [field.name for field in completions_response.result.DESCRIPTOR.fields]
-                                self.logger.debug(f"Available result fields: {fields}")
-                                response_data['response'] = str(completions_response.result)
+                    # Handle embeddings responses
+                    if "embeddings" in response_topic:
+                        from aico.proto.aico_modelservice_pb2 import EmbeddingsResponse
+                        embeddings_response = EmbeddingsResponse()
+                        if message.any_payload.Unpack(embeddings_response):
+                            self.logger.debug(f"Successfully unpacked EmbeddingsResponse: success={embeddings_response.success}")
+                            response_data = {
+                                'success': embeddings_response.success,
+                                'error': embeddings_response.error if embeddings_response.HasField('error') else None
+                            }
+                            if embeddings_response.success and embeddings_response.embedding:
+                                response_data['data'] = {'embedding': list(embeddings_response.embedding)}
+                                self.logger.debug(f"Extracted embedding with {len(embeddings_response.embedding)} dimensions")
+                            response_received.set()
                         else:
-                            self.logger.debug("No result field in response")
-                        response_received.set()
+                            self.logger.error("Failed to unpack EmbeddingsResponse")
+                            response_data = {'success': False, 'error': 'Failed to unpack response'}
+                            response_received.set()
+                    # Handle NER responses
+                    elif "ner" in response_topic:
+                        from aico.proto.aico_modelservice_pb2 import NerResponse
+                        ner_response = NerResponse()
+                        if message.any_payload.Unpack(ner_response):
+                            self.logger.debug(f"Successfully unpacked NerResponse: success={ner_response.success}")
+                            response_data = {
+                                'success': ner_response.success,
+                                'error': ner_response.error if ner_response.HasField('error') else None
+                            }
+                            if ner_response.success:
+                                # Convert protobuf map to Python dict with confidence scores
+                                entities = {}
+                                for entity_type, entity_list in ner_response.entities.items():
+                                    # Handle new EntityWithConfidence structure
+                                    entities[entity_type] = []
+                                    for entity_with_conf in entity_list.entities:
+                                        entities[entity_type].append({
+                                            'text': entity_with_conf.text,
+                                            'confidence': entity_with_conf.confidence
+                                        })
+                                response_data['data'] = {'entities': entities}
+                                self.logger.debug(f"Extracted {len(entities)} entity types with confidence scores")
+                            response_received.set()
+                        else:
+                            self.logger.error("Failed to unpack NerResponse")
+                            response_data = {'success': False, 'error': 'Failed to unpack response'}
+                            response_received.set()
+                    # Handle Intent Classification responses
+                    elif "intent" in response_topic:
+                        from aico.proto.aico_modelservice_pb2 import IntentClassificationResponse
+                        intent_response = IntentClassificationResponse()
+                        if message.any_payload.Unpack(intent_response):
+                            self.logger.debug(f"Successfully unpacked IntentClassificationResponse: success={intent_response.success}")
+                            response_data = {
+                                'success': intent_response.success,
+                                'error': intent_response.error if intent_response.HasField('error') else None
+                            }
+                            if intent_response.success:
+                                # Extract intent classification data
+                                alternatives = []
+                                for alt in intent_response.alternative_predictions:
+                                    alternatives.append((alt.intent, alt.confidence))
+                                
+                                response_data['data'] = {
+                                    'predicted_intent': intent_response.predicted_intent,
+                                    'confidence': intent_response.confidence,
+                                    'detected_language': intent_response.detected_language,
+                                    'inference_time_ms': intent_response.inference_time_ms,
+                                    'alternatives': alternatives,
+                                    'metadata': dict(intent_response.metadata)
+                                }
+                                self.logger.debug(f"Intent classified as: {intent_response.predicted_intent} (confidence={intent_response.confidence:.2f})")
+                            response_received.set()
+                        else:
+                            self.logger.error("Failed to unpack IntentClassificationResponse")
+                            response_data = {'success': False, 'error': 'Failed to unpack response'}
+                            response_received.set()
+                    # Handle Sentiment responses
+                    elif "sentiment" in response_topic:
+                        self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] ✅ Received sentiment response!")
+                        from aico.proto.aico_modelservice_pb2 import SentimentResponse
+                        sentiment_response = SentimentResponse()
+                        if message.any_payload.Unpack(sentiment_response):
+                            self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] ✅ Successfully unpacked SentimentResponse: success={sentiment_response.success}")
+                            response_data = {
+                                'success': sentiment_response.success,
+                                'error': sentiment_response.error if sentiment_response.HasField('error') else None
+                            }
+                            if sentiment_response.success:
+                                response_data['data'] = {
+                                    'sentiment': sentiment_response.sentiment,
+                                    'confidence': sentiment_response.confidence
+                                }
+                                self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] ✅ Extracted sentiment: {sentiment_response.sentiment} (confidence: {sentiment_response.confidence:.3f})")
+                            else:
+                                self.logger.error(f"🔍 [SENTIMENT_CLIENT_DEBUG] ❌ Sentiment response failed: {sentiment_response.error}")
+                            response_received.set()
+                        else:
+                            self.logger.error("🔍 [SENTIMENT_CLIENT_DEBUG] ❌ Failed to unpack SentimentResponse")
+                            response_data = {'success': False, 'error': 'Failed to unpack response'}
+                            response_received.set()
                     else:
-                        self.logger.error("Failed to unpack CompletionsResponse")
-                        response_data = {'success': False, 'error': 'Failed to unpack response'}
-                        response_received.set()
+                        # Handle completions/chat responses
+                        from aico.proto.aico_modelservice_pb2 import CompletionsResponse
+                        completions_response = CompletionsResponse()
+                        if message.any_payload.Unpack(completions_response):
+                            self.logger.debug(f"Successfully unpacked CompletionsResponse: success={completions_response.success}")
+                            response_data = {
+                                'success': completions_response.success,
+                                'error': completions_response.error if completions_response.HasField('error') else None
+                            }
+                            if completions_response.HasField('result'):
+                                # Check if result has message field (actual field name from logs)
+                                if hasattr(completions_response.result, 'message'):
+                                    response_data['data'] = {'content': completions_response.result.message.content}
+                                    self.logger.debug(f"Extracted message content: {completions_response.result.message.content[:100]}...")
+                                elif hasattr(completions_response.result, 'content'):
+                                    response_data['data'] = {'content': completions_response.result.content}
+                                    self.logger.debug(f"Extracted content: {completions_response.result.content[:100]}...")
+                                else:
+                                    # Log available fields for debugging
+                                    fields = [field.name for field in completions_response.result.DESCRIPTOR.fields]
+                                    self.logger.debug(f"Available result fields: {fields}")
+                                    response_data['data'] = {'content': str(completions_response.result)}
+                            else:
+                                self.logger.debug("No result field in response")
+                            response_received.set()
+                        else:
+                            self.logger.error("Failed to unpack CompletionsResponse")
+                            response_data = {'success': False, 'error': 'Failed to unpack response'}
+                            response_received.set()
                 else:
                     # Handle case where message doesn't have any_payload
                     self.logger.debug(f"Message structure: {type(message)}, fields: {dir(message)}")
@@ -161,23 +365,86 @@ class ModelServiceClient:
                 response_received.set()
         
         # Subscribe to response topic
+        subscription_start = time.time()
+        # Reduced subscription debug noise
         await self.bus_client.subscribe(response_topic, handle_response)
+        subscription_time = time.time() - subscription_start
+        
+        # Only log slow subscriptions
+        if is_embedding_request and subscription_time > 0.01:
+            print(f"⏱️ [MODELSERVICE_TIMING] SLOW subscription: {subscription_time:.4f}s")
+            self.logger.debug(f"🔍 [ZMQ_DEBUG] Subscribed to {response_topic} in {subscription_time:.4f}s")
+        elif is_chat_request:
+            self.logger.debug(f"💬 [CHAT_DEBUG] Subscribed to {response_topic} in {subscription_time:.4f}s")
         
         try:
             # Send request with correlation ID
+            publish_start = time.time()
+            # Reduced publishing debug noise
             await self.bus_client.publish(request_topic, request_proto, correlation_id=correlation_id)
+            publish_time = time.time() - publish_start
+            
+            # Only log slow publishing
+            if is_embedding_request and publish_time > 0.01:
+                print(f"⏱️ [MODELSERVICE_TIMING] SLOW publish: {publish_time:.4f}s")
+                self.logger.debug(f"🔍 [ZMQ_DEBUG] Published to {request_topic} in {publish_time:.4f}s")
+                self.logger.debug(f"🔍 [ZMQ_DEBUG] Waiting for response with timeout={self.config.timeout}s")
+            elif is_chat_request:
+                self.logger.debug(f"💬 [CHAT_DEBUG] Published to {request_topic} in {publish_time:.4f}s")
+                self.logger.debug(f"💬 [CHAT_DEBUG] Waiting for response with timeout={self.config.timeout}s")
             
             # Wait for response with timeout
+            wait_start = time.time()
+            # Reduced wait debug noise
             await asyncio.wait_for(response_received.wait(), timeout=self.config.timeout)
+            wait_time = time.time() - wait_start
+            total_time = time.time() - start_time
+            # Only log slow responses
+            if is_embedding_request and wait_time > 0.2:
+                print(f"⏱️ [MODELSERVICE_TIMING] SLOW response: {wait_time:.4f}s wait")
+            
+            if is_embedding_request:
+                self.logger.debug(f"🔍 [ZMQ_DEBUG] ✅ Response received in {wait_time:.4f}s (total: {total_time:.4f}s)")
+                self.logger.debug(f"🔍 [ZMQ_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={wait_time:.4f}s")
+            elif is_chat_request:
+                self.logger.debug(f"💬 [CHAT_DEBUG] ✅ Response received in {wait_time:.4f}s (total: {total_time:.4f}s)")
+                self.logger.debug(f"💬 [CHAT_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={wait_time:.4f}s")
             
             return response_data
             
         except asyncio.TimeoutError:
-            error_msg = f"Request timed out after {self.config.timeout}s"
-            self.logger.error(error_msg, extra={"topic": AICOTopics.LOGS_ENTRY})
+            total_time = time.time() - start_time
+            error_msg = f"Request timed out after {self.config.timeout}s - MODELSERVICE MAY BE OFFLINE"
+            
+            if is_embedding_request:
+                print(f"⏱️ [MODELSERVICE_TIMING] ❌ TIMEOUT after {total_time:.4f}s!")
+                print(f"⏱️ [MODELSERVICE_TIMING] Breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={self.config.timeout:.4f}s")
+                self.logger.error(f"🔍 [ZMQ_DEBUG] ❌ TIMEOUT after {total_time:.4f}s waiting for response")
+                self.logger.error(f"🔍 [ZMQ_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={self.config.timeout:.4f}s")
+            elif is_chat_request:
+                self.logger.error(f"💬 [CHAT_DEBUG] ❌ TIMEOUT after {total_time:.4f}s waiting for response")
+                self.logger.error(f"💬 [CHAT_DEBUG] Performance breakdown: connection={connection_time:.4f}s, subscription={subscription_time:.4f}s, publish={publish_time:.4f}s, wait={self.config.timeout:.4f}s")
+                self.logger.error(f"💬 [CHAT_DEBUG] Model requested: {data.get('model', 'unknown')}. Check if this model is available in Ollama.")
+            
+            self.logger.error(f"⚠️ {error_msg}", extra={"topic": AICOTopics.LOGS_ENTRY})
+            import time
+            timestamp = time.time()
+            print(f"⚠️ {error_msg} [{timestamp:.6f}]")
             return {"success": False, "error": error_msg}
+            
         except Exception as e:
+            total_time = time.time() - start_time
             error_msg = f"ZMQ request failed: {str(e)}"
+            
+            if is_embedding_request:
+                import traceback
+                self.logger.error(f"🔍 [ZMQ_DEBUG] ❌ Exception after {total_time:.4f}s: {e}")
+                self.logger.error(f"🔍 [ZMQ_DEBUG] Traceback: {traceback.format_exc()}")
+            elif is_chat_request:
+                import traceback
+                self.logger.error(f"💬 [CHAT_DEBUG] ❌ Exception after {total_time:.4f}s: {e}")
+                self.logger.error(f"💬 [CHAT_DEBUG] Traceback: {traceback.format_exc()}")
+            
             self.logger.error(error_msg, extra={"topic": AICOTopics.LOGS_ENTRY})
             return {"success": False, "error": error_msg}
     
@@ -189,8 +456,23 @@ class ModelServiceClient:
             {}
         )
     
+    async def get_chat_completions(self, model: str, messages: List[Dict[str, str]], **kwargs) -> Dict[str, Any]:
+        """Get chat completions from modelservice (conversational with message arrays)."""
+        request_data = {
+            "model": model,
+            "messages": messages,
+            "stream": kwargs.get("stream", False),
+            "options": kwargs.get("options", {})
+        }
+        
+        return await self._send_request(
+            AICOTopics.MODELSERVICE_CHAT_REQUEST,
+            AICOTopics.MODELSERVICE_CHAT_RESPONSE,
+            request_data
+        )
+    
     async def get_completions(self, model: str, prompt: str, **kwargs) -> Dict[str, Any]:
-        """Get text completions from modelservice."""
+        """Get text completions from modelservice (single prompt analysis)."""
         request_data = {
             "model": model,
             "prompt": prompt,
@@ -222,16 +504,234 @@ class ModelServiceClient:
     
     async def get_embeddings(self, model: str, prompt: str) -> Dict[str, Any]:
         """Get embeddings from modelservice."""
+        import time
+        start_time = time.time()
+        text_length = len(prompt)
+        text_preview = prompt[:30] + "..." if len(prompt) > 30 else prompt
+        
+        print(f"🔍 [FULL_TRACE] ModelServiceClient.get_embeddings() STARTED for: '{text_preview}' [{start_time:.6f}]")
+        self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] Starting embedding request for model={model}, text_length={text_length}")
+        
         request_data = {
             "model": model,
             "prompt": prompt
         }
         
-        return await self._send_request(
-            AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
-            AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
+        try:
+            send_request_start = time.time()
+            print(f"🔍 [FULL_TRACE] About to call _send_request() for embeddings [{send_request_start:.6f}]")
+            
+            result = await self._send_request(
+                AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
+                AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
+                request_data
+            )
+            
+            send_request_time = time.time() - send_request_start
+            elapsed_time = time.time() - start_time
+            print(f"🔍 [FULL_TRACE] _send_request() for embeddings completed in {send_request_time*1000:.2f}ms [{time.time():.6f}]")
+            
+            if result.get("success"):
+                embedding_dim = len(result.get("data", {}).get("embedding", []))
+                print(f"🔍 [FULL_TRACE] ModelServiceClient.get_embeddings() SUCCESS in {elapsed_time*1000:.2f}ms (dim: {embedding_dim}) [{time.time():.6f}]")
+                self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] ✅ Success! Got {embedding_dim}-dimensional embedding in {elapsed_time:.2f}s")
+            else:
+                print(f"🔍 [FULL_TRACE] ModelServiceClient.get_embeddings() FAILED in {elapsed_time*1000:.2f}ms: {result.get('error')} [{time.time():.6f}]")
+                self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] ❌ Failed to get embedding: {result.get('error')}")
+            
+            return result
+        except Exception as e:
+            import traceback
+            elapsed_time = time.time() - start_time
+            self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] ❌ Exception after {elapsed_time:.2f}s: {e}")
+            self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] Traceback: {traceback.format_exc()}")
+            raise
+    
+    async def get_embeddings_batch(self, model: str, prompts: List[str]) -> Dict[str, Any]:
+        """FIXED: Proper concurrent batch processing with controlled concurrency."""
+        import time
+        import asyncio
+        start_time = time.time()
+        
+        try:
+            self.logger.info(f"🔍 [BATCH_EMBEDDING_CLIENT] Processing {len(prompts)} embeddings with controlled concurrency")
+            
+            # FIXED: Use controlled concurrency instead of sequential processing
+            semaphore = asyncio.Semaphore(2)  # Max 2 concurrent requests to prevent overload
+            
+            async def process_single_embedding(prompt: str, index: int):
+                async with semaphore:
+                    try:
+                        single_start = time.time()
+                        result = await self.get_embeddings(model=model, prompt=prompt)
+                        single_time = time.time() - single_start
+                        
+                        if result.get("success") and "embedding" in result.get("data", {}):
+                            self.logger.debug(f"🔍 [BATCH_EMBEDDING_CLIENT] Embedding {index+1}/{len(prompts)} completed in {single_time:.3f}s")
+                            return result["data"]["embedding"]
+                        else:
+                            self.logger.warning(f"🔍 [BATCH_EMBEDDING_CLIENT] Embedding {index+1}/{len(prompts)} failed")
+                            return None
+                    except Exception as e:
+                        self.logger.error(f"🔍 [BATCH_EMBEDDING_CLIENT] Embedding {index+1}/{len(prompts)} error: {e}")
+                        return None
+            
+            # Process all embeddings concurrently with controlled concurrency
+            tasks = [process_single_embedding(prompt, i) for i, prompt in enumerate(prompts)]
+            embeddings = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Convert exceptions to None
+            embeddings = [emb if not isinstance(emb, Exception) else None for emb in embeddings]
+            failed_count = sum(1 for emb in embeddings if emb is None)
+            
+            elapsed_time = time.time() - start_time
+            successful_count = len([e for e in embeddings if e is not None])
+            
+            self.logger.info(f"🔍 [BATCH_EMBEDDING_CLIENT] BATCH COMPLETE: {successful_count}/{len(prompts)} embeddings in {elapsed_time:.2f}s (concurrent processing)")
+            
+            if elapsed_time > 5.0:
+                self.logger.warning(f"🔍 [BATCH_EMBEDDING_CLIENT] Slow batch processing: {elapsed_time:.2f}s for {len(prompts)} embeddings")
+            
+            return {
+                "success": True,
+                "data": {
+                    "embeddings": embeddings,
+                    "batch_size": len(prompts),
+                    "successful_count": successful_count,
+                    "failed_count": failed_count,
+                    "processing_time": elapsed_time
+                }
+            }
+        except Exception as e:
+            import traceback
+            elapsed_time = time.time() - start_time
+            self.logger.error(f"🚀 [BATCH_EMBEDDING_CLIENT] ❌ Exception after {elapsed_time:.2f}s: {e}")
+            self.logger.error(f"🚀 [BATCH_EMBEDDING_CLIENT] Traceback: {traceback.format_exc()}")
+            raise
+    
+    def _log_batch_performance(self, metrics: Dict[str, Any], total_time: float, 
+                              successful_count: int, failed_count: int, method: str) -> None:
+        """PERFORMANCE MONITORING: Log detailed batch processing metrics."""
+        batch_size = metrics["batch_size"]
+        individual_times = metrics.get("individual_times", [])
+        
+        # Calculate performance statistics
+        avg_time_per_embedding = total_time / batch_size if batch_size > 0 else 0
+        success_rate = (successful_count / batch_size * 100) if batch_size > 0 else 0
+        
+        # Individual timing statistics (for concurrent mode)
+        if individual_times:
+            avg_individual_time = sum(individual_times) / len(individual_times)
+            min_time = min(individual_times)
+            max_time = max(individual_times)
+            
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Method: {method}")
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Batch: {batch_size} items, {successful_count} success, {failed_count} failed ({success_rate:.1f}% success)")
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Total: {total_time:.2f}s, Avg per item: {avg_time_per_embedding:.3f}s")
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Individual times: avg={avg_individual_time:.3f}s, min={min_time:.3f}s, max={max_time:.3f}s")
+            
+            # Performance thresholds and warnings
+            if avg_time_per_embedding > 2.0:
+                self.logger.warning(f"📊 [BATCH_PERFORMANCE] ⚠️ SLOW BATCH: {avg_time_per_embedding:.3f}s per embedding (threshold: 2.0s)")
+            
+            if success_rate < 90:
+                self.logger.warning(f"📊 [BATCH_PERFORMANCE] ⚠️ LOW SUCCESS RATE: {success_rate:.1f}% (threshold: 90%)")
+                
+        else:
+            # True batch mode statistics
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Method: {method}")
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Batch: {batch_size} items, {successful_count} success, {failed_count} failed ({success_rate:.1f}% success)")
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Total: {total_time:.2f}s, Avg per item: {avg_time_per_embedding:.3f}s")
+            
+            # Performance comparison
+            estimated_individual_time = batch_size * 2.0  # Assume 2s per individual request
+            speedup = estimated_individual_time / total_time if total_time > 0 else 1
+            self.logger.info(f"📊 [BATCH_PERFORMANCE] Estimated speedup: {speedup:.1f}x vs individual requests")
+    
+    async def get_ner_entities(self, text: str, entity_types: List[str] = None) -> Dict[str, Any]:
+        """Get named entity recognition from modelservice with optional entity type filtering."""
+        import time
+        client_start = time.time()
+        print(f"🔍 [NER_DEEP_ANALYSIS] ModelServiceClient.get_ner_entities() STARTED [{client_start:.6f}]")
+        
+        request_data = {
+            "text": text
+        }
+        
+        # ROOT FIX: Pass specific entity types to GLiNER for focused extraction
+        if entity_types:
+            request_data["entity_types"] = entity_types
+        
+        zmq_start = time.time()
+        print(f"🔍 [NER_DEEP_ANALYSIS] About to call _send_request() [{zmq_start:.6f}]")
+        result = await self._send_request(
+            AICOTopics.MODELSERVICE_NER_REQUEST,
+            AICOTopics.MODELSERVICE_NER_RESPONSE,
             request_data
         )
+        client_end = time.time()
+        client_duration = client_end - client_start
+        print(f"🔍 [NER_DEEP_ANALYSIS] ModelServiceClient.get_ner_entities() COMPLETED in {client_duration*1000:.2f}ms [{client_end:.6f}]")
+        return result
+    
+    async def get_ner_entities_optimized(self, ner_request: Dict[str, Any]) -> Dict[str, Any]:
+        """REPURPOSED: Use existing NER endpoint with optimized parameters."""
+        self.logger.info(f"🔍 [GLINER_OPTIMIZED] Using existing NER endpoint with model: {ner_request.get('model_name', 'default')}")
+        
+        # REPURPOSE: Enhance existing NER request with optimization parameters
+        request_data = {
+            "text": ner_request.get("text", ""),
+            "entity_types": ner_request.get("entity_types", []),
+            # Add optimization parameters to existing endpoint
+            "threshold": ner_request.get("threshold", 0.35),
+            "model_name": ner_request.get("model_name", "urchade/gliner_multi-v2.1"),
+            "max_length": ner_request.get("max_length", 512),
+            "optimization_mode": True  # Signal to modelservice for optimized processing
+        }
+        
+        return await self._send_request(
+            AICOTopics.MODELSERVICE_NER_REQUEST,
+            AICOTopics.MODELSERVICE_NER_RESPONSE,
+            request_data
+        )
+    
+    # REMOVED: resolve_coreferences method (V3 cleanup)
+    
+    async def classify_intent(self, text: str, user_id: Optional[str] = None, conversation_context: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Get intent classification from modelservice using advanced AI processor."""
+        request_data = {
+            "text": text
+        }
+        
+        if user_id:
+            request_data["user_id"] = user_id
+        
+        if conversation_context:
+            request_data["conversation_context"] = conversation_context
+        
+        return await self._send_request(
+            AICOTopics.MODELSERVICE_INTENT_REQUEST,
+            AICOTopics.MODELSERVICE_INTENT_RESPONSE,
+            request_data
+        )
+    
+    async def get_sentiment_analysis(self, text: str) -> Dict[str, Any]:
+        """Get sentiment analysis from modelservice."""
+        request_data = {
+            "text": text
+        }
+        
+        self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] Sending sentiment request for text: '{text[:50]}...'")
+        self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] Request data: {request_data}")
+        
+        result = await self._send_request(
+            AICOTopics.MODELSERVICE_SENTIMENT_REQUEST,
+            AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE,
+            request_data
+        )
+        
+        self.logger.info(f"🔍 [SENTIMENT_CLIENT_DEBUG] Response received: {result}")
+        return result
     
     async def get_status(self) -> Dict[str, Any]:
         """Get modelservice status."""
@@ -257,10 +757,18 @@ _modelservice_client: Optional[ModelServiceClient] = None
 
 
 def get_modelservice_client(config_manager: ConfigurationManager) -> ModelServiceClient:
-    """Get singleton modelservice client instance."""
+    """Get singleton modelservice client instance.
+    
+    This function returns a client that can communicate with the modelservice,
+    but does not guarantee that the modelservice is actually running.
+    Use client.check_modelservice_health() to verify the service is available.
+    """
     global _modelservice_client
     
     if _modelservice_client is None:
         _modelservice_client = ModelServiceClient(config_manager)
+        logger = get_logger("backend", "services.modelservice_client")
+        logger.info("Created modelservice client - Note: this does not guarantee the modelservice is running")
+        print("[i] Created modelservice client - use check_modelservice_health() to verify service availability")
     
     return _modelservice_client

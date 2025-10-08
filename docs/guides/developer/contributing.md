@@ -61,7 +61,7 @@ AICO needs diverse skills and perspectives. Here's how you can contribute:
 - Develop autonomous agency algorithms
 - Work on personality modeling
 - Optimize local LLM integration
-- Build curiosity-driven learning systems
+- Build curiosity-driven learning systems (planned)
 
 #### 📱 **Flutter Developers**
 - Build cross-platform mobile/desktop UI

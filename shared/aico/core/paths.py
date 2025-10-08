@@ -122,6 +122,57 @@ class AICOPaths:
         return runtime_dir
     
     @classmethod
+    def get_memory_directory(cls) -> Path:
+        """
+        Get AICO memory system directory for all memory tiers.
+        
+        Platform-specific locations:
+        - Windows: %APPDATA%/aico/data/memory
+        - macOS: ~/Library/Application Support/aico/data/memory
+        - Linux: ~/.local/share/aico/data/memory
+        
+        Returns:
+            Path: Platform-appropriate memory directory
+        """
+        # Check for explicit override first
+        if override := os.getenv("AICO_MEMORY_DIR"):
+            return Path(override)
+        
+        # Use data directory with memory subdirectory
+        data_subdir = cls.get_data_subdirectory_from_config()
+        memory_dir = cls.get_data_directory() / data_subdir / "memory"
+        memory_dir.mkdir(parents=True, exist_ok=True)
+        return memory_dir
+    
+    @classmethod
+    def get_working_memory_path(cls) -> Path:
+        """Get working memory directory (LMDB files)."""
+        working_dir = cls.get_memory_directory() / "working"
+        working_dir.mkdir(parents=True, exist_ok=True)
+        return working_dir
+    
+    @classmethod
+    def get_semantic_memory_path(cls) -> Path:
+        """Get semantic memory directory (ChromaDB files)."""
+        semantic_dir = cls.get_memory_directory() / "semantic"
+        semantic_dir.mkdir(parents=True, exist_ok=True)
+        return semantic_dir
+    
+    @classmethod
+    def get_episodic_memory_path(cls) -> Path:
+        """Get episodic memory directory (libSQL files)."""
+        episodic_dir = cls.get_memory_directory() / "episodic"
+        episodic_dir.mkdir(parents=True, exist_ok=True)
+        return episodic_dir
+    
+    @classmethod
+    def get_procedural_memory_path(cls) -> Path:
+        """Get procedural memory directory (libSQL files)."""
+        procedural_dir = cls.get_memory_directory() / "procedural"
+        procedural_dir.mkdir(parents=True, exist_ok=True)
+        return procedural_dir
+    
+    @classmethod
     def get_directory_mode_from_config(cls) -> str:
         """
         Get directory_mode from configuration, with fallback to 'auto'.
@@ -239,11 +290,19 @@ class AICOPaths:
             "cache_directory": str(cls.get_cache_directory()),
             "logs_directory": str(cls.get_logs_directory()),
             "runtime_directory": str(cls.get_runtime_path()),
+            "memory_directory": str(cls.get_memory_directory()),
+            "memory_paths": {
+                "working": str(cls.get_working_memory_path()),
+                "semantic": str(cls.get_semantic_memory_path()),
+                "episodic": str(cls.get_episodic_memory_path()),
+                "procedural": str(cls.get_procedural_memory_path()),
+            },
             "environment_overrides": {
                 "AICO_DATA_DIR": os.getenv("AICO_DATA_DIR"),
                 "AICO_CONFIG_DIR": os.getenv("AICO_CONFIG_DIR"),
                 "AICO_CACHE_DIR": os.getenv("AICO_CACHE_DIR"),
                 "AICO_LOGS_DIR": os.getenv("AICO_LOGS_DIR"),
+                "AICO_MEMORY_DIR": os.getenv("AICO_MEMORY_DIR"),
             }
         }
 

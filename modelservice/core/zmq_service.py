@@ -18,7 +18,7 @@ from aico.core.config import ConfigurationManager
 from .zmq_handlers import ModelserviceZMQHandlers
 from .protobuf_messages import ModelserviceMessageFactory, ModelserviceMessageParser
 
-logger = get_logger("modelservice", "zmq_service")
+# Logger will be initialized in class constructor to avoid import-time issues
 
 
 class ModelserviceZMQService:
@@ -26,6 +26,9 @@ class ModelserviceZMQService:
     
     def __init__(self, config: ConfigurationManager, ollama_manager=None):
         """Initialize the ZMQ service with configuration and optional Ollama manager."""
+        # Initialize logger first
+        self.logger = get_logger("modelservice", "zmq_service")
+        
         # Configuration is stored under 'core' domain in the config manager
         core_config = config.get("core", {})
         self.config = core_config.get("modelservice", {})
@@ -33,15 +36,29 @@ class ModelserviceZMQService:
         self.running = False
         self.bus_client = None
         self.processed_correlation_ids = set()  # Track processed correlation IDs to prevent duplicates
-        self.handlers = ModelserviceZMQHandlers(self.config, ollama_manager)
+        
+        self.logger.info("About to instantiate ModelserviceZMQHandlers...")
+        try:
+            # Pass the bus client to handlers for streaming support
+            self.handlers = ModelserviceZMQHandlers(self.config, ollama_manager, None)  # Will be set later
+            self.logger.info("ModelserviceZMQHandlers instantiated successfully")
+        except Exception as e:
+            self.logger.error(f"CRITICAL: Failed to instantiate ModelserviceZMQHandlers: {e}")
+            import traceback
+            self.logger.error(f"Handlers instantiation traceback: {traceback.format_exc()}")
+            raise
         
         # Topic to handler mapping
         self.topic_handlers = {
             AICOTopics.MODELSERVICE_HEALTH_REQUEST: self.handlers.handle_health_request,
+            AICOTopics.MODELSERVICE_CHAT_REQUEST: self.handlers.handle_chat_request,
             AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST: self.handlers.handle_completions_request,
             AICOTopics.MODELSERVICE_MODELS_REQUEST: self.handlers.handle_models_request,
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: self.handlers.handle_model_info_request,
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: self.handlers.handle_embeddings_request,
+            AICOTopics.MODELSERVICE_NER_REQUEST: self.handlers.handle_ner_request,
+            AICOTopics.MODELSERVICE_INTENT_REQUEST: self.handlers.handle_intent_request,
+            AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: self.handlers.handle_sentiment_request,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: self.handlers.handle_status_request,
             # Ollama management topics
             AICOTopics.OLLAMA_STATUS_REQUEST: self._handle_ollama_status,
@@ -56,55 +73,64 @@ class ModelserviceZMQService:
         """Set the Ollama manager after early initialization."""
         self.ollama_manager = ollama_manager
         self.handlers.ollama_manager = ollama_manager
-        logger.info("Ollama manager injected into ZMQ service")
+        self.logger.info("Ollama manager injected into ZMQ service")
     
     async def start_early(self):
         """Start ZMQ service early for log capture, without full initialization."""
         try:
-            logger.info("Starting modelservice ZMQ service (early mode)...")
+            self.logger.info("Starting modelservice ZMQ service (early mode)...")
             
             # Initialize message bus client following AICO patterns
             self.bus_client = MessageBusClient("message_bus_client_modelservice")
             
             await self.bus_client.connect()
             
+            # Pass bus client to handlers for streaming support
+            self.handlers.message_bus_client = self.bus_client
+            
             basic_topics = [
                 AICOTopics.MODELSERVICE_HEALTH_REQUEST,
                 AICOTopics.MODELSERVICE_STATUS_REQUEST,
             ]
             
-            logger.info(f"Subscribing to basic topics: {basic_topics}")
+            self.logger.info(f"Subscribing to basic topics: {basic_topics}")
             for topic in basic_topics:
-                logger.info(f"About to subscribe to topic: '{topic}' (type: {type(topic)})")
+                self.logger.info(f"About to subscribe to topic: '{topic}' (type: {type(topic)})")
                 await self.bus_client.subscribe(topic, self._handle_message)
-                logger.info(f"Successfully subscribed to topic: '{topic}'")
+                self.logger.info(f"Successfully subscribed to topic: '{topic}'")
                 
-            logger.info(f"ZMQ service early start complete, subscribed to {len(basic_topics)} topics")
-            logger.info(f"Topic handler mapping: {list(self.topic_handlers.keys())}")
+            self.logger.info(f"ZMQ service early start complete, subscribed to {len(basic_topics)} topics")
+            self.logger.info(f"Topic handler mapping: {list(self.topic_handlers.keys())}")
             
             self.running = True
-            logger.info("Modelservice ZMQ service started (early mode)")
+            self.logger.info("Modelservice ZMQ service started (early mode)")
             
         except Exception as e:
-            logger.error(f"Failed to start ZMQ service (early): {str(e)}")
+            self.logger.error(f"Failed to start ZMQ service (early): {str(e)}")
             raise
     
     async def start(self):
         """Complete the ZMQ service initialization and subscribe to remaining topics."""
         try:
-            logger.info("Completing modelservice ZMQ service initialization...")
+            self.logger.info("Completing modelservice ZMQ service initialization...")
             
             # Reuse existing bus_client from start_early() - don't create a new one
             if not self.bus_client:
-                logger.error("No existing bus client found - start_early() must be called first")
+                self.logger.error("No existing bus client found - start_early() must be called first")
                 raise RuntimeError("start_early() must be called before start()")
             
-            # Subscribe to remaining topics that require Ollama
-            ollama_topics = [
+            # Subscribe to remaining topics that require full modelservice initialization
+            modelservice_topics = [
+                # LLM and chat topics (require Ollama)
+                AICOTopics.MODELSERVICE_CHAT_REQUEST,
                 AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST,
                 AICOTopics.MODELSERVICE_MODELS_REQUEST,
                 AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST,
                 AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
+                # NLP analysis topics (require GLiNER and Transformers)
+                AICOTopics.MODELSERVICE_NER_REQUEST,
+                AICOTopics.MODELSERVICE_SENTIMENT_REQUEST,
+                # Ollama management topics
                 AICOTopics.OLLAMA_STATUS_REQUEST,
                 AICOTopics.OLLAMA_MODELS_REQUEST,
                 AICOTopics.OLLAMA_MODELS_PULL_REQUEST,
@@ -113,39 +139,67 @@ class ModelserviceZMQService:
                 AICOTopics.OLLAMA_SHUTDOWN_REQUEST,
             ]
             
-            for topic in ollama_topics:
+            # DEBUG: Print all topics we're about to subscribe to
+            self.logger.info(f"🔍 [DEBUG] About to subscribe to {len(modelservice_topics)} topics:")
+            for topic in modelservice_topics:
+                handler_exists = topic in self.topic_handlers
+                self.logger.info(f"🔍 [DEBUG]   - {topic} (handler: {'✅' if handler_exists else '❌'})")
+            
+            subscribed_topics = []
+            for topic in modelservice_topics:
                 if topic in self.topic_handlers:
                     await self.bus_client.subscribe(topic, self._handle_message)
-                    logger.info(f"Subscribed to topic: {topic}")
+                    subscribed_topics.append(topic)
+                    self.logger.info(f"Subscribed to topic: {topic}")
                 else:
-                    logger.warning(f"No handler found for topic {topic} during subscription")
+                    self.logger.warning(f"No handler found for topic {topic} during subscription")
             
-            logger.info("Modelservice ZMQ service fully initialized")
+            # DEBUG: Final summary of subscribed topics
+            self.logger.info(f"🔍 [DEBUG] Successfully subscribed to {len(subscribed_topics)} topics:")
+            for topic in subscribed_topics:
+                self.logger.info(f"🔍 [DEBUG]   ✅ {topic}")
             
-            # Start message processing loop
-            await self._message_loop()
+            # DEBUG: Check if embeddings topic is specifically subscribed
+            embeddings_topic = "modelservice/embeddings/request/v1"
+            if embeddings_topic in subscribed_topics:
+                self.logger.info(f"🔍 [DEBUG] ✅ EMBEDDINGS TOPIC IS SUBSCRIBED: {embeddings_topic}")
+            else:
+                self.logger.error(f"🔍 [DEBUG] ❌ EMBEDDINGS TOPIC NOT SUBSCRIBED: {embeddings_topic}")
+            
+            # Initialize NER system now that all services are ready
+            self.logger.info("Initializing NER system...")
+            await self.handlers.initialize_ner_system()
+            
+            # Initialize Transformers system
+            self.logger.info("Initializing Transformers system...")
+            await self.handlers.initialize_transformers_system()
+            
+            self.logger.info("Modelservice ZMQ service fully initialized")
+            
+            # Start message processing loop as background task (non-blocking)
+            asyncio.create_task(self._message_loop())
             
         except Exception as e:
-            logger.error(f"Failed to start ZMQ service: {str(e)}")
+            self.logger.error(f"Failed to start ZMQ service: {str(e)}")
             raise
     
     async def stop(self):
         """Stop the ZMQ service."""
-        logger.info("Stopping modelservice ZMQ service...")
+        self.logger.info("Stopping modelservice ZMQ service...")
         self.running = False
         
         if self.bus_client:
             await self.bus_client.disconnect()
         
-        logger.info("Modelservice ZMQ service stopped")
+        self.logger.info("Modelservice ZMQ service stopped")
     
     async def run(self):
         """Continue running the ZMQ service (for services started early)."""
         if not self.running:
-            logger.error("Cannot run ZMQ service - not started")
+            self.logger.error("Cannot run ZMQ service - not started")
             return
             
-        logger.info("ZMQ service continuing to run...")
+        self.logger.info("ZMQ service continuing to run...")
         await self._message_loop()
     
     async def _message_loop(self):
@@ -156,23 +210,43 @@ class ModelserviceZMQService:
                 # The actual message processing is handled by the MessageBusClient's _message_loop
                 await asyncio.sleep(1.0)
             except Exception as e:
-                logger.error(f"Error in message loop: {str(e)}")
+                self.logger.error(f"Error in message loop: {str(e)}")
                 if self.running:
                     await asyncio.sleep(1)  # Brief pause before retry
     
     async def _handle_message(self, envelope):
         """Handle incoming Protocol Buffer ZMQ messages and route to appropriate handlers."""
-        logger.info(f"[ZMQ_SERVICE] 📨 Message handler called with envelope: {type(envelope)}")
+        self.logger.info(f"[ZMQ_SERVICE] 📨 Message handler called with envelope: {type(envelope)}")
         try:
             # Extract information from AicoMessage envelope
-            logger.info(f"[ZMQ_SERVICE] Extracting correlation_id and message_type from envelope...")
+            self.logger.info(f"[ZMQ_SERVICE] Extracting correlation_id and message_type from envelope...")
             correlation_id = ModelserviceMessageParser.get_correlation_id(envelope)
             message_type = ModelserviceMessageParser.get_message_type(envelope)
-            logger.info(f"[ZMQ_SERVICE] Extracted - correlation_id: '{correlation_id}', message_type: '{message_type}'")
+            self.logger.info(f"[ZMQ_SERVICE] Extracted - correlation_id: '{correlation_id}', message_type: '{message_type}'")
+            
+            # SPECIFIC DEBUGGING FOR SENTIMENT REQUESTS
+            if "sentiment" in message_type.lower():
+                self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] ✅ SENTIMENT MESSAGE RECEIVED in ZMQ service!")
+                self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] Message type: {message_type}")
+                self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] Correlation ID: {correlation_id}")
+            
+            # SPECIFIC DEBUGGING FOR EMBEDDINGS REQUESTS
+            if "embeddings" in message_type.lower():
+                self.logger.info(f"🔍 [EMBEDDINGS_ZMQ_DEBUG] ✅ EMBEDDINGS MESSAGE RECEIVED in ZMQ service!")
+                self.logger.info(f"🔍 [EMBEDDINGS_ZMQ_DEBUG] Message type: {message_type}")
+                self.logger.info(f"🔍 [EMBEDDINGS_ZMQ_DEBUG] Correlation ID: {correlation_id}")
+                self.logger.info(f"🔍 [EMBEDDINGS_ZMQ_DEBUG] About to route to handler...")
+            
+            # SPECIFIC DEBUGGING FOR CHAT REQUESTS
+            if "chat" in message_type.lower():
+                self.logger.info(f"🔍 [CHAT_ZMQ_DEBUG] ✅ CHAT MESSAGE RECEIVED in ZMQ service!")
+                self.logger.info(f"🔍 [CHAT_ZMQ_DEBUG] Message type: {message_type}")
+                self.logger.info(f"🔍 [CHAT_ZMQ_DEBUG] Correlation ID: {correlation_id}")
+                self.logger.info(f"🔍 [CHAT_ZMQ_DEBUG] About to route to handler...")
             
             # Check for duplicate correlation ID to prevent processing the same message multiple times
             if correlation_id in self.processed_correlation_ids:
-                logger.warning(f"Duplicate correlation ID detected: {correlation_id}, skipping message processing")
+                self.logger.warning(f"Duplicate correlation ID detected: {correlation_id}, skipping message processing")
                 return
             
             # Add correlation ID to processed set
@@ -187,61 +261,86 @@ class ModelserviceZMQService:
             
             # Use message type as topic (already includes /v1 suffix)
             topic = message_type
-            logger.info(f"[ZMQ_SERVICE] Processing message: type={message_type}, topic={topic}, correlation_id={correlation_id}")
+            self.logger.info(f"[ZMQ_SERVICE] Processing message: type={message_type}, topic={topic}, correlation_id={correlation_id}")
             
-            logger.info(f"[ZMQ_SERVICE] Extracting request payload for topic: {topic}")
+            self.logger.info(f"[ZMQ_SERVICE] Extracting request payload for topic: {topic}")
             request_payload = ModelserviceMessageParser.extract_request_payload(envelope, topic)
-            logger.info(f"[ZMQ_SERVICE] Request payload extracted: {type(request_payload)}")
+            self.logger.info(f"[ZMQ_SERVICE] Request payload extracted: {type(request_payload)}")
             
-            logger.debug(f"[ZMQ_SERVICE] Handling Protocol Buffer message on topic {topic} with correlation_id {correlation_id}")
+            self.logger.debug(f"[ZMQ_SERVICE] Handling Protocol Buffer message on topic {topic} with correlation_id {correlation_id}")
             
             # Route to appropriate handler
-            logger.info(f"[ZMQ_SERVICE] Looking up handler for topic: {topic}")
+            self.logger.info(f"[ZMQ_SERVICE] Looking up handler for topic: {topic}")
+            
+            # SPECIFIC DEBUGGING FOR SENTIMENT REQUESTS
+            if "sentiment" in topic.lower():
+                self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] Looking up sentiment handler for topic: {topic}")
+                self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] Available topics: {list(self.topic_handlers.keys())}")
+                self.logger.info(f"🔍 [SENTIMENT_ZMQ_DEBUG] Topic in handlers: {topic in self.topic_handlers}")
+            
+            # SPECIFIC DEBUGGING FOR CHAT REQUESTS
+            if "chat" in topic.lower():
+                self.logger.info(f"🔍 [CHAT_ZMQ_DEBUG] Looking up chat handler for topic: {topic}")
+                self.logger.info(f"🔍 [CHAT_ZMQ_DEBUG] Available topics: {list(self.topic_handlers.keys())}")
+                self.logger.info(f"🔍 [CHAT_ZMQ_DEBUG] Topic in handlers: {topic in self.topic_handlers}")
+            
             handler = self.topic_handlers.get(topic)
             if not handler:
-                logger.error(f"[ZMQ_SERVICE] ❌ CRITICAL: No handler found for topic: {topic}")
-                logger.error(f"[ZMQ_SERVICE] Available handlers: {list(self.topic_handlers.keys())}")
+                self.logger.error(f"[ZMQ_SERVICE] ❌ CRITICAL: No handler found for topic: {topic}")
+                if "sentiment" in topic.lower():
+                    self.logger.error(f"🔍 [SENTIMENT_ZMQ_DEBUG] ❌ SENTIMENT HANDLER NOT FOUND!")
+                if "chat" in topic.lower():
+                    self.logger.error(f"🔍 [CHAT_ZMQ_DEBUG] ❌ CHAT HANDLER NOT FOUND!")
                 return
             
-            logger.info(f"[ZMQ_SERVICE] ✅ Handler found: {handler.__name__}")
-            
-            # Execute handler with Protocol Buffer payload
-            logger.info(f"[ZMQ_SERVICE] Executing handler {handler.__name__} with payload type: {type(request_payload)}")
-            response_payload = await handler(request_payload)
-            logger.info(f"[ZMQ_SERVICE] Handler completed, response type: {type(response_payload)}")
-            
-            # Send Protocol Buffer response if correlation_id is provided
-            if correlation_id and self.bus_client:
-                response_topic = self._get_response_topic(topic)
-                logger.info(f"[ZMQ_SERVICE] Response topic for '{topic}': {response_topic}")
-                if response_topic:
-                    logger.info(f"[ZMQ_SERVICE] Publishing response to topic '{response_topic}' with correlation_id '{correlation_id}'")
-                    # Pass raw response_payload to MessageBusClient, let it handle envelope wrapping
-                    await self.bus_client.publish(response_topic, response_payload, correlation_id=correlation_id)
-                    logger.info(f"[ZMQ_SERVICE] ✅ Response published successfully to topic {response_topic}")
+            if topic in self.topic_handlers:
+                handler_name = self.topic_handlers[topic].__name__
+                self.logger.info(f"[ZMQ_SERVICE] ✅ Handler found: {handler_name}")
+                
+                # Execute handler with correlation_id for streaming support
+                self.logger.info(f"[ZMQ_SERVICE] Executing handler {handler_name} with payload type: {type(request_payload)}")
+                if topic == AICOTopics.MODELSERVICE_CHAT_REQUEST:
+                    # Chat requests need correlation_id for streaming
+                    response = await self.topic_handlers[topic](request_payload, correlation_id)
                 else:
-                    logger.error(f"[ZMQ_SERVICE] ❌ No response topic found for request topic: {topic}")
+                    # Other handlers don't need correlation_id yet
+                    response = await self.topic_handlers[topic](request_payload)
+                self.logger.info(f"[ZMQ_SERVICE] Handler completed, response type: {type(response)}")
+                
+                # Send Protocol Buffer response if correlation_id is provided
+                if correlation_id and self.bus_client:
+                    response_topic = self._get_response_topic(topic)
+                    self.logger.info(f"[ZMQ_SERVICE] Response topic for '{topic}': {response_topic}")
+                    if response_topic:
+                        self.logger.info(f"[ZMQ_SERVICE] Publishing response to topic '{response_topic}' with correlation_id '{correlation_id}'")
+                        # Pass raw response to MessageBusClient, let it handle envelope wrapping
+                        await self.bus_client.publish(response_topic, response, correlation_id=correlation_id)
+                        self.logger.info(f"[ZMQ_SERVICE] ✅ Response published successfully to topic {response_topic}")
+                    else:
+                        self.logger.error(f"[ZMQ_SERVICE] ❌ No response topic found for request topic: {topic}")
+                else:
+                    self.logger.warning(f"[ZMQ_SERVICE] ⚠️ No response sent - correlation_id: {correlation_id}, bus_client: {self.bus_client is not None}")
             else:
-                logger.warning(f"[ZMQ_SERVICE] ⚠️ No response sent - correlation_id: {correlation_id}, bus_client: {self.bus_client is not None}")
+                self.logger.error(f"[ZMQ_SERVICE] ❌ No handler found for topic: {topic}")
             
         except Exception as e:
-            logger.error(f"[ZMQ_SERVICE] ❌ CRITICAL ERROR handling Protocol Buffer message: {str(e)}")
-            logger.error(f"[ZMQ_SERVICE] Exception type: {type(e).__name__}")
+            self.logger.error(f"[ZMQ_SERVICE] ❌ CRITICAL ERROR handling Protocol Buffer message: {str(e)}")
+            self.logger.error(f"[ZMQ_SERVICE] Exception type: {type(e).__name__}")
             import traceback
-            logger.error(f"[ZMQ_SERVICE] Full traceback: {traceback.format_exc()}")
+            self.logger.error(f"[ZMQ_SERVICE] Full traceback: {traceback.format_exc()}")
             
             # Send error response if possible
             correlation_id = None
             try:
                 correlation_id = ModelserviceMessageParser.get_correlation_id(envelope)
-                logger.info(f"[ZMQ_SERVICE] Extracted correlation_id for error response: {correlation_id}")
+                self.logger.info(f"[ZMQ_SERVICE] Extracted correlation_id for error response: {correlation_id}")
             except Exception as extract_error:
-                logger.error(f"[ZMQ_SERVICE] Failed to extract correlation_id for error response: {extract_error}")
+                self.logger.error(f"[ZMQ_SERVICE] Failed to extract correlation_id for error response: {extract_error}")
                 
             if correlation_id and self.bus_client:
                 response_topic = self._get_response_topic(topic)
                 if response_topic:
-                    logger.info(f"[ZMQ_SERVICE] Sending error response to topic: {response_topic}")
+                    self.logger.info(f"[ZMQ_SERVICE] Sending error response to topic: {response_topic}")
                     if topic == AICOTopics.MODELSERVICE_HEALTH_REQUEST:
                         from aico.proto.aico_modelservice_pb2 import HealthResponse
                         error_response = HealthResponse()
@@ -249,20 +348,23 @@ class ModelserviceZMQService:
                         error_response.status = "error"
                         error_response.error = f"Handler error: {str(e)}"
                         await self.bus_client.publish(response_topic, error_response, correlation_id=correlation_id)
-                        logger.info(f"[ZMQ_SERVICE] Error response sent successfully")
+                        self.logger.info(f"[ZMQ_SERVICE] Error response sent successfully")
                 else:
-                    logger.error(f"[ZMQ_SERVICE] No response topic available for error response")
+                    self.logger.error(f"[ZMQ_SERVICE] No response topic available for error response")
             else:
-                logger.error(f"[ZMQ_SERVICE] Cannot send error response - missing correlation_id or bus_client")
+                self.logger.error(f"[ZMQ_SERVICE] Cannot send error response - missing correlation_id or bus_client")
     
     def _get_response_topic(self, request_topic: str) -> Optional[str]:
         """Get the response topic for a given request topic."""
         response_mapping = {
             AICOTopics.MODELSERVICE_HEALTH_REQUEST: AICOTopics.MODELSERVICE_HEALTH_RESPONSE,
+            AICOTopics.MODELSERVICE_CHAT_REQUEST: AICOTopics.MODELSERVICE_CHAT_RESPONSE,
             AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST: AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE,
             AICOTopics.MODELSERVICE_MODELS_REQUEST: AICOTopics.MODELSERVICE_MODELS_RESPONSE,
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE,
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
+            AICOTopics.MODELSERVICE_NER_REQUEST: AICOTopics.MODELSERVICE_NER_RESPONSE,
+            AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: AICOTopics.MODELSERVICE_STATUS_RESPONSE,
             AICOTopics.OLLAMA_STATUS_REQUEST: AICOTopics.OLLAMA_STATUS_RESPONSE,
             AICOTopics.OLLAMA_MODELS_REQUEST: AICOTopics.OLLAMA_MODELS_RESPONSE,
@@ -276,13 +378,13 @@ class ModelserviceZMQService:
     def _create_response_envelope(self, request_topic: str, response_payload, correlation_id: str):
         """Create Protocol Buffer response envelope based on request topic."""
         response_message_type = self._get_response_message_type(request_topic)
-        logger.debug(f"Creating response envelope: topic={request_topic}, response_type={response_message_type}, payload_type={type(response_payload)}")
+        self.logger.debug(f"Creating response envelope: topic={request_topic}, response_type={response_message_type}, payload_type={type(response_payload)}")
         envelope = ModelserviceMessageFactory.create_envelope(
             response_payload, 
             response_message_type, 
             correlation_id
         )
-        logger.debug(f"Created response envelope with payload type URL: {envelope.any_payload.type_url}")
+        self.logger.debug(f"Created response envelope with payload type URL: {envelope.any_payload.type_url}")
         return envelope
     
     def _create_error_response_envelope(self, request_topic: str, error_message: str, correlation_id: str):
@@ -294,7 +396,7 @@ class ModelserviceZMQService:
             response.success = False
             response.status = "error"
             response.error = error_message
-        elif request_topic == AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST:
+        elif request_topic in [AICOTopics.MODELSERVICE_CHAT_REQUEST, AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST]:
             from aico.proto.aico_modelservice_pb2 import CompletionsResponse
             response = CompletionsResponse()
             response.success = False
@@ -322,10 +424,13 @@ class ModelserviceZMQService:
         """Get response message type for request topic."""
         mapping = {
             AICOTopics.MODELSERVICE_HEALTH_REQUEST: AICOTopics.MODELSERVICE_HEALTH_RESPONSE,
+            AICOTopics.MODELSERVICE_CHAT_REQUEST: AICOTopics.MODELSERVICE_CHAT_RESPONSE,
             AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST: AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE,
             AICOTopics.MODELSERVICE_MODELS_REQUEST: AICOTopics.MODELSERVICE_MODELS_RESPONSE,
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE,
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
+            AICOTopics.MODELSERVICE_NER_REQUEST: AICOTopics.MODELSERVICE_NER_RESPONSE,
+            AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: AICOTopics.MODELSERVICE_STATUS_RESPONSE,
             AICOTopics.OLLAMA_STATUS_REQUEST: AICOTopics.OLLAMA_STATUS_RESPONSE,
             AICOTopics.OLLAMA_MODELS_REQUEST: AICOTopics.OLLAMA_MODELS_RESPONSE,

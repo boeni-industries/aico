@@ -111,6 +111,14 @@ def destructive(arg=None, *, reason: str = "dangerous operation"):
                 console.print(f"[red]Authentication failed: {e}[/red]")
                 import typer
                 raise typer.Exit(1)
+            
+            # Add confirmation prompt for destructive operations
+            import typer
+            console.print()
+            if not typer.confirm(f"⚠️  Are you sure you want to proceed with this dangerous operation?"):
+                console.print("[yellow]Operation cancelled by user[/yellow]")
+                raise typer.Exit(0)
+            console.print()
 
             return func(*args, **kwargs)
 

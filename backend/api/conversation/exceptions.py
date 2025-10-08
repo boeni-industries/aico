@@ -15,47 +15,35 @@ class ConversationException(HTTPException):
         self,
         status_code: int,
         detail: str,
-        thread_id: Optional[str] = None,
+        conversation_id: Optional[str] = None,
         user_id: Optional[str] = None,
         headers: Optional[Dict[str, Any]] = None
     ):
         super().__init__(status_code=status_code, detail=detail, headers=headers)
-        self.thread_id = thread_id
+        self.conversation_id = conversation_id
         self.user_id = user_id
 
 
 class ConversationNotFoundException(ConversationException):
-    """Raised when a conversation thread is not found"""
+    """Raised when a conversation is not found"""
     
-    def __init__(self, thread_id: str, user_id: Optional[str] = None):
+    def __init__(self, conversation_id: str, user_id: Optional[str] = None):
         super().__init__(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Conversation thread '{thread_id}' not found",
-            thread_id=thread_id,
+            detail=f"Conversation '{conversation_id}' not found",
+            conversation_id=conversation_id,
             user_id=user_id
         )
 
 
-class InvalidThreadException(ConversationException):
-    """Raised when thread ID is invalid or malformed"""
+class InvalidConversationException(ConversationException):
+    """Raised when conversation ID is invalid or malformed"""
     
-    def __init__(self, thread_id: str, reason: str = "Invalid thread ID format"):
+    def __init__(self, conversation_id: str, reason: str = "Invalid conversation ID format"):
         super().__init__(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid thread ID '{thread_id}': {reason}",
-            thread_id=thread_id
-        )
-
-
-class ThreadAccessDeniedException(ConversationException):
-    """Raised when user tries to access a thread they don't own"""
-    
-    def __init__(self, thread_id: str, user_id: str):
-        super().__init__(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Access denied to conversation thread '{thread_id}'",
-            thread_id=thread_id,
-            user_id=user_id
+            detail=f"Invalid conversation ID '{conversation_id}': {reason}",
+            conversation_id=conversation_id
         )
 
 
@@ -65,7 +53,7 @@ class MessageProcessingException(ConversationException):
     def __init__(
         self, 
         message: str, 
-        thread_id: Optional[str] = None, 
+        conversation_id: Optional[str] = None, 
         user_id: Optional[str] = None,
         processing_error: Optional[str] = None
     ):
@@ -73,7 +61,7 @@ class MessageProcessingException(ConversationException):
         super().__init__(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=detail,
-            thread_id=thread_id,
+            conversation_id=conversation_id,
             user_id=user_id
         )
         self.original_message = message
@@ -83,11 +71,11 @@ class MessageProcessingException(ConversationException):
 class ConversationTimeoutException(ConversationException):
     """Raised when conversation processing times out"""
     
-    def __init__(self, thread_id: str, timeout_seconds: int, user_id: Optional[str] = None):
+    def __init__(self, conversation_id: str, timeout_seconds: int, user_id: Optional[str] = None):
         super().__init__(
             status_code=status.HTTP_408_REQUEST_TIMEOUT,
             detail=f"Conversation processing timed out after {timeout_seconds} seconds",
-            thread_id=thread_id,
+            conversation_id=conversation_id,
             user_id=user_id
         )
         self.timeout_seconds = timeout_seconds
@@ -131,11 +119,11 @@ class WebSocketAuthenticationException(ConversationException):
 class MessageBusConnectionException(ConversationException):
     """Raised when message bus connection fails"""
     
-    def __init__(self, error_details: str, thread_id: Optional[str] = None):
+    def __init__(self, error_details: str, conversation_id: Optional[str] = None):
         super().__init__(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Message bus connection failed: {error_details}",
-            thread_id=thread_id
+            conversation_id=conversation_id
         )
         self.error_details = error_details
 
@@ -146,13 +134,13 @@ class ConversationEngineException(ConversationException):
     def __init__(
         self, 
         engine_error: str, 
-        thread_id: Optional[str] = None, 
+        conversation_id: Optional[str] = None, 
         user_id: Optional[str] = None
     ):
         super().__init__(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Conversation engine error: {engine_error}",
-            thread_id=thread_id,
+            conversation_id=conversation_id,
             user_id=user_id
         )
         self.engine_error = engine_error
@@ -171,26 +159,16 @@ class InvalidMessageTypeException(ConversationException):
         self.valid_types = valid_types
 
 
-class ConversationStateException(ConversationException):
-    """Raised when conversation is in an invalid state for the requested operation"""
-    
-    def __init__(self, thread_id: str, current_state: str, required_state: str):
-        super().__init__(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Conversation in state '{current_state}', but '{required_state}' required",
-            thread_id=thread_id
-        )
-        self.current_state = current_state
-        self.required_state = required_state
+# ConversationStateException removed - no explicit state management with semantic memory
 
 
 class WebSocketConnectionException(ConversationException):
     """Raised when WebSocket connection encounters an error"""
     
-    def __init__(self, connection_error: str, thread_id: Optional[str] = None):
+    def __init__(self, connection_error: str, conversation_id: Optional[str] = None):
         super().__init__(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"WebSocket connection error: {connection_error}",
-            thread_id=thread_id
+            conversation_id=conversation_id
         )
         self.connection_error = connection_error

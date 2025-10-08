@@ -331,13 +331,14 @@ class AICOLogger:
 class AICOLoggerFactory:
     """Factory for creating configured logger instances"""
 
-    def __init__(self, config_manager):
+    def __init__(self, config_manager, service_name: str = "default"):
         self.config = config_manager
+        self.service_name = service_name  # Service-specific identifier
         self._transport = None
         self._loggers: Dict[str, AICOLogger] = {}  # Track created loggers
         self._db_ready = False  # Track global database ready state
         self._zmq_context = None
-        self._log_buffer = LogBuffer()  # Buffer for startup logs
+        self._log_buffer = LogBuffer()  # Service-specific buffer for startup logs
 
     def get_zmq_context(self):
         """Get or create the shared ZMQ context (regular, not asyncio)."""
@@ -509,8 +510,9 @@ class ZMQLogTransport:
             
             if self._message_bus_client.connected:
                 await self._message_bus_client.publish(topic, log_entry)
-        except Exception:
-            # Silently fail - logs will use direct database fallback
+            # Connection failure handled silently
+        except Exception as e:
+            # Log send failure handled silently
             pass
     
     def mark_broker_ready(self):
@@ -525,29 +527,49 @@ class ZMQLogTransport:
         if not self._message_bus_client.connected:
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(self._connect_client())
+                # Connect client AND flush buffer after connection succeeds
+                loop.create_task(self._connect_and_flush())
             except RuntimeError:
                 pass  # Connection will be established lazily when first log is sent
-        
-        # Flush buffered logs from LogBuffer when broker becomes ready
-        self._flush_log_buffer()
+        else:
+            # Client already connected - flush immediately
+            self._flush_log_buffer()
     
     def _flush_log_buffer(self):
         """Flush any buffered logs from the LogBuffer to ZMQ transport"""
-        global _logger_factory
-        if not _logger_factory or not _logger_factory._log_buffer:
+        # Find the factory that owns this transport
+        global _logger_factories
+        factory = None
+        for service_factory in _logger_factories.values():
+            if hasattr(service_factory, '_transport') and service_factory._transport == self:
+                factory = service_factory
+                break
+        
+        if not factory or not hasattr(factory, '_log_buffer') or not factory._log_buffer:
             return
         
-        buffer_size = len(_logger_factory._log_buffer._buffer)
+        buffer_size = len(factory._log_buffer._buffer)
         if buffer_size > 0:
-            _logger_factory._log_buffer.flush_to_transport(self)
+            factory._log_buffer.flush_to_transport(self)
     
     async def _connect_client(self):
         """Helper method to connect the message bus client"""
         try:
             await self._message_bus_client.connect()
-        except Exception:
-            pass  # Silently fail
+        except Exception as e:
+            # Connection failure handled silently
+            pass
+    
+    async def _connect_and_flush(self):
+        """Connect client and flush buffer after successful connection"""
+        try:
+            await self._message_bus_client.connect()
+            # Only flush if connection succeeded
+            if self._message_bus_client.connected:
+                self._flush_log_buffer()
+        except Exception as e:
+            # Connection failure handled silently
+            pass
     
     def close(self):
         """Clean up encrypted ZMQ transport resources"""
@@ -795,28 +817,32 @@ class LogRetentionManager:
         return estimated_bytes / (1024 * 1024)
 
 
-# Global logger factory instances
-_logger_factory: Optional[AICOLoggerFactory] = None
-_cli_logger_factory: Optional[AICOLoggerFactory] = None
+# Service-specific logger factory instances
+_logger_factories = {}
 
-# Removed early startup buffer - using direct database fallback instead
+# Global variables for backward compatibility
+_logger_factory = None
+_cli_logger_factory = None
 
-
-def initialize_logging(config_manager) -> AICOLoggerFactory:
-    """Initialize the global logging factory (idempotent)"""
-    global _logger_factory
-    if _logger_factory is None:
-        _logger_factory = AICOLoggerFactory(config_manager)
+def initialize_logging(config_manager, service_name: str = "default") -> AICOLoggerFactory:
+    """Initialize a service-specific logging factory (idempotent)"""
+    global _logger_factories, _logger_factory
+    if service_name not in _logger_factories:
+        _logger_factories[service_name] = AICOLoggerFactory(config_manager, service_name)
+        
+        # Set backward compatibility global if this is the first factory
+        if _logger_factory is None:
+            _logger_factory = _logger_factories[service_name]
     else:
         # Debug print for existing logger factory
-        # print(f"[LOGGING] Using existing AICOLoggerFactory")
+        # print(f"[LOGGING] Using existing AICOLoggerFactory for {service_name}")
         pass
-    return _logger_factory
+    return _logger_factories[service_name]
 
-
-def get_logger_factory() -> Optional[AICOLoggerFactory]:
-    """Get the global logger factory instance."""
-    return _logger_factory
+def get_logger_factory(service_name: str = "default") -> Optional[AICOLoggerFactory]:
+    """Get a service-specific logger factory instance."""
+    global _logger_factories
+    return _logger_factories.get(service_name)
 
 
 def initialize_cli_logging(config_manager, db_connection) -> AICOLoggerFactory:
@@ -869,20 +895,24 @@ def is_cli_context() -> bool:
 
 def get_logger(subsystem: str, module: str) -> AICOLogger:
     """Get a logger instance (requires prior initialization)"""
-    global _cli_logger_factory, _logger_factory
+    global _cli_logger_factory, _logger_factories
     
     # Use CLI factory if available (CLI context takes priority)
     if _cli_logger_factory:
         return _cli_logger_factory.create_logger(subsystem, module)
     
-    if not _logger_factory:
-        raise RuntimeError("Logging not initialized. Call initialize_logging() or initialize_cli_logging() first.")
+    # Try to find any initialized service-specific factory
+    if _logger_factories:
+        # Prefer service-specific factories in order: modelservice, backend, shared, cli, default
+        for service_name in ["modelservice", "backend", "shared", "cli", "default"]:
+            if service_name in _logger_factories:
+                return _logger_factories[service_name].create_logger(subsystem, module)
+        
+        # If none of the preferred services, use the first available
+        first_service = next(iter(_logger_factories))
+        return _logger_factories[first_service].create_logger(subsystem, module)
     
-    # Warn if using backend factory in potential CLI context
-    if is_cli_context():
-        print(f"[WARNING] Using backend logger factory in CLI context - logs may not persist to database")
-    
-    return _logger_factory.create_logger(subsystem, module)
+    raise RuntimeError("Logging not initialized. Call initialize_logging() or initialize_cli_logging() first.")
 
 
 def _get_zmq_transport() -> Optional[ZMQLogTransport]:

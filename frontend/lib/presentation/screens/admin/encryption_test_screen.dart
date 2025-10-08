@@ -1,16 +1,16 @@
-import 'package:aico_frontend/core/di/service_locator.dart';
-import 'package:aico_frontend/core/services/unified_api_client.dart';
+import 'package:aico_frontend/core/providers/networking_providers.dart';
+import 'package:aico_frontend/core/providers/storage_providers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class EncryptionTestScreen extends StatefulWidget {
+class EncryptionTestScreen extends ConsumerStatefulWidget {
   const EncryptionTestScreen({super.key});
 
   @override
-  State<EncryptionTestScreen> createState() => _EncryptionTestScreenState();
+  ConsumerState<EncryptionTestScreen> createState() => _EncryptionTestScreenState();
 }
 
-class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
-  final UnifiedApiClient _apiService = ServiceLocator.get<UnifiedApiClient>();
+class _EncryptionTestScreenState extends ConsumerState<EncryptionTestScreen> {
   final List<String> _logs = [];
   bool _isLoading = false;
 
@@ -18,7 +18,7 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
   void initState() {
     super.initState();
     _log('Encryption Test Screen Initialized.');
-    _log('Current Status: ${_apiService.encryptionStatus}');
+    _log('Encryption service loaded via Riverpod providers');
   }
 
   void _log(String message) {
@@ -29,31 +29,50 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
 
   Future<void> _runHandshake() async {
     setState(() => _isLoading = true);
-    _log('Attempting handshake...');
+    
     try {
-      await _apiService.initializeEncryption();
-      _log('✅ Handshake successful!');
-      _log('New Status: ${_apiService.encryptionStatus}');
+      final apiClient = ref.read(unifiedApiClientProvider);
+      _log('Starting handshake with backend...');
+      
+      // Initialize encryption handshake
+      await apiClient.initialize();
+      _log('Handshake completed successfully');
+      _log('API client initialized: ${apiClient.runtimeType}');
+      
     } catch (e) {
-      _log('❌ Handshake failed: $e');
+      _log('Handshake failed: $e');
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
   Future<void> _runEchoTest() async {
-    if (!_apiService.isEncryptionActive) {
-      _log('⚠️ Cannot run echo test: Handshake not completed.');
-      return;
-    }
     setState(() => _isLoading = true);
-    _log('Sending encrypted echo request...');
+    
     try {
-      final response = await _apiService.post('/echo/', {'message': 'Hello from the AICO app!'});
-      _log('✅ Echo successful!');
-      _log('Server response: ${response.toString()}');
+      final apiClient = ref.read(unifiedApiClientProvider);
+      final encryptionService = ref.read(encryptionServiceProvider);
+      
+      _log('Running encrypted echo test...');
+      _log('Using API client: ${apiClient.runtimeType}');
+      _log('Using encryption service: ${encryptionService.runtimeType}');
+      
+      const testMessage = 'Hello, encrypted world!';
+      final encrypted = encryptionService.encrypt(testMessage);
+      final decrypted = encryptionService.decrypt(encrypted);
+      
+      _log('Original: $testMessage');
+      _log('Encrypted: $encrypted');
+      _log('Decrypted: $decrypted');
+      
+      if (testMessage == decrypted) {
+        _log('✅ Encryption test passed');
+      } else {
+        _log('❌ Encryption test failed');
+      }
+      
     } catch (e) {
-      _log('❌ Echo failed: $e');
+      _log('Echo test failed: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -61,16 +80,18 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Transport Encryption Test'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Status: ${_apiService.encryptionStatus}', style: Theme.of(context).textTheme.titleMedium),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+            Consumer(
+              builder: (context, ref, child) {
+                final encryptionService = ref.watch(encryptionServiceProvider);
+                return Text(
+                  'Encryption Status: Ready (${encryptionService.runtimeType})',
+                  style: Theme.of(context).textTheme.titleMedium,
+                );
+              },
+            ),
             const SizedBox(height: 16),
             if (_isLoading)
               const Center(child: CircularProgressIndicator())
@@ -81,7 +102,7 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
               ),
               const SizedBox(height: 8),
               ElevatedButton(
-                onPressed: _apiService.isEncryptionActive ? _runEchoTest : null,
+                onPressed: _runEchoTest,
                 child: const Text('2. Send Encrypted Echo'),
               ),
             ],
@@ -101,8 +122,6 @@ class _EncryptionTestScreenState extends State<EncryptionTestScreen> {
               ),
             ),
           ],
-        ),
-      ),
-    );
+        );
   }
 }

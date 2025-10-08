@@ -5,15 +5,15 @@ import 'package:dio/dio.dart';
 /// Interceptor that automatically refreshes tokens when they expire
 class TokenRefreshInterceptor extends Interceptor {
   final TokenManager _tokenManager;
-  final ApiUserRepository _userRepository;
+  final ApiUserService _userService;
   final Dio _dio;
 
   TokenRefreshInterceptor({
     required TokenManager tokenManager,
-    required ApiUserRepository userRepository,
+    required ApiUserService userService,
     required Dio dio,
   })  : _tokenManager = tokenManager,
-        _userRepository = userRepository,
+        _userService = userService,
         _dio = dio;
 
   @override
@@ -32,7 +32,7 @@ class TokenRefreshInterceptor extends Interceptor {
     if (err.response?.statusCode == 401) {
       try {
         // Attempt to refresh token using stored credentials
-        final newToken = await _userRepository.refreshToken();
+        final newToken = await _userService.refreshToken();
         
         if (newToken != null) {
           // Retry the original request with new token
@@ -45,15 +45,15 @@ class TokenRefreshInterceptor extends Interceptor {
             return;
           } catch (e) {
             // If retry fails, clear credentials and let error propagate
-            await _userRepository.clearStoredCredentials();
+            await _userService.clearStoredCredentials();
           }
         } else {
           // No stored credentials available, clear any existing data
-          await _userRepository.clearStoredCredentials();
+          await _userService.clearStoredCredentials();
         }
       } catch (e) {
         // Token refresh failed, clear stored credentials
-        await _userRepository.clearStoredCredentials();
+        await _userService.clearStoredCredentials();
       }
     }
     

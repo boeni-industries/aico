@@ -15,11 +15,11 @@ from aico.proto.aico_core_envelope_pb2 import AicoMessage, MessageMetadata
 from aico.proto.aico_modelservice_pb2 import (
     # Request messages
     HealthRequest, CompletionsRequest, ModelsRequest, ModelInfoRequest,
-    EmbeddingsRequest, StatusRequest, OllamaStatusRequest, OllamaModelsRequest,
+    EmbeddingsRequest, NerRequest, IntentClassificationRequest, SentimentRequest, StatusRequest, OllamaStatusRequest, OllamaModelsRequest,
     OllamaPullRequest, OllamaRemoveRequest, OllamaServeRequest, OllamaShutdownRequest,
     # Response messages
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
-    EmbeddingsResponse, StatusResponse, OllamaStatusResponse, OllamaModelsResponse,
+    EmbeddingsResponse, NerResponse, IntentClassificationResponse, SentimentResponse, StatusResponse, OllamaStatusResponse, OllamaModelsResponse,
     OllamaPullResponse, OllamaRemoveResponse, OllamaServeResponse, OllamaShutdownResponse,
     # Data structures
     ConversationMessage
@@ -248,10 +248,14 @@ class ModelserviceMessageParser:
         # Map message types to their corresponding protobuf classes
         request_types = {
             AICOTopics.MODELSERVICE_HEALTH_REQUEST: HealthRequest,
+            AICOTopics.MODELSERVICE_CHAT_REQUEST: CompletionsRequest,
             AICOTopics.MODELSERVICE_COMPLETIONS_REQUEST: CompletionsRequest,
             AICOTopics.MODELSERVICE_MODELS_REQUEST: ModelsRequest,
             AICOTopics.MODELSERVICE_MODEL_INFO_REQUEST: ModelInfoRequest,
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST: EmbeddingsRequest,
+            AICOTopics.MODELSERVICE_NER_REQUEST: NerRequest,
+            AICOTopics.MODELSERVICE_INTENT_REQUEST: IntentClassificationRequest,
+            AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: SentimentRequest,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: StatusRequest,
             AICOTopics.OLLAMA_STATUS_REQUEST: OllamaStatusRequest,
             AICOTopics.OLLAMA_MODELS_REQUEST: OllamaModelsRequest,
@@ -265,7 +269,6 @@ class ModelserviceMessageParser:
         if not request_class:
             logger.error(f"[DEBUG] Unknown request type: {message_type}")
             raise ValueError(f"Unknown request type: {message_type}")
-        
         logger.info(f"[DEBUG] Found request class: {request_class.__name__} for message_type: {message_type}")
         return ModelserviceMessageFactory.extract_payload(envelope, request_class)
     
@@ -277,10 +280,14 @@ class ModelserviceMessageParser:
         # Map message types to their corresponding protobuf classes
         response_types = {
             AICOTopics.MODELSERVICE_HEALTH_RESPONSE: HealthResponse,
+            AICOTopics.MODELSERVICE_CHAT_RESPONSE: CompletionsResponse,
             AICOTopics.MODELSERVICE_COMPLETIONS_RESPONSE: CompletionsResponse,
             AICOTopics.MODELSERVICE_MODELS_RESPONSE: ModelsResponse,
             AICOTopics.MODELSERVICE_MODEL_INFO_RESPONSE: ModelInfoResponse,
             AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE: EmbeddingsResponse,
+            AICOTopics.MODELSERVICE_NER_RESPONSE: NerResponse,
+            AICOTopics.MODELSERVICE_INTENT_RESPONSE: IntentClassificationResponse,
+            AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE: SentimentResponse,
             AICOTopics.MODELSERVICE_STATUS_RESPONSE: StatusResponse,
             AICOTopics.OLLAMA_STATUS_RESPONSE: OllamaStatusResponse,
             AICOTopics.OLLAMA_MODELS_RESPONSE: OllamaModelsResponse,

@@ -17,7 +17,7 @@ from typing import Optional
 # Import decorators
 decorators_path = Path(__file__).parent.parent / "decorators"
 sys.path.insert(0, str(decorators_path))
-from cli.decorators.sensitive import sensitive, destructive
+from cli.decorators.sensitive import destructive
 
 # Add shared module to path for CLI usage
 if getattr(sys, 'frozen', False):
@@ -44,6 +44,73 @@ import aico.data.schemas.core
 from cli.utils.path_display import format_smart_path, create_path_table, display_full_paths_section, display_platform_info, get_status_indicator
 from cli.utils.timezone import format_timestamp_local, get_timezone_suffix
 from cli.utils.logging import initialize_cli_logging, get_cli_logger
+from cli.utils.lmdb_utils import initialize_lmdb_cli
+
+def initialize_chromadb_cli(config: Optional[ConfigurationManager] = None, verbose: bool = True) -> None:
+    """Initialize ChromaDB for semantic memory with CLI feedback."""
+    try:
+        # Import ChromaDB (core dependency)
+        import chromadb
+        from chromadb.config import Settings
+    except ImportError:
+        if verbose:
+            console.print("[red]❌ ChromaDB not installed - this should not happen with core dependencies[/red]")
+            console.print("[red]   Try reinstalling: pip install -e .[/red]")
+        raise
+    
+    if config is None:
+        config = ConfigurationManager()
+        config.initialize(lightweight=True)
+    
+    # Use new hierarchical path structure
+    semantic_memory_dir = AICOPaths.get_semantic_memory_path()
+    
+    try:
+        # Initialize ChromaDB client with persistent storage and proper settings
+        from chromadb.config import Settings
+        client = chromadb.PersistentClient(
+            path=str(semantic_memory_dir),
+            settings=Settings(allow_reset=True, anonymized_telemetry=False)
+        )
+        
+        # Create all required collections for semantic memory
+        embedding_model = config.get("core.modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
+        dimensions = config.get("core.modelservice.ollama.default_models.embedding.dimensions", 768)
+        
+        metadata = {
+            "embedding_model": embedding_model,
+            "dimensions": dimensions,
+            "created_by": "aico_db_init",
+            "version": "1.0"
+        }
+        
+        # Get collection names from V3 config
+        collections_config = config.get("core.memory.semantic.collections", {})
+        segments_collection = collections_config.get("conversation_segments", "conversation_segments")
+
+        # Collection: conversation_segments (V3: conversation history with embeddings)
+        try:
+            collection = client.get_collection(segments_collection)
+            if verbose:
+                console.print(f"[blue]INFO[/blue] - ChromaDB collection '{segments_collection}' already exists")
+        except Exception:
+            segments_metadata = {
+                **metadata, 
+                "collection_type": "conversation_segments", 
+                "description": "V3: Conversation segments with embeddings",
+                "schema_version": "3.0"  # V3 simplified schema
+            }
+            collection = client.create_collection(segments_collection, metadata=segments_metadata)
+            if verbose:
+                console.print(f"✅ Created collection: [cyan]{segments_collection}[/cyan] (conversation segments) with model: [cyan]{embedding_model}[/cyan]")
+        
+        if verbose:
+            console.print(f"✅ [green]ChromaDB semantic memory initialized at[/green] [cyan]{semantic_memory_dir}[/cyan]")
+        
+    except Exception as e:
+        if verbose:
+            console.print(f"❌ [red]Failed to initialize ChromaDB: {e}[/red]")
+        raise
 
 def database_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", help="Show this message and exit")):
     """Show help when no subcommand is given or --help is used."""
@@ -275,6 +342,17 @@ def init(
         # Only show keyring message if master password was actually created
         if master_password_was_created:
             console.print("🔐 Master password stored in system keyring")
+
+        # Also initialize memory databases
+        console.print("🧠 Initializing memory system databases...")
+        
+        # Initialize LMDB working memory
+        initialize_lmdb_cli(config=config)
+        
+        # Initialize ChromaDB semantic memory
+        initialize_chromadb_cli(config=config)
+        
+        console.print("✅ [green]Memory system initialization complete![/green]")
         
     except Exception as e:
         console.print(f"❌ [red]Failed to create database: {e}[/red]")

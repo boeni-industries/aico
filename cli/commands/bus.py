@@ -68,8 +68,9 @@ from aico.security.key_manager import AICOKeyManager
 from aico.core.paths import AICOPaths
 # Required protobuf imports - fail loudly if not available
 from aico.proto import aico_core_logging_pb2
-from aico.proto.aico_core_logging_pb2 import LogEntry, LogLevel
+from aico.proto.aico_core_envelope_pb2 import AicoMessage
 from google.protobuf.timestamp_pb2 import Timestamp
+from cli.decorators.sensitive import sensitive
 
 def _get_database_connection(db_path: str, force_fresh: bool = False) -> EncryptedLibSQLConnection:
     """Helper function to get authenticated database connection with session support."""
@@ -127,7 +128,7 @@ def test_connection(
         
         config = ConfigurationManager()
         config.initialize(lightweight=True)
-        initialize_logging(config)
+        initialize_logging(config, service_name="cli")
     except Exception as e:
         console.print(f"[yellow]Warning: Could not initialize logging: {e}[/yellow]")
     
@@ -225,7 +226,7 @@ def monitor_traffic(
         
         config = ConfigurationManager()
         config.initialize(lightweight=True)
-        initialize_logging(config)
+        initialize_logging(config, service_name="cli")
         
     except Exception as e:
         console.print(f"[red]✗ Failed to initialize logging: {e}[/red]")
@@ -358,6 +359,7 @@ def show_stats(
 
 
 @app.command("clear")
+@sensitive
 def clear_messages(
     db_path: Optional[str] = typer.Option(None, "--db", "-d", help="Database path"),
     confirm: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt")

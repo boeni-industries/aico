@@ -28,6 +28,16 @@ message CompletionsRequest {
   optional string system = 7;
 }
 
+// Streaming chunk message for real-time completions
+message StreamingChunk {
+  string request_id = 1;           // Correlation ID for the request
+  string content = 2;              // Incremental content chunk
+  string accumulated_content = 3;  // Total content so far
+  bool done = 4;                   // True if this is the final chunk
+  string model = 5;                // Model that generated this chunk
+  optional int64 timestamp = 6;    // Chunk timestamp
+}
+
 // Available models request
 message ModelsRequest {
   // Empty - no parameters needed
@@ -42,6 +52,23 @@ message ModelInfoRequest {
 message EmbeddingsRequest {
   string model = 1;
   string prompt = 2;
+}
+
+// NER request
+message NerRequest {
+  string text = 1;
+  repeated string entity_types = 2;  // Optional: filter by specific entity types
+}
+
+// Intent classification request
+message IntentClassificationRequest {
+  string text = 1;
+  optional string model = 2;
+}
+
+// Sentiment analysis request
+message SentimentRequest {
+  string text = 1;
 }
 
 // Service status request
@@ -111,6 +138,47 @@ message EmbeddingsResponse {
   bool success = 1;
   repeated double embedding = 2;
   optional string error = 3;
+}
+
+// NER response
+message NerResponse {
+  bool success = 1;
+  map<string, EntityList> entities = 2;
+  optional string error = 3;
+}
+
+message EntityList {
+  repeated EntityWithConfidence entities = 1;
+}
+
+message EntityWithConfidence {
+  string text = 1;
+  float confidence = 2;
+}
+
+// Intent classification response
+message IntentClassificationResponse {
+  bool success = 1;
+  string predicted_intent = 2;
+  double confidence = 3;
+  string detected_language = 4;
+  double inference_time_ms = 5;
+  repeated IntentPrediction alternative_predictions = 6;
+  map<string, string> metadata = 7;
+  optional string error = 8;
+}
+
+message IntentPrediction {
+  string intent = 1;
+  double confidence = 2;
+}
+
+// Sentiment analysis response
+message SentimentResponse {
+  bool success = 1;
+  string sentiment = 2;  // "positive", "negative", "neutral"
+  double confidence = 3; // confidence score 0.0-1.0
+  optional string error = 4;
 }
 
 // Service status response

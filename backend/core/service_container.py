@@ -227,7 +227,9 @@ class ServiceContainer:
             
             try:
                 # Get or create service instance
+                self.logger.info(f"🚀 [SERVICE_CONTAINER] Creating service instance: {service_name}")
                 service = self.get_service(service_name)
+                self.logger.info(f"✅ [SERVICE_CONTAINER] Service instance created: {service_name}")
                 
                 # Check if service has BaseService methods (duck typing approach)
                 has_lifecycle_methods = (
@@ -240,54 +242,24 @@ class ServiceContainer:
                 # Removed debug print
                 
                 if has_lifecycle_methods:
-                    # Service has lifecycle methods
-                    # Initialize if not already initialized
-                    if service.state == ServiceState.REGISTERED:
-                        # Initializing service
-                        service.state = ServiceState.INITIALIZING
-                        await service.initialize()
-                        service.state = ServiceState.INITIALIZED
-                        service._dependencies_resolved = True
+                    self.logger.info(f"🔧 [SERVICE_CONTAINER] Initializing service: {service_name}")
+                    # Initialize service
+                    if service.state == ServiceState.INITIALIZED:
+                        service.state = ServiceState.STARTING
+                        self.logger.info(f"🚀 [SERVICE_CONTAINER] Starting service: {service_name}")
+                        await service.start()
+                        self.logger.info(f"✅ [SERVICE_CONTAINER] Service started: {service_name}")
                     else:
-                        # Service state not REGISTERED - calling initialize anyway
+                        # Service needs initialization first
                         await service.initialize()
-                    
-                    # Start service
-                    # Starting service
-                    service.state = ServiceState.STARTING
-                    await service.start()
-                    service.state = ServiceState.RUNNING
+                        service.state = ServiceState.STARTING
+                        self.logger.info(f"🚀 [SERVICE_CONTAINER] Starting service: {service_name}")
+                        await service.start()
+                        self.logger.info(f"✅ [SERVICE_CONTAINER] Service started: {service_name}")
                 else:
-                    # Service is not BaseService, checking for lifecycle methods
-                    # For non-BaseService objects, check for initialize() and call it first
-                    if hasattr(service, 'initialize') and callable(getattr(service, 'initialize')):
-                        try:
-                            # Calling initialize() on service
-                            result = service.initialize()
-                            # Only await if it's a coroutine
-                            if asyncio.iscoroutine(result):
-                                await result
-                            # Initialize completed
-                        except Exception as e:
-                            self.logger.error(f"Service {service_name} initialize() failed: {e}")
-                    else:
-                        # Service has no initialize() method
-                        pass
-                    
-                    # Try to call start() anyway if it has the method
-                    if hasattr(service, 'start') and callable(getattr(service, 'start')):
-                        try:
-                            # Calling start() on service
-                            result = service.start()
-                            # Only await if it's a coroutine
-                            if asyncio.iscoroutine(result):
-                                await result
-                            # Start completed
-                        except Exception as e:
-                            self.logger.error(f"Service {service_name} start() failed: {e}")
-                    else:
-                        # Service has no start() method
-                        pass
+                    # Service has no start() method
+                    self.logger.info(f"⚠️ [SERVICE_CONTAINER] Service {service_name} has no lifecycle methods")
+                    pass
                 
                 self._states[service_name] = ServiceState.RUNNING
                 self.logger.info(f"Service started: {service_name}")

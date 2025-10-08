@@ -1,0 +1,27 @@
+# Service Authentication Configuration
+services:
+  # Default settings for all service tokens
+  defaults:
+    token_validity_hours: 8760  # 1 year
+    issuer: "aico-system"
+    require_component_identity: true
+    validate_audience: true
+    validate_expiry: true
+  
+  # Service permissions for API Gateway access
+  modelservice:
+    - "logs:write"
+    - "health:read"
+  frontend:
+    - "logs:write"
+    - "conversation:read"
+    - "conversation:write"
+  cli:
+    - "admin:read"
+    - "admin:write"
+    - "logs:read"
+    - "system:read"
+  studio:
+    - "logs:write"
+    - "system:read"
+    - "admin:read"

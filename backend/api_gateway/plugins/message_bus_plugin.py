@@ -57,22 +57,24 @@ class MessageBusPlugin(BasePlugin):
     async def start(self) -> None:
         """Start the message bus broker"""
         try:
-            #print(f"[MESSAGE BUS PLUGIN] start() called")
+            print(f"[MESSAGE BUS PLUGIN] start() called")
             
             # Get message bus configuration
             mb_config = self.get_config("message_bus", {})
             self.bind_address = mb_config.get("bind_address", "tcp://*:5555")
+            print(f"[MESSAGE BUS PLUGIN] Using bind address: {self.bind_address}")
             
             # Import and initialize message bus host
             from backend.message_bus_host import AICOMessageBusHost
             
+            print(f"[MESSAGE BUS PLUGIN] Creating message bus host...")
             self.message_bus_host = AICOMessageBusHost(self.bind_address)
-            #print(f"[MESSAGE BUS PLUGIN] Created message bus host on {self.bind_address}")
+            print(f"[MESSAGE BUS PLUGIN] Created message bus host on {self.bind_address}")
             
             # Start message bus host directly in current async context
-            #print(f"[MESSAGE BUS PLUGIN] Starting message bus host...")
+            print(f"[MESSAGE BUS PLUGIN] Starting message bus host...")
             await self.message_bus_host.start(db_connection=self.db_connection)
-            #print(f"[MESSAGE BUS PLUGIN] Message bus host started successfully")
+            print(f"[MESSAGE BUS PLUGIN] Message bus host started successfully")
             
             self.logger.info("Message bus plugin started", extra={
                 "bind_address": self.bind_address,
@@ -80,8 +82,8 @@ class MessageBusPlugin(BasePlugin):
                 "persistence": "enabled" if self.db_connection else "disabled"
             })
             
-            # Notify ZMQ log transport that broker is ready
-            self._notify_log_transport_broker_ready()
+            # Notify backend's ZMQ log transport that broker is ready
+            self._notify_log_transport_broker_ready()  # Only affects backend logging
             
         except Exception as e:
             self.logger.error(f"Failed to start message bus plugin: {e}")
@@ -164,18 +166,18 @@ class MessageBusPlugin(BasePlugin):
             }
     
     def _notify_log_transport_broker_ready(self):
-        """Notify ZMQ log transport that broker is ready to accept connections"""
+        """Notify backend's ZMQ log transport that broker is ready to accept connections"""
         try:
             from aico.core.logging import get_logger_factory
             
-            # Get the global logger factory instance
-            factory = get_logger_factory()
+            # Get the backend-specific logger factory instance
+            factory = get_logger_factory("backend")
             
             if factory and hasattr(factory, '_transport') and factory._transport:
                 factory._transport.mark_broker_ready()
-                self.logger.info("Notified ZMQ log transport that broker is ready")
+                self.logger.info("Notified backend ZMQ log transport that broker is ready")
             else:
-                self.logger.warning("Factory missing _transport or transport is None")
+                self.logger.warning("Backend factory missing _transport or transport is None")
             
         except Exception as e:
             # Don't fail startup if notification fails

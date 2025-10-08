@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the technical architecture for AICO's Emotion Simulation module, focusing on its integration with the message bus system and data exchange formats. For conceptual information about the emotion model, see [`/docs/concepts/emotion/emotion_sim.md`](../concepts/emotion/emotion_sim.md).
+This document describes the technical architecture for AICO's Emotion Simulation module, focusing on its integration with the message bus system and data exchange formats. For conceptual information about the emotion model, see [`/docs/concepts/emotion/emotion-sim.md`](./emotion-sim.md).
 
 ## Bus Integration Architecture
 
@@ -31,7 +31,7 @@ The Emotion Simulation module participates in the following message bus topics:
 
 ## Message Schemas
 
-Detailed message format specifications are documented in [`emotion_sim_msg.md`](./emotion_sim_msg.md). These include illustrative JSON structures for all input and output message types used by the Emotion Simulation module.
+Detailed message format specifications are documented in [`emotion_sim_msg.md`](./emotion-sim-msg.md). These include illustrative JSON structures for all input and output message types used by the Emotion Simulation module.
 
 **Key Message Types:**
 - **Input**: `user.emotion.detected`, `conversation.message`, `conversation.context`, `personality.state`

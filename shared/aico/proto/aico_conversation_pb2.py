@@ -26,7 +26,7 @@ from google.protobuf import descriptor_pb2 as google_dot_protobuf_dot_descriptor
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x61ico_conversation.proto\x12\x11\x61ico.conversation\x1a google/protobuf/descriptor.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xdc\x01\n\x13\x43onversationMessage\x12-\n\ttimestamp\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x12\n\nmessage_id\x18\x03 \x01(\t\x12\x0f\n\x07user_id\x18\x04 \x01(\t\x12+\n\x07message\x18\x05 \x01(\x0b\x32\x1a.aico.conversation.Message\x12\x34\n\x08\x61nalysis\x18\x06 \x01(\x0b\x32\".aico.conversation.MessageAnalysis\"\xfd\x01\n\x07Message\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\x34\n\x04type\x18\x02 \x01(\x0e\x32&.aico.conversation.Message.MessageType\x12\x11\n\tthread_id\x18\x03 \x01(\t\x12\x13\n\x0bturn_number\x18\x04 \x01(\x05\"\x85\x01\n\x0bMessageType\x12\x0b\n\x07UNKNOWN\x10\x00\x12\x0e\n\nUSER_INPUT\x10\x01\x12\x13\n\x0fSYSTEM_RESPONSE\x10\x02\x12\x17\n\x13SYSTEM_NOTIFICATION\x10\x03\x12\x12\n\x0eTHINKING_ALOUD\x10\x04\x12\x17\n\x13INTERNAL_REFLECTION\x10\x05\"\xbe\x01\n\x0fMessageAnalysis\x12\x0e\n\x06intent\x18\x01 \x01(\t\x12;\n\x07urgency\x18\x02 \x01(\x0e\x32*.aico.conversation.MessageAnalysis.Urgency\x12\x19\n\x11requires_response\x18\x03 \x01(\x08\"C\n\x07Urgency\x12\x0b\n\x07UNKNOWN\x10\x00\x12\x07\n\x03LOW\x10\x01\x12\n\n\x06MEDIUM\x10\x02\x12\x08\n\x04HIGH\x10\x03\x12\x0c\n\x08\x43RITICAL\x10\x04\"\xbb\x01\n\x13\x43onversationContext\x12-\n\ttimestamp\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06source\x18\x02 \x01(\t\x12+\n\x07\x63ontext\x18\x03 \x01(\x0b\x32\x1a.aico.conversation.Context\x12\x38\n\x0erecent_history\x18\x04 \x01(\x0b\x32 .aico.conversation.RecentHistory\"\xab\x01\n\x07\x43ontext\x12\x15\n\rcurrent_topic\x18\x01 \x01(\t\x12\x1a\n\x12\x63onversation_phase\x18\x02 \x01(\t\x12 \n\x18session_duration_minutes\x18\x03 \x01(\x05\x12\x1a\n\x12relationship_phase\x18\x04 \x01(\t\x12\x14\n\x0ctime_context\x18\x05 \x01(\t\x12\x19\n\x11\x63risis_indicators\x18\x06 \x01(\x08\"B\n\rRecentHistory\x12\x13\n\x0blast_topics\x18\x01 \x03(\t\x12\x1c\n\x14\x65motional_trajectory\x18\x02 \x03(\t\"\xb8\x01\n\x0fResponseRequest\x12-\n\ttimestamp\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x11\n\tthread_id\x18\x03 \x01(\t\x12\x18\n\x10input_message_id\x18\x04 \x01(\t\x12\x39\n\nparameters\x18\x05 \x01(\x0b\x32%.aico.conversation.ResponseParameters\"\x9f\x01\n\x12ResponseParameters\x12\x1b\n\x13\x65motional_alignment\x18\x01 \x01(\x02\x12\x16\n\x0eresponse_style\x18\x02 \x01(\t\x12\x16\n\x0einclude_topics\x18\x03 \x03(\t\x12\x14\n\x0c\x61void_topics\x18\x04 \x03(\t\x12\x12\n\nmax_length\x18\x05 \x01(\x05\x12\x12\n\ncreativity\x18\x06 \x01(\x02\x42\x61\n(industries.boeni.aico.proto.conversationP\x01Z3github.com/boeni-industries/aico/proto/conversationb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x61ico_conversation.proto\x12\x11\x61ico.conversation\x1a google/protobuf/descriptor.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xdc\x01\n\x13\x43onversationMessage\x12-\n\ttimestamp\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x12\n\nmessage_id\x18\x03 \x01(\t\x12\x0f\n\x07user_id\x18\x04 \x01(\t\x12+\n\x07message\x18\x05 \x01(\x0b\x32\x1a.aico.conversation.Message\x12\x34\n\x08\x61nalysis\x18\x06 \x01(\x0b\x32\".aico.conversation.MessageAnalysis\"\x83\x02\n\x07Message\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\x34\n\x04type\x18\x02 \x01(\x0e\x32&.aico.conversation.Message.MessageType\x12\x17\n\x0f\x63onversation_id\x18\x03 \x01(\t\x12\x13\n\x0bturn_number\x18\x04 \x01(\x05\"\x85\x01\n\x0bMessageType\x12\x0b\n\x07UNKNOWN\x10\x00\x12\x0e\n\nUSER_INPUT\x10\x01\x12\x13\n\x0fSYSTEM_RESPONSE\x10\x02\x12\x17\n\x13SYSTEM_NOTIFICATION\x10\x03\x12\x12\n\x0eTHINKING_ALOUD\x10\x04\x12\x17\n\x13INTERNAL_REFLECTION\x10\x05\"\xbe\x01\n\x0fMessageAnalysis\x12\x0e\n\x06intent\x18\x01 \x01(\t\x12;\n\x07urgency\x18\x02 \x01(\x0e\x32*.aico.conversation.MessageAnalysis.Urgency\x12\x19\n\x11requires_response\x18\x03 \x01(\x08\"C\n\x07Urgency\x12\x0b\n\x07UNKNOWN\x10\x00\x12\x07\n\x03LOW\x10\x01\x12\n\n\x06MEDIUM\x10\x02\x12\x08\n\x04HIGH\x10\x03\x12\x0c\n\x08\x43RITICAL\x10\x04\"\xbb\x01\n\x13\x43onversationContext\x12-\n\ttimestamp\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06source\x18\x02 \x01(\t\x12+\n\x07\x63ontext\x18\x03 \x01(\x0b\x32\x1a.aico.conversation.Context\x12\x38\n\x0erecent_history\x18\x04 \x01(\x0b\x32 .aico.conversation.RecentHistory\"\xab\x01\n\x07\x43ontext\x12\x15\n\rcurrent_topic\x18\x01 \x01(\t\x12\x1a\n\x12\x63onversation_phase\x18\x02 \x01(\t\x12 \n\x18session_duration_minutes\x18\x03 \x01(\x05\x12\x1a\n\x12relationship_phase\x18\x04 \x01(\t\x12\x14\n\x0ctime_context\x18\x05 \x01(\t\x12\x19\n\x11\x63risis_indicators\x18\x06 \x01(\x08\"B\n\rRecentHistory\x12\x13\n\x0blast_topics\x18\x01 \x03(\t\x12\x1c\n\x14\x65motional_trajectory\x18\x02 \x03(\t\"\xb8\x01\n\x0fResponseRequest\x12-\n\ttimestamp\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x11\n\tthread_id\x18\x03 \x01(\t\x12\x18\n\x10input_message_id\x18\x04 \x01(\t\x12\x39\n\nparameters\x18\x05 \x01(\x0b\x32%.aico.conversation.ResponseParameters\"\x9f\x01\n\x12ResponseParameters\x12\x1b\n\x13\x65motional_alignment\x18\x01 \x01(\x02\x12\x16\n\x0eresponse_style\x18\x02 \x01(\t\x12\x16\n\x0einclude_topics\x18\x03 \x03(\t\x12\x14\n\x0c\x61void_topics\x18\x04 \x03(\t\x12\x12\n\nmax_length\x18\x05 \x01(\x05\x12\x12\n\ncreativity\x18\x06 \x01(\x02\"\x89\x01\n\x11StreamingResponse\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x02 \x01(\t\x12\x1b\n\x13\x61\x63\x63umulated_content\x18\x03 \x01(\t\x12\x0c\n\x04\x64one\x18\x04 \x01(\x08\x12\x16\n\ttimestamp\x18\x05 \x01(\x03H\x00\x88\x01\x01\x42\x0c\n\n_timestampBa\n(industries.boeni.aico.proto.conversationP\x01Z3github.com/boeni-industries/aico/proto/conversationb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -37,21 +37,23 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_CONVERSATIONMESSAGE']._serialized_start=114
   _globals['_CONVERSATIONMESSAGE']._serialized_end=334
   _globals['_MESSAGE']._serialized_start=337
-  _globals['_MESSAGE']._serialized_end=590
-  _globals['_MESSAGE_MESSAGETYPE']._serialized_start=457
-  _globals['_MESSAGE_MESSAGETYPE']._serialized_end=590
-  _globals['_MESSAGEANALYSIS']._serialized_start=593
-  _globals['_MESSAGEANALYSIS']._serialized_end=783
-  _globals['_MESSAGEANALYSIS_URGENCY']._serialized_start=716
-  _globals['_MESSAGEANALYSIS_URGENCY']._serialized_end=783
-  _globals['_CONVERSATIONCONTEXT']._serialized_start=786
-  _globals['_CONVERSATIONCONTEXT']._serialized_end=973
-  _globals['_CONTEXT']._serialized_start=976
-  _globals['_CONTEXT']._serialized_end=1147
-  _globals['_RECENTHISTORY']._serialized_start=1149
-  _globals['_RECENTHISTORY']._serialized_end=1215
-  _globals['_RESPONSEREQUEST']._serialized_start=1218
-  _globals['_RESPONSEREQUEST']._serialized_end=1402
-  _globals['_RESPONSEPARAMETERS']._serialized_start=1405
-  _globals['_RESPONSEPARAMETERS']._serialized_end=1564
+  _globals['_MESSAGE']._serialized_end=596
+  _globals['_MESSAGE_MESSAGETYPE']._serialized_start=463
+  _globals['_MESSAGE_MESSAGETYPE']._serialized_end=596
+  _globals['_MESSAGEANALYSIS']._serialized_start=599
+  _globals['_MESSAGEANALYSIS']._serialized_end=789
+  _globals['_MESSAGEANALYSIS_URGENCY']._serialized_start=722
+  _globals['_MESSAGEANALYSIS_URGENCY']._serialized_end=789
+  _globals['_CONVERSATIONCONTEXT']._serialized_start=792
+  _globals['_CONVERSATIONCONTEXT']._serialized_end=979
+  _globals['_CONTEXT']._serialized_start=982
+  _globals['_CONTEXT']._serialized_end=1153
+  _globals['_RECENTHISTORY']._serialized_start=1155
+  _globals['_RECENTHISTORY']._serialized_end=1221
+  _globals['_RESPONSEREQUEST']._serialized_start=1224
+  _globals['_RESPONSEREQUEST']._serialized_end=1408
+  _globals['_RESPONSEPARAMETERS']._serialized_start=1411
+  _globals['_RESPONSEPARAMETERS']._serialized_end=1570
+  _globals['_STREAMINGRESPONSE']._serialized_start=1573
+  _globals['_STREAMINGRESPONSE']._serialized_end=1710
 # @@protoc_insertion_point(module_scope)

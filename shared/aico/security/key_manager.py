@@ -36,9 +36,9 @@ def _get_logger():
             try:
                 _logger = get_logger("shared", "security.key_manager")
             except RuntimeError:
-                # Logging not initialized, initialize it
+                # Logging not initialized, initialize with default service
                 config = ConfigurationManager()
-                initialize_logging(config)
+                initialize_logging(config, service_name="shared")
                 _logger = get_logger("shared", "security.key_manager")
         except Exception:
             # Fallback to standard logging if unified system fails

@@ -1,18 +1,14 @@
 import 'dart:async';
 
-import 'package:aico_frontend/core/di/service_locator.dart';
 import 'package:aico_frontend/core/theme/theme_data_factory.dart';
 import 'package:aico_frontend/core/theme/theme_manager.dart';
-import 'package:aico_frontend/presentation/blocs/settings/settings_bloc.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 /// Concrete implementation of ThemeManager for AICO
-/// Integrates with SettingsBloc for theme persistence and state management
+/// Migrated to work with Riverpod ThemeController
 class AicoThemeManager implements ThemeManager {
-  final SettingsBloc _settingsBloc;
   final StreamController<ThemeMode> _themeController = StreamController<ThemeMode>.broadcast();
-  StreamSubscription<SettingsState>? _settingsSubscription;
   
   ThemeMode _currentMode = ThemeMode.system;
   bool _isHighContrast = false;
@@ -22,17 +18,10 @@ class AicoThemeManager implements ThemeManager {
   ThemeData? _cachedHighContrastDarkTheme;
   bool _disposed = false;
 
-  AicoThemeManager({required SettingsBloc settingsBloc}) : _settingsBloc = settingsBloc {
+  AicoThemeManager() {
     _initializeFromSettings();
-    _listenToSettingsChanges();
   }
 
-  /// Factory constructor using service locator
-  factory AicoThemeManager.fromServiceLocator() {
-    return AicoThemeManager(
-      settingsBloc: ServiceLocator.get<SettingsBloc>(),
-    );
-  }
 
   @override
   ThemeMode get currentThemeMode => _currentMode;
@@ -93,18 +82,12 @@ class AicoThemeManager implements ThemeManager {
 
   @override
   Future<void> setThemeMode(ThemeMode mode) async {
-    if (_currentMode == mode) return;
-
+    if (_disposed) return;
+    
     _currentMode = mode;
-    
-    // Update settings bloc
-    _settingsBloc.add(SettingsThemeChanged(_themeModeToString(mode)));
-
-    // Update system UI overlay style
-    await _updateSystemUIOverlay();
-    
-    // Notify listeners
     _themeController.add(mode);
+    
+    // Theme persistence handled by ThemeController
   }
 
   @override
@@ -123,18 +106,14 @@ class AicoThemeManager implements ThemeManager {
 
   @override
   Future<void> setHighContrastEnabled(bool enabled) async {
-    if (_isHighContrast == enabled) return;
-
-    _isHighContrast = enabled;
+    if (_disposed) return;
     
-    // Clear cached themes to force regeneration
+    _isHighContrast = enabled;
     _clearThemeCache();
     
-    // Update settings bloc with custom setting
-    // TODO: Add high contrast support to new SettingsBloc
-    // _settingsBloc.add(SettingsHighContrastChanged(enabled));
-
-    // Notify listeners
+    // High contrast persistence handled by ThemeController
+    
+    await _updateSystemUIOverlay();
     _themeController.add(_currentMode);
   }
 
@@ -144,62 +123,34 @@ class AicoThemeManager implements ThemeManager {
     _isHighContrast = false;
     _clearThemeCache();
     
-    // Reset in settings
-    _settingsBloc.add(SettingsThemeChanged('system'));
-    // TODO: Add high contrast reset to new SettingsBloc
-    // _settingsBloc.add(SettingsHighContrastChanged(false));
+    // Theme reset handled by ThemeController
     
     await _updateSystemUIOverlay();
-    _themeController.add(_currentMode);
   }
 
-  /// Initialize theme settings from SettingsBloc state
+  /// Initialize theme settings with defaults
   void _initializeFromSettings() {
-    final state = _settingsBloc.state;
-    if (state is SettingsLoaded) {
-      // Load theme mode
-      _currentMode = _stringToThemeMode(state.theme);
-      
-      // Load high contrast setting - TODO: Add to new SettingsBloc
-      _isHighContrast = false; // state.highContrastEnabled ?? false;
-      
-      // Update system UI overlay
-      _updateSystemUIOverlay();
-    }
+    // Default values - will be overridden by ThemeController
+    _currentMode = ThemeMode.system;
+    _isHighContrast = false;
+    
+    // Update system UI overlay
+    _updateSystemUIOverlay();
   }
 
-  /// Listen to settings changes and update theme accordingly
-  void _listenToSettingsChanges() {
-    _settingsSubscription = _settingsBloc.stream.listen((state) {
-      if (_disposed) return;
-      
-      if (state is SettingsLoaded) {
-        bool hasChanges = false;
-        
-        // Check theme mode changes
-        final newThemeMode = _stringToThemeMode(state.theme);
-        if (_currentMode != newThemeMode) {
-          _currentMode = newThemeMode;
-          hasChanges = true;
-        }
-        
-        // Check high contrast changes - TODO: Add to new SettingsBloc
-        final newHighContrast = false; // state.highContrastEnabled ?? false;
-        if (_isHighContrast != newHighContrast) {
-          _isHighContrast = newHighContrast;
-          _clearThemeCache();
-          hasChanges = true;
-        }
-        
-        if (hasChanges && !_disposed) {
-          _updateSystemUIOverlay();
-          if (!_themeController.isClosed) {
-            _themeController.add(_currentMode);
-          }
-        }
-      }
-    });
+  /// Update theme mode (called by ThemeController)
+  void updateThemeMode(ThemeMode mode) {
+    _currentMode = mode;
+    _updateSystemUIOverlay();
   }
+
+  /// Update high contrast setting (called by ThemeController)
+  void updateHighContrast(bool enabled) {
+    _isHighContrast = enabled;
+    _clearThemeCache();
+    _updateSystemUIOverlay();
+  }
+
 
   /// Update system UI overlay style based on current theme
   Future<void> _updateSystemUIOverlay() async {
@@ -229,36 +180,14 @@ class AicoThemeManager implements ThemeManager {
     _cachedHighContrastDarkTheme = null;
   }
 
-  /// Convert ThemeMode to string for persistence
-  String _themeModeToString(ThemeMode mode) {
-    switch (mode) {
-      case ThemeMode.light:
-        return 'light';
-      case ThemeMode.dark:
-        return 'dark';
-      case ThemeMode.system:
-        return 'system';
-    }
-  }
-
-  /// Convert string to ThemeMode from persistence
-  ThemeMode _stringToThemeMode(String? modeString) {
-    switch (modeString) {
-      case 'light':
-        return ThemeMode.light;
-      case 'dark':
-        return ThemeMode.dark;
-      case 'system':
-      default:
-        return ThemeMode.system;
-    }
-  }
 
   /// Dispose resources
   void dispose() {
+    if (_disposed) return;
     _disposed = true;
-    _settingsSubscription?.cancel();
-    _settingsSubscription = null;
+    
+    // Cleanup handled by ThemeController
+    
     if (!_themeController.isClosed) {
       _themeController.close();
     }

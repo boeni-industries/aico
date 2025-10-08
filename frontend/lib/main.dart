@@ -1,20 +1,16 @@
 import 'dart:io';
 
-import 'package:aico_frontend/core/di/service_locator.dart';
-import 'package:aico_frontend/core/logging/logging.dart';
-import 'package:aico_frontend/core/logging/logging_module.dart';
-import 'package:aico_frontend/core/theme/aico_theme.dart';
-import 'package:aico_frontend/core/theme/theme_manager.dart';
+import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/core/logging/providers/logging_providers.dart';
+import 'package:aico_frontend/core/providers.dart';
 import 'package:aico_frontend/core/topics/aico_topics.dart';
-import 'package:aico_frontend/networking/repositories/user_repository.dart';
-import 'package:aico_frontend/networking/services/token_manager.dart';
-import 'package:aico_frontend/presentation/blocs/auth/auth_bloc.dart';
-import 'package:aico_frontend/presentation/blocs/connection/connection_bloc.dart';
-import 'package:aico_frontend/presentation/blocs/settings/settings_bloc.dart';
+import 'package:aico_frontend/presentation/providers/auth_provider.dart';
+import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/widgets/auth/auth_gate.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 void main() async {
@@ -43,88 +39,78 @@ void main() async {
   } catch (e) {
     // Window manager not available on this platform, continue without it
     debugPrint('Window manager not available: $e');
+    AICOLog.warn('Window manager not available on platform', 
+      topic: 'app/startup/window_manager', 
+      error: e,
+      extra: {'platform': Platform.operatingSystem});
   }
   
-  // Initialize dependency injection and wait for all services to be ready
-  await ServiceLocator.initialize();
-  await ServiceLocator.allReady();
+  // Initialize SharedPreferences for Riverpod
+  final sharedPreferences = await SharedPreferences.getInstance();
   
-  // Log application startup
-  await Log.i('app', AICOTopics.appStartup, 'AICO Flutter application starting', extra: {
-    'platform': Platform.operatingSystem,
-    'version': Platform.operatingSystemVersion,
-    'is_web': kIsWeb,
-    'is_debug': kDebugMode,
-  });
+  debugPrint('[app:${AICOTopics.appStartup}] AICO Flutter application starting');
+  AICOLog.info('AICO Flutter application starting', 
+    topic: 'app/startup/init', 
+    extra: {'startup_topic': AICOTopics.appStartup});
   
-  runApp(const AicoApp());
+  runApp(
+    ProviderScope(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(sharedPreferences),
+      ],
+      child: const AicoApp(),
+    ),
+  );
 }
 
-class AicoApp extends StatefulWidget {
+class AicoApp extends ConsumerStatefulWidget {
   const AicoApp({super.key});
 
   @override
-  State<AicoApp> createState() => _AicoAppState();
+  ConsumerState<AicoApp> createState() => _AicoAppState();
 }
 
-class _AicoAppState extends State<AicoApp> {
-  late ThemeManager _themeManager;
-  ThemeMode _currentThemeMode = ThemeMode.system;
-
+class _AicoAppState extends ConsumerState<AicoApp> {
   @override
   void initState() {
     super.initState();
-    _themeManager = ServiceLocator.get<ThemeManager>();
-    _currentThemeMode = _themeManager.currentThemeMode;
     
-    // Log app initialization
-    Log.i('app', AICOTopics.appInitialization, 'App widget initialized', extra: {
-      'theme_mode': _currentThemeMode.toString(),
+    // Initialize the logger provider to trigger initialization
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(aicoLoggerProvider);
     });
     
-    // Listen to theme changes
-    _themeManager.themeChanges.listen((themeMode) {
-      if (mounted) {
-        Log.i('app', AICOTopics.appThemeChange, 'Theme changed', extra: {
-          'from': _currentThemeMode.toString(),
-          'to': themeMode.toString(),
-        });
-        setState(() {
-          _currentThemeMode = themeMode;
-        });
-      }
+    debugPrint('[app:${AICOTopics.appInitialization}] App widget initialized with Riverpod');
+    AICOLog.info('App widget initialized with Riverpod', 
+      topic: 'app/lifecycle/init', 
+      extra: {'initialization_topic': AICOTopics.appInitialization});
+    
+    // Initialize auth status check
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(authProvider.notifier).checkAuthStatus();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return MultiBlocProvider(
-      providers: [
-        BlocProvider<SettingsBloc>(
-          create: (context) => ServiceLocator.get<SettingsBloc>()..add(const SettingsLoad()),
-        ),
-        BlocProvider<ConnectionBloc>(
-          create: (context) => ServiceLocator.get<ConnectionBloc>(),
-        ),
-        BlocProvider<AuthBloc>(
-          create: (context) => AuthBloc(
-            userRepository: ServiceLocator.get<UserRepository>(),
-            tokenManager: ServiceLocator.get<TokenManager>(),
-          )..add(const AuthStatusChecked()),
-        ),
-      ],
-      child: MaterialApp(
-        title: 'AICO',
-        debugShowCheckedModeBanner: false,
-        theme: _themeManager.isHighContrastEnabled 
-            ? _themeManager.generateHighContrastLightTheme()
-            : AicoTheme.light(),
-        darkTheme: _themeManager.isHighContrastEnabled 
-            ? _themeManager.generateHighContrastDarkTheme()
-            : AicoTheme.dark(),
-        themeMode: _currentThemeMode,
-        home: const AuthGate(),
-      ),
+    final themeState = ref.watch(themeControllerProvider);
+    final themeManager = ref.watch(themeManagerProvider);
+    
+    // Get appropriate themes based on high contrast setting
+    final lightTheme = themeState.isHighContrast 
+        ? themeManager.generateHighContrastLightTheme()
+        : themeManager.generateLightTheme();
+    final darkTheme = themeState.isHighContrast 
+        ? themeManager.generateHighContrastDarkTheme()
+        : themeManager.generateDarkTheme();
+    
+    return MaterialApp(
+      title: 'AICO',
+      debugShowCheckedModeBanner: false,
+      theme: lightTheme,
+      darkTheme: darkTheme,
+      themeMode: themeState.themeMode,
+      home: const AuthGate(),
     );
   }
 }

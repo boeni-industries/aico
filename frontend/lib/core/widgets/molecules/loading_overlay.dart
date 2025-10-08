@@ -1,4 +1,3 @@
-import 'package:aico_frontend/core/theme/aico_theme.dart';
 import 'package:flutter/material.dart';
 
 class LoadingOverlay extends StatefulWidget {
@@ -68,7 +67,7 @@ class _LoadingOverlayState extends State<LoadingOverlay>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final aicoTheme = theme.extension<AicoThemeExtension>()!;
+    final colorScheme = theme.colorScheme;
     
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -77,7 +76,7 @@ class _LoadingOverlayState extends State<LoadingOverlay>
         child: Center(
           child: Card(
             elevation: 8,
-            shadowColor: aicoTheme.colors.shadow,
+            shadowColor: colorScheme.shadow,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
@@ -99,15 +98,15 @@ class _LoadingOverlayState extends State<LoadingOverlay>
                             shape: BoxShape.circle,
                             gradient: LinearGradient(
                               colors: [
-                                aicoTheme.colors.primary,
-                                aicoTheme.colors.primary.withValues(alpha: 0.7),
+                                colorScheme.primary,
+                                colorScheme.primary.withValues(alpha: 0.7),
                               ],
                             ),
                           ),
                           child: Icon(
                             Icons.psychology_outlined,
                             size: 30,
-                            color: aicoTheme.colors.onPrimary,
+                            color: colorScheme.onPrimary,
                           ),
                         ),
                       );
@@ -119,8 +118,8 @@ class _LoadingOverlayState extends State<LoadingOverlay>
                   // Loading message
                   Text(
                     widget.message,
-                    style: aicoTheme.textTheme.bodyLarge?.copyWith(
-                      color: aicoTheme.colors.onSurface,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: colorScheme.onSurface,
                       fontWeight: FontWeight.w500,
                     ),
                     textAlign: TextAlign.center,
@@ -132,16 +131,16 @@ class _LoadingOverlayState extends State<LoadingOverlay>
                   if (widget.showProgress && widget.progress != null)
                     LinearProgressIndicator(
                       value: widget.progress,
-                      backgroundColor: aicoTheme.colors.outline.withValues(alpha: 0.3),
+                      backgroundColor: colorScheme.outline.withValues(alpha: 0.3),
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        aicoTheme.colors.primary,
+                        colorScheme.primary,
                       ),
                     )
                   else
                     CircularProgressIndicator(
                       strokeWidth: 3,
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        aicoTheme.colors.primary,
+                        colorScheme.primary,
                       ),
                     ),
                 ],

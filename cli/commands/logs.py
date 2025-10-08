@@ -348,6 +348,7 @@ def cat(
 
 
 @app.command(help="Remove log entries based on criteria")
+@sensitive
 def rm(
     before: Optional[str] = typer.Option(None, "--before", help="Delete logs before date"),
     older_than: Optional[str] = typer.Option(None, "--older-than", help="Delete logs older than period (e.g., 7d)"),

@@ -1,5 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:aico_frontend/core/providers/storage_providers.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 abstract class QueuedOperation {
   String get id;
@@ -33,9 +37,7 @@ class CreateUserOperation extends QueuedOperation {
 
   @override
   Future<void> execute() async {
-    // TODO: Implement actual user creation via repository
-    // This is a placeholder for the actual implementation
-    throw UnimplementedError('CreateUserOperation.execute() not implemented');
+    throw UnimplementedError('CreateUserOperation.execute() - User creation via repository not yet implemented');
   }
 
   @override
@@ -49,7 +51,80 @@ class CreateUserOperation extends QueuedOperation {
   }
 }
 
+class SendMessageOperation extends QueuedOperation {
+  @override
+  final String id;
+  @override
+  final String type = 'send_message';
+  @override
+  final Map<String, dynamic> data;
+  @override
+  final DateTime createdAt;
+  @override
+  final int retryCount;
+
+  SendMessageOperation({
+    required this.id,
+    required this.data,
+    required this.createdAt,
+    this.retryCount = 0,
+  });
+
+  @override
+  Future<void> execute() async {
+    throw UnimplementedError('SendMessageOperation.execute() - Message sending via repository not yet implemented');
+  }
+
+  @override
+  QueuedOperation withIncrementedRetry() {
+    return SendMessageOperation(
+      id: id,
+      data: data,
+      createdAt: createdAt,
+      retryCount: retryCount + 1,
+    );
+  }
+}
+
+class UpdateUserOperation extends QueuedOperation {
+  @override
+  final String id;
+  @override
+  final String type = 'update_user';
+  @override
+  final Map<String, dynamic> data;
+  @override
+  final DateTime createdAt;
+  @override
+  final int retryCount;
+
+  UpdateUserOperation({
+    required this.id,
+    required this.data,
+    required this.createdAt,
+    this.retryCount = 0,
+  });
+
+  @override
+  Future<void> execute() async {
+    throw UnimplementedError('UpdateUserOperation.execute() - User update via repository not yet implemented');
+  }
+
+  @override
+  QueuedOperation withIncrementedRetry() {
+    return UpdateUserOperation(
+      id: id,
+      data: data,
+      createdAt: createdAt,
+      retryCount: retryCount + 1,
+    );
+  }
+}
+
 class OfflineQueue {
+  final Ref _ref;
+  
+  OfflineQueue(this._ref);
   final List<QueuedOperation> _operations = [];
   final StreamController<List<QueuedOperation>> _queueController = 
       StreamController.broadcast();
@@ -147,36 +222,98 @@ class OfflineQueue {
 
   Future<void> _saveQueue() async {
     try {
-      // TODO: Implement persistent storage
-      // For now, this is a placeholder
-      // In production, save to local database or secure storage
-      
-      final serializedOps = _operations.map((op) => {
-        'id': op.id,
-        'type': op.type,
-        'data': op.data,
-        'createdAt': op.createdAt.toIso8601String(),
-        'retryCount': op.retryCount,
-      }).toList();
-      
-      // Placeholder for actual storage implementation
-      debugPrint('Saved ${serializedOps.length} operations to storage');
+      final storageServiceAsync = _ref.read(storageServiceProvider);
+      if (storageServiceAsync is AsyncData<StorageService>) {
+        final storageService = storageServiceAsync.value;
+        
+        final serializedOps = _operations.map((op) => {
+          'id': op.id,
+          'type': op.type,
+          'data': op.data,
+          'createdAt': op.createdAt.toIso8601String(),
+          'retryCount': op.retryCount,
+        }).toList();
+        
+        final jsonString = jsonEncode({'operations': serializedOps});
+        await storageService.setStringValue('offline_queue', jsonString);
+        debugPrint('Saved ${serializedOps.length} operations to storage');
+      }
     } catch (e) {
       debugPrint('Failed to save queue to storage: $e');
     }
   }
 
+  QueuedOperation? _deserializeOperation(Map<String, dynamic> data) {
+    try {
+      final type = data['type'] as String;
+      final id = data['id'] as String;
+      final operationData = data['data'] as Map<String, dynamic>;
+      final createdAt = DateTime.parse(data['createdAt'] as String);
+      final retryCount = data['retryCount'] as int;
+
+      switch (type) {
+        case 'create_user':
+          return CreateUserOperation(
+            id: id,
+            data: operationData,
+            createdAt: createdAt,
+            retryCount: retryCount,
+          );
+        case 'send_message':
+          return SendMessageOperation(
+            id: id,
+            data: operationData,
+            createdAt: createdAt,
+            retryCount: retryCount,
+          );
+        case 'update_user':
+          return UpdateUserOperation(
+            id: id,
+            data: operationData,
+            createdAt: createdAt,
+            retryCount: retryCount,
+          );
+        default:
+          debugPrint('Unknown operation type: $type');
+          return null;
+      }
+    } catch (e) {
+      debugPrint('Failed to deserialize operation: $e');
+      return null;
+    }
+  }
+
   Future<void> _loadQueue() async {
     try {
-      // TODO: Implement persistent storage loading
-      // For now, this is a placeholder
-      // In production, load from local database or secure storage
+      final storageServiceAsync = _ref.read(storageServiceProvider);
+      if (storageServiceAsync is AsyncData<StorageService>) {
+        final storageService = storageServiceAsync.value;
+        final queueDataString = storageService.getStringValue('offline_queue');
+        
+        if (queueDataString != null) {
+          final queueData = jsonDecode(queueDataString) as Map<String, dynamic>;
+          final operations = queueData['operations'] as List<dynamic>;
+          
+          _operations.clear();
+          for (final opData in operations) {
+            final operation = _deserializeOperation(opData as Map<String, dynamic>);
+            if (operation != null) {
+              _operations.add(operation);
+            }
+          }
+          
+          debugPrint('Loaded ${_operations.length} operations from storage');
+        } else {
+          debugPrint('No queue data found in storage');
+        }
+      }
       
-      debugPrint('Loaded queue from storage');
+      _notifyQueueChanged();
     } catch (e) {
       debugPrint('Failed to load queue from storage: $e');
     }
   }
+
 
   Future<void> initialize() async {
     await _loadQueue();

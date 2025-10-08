@@ -78,22 +78,22 @@ class AICOTopics:
     AGENCY_INITIATIVE_START = "agency/initiative/start/v1"
     AGENCY_DECISION_REQUEST = "agency/decision/request/v1"
     AGENCY_DECISION_RESPONSE = "agency/decision/response/v1"
-    AGENCY_PLANNING_UPDATE = "agency/planning/update/v1"
     
     # Conversation Domain
     CONVERSATION_CONTEXT_CURRENT = "conversation/context/current/v1"
     CONVERSATION_CONTEXT_UPDATE = "conversation/context/update/v1"
     CONVERSATION_HISTORY_ADD = "conversation/history/add/v1"
     CONVERSATION_INTENT_DETECTED = "conversation/intent/detected/v1"
+    # Conversation endpoints
     CONVERSATION_USER_INPUT = "conversation/user/input/v1"
     CONVERSATION_AI_RESPONSE = "conversation/ai/response/v1"
-    
-    # Memory Domain
-    MEMORY_STORE_REQUEST = "memory/store/request/v1"
-    MEMORY_STORE_RESPONSE = "memory/store/response/v1"
-    MEMORY_RETRIEVE_REQUEST = "memory/retrieve/request/v1"
-    MEMORY_RETRIEVE_RESPONSE = "memory/retrieve/response/v1"
-    MEMORY_CONSOLIDATION_START = "memory/consolidation/start/v1"
+    CONVERSATION_RESPONSE = "conversation/response/v1"
+    CONVERSATION_STREAM = "conversation/stream/v1"  # For real-time streaming to API layer
+    Memory_STORE_REQUEST = "memory/store/request/v1"
+    Memory_STORE_RESPONSE = "memory/store/response/v1"
+    Memory_RETRIEVE_REQUEST = "memory/retrieve/request/v1"
+    Memory_RETRIEVE_RESPONSE = "memory/retrieve/response/v1"
+    Memory_CONSOLIDATION_START = "memory/consolidation/start/v1"
     MEMORY_CONSOLIDATION_COMPLETE = "memory/consolidation/complete/v1"
     
     # User Domain
@@ -194,15 +194,31 @@ class AICOTopics:
     # Modelservice Domain (ZMQ topics for REST endpoint replacements)
     MODELSERVICE_HEALTH_REQUEST = "modelservice/health/request/v1"
     MODELSERVICE_HEALTH_RESPONSE = "modelservice/health/response/v1"
+    
+    # Chat endpoints (conversational with message arrays and roles)
+    MODELSERVICE_CHAT_REQUEST = "modelservice/chat/request/v1"
+    MODELSERVICE_CHAT_RESPONSE = "modelservice/chat/response/v1"
+    MODELSERVICE_CHAT_STREAM = "modelservice/chat/stream/v1"
+    
+    # Completions endpoints (single prompt analysis tasks)
     MODELSERVICE_COMPLETIONS_REQUEST = "modelservice/completions/request/v1"
     MODELSERVICE_COMPLETIONS_RESPONSE = "modelservice/completions/response/v1"
     MODELSERVICE_COMPLETIONS_STREAM = "modelservice/completions/stream/v1"
+    
     MODELSERVICE_MODELS_REQUEST = "modelservice/models/request/v1"
     MODELSERVICE_MODELS_RESPONSE = "modelservice/models/response/v1"
     MODELSERVICE_MODEL_INFO_REQUEST = "modelservice/model/info/request/v1"
     MODELSERVICE_MODEL_INFO_RESPONSE = "modelservice/model/info/response/v1"
     MODELSERVICE_EMBEDDINGS_REQUEST = "modelservice/embeddings/request/v1"
     MODELSERVICE_EMBEDDINGS_RESPONSE = "modelservice/embeddings/response/v1"
+    MODELSERVICE_NER_REQUEST = "modelservice/ner/request/v1"
+    MODELSERVICE_NER_RESPONSE = "modelservice/ner/response/v1"
+    MODELSERVICE_COREFERENCE_REQUEST = "modelservice/coreference/request/v1"
+    MODELSERVICE_COREFERENCE_RESPONSE = "modelservice/coreference/response/v1"
+    MODELSERVICE_INTENT_REQUEST = "modelservice/intent/request/v1"
+    MODELSERVICE_INTENT_RESPONSE = "modelservice/intent/response/v1"
+    MODELSERVICE_SENTIMENT_REQUEST = "modelservice/sentiment/request/v1"
+    MODELSERVICE_SENTIMENT_RESPONSE = "modelservice/sentiment/response/v1"
     MODELSERVICE_STATUS_REQUEST = "modelservice/status/request/v1"
     MODELSERVICE_STATUS_RESPONSE = "modelservice/status/response/v1"
     
@@ -504,7 +520,7 @@ class TopicMetadata:
         AICOTopics.SYSTEM_MODULE_REGISTERED,
         AICOTopics.CRISIS_DETECTION_ALERT,
         AICOTopics.CRISIS_RESPONSE_START,
-        AICOTopics.MEMORY_STORE_REQUEST,
+        AICOTopics.Memory_STORE_REQUEST,
         AICOTopics.USER_FEEDBACK_EXPLICIT,
     }
     

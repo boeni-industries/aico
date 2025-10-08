@@ -302,7 +302,7 @@ The AICO CLI provides the following command groups:
 - Rich console output with consistent styling
 - Session-based authentication with secure keyring storage
 
-**For detailed usage examples and workflows, see the [CLI Reference](../developer-guide/cli_reference.md).**
+**For detailed usage examples and workflows, see the CLI Reference documentation (file does not exist).**
 
 ## Performance Characteristics
 

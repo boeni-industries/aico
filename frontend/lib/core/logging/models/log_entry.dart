@@ -1,6 +1,5 @@
-// Simple data class without code generation dependencies
 
-/// Log levels following AICO unified logging schema
+/// Log levels following AICO logging standards
 enum LogLevel {
   debug,
   info,
@@ -8,44 +7,43 @@ enum LogLevel {
   error,
 }
 
-/// Log severity levels for prioritization
-enum LogSeverity {
-  low,
-  medium,
-  high,
-}
-
-/// Status of log entry in the system
-enum LogStatus {
-  pending,
-  sending,
-  sent,
-  failed,
-}
-
-/// Unified log entry following AICO logging schema
+/// Standardized log entry following AICO unified logging schema
 class LogEntry {
+  /// ISO8601 timestamp when log was created
   final String timestamp;
-  final LogLevel level;
-  final String module;
-  final String function;
-  final String topic;
-  final String message;
-  final String? file;
-  final int? line;
-  final String? userId;
-  final String? traceId;
-  final Map<String, dynamic>? extra;
-  final LogSeverity? severity;
-  final String? origin;
-  final String? environment;
-  final String? sessionId;
-  final Map<String, dynamic>? errorDetails;
   
-  // Local fields (not sent to backend)
-  final LogStatus status;
-  final DateTime? localTimestamp;
-  final int? retryCount;
+  /// Log severity level
+  final LogLevel level;
+  
+  /// Module identifier (e.g., "frontend.conversation_ui")
+  final String module;
+  
+  /// Function name where log originated
+  final String function;
+  
+  /// Log topic for categorization (e.g., "ui.button.click")
+  final String topic;
+  
+  /// Human-readable log message
+  final String message;
+  
+  /// Optional source file name
+  final String? file;
+  
+  /// Optional source line number
+  final int? line;
+  
+  /// Optional trace ID for request correlation
+  final String? traceId;
+  
+  /// Optional session ID for user session tracking
+  final String? sessionId;
+  
+  /// Optional additional structured data
+  final Map<String, dynamic>? extra;
+  
+  /// Optional error details for exception logging
+  final Map<String, dynamic>? errorDetails;
 
   const LogEntry({
     required this.timestamp,
@@ -56,24 +54,18 @@ class LogEntry {
     required this.message,
     this.file,
     this.line,
-    this.userId,
     this.traceId,
-    this.extra,
-    this.severity,
-    this.origin,
-    this.environment,
     this.sessionId,
+    this.extra,
     this.errorDetails,
-    this.status = LogStatus.pending,
-    this.localTimestamp,
-    this.retryCount,
   });
 
+  /// Create LogEntry from JSON
   factory LogEntry.fromJson(Map<String, dynamic> json) {
     return LogEntry(
       timestamp: json['timestamp'] as String,
       level: LogLevel.values.firstWhere(
-        (e) => e.name.toUpperCase() == (json['level'] as String).toUpperCase(),
+        (l) => l.name.toUpperCase() == (json['level'] as String).toUpperCase(),
         orElse: () => LogLevel.info,
       ),
       module: json['module'] as String,
@@ -82,111 +74,14 @@ class LogEntry {
       message: json['message'] as String,
       file: json['file'] as String?,
       line: json['line'] as int?,
-      userId: json['user_id'] as String?,
       traceId: json['trace_id'] as String?,
-      extra: json['extra'] as Map<String, dynamic>?,
-      severity: json['severity'] != null 
-        ? LogSeverity.values.firstWhere(
-            (e) => e.name == json['severity'],
-            orElse: () => LogSeverity.low,
-          )
-        : null,
-      origin: json['origin'] as String?,
-      environment: json['environment'] as String?,
       sessionId: json['session_id'] as String?,
+      extra: json['extra'] as Map<String, dynamic>?,
       errorDetails: json['error_details'] as Map<String, dynamic>?,
     );
   }
 
-  /// Create log entry with automatic timestamp and defaults
-  factory LogEntry.create({
-    required LogLevel level,
-    required String module,
-    required String function,
-    required String topic,
-    required String message,
-    String? file,
-    int? line,
-    String? userId,
-    String? traceId,
-    Map<String, dynamic>? extra,
-    LogSeverity? severity,
-    String? origin,
-    String? environment,
-    String? sessionId,
-  }) {
-    return LogEntry(
-      timestamp: DateTime.now().toIso8601String(),
-      level: level,
-      module: module,
-      function: function,
-      topic: topic,
-      message: message,
-      file: file,
-      line: line,
-      userId: userId,
-      traceId: traceId,
-      extra: extra,
-      severity: severity,
-      origin: origin ?? 'frontend',
-      environment: environment,
-      sessionId: sessionId,
-      localTimestamp: DateTime.now(),
-    );
-  }
-
-  /// Create error log entry with stack trace
-  factory LogEntry.error({
-    required String module,
-    required String function,
-    required String topic,
-    required String message,
-    String? file,
-    int? line,
-    required Object error,
-    StackTrace? stackTrace,
-    Map<String, dynamic>? extra,
-    String? userId,
-    String? sessionId,
-    String? environment,
-  }) {
-    // Ensure error details are serializable
-    final errorDetails = <String, dynamic>{
-      'error': error.toString(),
-      'type': error.runtimeType.toString(),
-      if (stackTrace != null) 'stackTrace': stackTrace.toString(),
-    };
-
-    return LogEntry(
-      timestamp: DateTime.now().toIso8601String(),
-      level: LogLevel.error,
-      module: module,
-      function: function,
-      topic: topic,
-      message: message,
-      file: file,
-      line: line,
-      userId: userId,
-      sessionId: sessionId,
-      environment: environment,
-      errorDetails: errorDetails,
-      extra: extra,
-      severity: LogSeverity.high,
-      localTimestamp: DateTime.now(),
-    );
-  }
-
-  /// Convert to JSON for backend transmission (excludes local fields)
-  Map<String, dynamic> toBackendJson() {
-    final json = toJson();
-    // Remove local-only fields
-    json.remove('status');
-    json.remove('localTimestamp');
-    json.remove('retryCount');
-    return json;
-  }
-
-  /// Convert to JSON for serialization
+  /// Convert LogEntry to JSON for backend API
   Map<String, dynamic> toJson() {
     return {
       'timestamp': timestamp,
@@ -197,103 +92,88 @@ class LogEntry {
       'message': message,
       if (file != null) 'file': file,
       if (line != null) 'line': line,
-      if (userId != null) 'user_id': userId,
       if (traceId != null) 'trace_id': traceId,
-      if (extra != null) 'extra': _sanitizeMap(extra!),
-      if (severity != null) 'severity': severity!.name,
-      if (origin != null) 'origin': origin,
-      if (environment != null) 'environment': environment,
       if (sessionId != null) 'session_id': sessionId,
-      if (errorDetails != null) 'error_details': _sanitizeMap(errorDetails!),
+      if (extra != null) 'extra': extra,
+      if (errorDetails != null) 'error_details': errorDetails,
+      // Backend expects these fields
+      'origin': 'frontend',
+      'environment': 'development', // TODO: Get from config
     };
   }
 
-  /// Sanitize a map to ensure all values are JSON-serializable
-  Map<String, dynamic> _sanitizeMap(Map<String, dynamic> map) {
-    final sanitized = <String, dynamic>{};
-    for (final entry in map.entries) {
-      sanitized[entry.key] = _sanitizeValue(entry.value);
-    }
-    return sanitized;
-  }
-
-  /// Sanitize a value to ensure it's JSON-serializable
-  dynamic _sanitizeValue(dynamic value) {
-    if (value == null || value is String || value is num || value is bool) {
-      return value;
-    } else if (value is List) {
-      return value.map(_sanitizeValue).toList();
-    } else if (value is Map) {
-      final sanitized = <String, dynamic>{};
-      for (final entry in value.entries) {
-        sanitized[entry.key.toString()] = _sanitizeValue(entry.value);
-      }
-      return sanitized;
-    } else {
-      // Convert any other type to string
-      return value.toString();
-    }
-  }
-
-  /// Create copy with updated status
-  LogEntry withStatus(LogStatus newStatus) {
+  /// Create a copy with modified fields
+  LogEntry copyWith({
+    String? timestamp,
+    LogLevel? level,
+    String? module,
+    String? function,
+    String? topic,
+    String? message,
+    String? file,
+    int? line,
+    String? traceId,
+    String? sessionId,
+    Map<String, dynamic>? extra,
+    Map<String, dynamic>? errorDetails,
+  }) {
     return LogEntry(
-      timestamp: timestamp,
-      level: level,
-      module: module,
-      function: function,
-      topic: topic,
-      message: message,
-      file: file,
-      line: line,
-      userId: userId,
-      traceId: traceId,
-      extra: extra,
-      severity: severity,
-      origin: origin,
-      environment: environment,
-      sessionId: sessionId,
-      errorDetails: errorDetails,
-      status: newStatus,
-      localTimestamp: localTimestamp,
-      retryCount: retryCount,
+      timestamp: timestamp ?? this.timestamp,
+      level: level ?? this.level,
+      module: module ?? this.module,
+      function: function ?? this.function,
+      topic: topic ?? this.topic,
+      message: message ?? this.message,
+      file: file ?? this.file,
+      line: line ?? this.line,
+      traceId: traceId ?? this.traceId,
+      sessionId: sessionId ?? this.sessionId,
+      extra: extra ?? this.extra,
+      errorDetails: errorDetails ?? this.errorDetails,
     );
   }
 
-  /// Create copy for retry with incremented count
-  LogEntry withRetry() {
-    return LogEntry(
-      timestamp: timestamp,
-      level: level,
-      module: module,
-      function: function,
-      topic: topic,
-      message: message,
-      file: file,
-      line: line,
-      userId: userId,
-      traceId: traceId,
-      extra: extra,
-      severity: severity,
-      origin: origin,
-      environment: environment,
-      sessionId: sessionId,
-      errorDetails: errorDetails,
-      status: LogStatus.pending,
-      localTimestamp: localTimestamp,
-      retryCount: (retryCount ?? 0) + 1,
-    );
+  @override
+  String toString() {
+    return '[$timestamp] ${level.name.toUpperCase()} $module.$function: $message';
   }
 
-  /// Check if log entry should be retried
-  bool get shouldRetry {
-    const maxRetries = 3;
-    return status == LogStatus.failed && (retryCount ?? 0) < maxRetries;
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is LogEntry &&
+        other.timestamp == timestamp &&
+        other.level == level &&
+        other.module == module &&
+        other.function == function &&
+        other.topic == topic &&
+        other.message == message;
   }
 
-  /// Get retry delay based on exponential backoff
-  Duration get retryDelay {
-    final attempt = retryCount ?? 0;
-    return Duration(seconds: (1 << attempt).clamp(1, 30)); // 1s, 2s, 4s, 8s, max 30s
+  @override
+  int get hashCode {
+    return Object.hash(timestamp, level, module, function, topic, message);
+  }
+}
+
+/// Extension methods for LogLevel
+extension LogLevelExtension on LogLevel {
+  /// Get numeric priority for level comparison
+  int get priority {
+    switch (this) {
+      case LogLevel.debug:
+        return 0;
+      case LogLevel.info:
+        return 1;
+      case LogLevel.warning:
+        return 2;
+      case LogLevel.error:
+        return 3;
+    }
+  }
+
+  /// Check if this level should be logged given a minimum level
+  bool shouldLog(LogLevel minimumLevel) {
+    return priority >= minimumLevel.priority;
   }
 }

@@ -21,7 +21,7 @@ class ProcessingContext:
     coordination data for maintaining consistency across AI processing.
     """
     # Core identifiers
-    thread_id: str
+    conversation_id: str
     user_id: str
     request_id: str
     correlation_id: Optional[str] = None

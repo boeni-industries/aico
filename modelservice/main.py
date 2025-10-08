@@ -15,19 +15,19 @@ from pathlib import Path
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-# Initialize configuration and logging before any imports that get loggers
+# Initialize configuration before any imports that get loggers
 from aico.core.config import ConfigurationManager
-from aico.core.logging import initialize_logging, get_logger
+from aico.core.logging import get_logger
 config_manager = ConfigurationManager()
 config_manager.initialize()
-initialize_logging(config_manager)
+# Logging will be initialized service-specifically in initialize_modelservice()
 from aico.core.version import get_modelservice_version
 from .core.zmq_service import ModelserviceZMQService
 
 # Get version from VERSIONS file
 __version__ = get_modelservice_version()
 
-logger = get_logger("modelservice", "main")
+# Logger will be initialized after logging setup in initialize_modelservice()
 
 # Global service instance for signal handling
 _zmq_service = None
@@ -38,8 +38,12 @@ async def initialize_modelservice():
     # Use the already initialized global config manager
     cfg = config_manager
     
-    # Initialize logging in lifespan context
-    logger_factory = initialize_logging(cfg)
+    # Initialize service-specific logging first to capture all subsequent logs
+    from aico.core.logging import initialize_logging
+    logger_factory = initialize_logging(cfg, service_name="modelservice")
+    
+    # Now we can get a logger
+    logger = get_logger("modelservice", "main")
     
     # The modelservice config is actually under the 'core' domain
     core_config = cfg.get("core", {})
@@ -74,32 +78,9 @@ async def initialize_modelservice():
     zmq_service = ModelserviceZMQService(cfg, None)  # No ollama_manager yet
     await zmq_service.start_early()  # New method for early startup
     
-    # Initialize ZMQ logging transport now that message bus is available
-    if logger_factory._transport:
-        logger_factory._transport.mark_broker_ready()
-        
-        # Wait for client connection AND LogConsumer to be ready
-        max_wait = 10  # 10 seconds max wait
-        wait_time = 0
-        while wait_time < max_wait:
-            await asyncio.sleep(0.1)
-            wait_time += 0.1
-            
-            # Check if client is connected
-            client = getattr(logger_factory._transport, '_message_bus_client', None)
-            if client and getattr(client, 'connected', False):
-                break
-        else:
-            print(f"⚠️  ZMQ client connection timeout after {max_wait}s")
-        
-        # Additional wait for LogConsumer to be ready
-        await asyncio.sleep(0.5)  # Give LogConsumer time to subscribe
-        
-        # Flush buffer after both client connection and LogConsumer are ready
-        if hasattr(logger_factory, '_log_buffer'):
-            buffer_size = len(logger_factory._log_buffer._buffer)
-            logger_factory._log_buffer.flush_to_transport(logger_factory._transport)
-    else:
+    # Initialize ZMQ logging transport - but don't try to connect yet
+    # Connection will happen automatically when mark_broker_ready() is called
+    if not logger_factory._transport:
         print("⚠️  Logger factory has no transport!")
     
     # Also test without the extra topic to see if that works
@@ -171,6 +152,8 @@ async def initialize_modelservice():
     print("[+] ZMQ service ready... (Press Ctrl+C to stop)\n")
     logger.info("Modelservice startup complete, ZMQ service ready")
 
+    # Logging will be handled after full ZMQ service initialization in main()
+
     return cfg, ollama_manager, process_manager, zmq_service
 
 
@@ -195,31 +178,57 @@ async def _check_backend_health(cfg: ConfigurationManager) -> bool:
 
 async def shutdown_modelservice(ollama_manager, process_manager):
     """Gracefully shutdown modelservice and Ollama."""
+    # Get logger safely
+    try:
+        logger = get_logger("modelservice", "main")
+    except:
+        logger = None
+    
     print("\n[-] Graceful shutdown initiated...")
-    logger.info("Graceful shutdown initiated")
+    if logger:
+        logger.info("Graceful shutdown initiated")
+    
+    # Signal global shutdown to semantic memory components (if any)
+    try:
+        from aico.ai.memory.request_queue import _set_global_shutdown
+        _set_global_shutdown()
+        if logger:
+            logger.info("Global shutdown signal sent to semantic memory components")
+    except ImportError:
+        # Semantic memory not available in modelservice, that's OK
+        pass
     
     print("[~] Stopping services...")
-    logger.info("Stopping services")
+    if logger:
+        logger.info("Stopping services")
     
     # Stop Ollama gracefully
     try:
         await ollama_manager.stop_ollama()
         print("[+] Ollama stopped")
-        logger.info("Ollama stopped successfully")
+        if logger:
+            logger.info("Ollama stopped successfully")
     except Exception as e:
         print(f"[!] Error stopping Ollama: {e}")
-        logger.error(f"Error stopping Ollama: {e}")
+        if logger:
+            logger.error(f"Error stopping Ollama: {e}")
         
     if process_manager:
         process_manager.cleanup_pid_files()
     print("[+] Shutdown complete.")
-    logger.info("Shutdown complete")
+    if logger:
+        logger.info("Shutdown complete")
 
 
 def signal_handler(signum, frame):
-    """Handle shutdown signals."""
-    global _zmq_service
-    logger.info(f"Received signal {signum}, initiating shutdown")
+    """Handle shutdown signals gracefully."""
+    # Get logger (it should be initialized by now)
+    try:
+        logger = get_logger("modelservice", "main")
+        logger.info(f"Received signal {signum}, initiating shutdown")
+    except:
+        print(f"Received signal {signum}, initiating shutdown")
+    
     if _zmq_service:
         asyncio.create_task(_zmq_service.stop())
 
@@ -239,10 +248,39 @@ async def main():
         # Complete the full ZMQ service initialization (subscribe to all topics)
         await _zmq_service.start()
         
+        # NOW mark broker ready - log consumer is fully initialized and ready
+        from aico.core.logging import get_logger_factory
+        logger_factory = get_logger_factory("modelservice")  # Get modelservice-specific factory
+        # Got logger factory
+        # Check factory has transport
+        # Check transport object
+        
+        if logger_factory and logger_factory._transport:
+            # Calling mark_broker_ready
+            logger_factory._transport.mark_broker_ready()  # This will trigger automatic flush of buffered logs
+            # mark_broker_ready completed
+        else:
+            # Cannot call mark_broker_ready - missing factory or transport
+            pass
+        
+        # Keep the service running (both foreground and background modes)
+        # Entering service loop
+        while _zmq_service and _zmq_service.running:
+            await asyncio.sleep(1.0)
+        # Service loop ended
+        
     except KeyboardInterrupt:
-        logger.info("Received keyboard interrupt")
+        try:
+            logger = get_logger("modelservice", "main")
+            logger.info("Received keyboard interrupt")
+        except:
+            print("Received keyboard interrupt")
     except Exception as e:
-        logger.error(f"Modelservice error: {str(e)}")
+        try:
+            logger = get_logger("modelservice", "main")
+            logger.error(f"Modelservice error: {str(e)}")
+        except:
+            print(f"Modelservice error: {str(e)}")
         raise
     finally:
         # Cleanup
@@ -256,9 +294,17 @@ def run_main():
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Modelservice stopped by user")
+        try:
+            logger = get_logger("modelservice", "main")
+            logger.info("Modelservice stopped by user")
+        except:
+            print("Modelservice stopped by user")
     except Exception as e:
-        logger.error(f"Fatal error: {str(e)}")
+        try:
+            logger = get_logger("modelservice", "main")
+            logger.error(f"Fatal error: {str(e)}")
+        except:
+            print(f"Fatal error: {str(e)}")
         sys.exit(1)
 
 

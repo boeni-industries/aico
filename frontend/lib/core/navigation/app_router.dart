@@ -4,7 +4,6 @@ import 'package:aico_frontend/presentation/screens/admin/logs_screen.dart';
 import 'package:aico_frontend/presentation/screens/home/home_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_search_screen.dart';
-import 'package:aico_frontend/presentation/screens/settings/privacy_settings_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
 import 'package:aico_frontend/presentation/widgets/navigation/main_layout.dart';
 import 'package:flutter/material.dart';
@@ -51,11 +50,6 @@ class AppRouter {
             name: 'settings',
             builder: (context, state) => const SettingsScreen(),
             routes: [
-              GoRoute(
-                path: '/privacy',
-                name: 'privacy-settings',
-                builder: (context, state) => const PrivacySettingsScreen(),
-              ),
             ],
           ),
 

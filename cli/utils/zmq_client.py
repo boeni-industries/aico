@@ -28,7 +28,7 @@ class CLIZMQClient:
     def __init__(self):
         self.config_manager = ConfigurationManager()
         self.config_manager.initialize(lightweight=True)
-        initialize_logging(self.config_manager)
+        initialize_logging(self.config_manager, service_name="cli")
         self.logger = get_logger("cli", "zmq_client")
         
     async def send_request(self, request_topic: str, response_topic: str, 
@@ -72,9 +72,48 @@ class CLIZMQClient:
                             }
                             if not health_response.success and health_response.HasField('error'):
                                 response_payload["error"] = health_response.error
+                        elif response_topic == AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE:
+                            from aico.proto.aico_modelservice_pb2 import EmbeddingsResponse
+                            embeddings_response = ModelserviceMessageFactory.extract_payload(envelope, EmbeddingsResponse)
+                            response_payload = {
+                                "success": embeddings_response.success,
+                                "data": {
+                                    "embedding": list(embeddings_response.embedding)
+                                }
+                            }
+                            if not embeddings_response.success and embeddings_response.HasField('error'):
+                                response_payload["error"] = embeddings_response.error
+                        elif response_topic == AICOTopics.OLLAMA_MODELS_RESPONSE:
+                            from aico.proto.aico_modelservice_pb2 import ModelsResponse
+                            models_response = ModelserviceMessageFactory.extract_payload(envelope, ModelsResponse)
+                            response_payload = {
+                                "success": models_response.success,
+                                "data": {
+                                    "models": []
+                                }
+                            }
+                            # Convert protobuf models to dict format
+                            for model in models_response.models:
+                                model_dict = {
+                                    "name": model.name,
+                                    "size": model.size,
+                                    "digest": model.digest
+                                }
+                                if model.HasField('modified_at'):
+                                    model_dict["modified_at"] = model.modified_at.ToDatetime().isoformat()
+                                response_payload["data"]["models"].append(model_dict)
+                            
+                            if not models_response.success and models_response.HasField('error'):
+                                response_payload["error"] = models_response.error
                         else:
-                            # Generic response handling
-                            response_payload = ModelserviceMessageParser.extract_response_payload(envelope, response_topic)
+                            # Generic response handling - convert protobuf to dict
+                            protobuf_response = ModelserviceMessageParser.extract_response_payload(envelope, response_topic)
+                            response_payload = {
+                                "success": getattr(protobuf_response, 'success', False),
+                                "data": {}
+                            }
+                            if hasattr(protobuf_response, 'error') and protobuf_response.HasField('error'):
+                                response_payload["error"] = protobuf_response.error
                         response_received.set()
                 except Exception as e:
                     self.logger.error(f"Error parsing response: {e}")
@@ -124,7 +163,8 @@ class CLIZMQClient:
         """Create Protocol Buffer request object based on topic (not envelope - MessageBusClient handles wrapping)."""
         # Import protobuf messages
         from aico.proto.aico_modelservice_pb2 import (
-            HealthRequest, StatusRequest, ModelsRequest, CompletionsRequest, ConversationMessage
+            HealthRequest, StatusRequest, ModelsRequest, CompletionsRequest, ConversationMessage,
+            EmbeddingsRequest, OllamaModelsRequest, OllamaPullRequest
         )
         
         # Map request topics to raw protobuf objects (not envelopes)
@@ -153,11 +193,20 @@ class CLIZMQClient:
             if data.get('system'):
                 request.system = data.get('system')
             return request
+        elif request_topic == AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST:
+            request = EmbeddingsRequest()
+            request.model = data.get('model', '')
+            request.prompt = data.get('prompt', '')
+            return request
         elif request_topic == AICOTopics.OLLAMA_STATUS_REQUEST:
             # Create appropriate Ollama request - using StatusRequest for now
             return StatusRequest()
         elif request_topic == AICOTopics.OLLAMA_MODELS_REQUEST:
-            return ModelsRequest()
+            return OllamaModelsRequest()
+        elif request_topic == AICOTopics.OLLAMA_MODELS_PULL_REQUEST:
+            request = OllamaPullRequest()
+            request.model = data.get('model', '')
+            return request
         else:
             raise ValueError(f"Unsupported request topic: {request_topic}")
 
@@ -203,6 +252,28 @@ def get_ollama_models() -> Dict[str, Any]:
         AICOTopics.OLLAMA_MODELS_RESPONSE,
         {},
         timeout=10.0
+    )
+
+
+def pull_ollama_model(model_name: str) -> Dict[str, Any]:
+    """Pull/download a model via Ollama."""
+    client = CLIZMQClient()
+    return client.send_request_sync(
+        AICOTopics.OLLAMA_MODELS_PULL_REQUEST,
+        AICOTopics.OLLAMA_MODELS_PULL_RESPONSE,
+        {"model": model_name},
+        timeout=60.0  # Model downloads can take longer
+    )
+
+
+def get_embeddings(model: str, text: str) -> Dict[str, Any]:
+    """Generate embeddings via modelservice."""
+    client = CLIZMQClient()
+    return client.send_request_sync(
+        AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
+        AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
+        {"model": model, "prompt": text},
+        timeout=30.0
     )
 
 

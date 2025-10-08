@@ -1,10 +1,11 @@
 import 'dart:io';
 
 import 'package:aico_frontend/core/services/encryption_service.dart';
-import 'package:aico_frontend/core/services/unified_api_client.dart';
-import 'package:dio/dio.dart';
+import 'package:aico_frontend/networking/clients/unified_api_client.dart';
+import 'package:aico_frontend/networking/clients/websocket_client.dart';
+import 'package:aico_frontend/networking/services/connection_manager.dart';
+import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 
 /// Test script to verify Flutter logging integration with encryption
 /// This simulates the logs that would be sent by the Flutter app
@@ -15,20 +16,25 @@ void main() async {
   final encryptionService = EncryptionService();
   await encryptionService.initialize();
   
-  // Create unified API client
-  final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8771/api/v1'));
-  final httpClient = http.Client();
-  final apiClient = UnifiedApiClient(
-    dio: dio,
-    httpClient: httpClient,
+  // Create token manager and connection manager
+  final tokenManager = TokenManager();
+  final webSocketClient = WebSocketClient(
     encryptionService: encryptionService,
-    baseUrl: 'http://localhost:8771/api/v1',
+    tokenManager: tokenManager,
+  );
+  final connectionManager = ConnectionManager(webSocketClient, encryptionService);
+  
+  // Create API client with proper dependencies
+  final apiClient = UnifiedApiClient(
+    encryptionService: encryptionService,
+    tokenManager: tokenManager,
+    connectionManager: connectionManager,
   );
   
   try {
-    // Initialize encryption session
-    debugPrint('🔐 Initializing encryption session...');
-    await apiClient.initializeEncryption();
+    // Initialize API client
+    debugPrint('🔐 Initializing API client...');
+    await apiClient.initialize();
     debugPrint('✅ Encryption session established');
   } catch (e) {
     debugPrint('❌ Failed to establish encryption: $e');
@@ -141,11 +147,11 @@ Future<void> testLog(UnifiedApiClient apiClient, Map<String, dynamic> logData, S
   try {
     debugPrint('\n🧪 Testing: $testName');
     
-    final response = await apiClient.post<Map<String, dynamic>>('/logs/', logData);
+    final response = await apiClient.post('/logs/batch', data: logData);
     
     debugPrint('✅ $testName: SUCCESS');
-    if (response.containsKey('message')) {
-      debugPrint('   Server response: ${response['message']}');
+    if (response?.containsKey('success') == true && response!['success'] == true) {
+      debugPrint('✅ Batch: ${response!['message']}');
     }
   } catch (e) {
     debugPrint('❌ $testName: ERROR - $e');

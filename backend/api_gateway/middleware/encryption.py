@@ -180,50 +180,111 @@ class EncryptionMiddleware:
             # Create response interceptor for encryption (for all requests with valid session)
             response_start_sent = False
             cached_start_message = None
+            is_streaming_response = False
             
             async def encrypt_send(message):
-                nonlocal response_start_sent, cached_start_message
+                nonlocal response_start_sent, cached_start_message, is_streaming_response
                 
                 if message["type"] == "http.response.start":
-                    # Cache the start message, we'll send it after we know the body size
-                    cached_start_message = message
-                elif message["type"] == "http.response.body":
-                    # Encrypt response body if it's JSON
-                    body = message.get("body", b"")
-                    encrypted_body = body  # Default to original body
+                    # Check if this is a streaming response
+                    headers = dict(message.get("headers", []))
+                    content_type = headers.get(b"content-type", b"").decode().lower()
                     
-                    try:
-                        if body:
-                            response_data = json.loads(body.decode())
-                            encrypted_payload = channel.encrypt_json_payload(response_data)
-                            encrypted_response = {
-                                "encrypted": True,
-                                "payload": encrypted_payload,
-                                "encryption": "xchacha20poly1305"
-                            }
-                            encrypted_body = json.dumps(encrypted_response).encode()
-                    except (json.JSONDecodeError, Exception):
-                        # Not JSON or encryption failed, use original body
-                        pass
+                    # Detect streaming responses
+                    is_streaming_response = (
+                        "application/x-ndjson" in content_type or
+                        "text/event-stream" in content_type or
+                        "application/stream+json" in content_type or
+                        headers.get(b"transfer-encoding") == b"chunked"
+                    )
                     
-                    # Update Content-Length in cached start message if we have one
-                    if cached_start_message and not response_start_sent:
-                        headers = list(cached_start_message.get("headers", []))
-                        updated_headers = []
-                        
-                        for name, value in headers:
-                            if name.lower() == b"content-length":
-                                updated_headers.append((name, str(len(encrypted_body or b"")).encode()))
-                            else:
-                                updated_headers.append((name, value))
-                        
-                        cached_start_message["headers"] = updated_headers
-                        await send(cached_start_message)
+                    if is_streaming_response:
+                        # For streaming responses, send start immediately and encrypt each chunk
+                        await send(message)
                         response_start_sent = True
+                    else:
+                        # For regular responses, cache the start message
+                        cached_start_message = message
+                        
+                elif message["type"] == "http.response.body":
+                    body = message.get("body", b"")
                     
-                    # Send the body (ensure it's not None)
-                    message["body"] = encrypted_body or b""
-                    await send(message)
+                    if is_streaming_response:
+                        # Streaming response: encrypt each chunk individually
+                        encrypted_body = body
+                        
+                        if body:
+                            try:
+                                # Try to parse as JSON line (NDJSON format)
+                                chunk_text = body.decode().strip()
+                                if chunk_text:
+                                    chunk_data = json.loads(chunk_text)
+                                    encrypted_payload = channel.encrypt_json_payload(chunk_data)
+                                    encrypted_chunk = {
+                                        "encrypted": True,
+                                        "payload": encrypted_payload,
+                                        "encryption": "xchacha20poly1305"
+                                    }
+                                    encrypted_body = (json.dumps(encrypted_chunk) + "\n").encode()
+                            except (json.JSONDecodeError, UnicodeDecodeError):
+                                # Not JSON or decode failed, encrypt as raw data
+                                if body:
+                                    try:
+                                        # Encrypt raw bytes as base64
+                                        import base64
+                                        encoded_body = base64.b64encode(body).decode()
+                                        encrypted_payload = channel.encrypt_json_payload({"raw_data": encoded_body})
+                                        encrypted_chunk = {
+                                            "encrypted": True,
+                                            "payload": encrypted_payload,
+                                            "encryption": "xchacha20poly1305",
+                                            "type": "raw"
+                                        }
+                                        encrypted_body = (json.dumps(encrypted_chunk) + "\n").encode()
+                                    except Exception:
+                                        # Encryption failed, pass through (should not happen)
+                                        pass
+                        
+                        # Send encrypted chunk
+                        message["body"] = encrypted_body
+                        await send(message)
+                        
+                    else:
+                        # Regular response: encrypt complete body as JSON
+                        encrypted_body = body  # Default to original body
+                        
+                        try:
+                            if body:
+                                response_data = json.loads(body.decode())
+                                encrypted_payload = channel.encrypt_json_payload(response_data)
+                                encrypted_response = {
+                                    "encrypted": True,
+                                    "payload": encrypted_payload,
+                                    "encryption": "xchacha20poly1305"
+                                }
+                                encrypted_body = json.dumps(encrypted_response).encode()
+                        except (json.JSONDecodeError, Exception):
+                            # Not JSON or encryption failed, use original body
+                            pass
+                        
+                        # Update Content-Length in cached start message if we have one
+                        if cached_start_message and not response_start_sent:
+                            headers = list(cached_start_message.get("headers", []))
+                            updated_headers = []
+                            
+                            for name, value in headers:
+                                if name.lower() == b"content-length":
+                                    updated_headers.append((name, str(len(encrypted_body or b"")).encode()))
+                                else:
+                                    updated_headers.append((name, value))
+                            
+                            cached_start_message["headers"] = updated_headers
+                            await send(cached_start_message)
+                            response_start_sent = True
+                        
+                        # Send the body (ensure it's not None)
+                        message["body"] = encrypted_body or b""
+                        await send(message)
                 else:
                     await send(message)
             
@@ -240,7 +301,7 @@ class EncryptionMiddleware:
                         
                         try:
                             decrypted_data = channel.decrypt_json_payload(encrypted_payload)
-                            self.logger.info(f"Successfully decrypted request payload: {decrypted_data}")
+                            self.logger.debug(f"Successfully decrypted request payload: {decrypted_data}")
                             
                             # Replace the request body with decrypted data
                             decrypted_body = json.dumps(decrypted_data).encode()
@@ -266,12 +327,20 @@ class EncryptionMiddleware:
                             new_scope["headers"] = updated_headers
                             
                             # Create a new receive callable with the decrypted body
+                            message_sent = False
                             async def new_receive():
-                                return {
-                                    "type": "http.request",
-                                    "body": decrypted_body,
-                                    "more_body": False
-                                }
+                                nonlocal message_sent
+                                if not message_sent:
+                                    message_sent = True
+                                    return {
+                                        "type": "http.request",
+                                        "body": decrypted_body,
+                                        "more_body": False
+                                    }
+                                else:
+                                    # For subsequent calls (like streaming disconnect detection), 
+                                    # delegate to original receive
+                                    return await receive()
                             
                             # Forward the request with decrypted body and encrypted response
                             await self.app(new_scope, new_receive, encrypt_send)

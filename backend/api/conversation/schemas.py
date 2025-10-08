@@ -20,28 +20,8 @@ class MessageType(str, Enum):
     PROACTIVE = "proactive"
 
 
-class ThreadCreateRequest(BaseModel):
-    """Request schema for creating new conversation threads"""
-    initial_message: Optional[str] = Field(None, description="Optional first message")
-    context: Optional[Dict[str, Any]] = Field(None, description="Initial context metadata")
-    thread_type: str = Field("conversation", description="Thread type for categorization")
-    
-    @validator('initial_message')
-    def validate_initial_message(cls, v):
-        if v is not None:
-            if not v.strip():
-                raise ValueError('Initial message cannot be empty if provided')
-            if len(v) > 10000:  # 10KB limit
-                raise ValueError('Initial message too long (max 10KB)')
-            return v.strip()
-        return v
-    
-    @validator('thread_type')
-    def validate_thread_type(cls, v):
-        valid_types = ['conversation', 'support', 'creative', 'technical']
-        if v not in valid_types:
-            raise ValueError(f'Invalid thread_type. Must be one of: {valid_types}')
-        return v
+# ThreadCreateRequest removed - conversations are created implicitly with first message
+# Semantic memory handles context continuity without explicit thread creation
 
 
 class MessageSendRequest(BaseModel):
@@ -69,7 +49,7 @@ class MessageSendRequest(BaseModel):
 class ConversationStartRequest(BaseModel):
     """Request to start or continue a conversation"""
     message: str = Field(..., description="Message to send (required)")
-    thread_id: Optional[str] = Field(None, description="Optional thread ID to continue existing conversation")
+    conversation_id: Optional[str] = Field(None, description="Optional conversation ID to continue existing conversation")
     context: Optional[Dict[str, Any]] = Field(None, description="Additional context for conversation")
     response_mode: Optional[str] = Field("text", description="Response mode: text, multimodal, proactive")
     
@@ -81,13 +61,10 @@ class ConversationStartRequest(BaseModel):
             raise ValueError("Message too long (max 10000 characters)")
         return v.strip()
     
-    @validator('thread_id')
-    def validate_thread_id(cls, v):
-        if v is not None:
-            try:
-                uuid.UUID(v)
-            except ValueError:
-                raise ValueError("Invalid thread ID format")
+    @validator('conversation_id')
+    def validate_conversation_id(cls, v):
+        if v is not None and len(v.strip()) > 255:
+            raise ValueError("Conversation ID too long (max 255 characters)")
         return v
 
 
@@ -107,14 +84,14 @@ class ConversationMessageRequest(BaseModel):
         return v.strip()
 
 
-class ThreadResponse(BaseModel):
-    """Response schema for thread operations"""
+class ConversationResponse(BaseModel):
+    """Response schema for conversation operations"""
     success: bool = Field(..., description="Operation success status")
-    thread_id: str = Field(..., description="Thread identifier")
-    status: str = Field(..., description="Thread status")
-    created_at: datetime = Field(..., description="Thread creation timestamp")
-    message_count: int = Field(0, description="Number of messages in thread")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Thread metadata")
+    conversation_id: str = Field(..., description="Conversation identifier")
+    status: str = Field(..., description="Conversation status")
+    created_at: datetime = Field(..., description="Conversation creation timestamp")
+    message_count: int = Field(0, description="Number of messages in conversation")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Conversation metadata")
     
     class Config:
         json_encoders = {
@@ -126,7 +103,7 @@ class MessageResponse(BaseModel):
     """Response schema for message operations"""
     success: bool = Field(..., description="Operation success status")
     message_id: str = Field(..., description="Message identifier")
-    thread_id: str = Field(..., description="Thread identifier")
+    conversation_id: str = Field(..., description="Conversation identifier")
     status: str = Field(..., description="Message processing status")
     timestamp: datetime = Field(..., description="Message timestamp")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Message metadata")
@@ -138,8 +115,8 @@ class MessageResponse(BaseModel):
 
 
 class ConversationStatus(BaseModel):
-    """Status of a conversation thread"""
-    thread_id: str = Field(..., description="Conversation thread ID")
+    """Status of a conversation"""
+    conversation_id: str = Field(..., description="Conversation ID")
     active: bool = Field(..., description="Whether conversation is active")
     message_count: int = Field(..., description="Number of messages in conversation")
     last_activity: str = Field(..., description="Timestamp of last activity (ISO format)")
@@ -155,19 +132,19 @@ class ConversationListRequest(BaseModel):
     since: Optional[datetime] = Field(None, description="Show conversations after timestamp")
 
 
-class ThreadListResponse(BaseModel):
-    """Response schema for listing threads"""
+class ConversationListResponse(BaseModel):
+    """Response schema for listing conversations"""
     success: bool = Field(..., description="Operation success status")
-    threads: List[Dict[str, Any]] = Field(..., description="List of thread summaries")
-    total_count: int = Field(..., description="Total number of threads")
+    conversations: List[Dict[str, Any]] = Field(..., description="List of conversation summaries")
+    total_count: int = Field(..., description="Total number of conversations")
     page: int = Field(1, description="Current page number")
-    page_size: int = Field(20, description="Number of threads per page")
+    page_size: int = Field(20, description="Number of conversations per page")
 
 
 class MessageHistoryResponse(BaseModel):
     """Response for message history retrieval"""
     success: bool
-    thread_id: str
+    conversation_id: str
     messages: List[Dict[str, Any]]
     total_count: int
     page: int = 1
@@ -185,6 +162,7 @@ class UnifiedMessageRequest(BaseModel):
     """Request for unified message endpoint with automatic thread resolution"""
     message: str = Field(..., description="Message content")
     message_type: str = Field("text", description="Message type")
+    conversation_id: Optional[str] = Field(None, description="Conversation ID for thread continuity")
     context: Optional[Dict[str, Any]] = Field(None, description="Optional context for thread resolution")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Message metadata")
 
@@ -193,9 +171,9 @@ class UnifiedMessageResponse(BaseModel):
     """Response for unified message endpoint"""
     success: bool
     message_id: str
-    thread_id: str
-    thread_action: str  # "continued", "created", "reactivated"
-    thread_reasoning: str
+    conversation_id: str
+    conversation_action: str  # "continued", "created", "reactivated"
+    conversation_reasoning: str
     status: str  # "processing", "queued", "error"
     timestamp: datetime
     ai_response: Optional[str] = Field(None, description="AI response to the message")
@@ -222,7 +200,7 @@ class WebSocketMessage(BaseModel):
 class WebSocketAIResponse(WebSocketMessage):
     """AI response via WebSocket"""
     type: WebSocketMessageType = Field(WebSocketMessageType.AI_RESPONSE, description="Message type")
-    thread_id: str = Field(..., description="Conversation thread ID")
+    conversation_id: str = Field(..., description="Conversation ID")
     message_id: str = Field(..., description="AI message ID")
     message: str = Field(..., description="AI response text")
     confidence: Optional[float] = Field(None, description="Response confidence score")
@@ -234,13 +212,13 @@ class WebSocketError(WebSocketMessage):
     type: WebSocketMessageType = Field(WebSocketMessageType.ERROR, description="Message type")
     error_code: str = Field(..., description="Error code")
     error_message: str = Field(..., description="Human-readable error message")
-    thread_id: Optional[str] = Field(None, description="Related thread ID if applicable")
+    conversation_id: Optional[str] = Field(None, description="Related conversation ID if applicable")
 
 
 class WebSocketStatusUpdate(WebSocketMessage):
     """Status update via WebSocket"""
     type: WebSocketMessageType = Field(WebSocketMessageType.STATUS_UPDATE, description="Message type")
-    thread_id: str = Field(..., description="Conversation thread ID")
+    conversation_id: str = Field(..., description="Conversation ID")
     status: str = Field(..., description="New status")
     details: Optional[Dict[str, Any]] = Field(None, description="Additional status details")
 
@@ -252,7 +230,7 @@ class ProtobufConversationMessage(BaseModel):
     source: str = Field(..., description="Message source (user ID)")
     text: str = Field(..., description="Message text content")
     message_type: MessageType = Field(..., description="Message type")
-    thread_id: str = Field(..., description="Conversation thread ID")
+    conversation_id: str = Field(..., description="Conversation ID")
     turn_number: int = Field(..., description="Turn number in conversation")
     intent: Optional[str] = Field(None, description="Detected intent")
     urgency: Optional[str] = Field("medium", description="Message urgency level")
@@ -263,6 +241,6 @@ class ConversationHealthResponse(BaseModel):
     """Health check response for conversation API"""
     status: str = Field(..., description="Service status")
     active_connections: int = Field(..., description="Number of active WebSocket connections")
-    active_threads: int = Field(0, description="Number of active conversation threads")
+    active_conversations: int = Field(0, description="Number of active conversations")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Health check timestamp")
     version: str = Field("1.0.0", description="API version")

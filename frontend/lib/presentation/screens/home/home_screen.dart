@@ -1,21 +1,22 @@
-import 'package:aico_frontend/core/di/service_locator.dart';
-import 'package:aico_frontend/core/theme/theme_manager.dart';
-import 'package:aico_frontend/presentation/blocs/auth/auth_bloc.dart';
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
+import 'package:aico_frontend/presentation/providers/auth_provider.dart';
+import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
+import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
+import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Home screen featuring avatar-centric hub with integrated conversation interface.
 /// Serves as the primary interaction point with AICO, including conversation history
 /// and collapsible right drawer for thoughts and memory timeline.
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
 enum NavigationPage {
@@ -25,76 +26,93 @@ enum NavigationPage {
   settings,
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _isRightDrawerOpen = true;
   bool _isRightDrawerExpanded = false; // true = expanded, false = collapsed to icons
   bool _isLeftDrawerExpanded = true; // true = expanded with text, false = collapsed to icons only
   NavigationPage _currentPage = NavigationPage.home;
-  ThemeManager? _themeManager;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _conversationController = ScrollController();
-  final List<ConversationMessage> _messages = [
-    ConversationMessage(
-      isFromAico: true,
-      message: "I noticed you seemed a bit stressed earlier. How are you feeling now? I'm here if you'd like to talk about anything.",
-      timestamp: DateTime.now().subtract(const Duration(minutes: 5)),
-    ),
-  ];
+  final FocusNode _messageFocusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
-    _themeManager = ServiceLocator.get<ThemeManager>();
-    // Listen to theme changes and rebuild UI
-    _themeManager?.themeChanges.listen((_) {
-      if (mounted) {
-        setState(() {
-          debugPrint('Theme changed via stream listener');
-        });
-      }
+    // Theme management now handled via Riverpod providers
+    
+    // Listen for conversation changes to auto-scroll
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.listenManual(conversationProvider, (previous, next) {
+        // Auto-scroll when new messages are added OR when message content changes (streaming)
+        if (previous != null) {
+          bool shouldScroll = false;
+          
+          // New message added
+          if (next.messages.length > previous.messages.length) {
+            shouldScroll = true;
+          }
+          
+          // Message content updated (streaming)
+          else if (next.messages.length == previous.messages.length && next.messages.isNotEmpty) {
+            // Check if the last message content has changed (streaming update)
+            final lastMessage = next.messages.last;
+            final previousLastMessage = previous.messages.isNotEmpty ? previous.messages.last : null;
+            
+            if (previousLastMessage != null && 
+                lastMessage.content != previousLastMessage.content) {
+              shouldScroll = true;
+            }
+          }
+          
+          if (shouldScroll) {
+            _scrollToBottom();
+          }
+        }
+      });
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    
     final accentColor = const Color(0xFFB8A1EA); // Soft purple accent
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth > 800;
     
     return Scaffold(
-      body: Stack(
-        children: [
-          Row(
-            children: [
-              // Left drawer for navigation - always visible on desktop, toggles between expanded/collapsed
-              if (isDesktop)
-                _buildLeftDrawer(context, theme, accentColor),
-          
-          // Main content area - switches based on selected page
-          Expanded(
-            flex: (_isRightDrawerOpen && isDesktop) ? 2 : 3,
-            child: SafeArea(
-              child: _buildMainContent(context, theme, accentColor),
+        body: Stack(
+          children: [
+            Row(
+              children: [
+                // Left drawer for navigation - always visible on desktop, toggles between expanded/collapsed
+                if (isDesktop)
+                  _buildLeftDrawer(context, theme, accentColor),
+            
+            // Main content area - switches based on selected page
+            Expanded(
+              flex: (_isRightDrawerOpen && isDesktop) ? 2 : 3,
+              child: SafeArea(
+                child: _buildMainContent(context, theme, accentColor),
+              ),
             ),
-          ),
-          
-              // Right drawer for thoughts and memory - always visible on desktop, toggles between expanded/collapsed
-              if (_isRightDrawerOpen && isDesktop)
-                _buildRightDrawer(context, theme, accentColor),
-            ],
-          ),
-        ],
-      ),
-      // Theme/contrast toolbar and drawer toggles
-      floatingActionButton: Stack(
-        children: [
-          
-          // Right side controls (theme/logout buttons) - positioned relative to right drawer
-          Positioned(
-            right: _isRightDrawerOpen 
-                ? (_isRightDrawerExpanded ? 300 : 72) // Equal spacing from drawer edge
-                : 16, // 16px from screen edge when drawer is closed
+            
+                // Right drawer for thoughts and memory - always visible on desktop, toggles between expanded/collapsed
+                if (_isRightDrawerOpen && isDesktop)
+                  _buildRightDrawer(context, theme, accentColor),
+              ],
+            ),
+          ],
+        ),
+        // Theme/contrast toolbar and drawer toggles
+        floatingActionButton: Stack(
+          children: [
+            
+            // Right side controls (theme/logout buttons) - positioned relative to right drawer
+            Positioned(
+              right: _isRightDrawerOpen 
+                  ? (_isRightDrawerExpanded ? 300 : 72) // Equal spacing from drawer edge
+                  : 16, // 16px from screen edge when drawer is closed
             top: 16,
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -112,27 +130,40 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        onPressed: () async {
-                          debugPrint('Theme toggle pressed');
-                          await _themeManager?.toggleTheme();
-                          debugPrint('Theme toggled to: ${_themeManager?.currentThemeMode}');
+                      Consumer(
+                        builder: (context, ref, child) {
+                          final themeState = ref.watch(themeControllerProvider);
+                          return IconButton(
+                            onPressed: () async {
+                              debugPrint('Theme toggle pressed');
+                              await ref.read(themeControllerProvider.notifier).toggleTheme();
+                              debugPrint('Theme toggled');
+                            },
+                            icon: Icon(themeState.themeMode == ThemeMode.light ? Icons.wb_sunny : Icons.nightlight_round),
+                            tooltip: 'Toggle theme',
+                            style: IconButton.styleFrom(
+                              foregroundColor: theme.colorScheme.onSurface,
+                            ),
+                          );
                         },
-                        icon: Icon(_themeManager?.currentBrightness == Brightness.light ? Icons.wb_sunny : Icons.nightlight_round),
-                        tooltip: 'Toggle theme',
-                        style: IconButton.styleFrom(
-                          foregroundColor: theme.colorScheme.onSurface,
-                        ),
                       ),
                       IconButton(
                         onPressed: () async {
                           debugPrint('Contrast toggle pressed');
-                          await _themeManager?.setHighContrastEnabled(!(_themeManager?.isHighContrastEnabled ?? false));
-                          debugPrint('Contrast toggled to: ${_themeManager?.isHighContrastEnabled}');
+                          final currentState = ref.read(themeControllerProvider);
+                          await ref.read(themeControllerProvider.notifier).setHighContrastEnabled(!currentState.isHighContrast);
+                          debugPrint('High contrast toggled to: ${!currentState.isHighContrast}');
                         },
-                        icon: Icon(
-                          Icons.contrast,
-                          color: (_themeManager?.isHighContrastEnabled ?? false) ? Colors.orange : theme.colorScheme.onSurface,
+                        icon: Consumer(
+                          builder: (context, ref, child) {
+                            final themeState = ref.watch(themeControllerProvider);
+                            return Icon(
+                              Icons.contrast,
+                              color: themeState.isHighContrast 
+                                  ? theme.colorScheme.primary 
+                                  : theme.colorScheme.onSurface,
+                            );
+                          },
                         ),
                         tooltip: 'Toggle high contrast',
                         style: IconButton.styleFrom(
@@ -141,7 +172,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       IconButton(
                         onPressed: () {
-                          context.read<AuthBloc>().add(AuthLogoutRequested());
+                          ref.read(authProvider.notifier).logout();
                         },
                         icon: const Icon(Icons.logout),
                         tooltip: 'Logout',
@@ -209,10 +240,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-        ],
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endTop,
-    );
+          ],
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endTop,
+      );
   }
 
   Widget _buildAvatarHeader(BuildContext context, ThemeData theme, Color accentColor) {
@@ -220,30 +251,10 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          // Avatar with mood ring
-          SizedBox(
-            width: 96,
-            child: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: accentColor,
-                  width: 3,
-                ),
-              ),
-              child: CircleAvatar(
-                radius: 60,
-                backgroundColor: theme.colorScheme.surface,
-                child: Icon(
-                  Icons.face,
-                  size: 48,
-                  color: accentColor,
-                ),
-              ),
-            ),
-          ),
+          // Avatar with intelligent status ring
+          const CompanionAvatar(),
           
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           
           // Emotional state
           Text(
@@ -287,15 +298,70 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildConversationArea(BuildContext context, ThemeData theme, Color accentColor) {
+    final conversationState = ref.watch(conversationProvider);
+    
+    if (conversationState.isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (conversationState.error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: theme.colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Error loading conversation',
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              conversationState.error!,
+              style: theme.textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => ref.read(conversationProvider.notifier).clearError(),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
-      child: ListView.builder(
-        controller: _conversationController,
-        itemCount: _messages.length,
-        itemBuilder: (context, index) {
-          final message = _messages[index];
-          return _buildMessageBubble(context, theme, accentColor, message);
-        },
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+        child: Scrollbar(
+          controller: _conversationController,
+          thumbVisibility: true,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 16), // Add padding to prevent scrollbar overlap
+            child: ListView.builder(
+              controller: _conversationController,
+              itemCount: conversationState.messages.length,
+              itemBuilder: (context, index) {
+                final message = conversationState.messages[index];
+                // Convert domain Message to presentation ConversationMessage
+                final conversationMessage = ConversationMessage(
+                  isFromAico: message.userId == 'aico',
+                  message: message.content,
+                  timestamp: message.timestamp,
+                );
+                return _buildMessageBubble(context, theme, accentColor, conversationMessage);
+              },
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -365,6 +431,8 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: TextField(
                 controller: _messageController,
+                focusNode: _messageFocusNode,
+                autofocus: true,
                 decoration: InputDecoration(
                   hintText: 'Share what\'s on your mind...',
                   border: InputBorder.none,
@@ -572,47 +640,41 @@ class _HomeScreenState extends State<HomeScreen> {
   void _sendMessage(String text) {
     if (text.trim().isEmpty) return;
     
-    setState(() {
-      _messages.add(ConversationMessage(
-        isFromAico: false,
-        message: text.trim(),
-        timestamp: DateTime.now(),
-      ));
-      _messageController.clear();
-    });
+    // Clear the input field immediately
+    _messageController.clear();
     
-    // Scroll to bottom
+    // Send message through conversation provider with streaming enabled
+    ref.read(conversationProvider.notifier).sendMessage(text.trim(), stream: true);
+    
+    // Scroll to bottom after sending
+    _scrollToBottom();
+    
+    // Refocus the input field for continuous conversation
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _conversationController.animateTo(
-        _conversationController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      _messageFocusNode.requestFocus();
     });
-    
-    // Simulate AICO response
-    Future.delayed(const Duration(seconds: 1), () {
-      setState(() {
-        _messages.add(ConversationMessage(
-          isFromAico: true,
-          message: "I understand. Thank you for sharing that with me. How can I help you with this?",
-          timestamp: DateTime.now(),
-        ));
-      });
-      
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _conversationController.animateTo(
-          _conversationController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+  }
+
+  void _scrollToBottom() {
+    // Use a slight delay to ensure content is fully rendered
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 50), () {
+        if (_conversationController.hasClients) {
+          _conversationController.animateTo(
+            _conversationController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
       });
     });
   }
 
   String _formatTimestamp(DateTime timestamp) {
+    // Handle both UTC and local timestamps properly
+    final localTimestamp = timestamp.isUtc ? timestamp.toLocal() : timestamp;
     final now = DateTime.now();
-    final diff = now.difference(timestamp);
+    final diff = now.difference(localTimestamp);
     
     if (diff.inMinutes < 1) return 'Just now';
     if (diff.inMinutes < 60) return '${diff.inMinutes} minutes ago';
@@ -790,6 +852,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _messageController.dispose();
     _conversationController.dispose();
+    _messageFocusNode.dispose();
     super.dispose();
   }
 }
