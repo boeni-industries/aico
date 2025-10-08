@@ -315,6 +315,9 @@ memory:
       conversation_segments: "conversation_segments"  # Conversation history with embeddings
     # Note: Embedding model configured in modelservice.transformers.models.embeddings (line 190)
     max_results: 10  # Maximum number of segments to return from queries
-    min_similarity: 0.4  # Minimum similarity threshold for cosine similarity (0-1, higher = more strict)
+    min_similarity: 0.4  # Minimum similarity threshold for hybrid score (0-1, higher = more strict)
+    # Hybrid search weights (must sum to 1.0)
+    semantic_weight: 0.7  # Weight for semantic similarity (0-1)
+    bm25_weight: 0.3  # Weight for BM25 keyword matching (0-1)
 
 # AI Processing Configuration

@@ -201,6 +201,12 @@ def query_chroma_collection(
     try:
         import chromadb
         from chromadb.config import Settings
+        from aico.ai.memory.bm25 import calculate_bm25_scores
+        
+        # Get hybrid search weights from config
+        memory_config = config.get("core.memory.semantic", {})
+        semantic_weight = memory_config.get("semantic_weight", 0.7)
+        bm25_weight = memory_config.get("bm25_weight", 0.3)
         
         # Step 1: Generate query embeddings via modelservice
         embedding_model = config.get("core.modelservice.ollama.default_models.embedding.name", "paraphrase-multilingual")
@@ -216,7 +222,7 @@ def query_chroma_collection(
         except Exception as e:
             return {"error": f"Modelservice query embedding generation failed: {e}. Is modelservice running?"}
         
-        # Step 2: Query ChromaDB with pre-computed embeddings
+        # Step 2: Query ChromaDB (fetch more for re-ranking)
         client = chromadb.PersistentClient(
             path=str(semantic_memory_dir),
             settings=Settings(allow_reset=True, anonymized_telemetry=False)
@@ -225,37 +231,39 @@ def query_chroma_collection(
         try:
             collection = client.get_collection(collection_name)
             
-            # Query the collection using pre-computed embeddings
+            # Query with more results for hybrid re-ranking
+            fetch_count = limit * 2
             results = collection.query(
-                query_embeddings=[query_embedding],  # Use modelservice embeddings!
-                n_results=limit
+                query_embeddings=[query_embedding],
+                n_results=fetch_count
             )
             
-            # Format results with normalized similarity scores
-            documents = []
-            if results["documents"] and results["documents"][0]:
-                # Get all distances to calculate normalization
-                raw_distances = results["distances"][0] if results["distances"] and results["distances"][0] else []
-                
-                for i, doc in enumerate(results["documents"][0]):
-                    if doc:  # Skip empty documents
-                        raw_distance = raw_distances[i] if i < len(raw_distances) else 0.0
-                        
-                        # Convert cosine distance to similarity score (0-1 range)
-                        # Cosine distance: 0 = identical, 2 = opposite
-                        # Cosine similarity = 1 - (distance / 2)
-                        # This gives natural 0-1 range where 1=identical, 0=opposite
-                        similarity = max(0.0, min(1.0, 1.0 - (raw_distance / 2.0)))
-                        
-                        documents.append({
-                            "id": results["ids"][0][i] if results["ids"] and results["ids"][0] else f"doc_{i}",
-                            "document": doc,
-                            "distance": raw_distance,  # Keep raw distance for debugging
-                            "similarity": similarity,  # Add normalized similarity
-                            "metadata": results["metadatas"][0][i] if results["metadatas"] and results["metadatas"][0] else {}
-                        })
+            if not results["documents"] or not results["documents"][0]:
+                return {"documents": []}
             
-            return {"documents": documents}
+            # Build document list
+            documents = []
+            for i, doc in enumerate(results["documents"][0]):
+                if doc:
+                    documents.append({
+                        "id": results["ids"][0][i],
+                        "document": doc,
+                        "distance": results["distances"][0][i],
+                        "metadata": results["metadatas"][0][i] if results["metadatas"] else {}
+                    })
+            
+            # Step 3: Calculate hybrid scores using pure function
+            scored_documents = calculate_bm25_scores(
+                documents=documents,
+                query_text=query_text,
+                semantic_weight=semantic_weight,
+                bm25_weight=bm25_weight
+            )
+            
+            # Limit results
+            scored_documents = scored_documents[:limit]
+            
+            return {"documents": scored_documents}
             
         except Exception as e:
             return {"error": f"Error querying collection '{collection_name}': {e}"}

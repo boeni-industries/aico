@@ -22,13 +22,15 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from dataclasses import dataclass
 import uuid
-
+import math
+from collections import Counter
 import chromadb
 from chromadb.config import Settings
 
 from aico.core.config import ConfigurationManager
-from aico.core.logging import get_logger
 from aico.core.paths import AICOPaths
+from aico.core.logging import get_logger
+from .bm25 import calculate_bm25_scores
 
 logger = get_logger("shared", "ai.memory.semantic")
 
@@ -56,7 +58,7 @@ class ConversationSegment:
 
 
 class SemanticMemoryStore:
-    """V3 Semantic Memory Store - Simple conversation segment storage"""
+    """V3 Semantic Memory Store - Hybrid search with BM25 + semantic"""
     
     def __init__(self, config_manager: ConfigurationManager):
         self.config = config_manager
@@ -68,13 +70,16 @@ class SemanticMemoryStore:
         # Configuration
         memory_config = self.config.get("core.memory.semantic", {})
         self._db_path = AICOPaths.get_semantic_memory_path()
-        self._collection_name = "conversation_segments"  # New collection name
-        # Embedding model name matches transformers manager key (configured in core.yaml line 190)
-        self._embedding_model = "paraphrase-multilingual"  # Maps to mpnet-base-v2 (768 dim)
+        self._collection_name = "conversation_segments"
+        self._embedding_model = "paraphrase-multilingual"
         self._max_results = memory_config.get("max_results", 10)
-        self._min_similarity = memory_config.get("min_similarity", 0.4)  # Cosine similarity threshold
+        self._min_similarity = memory_config.get("min_similarity", 0.4)
         
-        logger.info("✅ SemanticMemoryStore V3 initialized (simplified)")
+        # Hybrid search weights (semantic + BM25)
+        self._semantic_weight = memory_config.get("semantic_weight", 0.7)
+        self._bm25_weight = memory_config.get("bm25_weight", 0.3)
+        
+        logger.info("✅ SemanticMemoryStore V3 initialized (hybrid search)")
     
     def set_modelservice(self, modelservice):
         """Set the ModelService instance for embedding generation"""
@@ -228,34 +233,56 @@ class SemanticMemoryStore:
             # Build filter
             where_filter = {"user_id": user_id} if user_id else None
             
-            # Query ChromaDB
+            # Query ChromaDB (get more results for re-ranking)
+            fetch_count = (max_results or self._max_results) * 2
             results = self._collection.query(
                 query_embeddings=[query_embedding],
-                n_results=max_results or self._max_results,
+                n_results=fetch_count,
                 where=where_filter
             )
             
-            # Format results with similarity filtering
-            segments = []
+            # Prepare documents for hybrid scoring
+            if not results or not results.get('ids') or not results['ids'][0]:
+                return []
+            
+            # Build document list
+            documents = []
+            for i in range(len(results['ids'][0])):
+                documents.append({
+                    'id': results['ids'][0][i],
+                    'document': results['documents'][0][i],
+                    'metadata': results['metadatas'][0][i],
+                    'distance': results['distances'][0][i] if 'distances' in results else 0.0
+                })
+            
+            # Calculate hybrid scores using pure function
+            scored_docs = calculate_bm25_scores(
+                documents=documents,
+                query_text=query_text,
+                semantic_weight=self._semantic_weight,
+                bm25_weight=self._bm25_weight
+            )
+            
+            # Filter by threshold and format
             similarity_threshold = min_similarity if min_similarity is not None else self._min_similarity
+            segments = []
             
-            if results and results.get('ids') and results['ids'][0]:
-                for i, segment_id in enumerate(results['ids'][0]):
-                    # Get distance and convert to similarity (cosine: similarity = 1 - distance/2)
-                    distance = results['distances'][0][i] if 'distances' in results else 0.0
-                    similarity = 1.0 - (distance / 2.0)
-                    
-                    # Filter by minimum similarity threshold
-                    if similarity >= similarity_threshold:
-                        segments.append({
-                            'segment_id': segment_id,
-                            'content': results['documents'][0][i],
-                            'metadata': results['metadatas'][0][i],
-                            'distance': distance,
-                            'similarity': similarity
-                        })
+            for doc in scored_docs:
+                if doc['hybrid_score'] >= similarity_threshold:
+                    segments.append({
+                        'segment_id': doc['id'],
+                        'content': doc['document'],
+                        'metadata': doc['metadata'],
+                        'distance': doc['distance'],
+                        'similarity': doc['semantic_score'],
+                        'bm25_score': doc['bm25_score'],
+                        'hybrid_score': doc['hybrid_score']
+                    })
             
-            logger.info(f"Found {len(segments)} matching segments for query")
+            # Limit results
+            segments = segments[:max_results or self._max_results]
+            
+            logger.info(f"Found {len(segments)} matching segments (hybrid search)")
             return segments
             
         except Exception as e:

@@ -198,7 +198,9 @@ def query(
     for i, doc in enumerate(documents):
         doc_id = doc.get("id", f"doc_{i}")
         document_text = doc.get("document", "")
-        similarity = doc.get('similarity', 0.0)
+        semantic_score = doc.get('semantic_score', doc.get('similarity', 0.0))
+        bm25_score = doc.get('bm25_score', 0.0)
+        hybrid_score = doc.get('hybrid_score', semantic_score)
         metadata = doc.get("metadata", {})
         
         # Format document ID (truncate if too long)
@@ -207,13 +209,21 @@ def query(
         # Format document text (don't truncate, let table handle wrapping)
         formatted_document = document_text
         
-        # Format similarity with color coding (0-1 range, higher = better)
-        if similarity > 0.8:
-            similarity_str = f"[bright_green]{similarity:.3f}[/bright_green]"
-        elif similarity > 0.5:
-            similarity_str = f"[yellow]{similarity:.3f}[/yellow]"
-        else:
-            similarity_str = f"[red]{similarity:.3f}[/red]"
+        # Format scores with color coding
+        def format_score(score, label):
+            if score > 0.7:
+                return f"[bright_green]{label}: {score:.3f}[/bright_green]"
+            elif score > 0.4:
+                return f"[yellow]{label}: {score:.3f}[/yellow]"
+            else:
+                return f"[red]{label}: {score:.3f}[/red]"
+        
+        # Build similarity display with all scores
+        similarity_parts = [
+            format_score(hybrid_score, "Hybrid"),
+            f"[dim](Sem: {semantic_score:.3f}, BM25: {bm25_score:.2f})[/dim]"
+        ]
+        similarity_str = "\n".join(similarity_parts)
         
         # Format metadata as readable key-value pairs
         if metadata:
