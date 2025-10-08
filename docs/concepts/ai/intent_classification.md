@@ -1,12 +1,5 @@
 # Intent Classification
 
-**Status:** Implemented (Ready for Integration)  
-**Module:** `aico.ai.analysis.intent_classifier`  
-**Model:** XLM-RoBERTa (Multilingual)  
-**Architecture:** Via ModelService + BaseAIProcessor
-
----
-
 ## Overview
 
 AICO's intent classification system provides sophisticated, multilingual understanding of user intent in conversations. It goes beyond simple keyword matching to understand the semantic meaning and context of user messages, enabling intelligent conversation routing, response adaptation, and proactive engagement.

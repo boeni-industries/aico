@@ -163,7 +163,6 @@ nav:
       - Overview: architecture/architecture-overview.md
       - Configuration Management: architecture/configuration-management.md
       - Message Bus: architecture/message-bus.md
-      - State Streaming: architecture/state-streaming.md
       - Technology Stack: architecture/tech-stack.md
   - Subsystems:
       - Backend:
