@@ -6,6 +6,7 @@ import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart';
+import 'package:aico_frontend/presentation/widgets/chat/thinking_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -367,6 +368,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildMessageBubble(BuildContext context, ThemeData theme, Color accentColor, ConversationMessage message) {
+    final conversationState = ref.watch(conversationProvider);
+    
+    // Check if this is the last message and AICO is currently streaming/thinking
+    final isLastMessage = conversationState.messages.isNotEmpty && 
+                          conversationState.messages.last == message;
+    final showThinkingBubble = message.isFromAico && 
+                               isLastMessage && 
+                               message.message.isEmpty &&
+                               (conversationState.isSendingMessage || conversationState.isStreaming);
+    
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -381,34 +392,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             const SizedBox(width: 12),
           ],
           Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: message.isFromAico 
-                    ? theme.colorScheme.surface
-                    : accentColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(16),
-                border: message.isFromAico 
-                    ? Border.all(color: theme.dividerColor.withValues(alpha: 0.1))
-                    : null,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    message.message,
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _formatTimestamp(message.timestamp),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            child: showThinkingBubble
+                ? const ThinkingBubble()
+                : Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: message.isFromAico 
+                          ? theme.colorScheme.surface
+                          : accentColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(16),
+                      border: message.isFromAico 
+                          ? Border.all(color: theme.dividerColor.withValues(alpha: 0.1))
+                          : null,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          message.message,
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _formatTimestamp(message.timestamp),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
           ),
           if (!message.isFromAico) const SizedBox(width: 48),
         ],

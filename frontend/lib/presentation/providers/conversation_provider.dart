@@ -262,6 +262,13 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
           error: error,
           extra: {'ai_message_id': aiMessageId});
       },
+      onConversationId: (String conversationId) {
+        // Update conversation ID from backend
+        state = state.copyWith(currentConversationId: conversationId);
+        AICOLog.info('Updated conversation_id from backend',
+          topic: 'conversation_provider/conversation_id_updated',
+          extra: {'conversation_id': conversationId});
+      },
     );
   }
 

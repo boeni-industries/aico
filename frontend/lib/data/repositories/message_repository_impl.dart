@@ -133,8 +133,9 @@ class MessageRepositoryImpl implements MessageRepository {
     Message message, 
     Function(String chunk) onChunk,
     Function(String finalResponse) onComplete,
-    Function(String error) onError,
-  ) async {
+    Function(String error) onError, {
+    Function(String conversationId)? onConversationId,
+  }) async {
     try {
       AICOLog.info('Starting streaming message send', 
         topic: 'message_repository/send_streaming',
@@ -155,6 +156,7 @@ class MessageRepositoryImpl implements MessageRepository {
       };
 
       String accumulatedContent = '';
+      String? backendConversationId;
 
       // Use the new streaming method from UnifiedApiClient
       await _apiClient.requestStream(
@@ -162,17 +164,33 @@ class MessageRepositoryImpl implements MessageRepository {
         '/conversation/messages',
         data: requestData,
         queryParameters: {'stream': 'true'},
+        onHeaders: (Map<String, List<String>> headers) {
+          // Extract conversation_id from response headers
+          if (headers.containsKey('x-conversation-id')) {
+            backendConversationId = headers['x-conversation-id']!.first;
+            AICOLog.info('Received conversation_id from headers',
+              topic: 'message_repository/conversation_id_received',
+              extra: {'conversation_id': backendConversationId});
+          }
+        },
         onChunk: (String chunk) {
+          // UnifiedApiClient already decrypted and extracted content
           accumulatedContent += chunk;
           onChunk(chunk);
         },
         onComplete: () {
+          // Notify provider of conversation_id if callback provided
+          if (backendConversationId != null && onConversationId != null) {
+            onConversationId(backendConversationId!);
+          }
+          
           onComplete(accumulatedContent);
           AICOLog.info('Streaming completed successfully', 
             topic: 'message_repository/streaming_complete',
             extra: {
               'message_id': message.id,
               'total_length': accumulatedContent.length,
+              'conversation_id': backendConversationId,
             });
         },
         onError: (String error) {

@@ -142,6 +142,7 @@ class UnifiedApiClient {
     required Function(String chunk) onChunk,
     required Function() onComplete,
     required Function(String error) onError,
+    Function(Map<String, List<String>> headers)? onHeaders,
     bool skipTokenRefresh = false,
   }) async {
     AICOLog.info('🚀 STARTING STREAMING REQUEST', 
@@ -179,7 +180,7 @@ class UnifiedApiClient {
         options: Options(
           method: method,
           headers: headers,
-          responseType: ResponseType.stream, // This enables streaming
+          responseType: ResponseType.stream, // Enable streaming response
         ),
       );
 
@@ -187,6 +188,11 @@ class UnifiedApiClient {
         topic: 'network/streaming/dio_response',
         extra: {'status_code': response.statusCode, 'has_data': response.data != null});
 
+      // Extract and pass headers if callback provided
+      if (onHeaders != null && response.headers.map.isNotEmpty) {
+        onHeaders(response.headers.map);
+      }
+      
       if (response.statusCode == 200 && response.data != null) {
         // Handle streaming response
         AICOLog.info('🔄 Starting stream processing', 
@@ -211,18 +217,15 @@ class UnifiedApiClient {
               'buffer_preview': buffer.length > 100 ? '${buffer.substring(0, 100)}...' : buffer
             });
           
-          // Process complete JSON objects (split on }{ since backend sends concatenated JSON without newlines)
-          final lines = <String>[];
-          String remaining = buffer;
+          // Process complete JSON objects (split on newlines)
+          final lines = buffer.split('\n');
           
-          // Split concatenated JSON objects like: {"a":1}{"b":2}{"c":3}
-          while (remaining.contains('}{')) {
-            final splitIndex = remaining.indexOf('}{');
-            lines.add(remaining.substring(0, splitIndex + 1)); // Include the closing }
-            remaining = '{${remaining.substring(splitIndex + 2)}'; // Include the opening { for next object
+          // Keep the last line in buffer if it doesn't end with newline
+          if (!buffer.endsWith('\n')) {
+            buffer = lines.removeLast();
+          } else {
+            buffer = '';
           }
-          
-          buffer = remaining; // Keep incomplete JSON in buffer
           
           AICOLog.info('📝 Lines split', 
             topic: 'network/streaming/lines_split',

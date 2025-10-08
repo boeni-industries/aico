@@ -1,6 +1,7 @@
 import 'package:aico_frontend/core/logging/providers/logging_providers.dart';
 import 'package:aico_frontend/core/logging/services/aico_logger.dart';
 import 'package:aico_frontend/presentation/screens/admin/encryption_test_screen.dart';
+import 'package:aico_frontend/presentation/widgets/chat/thinking_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -197,6 +198,14 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
             _buildDeveloperToolCard(
               context,
               theme,
+              'Thinking Bubble Test',
+              'Preview particle formation animation',
+              Icons.auto_awesome,
+              () => _showThinkingBubbleTest(context),
+            ),
+            _buildDeveloperToolCard(
+              context,
+              theme,
               'Encryption Test',
               'Test transport encryption and key exchange',
               Icons.security,
@@ -265,6 +274,52 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // Method to show thinking bubble test in a dialog
+  void _showThinkingBubbleTest(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: theme.colorScheme.surface,
+        child: Container(
+          width: 600,
+          height: 400,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Thinking Bubble Animation Test',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+              const Expanded(
+                child: Center(
+                  child: _ThinkingBubbleDemo(),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -439,6 +494,158 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Demo widget that shows thinking bubble transitioning to text
+class _ThinkingBubbleDemo extends StatefulWidget {
+  const _ThinkingBubbleDemo();
+
+  @override
+  State<_ThinkingBubbleDemo> createState() => _ThinkingBubbleDemoState();
+}
+
+class _ThinkingBubbleDemoState extends State<_ThinkingBubbleDemo> 
+    with SingleTickerProviderStateMixin {
+  bool _showText = false;
+  String _displayText = '';
+  final String _fullText = 'Let me help you with that! I can assist with various tasks and answer your questions.';
+  late AnimationController _fadeController;
+  late Animation<double> _bubbleFadeOut;
+  late Animation<double> _textFadeIn;
+  
+  @override
+  void initState() {
+    super.initState();
+    
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    
+    // Bubble fades out in first half
+    _bubbleFadeOut = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _fadeController,
+        curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
+      ),
+    );
+    
+    // Text fades in during second half
+    _textFadeIn = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _fadeController,
+        curve: const Interval(0.5, 1.0, curve: Curves.easeIn),
+      ),
+    );
+    
+    // Show thinking bubble for 3 seconds, then smooth transition
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() => _showText = true);
+        _fadeController.forward().then((_) {
+          if (mounted) _streamText();
+        });
+      }
+    });
+  }
+  
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    super.dispose();
+  }
+  
+  void _streamText() async {
+    for (int i = 0; i < _fullText.length; i++) {
+      if (!mounted) break;
+      await Future.delayed(const Duration(milliseconds: 30));
+      if (mounted) {
+        setState(() {
+          _displayText = _fullText.substring(0, i + 1);
+        });
+      }
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 400),
+          child: Text(
+            _showText 
+              ? 'Text streams in smoothly...' 
+              : 'Particles converge where text will appear',
+            key: ValueKey(_showText),
+            style: theme.textTheme.bodyLarge?.copyWith(
+              fontWeight: FontWeight.w500,
+              color: theme.colorScheme.onSurface.withOpacity(0.7),
+            ),
+          ),
+        ),
+        const SizedBox(height: 32),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: const Color(0xFFB8A1EA).withOpacity(0.1),
+              child: const Icon(
+                Icons.face,
+                size: 16,
+                color: Color(0xFFB8A1EA),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: AnimatedBuilder(
+                animation: _fadeController,
+                builder: (context, child) {
+                  return Stack(
+                    children: [
+                      // Thinking bubble fading out
+                      if (!_showText || _bubbleFadeOut.value > 0)
+                        Opacity(
+                          opacity: _bubbleFadeOut.value,
+                          child: const ThinkingBubble(),
+                        ),
+                      
+                      // Text bubble fading in
+                      if (_showText && _textFadeIn.value > 0)
+                        Opacity(
+                          opacity: _textFadeIn.value,
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: theme.dividerColor.withOpacity(0.1),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              _displayText,
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 48),
+          ],
+        ),
+      ],
     );
   }
 }

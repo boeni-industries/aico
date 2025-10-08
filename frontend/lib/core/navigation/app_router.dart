@@ -5,6 +5,7 @@ import 'package:aico_frontend/presentation/screens/home/home_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_search_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
+import 'package:aico_frontend/presentation/screens/test/thinking_bubble_test_screen.dart';
 import 'package:aico_frontend/presentation/widgets/navigation/main_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -64,6 +65,13 @@ class AppRouter {
                 builder: (context, state) => const LogsScreen(),
               ),
             ],
+          ),
+          
+          // Test screen for thinking bubble
+          GoRoute(
+            path: '/test/thinking-bubble',
+            name: 'test-thinking-bubble',
+            builder: (context, state) => const ThinkingBubbleTestScreen(),
           ),
         ],
       ),

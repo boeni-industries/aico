@@ -146,6 +146,7 @@ async def send_message_with_auto_thread(
         if stream_enabled:
             logger.info(f"🔍 [API_STREAMING] ✅ Taking streaming path for request {message_id}")
             print(f"🚨 [CONSOLE] About to create StreamingResponse for {message_id}")
+            
             # Return streaming response using event-driven approach
             async def stream_generator():
                 logger.info(f"🔍 [API_STREAMING] 🚀 Stream generator started for {message_id}")
@@ -215,12 +216,16 @@ async def send_message_with_auto_thread(
                                 yield json.dumps(chunk) + "\n"
                             else:
                                 logger.info(f"🔍 [API_STREAMING] ✅ Yielding content chunk: '{chunk['content']}'")
-                                yield json.dumps({
+                                chunk_data = {
                                     "type": "chunk",
                                     "content": chunk["content"],
                                     "accumulated": chunk["accumulated"],
                                     "done": chunk["done"]
-                                }) + "\n"
+                                }
+                                # Include conversation_id in the final chunk
+                                if chunk["done"]:
+                                    chunk_data["conversation_id"] = conversation_id
+                                yield json.dumps(chunk_data) + "\n"
                                 
                         except asyncio.TimeoutError:
                             # No chunk received, check overall timeout
@@ -250,9 +255,9 @@ async def send_message_with_auto_thread(
             
             print(f"🚨 [CONSOLE] Creating StreamingResponse object for {message_id}")
             try:
-                return StreamingResponse(
+                response = StreamingResponse(
                     stream_generator(),
-                    media_type="text/plain",
+                    media_type="application/x-ndjson",
                     headers={
                         "Cache-Control": "no-cache",
                         "Connection": "keep-alive",
@@ -260,6 +265,7 @@ async def send_message_with_auto_thread(
                         "X-Conversation-ID": conversation_id,
                     }
                 )
+                return response
             except Exception as e:
                 print(f"🚨 [CONSOLE] ERROR creating StreamingResponse: {e}")
                 raise

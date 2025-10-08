@@ -309,21 +309,13 @@ class ConversationEngine(BaseService):
             components_needed = []
             print(f"💬 [CONVERSATION_ENGINE] 🔧 Checking enabled features...")
             
-            # FIXED: Get working memory immediately, process semantic memory in background
+            # Get memory context if enabled
+            memory_context = None
             if self.enable_memory_integration:
-                self.logger.info(f"[DEBUG] ConversationEngine: Memory integration enabled, getting immediate working memory context for request {request_id}")
-                
-                # Get immediate working memory context (fast, <1ms)
-                working_context = await self._get_immediate_working_context(request_id, user_context, user_message)
-                
-                # Background storage handled by memory manager - no need for separate background task
-                
-                # Generate LLM response with working memory context
-                await self._generate_llm_response(request_id, user_context, user_message, working_context)
-            else:
-                self.logger.info(f"[DEBUG] ConversationEngine: Memory integration disabled, generating LLM response directly")
-                # If memory is disabled, generate LLM response immediately
-                await self._generate_llm_response(request_id, user_context, user_message, {})
+                memory_context = await self._get_memory_context(request_id, user_context, user_message)
+            
+            # Generate LLM response with memory context
+            await self._generate_llm_response(request_id, user_context, user_message, memory_context)
             
             self.pending_responses[request_id]["components_needed"] = components_needed
             print(f"💬 [CONVERSATION_ENGINE] 📝 Components needed: {components_needed}")
@@ -346,60 +338,35 @@ class ConversationEngine(BaseService):
     # Emotion and personality integration removed - focusing on semantic memory approach
     
     
-    async def _get_immediate_working_context(self, request_id: str, user_context: UserContext, message: ConversationMessage) -> Dict[str, Any]:
-        """Get immediate context using proper memory manager API (working + semantic)"""
+    async def _get_memory_context(self, request_id: str, user_context: UserContext, message: ConversationMessage) -> Optional[Dict[str, Any]]:
+        """Get memory context (working + semantic) - returns None if unavailable"""
         try:
             memory_manager = ai_registry.get("memory")
             if not memory_manager:
-                self.logger.warning(f"🔍 [IMMEDIATE_CONTEXT] Memory manager not available for {request_id}")
-                return {"memory": {"memory_context": {"user_facts": [], "recent_context": []}}, "metadata": {}}
+                return None
             
             user_id = user_context.user_id
             conversation_id = message.message.conversation_id
             message_text = message.message.text
             
-            self.logger.info(f"🔍 [IMMEDIATE_CONTEXT] Getting full context (working + semantic) for {request_id}")
-            
-            # Use proper memory manager API that combines working + semantic memory
-            context_result = await memory_manager.assemble_context(
+            # Get context from memory manager
+            context = await memory_manager.assemble_context(
                 user_id=user_id,
                 current_message=message_text,
                 conversation_id=conversation_id
             )
             
-            # Store user message in memory for future context
+            # Store user message for future context
             try:
                 await memory_manager.store_message(user_id, conversation_id, message_text, "user")
-                self.logger.info(f"🔍 [MEMORY_STORAGE] ✅ User message stored for {request_id}")
             except Exception as e:
-                self.logger.warning(f"🔍 [MEMORY_STORAGE] ⚠️ Failed to store user message: {e}")
+                self.logger.warning(f"Failed to store user message: {e}")
             
-            # Extract memory_context from the result
-            memory_context = context_result.get("memory_context", {})
-            user_facts = memory_context.get("user_facts", [])
-            recent_context = memory_context.get("recent_context", [])
-            
-            # Format for conversation engine (match expected structure)
-            formatted_context = {
-                "memory": {
-                    "memory_context": {
-                        "user_facts": user_facts,
-                        "recent_context": recent_context
-                    }
-                },
-                "metadata": {
-                    "facts_count": len(user_facts),
-                    "context_messages": len(recent_context),
-                    "context_type": "working_and_semantic"
-                }
-            }
-            
-            self.logger.info(f"🔍 [IMMEDIATE_CONTEXT] ✅ Retrieved {len(recent_context)} messages, {len(user_facts)} facts for {request_id}")
-            return formatted_context
+            return context
                 
         except Exception as e:
-            self.logger.error(f"🔍 [IMMEDIATE_CONTEXT] ❌ Failed to get context for {request_id}: {e}")
-            return {"memory": {"memory_context": {"user_facts": [], "recent_context": []}}, "metadata": {}}
+            self.logger.error(f"Failed to get memory context: {e}")
+            return None
 
     async def _process_memory_background(self, request_id: str, user_context: UserContext, message: ConversationMessage):
         """Store user message in background for future context (storage only)"""
@@ -494,153 +461,45 @@ class ConversationEngine(BaseService):
     # LLM INTEGRATION & RESPONSE DELIVERY
     # ============================================================================
     
-    async def _generate_llm_response(self, request_id: str, user_context: UserContext, user_message: ConversationMessage, context: Dict[str, Any]) -> None:
-        """Generate LLM response with integrated context"""
+    async def _generate_llm_response(self, request_id: str, user_context: UserContext, user_message: ConversationMessage, memory_context: Optional[Dict[str, Any]]) -> None:
+        """Generate LLM response with memory context"""
         from aico.core.topics import AICOTopics
         try:
             # Check if LLM request already sent to prevent duplicates
             if request_id in self.pending_responses and self.pending_responses[request_id].get("llm_request_sent"):
-                print(f"💬 [CONVERSATION_ENGINE] ⚠️ LLM request already sent for {request_id}, skipping duplicate")
-                print(f"💬 [CONVERSATION_ENGINE] 🔍 Duplicate call stack info - this should help identify the source")
-                import traceback
-                print(f"💬 [CONVERSATION_ENGINE] 📋 Call stack: {traceback.format_stack()[-3:-1]}")
                 return
             
-            import time
-            llm_start_time = time.time()
-            print(f"💬 [CONVERSATION_ENGINE] 🧠 GENERATING LLM RESPONSE for {request_id} at {llm_start_time} [{llm_start_time:.6f}]")
+            # Build system prompt with memory context
+            system_prompt = self._build_system_prompt(user_context, memory_context)
             
-            # Include memory data in context if available
-            if request_id in self.pending_responses and "memory_data" in self.pending_responses[request_id]:
-                memory_data = self.pending_responses[request_id]["memory_data"]
-                print(f"💬 [CONVERSATION_ENGINE] 📚 Using memory data from pending responses")
-                self.logger.info(f"[MEMORY_DEBUG] Found memory_data for request {request_id}: type={type(memory_data)}, keys={list(memory_data.keys()) if isinstance(memory_data, dict) else 'NOT_DICT'}")
-                if memory_data:
-                    context["memory"] = memory_data
-                    self.logger.info(f"[MEMORY_DEBUG] Added memory data to LLM context for request {request_id}")
-                else:
-                    self.logger.warning(f"[MEMORY_DEBUG] Memory data exists but is empty for request {request_id}")
-            else:
-                self.logger.warning(f"[MEMORY_DEBUG] No memory data found for request {request_id}. Pending responses keys: {list(self.pending_responses.get(request_id, {}).keys()) if request_id in self.pending_responses else 'REQUEST_NOT_FOUND'}")
+            # Build messages for LLM
+            messages = [ModelConversationMessage(role="system", content=system_prompt)]
             
-            # Build conversation history for LLM
-            messages = []
-            
-            # System prompt with context
-            system_prompt = self._build_system_prompt(user_context, context)
-            messages.append(ModelConversationMessage(role="system", content=system_prompt))
-            
-            # CRITICAL FIX: PROPER SEPARATION - Context in system prompt, current input isolated
+            # Add user message
             current_content = user_message.message.text.strip()
-            
-            # Simple context integration - no XML processing
-            if "memory" in context and context["memory"]:
-                memory_context = context["memory"].get("memory_context", {})
-                
-                # Debug: Log what we're receiving
-                self.logger.info(f"🔍 [LLM_DEBUG] Memory context keys: {list(context['memory'].keys())}")
-                self.logger.info(f"🔍 [LLM_DEBUG] Memory_context keys: {list(memory_context.keys())}")
-                
-                # Simple fact integration
-                user_facts = memory_context.get("user_facts", [])
-                recent_context = memory_context.get("recent_context", [])
-                
-                self.logger.info(f"🔍 [LLM_DEBUG] Retrieved: {len(user_facts)} user_facts, {len(recent_context)} recent_context")
-                
-                if user_facts or recent_context:
-                    facts_text = "\n".join([f"- {fact.get('content', '')}" for fact in user_facts[-5:]])
-                    recent_text = "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in recent_context[-3:]])
-                    
-                    enhanced_system_prompt = f"""{system_prompt}
-
-User Facts:
-{facts_text}
-
-Recent Context:
-{recent_text}
-
-Respond naturally using relevant context."""
-                    messages[0] = ModelConversationMessage(role="system", content=enhanced_system_prompt)
-                else:
-                    messages[0] = ModelConversationMessage(role="system", content=system_prompt)
-            else:
-                messages[0] = ModelConversationMessage(role="system", content=system_prompt)
-            
-            # MODERN BEST PRACTICE: Clean, isolated current user input
             if current_content:
-                # Clean and validate user input
-                clean_current_content = current_content.strip()
-                if len(clean_current_content) > 2000:  # Prevent token overflow
-                    clean_current_content = clean_current_content[:2000] + "..."
-                    self.logger.warning(f"[CURRENT_MESSAGE] Truncated long user input to 2000 chars")
-                
-                messages.append(ModelConversationMessage(role="user", content=clean_current_content))
-                self.logger.info(f"[CURRENT_MESSAGE] Added clean isolated current input: '{clean_current_content[:50]}...'")
-            else:
-                self.logger.error("[CURRENT_MESSAGE] No current user content found!")
-                
-            # NO message limit needed - we only have system + current user message
+                messages.append(ModelConversationMessage(role="user", content=current_content))
             
-            # Log final messages being sent to LLM
-            self.logger.info(f"[DEBUG] Sending {len(messages)} messages to LLM:")
-            for i, msg in enumerate(messages):
-                self.logger.info(f"[DEBUG] Message {i}: role={msg.role}, content='{msg.content[:100]}...'")
-            
-            print(f"💬 [CONVERSATION_ENGINE] 🎯 Creating completions request...")
-            
-            # CRITICAL FIX: ServiceContainer doesn't have config_manager - use hardcoded model
-            conversation_model = "hermes3:8b"
-            print(f"💬 [CONVERSATION_ENGINE] 🤖 Using model: {conversation_model} (fixed - no config_manager)")
-            
-            print(f"💬 [CONVERSATION_ENGINE] 🔨 Creating CompletionsRequest object...")
-            
-            # Create completions request with streaming enabled
+            # Create and publish LLM request
             completions_request = CompletionsRequest(
-                model=conversation_model,
+                model="hermes3:8b",
                 messages=messages,
-                stream=True,  # Enable streaming
+                stream=True,
                 temperature=0.3,
                 max_tokens=150
             )
             
-            print(f"💬 [CONVERSATION_ENGINE] ✅ CompletionsRequest created successfully")
-            
-            # Publish to modelservice with correlation ID for proper response matching
-            self.logger.info(f"💬 [CONVERSATION_ENGINE] Sending chat request to modelservice with correlation_id: {request_id}")
-            self.logger.info(f"💬 [CONVERSATION_ENGINE] Model: {conversation_model}, Messages: {len(completions_request.messages)}")
-            self.logger.info(f"💬 [CONVERSATION_ENGINE] Topic: {AICOTopics.MODELSERVICE_CHAT_REQUEST}")
-            
-            print(f"💬 [CONVERSATION_ENGINE] 📡 PUBLISHING LLM REQUEST to {AICOTopics.MODELSERVICE_CHAT_REQUEST}")
-            print(f"💬 [CONVERSATION_ENGINE] 🆔 Correlation ID: {request_id}")
-            print(f"💬 [CONVERSATION_ENGINE] 📝 Messages count: {len(completions_request.messages)}")
-            
-            publish_start = time.time()
             await self.bus_client.publish(
                 AICOTopics.MODELSERVICE_CHAT_REQUEST,
                 completions_request,
                 correlation_id=request_id
             )
-            publish_end = time.time()
-            publish_duration = publish_end - publish_start
             
-            print(f"💬 [CONVERSATION_ENGINE] ✅ Chat request published to modelservice in {publish_duration:.3f}s")
-            self.logger.info(f"💬 [CONVERSATION_ENGINE] ✅ Chat request published to modelservice")
-            
-            # Mark LLM request sent
+            # Mark request sent and start streaming handler
             self.pending_responses[request_id]["llm_request_sent"] = True
-            
-            # Subscribe to streaming chunks from modelservice using proper topic
-            print(f"💬 [CONVERSATION_ENGINE] 📡 Subscribing to streaming chunks: {AICOTopics.MODELSERVICE_COMPLETIONS_STREAM}")
-            
-            # Start streaming handler as background task
             asyncio.create_task(self._handle_streaming_response(request_id, AICOTopics.MODELSERVICE_COMPLETIONS_STREAM))
             
-            llm_end_time = time.time()
-            llm_total_duration = llm_end_time - llm_start_time
-            print(f"💬 [CONVERSATION_ENGINE] 🏁 LLM request generation completed for {request_id} in {llm_total_duration:.2f}s")
-            
         except Exception as e:
-            print(f"💬 [CONVERSATION_ENGINE] ❌ EXCEPTION in _generate_llm_response: {e}")
             self.logger.error(f"Error generating LLM response: {e}")
             await self._cleanup_request(request_id)
     
@@ -779,37 +638,25 @@ Respond naturally using relevant context."""
             print(f"💬 [CONVERSATION_ENGINE] ❌ Error finalizing streaming response: {e}")
             self.logger.error(f"Error finalizing streaming response for {request_id}: {e}")
     
-    def _build_system_prompt(self, user_context: UserContext, context: Dict[str, Any]) -> str:
-        """Build clean, focused system prompt for optimal LLM performance"""
-        user = user_context
+    def _build_system_prompt(self, user_context: UserContext, memory_context: Optional[Dict[str, Any]]) -> str:
+        """Build system prompt with memory context"""
+        prompt = "You are AICO, an AI companion. Be helpful, concise, and natural."
         
-        # Core identity and behavior - clean and direct
-        prompt_parts = [
-            "You are AICO, an AI companion.",
-            "Respond directly to the user's current message.",
-            "Be helpful, concise, and natural."
-        ]
-        
-        # User context - minimal and relevant
-        if user.username and not user.username.startswith("User_"):
-            prompt_parts.append(f"User: {user.username}")
-        
-        # Conversation style hint - only if not default
-        if user.conversation_style and user.conversation_style != "friendly":
-            prompt_parts.append(f"Style: {user.conversation_style}")
-        
-        # Memory context - removed restrictive limitations
-        if "memory" in context and context["memory"]:
-            memory_data = context["memory"]
+        # Add memory context if available
+        if memory_context:
+            memory_data = memory_context.get("memory_context", {})
+            user_facts = memory_data.get("user_facts", [])
+            recent_context = memory_data.get("recent_context", [])
             
-            # Add context summary if available (removed length restriction)
-            context_summary = memory_data.get("context_summary", "")
-            if context_summary:
-                # Clean up the summary to avoid redundant info
-                if "conversation messages" not in context_summary.lower():
-                    prompt_parts.append(f"Context: {context_summary}")
+            if user_facts:
+                facts_text = "\n".join([f"- {fact.get('content', '')}" for fact in user_facts[-5:]])
+                prompt += f"\n\nUser Facts:\n{facts_text}"
+            
+            if recent_context:
+                context_text = "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in recent_context[-3:]])
+                prompt += f"\n\nRecent Context:\n{context_text}"
         
-        return "\n".join(prompt_parts)
+        return prompt
     
     async def _handle_llm_response(self, response) -> None:
         """Handle LLM completion response and deliver final response"""

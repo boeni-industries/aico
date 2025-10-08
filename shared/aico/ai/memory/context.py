@@ -376,8 +376,8 @@ class ContextAssembler:
                 base_score = self._tier_weights["working"] * recency_score
                 
                 # Create context item with enlightened metadata
-                # Use message_content (actual conversation text) instead of role/content format
-                message_content = msg.get('message_content', '')
+                # CRITICAL FIX: Use 'content' key (matches what's stored in working memory)
+                message_content = msg.get('content', '')
                 message_type = msg.get('message_type', 'text')
                 
                 # CRITICAL FIX: Skip empty messages and prevent duplicates
@@ -980,40 +980,31 @@ class ContextAssembler:
     
     def _select_diverse_context(self, scored_items: List[ContextItem], max_items: int) -> List[ContextItem]:
         """
-        Select context items using graduated thresholds to ensure minimum context diversity
-        while respecting quality standards. Balances relevance with comprehensiveness.
+        Select context items - working memory always included, semantic filtered by relevance
         """
         if not scored_items:
             return []
         
-        # Sort by relevance score (highest first)
-        sorted_items = sorted(scored_items, key=lambda x: x.relevance_score, reverse=True)
-        
-        # Configuration for graduated selection
-        min_items = min(3, len(sorted_items))  # Ensure at least 3 items when available
-        quality_threshold = self._relevance_threshold  # 0.3 by default
+        # CRITICAL FIX: Separate working memory (conversation history) from semantic memory
+        working_items = [item for item in scored_items if item.source_tier == "working"]
+        semantic_items = [item for item in scored_items if item.source_tier == "semantic"]
         
         selected = []
         
-        # Phase 1: Always include the top item (if any)
-        if sorted_items:
-            selected.append(sorted_items[0])
+        # ALWAYS include ALL working memory items (actual conversation history)
+        # Sort by timestamp (most recent first) and limit to reasonable number
+        working_sorted = sorted(working_items, key=lambda x: x.timestamp, reverse=True)
+        selected.extend(working_sorted[:10])  # Last 10 messages max
         
-        # Phase 2: Add high-quality items that pass threshold
-        for item in sorted_items[1:]:
+        # Add semantic items that pass relevance threshold
+        semantic_sorted = sorted(semantic_items, key=lambda x: x.relevance_score, reverse=True)
+        for item in semantic_sorted:
             if len(selected) >= max_items:
                 break
-            if item.relevance_score >= quality_threshold:
+            if item.relevance_score >= self._relevance_threshold:
                 selected.append(item)
         
-        # Phase 3: Fill minimum quota with lower-quality items if needed
-        if len(selected) < min_items:
-            for item in sorted_items[len(selected):]:
-                if len(selected) >= min_items or len(selected) >= max_items:
-                    break
-                selected.append(item)
-        
-        logger.debug(f"Graduated selection: {len(selected)} items selected (min={min_items}, threshold={quality_threshold})")
+        logger.debug(f"Selected {len(selected)} items: {len(working_sorted[:10])} working, {len([i for i in selected if i.source_tier == 'semantic'])} semantic")
         return selected
     
     def _generate_context_summary(self, items: List[ContextItem]) -> str:
