@@ -25,8 +25,6 @@ class _ThinkingBubbleState extends State<ThinkingBubble>
   @override
   void initState() {
     super.initState();
-    
-    print('🎨🎨🎨 [ThinkingBubble] WIDGET INITIALIZED - Particles should appear!');
 
     // Scale animation for entrance
     _scaleController = AnimationController(
@@ -53,7 +51,6 @@ class _ThinkingBubbleState extends State<ThinkingBubble>
     _glowController.repeat(reverse: true);
 
     // Start particles immediately
-    print('🎨🎨🎨 [ThinkingBubble] Starting particle system!');
     _startParticleSystem();
   }
   void _startParticleSystem() {

@@ -28,7 +28,6 @@ class _MessageBubbleState extends State<MessageBubble>
     with SingleTickerProviderStateMixin {
   late AnimationController _fadeController;
   late Animation<double> _bubbleFadeOut;
-  late Animation<double> _textFadeIn;
   bool _wasThinking = false;
   bool _transitionScheduled = false;
   DateTime? _thinkingStartTime;
@@ -52,14 +51,6 @@ class _MessageBubbleState extends State<MessageBubble>
       ),
     );
 
-    // Text fades in during second half
-    _textFadeIn = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _fadeController,
-        curve: const Interval(0.5, 1.0, curve: Curves.easeIn),
-      ),
-    );
-
     _wasThinking = widget.isThinking;
     if (widget.isThinking) {
       _thinkingStartTime = DateTime.now();
@@ -71,7 +62,6 @@ class _MessageBubbleState extends State<MessageBubble>
         _rebuildTimer?.cancel();
         _rebuildTimer = null;
         _thinkingStartTime = null;
-        print('🎨 [Animation] Fade completed, cleaned up');
       }
     });
   }
@@ -80,20 +70,12 @@ class _MessageBubbleState extends State<MessageBubble>
   void didUpdateWidget(MessageBubble oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Debug logging
-    if (widget.isThinking != oldWidget.isThinking) {
-      print('🎨 [MessageBubble] isThinking changed: ${oldWidget.isThinking} → ${widget.isThinking}');
-      print('🎨 [MessageBubble] content: "${widget.content}"');
-      print('🎨 [MessageBubble] isFromAico: ${widget.isFromAico}');
-    }
-
     // Track when thinking starts
     if (!_wasThinking && widget.isThinking) {
       _wasThinking = true;
       _transitionScheduled = false;
       _thinkingStartTime = DateTime.now();
       _fadeController.reset();
-      print('🎨 [MessageBubble] Started thinking animation');
       
       // Start timer to force rebuilds every 100ms to check time
       _rebuildTimer?.cancel();
@@ -110,21 +92,15 @@ class _MessageBubbleState extends State<MessageBubble>
     if (_wasThinking && !widget.isThinking && widget.content.isNotEmpty && !_transitionScheduled) {
       _transitionScheduled = true;
       
-      print('🎨 [STREAMING_EVENT] Streaming ended, content received');
-      
       // Calculate how long particles have been showing
       final thinkingDuration = _thinkingStartTime != null
           ? DateTime.now().difference(_thinkingStartTime!)
           : Duration.zero;
       
-      print('🎨 [MessageBubble] Thinking duration: ${thinkingDuration.inMilliseconds}ms');
-      
       // ALWAYS delay to ensure minimum display time
       final remainingTime = thinkingDuration < _minThinkingDuration
           ? _minThinkingDuration - thinkingDuration
           : Duration.zero;
-      
-      print('🎨 [MessageBubble] Will transition after ${remainingTime.inMilliseconds}ms');
       
       Future.delayed(remainingTime, () {
         if (mounted) {
@@ -132,7 +108,6 @@ class _MessageBubbleState extends State<MessageBubble>
             _wasThinking = false;
           });
           _fadeController.forward();
-          print('🎨 [MessageBubble] Starting fade transition now');
         }
       });
     }
@@ -180,10 +155,7 @@ class _MessageBubbleState extends State<MessageBubble>
     if (!shouldShowThinking && _rebuildTimer != null && !_fadeController.isAnimating) {
       _rebuildTimer?.cancel();
       _rebuildTimer = null;
-      print('🎨 [BUILD] Stopped rebuild timer');
     }
-    
-    print('🎨 [BUILD] shouldShowThinking: $shouldShowThinking, isAnimating: ${_fadeController.isAnimating}, fadeValue: ${_bubbleFadeOut.value}');
     
     // If we should show thinking OR we're in transition
     if (shouldShowThinking || (_fadeController.isAnimating && _bubbleFadeOut.value > 0)) {
@@ -226,10 +198,6 @@ class _MessageBubbleState extends State<MessageBubble>
     }
 
     // Just show text bubble
-    return _buildTextBubble(theme);
-  }
-
-  Widget _buildMessageContent(ThemeData theme) {
     return _buildTextBubble(theme);
   }
 

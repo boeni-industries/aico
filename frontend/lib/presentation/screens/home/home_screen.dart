@@ -396,15 +396,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                        (conversationState.isSendingMessage || 
                         (conversationState.isStreaming && message.message.isEmpty));
     
-    // Debug logging for thinking state
-    if (message.isFromAico && isLastMessage) {
-      print('🔍 [HomeScreen] Last AICO message:');
-      print('  - isSendingMessage: ${conversationState.isSendingMessage}');
-      print('  - isStreaming: ${conversationState.isStreaming}');
-      print('  - message.isEmpty: ${message.message.isEmpty}');
-      print('  - isThinking: $isThinking');
-    }
-    
     return MessageBubble(
       content: message.message,
       isFromAico: message.isFromAico,
