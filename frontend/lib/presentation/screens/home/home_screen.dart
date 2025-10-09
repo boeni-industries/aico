@@ -1,5 +1,6 @@
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
+import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
 import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
@@ -248,6 +249,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildAvatarHeader(BuildContext context, ThemeData theme, Color accentColor) {
+    final conversationState = ref.watch(conversationProvider);
+    
+    // Update avatar state based on conversation state
+    final avatarState = ref.watch(avatarRingStateProvider);
+    final isThinking = conversationState.isSendingMessage || conversationState.isStreaming;
+    
+    // Sync avatar mode with thinking state
+    if (isThinking && avatarState.mode != AvatarMode.thinking) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(avatarRingStateProvider.notifier).startThinking(intensity: 0.8);
+      });
+    } else if (!isThinking && avatarState.mode == AvatarMode.thinking) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(avatarRingStateProvider.notifier).returnToIdle();
+      });
+    }
+    
     return Container(
       padding: const EdgeInsets.all(24),
       child: Column(

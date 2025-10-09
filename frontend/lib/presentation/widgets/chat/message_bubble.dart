@@ -25,12 +25,10 @@ class MessageBubble extends StatefulWidget {
 }
 
 class _MessageBubbleState extends State<MessageBubble>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   late AnimationController _fadeController;
-  late AnimationController _glintController;
   late Animation<double> _bubbleFadeOut;
   late Animation<double> _textFadeIn;
-  late Animation<double> _glintPosition;
   bool _wasThinking = false;
   bool _transitionScheduled = false;
   DateTime? _thinkingStartTime;
@@ -62,24 +60,9 @@ class _MessageBubbleState extends State<MessageBubble>
       ),
     );
 
-    // Glint animation - sweeps across the bubble edge (slower, more elegant)
-    _glintController = AnimationController(
-      duration: const Duration(milliseconds: 3500), // Slower sweep
-      vsync: this,
-    );
-    
-    _glintPosition = Tween<double>(begin: -0.5, end: 1.5).animate(
-      CurvedAnimation(
-        parent: _glintController,
-        curve: Curves.easeInOut,
-      ),
-    );
-
     _wasThinking = widget.isThinking;
     if (widget.isThinking) {
       _thinkingStartTime = DateTime.now();
-      _glintController.repeat(); // Start glint animation when thinking begins
-      print('🎨 [INIT] Started glint animation');
     }
     
     // Listen for fade completion
@@ -110,7 +93,6 @@ class _MessageBubbleState extends State<MessageBubble>
       _transitionScheduled = false;
       _thinkingStartTime = DateTime.now();
       _fadeController.reset();
-      _glintController.repeat(); // Start glint animation
       print('🎨 [MessageBubble] Started thinking animation');
       
       // Start timer to force rebuilds every 100ms to check time
@@ -146,10 +128,6 @@ class _MessageBubbleState extends State<MessageBubble>
       
       Future.delayed(remainingTime, () {
         if (mounted) {
-          // Stop glint animation when streaming actually ends
-          _glintController.stop();
-          print('🎨 [STREAMING_EVENT] Stopped glint animation');
-          
           setState(() {
             _wasThinking = false;
           });
@@ -163,7 +141,6 @@ class _MessageBubbleState extends State<MessageBubble>
   @override
   void dispose() {
     _fadeController.dispose();
-    _glintController.dispose();
     _rebuildTimer?.cancel();
     super.dispose();
   }
@@ -257,55 +234,36 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _buildTextBubble(ThemeData theme) {
-    // Check if we should show glint
-    final showGlint = _glintController.isAnimating;
-    
-    if (showGlint) {
-      print('🎨 [GLINT] Rendering glint at position: ${_glintPosition.value}');
-    }
-    
-    return AnimatedBuilder(
-      animation: _glintController,
-      builder: (context, child) {
-        return CustomPaint(
-          painter: showGlint ? _GlintBorderPainter(
-            glintPosition: _glintPosition.value,
-            borderRadius: 16.0,
-            accentColor: widget.accentColor,
-          ) : null,
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: widget.isFromAico
-                  ? theme.colorScheme.surface
-                  : widget.accentColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
-              border: widget.isFromAico
-                  ? Border.all(color: theme.dividerColor.withOpacity(0.1))
-                  : null,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  widget.content,
-                  style: theme.textTheme.bodyMedium,
-                ),
-                if (widget.content.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    _formatTimestamp(widget.timestamp),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: widget.isFromAico
+            ? theme.colorScheme.surface
+            : widget.accentColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: widget.isFromAico
+            ? Border.all(color: theme.dividerColor.withOpacity(0.1))
+            : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            widget.content,
+            style: theme.textTheme.bodyMedium,
           ),
-        );
-      },
+          if (widget.content.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              _formatTimestamp(widget.timestamp),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -318,82 +276,5 @@ class _MessageBubbleState extends State<MessageBubble>
     if (diff.inMinutes < 60) return '${diff.inMinutes} minutes ago';
     if (diff.inHours < 24) return '${diff.inHours} hours ago';
     return '${diff.inDays} days ago';
-  }
-}
-
-/// Custom painter for the glint effect that sweeps around the border
-class _GlintBorderPainter extends CustomPainter {
-  final double glintPosition; // -1.0 to 2.0
-  final double borderRadius;
-  final Color accentColor;
-
-  _GlintBorderPainter({
-    required this.glintPosition,
-    required this.borderRadius,
-    required this.accentColor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(borderRadius));
-    
-    // Calculate the path length around the border
-    final perimeter = 2 * (size.width + size.height);
-    final glintLength = perimeter * 0.15; // Glint covers 15% of perimeter
-    
-    // Map glintPosition (-1.0 to 2.0) to actual position on perimeter
-    final currentPos = glintPosition * perimeter;
-    
-    // Create paint for drawing glint points
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
-    
-    // Draw the glint as individual points along the border
-    for (double i = 0; i < perimeter; i += 1.0) {
-      final distanceFromGlint = (i - currentPos).abs();
-      
-      if (distanceFromGlint < glintLength) {
-        // Calculate opacity based on distance from glint center
-        final normalizedDist = distanceFromGlint / glintLength;
-        final opacity = (1.0 - normalizedDist) * 0.6; // Max 60% opacity
-        
-        paint.color = accentColor.withOpacity(opacity);
-        
-        // Calculate position on border
-        final point = _getPointOnBorder(i, size, borderRadius);
-        canvas.drawCircle(point, 1.5, paint);
-      }
-    }
-  }
-  
-  Offset _getPointOnBorder(double distance, Size size, double radius) {
-    final w = size.width;
-    final h = size.height;
-    final perimeter = 2 * (w + h);
-    final normalizedDist = distance % perimeter;
-    
-    // Top edge
-    if (normalizedDist < w) {
-      return Offset(normalizedDist, 0);
-    }
-    // Right edge
-    else if (normalizedDist < w + h) {
-      return Offset(w, normalizedDist - w);
-    }
-    // Bottom edge
-    else if (normalizedDist < 2 * w + h) {
-      return Offset(w - (normalizedDist - w - h), h);
-    }
-    // Left edge
-    else {
-      return Offset(0, h - (normalizedDist - 2 * w - h));
-    }
-  }
-
-  @override
-  bool shouldRepaint(_GlintBorderPainter oldDelegate) {
-    return oldDelegate.glintPosition != glintPosition;
   }
 }
