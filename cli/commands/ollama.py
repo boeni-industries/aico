@@ -31,7 +31,7 @@ else:
 sys.path.insert(0, str(shared_path))
 
 from aico.core.config import ConfigurationManager
-from aico.core.paths import get_config_directory
+from aico.core.paths import AICOPaths
 from ..utils.formatting import format_error, format_success
 from ..utils.help_formatter import format_subcommand_help
 
@@ -303,7 +303,7 @@ def create_character(
     
     # Get Modelfile path
     try:
-        config_dir = Path(get_config_directory())
+        config_dir = AICOPaths.get_config_directory()
         modelfiles_dir = config_dir / "modelfiles"
         modelfile_path = modelfiles_dir / f"Modelfile.{character_name}"
         
