@@ -55,9 +55,9 @@ Migrating AICO from `hermes3:8b` to `huihui_ai/qwen3-abliterated:8b-v2` with:
 ### Phase 2: Character Definition
 1. ✅ Create Modelfile with Eve SYSTEM instruction at `/config/modelfiles/Modelfile.eve`
 2. ✅ Create README documentation for modelfiles directory
-3. ✅ Register custom model via CLI: `aico ollama create-character eve`
-4. ✅ Update config to use "eve" as model name
-5. ✅ Document setup step in developer getting-started guide
+3. ✅ Implement CLI command: `aico ollama create-character`
+4. ✅ Document setup step in developer getting-started guide
+5. ⏳ Update `core.yaml` to use "eve" as model name (see Configuration Changes below)
 
 ### Phase 3: Thinking Tags
 1. ✅ Add thinking parser utility (`/shared/aico/ai/utils/thinking_parser.py`)
@@ -633,6 +633,39 @@ completions_request = CompletionsRequest(
 )
 ```
 
+## Configuration Changes Required
+
+### Update core.yaml - Model Name
+
+**File**: `/config/defaults/core.yaml`
+
+**Change the conversation model name from `hermes3:8b` to `eve`:**
+
+```yaml
+# Line ~129-132 (in modelservice.ollama.default_models section)
+modelservice:
+  ollama:
+    default_models:
+      conversation:
+        name: "eve"  # CHANGED: was "hermes3:8b"
+        description: "Eve - AI companion with Qwen3-Abliterated base"
+        auto_pull: true
+        priority: 1
+```
+
+**Why this change**:
+- AICO backend reads model name from config on startup
+- No hardcoded model names in code
+- Single source of truth for which model to use
+- Easy to switch characters by changing config
+
+**After changing**:
+1. Save `core.yaml`
+2. Restart AICO backend to pick up new config
+3. Backend will now use "eve" model for all conversations
+
+**Note**: The "eve" model must already exist in Ollama (created via `aico ollama create-character eve`)
+
 ## Modelfile Deployment Strategy
 
 ### Approach: Manual CLI Command (Option B)
@@ -716,6 +749,9 @@ aico ollama create-character eve
 ### Backend
 - `/backend/services/conversation_engine.py` - Config-based model, thinking handling
 - `/modelservice/core/zmq_handlers.py` - Thinking parser integration
+
+### CLI
+- `/cli/commands/ollama.py` - NEW: `create-character` command implementation
 
 ### Shared
 - `/shared/aico/ai/utils/thinking_parser.py` - NEW: Thinking tag extraction
