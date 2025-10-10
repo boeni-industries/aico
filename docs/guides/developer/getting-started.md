@@ -352,9 +352,13 @@ aico config init
 # 2. Initialize encrypted database (auto-setup security if needed)
 aico db init
 
-# 3. Verify complete setup
+# 3. Create AI character model (required for conversations)
+aico ollama create-character eve
+
+# 4. Verify complete setup
 aico config show
 aico db show
+ollama list  # Should show 'eve' model
 ```
 
 ### Step-by-Step Process
@@ -381,6 +385,42 @@ aico db show
 ```
 
 **Note**: The `aico db init` command automatically sets up master password security if not already configured, eliminating the need for separate `aico security setup` step.
+
+#### 3. AI Character Model Setup
+
+AICO uses Ollama with custom character definitions (Modelfiles) to create AI personalities. The Eve character is the default AI companion.
+
+```bash
+# Create the Eve character model from Modelfile
+aico ollama create-character eve
+
+# Verify the model was created successfully
+ollama list
+# You should see 'eve' in the list of models
+
+# Test the character (optional)
+ollama run eve "Hello, who are you?"
+```
+
+**What this does:**
+- Reads the character definition from `config/modelfiles/Modelfile.eve`
+- Creates a custom Ollama model variant called "eve"
+- Configures model parameters (temperature, context window, etc.)
+- Sets up the character's personality and behavior
+
+**Character Details:**
+- **Name**: Eve
+- **Base Model**: Qwen3-Abliterated 8B (uncensored, thinking-capable)
+- **Personality**: Inspired by Samantha from the movie "Her"
+- **Features**: Warm, empathetic, uses thinking tags for reasoning
+
+**Updating the Character:**
+If you modify `Modelfile.eve`, recreate the model:
+```bash
+aico ollama create-character eve
+```
+
+For more details, see [Modelfiles README](../../config/modelfiles/README.md).
 
 ### Directory Structure
 After setup, you'll have cross-platform directories:
