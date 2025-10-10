@@ -1,7 +1,10 @@
 import 'package:aico_frontend/core/providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+part 'settings_provider.g.dart';
 
 /// Settings state model
 class SettingsState {
@@ -43,12 +46,16 @@ class SettingsState {
   }
 }
 
-/// Settings provider using StateNotifier
-class SettingsNotifier extends StateNotifier<SettingsState> {
-  final SharedPreferences _prefs;
+/// Settings provider using Notifier
+@riverpod
+class SettingsNotifier extends _$SettingsNotifier {
+  late final SharedPreferences _prefs;
 
-  SettingsNotifier(this._prefs) : super(const SettingsState()) {
+  @override
+  SettingsState build() {
+    _prefs = ref.watch(sharedPreferencesProvider);
     _loadSettings();
+    return const SettingsState();
   }
 
   void _loadSettings() {
@@ -126,18 +133,14 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   }
 }
 
-/// Settings provider
-final settingsProvider = StateNotifierProvider<SettingsNotifier, SettingsState>((ref) {
-  final prefs = ref.watch(sharedPreferencesProvider);
-  return SettingsNotifier(prefs);
-});
-
 /// Theme mode provider (convenience)
-final themeModeProvider = Provider<ThemeMode>((ref) {
+@riverpod
+ThemeMode themeMode(Ref ref) {
   return ref.watch(settingsProvider).themeMode;
-});
+}
 
 /// High contrast provider (convenience)
-final highContrastProvider = Provider<bool>((ref) {
+@riverpod
+bool highContrast(Ref ref) {
   return ref.watch(settingsProvider).highContrastEnabled;
-});
+}

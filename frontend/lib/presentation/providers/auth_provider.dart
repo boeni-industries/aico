@@ -7,6 +7,9 @@ import 'package:aico_frontend/domain/usecases/auth_usecases.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'auth_provider.g.dart';
 
 // Auth state
 class AuthState {
@@ -38,23 +41,27 @@ class AuthState {
 }
 
 // Auth notifier
-class AuthNotifier extends StateNotifier<AuthState> {
-  final LoginUseCase _loginUseCase;
-  final AutoLoginUseCase _autoLoginUseCase;
-  final LogoutUseCase _logoutUseCase;
-  final CheckAuthStatusUseCase _checkAuthStatusUseCase;
+@riverpod
+class AuthNotifier extends _$AuthNotifier {
+  late final LoginUseCase _loginUseCase;
+  late final AutoLoginUseCase _autoLoginUseCase;
+  late final LogoutUseCase _logoutUseCase;
+  late final CheckAuthStatusUseCase _checkAuthStatusUseCase;
   late final TokenManager _tokenManager;
   
   bool _isAutoLoginInProgress = false;
 
-  AuthNotifier(
-    this._loginUseCase,
-    this._autoLoginUseCase,
-    this._logoutUseCase,
-    this._checkAuthStatusUseCase,
-    this._tokenManager,
-  ) : super(const AuthState()) {
+  @override
+  AuthState build() {
+    // Initialize dependencies from ref
+    _loginUseCase = ref.read(loginUseCaseProvider);
+    _autoLoginUseCase = ref.read(autoLoginUseCaseProvider);
+    _logoutUseCase = ref.read(logoutUseCaseProvider);
+    _checkAuthStatusUseCase = ref.read(checkAuthStatusUseCaseProvider);
+    _tokenManager = ref.read(tokenManagerProvider);
+    
     _setupReAuthenticationListener();
+    return const AuthState();
   }
 
   Future<void> login(String userUuid, String pin, {bool rememberMe = false}) async {
@@ -228,19 +235,4 @@ class AuthNotifier extends StateNotifier<AuthState> {
     });
   }
 
-  @override
-  void dispose() {
-    super.dispose();
-  }
 }
-
-// Auth provider
-final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  return AuthNotifier(
-    ref.read(loginUseCaseProvider),
-    ref.read(autoLoginUseCaseProvider),
-    ref.read(logoutUseCaseProvider),
-    ref.read(checkAuthStatusUseCaseProvider),
-    ref.read(tokenManagerProvider),
-  );
-});

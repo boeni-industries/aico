@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui';
+
+import 'package:aico_frontend/presentation/providers/startup_connection_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/startup_connection_provider.dart';
 
 class StartupConnectionScreen extends ConsumerStatefulWidget {
   final VoidCallback? onConnected;
@@ -454,7 +454,7 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
       children: [
         // Close button - equal width, aligned with content above
         Expanded(
-          child: Container(
+          child: SizedBox(
             height: 48, // Design principle: proper button height
             child: OutlinedButton.icon(
               onPressed: _handleClose,
@@ -485,7 +485,7 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
         const SizedBox(width: 12),
         // Retry button - equal width, aligned with content above
         Expanded(
-          child: Container(
+          child: SizedBox(
             height: 48,
             child: FilledButton.icon(
               onPressed: state.canRetry ? _handleRetry : null,

@@ -1,10 +1,10 @@
+import 'package:aico_frontend/presentation/providers/auth_provider.dart';
+import 'package:aico_frontend/presentation/providers/startup_connection_provider.dart';
+import 'package:aico_frontend/presentation/screens/auth/login_screen.dart';
+import 'package:aico_frontend/presentation/screens/home/home_screen.dart';
+import 'package:aico_frontend/presentation/screens/startup/startup_connection_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/auth_provider.dart';
-import '../../providers/startup_connection_provider.dart';
-import '../../screens/auth/login_screen.dart';
-import '../../screens/home/home_screen.dart';
-import '../../screens/startup/startup_connection_screen.dart';
 
 /// Login overlay widget that displays as a card on top of the main UI
 class LoginOverlay extends StatelessWidget {

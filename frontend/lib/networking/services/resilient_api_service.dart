@@ -1,9 +1,9 @@
 import 'dart:async';
 
-import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/core/error/error_handler.dart';
 import 'package:aico_frontend/core/error/resilient_operation.dart';
 import 'package:aico_frontend/core/error/retry_manager.dart';
-import 'package:aico_frontend/core/error/error_handler.dart';
+import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/networking/clients/unified_api_client.dart';
 import 'package:aico_frontend/networking/services/connection_manager.dart';
 

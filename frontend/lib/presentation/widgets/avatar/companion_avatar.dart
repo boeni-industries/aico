@@ -1,9 +1,9 @@
+import 'package:aico_frontend/core/providers/networking_providers.dart';
+import 'package:aico_frontend/networking/services/connection_manager.dart';
+import 'package:aico_frontend/presentation/providers/auth_provider.dart';
+import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/auth_provider.dart';
-import '../../providers/avatar_state_provider.dart';
-import '../../../core/providers/networking_providers.dart';
-import '../../../networking/services/connection_manager.dart';
 
 /// Avatar with subtle pulsating ring status indicator - clean, minimal, following design principles
 /// Now uses centralized avatar state provider for rich information display
@@ -393,7 +393,7 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                         ),
                       ),
                       // Clean avatar circle
-                      Container(
+                      SizedBox(
                         width: 125,
                         height: 125,
                         child: ClipOval(
@@ -428,7 +428,7 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
 /// Custom color tween that interpolates through HSL color space
 /// This prevents colors from passing through unwanted hues (e.g., red between green and purple)
 class _HSLColorTween extends Tween<Color?> {
-  _HSLColorTween({required Color? begin, required Color? end}) : super(begin: begin, end: end);
+  _HSLColorTween({required super.begin, required super.end});
 
   @override
   Color? lerp(double t) {

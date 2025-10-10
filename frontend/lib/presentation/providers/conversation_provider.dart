@@ -9,7 +9,10 @@ import 'package:aico_frontend/domain/usecases/send_message_usecase.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:uuid/uuid.dart';
+
+part 'conversation_provider.g.dart';
 
 /// State class for conversation management
 class ConversationState {
@@ -60,21 +63,27 @@ class ConversationState {
   }
 }
 
-/// Conversation provider using Riverpod StateNotifier
-class ConversationNotifier extends StateNotifier<ConversationState> {
-  final MessageRepository _messageRepository;
-  final SendMessageUseCase _sendMessageUseCase;
-  final String _userId;
+/// Conversation provider using Riverpod Notifier
+@riverpod
+class ConversationNotifier extends _$ConversationNotifier {
+  late final MessageRepository _messageRepository;
+  late final SendMessageUseCase _sendMessageUseCase;
+  late final String _userId;
   static const _uuid = Uuid();
 
-  ConversationNotifier(
-    this._messageRepository,
-    this._sendMessageUseCase,
-    this._userId,
-  ) : super(const ConversationState()) {
+  @override
+  ConversationState build() {
+    // Initialize dependencies from ref
+    _messageRepository = ref.read(messageRepositoryProvider);
+    _sendMessageUseCase = ref.read(sendMessageUseCaseProvider);
+    
+    // Get current user ID from auth provider
+    final authState = ref.read(authProvider);
+    _userId = authState.user?.id ?? 'anonymous';
+    
     _initializeConversation();
+    return const ConversationState();
   }
-
 
   void _initializeConversation() {
     AICOLog.info('Initializing conversation provider', 
@@ -443,30 +452,16 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
   }
 }
 
-/// Provider for conversation state management
-final conversationProvider = StateNotifierProvider<ConversationNotifier, ConversationState>((ref) {
-  final messageRepository = ref.read(messageRepositoryProvider);
-  final sendMessageUseCase = ref.read(sendMessageUseCaseProvider);
-  
-  // Get current user ID from auth provider
-  final authState = ref.read(authProvider);
-  final userId = authState.user?.id ?? 'anonymous';
-
-  return ConversationNotifier(
-    messageRepository,
-    sendMessageUseCase,
-    userId,
-  );
-});
-
 /// Provider for message repository
-final messageRepositoryProvider = Provider<MessageRepository>((ref) {
+@riverpod
+MessageRepository messageRepository(Ref ref) {
   final apiClient = ref.read(unifiedApiClientProvider);
   return MessageRepositoryImpl(apiClient);
-});
+}
 
 /// Provider for send message use case
-final sendMessageUseCaseProvider = Provider<SendMessageUseCase>((ref) {
+@riverpod
+SendMessageUseCase sendMessageUseCase(Ref ref) {
   final messageRepository = ref.read(messageRepositoryProvider);
   return SendMessageUseCase(messageRepository);
-});
+}

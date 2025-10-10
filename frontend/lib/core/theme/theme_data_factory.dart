@@ -22,10 +22,6 @@ class AicoThemeDataFactory {
       surface: Color(0xFFFFFFFF), // Pure white
       onSurface: Color(0xFF1A1C1E),
       
-      // Background - Soft white-neutral from design principles
-      background: Color(0xFFF5F6FA), // Soft white-neutral background
-      onBackground: Color(0xFF1A1C1E),
-      
       // Error states
       error: Color(0xFFED7867), // Coral
       onError: Colors.white,
@@ -56,10 +52,6 @@ class AicoThemeDataFactory {
       // Surface colors
       surface: Color(0xFF21242E), // Dark surface from design principles
       onSurface: Color(0xFFE6E1E5),
-      
-      // Background - Dark background from design principles
-      background: Color(0xFF181A21), // Dark background from design principles
-      onBackground: Color(0xFFE6E1E5),
       
       // Error states
       error: Color(0xFFED7867), // Coral
@@ -174,7 +166,7 @@ class AicoThemeDataFactory {
       floatingActionButtonTheme: _createFABTheme(colorScheme),
       
       // Set scaffold background color to match design principles
-      scaffoldBackgroundColor: colorScheme.background,
+      scaffoldBackgroundColor: colorScheme.surface,
       
       // Shape themes
       

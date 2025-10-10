@@ -102,7 +102,7 @@ class ResilientOperation<T> {
             AICOLog.info('Fallback operation succeeded for: $name',
               topic: 'resilient_operation/fallback_success');
           } else {
-            fallbackResult = fallbackValue!;
+            fallbackResult = fallbackValue as T;
             AICOLog.info('Using fallback value for: $name',
               topic: 'resilient_operation/fallback_value');
           }

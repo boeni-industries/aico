@@ -39,8 +39,8 @@ dependencies:
   equatable: ^2.0.5
   
   # Dependency injection - Modern Riverpod approach
-  flutter_riverpod: ^2.5.1
-  riverpod_annotation: ^2.3.5
+  flutter_riverpod: ^3.0.3
+  riverpod_annotation: ^3.0.3
   
   # Storage and paths
   path_provider: ^2.1.4
@@ -58,7 +58,7 @@ dependencies:
   web_socket_channel: ^3.0.3
   
   # Network connectivity
-  connectivity_plus: ^6.0.5
+  connectivity_plus: ^7.0.0
   
   # JSON serialization
   json_annotation: ^4.8.1
@@ -88,10 +88,10 @@ dev_dependencies:
   
   # Code generation
   build_runner: ^2.4.7
-  retrofit_generator: ^9.7.0
+  retrofit_generator: ^10.0.0
   json_serializable: ^6.7.1
-  riverpod_generator: ^2.4.0
-  riverpod_lint: ^2.3.10
+  riverpod_generator: ^3.0.3
+  riverpod_lint: ^3.0.3
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
-
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/core/services/encryption_service.dart';
 import 'package:aico_frontend/networking/services/connection_manager.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 /// Unified API client that handles both encrypted and unencrypted requests
 /// Uses Dio exclusively for all HTTP operations

@@ -1,4 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'avatar_state_provider.g.dart';
 
 /// Avatar ring state for immersive information display
 /// Manages visual feedback through the avatar's pulsating rings
@@ -57,8 +60,12 @@ enum AvatarMode {
 }
 
 /// Provider for avatar ring state
-class AvatarRingStateNotifier extends StateNotifier<AvatarRingState> {
-  AvatarRingStateNotifier() : super(const AvatarRingState());
+@riverpod
+class AvatarRingStateNotifier extends _$AvatarRingStateNotifier {
+  @override
+  AvatarRingState build() {
+    return const AvatarRingState();
+  }
   
   /// Set avatar to thinking mode
   void startThinking({double intensity = 0.8}) {
@@ -103,7 +110,7 @@ class AvatarRingStateNotifier extends StateNotifier<AvatarRingState> {
     
     // Auto-return to idle after duration
     Future.delayed(duration, () {
-      if (mounted && state.mode == AvatarMode.success) {
+      if (state.mode == AvatarMode.success) {
         returnToIdle();
       }
     });
@@ -140,8 +147,3 @@ class AvatarRingStateNotifier extends StateNotifier<AvatarRingState> {
     state = state.copyWith(intensity: intensity.clamp(0.0, 1.0));
   }
 }
-
-/// Global provider for avatar ring state
-final avatarRingStateProvider = StateNotifierProvider<AvatarRingStateNotifier, AvatarRingState>((ref) {
-  return AvatarRingStateNotifier();
-});

@@ -159,7 +159,7 @@ class _ThinkingBubbleState extends State<ThinkingBubble>
                 // Particle system - no size constraints, fills available space
                 ..._particles
                     .map((particle) => ParticleWidget(particle: particle))
-                    .toList(),
+                    ,
               ],
             ),
           );

@@ -44,7 +44,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     
     // Listen for conversation changes to auto-scroll
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.listenManual(conversationProvider, (previous, next) {
+      ref.listen<ConversationState>(conversationProvider, (previous, next) {
         // Auto-scroll when new messages are added OR when message content changes (streaming)
         if (previous != null) {
           bool shouldScroll = false;

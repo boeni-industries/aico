@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:math';
-import 'package:aico_frontend/core/logging/aico_log.dart';
+
 import 'package:aico_frontend/core/error/circuit_breaker.dart';
+import 'package:aico_frontend/core/logging/aico_log.dart';
 
 /// Advanced retry manager with exponential backoff, jitter, and circuit breaker integration
 class RetryManager {
@@ -73,7 +74,7 @@ class RetryManager {
 
         // Check if we should retry this error
         if (!_shouldRetry(e) || attempt > maxRetries) {
-          AICOLog.error('$opName failed after ${attempt} attempts',
+          AICOLog.error('$opName failed after $attempt attempts',
             topic: 'retry_manager/final_failure',
             error: e,
             extra: {

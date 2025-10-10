@@ -1,7 +1,5 @@
-import 'package:aico_frontend/networking/services/resilient_api_service.dart';
-import 'package:aico_frontend/networking/services/connection_manager.dart';
 import 'package:aico_frontend/data/models/auth_model.dart';
-import 'auth_remote_datasource.dart';
+import 'package:aico_frontend/networking/services/resilient_api_service.dart';
 
 abstract class AuthRemoteDataSource {
   Future<AuthModel?> authenticate(String userUuid, String pin);

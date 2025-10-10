@@ -1,6 +1,6 @@
-import 'package:equatable/equatable.dart';
 // Import the actual enums used by the connection system
-import '../../networking/services/connection_manager.dart' show InternalConnectionStatus;
+import 'package:aico_frontend/networking/services/connection_manager.dart' show InternalConnectionStatus;
+import 'package:equatable/equatable.dart';
 
 /// Domain entity representing the connection state to the backend
 class ConnectionState extends Equatable {
