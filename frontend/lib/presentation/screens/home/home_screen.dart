@@ -41,37 +41,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     // Theme management now handled via Riverpod providers
-    
-    // Listen for conversation changes to auto-scroll
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.listen<ConversationState>(conversationProvider, (previous, next) {
-        // Auto-scroll when new messages are added OR when message content changes (streaming)
-        if (previous != null) {
-          bool shouldScroll = false;
-          
-          // New message added
-          if (next.messages.length > previous.messages.length) {
-            shouldScroll = true;
-          }
-          
-          // Message content updated (streaming)
-          else if (next.messages.length == previous.messages.length && next.messages.isNotEmpty) {
-            // Check if the last message content has changed (streaming update)
-            final lastMessage = next.messages.last;
-            final previousLastMessage = previous.messages.isNotEmpty ? previous.messages.last : null;
-            
-            if (previousLastMessage != null && 
-                lastMessage.content != previousLastMessage.content) {
-              shouldScroll = true;
-            }
-          }
-          
-          if (shouldScroll) {
-            _scrollToBottom();
-          }
-        }
-      });
-    });
   }
 
   @override
@@ -81,6 +50,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final accentColor = const Color(0xFFB8A1EA); // Soft purple accent
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth > 800;
+    
+    // Listen for conversation changes to auto-scroll
+    ref.listen<ConversationState>(conversationProvider, (previous, next) {
+      // Auto-scroll when new messages are added OR when message content changes (streaming)
+      if (previous != null) {
+        bool shouldScroll = false;
+        
+        // New message added
+        if (next.messages.length > previous.messages.length) {
+          shouldScroll = true;
+        }
+        
+        // Message content updated (streaming)
+        else if (next.messages.length == previous.messages.length && next.messages.isNotEmpty) {
+          // Check if the last message content has changed (streaming update)
+          final lastMessage = next.messages.last;
+          final previousLastMessage = previous.messages.isNotEmpty ? previous.messages.last : null;
+          
+          if (previousLastMessage != null && 
+              lastMessage.content != previousLastMessage.content) {
+            shouldScroll = true;
+          }
+        }
+        
+        if (shouldScroll) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _scrollToBottom();
+          });
+        }
+      }
+    });
     
     return Scaffold(
         body: Stack(

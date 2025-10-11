@@ -69,18 +69,19 @@ class StartupConnectionNotifier extends _$StartupConnectionNotifier {
   @override
   StartupConnectionState build() {
     _connectionManager = ref.watch(connectionManagerProvider);
-    _initializeConnection();
-    return const StartupConnectionState();
+    
+    // Schedule initialization after build completes
+    Future.microtask(() => _initializeConnection());
+    
+    return const StartupConnectionState(
+      phase: StartupConnectionPhase.initializing,
+      message: 'Initializing connection...',
+    );
   }
 
   void _initializeConnection() {
     debugPrint('StartupConnection: Initializing connection flow');
     AICOLog.info('Starting startup connection flow', topic: 'startup/connection/init');
-    
-    state = state.copyWith(
-      phase: StartupConnectionPhase.initializing,
-      message: 'Initializing connection...',
-    );
 
     // Start the connection attempt after brief initialization
     _phaseTimer = Timer(const Duration(milliseconds: 800), () {

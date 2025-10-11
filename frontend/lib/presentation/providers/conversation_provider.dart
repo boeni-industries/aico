@@ -90,8 +90,8 @@ class ConversationNotifier extends _$ConversationNotifier {
       topic: 'conversation_provider/init',
       extra: {'user_id': _userId});
     
-    // Start with null conversation ID - backend will assign one for the first message
-    state = state.copyWith(currentConversationId: null);
+    // Initial state already has null conversation ID - backend will assign one for the first message
+    // No need to mutate state here as it causes circular dependency
   }
 
 
