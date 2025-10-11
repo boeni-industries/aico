@@ -116,7 +116,7 @@ def ollama_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             description="Ollama model management and operations",
             subcommands=[
                 ("status", "Show Ollama status and available models"),
-                ("create-character", "Create AI character model from Modelfile"),
+                ("generate", "Generate AI character model from Modelfile"),
                 ("install", "Install Ollama binary (manual process)"),
                 ("serve", "Start Ollama server daemon"),
                 ("shutdown", "Stop Ollama server daemon"),
@@ -127,7 +127,7 @@ def ollama_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             ],
             examples=[
                 "aico ollama status",
-                "aico ollama create-character eve",
+                "aico ollama generate eve",
                 "aico ollama serve",
                 "aico ollama run llama3.2:3b",
                 "aico ollama show hermes3:8b",
@@ -285,42 +285,81 @@ async def _show_running_models_async(show_title: bool = True):
         pass  # Silently fail if models can't be retrieved
 
 
-@app.command("create-character")
-def create_character(
-    character_name: str = typer.Argument(..., help="Name of the character to create (e.g., 'eve')"),
-    force: bool = typer.Option(False, "--force", "-f", help="Recreate character if it already exists")
+@app.command("generate")
+def generate(
+    character_name: Optional[str] = typer.Argument(None, help="Name of the character to generate (e.g., 'eve')"),
+    force: bool = typer.Option(False, "--force", "-f", help="Regenerate character if it already exists")
 ):
-    """Create AI character model from Modelfile.
+    """Generate AI character model from Modelfile.
     
     This command reads a character definition from config/modelfiles/Modelfile.{character}
-    and creates a custom Ollama model variant with the character's personality and parameters.
+    and generates a custom Ollama model variant with the character's personality and parameters.
     
     Examples:
-        aico ollama create-character eve
-        aico ollama create-character eve --force
+        aico ollama generate eve
+        aico ollama generate eve --force
     """
-    console.print(f"\n✨ [bold cyan]Creating Character Model: {character_name}[/bold cyan]")
-    
-    # Get Modelfile path
+    # Get Modelfile directory from user config
     try:
         config_dir = AICOPaths.get_config_directory()
         modelfiles_dir = config_dir / "modelfiles"
-        modelfile_path = modelfiles_dir / f"Modelfile.{character_name}"
         
-        # Check if Modelfile exists
-        if not modelfile_path.exists():
-            console.print(format_error(
-                f"Modelfile not found: {modelfile_path}\n"
-                f"Expected location: config/modelfiles/Modelfile.{character_name}\n"
-                f"Available characters: {', '.join([f.stem.replace('Modelfile.', '') for f in modelfiles_dir.glob('Modelfile.*')])}"
-            ))
+        # If no character name provided, list available characters
+        if character_name is None:
+            console.print("\n✨ [bold cyan]Available Characters[/bold cyan]")
+            
+            # Get all Modelfiles
+            modelfiles = sorted(modelfiles_dir.glob("Modelfile.*"))
+            
+            if not modelfiles:
+                console.print("[dim]No character Modelfiles found in user config directory[/dim]")
+                console.print(f"[dim]Location: {modelfiles_dir}[/dim]\n")
+                console.print("[yellow]Run the following command to copy default Modelfiles:[/yellow]")
+                console.print("[bold]  aico config init[/bold]\n")
+                console.print("[dim]Or create custom Modelfiles in the config directory[/dim]")
+                console.print()
+                return
+            
+            # Create table for characters
+            table = Table(
+                border_style="bright_blue",
+                header_style="bold yellow",
+                show_lines=False,
+                box=box.SIMPLE_HEAD,
+                padding=(0, 1)
+            )
+            
+            table.add_column("Character", style="bold white", justify="left")
+            table.add_column("Modelfile", style="dim", justify="left")
+            
+            for modelfile in modelfiles:
+                # Extract character name by removing "Modelfile." prefix from filename
+                char_name = modelfile.name.replace("Modelfile.", "")
+                table.add_row(char_name, str(modelfile.name))
+            
+            console.print(table)
+            console.print("\n[dim]Usage: aico ollama generate <character>[/dim]")
+            console.print("[dim]Example: aico ollama generate eve[/dim]")
+            console.print()
             return
         
-        console.print(f"[dim]Reading Modelfile from: {modelfile_path}[/dim]")
-        
+        modelfile_path = modelfiles_dir / f"Modelfile.{character_name}"
     except Exception as e:
-        console.print(format_error(f"Failed to locate Modelfile: {str(e)}"))
+        console.print(format_error(f"Failed to access Modelfile directory: {str(e)}"))
         return
+    
+    console.print(f"\n✨ [bold cyan]Generating Character Model: {character_name}[/bold cyan]")
+    
+    # Check if Modelfile exists
+    if not modelfile_path.exists():
+        console.print(format_error(
+            f"Modelfile not found: {modelfile_path}\n"
+            f"Expected location: config/modelfiles/Modelfile.{character_name}\n"
+            f"Available characters: {', '.join([f.stem.replace('Modelfile.', '') for f in modelfiles_dir.glob('Modelfile.*')])}"
+        ))
+        return
+    
+    console.print(f"[dim]Reading Modelfile from: {modelfile_path}[/dim]")
     
     # Check if Ollama is running
     base_url = _get_ollama_base_url()
@@ -376,8 +415,8 @@ def create_character(
         console.print(format_error(f"Failed to read Modelfile: {str(e)}"))
         return
     
-    # Create character model using Ollama API
-    console.print(f"[dim]Creating character model '{character_name}' in Ollama...[/dim]")
+    # Generate character model using Ollama API
+    console.print(f"[dim]Generating character model '{character_name}' in Ollama...[/dim]")
     
     with Progress(
         SpinnerColumn(),
@@ -385,7 +424,7 @@ def create_character(
         console=console
     ) as progress:
         
-        task = progress.add_task(f"Creating {character_name}...", total=None)
+        task = progress.add_task(f"Generating {character_name}...", total=None)
         
         try:
             with httpx.Client(timeout=120.0) as client:  # Longer timeout for model creation
@@ -400,9 +439,9 @@ def create_character(
                 )
                 
                 if response.status_code == 200:
-                    progress.update(task, description="Character model created successfully")
+                    progress.update(task, description="Character model generated successfully")
                     console.print(format_success(
-                        f"Character model '{character_name}' created successfully!\n"
+                        f"Character model '{character_name}' generated successfully!\n"
                         f"Test it with: ollama run {character_name}"
                     ))
                     
@@ -412,30 +451,59 @@ def create_character(
                     console.print(f"[dim]Modelfile: {modelfile_path}[/dim]")
                     
                     # Extract base model from Modelfile
+                    base_model = None
                     for line in modelfile_content.split('\n'):
                         if line.strip().startswith('FROM '):
                             base_model = line.strip().replace('FROM ', '')
                             console.print(f"[dim]Base Model: {base_model}[/dim]")
                             break
                     
+                    # Update configuration to use the new character model
+                    console.print(f"\n[bold cyan]Updating Configuration:[/bold cyan]")
+                    try:
+                        config_manager = ConfigurationManager()
+                        config_manager.initialize()
+                        
+                        # Update the conversation model name
+                        config_manager.set("modelservice.ollama.default_models.conversation.name", character_name, persist=True)
+                        console.print(f"[green]✓[/green] Updated config: modelservice.ollama.default_models.conversation.name = {character_name}")
+                        
+                        # Update description if we have base model info
+                        if base_model:
+                            description = f"{character_name.title()} character based on {base_model}"
+                            config_manager.set("modelservice.ollama.default_models.conversation.description", description, persist=True)
+                            console.print(f"[green]✓[/green] Updated config: modelservice.ollama.default_models.conversation.description")
+                        
+                    except Exception as e:
+                        console.print(f"[yellow]⚠[/yellow] Could not update config automatically: {e}")
+                        console.print(f"[dim]You can manually update core.yaml to use model '{character_name}'[/dim]")
+                    
+                    # Prompt to restart modelservice
+                    console.print(f"\n[bold yellow]⚠ Important:[/bold yellow]")
+                    console.print(f"[yellow]Modelservice needs to be restarted to use the new character model.[/yellow]")
+                    console.print(f"\n[bold cyan]Next steps:[/bold cyan]")
+                    console.print(f"  1. Restart modelservice: [bold]aico modelservice restart[/bold]")
+                    console.print(f"  2. Or if not running: [bold]aico modelservice start[/bold]")
+                    console.print(f"\n[dim]The new '{character_name}' model will be used for all conversations.[/dim]")
+                    
                 else:
-                    progress.update(task, description="Creation failed")
+                    progress.update(task, description="Generation failed")
                     error_text = response.text if response.text else "Unknown error"
                     console.print(format_error(
-                        f"Failed to create character model.\n"
+                        f"Failed to generate character model.\n"
                         f"Ollama API error: {error_text}"
                     ))
         
         except httpx.TimeoutException:
-            progress.update(task, description="Creation timed out")
+            progress.update(task, description="Generation timed out")
             console.print(format_error(
-                "Character model creation timed out.\n"
+                "Character model generation timed out.\n"
                 "This may happen if the base model needs to be downloaded.\n"
                 "Check Ollama logs for progress."
             ))
         
         except Exception as e:
-            progress.update(task, description="Creation failed")
+            progress.update(task, description="Generation failed")
             error_msg = _format_connection_error(str(e))
             console.print(format_error(error_msg))
     

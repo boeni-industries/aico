@@ -424,9 +424,19 @@ def init(
             ("defaults/database.yaml", project_config_dir / "defaults" / "database.yaml"),
         ]
         
+        # Find all Modelfiles in project to copy
+        modelfiles_source_dir = project_config_dir / "modelfiles"
+        modelfiles_to_copy = []
+        if modelfiles_source_dir.exists():
+            for modelfile in modelfiles_source_dir.glob("Modelfile.*"):
+                rel_path = f"modelfiles/{modelfile.name}"
+                modelfiles_to_copy.append((rel_path, modelfile))
+        
         # Check existing configurations for informational purposes
         existing_configs = []
         missing_configs = []
+        existing_modelfiles = []
+        missing_modelfiles = []
         
         for rel_path, source_file in config_files_to_create:
             target_file = config_dir / rel_path
@@ -434,6 +444,13 @@ def init(
                 existing_configs.append(target_file)
             else:
                 missing_configs.append((rel_path, source_file))
+        
+        for rel_path, source_file in modelfiles_to_copy:
+            target_file = config_dir / rel_path
+            if target_file.exists():
+                existing_modelfiles.append(target_file)
+            else:
+                missing_modelfiles.append((rel_path, source_file))
         
         # Show status of existing configurations
         if existing_configs:
@@ -444,8 +461,17 @@ def init(
                 console.print(f"  [dim]Use --force to overwrite existing files[/dim]")
             console.print()
         
+        if existing_modelfiles:
+            console.print(f"{chars['check']} [green]Found existing Modelfiles:[/green]")
+            for modelfile in existing_modelfiles:
+                console.print(f"  {chars['bullet']} {format_smart_path(modelfile)}")
+            if not force:
+                console.print(f"  [dim]Use --force to overwrite existing Modelfiles[/dim]")
+            console.print()
+        
         # Determine which files to actually create/update
         files_to_process = config_files_to_create if force else missing_configs
+        modelfiles_to_process = modelfiles_to_copy if force else missing_modelfiles
         
         # Initialize all platform directories including new frontend paths
         base_data_dir = AICOPaths.get_data_directory()
@@ -472,7 +498,9 @@ def init(
         
         # Copy actual configuration files from templates
         files_created = 0
+        modelfiles_created = 0
         files_skipped = 0
+        
         for rel_path, source_file in files_to_process:
             target_file = config_dir / rel_path
             
@@ -486,8 +514,22 @@ def init(
             else:
                 console.print(f"{chars['cross']} [yellow]Template not found[/yellow]: {source_file}")
         
+        # Copy Modelfiles
+        for rel_path, source_file in modelfiles_to_process:
+            target_file = config_dir / rel_path
+            
+            if source_file.exists():
+                # Ensure target directory exists
+                target_file.parent.mkdir(parents=True, exist_ok=True)
+                # Copy the file
+                shutil.copy2(source_file, target_file)
+                console.print(f"{chars['check']} [green]Created Modelfile[/green]: {format_smart_path(target_file)}")
+                modelfiles_created += 1
+            else:
+                console.print(f"{chars['cross']} [yellow]Modelfile not found[/yellow]: {source_file}")
+        
         # Show summary with delta information
-        if dirs_created > 0 or files_created > 0 or len(existing_configs) > 0:
+        if dirs_created > 0 or files_created > 0 or modelfiles_created > 0 or len(existing_configs) > 0 or len(existing_modelfiles) > 0:
             console.print(f"\n{chars['sparkle']} [bold green]AICO configuration initialized successfully![/bold green]")
             
             # Show what was actually created (delta only)
@@ -495,10 +537,14 @@ def init(
                 console.print(f"{chars['check']} [green]Created {dirs_created} new directories[/green]")
             if files_created > 0:
                 console.print(f"{chars['check']} [green]Created {files_created} configuration files[/green]")
+            if modelfiles_created > 0:
+                console.print(f"{chars['check']} [green]Created {modelfiles_created} Modelfiles[/green]")
                 
             # Show what already existed (if relevant)
             if existing_configs and not force:
                 console.print(f"{chars['check']} [green]Preserved {len(existing_configs)} existing configuration files[/green]")
+            if existing_modelfiles and not force:
+                console.print(f"{chars['check']} [green]Preserved {len(existing_modelfiles)} existing Modelfiles[/green]")
             if dirs_existed > 0 and dirs_created == 0:
                 console.print(f"{chars['check']} [dim]All directories already existed[/dim]")
                 
