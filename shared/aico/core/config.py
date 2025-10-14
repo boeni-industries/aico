@@ -93,6 +93,11 @@ class ConfigurationManager:
                 config_dir = Path("./config")
         
         self.config_dir = config_dir
+        
+        # User config directory for runtime overrides (platform-specific)
+        # Import here to avoid circular dependency
+        from aico.core.paths import AICOPaths
+        self.user_config_dir = AICOPaths.get_config_directory()
         self.schemas: Dict[str, Dict] = {}
         self.config_cache: Dict[str, Any] = {}
         self.sources: List[ConfigSource] = []
@@ -209,7 +214,7 @@ class ConfigurationManager:
             runtime_source = ConfigSource(
                 name="runtime",
                 priority=5,
-                path=self.config_dir / "user" / "runtime.yaml",
+                path=self.user_config_dir / "runtime.yaml",  # Use platform-specific user config dir
                 data={}
             )
             self.sources.append(runtime_source)
@@ -452,7 +457,7 @@ class ConfigurationManager:
                 
     def _load_runtime_configs(self) -> None:
         """Load runtime configuration changes from encrypted store."""
-        runtime_file = self.config_dir / "user" / "runtime.yaml"
+        runtime_file = self.user_config_dir / "runtime.yaml"  # Use platform-specific user config dir
         
         if runtime_file.exists():
             try:
@@ -472,7 +477,7 @@ class ConfigurationManager:
         
     def _persist_configuration(self) -> None:
         """Persist current configuration to encrypted store."""
-        runtime_file = self.config_dir / "user" / "runtime.yaml"
+        runtime_file = self.user_config_dir / "runtime.yaml"  # Use platform-specific user config dir
         
         # Extract runtime changes (priority 5 source)
         runtime_data = {}

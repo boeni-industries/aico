@@ -585,12 +585,23 @@ class OllamaManager:
                     actual_model_name = model_config.get("name")
                     if actual_model_name:
                         try:
-                            # Check if model needs to be downloaded
+                            # Check if model is available locally
                             if not await self._is_model_available(actual_model_name):
-                                self._print_status("🚀", f"Starting download: {actual_model_name}", "blue")
-                                await self._pull_model_simple(actual_model_name)
-                                self._print_status("✅", f"Model downloaded: {actual_model_name}", "green")
-                                self.logger.info(f"Successfully pulled model: {actual_model_name}")
+                                # Check if this might be a custom model (not in Ollama registry)
+                                # Custom models don't have ':' or are single words without org prefix
+                                is_likely_custom = ':' not in actual_model_name or '/' not in actual_model_name
+                                
+                                if is_likely_custom:
+                                    # Skip custom models - they must be created via Modelfile first
+                                    self._print_status("⚠️", f"Model '{actual_model_name}' not found (custom model?)", "yellow")
+                                    self.logger.warning(f"Model '{actual_model_name}' not available. If this is a custom model, create it first with: aico ollama generate {actual_model_name}")
+                                    continue  # Skip to next model
+                                else:
+                                    # Try to download registry models
+                                    self._print_status("🚀", f"Starting download: {actual_model_name}", "blue")
+                                    await self._pull_model_simple(actual_model_name)
+                                    self._print_status("✅", f"Model downloaded: {actual_model_name}", "green")
+                                    self.logger.info(f"Successfully pulled model: {actual_model_name}")
                             
                             # Check if this is an embedding model (they don't need to be "started")
                             is_embedding_model = config_key == "embedding" or any(
