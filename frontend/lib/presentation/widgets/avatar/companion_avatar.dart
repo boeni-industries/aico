@@ -23,16 +23,28 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
   late Animation<Color?> _ringColorAnimation;
   late Animation<double> _expansionAnimation;
   
-  InternalConnectionStatus _currentStatus = InternalConnectionStatus.connected;
-  bool _isAuthenticated = false;
-  AvatarMode _previousAvatarMode = AvatarMode.idle;
-  Color _targetRingColor = const Color(0xFF10B981); // Default emerald
+  late InternalConnectionStatus _currentStatus;
+  late bool _isAuthenticated;
+  late AvatarMode _previousAvatarMode;
+  late Color _targetRingColor;
   double _currentExpansion = 1.0;
   double _targetExpansion = 1.0;
 
   @override
   void initState() {
     super.initState();
+    
+    // Initialize from actual current state to prevent flicker on rebuild
+    final connectionManager = ref.read(connectionManagerProvider);
+    final authState = ref.read(authProvider);
+    final avatarState = ref.read(avatarRingStateProvider);
+    
+    _currentStatus = connectionManager.health.status;
+    _isAuthenticated = authState.isAuthenticated;
+    _previousAvatarMode = avatarState.mode;
+    
+    // Initialize target color based on current avatar mode
+    _targetRingColor = _getInitialRingColor(avatarState.mode);
     
     // Dynamic pulse animation - adapts to connection state
     _pulseController = AnimationController(
@@ -137,9 +149,9 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
   Duration _getPulseDuration(AvatarMode mode, double intensity) {
     // Base duration modified by intensity (higher intensity = faster)
     final baseDuration = switch (mode) {
-      AvatarMode.thinking => 1200,
+      AvatarMode.thinking => 900, // Faster for more visible thinking
       AvatarMode.processing => 800,
-      AvatarMode.listening => 1500,
+      AvatarMode.listening => 1200, // Faster, more responsive
       AvatarMode.speaking => 1000,
       AvatarMode.success => 1000,
       AvatarMode.attention => 1800,
@@ -151,6 +163,37 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
     // Intensity affects speed (higher intensity = faster pulse)
     final adjustedDuration = (baseDuration / (0.5 + intensity * 0.5)).round();
     return Duration(milliseconds: adjustedDuration);
+  }
+
+  Color _getInitialRingColor(AvatarMode avatarMode) {
+    // Get initial color without theme context (for initState)
+    // Use full opacity colors as defaults
+    const coral = Color(0xFFED7867);
+    const emerald = Color(0xFF10B981);
+    const amber = Color(0xFFF59E0B);
+    const sapphire = Color(0xFF3B82F6);
+    const purple = Color(0xFFB8A1EA);
+    const violet = Color(0xFF8B5CF6);
+    
+    switch (avatarMode) {
+      case AvatarMode.thinking:
+      case AvatarMode.speaking:
+        return purple;
+      case AvatarMode.processing:
+        return violet;
+      case AvatarMode.listening:
+        return sapphire;
+      case AvatarMode.success:
+        return emerald;
+      case AvatarMode.error:
+        return coral;
+      case AvatarMode.attention:
+        return amber;
+      case AvatarMode.connecting:
+        return sapphire;
+      case AvatarMode.idle:
+        return emerald; // Default to green for idle/connected
+    }
   }
 
   Color _getRingColor(AvatarMode avatarMode) {
@@ -168,11 +211,11 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
     // Avatar mode takes priority over connection status
     switch (avatarMode) {
       case AvatarMode.thinking:
-        return isDark ? purple.withOpacity(0.85) : purple;
+        return isDark ? purple.withOpacity(0.95) : purple; // More visible
       case AvatarMode.processing:
-        return isDark ? violet.withOpacity(0.9) : violet;
+        return isDark ? violet.withOpacity(0.95) : violet;
       case AvatarMode.listening:
-        return isDark ? sapphire.withOpacity(0.8) : sapphire;
+        return isDark ? sapphire.withOpacity(0.95) : sapphire; // Blue for user typing
       case AvatarMode.speaking:
         return isDark ? purple.withOpacity(0.8) : purple.withOpacity(0.9);
       case AvatarMode.success:
@@ -247,9 +290,9 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
   double _getPulseMultiplier(AvatarMode mode, double intensity) {
     // Base multiplier for each mode
     final baseMultiplier = switch (mode) {
-      AvatarMode.thinking => 1.5,
-      AvatarMode.processing => 1.8,
-      AvatarMode.listening => 1.3,
+      AvatarMode.thinking => 1.8, // More dramatic pulse
+      AvatarMode.processing => 2.0,
+      AvatarMode.listening => 1.6, // More visible
       AvatarMode.speaking => 1.4,
       AvatarMode.success => 1.6,
       AvatarMode.attention => 1.2,
@@ -360,26 +403,54 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                   : _currentExpansion;
               
               return SizedBox(
-                width: 182,
-                height: 182,
-                child: RepaintBoundary(
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // Outer breathing ring
-                      Container(
-                        width: 148 + (_pulseAnimation.value * 26 * pulseMultiplier),
-                        height: 148 + (_pulseAnimation.value * 26 * pulseMultiplier),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.transparent,
-                          border: Border.all(
-                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? ringOpacity * 0.6 : ringOpacity * 0.9),
-                            width: 2.6,
-                          ),
+                width: 240, // Increased to allow glow to extend
+                height: 240,
+                child: Stack(
+                  clipBehavior: Clip.none, // Allow glow to extend beyond bounds
+                  alignment: Alignment.center,
+                  children: [
+                    // Outer breathing ring with glow
+                    Container(
+                      width: 148 + (_pulseAnimation.value * 26 * pulseMultiplier),
+                      height: 148 + (_pulseAnimation.value * 26 * pulseMultiplier),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.transparent,
+                        border: Border.all(
+                          color: ringColor.withOpacity(theme.brightness == Brightness.dark ? ringOpacity * 0.6 : ringOpacity * 0.9),
+                          width: 2.6,
                         ),
+                        boxShadow: [
+                          // Multi-layer glow for smooth gradient (reduces banding)
+                          BoxShadow(
+                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? 0.4 : 0.3),
+                            blurRadius: 50,
+                            spreadRadius: 15,
+                          ),
+                          BoxShadow(
+                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? 0.3 : 0.22),
+                            blurRadius: 70,
+                            spreadRadius: 22,
+                          ),
+                          BoxShadow(
+                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? 0.22 : 0.16),
+                            blurRadius: 90,
+                            spreadRadius: 28,
+                          ),
+                          BoxShadow(
+                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? 0.15 : 0.11),
+                            blurRadius: 110,
+                            spreadRadius: 35,
+                          ),
+                          BoxShadow(
+                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? 0.08 : 0.06),
+                            blurRadius: 130,
+                            spreadRadius: 42,
+                          ),
+                        ],
                       ),
-                      // Inner breathing ring
+                    ),
+                      // Inner breathing ring with subtle glow
                       Container(
                         width: 135 + (_pulseAnimation.value * 16 * pulseMultiplier),
                         height: 135 + (_pulseAnimation.value * 16 * pulseMultiplier),
@@ -390,6 +461,14 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                             color: ringColor.withOpacity(theme.brightness == Brightness.dark ? ringOpacity * 0.5 : ringOpacity * 0.7),
                             width: 1.3,
                           ),
+                          boxShadow: [
+                            // Subtle inner glow for depth
+                            BoxShadow(
+                              color: ringColor.withOpacity(theme.brightness == Brightness.dark ? 0.15 : 0.12),
+                              blurRadius: 10,
+                              spreadRadius: 0,
+                            ),
+                          ],
                         ),
                       ),
                       // Clean avatar circle
@@ -415,7 +494,6 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                       ),
                     ],
                   ),
-                ),
               );
             },
           ),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:aico_frontend/presentation/widgets/chat/thinking_bubble.dart';
 import 'package:flutter/material.dart';
 
@@ -206,38 +207,50 @@ class _MessageBubbleState extends State<MessageBubble>
     final trimmedContent = widget.content.trim();
     final isDark = theme.brightness == Brightness.dark;
     
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        // Dark mode: AICO uses neutral surface, User uses accent tint (industry standard)
-        color: widget.isFromAico
-            ? (isDark 
-                ? theme.colorScheme.surfaceContainerHighest // Neutral elevated surface
-                : theme.colorScheme.surface)
-            : (isDark
-                ? widget.accentColor.withOpacity(0.15) // Accent tint for user (WhatsApp/Telegram pattern)
-                : widget.accentColor.withOpacity(0.1)),
-        borderRadius: BorderRadius.circular(16),
-        // More visible borders in dark mode
-        border: Border.all(
-          color: widget.isFromAico
-              ? (isDark 
-                  ? theme.colorScheme.outline.withOpacity(0.15)
-                  : theme.dividerColor.withOpacity(0.1))
-              : (isDark
-                  ? theme.colorScheme.outline.withOpacity(0.2)
-                  : Colors.transparent),
-          width: 1,
-        ),
-        // Shadows only in light mode
-        boxShadow: isDark ? null : [
-          BoxShadow(
-            color: theme.colorScheme.shadow,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            // Glassmorphism: semi-transparent with backdrop blur
+            color: widget.isFromAico
+                ? (isDark 
+                    ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.7) // Semi-transparent glass
+                    : theme.colorScheme.surface.withOpacity(0.9))
+                : (isDark
+                    ? widget.accentColor.withOpacity(0.2) // Accent tint glass
+                    : widget.accentColor.withOpacity(0.15)),
+            borderRadius: BorderRadius.circular(16),
+            // Subtle glowing border
+            border: Border.all(
+              color: widget.isFromAico
+                  ? (isDark 
+                      ? theme.colorScheme.outline.withOpacity(0.2)
+                      : theme.dividerColor.withOpacity(0.15))
+                  : (isDark
+                      ? widget.accentColor.withOpacity(0.3)
+                      : widget.accentColor.withOpacity(0.2)),
+              width: 1,
+            ),
+            // Soft glow in dark mode (no shadows)
+            boxShadow: isDark ? [
+              BoxShadow(
+                color: widget.isFromAico
+                    ? theme.colorScheme.outline.withOpacity(0.1)
+                    : widget.accentColor.withOpacity(0.15),
+                blurRadius: 12,
+                spreadRadius: 0,
+              ),
+            ] : [
+              BoxShadow(
+                color: theme.colorScheme.shadow,
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-        ],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -257,7 +270,9 @@ class _MessageBubbleState extends State<MessageBubble>
           ],
         ],
       ),
-    );
+        ), // Close Container
+      ), // Close BackdropFilter
+    ); // Close ClipRRect
   }
 
   String _formatTimestamp(DateTime timestamp) {

@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui';
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
@@ -38,20 +41,77 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _conversationController = ScrollController();
   final FocusNode _messageFocusNode = FocusNode();
+  Timer? _typingTimer;
+  bool _isUserTyping = false;
 
   @override
   void initState() {
     super.initState();
     // Theme management now handled via Riverpod providers
+    
+    // Listen to text changes for typing detection
+    _messageController.addListener(_onTypingChanged);
+  }
+  
+  void _onTypingChanged() {
+    final hasText = _messageController.text.trim().isNotEmpty;
+    
+    // Cancel existing timer
+    _typingTimer?.cancel();
+    
+    if (hasText && !_isUserTyping) {
+      // User started typing - switch to listening mode
+      setState(() => _isUserTyping = true);
+      ref.read(avatarRingStateProvider.notifier).startListening(intensity: 0.6);
+    } else if (hasText) {
+      // User is still typing - reset timer
+      _typingTimer = Timer(const Duration(seconds: 1), () {
+        // User stopped typing for 1 second
+        if (mounted) {
+          setState(() => _isUserTyping = false);
+          final avatarNotifier = ref.read(avatarRingStateProvider.notifier);
+          final conversationState = ref.read(conversationProvider);
+          
+          // Return to appropriate state
+          if (conversationState.isSendingMessage || conversationState.isStreaming) {
+            avatarNotifier.startThinking();
+          } else {
+            avatarNotifier.returnToIdle();
+          }
+        }
+      });
+    } else if (!hasText && _isUserTyping) {
+      // Text cleared - return to idle immediately
+      setState(() => _isUserTyping = false);
+      _typingTimer = Timer(const Duration(seconds: 1), () {
+        if (mounted) {
+          ref.read(avatarRingStateProvider.notifier).returnToIdle();
+        }
+      });
+    }
+  }
+  
+  @override
+  void dispose() {
+    _typingTimer?.cancel();
+    _messageController.removeListener(_onTypingChanged);
+    _messageController.dispose();
+    _conversationController.dispose();
+    _messageFocusNode.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final avatarState = ref.watch(avatarRingStateProvider);
     
     final accentColor = const Color(0xFFB8A1EA); // Soft purple accent
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth > 800;
+    
+    // Get avatar mood color for atmospheric effect
+    final avatarMoodColor = _getAvatarMoodColor(avatarState.mode, theme.brightness == Brightness.dark);
     
     // Listen for conversation changes to auto-scroll
     ref.listen<ConversationState>(conversationProvider, (previous, next) {
@@ -85,7 +145,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
     
     return Scaffold(
-        body: Stack(
+        body: Container(
+          // Atmospheric background with avatar mood radiation
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: const Alignment(0.0, -0.6), // Avatar position
+              radius: 1.5,
+              colors: theme.brightness == Brightness.dark
+                  ? [
+                      // Dark mode: avatar mood radiates into space
+                      Color.lerp(const Color(0xFF181A21), avatarMoodColor, 0.08)!,
+                      const Color(0xFF181A21),
+                      const Color(0xFF0F1015), // Darker edges for depth
+                    ]
+                  : [
+                      // Light mode: subtle mood tint
+                      Color.lerp(const Color(0xFFF5F6FA), avatarMoodColor, 0.03)!,
+                      const Color(0xFFF5F6FA),
+                      const Color(0xFFEEEFF3),
+                    ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+          ),
+          child: Stack(
           children: [
             Row(
               children: [
@@ -107,64 +189,64 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             ),
           ],
-        ),
-        // Right drawer toggles only
-        floatingActionButton: Stack(
-          children: [
-          // Right drawer toggle - always positioned on drawer edge, vertically centered
-          if (isDesktop && _isRightDrawerOpen)
-            Positioned(
-              right: _isRightDrawerExpanded ? 284 : 56, // Stick to drawer edge with proper offset
-              top: MediaQuery.of(context).size.height / 2 - 24, // Always vertically centered
-              child: Container(
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(12),
-                    bottomLeft: Radius.circular(12),
-                  ),
-                  border: Border.all(
-                    color: theme.dividerColor.withValues(alpha: 0.2),
-                  ),
+        ), // Close Stack
+      ), // Close body
+      floatingActionButton: Stack(
+        children: [
+        // Right drawer toggle - always positioned on drawer edge, vertically centered
+        if (isDesktop && _isRightDrawerOpen)
+          Positioned(
+            right: _isRightDrawerExpanded ? 284 : 56, // Stick to drawer edge with proper offset
+            top: MediaQuery.of(context).size.height / 2 - 24, // Always vertically centered
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(12),
+                  bottomLeft: Radius.circular(12),
                 ),
-                child: IconButton(
-                  onPressed: () => setState(() => _isRightDrawerExpanded = !_isRightDrawerExpanded),
-                  icon: Icon(_isRightDrawerExpanded ? Icons.chevron_right : Icons.chevron_left),
-                  tooltip: _isRightDrawerExpanded ? 'Collapse thoughts' : 'Expand thoughts',
-                  style: IconButton.styleFrom(
-                    foregroundColor: theme.colorScheme.onSurface,
-                  ),
+                border: Border.all(
+                  color: theme.dividerColor.withValues(alpha: 0.2),
+                ),
+              ),
+              child: IconButton(
+                onPressed: () => setState(() => _isRightDrawerExpanded = !_isRightDrawerExpanded),
+                icon: Icon(_isRightDrawerExpanded ? Icons.chevron_right : Icons.chevron_left),
+                tooltip: _isRightDrawerExpanded ? 'Collapse thoughts' : 'Expand thoughts',
+                style: IconButton.styleFrom(
+                  foregroundColor: theme.colorScheme.onSurface,
                 ),
               ),
             ),
-          
-          // Show right drawer button when drawer is hidden
-          if (isDesktop && !_isRightDrawerOpen)
-            Positioned(
-              right: 16,
-              top: MediaQuery.of(context).size.height / 2 - 24,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: theme.dividerColor.withValues(alpha: 0.2),
-                  ),
+          ),
+        
+        // Show right drawer button when drawer is hidden
+        if (isDesktop && !_isRightDrawerOpen)
+          Positioned(
+            right: 16,
+            top: MediaQuery.of(context).size.height / 2 - 24,
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: theme.dividerColor.withValues(alpha: 0.2),
                 ),
-                child: IconButton(
-                  onPressed: () => setState(() => _isRightDrawerOpen = true),
-                  icon: const Icon(Icons.chevron_left),
-                  tooltip: 'Show AICO\'s thoughts',
-                  style: IconButton.styleFrom(
-                    foregroundColor: theme.colorScheme.onSurface,
-                  ),
+              ),
+              child: IconButton(
+                onPressed: () => setState(() => _isRightDrawerOpen = true),
+                icon: const Icon(Icons.chevron_left),
+                tooltip: 'Show AICO\'s thoughts',
+                style: IconButton.styleFrom(
+                  foregroundColor: theme.colorScheme.onSurface,
                 ),
               ),
             ),
-          ],
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endTop,
-      );
+          ),
+        ],
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endTop,
+    ); // Close Scaffold
   }
 
   Widget _buildAvatarHeader(BuildContext context, ThemeData theme, Color accentColor) {
@@ -233,26 +315,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
-      child: ScrollConfiguration(
-        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-        child: Scrollbar(
-          controller: _conversationController,
-          thumbVisibility: true,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 16), // Add padding to prevent scrollbar overlap
-            child: ListView.builder(
-              controller: _conversationController,
-              itemCount: conversationState.messages.length,
-              itemBuilder: (context, index) {
-                final message = conversationState.messages[index];
-                // Convert domain Message to presentation ConversationMessage
-                final conversationMessage = ConversationMessage(
-                  isFromAico: message.userId == 'aico',
-                  message: message.content,
-                  timestamp: message.timestamp,
-                );
-                return _buildMessageBubble(context, theme, accentColor, conversationMessage);
-              },
+      child: ShaderMask(
+        shaderCallback: (Rect bounds) {
+          return LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: const [
+              Colors.transparent,
+              Colors.black,
+              Colors.black,
+              Colors.transparent,
+            ],
+            stops: const [0.0, 0.15, 0.85, 1.0],
+          ).createShader(bounds);
+        },
+        blendMode: BlendMode.dstIn,
+        child: ScrollConfiguration(
+          behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+          child: Scrollbar(
+            controller: _conversationController,
+            thumbVisibility: true,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 16), // Add padding to prevent scrollbar overlap
+              child: ListView.builder(
+                controller: _conversationController,
+                itemCount: conversationState.messages.length,
+                itemBuilder: (context, index) {
+                  final message = conversationState.messages[index];
+                  // Convert domain Message to presentation ConversationMessage
+                  final conversationMessage = ConversationMessage(
+                    isFromAico: message.userId == 'aico',
+                    message: message.content,
+                    timestamp: message.timestamp,
+                  );
+                  return _buildMessageBubble(context, theme, accentColor, conversationMessage);
+                },
+              ),
             ),
           ),
         ),
@@ -266,10 +364,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Check if this is the last message and AICO is currently thinking/processing
     final isLastMessage = conversationState.messages.isNotEmpty && 
                           conversationState.messages.last.timestamp == message.timestamp;
+    
+    // Show thinking particles when:
+    // 1. Thinking content is streaming (inner monologue)
+    // 2. OR response is streaming (actual answer being generated)
+    // 3. OR we have thinking content but message is still empty/incomplete
+    // This ensures particles appear as soon as thinking starts and continue until response is complete
+    final hasThinkingContent = conversationState.streamingThinking != null && 
+                               conversationState.streamingThinking!.isNotEmpty;
+    final isStreamingOrProcessing = conversationState.isSendingMessage || 
+                                    conversationState.isStreaming ||
+                                    hasThinkingContent;
+    
     final isThinking = message.isFromAico && 
                        isLastMessage && 
-                       (conversationState.isSendingMessage || 
-                        (conversationState.isStreaming && message.message.isEmpty));
+                       isStreamingOrProcessing;
     
     return MessageBubble(
       content: message.message,
@@ -285,31 +394,44 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     
     return Container(
       padding: const EdgeInsets.all(24),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          // Dark mode: lighter surface = elevated
-          color: isDark 
-              ? theme.colorScheme.surfaceContainerHighest
-              : theme.colorScheme.surface,
-          borderRadius: BorderRadius.circular(24),
-          // More visible border in dark mode
-          border: Border.all(
-            color: isDark
-                ? theme.colorScheme.outlineVariant // Visible in dark mode
-                : theme.dividerColor.withValues(alpha: 0.1),
-            width: 1,
-          ),
-          // Shadows only in light mode
-          boxShadow: isDark ? null : [
-            BoxShadow(
-              color: theme.colorScheme.shadow,
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // Stronger blur for visible frost
+          child: Stack(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  // Very transparent for frost effect + glow shine-through
+                  color: isDark 
+                      ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.3)
+                      : theme.colorScheme.surface.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(24),
+                  // Frosted glass border
+                  border: Border.all(
+                    color: isDark
+                        ? Colors.white.withOpacity(0.1)
+                        : Colors.white.withOpacity(0.3),
+                    width: 1.5,
+                  ),
+                  // Soft glow effect
+                  boxShadow: [
+                    if (isDark)
+                      BoxShadow(
+                        color: theme.colorScheme.outline.withOpacity(0.1),
+                        blurRadius: 12,
+                        spreadRadius: 0,
+                      )
+                    else
+                      BoxShadow(
+                        color: theme.colorScheme.shadow.withOpacity(0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                  ],
+                ),
+                child: Row(
           children: [
             Expanded(
               child: TextField(
@@ -350,66 +472,104 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ],
         ),
-      ),
+                ),
+                // Noise texture overlay for frosted glass effect
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: NoisePainter(opacity: isDark ? 0.04 : 0.02),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
     );
   }
 
   Widget _buildRightDrawer(BuildContext context, ThemeData theme, Color accentColor) {
     final isDark = theme.brightness == Brightness.dark;
     
-    return Container(
-      width: _isRightDrawerExpanded ? 300 : 72,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          left: BorderSide(
-            color: isDark
-                ? theme.colorScheme.outlineVariant // Visible border in dark mode  
-                : theme.dividerColor, // Subtle in light mode
-            width: isDark ? 1 : 1,
-          ),
-        ),
-        // Shadows only in light mode (research: shadows don't work in dark)
-        boxShadow: isDark ? null : [
-          BoxShadow(
-            color: theme.colorScheme.shadow,
-            blurRadius: 8,
-            offset: const Offset(-2, 0),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Column(
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // Stronger blur for visible frost
+        child: Stack(
           children: [
-            // Thinking display section (header integrated into ThinkingDisplay widget)
-            Expanded(
-              child: _isRightDrawerExpanded
-                  ? Consumer(
-                      builder: (context, ref, child) {
-                        final conversationState = ref.watch(conversationProvider);
-                        final settings = ref.watch(settingsProvider);
-                        
-                        // Following AICO guidelines: Data from provider (Single Source of Truth)
-                        // No need for Visibility hack - widget is stateless presentation
-                        if (!settings.showThinking) {
-                          return Center(
-                            child: Text(
-                              'Thinking display disabled in settings',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withOpacity(0.5),
-                              ),
-                            ),
-                          );
-                        }
-                        
-                        return ThinkingDisplay(
-                          thinkingHistory: conversationState.thinkingHistory,
-                          currentThinking: conversationState.streamingThinking,
-                          isStreaming: conversationState.isStreaming,
-                        );
-                      },
-                    )
-                  : const SizedBox.shrink(),
+            Container(
+              width: _isRightDrawerExpanded ? 300 : 72,
+              decoration: BoxDecoration(
+                // Very transparent for frost effect + glow shine-through
+                color: isDark
+                    ? theme.colorScheme.surface.withOpacity(0.3)
+                    : theme.colorScheme.surface.withOpacity(0.5),
+                border: Border(
+                  left: BorderSide(
+                    color: isDark
+                        ? Colors.white.withOpacity(0.1) // Frosted glass edge
+                        : Colors.white.withOpacity(0.3),
+                    width: 1.5,
+                  ),
+                ),
+            // Subtle glow in dark mode
+            boxShadow: isDark ? [
+              BoxShadow(
+                color: theme.colorScheme.outline.withOpacity(0.05),
+                blurRadius: 12,
+                spreadRadius: 0,
+              ),
+            ] : [
+              BoxShadow(
+                color: theme.colorScheme.shadow.withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(-2, 0),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            child: Column(
+              children: [
+                // Thinking display section (header integrated into ThinkingDisplay widget)
+                Expanded(
+                  child: _isRightDrawerExpanded
+                      ? Consumer(
+                          builder: (context, ref, child) {
+                            final conversationState = ref.watch(conversationProvider);
+                            final settings = ref.watch(settingsProvider);
+                            
+                            // Following AICO guidelines: Data from provider (Single Source of Truth)
+                            // No need for Visibility hack - widget is stateless presentation
+                            if (!settings.showThinking) {
+                              return Center(
+                                child: Text(
+                                  'Thinking display disabled in settings',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                  ),
+                                ),
+                              );
+                            }
+                            
+                            return ThinkingDisplay(
+                              thinkingHistory: conversationState.thinkingHistory,
+                              currentThinking: conversationState.streamingThinking,
+                              isStreaming: conversationState.isStreaming,
+                            );
+                          },
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
+          ),
+            ),
+            // Noise texture overlay for frosted glass effect
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: NoisePainter(opacity: isDark ? 0.04 : 0.02),
+                ),
+              ),
             ),
           ],
         ),
@@ -496,11 +656,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
 
+  /// Get avatar mood color for atmospheric lighting
+  Color _getAvatarMoodColor(AvatarMode mode, bool isDark) {
+    const coral = Color(0xFFED7867);
+    const emerald = Color(0xFF10B981);
+    const amber = Color(0xFFF59E0B);
+    const sapphire = Color(0xFF3B82F6);
+    const purple = Color(0xFFB8A1EA);
+    const violet = Color(0xFF8B5CF6);
+    
+    switch (mode) {
+      case AvatarMode.thinking:
+        return purple;
+      case AvatarMode.processing:
+        return violet;
+      case AvatarMode.listening:
+        return sapphire;
+      case AvatarMode.speaking:
+        return purple;
+      case AvatarMode.success:
+        return emerald;
+      case AvatarMode.error:
+        return coral;
+      case AvatarMode.attention:
+        return amber;
+      case AvatarMode.connecting:
+        return sapphire;
+      case AvatarMode.idle:
+        return emerald;
+    }
+  }
+
   void _sendMessage(String text) {
     if (text.trim().isEmpty) return;
     
+    // Cancel typing timer and transition to thinking
+    _typingTimer?.cancel();
+    setState(() => _isUserTyping = false);
+    
     // Clear the input field immediately
     _messageController.clear();
+    
+    // Transition avatar from listening to thinking (smooth transition)
+    ref.read(avatarRingStateProvider.notifier).startThinking(intensity: 0.8);
     
     // Send message through conversation provider with streaming enabled
     ref.read(conversationProvider.notifier).sendMessage(text.trim(), stream: true);
@@ -533,91 +731,117 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget _buildLeftDrawer(BuildContext context, ThemeData theme, Color accentColor) {
     final isDark = theme.brightness == Brightness.dark;
     
-    return Container(
-      width: _isLeftDrawerExpanded ? 240 : 72,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          right: BorderSide(
-            color: isDark 
-                ? theme.colorScheme.outlineVariant // Visible border in dark mode
-                : theme.dividerColor, // Subtle in light mode
-            width: isDark ? 1 : 1,
-          ),
-        ),
-        // Shadows only in light mode (research: shadows don't work in dark)
-        boxShadow: isDark ? null : [
-          BoxShadow(
-            color: theme.colorScheme.shadow,
-            blurRadius: 8,
-            offset: const Offset(2, 0),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Column(
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // Stronger blur for visible frost
+        child: Stack(
           children: [
-            // Main navigation items
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
-                children: [
-                  // Toggle button as first nav item
-                  _buildToggleItem(context, theme),
-                  const SizedBox(height: 8),
-                  _buildNavItem(context, theme, accentColor, Icons.home, 'Home', _currentPage == NavigationPage.home, () => _switchToPage(NavigationPage.home)),
-                  const SizedBox(height: 8),
-                  _buildNavItem(context, theme, accentColor, Icons.auto_stories, 'Memory', _currentPage == NavigationPage.memory, () => _switchToPage(NavigationPage.memory)),
-                  _buildNavItem(context, theme, accentColor, Icons.admin_panel_settings, 'Admin', _currentPage == NavigationPage.admin, () => _switchToPage(NavigationPage.admin)),
-                  _buildNavItem(context, theme, accentColor, Icons.settings, 'Settings', _currentPage == NavigationPage.settings, () => _switchToPage(NavigationPage.settings)),
-                ],
-              ),
-            ),
-            
-            // System controls at bottom
             Container(
-              padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
+              width: _isLeftDrawerExpanded ? 240 : 72,
               decoration: BoxDecoration(
+                // Very transparent for frost effect + glow shine-through
+                color: isDark
+                    ? theme.colorScheme.surface.withOpacity(0.3)
+                    : theme.colorScheme.surface.withOpacity(0.5),
                 border: Border(
-                  top: BorderSide(color: theme.dividerColor), // Adaptive divider
+                  right: BorderSide(
+                    color: isDark 
+                        ? Colors.white.withOpacity(0.1) // Frosted glass edge
+                        : Colors.white.withOpacity(0.3),
+                    width: 1.5,
+                  ),
                 ),
+            // Subtle glow in dark mode
+            boxShadow: isDark ? [
+              BoxShadow(
+                color: theme.colorScheme.outline.withOpacity(0.05),
+                blurRadius: 12,
+                spreadRadius: 0,
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildSystemControl(
-                    context,
-                    theme,
-                    accentColor,
-                    () async {
-                      await ref.read(themeControllerProvider.notifier).toggleTheme();
-                    },
-                    'Theme',
+            ] : [
+              BoxShadow(
+                color: theme.colorScheme.shadow.withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(2, 0),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            child: Column(
+              children: [
+                // Main navigation items
+                Expanded(
+                  child: ListView(
+                    padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
+                    children: [
+                      // Toggle button as first nav item
+                      _buildToggleItem(context, theme),
+                      const SizedBox(height: 8),
+                      _buildNavItem(context, theme, accentColor, Icons.home, 'Home', _currentPage == NavigationPage.home, () => _switchToPage(NavigationPage.home)),
+                      const SizedBox(height: 8),
+                      _buildNavItem(context, theme, accentColor, Icons.auto_stories, 'Memory', _currentPage == NavigationPage.memory, () => _switchToPage(NavigationPage.memory)),
+                      _buildNavItem(context, theme, accentColor, Icons.admin_panel_settings, 'Admin', _currentPage == NavigationPage.admin, () => _switchToPage(NavigationPage.admin)),
+                      _buildNavItem(context, theme, accentColor, Icons.settings, 'Settings', _currentPage == NavigationPage.settings, () => _switchToPage(NavigationPage.settings)),
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  _buildSystemControl(
-                    context,
-                    theme,
-                    accentColor,
-                    () async {
-                      final currentState = ref.read(themeControllerProvider);
-                      await ref.read(themeControllerProvider.notifier).setHighContrastEnabled(!currentState.isHighContrast);
-                    },
-                    'Contrast',
-                    isContrast: true,
+                ),
+                
+                // System controls at bottom
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(color: theme.dividerColor), // Adaptive divider
+                    ),
                   ),
-                  const SizedBox(height: 4),
-                  _buildSystemControl(
-                    context,
-                    theme,
-                    accentColor,
-                    () {
-                      ref.read(authProvider.notifier).logout();
-                    },
-                    'Logout',
-                    isLogout: true,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildSystemControl(
+                        context,
+                        theme,
+                        accentColor,
+                        () async {
+                          await ref.read(themeControllerProvider.notifier).toggleTheme();
+                        },
+                        'Theme',
+                      ),
+                      const SizedBox(height: 4),
+                      _buildSystemControl(
+                        context,
+                        theme,
+                        accentColor,
+                        () async {
+                          final currentState = ref.read(themeControllerProvider);
+                          await ref.read(themeControllerProvider.notifier).setHighContrastEnabled(!currentState.isHighContrast);
+                        },
+                        'Contrast',
+                        isContrast: true,
+                      ),
+                      const SizedBox(height: 4),
+                      _buildSystemControl(
+                        context,
+                        theme,
+                        accentColor,
+                        () {
+                          ref.read(authProvider.notifier).logout();
+                        },
+                        'Logout',
+                        isLogout: true,
+                      ),
+                    ],
                   ),
-                ],
+                ),
+              ],
+            ),
+          ),
+            ),
+            // Noise texture overlay for frosted glass effect
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: NoisePainter(opacity: isDark ? 0.04 : 0.02),
+                ),
               ),
             ),
           ],
@@ -839,13 +1063,44 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ],
     );
   }
+}
+
+/// Custom painter that adds subtle grain texture for frosted glass effect
+class NoisePainter extends CustomPainter {
+  final double opacity;
+  final math.Random _random = math.Random(42); // Fixed seed for consistent pattern
+
+  NoisePainter({this.opacity = 0.03});
 
   @override
-  void dispose() {
-    _messageController.dispose();
-    _conversationController.dispose();
-    _messageFocusNode.dispose();
-    super.dispose();
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint();
+    
+    // Much more subtle grain - reduce density by 95% (was /4, now /80)
+    // This creates a barely-there texture that enhances depth without being busy
+    final grainCount = (size.width * size.height / 80).toInt();
+    
+    for (var i = 0; i < grainCount; i++) {
+      final x = _random.nextDouble() * size.width;
+      final y = _random.nextDouble() * size.height;
+      
+      // More uniform brightness (0.5-1.0 range instead of 0-1.0)
+      // This prevents dark spots that create visual noise
+      final brightness = 0.5 + (_random.nextDouble() * 0.5);
+      
+      paint.color = Color.fromRGBO(
+        255,
+        255,
+        255,
+        opacity * brightness,
+      );
+      
+      // Slightly smaller grain size for finer texture
+      canvas.drawCircle(Offset(x, y), 0.3, paint);
+    }
   }
+
+  @override
+  bool shouldRepaint(NoisePainter oldDelegate) => false;
 }
 
