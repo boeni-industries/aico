@@ -87,6 +87,7 @@ class AuthNotifier extends _$AuthNotifier {
     }
 
     _isAutoLoginInProgress = true;
+    bool authSuccess = false;
     
     try {
       // Check if we have stored credentials first (fast local check)
@@ -112,6 +113,7 @@ class AuthNotifier extends _$AuthNotifier {
           isLoading: false,
           error: null,
         );
+        authSuccess = true;
       } else {
         state = state.copyWith(
           isLoading: false,
@@ -146,6 +148,8 @@ class AuthNotifier extends _$AuthNotifier {
       }
     } finally {
       _isAutoLoginInProgress = false;
+      // Notify TokenManager that re-authentication completed
+      _tokenManager.notifyReAuthenticationComplete(authSuccess);
     }
   }
 

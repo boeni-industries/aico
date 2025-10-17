@@ -45,6 +45,9 @@ class TokenManager {
   
   // UnifiedApiClient for encrypted refresh requests
   dynamic _apiClient;
+  
+  // Re-authentication completion tracking
+  Completer<bool>? _reAuthCompleter;
 
   /// Get access token (alias for getValidToken for compatibility)
   Future<String?> getAccessToken() async {
@@ -69,6 +72,34 @@ class TokenManager {
     if (_cachedRefreshToken != null) {
       if (await refreshToken()) {
         return _cachedToken;
+      }
+    }
+
+    // If re-authentication is in progress, wait for it to complete
+    if (_reAuthCompleter != null && !_reAuthCompleter!.isCompleted) {
+      AICOLog.info('Waiting for re-authentication to complete',
+        topic: 'auth/token/waiting_for_reauth');
+      
+      try {
+        // Wait up to 20 seconds for re-auth to complete
+        final success = await _reAuthCompleter!.future.timeout(
+          const Duration(seconds: 20),
+          onTimeout: () {
+            AICOLog.warn('Re-authentication timeout',
+              topic: 'auth/token/reauth_timeout');
+            return false;
+          },
+        );
+        
+        if (success && _cachedToken != null && _isTokenValid()) {
+          AICOLog.info('Re-authentication completed successfully',
+            topic: 'auth/token/reauth_success');
+          return _cachedToken;
+        }
+      } catch (e) {
+        AICOLog.error('Error waiting for re-authentication',
+          topic: 'auth/token/reauth_wait_error',
+          error: e);
       }
     }
 
@@ -198,6 +229,11 @@ class TokenManager {
     // Don't clear tokens immediately - let AuthProvider handle it
     // This prevents infinite loops where cleared tokens trigger more refresh attempts
     
+    // Create completer if not already in progress
+    if (_reAuthCompleter == null || _reAuthCompleter!.isCompleted) {
+      _reAuthCompleter = Completer<bool>();
+    }
+    
     AICOLog.info('Token refresh failed - triggering re-authentication',
       topic: 'auth/token/reauth_required');
     
@@ -206,6 +242,16 @@ class TokenManager {
       reason: 'Token refresh failed',
       timestamp: DateTime.now(),
     ));
+  }
+  
+  /// Notify that re-authentication completed (called by AuthProvider)
+  void notifyReAuthenticationComplete(bool success) {
+    if (_reAuthCompleter != null && !_reAuthCompleter!.isCompleted) {
+      _reAuthCompleter!.complete(success);
+      AICOLog.info('Re-authentication completion notified',
+        topic: 'auth/token/reauth_notified',
+        extra: {'success': success});
+    }
   }
 
 
