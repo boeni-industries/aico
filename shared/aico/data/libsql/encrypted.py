@@ -186,13 +186,18 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             
             # Apply journal mode (default: WAL)
             journal_mode = libsql_config.get("journal_mode", "WAL")
-            connection.execute(f"PRAGMA journal_mode = {journal_mode}")
-            _get_logger().debug(f"Set journal_mode to {journal_mode}")
+            result = connection.execute(f"PRAGMA journal_mode = {journal_mode}")
+            actual_mode = result.fetchone()[0] if result else "unknown"
+            _get_logger().info(f"Database journal_mode: {actual_mode} (requested: {journal_mode})")
             
-            # Apply synchronous mode (default: NORMAL)
-            synchronous = libsql_config.get("synchronous", "NORMAL")
+            # Apply synchronous mode (default: FULL for crash safety)
+            # CRITICAL: FULL prevents corruption on OS crash/restart
+            synchronous = libsql_config.get("synchronous", "FULL")
             connection.execute(f"PRAGMA synchronous = {synchronous}")
-            _get_logger().debug(f"Set synchronous to {synchronous}")
+            result = connection.execute("PRAGMA synchronous")
+            actual_sync = result.fetchone()[0] if result else "unknown"
+            sync_names = {0: "OFF", 1: "NORMAL", 2: "FULL", 3: "EXTRA"}
+            _get_logger().info(f"Database synchronous: {sync_names.get(actual_sync, actual_sync)} (requested: {synchronous})")
             
             # Apply cache size (default: 2000)
             cache_size = libsql_config.get("cache_size", 2000)
@@ -204,7 +209,13 @@ class EncryptedLibSQLConnection(LibSQLConnection):
             connection.execute(f"PRAGMA busy_timeout = {busy_timeout}")
             _get_logger().debug(f"Set busy_timeout to {busy_timeout}ms")
             
-            _get_logger().debug("Applied LibSQL configuration settings")
+            # Apply WAL autocheckpoint (default: 1000 pages)
+            # Prevents unbounded WAL growth and improves crash recovery
+            wal_autocheckpoint = libsql_config.get("wal_autocheckpoint", 1000)
+            connection.execute(f"PRAGMA wal_autocheckpoint = {wal_autocheckpoint}")
+            _get_logger().debug(f"Set wal_autocheckpoint to {wal_autocheckpoint} pages")
+            
+            _get_logger().info("✓ Database configuration applied successfully")
             
         except Exception as e:
             _get_logger().warning(f"Failed to apply database settings: {e}")

@@ -9,7 +9,13 @@ libsql:
   directory_mode: "auto"  # Override default if needed
   # Encryption always enforced - security by design
   journal_mode: "WAL"
-  synchronous: "NORMAL"
+  
+  # CRITICAL: synchronous=FULL prevents corruption on OS crash/restart
+  synchronous: "FULL"
+  
+  # WAL autocheckpoint: Prevent unbounded WAL growth
+  wal_autocheckpoint: 1000
+  
   cache_size: 2000
   busy_timeout: 30000  # 30 seconds for database lock timeout
 
