@@ -1,4 +1,6 @@
+import 'dart:ui';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
+import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:flutter/material.dart';
 
 /// Widget to display AI's inner monologue (thinking) in the right drawer
@@ -268,33 +270,51 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
         : const Color(0xFFB8A1EA);
     
     return Padding(
-      padding: const EdgeInsets.only(bottom: 32), // 8px grid: 4×8 (increased for better spacing)
-      child: Container(
-        padding: const EdgeInsets.all(16), // 8px grid: 2×8
-        decoration: BoxDecoration(
-          // Transparent background to show frosted glass effect
-          color: isDark
-              ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.15) // Semi-transparent
-              : theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
-          borderRadius: BorderRadius.circular(16), // AICO standard: 16-24px
-          // Subtle border - more visible in dark mode
-          border: Border.all(
-            color: isCurrentTurn
-                ? purpleAccent.withOpacity(isDark ? 0.3 : 0.2)
-                : (isDark 
-                    ? theme.colorScheme.outline.withOpacity(0.15)
-                    : theme.colorScheme.outline.withOpacity(0.08)),
-            width: 1,
+      padding: const EdgeInsets.only(bottom: 16),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(GlassTheme.radiusLarge),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: GlassTheme.blurMedium,
+            sigmaY: GlassTheme.blurMedium,
           ),
-          // Shadows only in light mode (research: don't work in dark)
-          boxShadow: isDark ? null : [
-            BoxShadow(
-              color: const Color(0xFF243455).withOpacity(0.06), // AICO shadow color
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              // Immersive glassmorphism
+              color: isCurrentTurn
+                  ? (isDark
+                      ? purpleAccent.withOpacity(0.12)
+                      : purpleAccent.withOpacity(0.08))
+                  : (isDark
+                      ? Colors.white.withOpacity(0.06)
+                      : Colors.white.withOpacity(0.5)),
+              borderRadius: BorderRadius.circular(GlassTheme.radiusLarge),
+              // Luminous border
+              border: Border.all(
+                color: isCurrentTurn
+                    ? purpleAccent.withOpacity(isDark ? 0.4 : 0.3)
+                    : (isDark
+                        ? Colors.white.withOpacity(0.1)
+                        : Colors.white.withOpacity(0.3)),
+                width: 1.5,
+              ),
+              // Ambient glow with depth
+              boxShadow: [
+                if (isCurrentTurn && isDark) ...
+                  GlassTheme.ambientGlow(
+                    color: purpleAccent,
+                    intensity: 0.15,
+                    blur: 16,
+                  ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
+                  blurRadius: 20,
+                  offset: const Offset(0, 6),
+                  spreadRadius: -4,
+                ),
+              ],
             ),
-          ],
-        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -371,6 +391,8 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
               ),
             ),
           ],
+        ),
+          ),
         ),
       ),
     );

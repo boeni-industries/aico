@@ -417,10 +417,16 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                         shape: BoxShape.circle,
                         color: Colors.transparent,
                         border: Border.all(
-                          color: ringColor.withOpacity(theme.brightness == Brightness.dark ? ringOpacity * 0.6 : ringOpacity * 0.9),
-                          width: 2.6,
+                          color: ringColor.withOpacity(theme.brightness == Brightness.dark ? ringOpacity * 0.75 : ringOpacity * 0.95),
+                          width: 3.0,
                         ),
                         boxShadow: [
+                          // Dark contrast shadow behind ring for definition
+                          BoxShadow(
+                            color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.4 : 0.15),
+                            blurRadius: 8,
+                            spreadRadius: -2,
+                          ),
                           // Multi-layer glow for smooth gradient (reduces banding)
                           BoxShadow(
                             color: ringColor.withOpacity(theme.brightness == Brightness.dark ? 0.4 : 0.3),
@@ -458,10 +464,16 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                           shape: BoxShape.circle,
                           color: Colors.transparent,
                           border: Border.all(
-                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? ringOpacity * 0.5 : ringOpacity * 0.7),
-                            width: 1.3,
+                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? ringOpacity * 0.65 : ringOpacity * 0.8),
+                            width: 1.8,
                           ),
                           boxShadow: [
+                            // Dark contrast shadow for definition
+                            BoxShadow(
+                              color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.3 : 0.1),
+                              blurRadius: 6,
+                              spreadRadius: -1,
+                            ),
                             // Subtle inner glow for depth
                             BoxShadow(
                               color: ringColor.withOpacity(theme.brightness == Brightness.dark ? 0.15 : 0.12),
@@ -471,24 +483,47 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                           ],
                         ),
                       ),
-                      // Clean avatar circle
+                      // Clean avatar circle with mood-colored gradient overlay
                       SizedBox(
                         width: 125,
                         height: 125,
                         child: ClipOval(
-                          child: Image.asset(
-                            'assets/images/aico.png',
-                            width: 125,
-                            height: 125,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              // Fallback to icon if image fails to load
-                              return Icon(
-                                Icons.person_2,
-                                size: 62,
-                                color: ringColor,
-                              );
-                            },
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              // Avatar image
+                              Image.asset(
+                                'assets/images/aico.png',
+                                width: 125,
+                                height: 125,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  // Fallback to icon if image fails to load
+                                  return Icon(
+                                    Icons.person_2,
+                                    size: 62,
+                                    color: ringColor,
+                                  );
+                                },
+                              ),
+                              // Subtle mood-colored radial gradient overlay
+                              // Creates seamless transition from rings to avatar
+                              Container(
+                                decoration: BoxDecoration(
+                                  gradient: RadialGradient(
+                                    center: Alignment.center,
+                                    radius: 0.8,
+                                    colors: [
+                                      Colors.transparent, // Clear center - avatar fully visible
+                                      Colors.transparent, // Keep center clear
+                                      ringColor.withOpacity(0.08), // Very subtle at mid-range
+                                      ringColor.withOpacity(0.18), // Gentle glow at edges
+                                    ],
+                                    stops: const [0.0, 0.4, 0.7, 1.0],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
