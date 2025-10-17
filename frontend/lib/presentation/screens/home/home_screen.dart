@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
+import 'dart:math' as math;
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
@@ -9,6 +10,7 @@ import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
+import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart';
 import 'package:aico_frontend/presentation/widgets/chat/message_bubble.dart';
 import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
@@ -32,7 +34,7 @@ enum NavigationPage {
   settings,
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStateMixin {
   bool _isRightDrawerOpen = true;
   bool _isRightDrawerExpanded = false; // true = expanded, false = collapsed to icons
   bool _isLeftDrawerExpanded = true; // true = expanded with text, false = collapsed to icons only
@@ -42,6 +44,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final FocusNode _messageFocusNode = FocusNode();
   Timer? _typingTimer;
   bool _isUserTyping = false;
+  
+  // Animation controllers for immersive effects
+  late AnimationController _backgroundAnimationController;
+  late AnimationController _glowAnimationController;
+  late Animation<double> _glowAnimation;
 
   @override
   void initState() {
@@ -50,6 +57,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     
     // Listen to text changes for typing detection
     _messageController.addListener(_onTypingChanged);
+    
+    // Initialize animation controllers for immersive effects
+    _backgroundAnimationController = AnimationController(
+      duration: const Duration(seconds: 20),
+      vsync: this,
+    )..repeat();
+    
+    _glowAnimationController = AnimationController(
+      duration: const Duration(seconds: 3),
+      vsync: this,
+    )..repeat(reverse: true);
+    
+    _glowAnimation = Tween<double>(begin: 0.3, end: 0.7).animate(
+      CurvedAnimation(parent: _glowAnimationController, curve: Curves.easeInOut),
+    );
   }
   
   void _onTypingChanged() {
@@ -97,6 +119,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _messageController.dispose();
     _conversationController.dispose();
     _messageFocusNode.dispose();
+    _backgroundAnimationController.dispose();
+    _glowAnimationController.dispose();
     super.dispose();
   }
 
@@ -149,28 +173,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
     
     return Scaffold(
-        body: Container(
-          // Atmospheric background with avatar mood radiation
-          decoration: BoxDecoration(
-            gradient: RadialGradient(
-              center: const Alignment(0.0, -0.6), // Avatar position
-              radius: 1.5,
-              colors: theme.brightness == Brightness.dark
-                  ? [
-                      // Dark mode: avatar mood radiates into space
-                      Color.lerp(const Color(0xFF181A21), avatarMoodColor, 0.08)!,
-                      const Color(0xFF181A21),
-                      const Color(0xFF0F1015), // Darker edges for depth
-                    ]
-                  : [
-                      // Light mode: subtle mood tint
-                      Color.lerp(const Color(0xFFF5F6FA), avatarMoodColor, 0.03)!,
-                      const Color(0xFFF5F6FA),
-                      const Color(0xFFEEEFF3),
-                    ],
-              stops: const [0.0, 0.5, 1.0],
-            ),
-          ),
+        body: AnimatedBuilder(
+          animation: _backgroundAnimationController,
+          builder: (context, child) {
+            return Container(
+              // Immersive animated background with organic gradients
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(
+                    math.sin(_backgroundAnimationController.value * 2 * math.pi) * 0.3,
+                    -0.6 + math.cos(_backgroundAnimationController.value * 2 * math.pi) * 0.1,
+                  ),
+                  radius: 1.8,
+                  colors: theme.brightness == Brightness.dark
+                      ? [
+                          // Dark mode: deep space with mood radiation
+                          Color.lerp(const Color(0xFF0A0E27), avatarMoodColor, 0.15)!,
+                          const Color(0xFF1A1F3A),
+                          const Color(0xFF0F1419),
+                          const Color(0xFF050508),
+                        ]
+                      : [
+                          // Light mode: ethereal atmosphere
+                          Color.lerp(const Color(0xFFF0F4FF), avatarMoodColor, 0.08)!,
+                          const Color(0xFFFAFBFF),
+                          const Color(0xFFE8ECFF),
+                          const Color(0xFFDDE2F0),
+                        ],
+                  stops: const [0.0, 0.4, 0.7, 1.0],
+                ),
+              ),
           child: Stack(
           children: [
             Row(
@@ -194,7 +226,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ],
         ), // Close Stack
-      ), // Close body
+            ); // Close Container
+          }, // Close AnimatedBuilder builder
+        ), // Close AnimatedBuilder
       floatingActionButton: Stack(
         children: [
         // Right drawer toggle - always positioned on drawer edge, vertically centered
@@ -255,6 +289,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Widget _buildAvatarHeader(BuildContext context, ThemeData theme, Color accentColor) {
     final conversationState = ref.watch(conversationProvider);
+    final isDark = theme.brightness == Brightness.dark;
     
     // Update avatar state based on conversation state
     final avatarState = ref.watch(avatarRingStateProvider);
@@ -271,55 +306,144 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       });
     }
     
-    return Container(
-      padding: const EdgeInsets.all(24),
-      child: const CompanionAvatar(),
+    // Get avatar mood color for ambient glow
+    final avatarMoodColor = _getAvatarMoodColor(avatarState.mode, isDark);
+    
+    return AnimatedBuilder(
+      animation: _glowAnimationController,
+      builder: (context, child) {
+        return Container(
+          padding: const EdgeInsets.all(32),
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: GlassTheme.pulsingGlow(
+                color: avatarMoodColor,
+                animationValue: _glowAnimation.value,
+                baseIntensity: 0.2,
+                pulseIntensity: 0.5,
+              ),
+            ),
+            child: const CompanionAvatar(),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildConversationArea(BuildContext context, ThemeData theme, Color accentColor) {
     final conversationState = ref.watch(conversationProvider);
+    final isDark = theme.brightness == Brightness.dark;
     
     if (conversationState.isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
+      return Center(
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: GlassTheme.ambientGlow(
+              color: accentColor,
+              intensity: 0.3,
+              blur: 30,
+            ),
+          ),
+          child: CircularProgressIndicator(
+            color: accentColor,
+            strokeWidth: 3,
+          ),
+        ),
       );
     }
 
     if (conversationState.error != null) {
       return Center(
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          margin: const EdgeInsets.all(40),
+          decoration: GlassTheme.glassCard(
+            isDark: isDark,
+            radius: GlassTheme.radiusLarge,
+            accentColor: theme.colorScheme.error,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: theme.colorScheme.error.withOpacity(0.1),
+                ),
+                child: Icon(
+                  Icons.error_outline_rounded,
+                  size: 48,
+                  color: theme.colorScheme.error,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Error loading conversation',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                conversationState.error!,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (conversationState.messages.isEmpty) {
+      return Center(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 48,
-              color: theme.colorScheme.error,
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: GlassTheme.ambientGlow(
+                  color: accentColor,
+                  intensity: 0.3,
+                  blur: 30,
+                ),
+              ),
+              child: Icon(
+                Icons.chat_bubble_outline_rounded,
+                size: 64,
+                color: accentColor,
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
             Text(
-              'Error loading conversation',
-              style: theme.textTheme.titleMedium,
+              'Start a conversation',
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.5,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text(
-              conversationState.error!,
-              style: theme.textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => ref.read(conversationProvider.notifier).clearError(),
-              child: const Text('Retry'),
+              'Share what\'s on your mind...',
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                letterSpacing: 0.2,
+              ),
             ),
           ],
         ),
       );
     }
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 24),
-      child: ShaderMask(
+    return ShaderMask(
         shaderCallback: (Rect bounds) {
           return LinearGradient(
             begin: Alignment.topCenter,
@@ -343,6 +467,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               padding: const EdgeInsets.only(right: 16), // Add padding to prevent scrollbar overlap
               child: ListView.builder(
                 controller: _conversationController,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
                 itemCount: conversationState.messages.length,
                 itemBuilder: (context, index) {
                   final message = conversationState.messages[index];
@@ -358,8 +483,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildMessageBubble(BuildContext context, ThemeData theme, Color accentColor, ConversationMessage message) {
@@ -395,161 +519,184 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Widget _buildInputArea(BuildContext context, ThemeData theme, Color accentColor) {
     final isDark = theme.brightness == Brightness.dark;
+    final conversationState = ref.watch(conversationProvider);
+    final isActive = conversationState.isSendingMessage || conversationState.isStreaming;
     
     return Container(
-      padding: const EdgeInsets.all(24),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30), // Stronger blur for more depth
-          child: Stack(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: AnimatedBuilder(
+        animation: _glowAnimationController,
+        builder: (context, child) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(
+                sigmaX: GlassTheme.blurHeavy,
+                sigmaY: GlassTheme.blurHeavy,
+              ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 decoration: BoxDecoration(
-                  // Very transparent for frost effect + glow shine-through
+                  // Immersive frosted glass
                   color: isDark 
-                      ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.3)
-                      : theme.colorScheme.surface.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(24),
-                  // Frosted glass border
+                      ? Colors.white.withOpacity(0.06)
+                      : Colors.white.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
+                  // Luminous border
                   border: Border.all(
                     color: isDark
-                        ? Colors.white.withOpacity(0.1)
-                        : Colors.white.withOpacity(0.3),
+                        ? Colors.white.withOpacity(0.12)
+                        : Colors.white.withOpacity(0.5),
                     width: 1.5,
                   ),
-                  // Soft glow effect
+                  // Ambient glow with depth
                   boxShadow: [
-                    if (isDark)
-                      BoxShadow(
-                        color: theme.colorScheme.outline.withOpacity(0.1),
-                        blurRadius: 12,
-                        spreadRadius: 0,
-                      )
-                    else
-                      BoxShadow(
-                        color: theme.colorScheme.shadow.withOpacity(0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                    if (isActive) ...
+                      GlassTheme.pulsingGlow(
+                        color: accentColor,
+                        animationValue: _glowAnimation.value,
+                        baseIntensity: 0.2,
+                        pulseIntensity: 0.4,
                       ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
+                      blurRadius: 32,
+                      offset: const Offset(0, 12),
+                      spreadRadius: -8,
+                    ),
                   ],
                 ),
                 child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _messageController,
-                focusNode: _messageFocusNode,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'Share what\'s on your mind...',
-                  border: InputBorder.none,
-                  hintStyle: TextStyle(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-                onSubmitted: _sendMessage,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Row(
-              children: [
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(Icons.mic),
-                  style: IconButton.styleFrom(
-                    backgroundColor: accentColor.withValues(alpha: 0.1),
-                    foregroundColor: accentColor,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: () => _sendMessage(_messageController.text),
-                  icon: const Icon(Icons.send),
-                  style: IconButton.styleFrom(
-                    backgroundColor: accentColor,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-                ),
-                // Grain texture overlay for frosted glass effect
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: Opacity(
-                      opacity: isDark ? 0.12 : 0.08,
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          image: DecorationImage(
-                            image: AssetImage('assets/images/noise_tile.png'),
-                            repeat: ImageRepeat.repeat,
-                            filterQuality: FilterQuality.medium,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _messageController,
+                        focusNode: _messageFocusNode,
+                        autofocus: true,
+                        maxLines: null,
+                        textInputAction: TextInputAction.send,
+                        decoration: InputDecoration(
+                          hintText: 'Share what\'s on your mind...',
+                          border: InputBorder.none,
+                          hintStyle: TextStyle(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                            fontSize: 15,
+                            letterSpacing: 0.3,
                           ),
                         ),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          height: 1.5,
+                          letterSpacing: 0.2,
+                        ),
+                        onSubmitted: _sendMessage,
+                        onEditingComplete: () {
+                          final text = _messageController.text.trim();
+                          if (text.isNotEmpty) {
+                            _sendMessage(text);
+                          }
+                        },
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 16),
+                    Row(
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: accentColor.withOpacity(0.2),
+                                blurRadius: 8,
+                                spreadRadius: 0,
+                              ),
+                            ],
+                          ),
+                          child: IconButton(
+                            onPressed: () {},
+                            icon: const Icon(Icons.mic_rounded),
+                            style: IconButton.styleFrom(
+                              backgroundColor: isDark
+                                  ? accentColor.withOpacity(0.15)
+                                  : accentColor.withOpacity(0.12),
+                              foregroundColor: accentColor,
+                              padding: const EdgeInsets.all(12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            boxShadow: GlassTheme.ambientGlow(
+                              color: accentColor,
+                              intensity: 0.4,
+                              blur: 16,
+                            ),
+                          ),
+                          child: IconButton(
+                            onPressed: () => _sendMessage(_messageController.text),
+                            icon: const Icon(Icons.send_rounded),
+                            style: IconButton.styleFrom(
+                              backgroundColor: accentColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.all(12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
+      ),
     );
   }
 
   Widget _buildRightDrawer(BuildContext context, ThemeData theme, Color accentColor) {
     final isDark = theme.brightness == Brightness.dark;
     
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // Match left drawer blur strength
-        child: Stack(
-          children: [
-            Container(
-              width: _isRightDrawerExpanded ? 300 : 72,
-              decoration: BoxDecoration(
-                // Very transparent for frost effect + glow shine-through
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: GlassTheme.blurHeavy,
+            sigmaY: GlassTheme.blurHeavy,
+          ),
+          child: Container(
+            width: _isRightDrawerExpanded ? 300 : 72,
+            decoration: BoxDecoration(
+              // Frosted glass with organic shape
+              color: isDark
+                  ? Colors.white.withOpacity(0.04)
+                  : Colors.white.withOpacity(0.6),
+              borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
+              border: Border.all(
                 color: isDark
-                    ? theme.colorScheme.surface.withOpacity(0.3)
-                    : theme.colorScheme.surface.withOpacity(0.5),
-                border: Border(
-                  left: BorderSide(
-                    color: isDark
-                        ? Colors.white.withOpacity(0.1) // Frosted glass edge
-                        : Colors.white.withOpacity(0.3),
-                    width: 1.5,
-                  ),
-                ),
-                // Enhanced shadows for depth
-                boxShadow: isDark ? [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 20,
-                    spreadRadius: 0,
-                    offset: const Offset(0, 4),
-                  ),
-                  BoxShadow(
-                    color: theme.colorScheme.outline.withOpacity(0.1),
-                    blurRadius: 8,
-                    spreadRadius: 0,
-                  ),
-                ] : [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                  BoxShadow(
-                    color: theme.colorScheme.shadow.withOpacity(0.05),
-                    blurRadius: 8,
-                    offset: const Offset(-2, 0),
-                  ),
-                ],
+                    ? Colors.white.withOpacity(0.1)
+                    : Colors.white.withOpacity(0.4),
+                width: 1.5,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+                  blurRadius: 40,
+                  offset: const Offset(-8, 0),
+                  spreadRadius: -10,
+                ),
+                if (isDark)
+                  BoxShadow(
+                    color: accentColor.withOpacity(0.08),
+                    blurRadius: 60,
+                    spreadRadius: -5,
+                  ),
+              ],
+            ),
               child: SafeArea(
                 child: Column(
                   children: [
@@ -590,27 +737,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
             ),
-            // Grain texture overlay for frosted glass effect
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Opacity(
-                  opacity: isDark ? 0.12 : 0.08,
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      image: DecorationImage(
-                        image: AssetImage('assets/images/noise_tile.png'),
-                        repeat: ImageRepeat.repeat,
-                        filterQuality: FilterQuality.medium,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildThoughtCard(BuildContext context, ThemeData theme, Color accentColor, {
@@ -767,143 +896,117 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget _buildLeftDrawer(BuildContext context, ThemeData theme, Color accentColor) {
     final isDark = theme.brightness == Brightness.dark;
     
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // Stronger blur for visible frost
-        child: Stack(
-          children: [
-            Container(
-              width: _isLeftDrawerExpanded ? 240 : 72,
-              decoration: BoxDecoration(
-                // Very transparent for frost effect + glow shine-through
-                color: isDark
-                    ? theme.colorScheme.surface.withOpacity(0.3)
-                    : theme.colorScheme.surface.withOpacity(0.5),
-                border: Border(
-                  right: BorderSide(
-                    color: isDark 
-                        ? Colors.white.withOpacity(0.1) // Frosted glass edge
-                        : Colors.white.withOpacity(0.3),
-                    width: 1.5,
-                  ),
-                ),
-            // Enhanced shadows for depth
-            boxShadow: isDark ? [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.3),
-                blurRadius: 20,
-                spreadRadius: 0,
-                offset: const Offset(0, 4),
-              ),
-              BoxShadow(
-                color: theme.colorScheme.outline.withOpacity(0.1),
-                blurRadius: 8,
-                spreadRadius: 0,
-              ),
-            ] : [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-              BoxShadow(
-                color: theme.colorScheme.shadow.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: GlassTheme.blurHeavy,
+            sigmaY: GlassTheme.blurHeavy,
           ),
-          child: SafeArea(
-            child: Column(
-              children: [
-                // Main navigation items
-                Expanded(
-                  child: ListView(
-                    padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
-                    children: [
-                      // Toggle button as first nav item
-                      _buildToggleItem(context, theme),
-                      const SizedBox(height: 8),
-                      _buildNavItem(context, theme, accentColor, Icons.home, 'Home', _currentPage == NavigationPage.home, () => _switchToPage(NavigationPage.home)),
-                      const SizedBox(height: 8),
-                      _buildNavItem(context, theme, accentColor, Icons.auto_stories, 'Memory', _currentPage == NavigationPage.memory, () => _switchToPage(NavigationPage.memory)),
-                      _buildNavItem(context, theme, accentColor, Icons.admin_panel_settings, 'Admin', _currentPage == NavigationPage.admin, () => _switchToPage(NavigationPage.admin)),
-                      _buildNavItem(context, theme, accentColor, Icons.settings, 'Settings', _currentPage == NavigationPage.settings, () => _switchToPage(NavigationPage.settings)),
-                    ],
-                  ),
+          child: Container(
+            width: _isLeftDrawerExpanded ? 240 : 72,
+            decoration: BoxDecoration(
+              // Frosted glass with organic shape
+              color: isDark
+                  ? Colors.white.withOpacity(0.04)
+                  : Colors.white.withOpacity(0.6),
+              borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withOpacity(0.1)
+                    : Colors.white.withOpacity(0.4),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+                  blurRadius: 40,
+                  offset: const Offset(8, 0),
+                  spreadRadius: -10,
                 ),
-                
-                // System controls at bottom
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      top: BorderSide(color: theme.dividerColor), // Adaptive divider
-                    ),
+                if (isDark)
+                  BoxShadow(
+                    color: accentColor.withOpacity(0.08),
+                    blurRadius: 60,
+                    spreadRadius: -5,
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildSystemControl(
-                        context,
-                        theme,
-                        accentColor,
-                        () async {
-                          await ref.read(themeControllerProvider.notifier).toggleTheme();
-                        },
-                        'Theme',
-                      ),
-                      const SizedBox(height: 4),
-                      _buildSystemControl(
-                        context,
-                        theme,
-                        accentColor,
-                        () async {
-                          final currentState = ref.read(themeControllerProvider);
-                          await ref.read(themeControllerProvider.notifier).setHighContrastEnabled(!currentState.isHighContrast);
-                        },
-                        'Contrast',
-                        isContrast: true,
-                      ),
-                      const SizedBox(height: 4),
-                      _buildSystemControl(
-                        context,
-                        theme,
-                        accentColor,
-                        () {
-                          ref.read(authProvider.notifier).logout();
-                        },
-                        'Logout',
-                        isLogout: true,
-                      ),
-                    ],
-                  ),
-                ),
               ],
             ),
-          ),
-            ),
-            // Grain texture overlay for frosted glass effect
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Opacity(
-                  opacity: isDark ? 0.12 : 0.08,
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      image: DecorationImage(
-                        image: AssetImage('assets/images/noise_tile.png'),
-                        repeat: ImageRepeat.repeat,
-                        filterQuality: FilterQuality.medium,
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    // Main navigation items
+                    Expanded(
+                      child: ListView(
+                        padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
+                        children: [
+                          // Toggle button as first nav item
+                          _buildToggleItem(context, theme),
+                          const SizedBox(height: 8),
+                          _buildNavItem(context, theme, accentColor, Icons.home, 'Home', _currentPage == NavigationPage.home, () => _switchToPage(NavigationPage.home)),
+                          const SizedBox(height: 8),
+                          _buildNavItem(context, theme, accentColor, Icons.auto_stories, 'Memory', _currentPage == NavigationPage.memory, () => _switchToPage(NavigationPage.memory)),
+                          _buildNavItem(context, theme, accentColor, Icons.admin_panel_settings, 'Admin', _currentPage == NavigationPage.admin, () => _switchToPage(NavigationPage.admin)),
+                          _buildNavItem(context, theme, accentColor, Icons.settings, 'Settings', _currentPage == NavigationPage.settings, () => _switchToPage(NavigationPage.settings)),
+                        ],
                       ),
                     ),
-                  ),
+                    
+                    // System controls at bottom
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(color: theme.dividerColor),
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildSystemControl(
+                            context,
+                            theme,
+                            accentColor,
+                            () async {
+                              await ref.read(themeControllerProvider.notifier).toggleTheme();
+                            },
+                            'Theme',
+                          ),
+                          const SizedBox(height: 4),
+                          _buildSystemControl(
+                            context,
+                            theme,
+                            accentColor,
+                            () async {
+                              final currentState = ref.read(themeControllerProvider);
+                              await ref.read(themeControllerProvider.notifier).setHighContrastEnabled(!currentState.isHighContrast);
+                            },
+                            'Contrast',
+                            isContrast: true,
+                          ),
+                          const SizedBox(height: 4),
+                          _buildSystemControl(
+                            context,
+                            theme,
+                            accentColor,
+                            () {
+                              ref.read(authProvider.notifier).logout();
+                            },
+                            'Logout',
+                            isLogout: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ],
+          ),
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildToggleItem(BuildContext context, ThemeData theme) {
@@ -1104,18 +1207,71 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildHomeContent(BuildContext context, ThemeData theme, Color accentColor) {
-    return Column(
+    final isDark = theme.brightness == Brightness.dark;
+    
+    return Stack(
       children: [
-        // Avatar and status header
-        _buildAvatarHeader(context, theme, accentColor),
-        
-        // Conversation area
-        Expanded(
-          child: _buildConversationArea(context, theme, accentColor),
+        // Main floating content area with organic padding
+        Positioned.fill(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
+            child: Column(
+              children: [
+                // Floating avatar with ambient space
+                _buildAvatarHeader(context, theme, accentColor),
+                
+                const SizedBox(height: 24),
+                
+                // Floating conversation card
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(
+                        sigmaX: GlassTheme.blurHeavy,
+                        sigmaY: GlassTheme.blurHeavy,
+                      ),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.white.withOpacity(0.04)
+                              : Colors.white.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
+                          border: Border.all(
+                            color: isDark
+                                ? Colors.white.withOpacity(0.1)
+                                : Colors.white.withOpacity(0.4),
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+                              blurRadius: 40,
+                              offset: const Offset(0, 20),
+                              spreadRadius: -10,
+                            ),
+                            if (isDark)
+                              BoxShadow(
+                                color: accentColor.withOpacity(0.1),
+                                blurRadius: 60,
+                                spreadRadius: -5,
+                              ),
+                          ],
+                        ),
+                        child: _buildConversationArea(context, theme, accentColor),
+                      ),
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(height: 24),
+                
+                // Floating input area
+                _buildInputArea(context, theme, accentColor),
+              ],
+            ),
+          ),
         ),
-        
-        // Input area
-        _buildInputArea(context, theme, accentColor),
       ],
     );
   }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
+import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:aico_frontend/presentation/widgets/chat/thinking_bubble.dart';
 import 'package:flutter/material.dart';
 
@@ -134,23 +135,41 @@ class _MessageBubbleState extends State<MessageBubble>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    final isDark = theme.brightness == Brightness.dark;
+    
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 20),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (widget.isFromAico) ...[
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: widget.accentColor.withOpacity(0.1),
-              child: Icon(Icons.face, size: 16, color: widget.accentColor),
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: GlassTheme.ambientGlow(
+                  color: widget.accentColor,
+                  intensity: 0.3,
+                  blur: 12,
+                ),
+              ),
+              child: CircleAvatar(
+                radius: 18,
+                backgroundColor: isDark
+                    ? widget.accentColor.withOpacity(0.2)
+                    : widget.accentColor.withOpacity(0.15),
+                child: Icon(
+                  Icons.face,
+                  size: 18,
+                  color: widget.accentColor,
+                ),
+              ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 16),
           ],
           Expanded(
             child: _buildThinkingOrTransition(theme),
           ),
-          if (!widget.isFromAico) const SizedBox(width: 48),
+          if (!widget.isFromAico) const SizedBox(width: 60),
         ],
       ),
     );
@@ -231,68 +250,73 @@ class _MessageBubbleState extends State<MessageBubble>
     final isDark = theme.brightness == Brightness.dark;
     
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(GlassTheme.radiusLarge),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: ImageFilter.blur(sigmaX: GlassTheme.blurMedium, sigmaY: GlassTheme.blurMedium),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
-            // Glassmorphism: semi-transparent with backdrop blur
+            // Immersive glassmorphism with depth
             color: widget.isFromAico
                 ? (isDark 
-                    ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.7) // Semi-transparent glass
-                    : theme.colorScheme.surface.withOpacity(0.9))
+                    ? Colors.white.withOpacity(0.08) // Frosted glass
+                    : Colors.white.withOpacity(0.6))
                 : (isDark
-                    ? widget.accentColor.withOpacity(0.2) // Accent tint glass
-                    : widget.accentColor.withOpacity(0.15)),
-            borderRadius: BorderRadius.circular(16),
-            // Subtle glowing border
+                    ? widget.accentColor.withOpacity(0.15) // Accent glow glass
+                    : widget.accentColor.withOpacity(0.12)),
+            borderRadius: BorderRadius.circular(GlassTheme.radiusLarge),
+            // Luminous border with gradient
             border: Border.all(
               color: widget.isFromAico
                   ? (isDark 
-                      ? theme.colorScheme.outline.withOpacity(0.2)
-                      : theme.dividerColor.withOpacity(0.15))
+                      ? Colors.white.withOpacity(0.15)
+                      : Colors.white.withOpacity(0.4))
                   : (isDark
-                      ? widget.accentColor.withOpacity(0.3)
-                      : widget.accentColor.withOpacity(0.2)),
-              width: 1,
+                      ? widget.accentColor.withOpacity(0.4)
+                      : widget.accentColor.withOpacity(0.3)),
+              width: 1.5,
             ),
-            // Soft glow in dark mode (no shadows)
-            boxShadow: isDark ? [
+            // Ambient glow with depth
+            boxShadow: [
+              if (isDark) ...
+                GlassTheme.ambientGlow(
+                  color: widget.isFromAico
+                      ? theme.colorScheme.primary.withOpacity(0.3)
+                      : widget.accentColor,
+                  intensity: 0.2,
+                  blur: 20,
+                ),
               BoxShadow(
-                color: widget.isFromAico
-                    ? theme.colorScheme.outline.withOpacity(0.1)
-                    : widget.accentColor.withOpacity(0.15),
-                blurRadius: 12,
-                spreadRadius: 0,
-              ),
-            ] : [
-              BoxShadow(
-                color: theme.colorScheme.shadow,
-                blurRadius: 4,
-                offset: const Offset(0, 2),
+                color: Colors.black.withOpacity(isDark ? 0.4 : 0.1),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+                spreadRadius: -4,
               ),
             ],
           ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            trimmedContent,
-            style: theme.textTheme.bodyMedium,
-          ),
-          if (widget.content.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              _formatTimestamp(widget.timestamp),
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                trimmedContent,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  height: 1.5,
+                  letterSpacing: 0.2,
+                ),
               ),
-            ),
-          ],
-        ],
-      ),
+              if (widget.content.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _formatTimestamp(widget.timestamp),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ), // Close Container
       ), // Close BackdropFilter
     ); // Close ClipRRect
