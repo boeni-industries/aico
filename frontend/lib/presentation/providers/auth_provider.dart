@@ -6,7 +6,6 @@ import 'package:aico_frontend/domain/providers/domain_providers.dart';
 import 'package:aico_frontend/domain/usecases/auth_usecases.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'auth_provider.g.dart';

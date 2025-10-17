@@ -108,92 +108,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ],
         ),
-        // Theme/contrast toolbar and drawer toggles
+        // Right drawer toggles only
         floatingActionButton: Stack(
           children: [
-            
-            // Right side controls (theme/logout buttons) - positioned relative to right drawer
-            Positioned(
-              right: _isRightDrawerOpen 
-                  ? (_isRightDrawerExpanded ? 300 : 72) // Equal spacing from drawer edge
-                  : 16, // 16px from screen edge when drawer is closed
-            top: 16,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                // Minimal theme toolbar
-                Container(
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surface,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: theme.dividerColor.withValues(alpha: 0.2),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Consumer(
-                        builder: (context, ref, child) {
-                          final themeState = ref.watch(themeControllerProvider);
-                          return IconButton(
-                            onPressed: () async {
-                              debugPrint('Theme toggle pressed');
-                              await ref.read(themeControllerProvider.notifier).toggleTheme();
-                              debugPrint('Theme toggled');
-                            },
-                            icon: Icon(themeState.themeMode == ThemeMode.light ? Icons.wb_sunny : Icons.nightlight_round),
-                            tooltip: 'Toggle theme',
-                            style: IconButton.styleFrom(
-                              foregroundColor: theme.colorScheme.onSurface,
-                            ),
-                          );
-                        },
-                      ),
-                      IconButton(
-                        onPressed: () async {
-                          debugPrint('Contrast toggle pressed');
-                          final currentState = ref.read(themeControllerProvider);
-                          await ref.read(themeControllerProvider.notifier).setHighContrastEnabled(!currentState.isHighContrast);
-                          debugPrint('High contrast toggled to: ${!currentState.isHighContrast}');
-                        },
-                        icon: Consumer(
-                          builder: (context, ref, child) {
-                            final themeState = ref.watch(themeControllerProvider);
-                            return Icon(
-                              Icons.contrast,
-                              color: themeState.isHighContrast 
-                                  ? theme.colorScheme.primary 
-                                  : theme.colorScheme.onSurface,
-                            );
-                          },
-                        ),
-                        tooltip: 'Toggle high contrast',
-                        style: IconButton.styleFrom(
-                          foregroundColor: theme.colorScheme.onSurface,
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () {
-                          ref.read(authProvider.notifier).logout();
-                        },
-                        icon: const Icon(Icons.logout),
-                        tooltip: 'Logout',
-                        style: IconButton.styleFrom(
-                          foregroundColor: theme.colorScheme.onSurface,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                const SizedBox(height: 8),
-                
-              ],
-            ),
-          ),
-          
           // Right drawer toggle - always positioned on drawer edge, vertically centered
           if (isDesktop && _isRightDrawerOpen)
             Positioned(
@@ -591,7 +508,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: SafeArea(
         child: Column(
           children: [
-            // Navigation items with toggle as first item
+            // Main navigation items
             Expanded(
               child: ListView(
                 padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
@@ -604,6 +521,53 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   _buildNavItem(context, theme, accentColor, Icons.auto_stories, 'Memory', _currentPage == NavigationPage.memory, () => _switchToPage(NavigationPage.memory)),
                   _buildNavItem(context, theme, accentColor, Icons.admin_panel_settings, 'Admin', _currentPage == NavigationPage.admin, () => _switchToPage(NavigationPage.admin)),
                   _buildNavItem(context, theme, accentColor, Icons.settings, 'Settings', _currentPage == NavigationPage.settings, () => _switchToPage(NavigationPage.settings)),
+                ],
+              ),
+            ),
+            
+            // System controls at bottom
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1)),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildSystemControl(
+                    context,
+                    theme,
+                    accentColor,
+                    () async {
+                      await ref.read(themeControllerProvider.notifier).toggleTheme();
+                    },
+                    'Theme',
+                  ),
+                  const SizedBox(height: 4),
+                  _buildSystemControl(
+                    context,
+                    theme,
+                    accentColor,
+                    () async {
+                      final currentState = ref.read(themeControllerProvider);
+                      await ref.read(themeControllerProvider.notifier).setHighContrastEnabled(!currentState.isHighContrast);
+                    },
+                    'Contrast',
+                    isContrast: true,
+                  ),
+                  const SizedBox(height: 4),
+                  _buildSystemControl(
+                    context,
+                    theme,
+                    accentColor,
+                    () {
+                      ref.read(authProvider.notifier).logout();
+                    },
+                    'Logout',
+                    isLogout: true,
+                  ),
                 ],
               ),
             ),
@@ -713,6 +677,87 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     setState(() {
       _currentPage = page;
     });
+  }
+
+  Widget _buildSystemControl(
+    BuildContext context,
+    ThemeData theme,
+    Color accentColor,
+    VoidCallback onTap,
+    String tooltip, {
+    bool isContrast = false,
+    bool isLogout = false,
+  }) {
+    // Determine icon based on control type
+    Widget icon;
+    if (isContrast) {
+      icon = Consumer(
+        builder: (context, ref, child) {
+          final themeState = ref.watch(themeControllerProvider);
+          return Icon(
+            Icons.contrast,
+            color: themeState.isHighContrast
+                ? accentColor
+                : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+            size: 20,
+          );
+        },
+      );
+    } else if (isLogout) {
+      icon = Icon(
+        Icons.logout,
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+        size: 20,
+      );
+    } else {
+      // Theme toggle
+      icon = Consumer(
+        builder: (context, ref, child) {
+          final themeState = ref.watch(themeControllerProvider);
+          return Icon(
+            themeState.themeMode == ThemeMode.light ? Icons.wb_sunny : Icons.nightlight_round,
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+            size: 20,
+          );
+        },
+      );
+    }
+
+    if (!_isLeftDrawerExpanded) {
+      // Collapsed mode - icon only
+      return Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: icon,
+          ),
+        ),
+      );
+    }
+
+    // Expanded mode - icon with text
+    return ListTile(
+      leading: icon,
+      title: Text(
+        tooltip,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurface,
+        ),
+      ),
+      onTap: onTap,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+      ),
+      hoverColor: accentColor.withValues(alpha: 0.05),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      dense: true,
+    );
   }
 
   Widget _buildMainContent(BuildContext context, ThemeData theme, Color accentColor) {

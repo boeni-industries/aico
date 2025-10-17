@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
+import 'package:flutter/material.dart';
 
 /// Widget to display AI's inner monologue (thinking) in the right drawer
 /// Following AICO guidelines: Stateless presentation widget, data from provider
@@ -95,7 +95,7 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
     
     return Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(isDark ? 0.2 : 0.3),
+        color: theme.colorScheme.surfaceContainerHighest.withOpacity(isDark ? 0.2 : 0.3),
         border: Border(
           bottom: BorderSide(
             color: theme.colorScheme.outline.withOpacity(0.12),
@@ -274,8 +274,8 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
         decoration: BoxDecoration(
           // Subtle background - barely visible
           color: isDark
-              ? theme.colorScheme.surfaceVariant.withOpacity(0.12)
-              : theme.colorScheme.surfaceVariant.withOpacity(0.2),
+              ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.12)
+              : theme.colorScheme.surfaceContainerHighest.withOpacity(0.2),
           borderRadius: BorderRadius.circular(16), // AICO standard: 16-24px
           // Very subtle border - soft purple for current turn
           border: Border.all(
