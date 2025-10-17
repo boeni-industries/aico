@@ -336,13 +336,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildRightDrawer(BuildContext context, ThemeData theme, Color accentColor) {
+    final isDark = theme.brightness == Brightness.dark;
+    
     return Container(
       width: _isRightDrawerExpanded ? 300 : 72,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(
-          left: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1)),
+          left: BorderSide(
+            color: isDark
+                ? theme.colorScheme.outlineVariant // Visible border in dark mode  
+                : theme.dividerColor, // Subtle in light mode
+            width: isDark ? 1 : 1,
+          ),
         ),
+        // Shadows only in light mode (research: shadows don't work in dark)
+        boxShadow: isDark ? null : [
+          BoxShadow(
+            color: theme.colorScheme.shadow,
+            blurRadius: 8,
+            offset: const Offset(-2, 0),
+          ),
+        ],
       ),
       child: SafeArea(
         child: Column(
@@ -497,13 +512,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
 
   Widget _buildLeftDrawer(BuildContext context, ThemeData theme, Color accentColor) {
+    final isDark = theme.brightness == Brightness.dark;
+    
     return Container(
       width: _isLeftDrawerExpanded ? 240 : 72,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(
-          right: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1)),
+          right: BorderSide(
+            color: isDark 
+                ? theme.colorScheme.outlineVariant // Visible border in dark mode
+                : theme.dividerColor, // Subtle in light mode
+            width: isDark ? 1 : 1,
+          ),
         ),
+        // Shadows only in light mode (research: shadows don't work in dark)
+        boxShadow: isDark ? null : [
+          BoxShadow(
+            color: theme.colorScheme.shadow,
+            blurRadius: 8,
+            offset: const Offset(2, 0),
+          ),
+        ],
       ),
       child: SafeArea(
         child: Column(
@@ -530,7 +560,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
               decoration: BoxDecoration(
                 border: Border(
-                  top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1)),
+                  top: BorderSide(color: theme.dividerColor), // Adaptive divider
                 ),
               ),
               child: Column(
@@ -730,6 +760,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
+          hoverColor: theme.colorScheme.surfaceContainerHighest, // Elevated hover state
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -754,7 +785,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
       ),
-      hoverColor: accentColor.withValues(alpha: 0.05),
+      hoverColor: theme.colorScheme.surfaceContainerHighest, // Elevated hover state
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       dense: true,
     );

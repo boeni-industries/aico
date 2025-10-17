@@ -272,20 +272,23 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
       child: Container(
         padding: const EdgeInsets.all(16), // 8px grid: 2×8
         decoration: BoxDecoration(
-          // Subtle background - barely visible
+          // Dark mode: lighter surface = elevated (Material Design 3)
+          // Light mode: subtle tint
           color: isDark
-              ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.12)
-              : theme.colorScheme.surfaceContainerHighest.withOpacity(0.2),
+              ? theme.colorScheme.surfaceContainerHighest // Lighter = elevated in dark mode
+              : theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
           borderRadius: BorderRadius.circular(16), // AICO standard: 16-24px
-          // Very subtle border - soft purple for current turn
+          // Subtle border - more visible in dark mode
           border: Border.all(
             color: isCurrentTurn
-                ? purpleAccent.withOpacity(0.2)
-                : theme.colorScheme.outline.withOpacity(0.08),
+                ? purpleAccent.withOpacity(isDark ? 0.3 : 0.2)
+                : (isDark 
+                    ? theme.colorScheme.outline.withOpacity(0.15)
+                    : theme.colorScheme.outline.withOpacity(0.08)),
             width: 1,
           ),
-          // Soft elevation per AICO guidelines
-          boxShadow: [
+          // Shadows only in light mode (research: don't work in dark)
+          boxShadow: isDark ? null : [
             BoxShadow(
               color: const Color(0xFF243455).withOpacity(0.06), // AICO shadow color
               blurRadius: 12,

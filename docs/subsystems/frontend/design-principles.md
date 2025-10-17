@@ -66,6 +66,43 @@ This document integrates all previous guidance—including your latest preferenc
 - **Purple accents are consistent and restrained—used for CTAs, focus, avatar emotion, and highlight elements.**
 - Maintain color contrast for accessibility (WCAG AA+ for interactive/text).
 
+### Surface Elevation & Visual Hierarchy
+
+**Research-Based Approach** (Material Design 3, Spotify, NN/G):
+
+**Light Mode Elevation:**
+- `Background`: `#F5F6FA` (base layer - soft white-neutral)
+- `Surface`: `#FFFFFF` (cards, drawers, panels)
+- `Elevated`: `#ECEDF1` (hover states, active elements)
+- `Shadow`: `rgba(36,52,85,0.09)` (subtle depth)
+- `Dividers`: Black at 12% opacity (subtle separation)
+
+**Dark Mode Elevation:**
+- `Background`: `#181A21` (base layer - darkest, elevation 0)
+- `Surface`: `#21242E` (cards, drawers, panels - elevation 1)
+- `Elevated`: `#2F3241` (hover states, active elements - elevation 2, lighter = closer)
+- `Surface Tint`: `#B9A7E6` (primary color for Material Design 3 overlays)
+- `Borders`: White at 12-20% opacity (visible separation, NOT shadows)
+- `Shadow`: **NONE** - shadows don't work in dark mode (research-based)
+
+**High Contrast Modes:**
+- Use pure black/white for all surfaces
+- Solid dividers (100% opacity) for maximum visibility
+- No surface variants (accessibility priority)
+
+**Implementation Strategy:**
+1. **Lighter surfaces = higher elevation** (Material Design 3: #181A21 → #21242E → #2F3241)
+2. **Visible borders in dark mode** (white at 12-20% opacity, NOT shadows)
+3. **Shadows ONLY in light mode** (dark shadows don't work on dark backgrounds)
+4. **Surface tint overlays** (optional: blend primary color for elevation)
+
+**Key Principles:**
+- **CRITICAL:** Never use shadows in dark mode - they blend into dark backgrounds
+- Lighter colors on top in dark mode = closer to viewer (reverse of light mode)
+- Use visible borders (white at 20%) instead of shadows for separation
+- Dividers adapt: subtle in light (12%), visible in dark (20%), solid in high-contrast (100%)
+- All approaches maintain WCAG AA+ compliance
+
 ***
 
 ## 3. Shape & Gestalt Concepts
