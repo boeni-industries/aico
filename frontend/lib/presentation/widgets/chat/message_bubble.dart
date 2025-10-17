@@ -202,6 +202,9 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _buildTextBubble(ThemeData theme) {
+    // Trim content to remove leading/trailing whitespace and empty lines
+    final trimmedContent = widget.content.trim();
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -218,7 +221,7 @@ class _MessageBubbleState extends State<MessageBubble>
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            widget.content,
+            trimmedContent,
             style: theme.textTheme.bodyMedium,
           ),
           if (widget.content.isNotEmpty) ...[

@@ -14,7 +14,38 @@ import 'package:uuid/uuid.dart';
 
 part 'conversation_provider.g.dart';
 
+/// Represents a single thinking turn/step in the conversation
+/// This is a data model, not UI state
+class ThinkingTurn {
+  final String content;
+  final DateTime timestamp;
+  final String messageId; // Which message this thinking belongs to
+  final bool isComplete;
+
+  const ThinkingTurn({
+    required this.content,
+    required this.timestamp,
+    required this.messageId,
+    this.isComplete = true,
+  });
+
+  ThinkingTurn copyWith({
+    String? content,
+    DateTime? timestamp,
+    String? messageId,
+    bool? isComplete,
+  }) {
+    return ThinkingTurn(
+      content: content ?? this.content,
+      timestamp: timestamp ?? this.timestamp,
+      messageId: messageId ?? this.messageId,
+      isComplete: isComplete ?? this.isComplete,
+    );
+  }
+}
+
 /// State class for conversation management
+/// Following AICO guidelines: Clear separation of data state from UI state
 class ConversationState {
   final List<Message> messages;
   final bool isLoading;
@@ -23,6 +54,7 @@ class ConversationState {
   final String? streamingContent;
   final String? streamingMessageId;
   final String? streamingThinking; // Current thinking being streamed
+  final List<ThinkingTurn> thinkingHistory; // Complete history of thinking turns
   final String? error;
   final String? currentConversationId;
 
@@ -34,6 +66,7 @@ class ConversationState {
     this.streamingContent,
     this.streamingMessageId,
     this.streamingThinking,
+    this.thinkingHistory = const [],
     this.error,
     this.currentConversationId,
   });
@@ -46,6 +79,7 @@ class ConversationState {
     String? streamingContent,
     String? streamingMessageId,
     String? streamingThinking,
+    List<ThinkingTurn>? thinkingHistory,
     String? error,
     String? currentConversationId,
   }) {
@@ -57,6 +91,7 @@ class ConversationState {
       streamingContent: streamingContent ?? this.streamingContent,
       streamingMessageId: streamingMessageId ?? this.streamingMessageId,
       streamingThinking: streamingThinking ?? this.streamingThinking,
+      thinkingHistory: thinkingHistory ?? this.thinkingHistory,
       error: error ?? this.error,
       currentConversationId: currentConversationId ?? this.currentConversationId,
     );
@@ -184,12 +219,14 @@ class ConversationNotifier extends _$ConversationNotifier {
     );
 
     // Add AI message placeholder and start streaming
+    // CRITICAL: Reset both streamingContent AND streamingThinking for new turn
     state = state.copyWith(
       messages: [...state.messages, aiMessage],
       isSendingMessage: false,
       isStreaming: true,
       streamingMessageId: aiMessageId,
       streamingContent: '',
+      streamingThinking: '', // Reset thinking for new conversation turn
     );
 
     // Update user message to sent
@@ -245,12 +282,28 @@ class ConversationNotifier extends _$ConversationNotifier {
           return msg;
         }).toList();
         
+        // Finalize thinking turn and add to history
+        // Following AICO guidelines: Single source of truth for data state
+        List<ThinkingTurn> updatedHistory = state.thinkingHistory;
+        if (state.streamingThinking != null && state.streamingThinking!.trim().isNotEmpty) {
+          updatedHistory = [
+            ...state.thinkingHistory,
+            ThinkingTurn(
+              content: state.streamingThinking!.trim(),
+              timestamp: DateTime.now(),
+              messageId: aiMessageId,
+              isComplete: true,
+            ),
+          ];
+        }
+        
         state = state.copyWith(
           messages: updatedMessages,
           isStreaming: false,
           streamingContent: null,
           streamingMessageId: null,
           streamingThinking: null, // Clear streaming thinking
+          thinkingHistory: updatedHistory, // Update history
         );
         
         AICOLog.info('Streaming completed successfully', 

@@ -474,24 +474,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: SafeArea(
         child: Column(
           children: [
-            // Drawer header
-            if (_isRightDrawerExpanded)
-              Container(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Text(
-                      'AICO\'s Thoughts',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const Spacer(),
-                  ],
-                ),
-              ),
-            
-            // Thinking display section
+            // Thinking display section (header integrated into ThinkingDisplay widget)
             Expanded(
               child: _isRightDrawerExpanded
                   ? Consumer(
@@ -499,7 +482,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         final conversationState = ref.watch(conversationProvider);
                         final settings = ref.watch(settingsProvider);
                         
-                        // Only show thinking if enabled in settings
+                        // Following AICO guidelines: Data from provider (Single Source of Truth)
+                        // No need for Visibility hack - widget is stateless presentation
                         if (!settings.showThinking) {
                           return Center(
                             child: Text(
@@ -512,7 +496,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         }
                         
                         return ThinkingDisplay(
-                          thinking: conversationState.streamingThinking,
+                          thinkingHistory: conversationState.thinkingHistory,
+                          currentThinking: conversationState.streamingThinking,
                           isStreaming: conversationState.isStreaming,
                         );
                       },
