@@ -24,6 +24,7 @@ from aico.proto.aico_modelservice_pb2 import (
     SentimentRequest, SentimentResponse, IntentClassificationRequest, IntentClassificationResponse
 )
 from google.protobuf.timestamp_pb2 import Timestamp
+from aico.ai.utils.thinking_parser import ThinkingParser
 
 # Logger will be initialized in class constructor to avoid import-time issues
 
@@ -253,6 +254,7 @@ class ModelserviceZMQHandlers:
                     
                     # Stream response from Ollama and forward chunks immediately
                     accumulated_content = ""
+                    thinking_parser = ThinkingParser()  # Initialize parser for this request
                     from aico.proto.aico_modelservice_pb2 import CompletionResult, ConversationMessage
                     
                     async with client.stream("POST", f"{ollama_url}/api/chat", json=request_data) as stream_response:
@@ -274,20 +276,24 @@ class ModelserviceZMQHandlers:
                                     chunk_content = chunk["message"]["content"]
                                     accumulated_content += chunk_content
                                     
+                                    # Parse thinking tags from chunk
+                                    parsed_content, content_type = thinking_parser.parse_chunk(chunk_content)
+                                    
                                     # Publish streaming chunk using proper protobuf message
-                                    if self.message_bus_client and chunk_content and correlation_id:
+                                    if self.message_bus_client and parsed_content and correlation_id:
                                         from aico.proto.aico_modelservice_pb2 import StreamingChunk
                                         from aico.core.topics import AICOTopics
                                         import time
                                         
-                                        # Create proper protobuf streaming chunk
+                                        # Create proper protobuf streaming chunk with content_type
                                         streaming_chunk = StreamingChunk()
                                         streaming_chunk.request_id = correlation_id
-                                        streaming_chunk.content = chunk_content
+                                        streaming_chunk.content = parsed_content
                                         streaming_chunk.accumulated_content = accumulated_content
                                         streaming_chunk.done = False
                                         streaming_chunk.model = model
                                         streaming_chunk.timestamp = int(time.time() * 1000)  # milliseconds
+                                        streaming_chunk.content_type = content_type  # "thinking" or "response"
                                         
                                         # Publish using proper message bus pattern
                                         await self.message_bus_client.publish(
@@ -295,11 +301,14 @@ class ModelserviceZMQHandlers:
                                             streaming_chunk,
                                             correlation_id=correlation_id
                                         )
-                                        self.logger.debug(f"[CHAT] Published streaming chunk for {correlation_id}")
+                                        self.logger.debug(f"[CHAT] Published {content_type} chunk for {correlation_id}")
                                 
                                 # Check if this is the final chunk
                                 if chunk.get("done", False):
                                     self.logger.info(f"[CHAT] Streaming complete, total length: {len(accumulated_content)}")
+                                    
+                                    # Extract final thinking and response content
+                                    thinking_content, response_content = thinking_parser.get_final_content()
                                     
                                     # Publish final completion signal
                                     if self.message_bus_client and correlation_id:
@@ -315,6 +324,7 @@ class ModelserviceZMQHandlers:
                                         final_chunk.done = True
                                         final_chunk.model = model
                                         final_chunk.timestamp = int(time.time() * 1000)
+                                        final_chunk.content_type = "response"  # Final chunk is always response type
                                         
                                         # Publish final chunk
                                         await self.message_bus_client.publish(
@@ -328,9 +338,14 @@ class ModelserviceZMQHandlers:
                                     result.model = model
                                     result.done = True
                                     
+                                    # Store thinking separately in result
+                                    if thinking_content:
+                                        result.thinking = thinking_content
+                                        self.logger.info(f"[CHAT] Extracted thinking: {len(thinking_content)} chars")
+                                    
                                     response_msg = ConversationMessage()
                                     response_msg.role = "assistant"
-                                    response_msg.content = accumulated_content
+                                    response_msg.content = response_content  # Clean response without thinking tags
                                     result.message.CopyFrom(response_msg)
                                     
                                     # Optional timing fields from final chunk

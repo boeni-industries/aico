@@ -138,7 +138,7 @@ class UnifiedApiClient {
     String endpoint, {
     Map<String, dynamic>? data,
     Map<String, String>? queryParameters,
-    required Function(String chunk) onChunk,
+    required Function(Map<String, dynamic> chunkData) onChunk,
     required Function() onComplete,
     required Function(String error) onError,
     Function(Map<String, List<String>> headers)? onHeaders,
@@ -259,11 +259,14 @@ class UnifiedApiClient {
                     });
                   
                   if (decryptedData['type'] == 'chunk') {
-                    final content = decryptedData['content'] ?? '';
+                    // Pass full decrypted data including content_type
                     AICOLog.info('Passing chunk to onChunk', 
                       topic: 'network/streaming/chunk_pass',
-                      extra: {'content': content});
-                    onChunk(content);
+                      extra: {
+                        'content': decryptedData['content'] ?? '',
+                        'content_type': decryptedData['content_type'] ?? 'response'
+                      });
+                    onChunk(decryptedData);
                   } else if (decryptedData['type'] == 'error') {
                     onError(decryptedData['error'] ?? 'Unknown streaming error');
                     return;
@@ -292,7 +295,7 @@ class UnifiedApiClient {
             if (jsonData.containsKey('encrypted') && jsonData['encrypted'] == true) {
               final decryptedData = _encryptionService.decryptPayload(jsonData['payload']);
               if (decryptedData['type'] == 'chunk') {
-                onChunk(decryptedData['content'] ?? '');
+                onChunk(decryptedData);
               }
             } else {
               // SECURITY VIOLATION: Final buffer chunk is unencrypted

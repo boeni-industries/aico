@@ -183,7 +183,8 @@ async def send_message_with_auto_thread(
                             await chunk_queue.put({
                                 "content": streaming_chunk.content,
                                 "accumulated": streaming_chunk.accumulated_content,
-                                "done": streaming_chunk.done
+                                "done": streaming_chunk.done,
+                                "content_type": streaming_chunk.content_type  # Forward content_type from backend
                             })
                             
                             # If this is the final chunk, signal completion
@@ -215,12 +216,13 @@ async def send_message_with_auto_thread(
                                 logger.info(f"🔍 [API_STREAMING] ❌ Yielding error chunk")
                                 yield json.dumps(chunk) + "\n"
                             else:
-                                logger.info(f"🔍 [API_STREAMING] ✅ Yielding content chunk: '{chunk['content']}'")
+                                logger.info(f"🔍 [API_STREAMING] ✅ Yielding content chunk: '{chunk['content']}' (type: {chunk.get('content_type', 'response')})")
                                 chunk_data = {
                                     "type": "chunk",
                                     "content": chunk["content"],
                                     "accumulated": chunk["accumulated"],
-                                    "done": chunk["done"]
+                                    "done": chunk["done"],
+                                    "content_type": chunk.get("content_type", "response")  # Include content_type for frontend routing
                                 }
                                 # Include conversation_id in the final chunk
                                 if chunk["done"]:

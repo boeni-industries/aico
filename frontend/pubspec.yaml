@@ -52,7 +52,6 @@ dependencies:
   # HTTP client
   http: ^1.2.2
   dio: ^5.4.0
-  retrofit: ^4.1.0
   
   # WebSocket
   web_socket_channel: ^3.0.3
@@ -62,6 +61,10 @@ dependencies:
   
   # JSON serialization
   json_annotation: ^4.8.1
+  
+  # Protocol Buffers (Dart max 5.0.0, backend 6.32.0 - wire format compatible)
+  protobuf: ^5.0.0
+  fixnum: ^1.1.0
   
   # JWT handling
   dart_jsonwebtoken: ^3.2.0
@@ -88,7 +91,6 @@ dev_dependencies:
   
   # Code generation
   build_runner: ^2.4.7
-  retrofit_generator: ^10.0.0
   json_serializable: ^6.7.1
   riverpod_generator: ^3.0.3
   riverpod_lint: ^3.0.3

@@ -131,8 +131,8 @@ class MessageRepositoryImpl implements MessageRepository {
   /// Send message with streaming response
   Future<void> sendMessageStreaming(
     Message message, 
-    Function(String chunk) onChunk,
-    Function(String finalResponse) onComplete,
+    Function(String chunk, {String? contentType}) onChunk,
+    Function(String finalResponse, {String? thinking}) onComplete,
     Function(String error) onError, {
     Function(String conversationId)? onConversationId,
   }) async {
@@ -156,6 +156,7 @@ class MessageRepositoryImpl implements MessageRepository {
       };
 
       String accumulatedContent = '';
+      String accumulatedThinking = '';
       String? backendConversationId;
 
       // Use the new streaming method from UnifiedApiClient
@@ -173,10 +174,20 @@ class MessageRepositoryImpl implements MessageRepository {
               extra: {'conversation_id': backendConversationId});
           }
         },
-        onChunk: (String chunk) {
-          // UnifiedApiClient already decrypted and extracted content
-          accumulatedContent += chunk;
-          onChunk(chunk);
+        onChunk: (Map<String, dynamic> chunkData) {
+          // Extract content and content_type from chunk
+          final chunk = chunkData['content'] as String? ?? '';
+          final contentType = chunkData['content_type'] as String? ?? 'response';
+          
+          // Track thinking separately
+          if (contentType == 'thinking') {
+            accumulatedThinking += chunk;
+          } else {
+            accumulatedContent += chunk;
+          }
+          
+          // Forward to provider with content_type
+          onChunk(chunk, contentType: contentType);
         },
         onComplete: () {
           // Notify provider of conversation_id if callback provided
@@ -184,12 +195,14 @@ class MessageRepositoryImpl implements MessageRepository {
             onConversationId(backendConversationId!);
           }
           
-          onComplete(accumulatedContent);
+          // Pass both response and thinking to completion callback
+          onComplete(accumulatedContent, thinking: accumulatedThinking.isNotEmpty ? accumulatedThinking : null);
           AICOLog.info('Streaming completed successfully', 
             topic: 'message_repository/streaming_complete',
             extra: {
               'message_id': message.id,
-              'total_length': accumulatedContent.length,
+              'response_length': accumulatedContent.length,
+              'thinking_length': accumulatedThinking.length,
               'conversation_id': backendConversationId,
             });
         },

@@ -2,12 +2,14 @@ import 'package:aico_frontend/presentation/models/conversation_message.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
+import 'package:aico_frontend/presentation/providers/settings_provider.dart';
 import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart';
 import 'package:aico_frontend/presentation/widgets/chat/message_bubble.dart';
+import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -489,55 +491,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
             
-            // Thoughts section
+            // Thinking display section
             Expanded(
               child: _isRightDrawerExpanded
-                  ? ListView(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      children: [
-                        _buildThoughtCard(context, theme, accentColor,
-                          type: 'Suggestion',
-                          message: 'Maybe we could try that meditation exercise you mentioned last week?',
-                        ),
-                        const SizedBox(height: 12),
-                        _buildThoughtCard(context, theme, accentColor,
-                          type: 'Reminder',
-                          message: 'Your sister\'s birthday is coming up next week. Want to plan something special?',
-                        ),
-                        const SizedBox(height: 12),
-                        _buildThoughtCard(context, theme, accentColor,
-                          type: 'Memory',
-                          message: 'Remember when we talked about your dream trip to Japan? I found some interesting places you might like.',
-                        ),
+                  ? Consumer(
+                      builder: (context, ref, child) {
+                        final conversationState = ref.watch(conversationProvider);
+                        final settings = ref.watch(settingsProvider);
                         
-                        const SizedBox(height: 24),
+                        // Only show thinking if enabled in settings
+                        if (!settings.showThinking) {
+                          return Center(
+                            child: Text(
+                              'Thinking display disabled in settings',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withOpacity(0.5),
+                              ),
+                            ),
+                          );
+                        }
                         
-                        // Memory timeline section
-                        Text(
-                          'Our Journey',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        
-                        _buildMemoryItem(context, theme, accentColor,
-                          title: 'Deep conversation about career goals',
-                          time: 'Yesterday, 8:30 PM',
-                        ),
-                        _buildMemoryItem(context, theme, accentColor,
-                          title: 'Shared funny story about weekend',
-                          time: '2 days ago',
-                        ),
-                        _buildMemoryItem(context, theme, accentColor,
-                          title: 'Helped plan family dinner',
-                          time: '1 week ago',
-                        ),
-                        _buildMemoryItem(context, theme, accentColor,
-                          title: 'First conversation together',
-                          time: '2 weeks ago',
-                        ),
-                      ],
+                        return ThinkingDisplay(
+                          thinking: conversationState.streamingThinking,
+                          isStreaming: conversationState.isStreaming,
+                        );
+                      },
                     )
                   : const SizedBox.shrink(),
             ),

@@ -10,6 +10,7 @@ class Message extends Equatable {
   final MessageStatus status;
   final DateTime timestamp;
   final Map<String, dynamic>? metadata;
+  final String? thinking; // Inner monologue from <think> tags
 
   const Message({
     required this.id,
@@ -20,6 +21,7 @@ class Message extends Equatable {
     required this.status,
     required this.timestamp,
     this.metadata,
+    this.thinking,
   });
 
   @override
@@ -32,6 +34,7 @@ class Message extends Equatable {
         status,
         timestamp,
         metadata,
+        thinking,
       ];
 
   Message copyWith({
@@ -43,6 +46,7 @@ class Message extends Equatable {
     MessageStatus? status,
     DateTime? timestamp,
     Map<String, dynamic>? metadata,
+    String? thinking,
   }) {
     return Message(
       id: id ?? this.id,
@@ -53,6 +57,7 @@ class Message extends Equatable {
       status: status ?? this.status,
       timestamp: timestamp ?? this.timestamp,
       metadata: metadata ?? this.metadata,
+      thinking: thinking ?? this.thinking,
     );
   }
 }

@@ -22,6 +22,7 @@ class ConversationState {
   final bool isStreaming;
   final String? streamingContent;
   final String? streamingMessageId;
+  final String? streamingThinking; // Current thinking being streamed
   final String? error;
   final String? currentConversationId;
 
@@ -32,6 +33,7 @@ class ConversationState {
     this.isStreaming = false,
     this.streamingContent,
     this.streamingMessageId,
+    this.streamingThinking,
     this.error,
     this.currentConversationId,
   });
@@ -43,6 +45,7 @@ class ConversationState {
     bool? isStreaming,
     String? streamingContent,
     String? streamingMessageId,
+    String? streamingThinking,
     String? error,
     String? currentConversationId,
   }) {
@@ -53,6 +56,7 @@ class ConversationState {
       isStreaming: isStreaming ?? this.isStreaming,
       streamingContent: streamingContent ?? this.streamingContent,
       streamingMessageId: streamingMessageId ?? this.streamingMessageId,
+      streamingThinking: streamingThinking ?? this.streamingThinking,
       error: error ?? this.error,
       currentConversationId: currentConversationId ?? this.currentConversationId,
     );
@@ -203,29 +207,38 @@ class ConversationNotifier extends _$ConversationNotifier {
     
     await repo.sendMessageStreaming(
       userMessage,
-      (String chunk) {
-        // Update streaming content with new chunk
-        final currentContent = state.streamingContent ?? '';
-        final newContent = currentContent + chunk;
-        
-        state = state.copyWith(streamingContent: newContent);
-        
-        // Update the AI message in the list
-        final updatedMessages = state.messages.map((msg) {
-          if (msg.id == aiMessageId) {
-            return msg.copyWith(content: newContent);
-          }
-          return msg;
-        }).toList();
-        
-        state = state.copyWith(messages: updatedMessages);
+      (String chunk, {String? contentType}) {
+        // Route chunks by content_type: "thinking" or "response"
+        if (contentType == 'thinking') {
+          // Update thinking content (displayed in right drawer)
+          final currentThinking = state.streamingThinking ?? '';
+          final newThinking = currentThinking + chunk;
+          state = state.copyWith(streamingThinking: newThinking);
+        } else {
+          // Update response content (displayed in chat bubble)
+          final currentContent = state.streamingContent ?? '';
+          final newContent = currentContent + chunk;
+          
+          state = state.copyWith(streamingContent: newContent);
+          
+          // Update the AI message in the list
+          final updatedMessages = state.messages.map((msg) {
+            if (msg.id == aiMessageId) {
+              return msg.copyWith(content: newContent);
+            }
+            return msg;
+          }).toList();
+          
+          state = state.copyWith(messages: updatedMessages);
+        }
       },
-      (String finalResponse) {
-        // Finalize the AI message
+      (String finalResponse, {String? thinking}) {
+        // Finalize the AI message with thinking
         final updatedMessages = state.messages.map((msg) {
           if (msg.id == aiMessageId) {
             return msg.copyWith(
               content: finalResponse,
+              thinking: thinking, // Store thinking in message
               status: MessageStatus.sent,
             );
           }
@@ -237,6 +250,7 @@ class ConversationNotifier extends _$ConversationNotifier {
           isStreaming: false,
           streamingContent: null,
           streamingMessageId: null,
+          streamingThinking: null, // Clear streaming thinking
         );
         
         AICOLog.info('Streaming completed successfully', 
@@ -263,6 +277,7 @@ class ConversationNotifier extends _$ConversationNotifier {
           isStreaming: false,
           streamingContent: null,
           streamingMessageId: null,
+          streamingThinking: null, // Clear thinking on error
           error: 'Streaming failed: $error',
         );
         

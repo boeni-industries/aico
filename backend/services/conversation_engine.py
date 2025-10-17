@@ -551,10 +551,11 @@ class ConversationEngine(BaseService):
         try:
             print(f"💬 [CONVERSATION_ENGINE] 🔄 Starting streaming handler for {request_id}")
             accumulated_content = ""
+            accumulated_thinking = ""
             
             # Subscribe to streaming chunks with callback
             async def handle_chunk(envelope):
-                nonlocal accumulated_content
+                nonlocal accumulated_content, accumulated_thinking
                 try:
                     # Extract StreamingChunk from protobuf envelope
                     from aico.proto.aico_modelservice_pb2 import StreamingChunk
@@ -567,23 +568,29 @@ class ConversationEngine(BaseService):
                     
                     print(f"💬 [CONVERSATION_ENGINE] 📦 Received streaming chunk for {request_id}")
                     
-                    # Extract chunk content from protobuf
+                    # Extract chunk content and type from protobuf
                     chunk_content = streaming_chunk.content
                     accumulated_content = streaming_chunk.accumulated_content
+                    content_type = streaming_chunk.content_type  # "thinking" or "response"
                     is_done = streaming_chunk.done
+                    
+                    # Track thinking separately
+                    if content_type == "thinking":
+                        accumulated_thinking += chunk_content
                     
                     # Publish streaming chunk directly to API layer via message bus
                     if request_id in self.pending_responses:
                         from aico.proto.aico_conversation_pb2 import StreamingResponse
                         import time
                         
-                        # Create proper protobuf streaming response
+                        # Create proper protobuf streaming response with content_type
                         streaming_response = StreamingResponse()
                         streaming_response.request_id = request_id
                         streaming_response.content = chunk_content
                         streaming_response.accumulated_content = accumulated_content
                         streaming_response.done = is_done
                         streaming_response.timestamp = int(time.time() * 1000)  # milliseconds
+                        streaming_response.content_type = content_type  # Forward content_type to frontend
                         
                         # Publish directly to API streaming topic
                         await self.bus_client.publish(
@@ -591,14 +598,15 @@ class ConversationEngine(BaseService):
                             streaming_response,
                             correlation_id=request_id
                         )
-                        print(f"💬 [CONVERSATION_ENGINE] 📡 Published chunk to API: content='{chunk_content}', done={is_done}")
+                        print(f"💬 [CONVERSATION_ENGINE] 📡 Published {content_type} chunk to API: content='{chunk_content}', done={is_done}")
                     
                     print(f"💬 [CONVERSATION_ENGINE] 📝 Accumulated content length: {len(accumulated_content)}")
                     
                     # If this is the final chunk, handle completion
                     if is_done:
                         print(f"💬 [CONVERSATION_ENGINE] ✅ Streaming complete for {request_id}")
-                        await self._finalize_streaming_response(request_id, accumulated_content)
+                        print(f"💬 [CONVERSATION_ENGINE] 💭 Thinking length: {len(accumulated_thinking)} chars")
+                        await self._finalize_streaming_response(request_id, accumulated_content, accumulated_thinking)
                         return True  # Signal to stop subscription
                     return False
                     
@@ -614,7 +622,7 @@ class ConversationEngine(BaseService):
             # Remove exc_info parameter - not supported by AICOLogger
             self.logger.error(f"Streaming handler error for {request_id}: {e}")
     
-    async def _finalize_streaming_response(self, request_id: str, final_content: str) -> None:
+    async def _finalize_streaming_response(self, request_id: str, final_content: str, thinking_content: str = "") -> None:
         """Finalize streaming response and deliver to user (semantic memory approach)"""
         try:
             print(f"💬 [CONVERSATION_ENGINE] 🏁 Finalizing streaming response for {request_id}")
@@ -632,6 +640,7 @@ class ConversationEngine(BaseService):
             
             # NOTE: AI response storage happens in streaming handler (line ~895)
             # to avoid duplicate storage
+            # Store thinking in message metadata if present
             
             # Create final response message for API layer
             ai_message = Message()
@@ -639,6 +648,11 @@ class ConversationEngine(BaseService):
             ai_message.type = Message.MessageType.SYSTEM_RESPONSE
             ai_message.text = final_content
             ai_message.turn_number = 1  # Simple turn tracking
+            
+            # Store thinking in metadata if present
+            if thinking_content:
+                ai_message.metadata.update({"thinking": thinking_content})
+                print(f"💬 [CONVERSATION_ENGINE] 💭 Stored thinking in message metadata ({len(thinking_content)} chars)")
             
             # Create ConversationMessage for API layer (with message_id)
             from aico.proto.aico_conversation_pb2 import ConversationMessage

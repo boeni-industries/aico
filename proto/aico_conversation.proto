@@ -141,4 +141,5 @@ message StreamingResponse {
   string accumulated_content = 3;  // Total content so far
   bool done = 4;                   // True if this is the final chunk
   optional int64 timestamp = 5;    // Chunk timestamp
+  string content_type = 6;         // "thinking" or "response" - indicates which part of output
 }

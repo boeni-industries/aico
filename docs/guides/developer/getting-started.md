@@ -353,7 +353,7 @@ aico config init
 aico db init
 
 # 3. Create AI character model (required for conversations)
-aico ollama create-character eve
+aico ollama generate eve
 
 # 4. Verify complete setup
 aico config show
@@ -392,35 +392,36 @@ AICO uses Ollama with custom character definitions (Modelfiles) to create AI per
 
 ```bash
 # Create the Eve character model from Modelfile
-aico ollama create-character eve
+aico ollama generate eve
 
 # Verify the model was created successfully
 ollama list
-# You should see 'eve' in the list of models
+# You should see the base model 'huihui_ai/qwen3-abliterated:8b-v2'
 
-# Test the character (optional)
-ollama run eve "Hello, who are you?"
+# Test the model (optional)
+ollama run huihui_ai/qwen3-abliterated:8b-v2 "Hello, who are you?"
 ```
 
 **What this does:**
 - Reads the character definition from `config/modelfiles/Modelfile.eve`
-- Creates a custom Ollama model variant called "eve"
+- Ensures the base model is pulled from Ollama
 - Configures model parameters (temperature, context window, etc.)
-- Sets up the character's personality and behavior
+- Sets up the character's personality and behavior via Modelfile
 
 **Character Details:**
 - **Name**: Eve
-- **Base Model**: Qwen3-Abliterated 8B (uncensored, thinking-capable)
+- **Base Model**: `huihui_ai/qwen3-abliterated:8b-v2` (uncensored, thinking-capable)
 - **Personality**: Inspired by Samantha from the movie "Her"
-- **Features**: Warm, empathetic, uses thinking tags for reasoning
+- **Features**: Warm, empathetic, uses `<think>` tags for reasoning
+- **Parameters**: num_ctx=8192, temp=0.7, top_p=0.8, top_k=20
 
 **Updating the Character:**
-If you modify `Modelfile.eve`, recreate the model:
+If you modify `Modelfile.eve`, regenerate:
 ```bash
-aico ollama create-character eve
+aico ollama generate eve --force
 ```
 
-For more details, see [Modelfiles README](../../config/modelfiles/README.md).
+For more details, see [Modelfiles README](../../../config/modelfiles/README.md).
 
 ### Directory Structure
 After setup, you'll have cross-platform directories:
