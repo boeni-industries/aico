@@ -192,6 +192,27 @@ class UnifiedApiClient {
         onHeaders(response.headers.map);
       }
       
+      // Handle 401 Unauthorized - reset encryption session and retry once
+      if (response.statusCode == 401 && !skipTokenRefresh) {
+        AICOLog.warn('401 Unauthorized in streaming - resetting encryption session and retrying',
+          topic: 'network/streaming/unauthorized',
+          extra: {'endpoint': endpoint, 'method': method});
+        
+        // Reset encryption session and retry once
+        _encryptionService.resetSession();
+        return await requestStream(
+          method,
+          endpoint,
+          data: data,
+          queryParameters: queryParameters,
+          onChunk: onChunk,
+          onComplete: onComplete,
+          onError: onError,
+          onHeaders: onHeaders,
+          skipTokenRefresh: true, // Prevent infinite retry loop
+        );
+      }
+      
       if (response.statusCode == 200 && response.data != null) {
         // Handle streaming response
         AICOLog.info('🔄 Starting stream processing', 
