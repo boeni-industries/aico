@@ -268,7 +268,7 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
         : const Color(0xFFB8A1EA);
     
     return Padding(
-      padding: const EdgeInsets.only(bottom: 24), // 8px grid: 3×8
+      padding: const EdgeInsets.only(bottom: 32), // 8px grid: 4×8 (increased for better spacing)
       child: Container(
         padding: const EdgeInsets.all(16), // 8px grid: 2×8
         decoration: BoxDecoration(

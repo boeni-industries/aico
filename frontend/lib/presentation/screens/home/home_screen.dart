@@ -281,14 +281,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildInputArea(BuildContext context, ThemeData theme, Color accentColor) {
+    final isDark = theme.brightness == Brightness.dark;
+    
     return Container(
       padding: const EdgeInsets.all(24),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
+          // Dark mode: lighter surface = elevated
+          color: isDark 
+              ? theme.colorScheme.surfaceContainerHighest
+              : theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: theme.dividerColor.withValues(alpha: 0.1)),
+          // More visible border in dark mode
+          border: Border.all(
+            color: isDark
+                ? theme.colorScheme.outlineVariant // Visible in dark mode
+                : theme.dividerColor.withValues(alpha: 0.1),
+            width: 1,
+          ),
+          // Shadows only in light mode
+          boxShadow: isDark ? null : [
+            BoxShadow(
+              color: theme.colorScheme.shadow,
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           children: [

@@ -204,17 +204,39 @@ class _MessageBubbleState extends State<MessageBubble>
   Widget _buildTextBubble(ThemeData theme) {
     // Trim content to remove leading/trailing whitespace and empty lines
     final trimmedContent = widget.content.trim();
+    final isDark = theme.brightness == Brightness.dark;
     
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
+        // Dark mode: AICO uses neutral surface, User uses accent tint (industry standard)
         color: widget.isFromAico
-            ? theme.colorScheme.surface
-            : widget.accentColor.withOpacity(0.1),
+            ? (isDark 
+                ? theme.colorScheme.surfaceContainerHighest // Neutral elevated surface
+                : theme.colorScheme.surface)
+            : (isDark
+                ? widget.accentColor.withOpacity(0.15) // Accent tint for user (WhatsApp/Telegram pattern)
+                : widget.accentColor.withOpacity(0.1)),
         borderRadius: BorderRadius.circular(16),
-        border: widget.isFromAico
-            ? Border.all(color: theme.dividerColor.withOpacity(0.1))
-            : null,
+        // More visible borders in dark mode
+        border: Border.all(
+          color: widget.isFromAico
+              ? (isDark 
+                  ? theme.colorScheme.outline.withOpacity(0.15)
+                  : theme.dividerColor.withOpacity(0.1))
+              : (isDark
+                  ? theme.colorScheme.outline.withOpacity(0.2)
+                  : Colors.transparent),
+          width: 1,
+        ),
+        // Shadows only in light mode
+        boxShadow: isDark ? null : [
+          BoxShadow(
+            color: theme.colorScheme.shadow,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
