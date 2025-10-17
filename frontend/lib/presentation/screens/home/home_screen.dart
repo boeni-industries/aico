@@ -270,51 +270,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     
     return Container(
       padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          // Avatar with intelligent status ring
-          const CompanionAvatar(),
-          
-          const SizedBox(height: 16),
-          
-          // Emotional state
-          Text(
-            'Feeling curious and ready to chat',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          
-          const SizedBox(height: 8),
-          
-          // System status
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.green.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: const BoxDecoration(
-                    color: Colors.green,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                const Text(
-                  'Local & Secure',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      child: const CompanionAvatar(),
     );
   }
 
