@@ -44,6 +44,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   final FocusNode _messageFocusNode = FocusNode();
   Timer? _typingTimer;
   bool _isUserTyping = false;
+  String? _scrollToThoughtId; // Track which thought to scroll to
   
   // Animation controllers for immersive effects
   late AnimationController _backgroundAnimationController;
@@ -674,87 +675,205 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   Widget _buildRightDrawer(BuildContext context, ThemeData theme, Color accentColor) {
     final isDark = theme.brightness == Brightness.dark;
     
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: GlassTheme.blurHeavy,
-            sigmaY: GlassTheme.blurHeavy,
-          ),
-          child: Container(
-            width: _isRightDrawerExpanded ? 300 : 72,
-            decoration: BoxDecoration(
-              // Frosted glass with organic shape
-              color: isDark
-                  ? Colors.white.withOpacity(0.04)
-                  : Colors.white.withOpacity(0.6),
-              borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
-              border: Border.all(
-                color: isDark
-                    ? Colors.white.withOpacity(0.1)
-                    : Colors.white.withOpacity(0.4),
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
-                  blurRadius: 40,
-                  offset: const Offset(-8, 0),
-                  spreadRadius: -10,
-                ),
-                if (isDark)
-                  BoxShadow(
-                    color: accentColor.withOpacity(0.08),
-                    blurRadius: 60,
-                    spreadRadius: -5,
+    return Consumer(
+      builder: (context, ref, child) {
+        final conversationState = ref.watch(conversationProvider);
+        final isActivelyThinking = conversationState.streamingThinking != null && 
+                                   conversationState.streamingThinking!.isNotEmpty;
+        
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
+            child: AnimatedBuilder(
+              animation: _glowAnimationController,
+              builder: (context, child) {
+                // Beautiful breathing effect - glass becomes more/less frosted
+                final pulseValue = _glowAnimation.value;
+                final blurIntensity = isActivelyThinking
+                    ? GlassTheme.blurHeavy + (pulseValue * 6.0) // 20 → 26 breathing
+                    : GlassTheme.blurHeavy;
+                
+                final glassOpacity = isActivelyThinking
+                    ? (isDark ? 0.04 : 0.6) + (pulseValue * (isDark ? 0.02 : 0.08))
+                    : (isDark ? 0.04 : 0.6);
+                
+                final borderOpacity = isActivelyThinking
+                    ? (isDark ? 0.1 : 0.4) + (pulseValue * 0.15)
+                    : (isDark ? 0.1 : 0.4);
+                
+                return BackdropFilter(
+                  filter: ImageFilter.blur(
+                    sigmaX: blurIntensity,
+                    sigmaY: blurIntensity,
                   ),
-              ],
-            ),
-              child: SafeArea(
-                child: Column(
-                  children: [
-                    // Thinking display section (header integrated into ThinkingDisplay widget)
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 24), // Add bottom padding for even spacing
-                        child: _isRightDrawerExpanded
-                            ? Consumer(
-                                builder: (context, ref, child) {
-                                  final conversationState = ref.watch(conversationProvider);
-                                  final settings = ref.watch(settingsProvider);
-                                  
-                                  // Following AICO guidelines: Data from provider (Single Source of Truth)
-                                  // No need for Visibility hack - widget is stateless presentation
-                                  if (!settings.showThinking) {
-                                    return Center(
-                                      child: Text(
-                                        'Thinking display disabled in settings',
-                                        style: theme.textTheme.bodySmall?.copyWith(
-                                          color: theme.colorScheme.onSurface.withOpacity(0.5),
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                  
-                                  return ThinkingDisplay(
-                                    thinkingHistory: conversationState.thinkingHistory,
-                                    currentThinking: conversationState.streamingThinking,
-                                    isStreaming: conversationState.isStreaming,
-                                  );
-                                },
-                              )
-                            : const SizedBox.shrink(),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
+                    clipBehavior: Clip.hardEdge,
+                    child: Container(
+                      width: _isRightDrawerExpanded ? 300 : 72,
+                      decoration: BoxDecoration(
+                        // Frosted glass with breathing pulse
+                        color: isDark
+                            ? Colors.white.withOpacity(glassOpacity)
+                            : Colors.white.withOpacity(glassOpacity),
+                        borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.white.withOpacity(borderOpacity)
+                              : Colors.white.withOpacity(borderOpacity),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+                            blurRadius: 40,
+                            offset: const Offset(-8, 0),
+                            spreadRadius: -10,
+                          ),
+                          if (isDark)
+                            BoxShadow(
+                              color: accentColor.withOpacity(0.08 + (isActivelyThinking ? pulseValue * 0.06 : 0.0)),
+                              blurRadius: 60 + (isActivelyThinking ? pulseValue * 20 : 0.0),
+                              spreadRadius: -5,
+                            ),
+                        ],
                       ),
+                      child: SafeArea(
+                        child: Column(
+                          children: [
+                            // Thinking display section (header integrated into ThinkingDisplay widget)
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 24), 
+                                child: Consumer(
+                                  builder: (context, ref, child) {
+                                    final conversationState = ref.watch(conversationProvider);
+                                    final settings = ref.watch(settingsProvider);
+                                    
+                                    if (!settings.showThinking) {
+                                      return _isRightDrawerExpanded
+                                          ? Center(
+                                              child: Text(
+                                                'Thinking display disabled in settings',
+                                                style: theme.textTheme.bodySmall?.copyWith(
+                                                  color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                                ),
+                                              ),
+                                            )
+                                          : const SizedBox.shrink();
+                                    }
+                                    
+                                    // Show different content based on expanded state
+                                    // Check if actively thinking (not just streaming response)
+                                    final isActivelyThinking = conversationState.streamingThinking != null && 
+                                                               conversationState.streamingThinking!.isNotEmpty;
+                                    
+                                    return AnimatedSwitcher(
+                                      duration: const Duration(milliseconds: 300),
+                                      transitionBuilder: (child, animation) {
+                                        return FadeTransition(
+                                          opacity: animation,
+                                          child: SlideTransition(
+                                            position: Tween<Offset>(
+                                              begin: const Offset(0.1, 0),
+                                              end: Offset.zero,
+                                            ).animate(CurvedAnimation(
+                                              parent: animation,
+                                              curve: Curves.easeOutCubic,
+                                            )),
+                                            child: child,
+                                          ),
+                                        );
+                                      },
+                                      child: _isRightDrawerExpanded
+                                          ? ThinkingDisplay(
+                                              key: const ValueKey('expanded'),
+                                              thinkingHistory: conversationState.thinkingHistory,
+                                              currentThinking: conversationState.streamingThinking,
+                                              isStreaming: isActivelyThinking,
+                                              scrollToMessageId: _scrollToThoughtId,
+                                            )
+                                          : _buildCollapsedThinkingIndicator(
+                                              context,
+                                              theme,
+                                              isActivelyThinking,
+                                              conversationState.thinkingHistory.length,
+                                            ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Subtle ambient glow indicator - no icons, pure atmosphere
+  /// Follows minimalism and progressive disclosure principles
+  Widget _buildCollapsedThinkingIndicator(
+    BuildContext context,
+    ThemeData theme,
+    bool isStreaming,
+    int thoughtCount,
+  ) {
+    final isDark = theme.brightness == Brightness.dark;
+    final purpleAccent = isDark ? const Color(0xFFB9A7E6) : const Color(0xFFB8A1EA);
+    
+    if (!isStreaming) {
+      return const SizedBox.shrink(); // Completely invisible when idle
+    }
+    
+    // Subtle vertical gradient bar on left edge with breathing glow
+    return Stack(
+      key: const ValueKey('collapsed'),
+      children: [
+        AnimatedBuilder(
+          animation: _glowAnimationController,
+          builder: (context, child) {
+            final pulseValue = _glowAnimation.value;
+            
+            return Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: Container(
+                width: 3,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      purpleAccent.withOpacity(0.0),
+                      purpleAccent.withOpacity(0.3 + pulseValue * 0.4), // Breathing center
+                      purpleAccent.withOpacity(0.0),
+                    ],
+                    stops: const [0.0, 0.5, 1.0],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: purpleAccent.withOpacity(0.2 + pulseValue * 0.3),
+                      blurRadius: 12 + (pulseValue * 8),
+                      spreadRadius: 2,
                     ),
                   ],
                 ),
               ),
-            ),
-          ),
+            );
+          },
         ),
-      );
+      ],
+    );
   }
 
   Widget _buildThoughtCard(BuildContext context, ThemeData theme, Color accentColor, {

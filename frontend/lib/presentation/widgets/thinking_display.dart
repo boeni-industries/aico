@@ -11,12 +11,14 @@ class ThinkingDisplay extends StatefulWidget {
   final List<ThinkingTurn> thinkingHistory; // From provider
   final String? currentThinking; // Currently streaming thinking
   final bool isStreaming;
+  final String? scrollToMessageId; // Message ID to scroll to
 
   const ThinkingDisplay({
     super.key,
     required this.thinkingHistory,
     this.currentThinking,
     this.isStreaming = false,
+    this.scrollToMessageId,
   });
 
   @override
@@ -45,6 +47,14 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
   void didUpdateWidget(ThinkingDisplay oldWidget) {
     super.didUpdateWidget(oldWidget);
     
+    // Scroll to specific thought if requested
+    if (widget.scrollToMessageId != null && widget.scrollToMessageId != oldWidget.scrollToMessageId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToThought(widget.scrollToMessageId!);
+      });
+      return;
+    }
+    
     // Auto-scroll to bottom when new content arrives
     // Simple logic: scroll when history changes or current thinking updates
     if (widget.thinkingHistory.length != oldWidget.thinkingHistory.length ||
@@ -59,6 +69,23 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
         }
       });
     }
+  }
+  
+  void _scrollToThought(String messageId) {
+    if (!_scrollController.hasClients) return;
+    
+    // Find the index of the thought with this message ID
+    final index = widget.thinkingHistory.indexWhere((t) => t.messageId == messageId);
+    if (index == -1) return;
+    
+    // Estimate position (each card is ~100px, adjust based on your actual card height)
+    final estimatedPosition = index * 100.0;
+    
+    _scrollController.animateTo(
+      estimatedPosition.clamp(0.0, _scrollController.position.maxScrollExtent),
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOutCubic,
+    );
   }
 
   @override
@@ -105,70 +132,58 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
           ),
         ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), // 8px grid
+      padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 20), // Extra bottom padding
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center, // Center the title
         children: [
-          // Icon with subtle animation - soft purple accent
+          // Elegant sparkles icon for thinking
           AnimatedBuilder(
             animation: _pulseAnimation,
             builder: (context, child) {
               return Opacity(
-                opacity: widget.isStreaming ? (0.6 + _pulseAnimation.value * 0.4) : 1.0,
+                opacity: widget.isStreaming ? (0.6 + _pulseAnimation.value * 0.4) : 0.8,
                 child: Icon(
-                  Icons.psychology,
-                  size: 18,
+                  Icons.auto_awesome_rounded, // Sparkles - more elegant
+                  size: 16,
                   color: purpleAccent,
                 ),
               );
             },
           ),
-          const SizedBox(width: 8), // 8px grid
+          const SizedBox(width: 10),
           Text(
             'Inner Monologue',
             style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.9),
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-              letterSpacing: 0.02, // AICO standard
+              color: theme.colorScheme.onSurface.withOpacity(0.8),
+              fontWeight: FontWeight.w500,
+              fontSize: 12,
+              letterSpacing: 0.5, // More spacing for elegance
             ),
           ),
-          const Spacer(),
-          if (widget.isStreaming)
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Pulsing dot with soft purple
-                AnimatedBuilder(
-                  animation: _pulseAnimation,
-                  builder: (context, child) {
-                    return Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: purpleAccent,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: purpleAccent.withOpacity(_pulseAnimation.value * 0.5),
-                            blurRadius: 4,
-                            spreadRadius: 1,
-                          ),
-                        ],
+          if (widget.isStreaming) ...[
+            const SizedBox(width: 10),
+            // Pulsing dot with soft purple
+            AnimatedBuilder(
+              animation: _pulseAnimation,
+              builder: (context, child) {
+                return Container(
+                  width: 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: purpleAccent,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: purpleAccent.withOpacity(_pulseAnimation.value * 0.6),
+                        blurRadius: 6,
+                        spreadRadius: 2,
                       ),
-                    );
-                  },
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Thinking',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: purpleAccent.withOpacity(0.9),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
+                    ],
                   ),
-                ),
-              ],
+                );
+              },
             ),
+          ],
         ],
       ),
     );
