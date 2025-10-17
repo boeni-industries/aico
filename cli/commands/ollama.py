@@ -130,8 +130,8 @@ def ollama_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
                 "aico ollama generate eve",
                 "aico ollama serve",
                 "aico ollama run llama3.2:3b",
-                "aico ollama show hermes3:8b",
-                "aico ollama models pull hermes3:8b",
+                "aico ollama show huihui_ai/qwen3-abliterated:8b-v2",
+                "aico ollama models pull huihui_ai/qwen3-abliterated:8b-v2",
                 "aico ollama models list"
             ]
         )
@@ -304,24 +304,30 @@ def generate(
     
     # Get modelfiles directory from user config
     try:
-        config_dir = AICOPaths.get_config_directory()
-        modelfiles_dir = config_dir / "modelfiles"
+        from datetime import datetime, timezone
+        import shutil
+        
+        # Project directory (source of truth for defaults)
+        project_root = Path(__file__).parent.parent.parent
+        project_modelfiles_dir = project_root / "config" / "modelfiles"
+        
+        # User config directory (Application Support - for customization)
+        user_modelfiles_dir = AICOPaths.get_config_directory() / "modelfiles"
+        
+        # Ensure user modelfiles directory exists
+        user_modelfiles_dir.mkdir(parents=True, exist_ok=True)
+        
+        if not project_modelfiles_dir.exists():
+            console.print(format_error(f"Project Modelfiles directory not found: {project_modelfiles_dir}"))
+            console.print("[yellow]This should not happen in a development environment.[/yellow]")
+            return
         
         # If no character name provided, list available characters
         if character_name is None:
             console.print("[bold cyan]Available Characters[/bold cyan]")
             
-            # Get all Modelfiles
-            modelfiles = sorted(modelfiles_dir.glob("Modelfile.*"))
-            
-            if not modelfiles:
-                console.print("[dim]No character Modelfiles found in user config directory[/dim]")
-                console.print(f"[dim]Location: {modelfiles_dir}[/dim]\n")
-                console.print("[yellow]Run the following command to copy default Modelfiles:[/yellow]")
-                console.print("[bold]  aico config init[/bold]\n")
-                console.print("[dim]Or create custom Modelfiles in the config directory[/dim]")
-                console.print()
-                return
+            # Get all Modelfiles from user directory
+            modelfiles = sorted(user_modelfiles_dir.glob("Modelfile.*"))
             
             # Create table for characters
             table = Table(
@@ -346,12 +352,48 @@ def generate(
             console.print()
             return
         
-        modelfile_path = modelfiles_dir / f"Modelfile.{character_name}"
+        # Paths for both project and user modelfiles
+        project_modelfile = project_modelfiles_dir / f"Modelfile.{character_name}"
+        user_modelfile = user_modelfiles_dir / f"Modelfile.{character_name}"
+        
+        # Sync logic: Ensure user has latest from project (unless customized)
+        if force:
+            # --force means: always use project version, no questions asked
+            if user_modelfile.exists():
+                console.print("[dim]Overwriting local Modelfile with project version (--force)[/dim]")
+            shutil.copy(project_modelfile, user_modelfile)
+        elif not user_modelfile.exists():
+            # First time - copy from project
+            console.print("[dim]Copying Modelfile from project to local config[/dim]")
+            shutil.copy(project_modelfile, user_modelfile)
+        else:
+            # Both exist - check timestamps (UTC to avoid timezone issues)
+            project_mtime = datetime.fromtimestamp(project_modelfile.stat().st_mtime, tz=timezone.utc)
+            user_mtime = datetime.fromtimestamp(user_modelfile.stat().st_mtime, tz=timezone.utc)
+            
+            if user_mtime > project_mtime:
+                # User's local version is newer (likely customized)
+                console.print("[yellow]⚠ Warning: Your local Modelfile is newer than the project version[/yellow]")
+                console.print(f"   Local:   {user_mtime.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                console.print(f"   Project: {project_mtime.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                console.print("\n[bold]This will replace your local Modelfile with the project version.[/bold]")
+                console.print("[dim]Any customizations you made will be lost.[/dim]")
+                
+                if not typer.confirm("\nAre you sure you want to continue?", default=False):
+                    console.print("[yellow]Cancelled. Using your local Modelfile.[/yellow]")
+                else:
+                    shutil.copy(project_modelfile, user_modelfile)
+                    console.print("[green]✓[/green] Updated local Modelfile from project")
+            elif project_mtime > user_mtime:
+                # Project is newer - auto-update
+                console.print("[dim]Updating local Modelfile from project (newer version available)[/dim]")
+                shutil.copy(project_modelfile, user_modelfile)
+        
+        # Use the user modelfile (which is now synced)
+        modelfile_path = user_modelfile
     except Exception as e:
         console.print(format_error(f"Failed to access Modelfile directory: {str(e)}"))
         return
-    
-    console.print(f"\n✨ [bold cyan]Generating Character Model: {character_name}[/bold cyan]")
     
     # Check if Modelfile exists
     if not modelfile_path.exists():
@@ -416,8 +458,23 @@ def generate(
         ) as progress:
             task = progress.add_task("Creating model (this may take a few minutes if downloading base model)...", total=None)
             
+            # Build command with --force flag if specified
+            cmd = [str(ollama_bin), "create", character_name, "-f", str(modelfile_path)]
+            if force:
+                # Remove existing model first to ensure clean regeneration
+                try:
+                    subprocess.run(
+                        [str(ollama_bin), "rm", character_name],
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    console.print(f"[dim]Removed existing '{character_name}' model[/dim]")
+                except:
+                    pass  # Model might not exist, that's fine
+            
             result = subprocess.run(
-                [str(ollama_bin), "create", character_name, "-f", str(modelfile_path)],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=300
@@ -465,12 +522,12 @@ def generate(
                 console.print(f"[yellow]⚠[/yellow] Could not update config automatically: {e}")
                 console.print(f"[dim]You can manually update core.yaml to use model '{character_name}'[/dim]")
             
-            # Prompt to restart modelservice
+            # Prompt to restart backend
             console.print(f"\n[bold yellow]⚠ Important:[/bold yellow]")
-            console.print(f"[yellow]Modelservice needs to be restarted to use the new character model.[/yellow]")
+            console.print(f"[yellow]Backend needs to be restarted to use the new character model.[/yellow]")
             console.print(f"\n[bold cyan]Next steps:[/bold cyan]")
-            console.print(f"  1. Restart modelservice: [bold]aico modelservice restart[/bold]")
-            console.print(f"  2. Or if not running: [bold]aico modelservice start[/bold]")
+            console.print(f"  1. Restart backend: [bold]aico gateway restart[/bold]")
+            console.print(f"  2. Test the character: Send a message in the UI")
             console.print(f"\n[dim]The new '{character_name}' model will be used for all conversations.[/dim]")
         else:
             console.print(format_error(f"Failed to create model. Exit code: {process.returncode}"))
@@ -544,7 +601,7 @@ def models_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             ],
             examples=[
                 "aico ollama models list",
-                "aico ollama models pull hermes3:8b",
+                "aico ollama models pull huihui_ai/qwen3-abliterated:8b-v2",
                 "aico ollama models pull llama3.2-vision:11b",
                 "aico ollama models remove old-model:latest"
             ]

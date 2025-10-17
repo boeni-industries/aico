@@ -127,8 +127,8 @@ modelservice:
     # Default models by capability role
     default_models:
       conversation:
-        name: "hermes3:8b"
-        description: "Nous Hermes 3 - Primary foundation model for character consistency"
+        name: "huihui_ai/qwen3-abliterated:8b-v2"
+        description: "Qwen3 Abliterated - Uncensored foundation model for character consistency"
         auto_pull: true
         priority: 1
       embedding:

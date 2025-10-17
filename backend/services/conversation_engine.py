@@ -105,6 +105,26 @@ class ConversationEngine(BaseService):
         self.response_timeout = engine_config.get("response_timeout_seconds", 15.0)
         self.default_response_mode = ResponseMode(engine_config.get("default_response_mode", "text_only"))
         
+        # Load conversation model name from configuration
+        # NO FALLBACK - fail loudly if model configuration is missing or invalid
+        modelservice_config = self.container.config.get("core.modelservice.ollama")
+        if not modelservice_config:
+            raise ValueError("CRITICAL: Missing core.modelservice.ollama configuration")
+        
+        default_models = modelservice_config.get("default_models")
+        if not default_models:
+            raise ValueError("CRITICAL: Missing core.modelservice.ollama.default_models configuration")
+        
+        conversation_model_config = default_models.get("conversation")
+        if not conversation_model_config:
+            raise ValueError("CRITICAL: Missing core.modelservice.ollama.default_models.conversation configuration")
+        
+        self.model_name = conversation_model_config.get("name")
+        if not self.model_name:
+            raise ValueError("CRITICAL: Missing core.modelservice.ollama.default_models.conversation.name - model name must be explicitly configured")
+        
+        self.logger.info(f"Conversation engine using model: {self.model_name}")
+        
 
     def get_active_features(self) -> List[str]:
         """Return a list of enabled AI integration features."""
@@ -473,7 +493,11 @@ class ConversationEngine(BaseService):
             system_prompt = self._build_system_prompt(user_context, memory_context)
             
             # Build messages for LLM
-            messages = [ModelConversationMessage(role="system", content=system_prompt)]
+            # IMPORTANT: Only add system message if we have contextual information to provide
+            # The Modelfile's SYSTEM instruction should be the primary character definition
+            messages = []
+            if system_prompt and system_prompt.strip():
+                messages.append(ModelConversationMessage(role="system", content=system_prompt))
             
             # Add conversation history as actual messages (not just in system prompt)
             if memory_context:
@@ -501,7 +525,7 @@ class ConversationEngine(BaseService):
             
             # Create and publish LLM request
             completions_request = CompletionsRequest(
-                model="hermes3:8b",
+                model=self.model_name,
                 messages=messages,
                 stream=True,
                 temperature=0.3,
@@ -658,10 +682,17 @@ class ConversationEngine(BaseService):
             self.logger.error(f"Error finalizing streaming response for {request_id}: {e}")
     
     def _build_system_prompt(self, user_context: UserContext, memory_context: Optional[Dict[str, Any]]) -> str:
-        """Build system prompt with memory context"""
-        prompt = """You are AICO, an AI companion. Be helpful, concise, and natural.
-
-IMPORTANT: Pay close attention to the conversation history. When the user asks about "he", "she", "it", or "they", refer to the most recently mentioned person or thing in the conversation."""
+        """Build system prompt with memory context
+        
+        NOTE: Character personality is defined in the Modelfile (e.g., Modelfile.eve).
+        This method only adds contextual information like memory facts, NOT character definition.
+        
+        Returns empty string if there's no contextual information to add, allowing the
+        Modelfile's SYSTEM instruction to be the sole system prompt.
+        """
+        # DO NOT define character here - that's in the Modelfile
+        # Only add contextual information that helps with the current conversation
+        prompt_parts = []
         
         # Add memory context if available
         if memory_context:
@@ -672,12 +703,20 @@ IMPORTANT: Pay close attention to the conversation history. When the user asks a
             
             if user_facts:
                 facts_text = "\n".join([f"- {fact.get('content', '')}" for fact in user_facts[-5:]])
-                prompt += f"\n\nKnown Facts About User:\n{facts_text}"
+                prompt_parts.append(f"Known Facts About User:\n{facts_text}")
                 print(f"🔍 [PROMPT_DEBUG] Added user facts to prompt")
         else:
             print(f"🔍 [PROMPT_DEBUG] NO memory_context provided!")
         
-        print(f"🔍 [PROMPT_DEBUG] Final system prompt:\n{prompt}")
+        # Only return a prompt if we have contextual information to add
+        # Otherwise return empty string to let Modelfile's SYSTEM be the only system instruction
+        prompt = "\n\n".join(prompt_parts) if prompt_parts else ""
+        
+        if prompt:
+            print(f"🔍 [PROMPT_DEBUG] Final system prompt:\n{prompt}")
+        else:
+            print(f"🔍 [PROMPT_DEBUG] No system prompt - using Modelfile's SYSTEM instruction only")
+        
         return prompt
     
     async def _handle_llm_response(self, response) -> None:
