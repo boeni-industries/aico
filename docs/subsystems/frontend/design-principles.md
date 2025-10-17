@@ -107,22 +107,32 @@ This document integrates all previous guidance—including your latest preferenc
 
 ## 3. Shape & Gestalt Concepts
 
-**Shape Language:**  
+**Shape Language - Floating Organic Forms:**  
 
-  - Rounded, soft rectangles for cards, panels, buttons (`16–24px` radius).
-  - Circular/elliptical zones for avatars and key emotion/status elements.
-  - Avoid sharp, angular geometry.
+  - **XLarge radius (36px)**: Main containers (conversation area, input field, drawers)
+  - **Large radius (28px)**: Message bubbles, thinking cards
+  - **Medium radius (20px)**: Standard cards, buttons
+  - **Small radius (12px)**: Chips, tags, small elements
+  - Circular/elliptical zones for avatars and key emotion/status elements
+  - **No hard edges** - everything flows with organic curves
+
+**Floating Composition:**
+
+  - Elements **float away from screen edges** with generous padding (16-40px)
+  - **Breathing room** between components (16-24px spacing)
+  - **No edge-to-edge panels** - everything has space to breathe
+  - Creates immersive 3D depth through layered elevation
 
 **Gestalt:**  
 
-  - Clear 1–2 level groupings; do not visually nest deeply.
-  - Action controls are horizontally clustered (at the bottom of cards or panels).
-  - Use soft drop shadows or gentle elevation—no harsh borders.
+  - Clear 1–2 level groupings; do not visually nest deeply
+  - Action controls are horizontally clustered (at the bottom of cards or panels)
+  - Multi-layer shadows create floating depth—no harsh borders
 
 **Element Consistency:**  
 
-  - All highlight states (focus, selected, pulsing) use the **soft purple accent**.
-  - Animated micro-interactions use breathing/pulse effects—never distracting.
+  - All highlight states (focus, selected, pulsing) use the **soft purple accent**
+  - Animated micro-interactions use breathing/pulse effects—never distracting
 
 ***
 
@@ -385,12 +395,183 @@ void _showEncryptionTest(BuildContext context) {
 
 ***
 
-## 13. Copy-Paste Reference Table
+## 13. Glassmorphism Design System
+
+### Core Principles
+
+**Frosted Glass Effect:**
+- Heavy backdrop blur (20-30px) for immersive depth
+- Semi-transparent surfaces (4-6% white in dark, 50-60% white in light)
+- Luminous borders (1.5px white with 10-40% opacity)
+- Multi-layer shadows for floating elevation
+
+**Visual Hierarchy Through Depth:**
+```
+Background (deepest)
+  ↓
+Floating Drawers (elevated panels)
+  ↓
+Main Content Cards (primary focus)
+  ↓
+Message Bubbles / Thinking Cards (content)
+  ↓
+Avatar & Input (highest elevation)
+```
+
+### Blur Values
+
+| Blur Level | Sigma Value | Usage |
+|------------|-------------|-------|
+| Heavy | 30px | Main containers, drawers |
+| Medium | 20px | Cards, overlays |
+| Light | 10px | Subtle effects |
+
+### Glass Card Specifications
+
+**Dark Mode:**
+```dart
+BoxDecoration(
+  color: Colors.white.withOpacity(0.04-0.06),
+  borderRadius: BorderRadius.circular(36), // XLarge
+  border: Border.all(
+    color: Colors.white.withOpacity(0.1),
+    width: 1.5,
+  ),
+  boxShadow: [
+    // Floating depth
+    BoxShadow(
+      color: Colors.black.withOpacity(0.4),
+      blurRadius: 40,
+      offset: Offset(0, 20),
+      spreadRadius: -10,
+    ),
+    // Ambient glow (optional)
+    BoxShadow(
+      color: accentColor.withOpacity(0.1),
+      blurRadius: 60,
+      spreadRadius: -5,
+    ),
+  ],
+)
+```
+
+**Light Mode:**
+```dart
+BoxDecoration(
+  color: Colors.white.withOpacity(0.5-0.6),
+  borderRadius: BorderRadius.circular(36),
+  border: Border.all(
+    color: Colors.white.withOpacity(0.3-0.4),
+    width: 1.5,
+  ),
+  boxShadow: [
+    BoxShadow(
+      color: Colors.black.withOpacity(0.08),
+      blurRadius: 40,
+      offset: Offset(0, 20),
+      spreadRadius: -10,
+    ),
+  ],
+)
+```
+
+### Floating Layout Specifications
+
+**Main Content Area:**
+- Horizontal padding: 40px from screen edges
+- Vertical padding: 20px top/bottom
+- Spacing between elements: 16-24px
+
+**Drawers:**
+- Padding from edges: 16px all sides
+- Border radius: 36px (XLarge)
+- Width: 72px collapsed, 240-300px expanded
+
+**Avatar:**
+- Padding: 16px container padding
+- Rings: 3.0px outer, 1.8px inner borders
+- Dark contrast shadows for definition against glow
+- Mood-colored radial gradient overlay (8-18% opacity at edges)
+
+**Message Bubbles:**
+- Border radius: 28px (Large)
+- Padding: 16-20px horizontal, 14-16px vertical
+- Spacing: 12px between bubbles
+- Same glassmorphism as main containers
+
+### Ambient Glow System
+
+**Pulsing Glow (Animated):**
+```dart
+GlassTheme.pulsingGlow(
+  color: accentColor,
+  animationValue: 0.0-1.0,
+  baseIntensity: 0.15,
+  pulseIntensity: 0.35,
+)
+```
+
+**Static Ambient Glow:**
+```dart
+GlassTheme.ambientGlow(
+  color: accentColor,
+  intensity: 0.1-0.3,
+  blur: 16-60,
+)
+```
+
+### Depth Through Shadows
+
+**Floating Cards (Main Content):**
+- Blur: 40px
+- Offset: (0, 20)
+- Spread: -10px (negative for tight shadow)
+- Opacity: 40% dark mode, 8% light mode
+
+**Drawers (Side Panels):**
+- Blur: 40px
+- Offset: (±8, 0) horizontal
+- Spread: -10px
+- Opacity: 40% dark mode, 8% light mode
+
+**Message Bubbles:**
+- Blur: 20px
+- Offset: (0, 6)
+- Spread: -4px
+- Opacity: 30% dark mode, 8% light mode
+
+### Empty States & Invitations
+
+**Immersive, Not Corporate:**
+- ❌ "Start a conversation" (boring, corporate)
+- ✅ "I'm listening..." (warm, present, inviting)
+- Use pulsing glows and animated icons
+- Italic, light typography for softness
+- Mood-aware colors that connect to avatar state
+
+### Avatar Ring Enhancements
+
+**Ring Contrast Against Glow:**
+- Outer ring: 3.0px border, 75-95% opacity
+- Inner ring: 1.8px border, 65-80% opacity
+- Dark contrast shadow behind rings (8px blur, -2px spread)
+- Prevents rings from getting lost in bright ambient glow
+
+**Radial Gradient Overlay:**
+- 0-40%: Transparent (center stays clear)
+- 70%: 8% mood color opacity
+- 100%: 18% mood color opacity (edges)
+- Creates seamless transition from rings to avatar
+
+## 14. Copy-Paste Reference Table
 
 | Section      | Principle/Rule                                                        |
 |--------------|-----------------------------------------------------------------------|
 | Color        | White base, soft purple highlights, minimal color elsewhere           |
-| Shape        | Rounded rects/circles, soft elevation, no harsh borders               |
+| Shape        | Organic curves (36px XL, 28px L, 20px M, 12px S), no hard edges      |
+| Layout       | Floating composition, 16-40px padding from edges, breathing room      |
+| Glassmorphism| Heavy blur (20-30px), semi-transparent, luminous borders, depth      |
+| Shadows      | Multi-layer (40px blur, -10px spread), floating elevation             |
 | Gestalt      | 1–2 grouping levels, horizontal action rows, distinct layers          |
 | Typography   | Inter, minimal weights, spaced for clarity                            |
 | UI Flow      | No-barrier start, flat navigation, immediate affordances              |
