@@ -649,10 +649,8 @@ class ConversationEngine(BaseService):
             ai_message.text = final_content
             ai_message.turn_number = 1  # Simple turn tracking
             
-            # Store thinking in metadata if present
-            if thinking_content:
-                ai_message.metadata.update({"thinking": thinking_content})
-                print(f"💬 [CONVERSATION_ENGINE] 💭 Stored thinking in message metadata ({len(thinking_content)} chars)")
+            # NOTE: Thinking is already delivered via streaming chunks with content_type="thinking"
+            # No need to store it in the final message - frontend handles it during streaming
             
             # Create ConversationMessage for API layer (with message_id)
             from aico.proto.aico_conversation_pb2 import ConversationMessage
