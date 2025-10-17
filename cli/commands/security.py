@@ -1204,6 +1204,7 @@ def role_show(
         from aico.security.key_manager import AICOKeyManager
         from aico.data.libsql.encrypted import EncryptedLibSQLConnection
         from aico.core.authorization import AuthorizationService
+        from aico.core.topics import AICOTopics
         
         config_manager = ConfigurationManager()
         db_config = config_manager.get("database.libsql", {})
@@ -1245,7 +1246,7 @@ def role_show(
             
             # Add permission descriptions
             perm_descriptions = {
-                AICOTopics.ALL_ADMIN: "Full administrative access",
+                "admin/*": "Full administrative access",
                 AICOTopics.ALL_SYSTEM: "System management operations",
                 AICOTopics.ALL_LOGS: "Log management and access",
                 "config/*": "Configuration management",
@@ -1255,7 +1256,7 @@ def role_show(
                 "memory/read": "Read memory data",
                 "personality/read": "Read personality data",
                 "profile/*": "Profile management",
-                AICOTopics.SYSTEM_HEALTH: "Health check access",
+                AICOTopics.SYSTEM_HEALTH_CHECK: "Health check access",
                 "logs/write": "Write log entries",
                 "events/*": "Event handling",
                 "debug/*": "Debug operations"
