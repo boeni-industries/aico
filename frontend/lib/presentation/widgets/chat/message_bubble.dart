@@ -33,7 +33,7 @@ class _MessageBubbleState extends State<MessageBubble>
   bool _transitionScheduled = false;
   DateTime? _thinkingStartTime;
   Timer? _rebuildTimer;
-  static const Duration _minThinkingDuration = Duration(milliseconds: 3000); // Minimum 3s display
+  static const Duration _minThinkingDuration = Duration(milliseconds: 1500); // Minimum 1.5s display for smooth UX
 
   @override
   void initState() {
@@ -89,7 +89,7 @@ class _MessageBubbleState extends State<MessageBubble>
       });
     }
     
-    // Detect when streaming ends (thinking state changes from true to false)
+    // Detect when streaming starts producing visible content (first chunk arrives)
     if (_wasThinking && !widget.isThinking && widget.content.isNotEmpty && !_transitionScheduled) {
       _transitionScheduled = true;
       
@@ -166,23 +166,28 @@ class _MessageBubbleState extends State<MessageBubble>
           return Stack(
             clipBehavior: Clip.none,
             children: [
-              // Text bubble (BOTTOM LAYER - gives Stack a size)
-              widget.content.isNotEmpty
-                  ? _buildTextBubble(theme)
-                  : Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: theme.dividerColor.withOpacity(0.1)),
-                      ),
-                      child: const SizedBox(
-                        width: double.infinity,
-                        height: 40, // Minimum height for thinking bubble
-                      ),
-                    ),
+              // Text bubble (BOTTOM LAYER - always present for proper sizing)
+              if (widget.content.isNotEmpty)
+                Opacity(
+                  opacity: _fadeController.isAnimating 
+                      ? (1.0 - _bubbleFadeOut.value).clamp(0.0, 1.0) // Fade in as particles fade out
+                      : 0.0, // Stay invisible during thinking phase
+                  child: _buildTextBubble(theme),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const SizedBox(
+                    width: double.infinity,
+                    height: 40, // Minimum height for thinking bubble
+                  ),
+                ),
 
-              // Thinking bubble ON TOP (TOP LAYER - no background, just particles)
+              // Thinking bubble ON TOP (TOP LAYER - particles overlay text)
               if (shouldShowThinking || (_fadeController.isAnimating && _bubbleFadeOut.value > 0))
                 Positioned.fill(
                   child: IgnorePointer(

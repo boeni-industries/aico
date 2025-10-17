@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui';
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
@@ -115,7 +114,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     
     // Listen for conversation changes to auto-scroll
     ref.listen<ConversationState>(conversationProvider, (previous, next) {
-      // Auto-scroll when new messages are added OR when message content changes (streaming)
+      // Auto-scroll when new messages are added OR when content/thinking changes (streaming)
       if (previous != null) {
         bool shouldScroll = false;
         
@@ -124,7 +123,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           shouldScroll = true;
         }
         
-        // Message content updated (streaming)
+        // Message content updated (streaming response)
         else if (next.messages.length == previous.messages.length && next.messages.isNotEmpty) {
           // Check if the last message content has changed (streaming update)
           final lastMessage = next.messages.last;
@@ -134,6 +133,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               lastMessage.content != previousLastMessage.content) {
             shouldScroll = true;
           }
+        }
+        
+        // Thinking content updated (streaming inner monologue) - also trigger scroll
+        if (next.isStreaming && next.streamingThinking != previous.streamingThinking) {
+          shouldScroll = true;
         }
         
         if (shouldScroll) {
@@ -397,7 +401,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // Stronger blur for visible frost
+          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30), // Stronger blur for more depth
           child: Stack(
             children: [
               Container(
@@ -473,11 +477,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ],
         ),
                 ),
-                // Noise texture overlay for frosted glass effect
+                // Grain texture overlay for frosted glass effect
                 Positioned.fill(
                   child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: NoisePainter(opacity: isDark ? 0.04 : 0.02),
+                    child: Opacity(
+                      opacity: isDark ? 0.25 : 0.20,
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          image: DecorationImage(
+                            image: AssetImage('assets/images/noise_tile.png'),
+                            repeat: ImageRepeat.repeat,
+                            filterQuality: FilterQuality.medium,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -493,7 +506,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     
     return ClipRect(
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // Stronger blur for visible frost
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // Match left drawer blur strength
         child: Stack(
           children: [
             Container(
@@ -511,63 +524,86 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     width: 1.5,
                   ),
                 ),
-            // Subtle glow in dark mode
-            boxShadow: isDark ? [
-              BoxShadow(
-                color: theme.colorScheme.outline.withOpacity(0.05),
-                blurRadius: 12,
-                spreadRadius: 0,
+                // Enhanced shadows for depth
+                boxShadow: isDark ? [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 20,
+                    spreadRadius: 0,
+                    offset: const Offset(0, 4),
+                  ),
+                  BoxShadow(
+                    color: theme.colorScheme.outline.withOpacity(0.1),
+                    blurRadius: 8,
+                    spreadRadius: 0,
+                  ),
+                ] : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.15),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                  BoxShadow(
+                    color: theme.colorScheme.shadow.withOpacity(0.05),
+                    blurRadius: 8,
+                    offset: const Offset(-2, 0),
+                  ),
+                ],
               ),
-            ] : [
-              BoxShadow(
-                color: theme.colorScheme.shadow.withOpacity(0.1),
-                blurRadius: 8,
-                offset: const Offset(-2, 0),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            child: Column(
-              children: [
-                // Thinking display section (header integrated into ThinkingDisplay widget)
-                Expanded(
-                  child: _isRightDrawerExpanded
-                      ? Consumer(
-                          builder: (context, ref, child) {
-                            final conversationState = ref.watch(conversationProvider);
-                            final settings = ref.watch(settingsProvider);
-                            
-                            // Following AICO guidelines: Data from provider (Single Source of Truth)
-                            // No need for Visibility hack - widget is stateless presentation
-                            if (!settings.showThinking) {
-                              return Center(
-                                child: Text(
-                                  'Thinking display disabled in settings',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurface.withOpacity(0.5),
-                                  ),
-                                ),
-                              );
-                            }
-                            
-                            return ThinkingDisplay(
-                              thinkingHistory: conversationState.thinkingHistory,
-                              currentThinking: conversationState.streamingThinking,
-                              isStreaming: conversationState.isStreaming,
-                            );
-                          },
-                        )
-                      : const SizedBox.shrink(),
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    // Thinking display section (header integrated into ThinkingDisplay widget)
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 24), // Add bottom padding for even spacing
+                        child: _isRightDrawerExpanded
+                            ? Consumer(
+                                builder: (context, ref, child) {
+                                  final conversationState = ref.watch(conversationProvider);
+                                  final settings = ref.watch(settingsProvider);
+                                  
+                                  // Following AICO guidelines: Data from provider (Single Source of Truth)
+                                  // No need for Visibility hack - widget is stateless presentation
+                                  if (!settings.showThinking) {
+                                    return Center(
+                                      child: Text(
+                                        'Thinking display disabled in settings',
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  
+                                  return ThinkingDisplay(
+                                    thinkingHistory: conversationState.thinkingHistory,
+                                    currentThinking: conversationState.streamingThinking,
+                                    isStreaming: conversationState.isStreaming,
+                                  );
+                                },
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-            ),
-            // Noise texture overlay for frosted glass effect
+            // Grain texture overlay for frosted glass effect
             Positioned.fill(
               child: IgnorePointer(
-                child: CustomPaint(
-                  painter: NoisePainter(opacity: isDark ? 0.04 : 0.02),
+                child: Opacity(
+                  opacity: isDark ? 0.12 : 0.08,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      image: DecorationImage(
+                        image: AssetImage('assets/images/noise_tile.png'),
+                        repeat: ImageRepeat.repeat,
+                        filterQuality: FilterQuality.medium,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -751,18 +787,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     width: 1.5,
                   ),
                 ),
-            // Subtle glow in dark mode
+            // Enhanced shadows for depth
             boxShadow: isDark ? [
               BoxShadow(
-                color: theme.colorScheme.outline.withOpacity(0.05),
-                blurRadius: 12,
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                spreadRadius: 0,
+                offset: const Offset(0, 4),
+              ),
+              BoxShadow(
+                color: theme.colorScheme.outline.withOpacity(0.1),
+                blurRadius: 8,
                 spreadRadius: 0,
               ),
             ] : [
               BoxShadow(
-                color: theme.colorScheme.shadow.withOpacity(0.1),
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+              BoxShadow(
+                color: theme.colorScheme.shadow.withOpacity(0.05),
                 blurRadius: 8,
-                offset: const Offset(2, 0),
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -836,11 +883,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
             ),
-            // Noise texture overlay for frosted glass effect
+            // Grain texture overlay for frosted glass effect
             Positioned.fill(
               child: IgnorePointer(
-                child: CustomPaint(
-                  painter: NoisePainter(opacity: isDark ? 0.04 : 0.02),
+                child: Opacity(
+                  opacity: isDark ? 0.12 : 0.08,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      image: DecorationImage(
+                        image: AssetImage('assets/images/noise_tile.png'),
+                        repeat: ImageRepeat.repeat,
+                        filterQuality: FilterQuality.medium,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1065,42 +1121,4 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-/// Custom painter that adds subtle grain texture for frosted glass effect
-class NoisePainter extends CustomPainter {
-  final double opacity;
-  final math.Random _random = math.Random(42); // Fixed seed for consistent pattern
-
-  NoisePainter({this.opacity = 0.03});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint();
-    
-    // Much more subtle grain - reduce density by 95% (was /4, now /80)
-    // This creates a barely-there texture that enhances depth without being busy
-    final grainCount = (size.width * size.height / 80).toInt();
-    
-    for (var i = 0; i < grainCount; i++) {
-      final x = _random.nextDouble() * size.width;
-      final y = _random.nextDouble() * size.height;
-      
-      // More uniform brightness (0.5-1.0 range instead of 0-1.0)
-      // This prevents dark spots that create visual noise
-      final brightness = 0.5 + (_random.nextDouble() * 0.5);
-      
-      paint.color = Color.fromRGBO(
-        255,
-        255,
-        255,
-        opacity * brightness,
-      );
-      
-      // Slightly smaller grain size for finer texture
-      canvas.drawCircle(Offset(x, y), 0.3, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(NoisePainter oldDelegate) => false;
-}
 

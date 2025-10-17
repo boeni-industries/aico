@@ -95,7 +95,7 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
     
     return Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withOpacity(isDark ? 0.2 : 0.3),
+        color: Colors.transparent, // No background - let frosted glass show through
         border: Border(
           bottom: BorderSide(
             color: theme.colorScheme.outline.withOpacity(0.12),
@@ -272,10 +272,9 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
       child: Container(
         padding: const EdgeInsets.all(16), // 8px grid: 2×8
         decoration: BoxDecoration(
-          // Dark mode: lighter surface = elevated (Material Design 3)
-          // Light mode: subtle tint
+          // Transparent background to show frosted glass effect
           color: isDark
-              ? theme.colorScheme.surfaceContainerHighest // Lighter = elevated in dark mode
+              ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.15) // Semi-transparent
               : theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
           borderRadius: BorderRadius.circular(16), // AICO standard: 16-24px
           // Subtle border - more visible in dark mode
@@ -364,7 +363,7 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
             SelectableText(
               turn.content.trim(),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.6), // ← MUTED
+                color: theme.colorScheme.onSurface.withOpacity(0.6), // Muted for secondary information
                 height: 1.5, // AICO: 1.5× font size line-height
                 fontSize: 13, // Slightly larger for better readability
                 letterSpacing: 0.02, // AICO standard
