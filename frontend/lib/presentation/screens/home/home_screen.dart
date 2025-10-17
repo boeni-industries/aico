@@ -37,7 +37,7 @@ enum NavigationPage {
 class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStateMixin {
   bool _isRightDrawerOpen = true;
   bool _isRightDrawerExpanded = false; // true = expanded, false = collapsed to icons
-  bool _isLeftDrawerExpanded = true; // true = expanded with text, false = collapsed to icons only
+  bool _isLeftDrawerExpanded = false; // Start collapsed for more space
   NavigationPage _currentPage = NavigationPage.home;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _conversationController = ScrollController();
@@ -231,28 +231,44 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
         ), // Close AnimatedBuilder
       floatingActionButton: Stack(
         children: [
-        // Right drawer toggle - always positioned on drawer edge, vertically centered
+        // Right drawer toggle - positioned at drawer edge
         if (isDesktop && _isRightDrawerOpen)
           Positioned(
-            right: _isRightDrawerExpanded ? 284 : 56, // Stick to drawer edge with proper offset
-            top: MediaQuery.of(context).size.height / 2 - 24, // Always vertically centered
+            right: _isRightDrawerExpanded ? 316 : 88, // Account for drawer width + padding
+            top: MediaQuery.of(context).size.height / 2 - 16,
             child: Container(
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(12),
-                  bottomLeft: Radius.circular(12),
-                ),
+                color: theme.brightness == Brightness.dark
+                    ? Colors.white.withOpacity(0.06)
+                    : Colors.white.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: theme.dividerColor.withValues(alpha: 0.2),
+                  color: theme.brightness == Brightness.dark
+                      ? Colors.white.withOpacity(0.1)
+                      : Colors.white.withOpacity(0.3),
+                  width: 1,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.3 : 0.1),
+                    blurRadius: 8,
+                    offset: const Offset(-2, 0),
+                  ),
+                ],
               ),
               child: IconButton(
+                padding: EdgeInsets.zero,
+                iconSize: 16,
                 onPressed: () => setState(() => _isRightDrawerExpanded = !_isRightDrawerExpanded),
-                icon: Icon(_isRightDrawerExpanded ? Icons.chevron_right : Icons.chevron_left),
-                tooltip: _isRightDrawerExpanded ? 'Collapse thoughts' : 'Expand thoughts',
+                icon: Icon(
+                  _isRightDrawerExpanded ? Icons.chevron_right : Icons.chevron_left,
+                  size: 16,
+                ),
+                tooltip: _isRightDrawerExpanded ? 'Collapse' : 'Expand',
                 style: IconButton.styleFrom(
-                  foregroundColor: theme.colorScheme.onSurface,
+                  foregroundColor: theme.colorScheme.onSurface.withOpacity(0.6),
                 ),
               ),
             ),
@@ -313,7 +329,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
       animation: _glowAnimationController,
       builder: (context, child) {
         return Container(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(16),
           child: Container(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
@@ -334,6 +350,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   Widget _buildConversationArea(BuildContext context, ThemeData theme, Color accentColor) {
     final conversationState = ref.watch(conversationProvider);
     final isDark = theme.brightness == Brightness.dark;
+    final avatarState = ref.watch(avatarRingStateProvider);
+    final avatarMoodColor = _getAvatarMoodColor(avatarState.mode, isDark);
     
     if (conversationState.isLoading) {
       return Center(
@@ -403,42 +421,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
 
     if (conversationState.messages.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: GlassTheme.ambientGlow(
-                  color: accentColor,
-                  intensity: 0.3,
-                  blur: 30,
+        child: AnimatedBuilder(
+          animation: _glowAnimationController,
+          builder: (context, child) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: GlassTheme.pulsingGlow(
+                      color: avatarMoodColor,
+                      animationValue: _glowAnimation.value,
+                      baseIntensity: 0.15,
+                      pulseIntensity: 0.35,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.waving_hand_rounded,
+                    size: 32,
+                    color: avatarMoodColor.withOpacity(0.8),
+                  ),
                 ),
-              ),
-              child: Icon(
-                Icons.chat_bubble_outline_rounded,
-                size: 64,
-                color: accentColor,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Start a conversation',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Share what\'s on your mind...',
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.6),
-                letterSpacing: 0.2,
-              ),
-            ),
-          ],
+                const SizedBox(height: 20),
+                Text(
+                  'I\'m listening...',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w300,
+                    letterSpacing: 0.5,
+                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       );
     }
@@ -463,23 +481,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
           child: Scrollbar(
             controller: _conversationController,
             thumbVisibility: true,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 16), // Add padding to prevent scrollbar overlap
-              child: ListView.builder(
-                controller: _conversationController,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-                itemCount: conversationState.messages.length,
-                itemBuilder: (context, index) {
-                  final message = conversationState.messages[index];
-                  // Convert domain Message to presentation ConversationMessage
-                  final conversationMessage = ConversationMessage(
-                    isFromAico: message.userId == 'aico',
-                    message: message.content,
-                    timestamp: message.timestamp,
-                  );
-                  return _buildMessageBubble(context, theme, accentColor, conversationMessage);
-                },
-              ),
+            child: ListView.builder(
+              controller: _conversationController,
+              padding: const EdgeInsets.all(24),
+              itemCount: conversationState.messages.length,
+              itemBuilder: (context, index) {
+                final message = conversationState.messages[index];
+                // Convert domain Message to presentation ConversationMessage
+                final conversationMessage = ConversationMessage(
+                  isFromAico: message.userId == 'aico',
+                  message: message.content,
+                  timestamp: message.timestamp,
+                );
+                return _buildMessageBubble(context, theme, accentColor, conversationMessage);
+              },
             ),
           ),
         ),
@@ -523,7 +538,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     final isActive = conversationState.isSendingMessage || conversationState.isStreaming;
     
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 12),
       child: AnimatedBuilder(
         animation: _glowAnimationController,
         builder: (context, child) {
@@ -1214,13 +1229,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
         // Main floating content area with organic padding
         Positioned.fill(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
+            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
             child: Column(
               children: [
                 // Floating avatar with ambient space
                 _buildAvatarHeader(context, theme, accentColor),
                 
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 
                 // Floating conversation card
                 Expanded(
@@ -1264,7 +1279,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                   ),
                 ),
                 
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 
                 // Floating input area
                 _buildInputArea(context, theme, accentColor),
