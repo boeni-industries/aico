@@ -55,6 +55,14 @@ class _MessageBubbleState extends State<MessageBubble>
     _wasThinking = widget.isThinking;
     if (widget.isThinking) {
       _thinkingStartTime = DateTime.now();
+      // Start timer to force rebuilds every 100ms to check time
+      _rebuildTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+        if (mounted) {
+          setState(() {
+            // Just trigger rebuild to check time
+          });
+        }
+      });
     }
     
     // Listen for fade completion
@@ -89,8 +97,9 @@ class _MessageBubbleState extends State<MessageBubble>
       });
     }
     
-    // Detect when streaming starts producing visible content (first chunk arrives)
-    if (_wasThinking && !widget.isThinking && widget.content.isNotEmpty && !_transitionScheduled) {
+    // Detect when thinking phase fully completes (isThinking becomes false)
+    // This happens when both thinking AND response streaming are done
+    if (_wasThinking && !widget.isThinking && !_transitionScheduled) {
       _transitionScheduled = true;
       
       // Calculate how long particles have been showing
@@ -148,9 +157,12 @@ class _MessageBubbleState extends State<MessageBubble>
   }
 
   Widget _buildThinkingOrTransition(ThemeData theme) {
-    // Check if we should still show thinking bubble based on time
-    final shouldShowThinking = _thinkingStartTime != null &&
-        DateTime.now().difference(_thinkingStartTime!) < _minThinkingDuration;
+    // Show thinking bubble if:
+    // 1. Still actively thinking (widget.isThinking = true), OR
+    // 2. Within minimum display duration (to prevent flashing)
+    final shouldShowThinking = widget.isThinking || 
+        (_thinkingStartTime != null &&
+         DateTime.now().difference(_thinkingStartTime!) < _minThinkingDuration);
     
     // Stop timer once we're past the minimum duration (fade is triggered elsewhere)
     if (!shouldShowThinking && _rebuildTimer != null && !_fadeController.isAnimating) {
@@ -203,8 +215,14 @@ class _MessageBubbleState extends State<MessageBubble>
       );
     }
 
-    // Just show text bubble
-    return _buildTextBubble(theme);
+    // After thinking/transition completes, show text bubble only if there's content
+    // (prevents showing empty bubble before particles start)
+    if (widget.content.isNotEmpty) {
+      return _buildTextBubble(theme);
+    }
+    
+    // No content yet - show nothing (particles will appear when shouldShowThinking becomes true)
+    return const SizedBox.shrink();
   }
 
   Widget _buildTextBubble(ThemeData theme) {

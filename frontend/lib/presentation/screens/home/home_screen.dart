@@ -370,15 +370,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           conversationState.messages.last.timestamp == message.timestamp;
     
     // Show thinking particles when:
-    // 1. Thinking content is streaming (inner monologue)
-    // 2. OR response is streaming (actual answer being generated)
-    // 3. OR we have thinking content but message is still empty/incomplete
-    // This ensures particles appear as soon as thinking starts and continue until response is complete
+    // 1. Message is being sent (isSendingMessage)
+    // 2. OR thinking content is streaming but response hasn't started yet (streamingThinking active + no content)
+    // Stop particles when response content starts arriving
     final hasThinkingContent = conversationState.streamingThinking != null && 
                                conversationState.streamingThinking!.isNotEmpty;
+    final responseHasStarted = message.message.isNotEmpty;
+    
     final isStreamingOrProcessing = conversationState.isSendingMessage || 
-                                    conversationState.isStreaming ||
-                                    hasThinkingContent;
+                                    (hasThinkingContent && !responseHasStarted);
     
     final isThinking = message.isFromAico && 
                        isLastMessage && 
@@ -481,7 +481,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 Positioned.fill(
                   child: IgnorePointer(
                     child: Opacity(
-                      opacity: isDark ? 0.25 : 0.20,
+                      opacity: isDark ? 0.12 : 0.08,
                       child: Container(
                         decoration: const BoxDecoration(
                           image: DecorationImage(
