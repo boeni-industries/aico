@@ -112,7 +112,7 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
     );
   }
 
-  /// Integrated header - AICO design principles
+  /// Floating header - Modern glassmorphic design (no nested borders)
   Widget _buildIntegratedHeader(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -122,59 +122,50 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
         ? const Color(0xFFB9A7E6)
         : const Color(0xFFB8A1EA);
     
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.transparent, // No background - let frosted glass show through
-        border: Border(
-          bottom: BorderSide(
-            color: theme.colorScheme.outline.withOpacity(0.12),
-            width: 1,
-          ),
-        ),
-      ),
-      padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 20), // Extra bottom padding
+    return Padding(
+      padding: const EdgeInsets.only(left: 20, right: 20, top: 16, bottom: 24),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center, // Center the title
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           // Elegant sparkles icon for thinking
           AnimatedBuilder(
             animation: _pulseAnimation,
             builder: (context, child) {
               return Opacity(
-                opacity: widget.isStreaming ? (0.6 + _pulseAnimation.value * 0.4) : 0.8,
+                opacity: widget.isStreaming ? (0.6 + _pulseAnimation.value * 0.4) : 0.7,
                 child: Icon(
-                  Icons.auto_awesome_rounded, // Sparkles - more elegant
-                  size: 16,
+                  Icons.auto_awesome_rounded,
+                  size: 14,
                   color: purpleAccent,
                 ),
               );
             },
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Text(
             'Inner Monologue',
             style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.8),
+              color: theme.colorScheme.onSurface.withOpacity(0.6),
               fontWeight: FontWeight.w500,
-              fontSize: 12,
-              letterSpacing: 0.5, // More spacing for elegance
+              fontSize: 11,
+              letterSpacing: 0.8,
             ),
           ),
           if (widget.isStreaming) ...[
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             // Pulsing dot with soft purple
             AnimatedBuilder(
               animation: _pulseAnimation,
               builder: (context, child) {
                 return Container(
-                  width: 5,
-                  height: 5,
+                  width: 4,
+                  height: 4,
                   decoration: BoxDecoration(
                     color: purpleAccent,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: purpleAccent.withOpacity(_pulseAnimation.value * 0.6),
+                        color: purpleAccent.withOpacity(_pulseAnimation.value * 0.4),
                         blurRadius: 6,
                         spreadRadius: 2,
                       ),
@@ -285,7 +276,7 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
         : const Color(0xFFB8A1EA);
     
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 12),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(GlassTheme.radiusLarge),
         child: BackdropFilter(
@@ -296,39 +287,16 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              // Immersive glassmorphism
+              // Subtle background only - no borders (Apple/Microsoft pattern)
               color: isCurrentTurn
                   ? (isDark
-                      ? purpleAccent.withOpacity(0.12)
-                      : purpleAccent.withOpacity(0.08))
+                      ? purpleAccent.withOpacity(0.08)
+                      : purpleAccent.withOpacity(0.06))
                   : (isDark
-                      ? Colors.white.withOpacity(0.06)
-                      : Colors.white.withOpacity(0.5)),
+                      ? Colors.white.withOpacity(0.04)
+                      : Colors.white.withOpacity(0.03)),
               borderRadius: BorderRadius.circular(GlassTheme.radiusLarge),
-              // Luminous border
-              border: Border.all(
-                color: isCurrentTurn
-                    ? purpleAccent.withOpacity(isDark ? 0.4 : 0.3)
-                    : (isDark
-                        ? Colors.white.withOpacity(0.1)
-                        : Colors.white.withOpacity(0.3)),
-                width: 1.5,
-              ),
-              // Ambient glow with depth
-              boxShadow: [
-                if (isCurrentTurn && isDark) ...
-                  GlassTheme.ambientGlow(
-                    color: purpleAccent,
-                    intensity: 0.15,
-                    blur: 16,
-                  ),
-                BoxShadow(
-                  color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
-                  blurRadius: 20,
-                  offset: const Offset(0, 6),
-                  spreadRadius: -4,
-                ),
-              ],
+              // No border - content floats within drawer
             ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
