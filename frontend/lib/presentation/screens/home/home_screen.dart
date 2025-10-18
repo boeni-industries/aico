@@ -14,6 +14,7 @@ import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart';
 import 'package:aico_frontend/presentation/widgets/chat/message_bubble.dart';
 import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
+import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -42,6 +43,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _conversationController = ScrollController();
   final FocusNode _messageFocusNode = FocusNode();
+  final GlobalKey _sendButtonKey = GlobalKey();
+  final GlobalKey _voiceButtonKey = GlobalKey();
   Timer? _typingTimer;
   bool _isUserTyping = false;
   String? _scrollToThoughtId; // Track which thought to scroll to
@@ -178,34 +181,58 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
           animation: _backgroundAnimationController,
           builder: (context, child) {
             return Container(
-              // Immersive animated background with organic gradients
+              // Rich depth gradient - subtle purple/blue tones for glassmorphism
               decoration: BoxDecoration(
                 gradient: RadialGradient(
-                  center: Alignment(
-                    math.sin(_backgroundAnimationController.value * 2 * math.pi) * 0.3,
-                    -0.6 + math.cos(_backgroundAnimationController.value * 2 * math.pi) * 0.1,
-                  ),
-                  radius: 1.8,
+                  center: const Alignment(0, -0.4),
+                  radius: 1.2,
                   colors: theme.brightness == Brightness.dark
                       ? [
-                          // Dark mode: deep space with mood radiation
-                          Color.lerp(const Color(0xFF0A0E27), avatarMoodColor, 0.15)!,
-                          const Color(0xFF1A1F3A),
+                          // Rich center - purple-blue for depth
+                          const Color(0xFF2D3B5C),
+                          // Mid-range - blue-grey transition
+                          const Color(0xFF1F2A3E),
+                          // Outer - deep blue-grey
+                          const Color(0xFF151D2A),
+                          // Edges - darkest
                           const Color(0xFF0F1419),
-                          const Color(0xFF050508),
                         ]
                       : [
-                          // Light mode: ethereal atmosphere
-                          Color.lerp(const Color(0xFFF0F4FF), avatarMoodColor, 0.08)!,
-                          const Color(0xFFFAFBFF),
-                          const Color(0xFFE8ECFF),
+                          // Light mode: soft purple-blue pastels
+                          const Color(0xFFF0F0FF),
+                          const Color(0xFFE8ECFA),
                           const Color(0xFFDDE2F0),
+                          const Color(0xFFD5DAE8),
                         ],
-                  stops: const [0.0, 0.4, 0.7, 1.0],
+                  stops: const [0.0, 0.35, 0.7, 1.0],
                 ),
               ),
           child: Stack(
           children: [
+            // Localized avatar mood glow - subtle atmospheric hint
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 350,
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: const Alignment(0, -0.25),
+                      radius: 0.5,
+                      colors: [
+                        avatarMoodColor.withOpacity(0.08),
+                        avatarMoodColor.withOpacity(0.04),
+                        avatarMoodColor.withOpacity(0.015),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.35, 0.65, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
             Row(
               children: [
                 // Left drawer for navigation - always visible on desktop, toggles between expanded/collapsed
@@ -351,6 +378,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   Widget _buildConversationArea(BuildContext context, ThemeData theme, Color accentColor) {
     final conversationState = ref.watch(conversationProvider);
     final isDark = theme.brightness == Brightness.dark;
+    // Get avatar mood color for dynamic background adaptation
     final avatarState = ref.watch(avatarRingStateProvider);
     final avatarMoodColor = _getAvatarMoodColor(avatarState.mode, isDark);
     
@@ -615,52 +643,66 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                       ),
                     ),
                     const SizedBox(width: 16),
-                    Row(
-                      children: [
-                        Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: accentColor.withOpacity(0.2),
-                                blurRadius: 8,
-                                spreadRadius: 0,
-                              ),
-                            ],
-                          ),
-                          child: IconButton(
-                            onPressed: () {},
-                            icon: const Icon(Icons.mic_rounded),
-                            style: IconButton.styleFrom(
-                              backgroundColor: isDark
-                                  ? accentColor.withOpacity(0.15)
-                                  : accentColor.withOpacity(0.12),
-                              foregroundColor: accentColor,
-                              padding: const EdgeInsets.all(12),
-                            ),
-                          ),
+                    // Subtle background for button depth (no glow)
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(28),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            accentColor.withOpacity(0.18),
+                            accentColor.withOpacity(0.10),
+                            accentColor.withOpacity(0.06),
+                          ],
+                        ),
+                        // No shadow - was causing fuzzy appearance
+                      ),
+                      padding: const EdgeInsets.all(4),
+                      child: Row(
+                        children: [
+                          // Voice button with micro-interactions
+                          AnimatedButton(
+                          key: _voiceButtonKey,
+                          onPressed: () {
+                            // TODO: Implement voice input
+                          },
+                          icon: Icons.mic_rounded,
+                          size: 48,
+                          borderRadius: 24,
+                          backgroundColor: isDark
+                              ? accentColor.withOpacity(0.15)
+                              : accentColor.withOpacity(0.12),
+                          foregroundColor: accentColor,
+                          tooltip: 'Voice input',
                         ),
                         const SizedBox(width: 12),
-                        Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            boxShadow: GlassTheme.ambientGlow(
-                              color: accentColor,
-                              intensity: 0.4,
-                              blur: 16,
-                            ),
-                          ),
-                          child: IconButton(
-                            onPressed: () => _sendMessage(_messageController.text),
-                            icon: const Icon(Icons.send_rounded),
-                            style: IconButton.styleFrom(
-                              backgroundColor: accentColor,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.all(12),
-                            ),
-                          ),
+                        // Send button with micro-interactions and success animation
+                        AnimatedButton(
+                          key: _sendButtonKey,
+                          onPressed: () {
+                            final text = _messageController.text.trim();
+                            if (text.isEmpty) {
+                              // Trigger error shake if empty
+                              final state = _sendButtonKey.currentState;
+                              if (state != null && state.mounted) {
+                                (state as dynamic).showError();
+                              }
+                            } else {
+                              _sendMessage(text);
+                            }
+                          },
+                          icon: Icons.send_rounded,
+                          successIcon: Icons.check_rounded,
+                          size: 48,
+                          borderRadius: 24,
+                          backgroundColor: accentColor,
+                          foregroundColor: Colors.white,
+                          tooltip: 'Send message',
+                          isEnabled: _messageController.text.trim().isNotEmpty,
                         ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -986,29 +1028,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     }
   }
 
-  void _sendMessage(String text) {
-    if (text.trim().isEmpty) return;
+  void _sendMessage(String text) async {
+    final trimmedText = text.trim();
+    if (trimmedText.isEmpty) return;
     
-    // Cancel typing timer and transition to thinking
-    _typingTimer?.cancel();
-    setState(() => _isUserTyping = false);
-    
-    // Clear the input field immediately
+    // Clear input immediately for better UX
     _messageController.clear();
+    _messageFocusNode.requestFocus();
     
-    // Transition avatar from listening to thinking (smooth transition)
-    ref.read(avatarRingStateProvider.notifier).startThinking(intensity: 0.8);
-    
-    // Send message through conversation provider with streaming enabled
-    ref.read(conversationProvider.notifier).sendMessage(text.trim(), stream: true);
-    
-    // Scroll to bottom after sending
-    _scrollToBottom();
-    
-    // Refocus the input field for continuous conversation
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _messageFocusNode.requestFocus();
+    // Show success animation immediately after send
+    Future.delayed(const Duration(milliseconds: 100), () {
+      final state = _sendButtonKey.currentState;
+      if (state != null && state.mounted) {
+        (state as dynamic).showSuccess();
+      }
     });
+    
+    // Send message via provider with streaming enabled (don't await before success animation)
+    await ref.read(conversationProvider.notifier).sendMessage(trimmedText, stream: true);
   }
 
   void _scrollToBottom() {
