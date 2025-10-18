@@ -96,10 +96,7 @@ class _AicoAppState extends ConsumerState<AicoApp> {
     final themeState = ref.watch(themeControllerProvider);
     final themeManager = ref.watch(themeManagerProvider);
     
-    // Get appropriate themes based on high contrast setting
-    final lightTheme = themeState.isHighContrast 
-        ? themeManager.generateHighContrastLightTheme()
-        : themeManager.generateLightTheme();
+    // Get dark theme based on high contrast setting (light mode disabled)
     final darkTheme = themeState.isHighContrast 
         ? themeManager.generateHighContrastDarkTheme()
         : themeManager.generateDarkTheme();
@@ -107,9 +104,9 @@ class _AicoAppState extends ConsumerState<AicoApp> {
     return MaterialApp(
       title: 'AICO',
       debugShowCheckedModeBanner: false,
-      theme: lightTheme,
+      theme: darkTheme,  // Force dark mode
       darkTheme: darkTheme,
-      themeMode: themeState.themeMode,
+      themeMode: ThemeMode.dark,  // Always dark
       home: const AuthGate(),
     );
   }

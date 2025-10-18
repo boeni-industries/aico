@@ -2,6 +2,9 @@ import 'package:aico_frontend/core/logging/providers/logging_providers.dart';
 import 'package:aico_frontend/core/logging/services/aico_logger.dart';
 import 'package:aico_frontend/presentation/screens/admin/encryption_test_screen.dart';
 import 'package:aico_frontend/presentation/widgets/chat/thinking_bubble.dart';
+import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
+import 'package:aico_frontend/presentation/widgets/common/glassmorphic_card.dart';
+import 'package:aico_frontend/presentation/widgets/common/glassmorphic_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -35,66 +38,67 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     
     return Column(
       children: [
-        // Admin header
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              bottom: BorderSide(
-                color: theme.dividerColor.withValues(alpha: 0.1),
-              ),
-            ),
-          ),
-          child: Row(
+        // Header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.admin_panel_settings,
-                size: 32,
-                color: theme.colorScheme.primary,
+              Text(
+                'Admin & Developer Tools',
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.5,
+                ),
               ),
-              const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Admin & Developer Tools',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    'System administration and diagnostic utilities',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 4),
+              Text(
+                'System administration and diagnostic utilities',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  letterSpacing: 0.2,
+                ),
               ),
             ],
           ),
         ),
 
-        // Main navigation tabs
-        Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              bottom: BorderSide(
-                color: theme.dividerColor.withValues(alpha: 0.1),
+        // Main navigation tabs with custom glassmorphic hover
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: GlassmorphicTab(
+                  label: 'Dashboard',
+                  isSelected: _tabController.index == 0,
+                  onTap: () => _tabController.animateTo(0),
+                ),
               ),
-            ),
-          ),
-          child: TabBar(
-            controller: _tabController,
-            labelColor: theme.colorScheme.primary,
-            unselectedLabelColor: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-            indicatorColor: theme.colorScheme.primary,
-            tabs: const [
-              Tab(text: 'Dashboard'),
-              Tab(text: 'User Management'),
-              Tab(text: 'System Settings'),
-              Tab(text: 'Developer Tools'),
+              const SizedBox(width: 8),
+              Expanded(
+                child: GlassmorphicTab(
+                  label: 'User Management',
+                  isSelected: _tabController.index == 1,
+                  onTap: () => _tabController.animateTo(1),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: GlassmorphicTab(
+                  label: 'System Settings',
+                  isSelected: _tabController.index == 2,
+                  onTap: () => _tabController.animateTo(2),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: GlassmorphicTab(
+                  label: 'Developer Tools',
+                  isSelected: _tabController.index == 3,
+                  onTap: () => _tabController.animateTo(3),
+                ),
+              ),
             ],
           ),
         ),
@@ -306,9 +310,16 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  IconButton(
+                  AnimatedButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
+                    icon: Icons.close,
+                    size: 40,
+                    borderRadius: 20,
+                    backgroundColor: theme.brightness == Brightness.dark
+                        ? theme.colorScheme.primary.withOpacity(0.15)
+                        : theme.colorScheme.primary.withOpacity(0.12),
+                    foregroundColor: theme.colorScheme.primary,
+                    tooltip: 'Close',
                   ),
                 ],
               ),
@@ -345,9 +356,16 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  IconButton(
+                  AnimatedButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
+                    icon: Icons.close,
+                    size: 40,
+                    borderRadius: 20,
+                    backgroundColor: Theme.of(context).brightness == Brightness.dark
+                        ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
+                        : Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                    foregroundColor: Theme.of(context).colorScheme.primary,
+                    tooltip: 'Close',
                   ),
                 ],
               ),
@@ -368,9 +386,16 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
         title: const Text('API Testing'),
         content: const Text('API testing tools will be implemented here.'),
         actions: [
-          TextButton(
+          AnimatedButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            icon: Icons.close,
+            size: 40,
+            borderRadius: 20,
+            backgroundColor: Theme.of(context).brightness == Brightness.dark
+                ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
+                : Theme.of(context).colorScheme.primary.withOpacity(0.12),
+            foregroundColor: Theme.of(context).colorScheme.primary,
+            tooltip: 'Close',
           ),
         ],
       ),
@@ -385,9 +410,16 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
         title: const Text('System Diagnostics'),
         content: const Text('System diagnostic tools will be implemented here.'),
         actions: [
-          TextButton(
+          AnimatedButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            icon: Icons.close,
+            size: 40,
+            borderRadius: 20,
+            backgroundColor: Theme.of(context).brightness == Brightness.dark
+                ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
+                : Theme.of(context).colorScheme.primary.withOpacity(0.12),
+            foregroundColor: Theme.of(context).colorScheme.primary,
+            tooltip: 'Close',
           ),
         ],
       ),
@@ -443,56 +475,42 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
     bool enabled = true,
     bool loading = false,
   }) {
-    return SizedBox(
+    return GlassmorphicCard(
       width: 280,
       height: 140,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: enabled ? onTap : null,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: theme.colorScheme.outline.withValues(alpha: 0.2),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  icon,
-                  size: 28,
-                  color: enabled ? theme.colorScheme.primary : theme.disabledColor,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: enabled ? null : theme.disabledColor,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Expanded(
-                  child: loading
-                      ? Center(child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(
-                          description,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                ),
-              ],
+      onTap: onTap,
+      enabled: enabled,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            size: 28,
+            color: enabled ? theme.colorScheme.primary : theme.disabledColor,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: enabled ? null : theme.disabledColor,
             ),
           ),
-        ),
+          const SizedBox(height: 4),
+          Expanded(
+            child: loading
+                ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                : Text(
+                    description,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+          ),
+        ],
       ),
     );
   }

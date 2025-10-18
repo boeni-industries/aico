@@ -1,4 +1,5 @@
 import 'package:aico_frontend/presentation/providers/settings_provider.dart';
+import 'package:aico_frontend/presentation/widgets/common/glassmorphic_switch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -31,13 +32,15 @@ class SettingsScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 12),
         
-        SwitchListTile(
+        ListTile(
           title: const Text('Show Inner Monologue'),
           subtitle: const Text('Display AI thinking process in right drawer'),
-          value: settings.showThinking,
-          onChanged: (value) {
-            ref.read(settingsProvider.notifier).updateShowThinking(value);
-          },
+          trailing: GlassmorphicSwitch(
+            value: settings.showThinking,
+            onChanged: (value) {
+              ref.read(settingsProvider.notifier).updateShowThinking(value);
+            },
+          ),
         ),
         
         const Divider(height: 32),

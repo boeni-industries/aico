@@ -287,16 +287,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                 ],
               ),
               child: IconButton(
-                padding: EdgeInsets.zero,
-                iconSize: 16,
                 onPressed: () => setState(() => _isRightDrawerExpanded = !_isRightDrawerExpanded),
                 icon: Icon(
                   _isRightDrawerExpanded ? Icons.chevron_right : Icons.chevron_left,
+                  color: accentColor.withOpacity(0.6),
                   size: 16,
                 ),
                 tooltip: _isRightDrawerExpanded ? 'Collapse' : 'Expand',
                 style: IconButton.styleFrom(
-                  foregroundColor: theme.colorScheme.onSurface.withOpacity(0.6),
+                  padding: EdgeInsets.zero,
                 ),
               ),
             ),
@@ -317,10 +316,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
               ),
               child: IconButton(
                 onPressed: () => setState(() => _isRightDrawerOpen = true),
-                icon: const Icon(Icons.chevron_left),
+                icon: Icon(
+                  Icons.chevron_left,
+                  color: accentColor.withOpacity(0.6),
+                  size: 20,
+                ),
                 tooltip: 'Show AICO\'s thoughts',
                 style: IconButton.styleFrom(
-                  foregroundColor: theme.colorScheme.onSurface,
+                  padding: EdgeInsets.zero,
                 ),
               ),
             ),
@@ -593,14 +596,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                         : Colors.white.withOpacity(0.5),
                     width: 1.5,
                   ),
-                  // Ambient glow with depth
+                  // Subtle ambient glow when active
                   boxShadow: [
                     if (isActive) ...
                       GlassTheme.pulsingGlow(
                         color: accentColor,
                         animationValue: _glowAnimation.value,
-                        baseIntensity: 0.2,
-                        pulseIntensity: 0.4,
+                        baseIntensity: 0.08,  // Much more subtle
+                        pulseIntensity: 0.15, // Reduced from 0.4
                       ),
                     BoxShadow(
                       color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
@@ -643,22 +646,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                       ),
                     ),
                     const SizedBox(width: 16),
-                    // Subtle background for button depth (no glow)
+                    // Modern button container with depth
                     Container(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(28),
+                        // Subtle gradient background
                         gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            accentColor.withOpacity(0.18),
-                            accentColor.withOpacity(0.10),
+                            accentColor.withOpacity(0.12),
                             accentColor.withOpacity(0.06),
                           ],
                         ),
-                        // No shadow - was causing fuzzy appearance
                       ),
-                      padding: const EdgeInsets.all(4),
+                      padding: const EdgeInsets.all(6),
                       child: Row(
                         children: [
                           // Voice button with micro-interactions
@@ -677,7 +679,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                           tooltip: 'Voice input',
                         ),
                         const SizedBox(width: 12),
-                        // Send button with micro-interactions and success animation
+                        // Send button - primary action (more prominent when enabled)
                         AnimatedButton(
                           key: _sendButtonKey,
                           onPressed: () {
@@ -696,8 +698,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                           successIcon: Icons.check_rounded,
                           size: 48,
                           borderRadius: 24,
-                          backgroundColor: accentColor,
-                          foregroundColor: Colors.white,
+                          // Primary: uses accent color for both bg and icon
+                          backgroundColor: isDark
+                              ? accentColor.withOpacity(0.20)  // Slightly more opaque
+                              : accentColor.withOpacity(0.18),
+                          foregroundColor: accentColor,  // Same color as voice button
                           tooltip: 'Send message',
                           isEnabled: _messageController.text.trim().isNotEmpty,
                         ),
@@ -1114,7 +1119,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                         padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
                         children: [
                           // Toggle button as first nav item
-                          _buildToggleItem(context, theme),
+                          _buildToggleItem(context, theme, accentColor),
                           const SizedBox(height: 8),
                           _buildNavItem(context, theme, accentColor, Icons.home, 'Home', _currentPage == NavigationPage.home, () => _switchToPage(NavigationPage.home)),
                           const SizedBox(height: 8),
@@ -1136,16 +1141,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          _buildSystemControl(
-                            context,
-                            theme,
-                            accentColor,
-                            () async {
-                              await ref.read(themeControllerProvider.notifier).toggleTheme();
-                            },
-                            'Theme',
-                          ),
-                          const SizedBox(height: 4),
+                          // Theme toggle removed - dark mode only
                           _buildSystemControl(
                             context,
                             theme,
@@ -1180,7 +1176,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
       );
   }
 
-  Widget _buildToggleItem(BuildContext context, ThemeData theme) {
+  Widget _buildToggleItem(BuildContext context, ThemeData theme, Color accentColor) {
     if (!_isLeftDrawerExpanded) {
       // Collapsed mode - just the burger icon
       return Container(
@@ -1189,13 +1185,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
           onPressed: () => setState(() => _isLeftDrawerExpanded = true),
           icon: Icon(
             Icons.menu,
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+            color: accentColor.withOpacity(0.6),
+            size: 20,
           ),
           tooltip: 'Expand menu',
           style: IconButton.styleFrom(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
+            padding: EdgeInsets.zero,
           ),
         ),
       );
@@ -1211,13 +1206,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
             onPressed: () => setState(() => _isLeftDrawerExpanded = false),
             icon: Icon(
               Icons.menu_open,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              color: accentColor.withOpacity(0.6),
+              size: 20,
             ),
             tooltip: 'Collapse menu',
             style: IconButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+              padding: EdgeInsets.zero,
             ),
           ),
         ],
@@ -1227,23 +1221,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
 
   Widget _buildNavItem(BuildContext context, ThemeData theme, Color accentColor, IconData icon, String title, bool isActive, VoidCallback onTap) {
     if (!_isLeftDrawerExpanded) {
-      // Collapsed mode - icon only
+      // Collapsed mode - subtle icon-only button
       return Container(
         margin: const EdgeInsets.only(bottom: 8),
         child: Tooltip(
           message: title,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                color: isActive ? accentColor.withValues(alpha: 0.1) : null,
-              ),
-              child: Icon(
-                icon,
-                color: isActive ? accentColor : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  // Only show background for active state
+                  color: isActive ? accentColor.withOpacity(0.15) : null,
+                  border: isActive ? Border.all(
+                    color: accentColor.withOpacity(0.3),
+                    width: 1,
+                  ) : null,
+                ),
+                child: Icon(
+                  icon,
+                  size: 20,
+                  color: isActive ? accentColor : accentColor.withOpacity(0.6),
+                ),
               ),
             ),
           ),
@@ -1251,27 +1255,43 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
       );
     }
     
-    // Expanded mode - icon with text
+    // Expanded mode - subtle list tile
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
-      child: ListTile(
-        leading: Icon(
-          icon,
-          color: isActive ? accentColor : theme.colorScheme.onSurface.withValues(alpha: 0.7),
-        ),
-        title: Text(
-          title,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: isActive ? accentColor : theme.colorScheme.onSurface,
-            fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: isActive ? accentColor.withOpacity(0.15) : null,
+              border: isActive ? Border.all(
+                color: accentColor.withOpacity(0.3),
+                width: 1,
+              ) : null,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 20,
+                  color: isActive ? accentColor : accentColor.withOpacity(0.6),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  title,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: isActive ? accentColor : theme.colorScheme.onSurface.withOpacity(0.7),
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        onTap: onTap,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
-        tileColor: isActive ? accentColor.withValues(alpha: 0.1) : null,
-        hoverColor: accentColor.withValues(alpha: 0.05),
       ),
     );
   }
@@ -1327,40 +1347,58 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     }
 
     if (!_isLeftDrawerExpanded) {
-      // Collapsed mode - icon only
-      return Tooltip(
-        message: tooltip,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          hoverColor: theme.colorScheme.surfaceContainerHighest, // Elevated hover state
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
+      // Collapsed mode - subtle icon only
+      return Container(
+        margin: const EdgeInsets.only(bottom: 4),
+        child: Tooltip(
+          message: tooltip,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: icon,
+              ),
             ),
-            child: icon,
           ),
         ),
       );
     }
 
-    // Expanded mode - icon with text
-    return ListTile(
-      leading: icon,
-      title: Text(
-        tooltip,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: theme.colorScheme.onSurface,
+    // Expanded mode - subtle list tile
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                icon,
+                const SizedBox(width: 12),
+                Text(
+                  tooltip,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-      onTap: onTap,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-      ),
-      hoverColor: theme.colorScheme.surfaceContainerHighest, // Elevated hover state
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      dense: true,
     );
   }
 

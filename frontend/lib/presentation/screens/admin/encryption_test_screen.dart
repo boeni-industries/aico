@@ -1,5 +1,6 @@
 import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/core/providers/storage_providers.dart';
+import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -96,14 +97,28 @@ class _EncryptionTestScreenState extends ConsumerState<EncryptionTestScreen> {
             if (_isLoading)
               const Center(child: CircularProgressIndicator())
             else ...[
-              ElevatedButton(
+              AnimatedButton(
                 onPressed: _runHandshake,
-                child: const Text('1. Perform Handshake'),
+                icon: Icons.security,
+                size: 48,
+                borderRadius: 24,
+                backgroundColor: Theme.of(context).brightness == Brightness.dark
+                    ? Theme.of(context).colorScheme.primary.withOpacity(0.20)
+                    : Theme.of(context).colorScheme.primary.withOpacity(0.18),
+                foregroundColor: Theme.of(context).colorScheme.primary,
+                tooltip: '1. Perform Handshake',
               ),
-              const SizedBox(height: 8),
-              ElevatedButton(
+              const SizedBox(height: 12),
+              AnimatedButton(
                 onPressed: _runEchoTest,
-                child: const Text('2. Send Encrypted Echo'),
+                icon: Icons.send,
+                size: 48,
+                borderRadius: 24,
+                backgroundColor: Theme.of(context).brightness == Brightness.dark
+                    ? Theme.of(context).colorScheme.primary.withOpacity(0.20)
+                    : Theme.of(context).colorScheme.primary.withOpacity(0.18),
+                foregroundColor: Theme.of(context).colorScheme.primary,
+                tooltip: '2. Send Encrypted Echo',
               ),
             ],
             const SizedBox(height: 16),

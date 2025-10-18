@@ -331,19 +331,25 @@ class _AnimatedButtonState extends State<AnimatedButton>
       ];
     }
     
-    // Default: 2-layer soft floating shadow
+    // Default: Layered color-matched shadows (modern technique)
     return [
-      // Depth
+      // Layer 1: Close shadow
       BoxShadow(
-        color: Colors.black.withOpacity(0.08),
+        color: baseColor.withOpacity(0.12),
+        blurRadius: 4,
+        offset: const Offset(0, 1),
+      ),
+      // Layer 2: Mid shadow
+      BoxShadow(
+        color: baseColor.withOpacity(0.10),
         blurRadius: 8,
         offset: const Offset(0, 2),
       ),
-      // Subtle glow
+      // Layer 3: Far shadow (depth)
       BoxShadow(
-        color: baseColor.withOpacity(0.15),
-        blurRadius: 12,
-        spreadRadius: 0,
+        color: Colors.black.withOpacity(0.06),
+        blurRadius: 16,
+        offset: const Offset(0, 4),
       ),
     ];
   }
@@ -423,17 +429,26 @@ class _AnimatedButtonState extends State<AnimatedButton>
                       color: Colors.white.withOpacity(_calculateBorderOpacity()),
                       width: 1.5,
                     ),
-                    boxShadow: _calculateShadows(),
-                    // Add inner shadow for depth (fake glass effect)
+                    boxShadow: [
+                      // Inset top highlight (light from above)
+                      BoxShadow(
+                        color: Colors.white.withOpacity(0.15),
+                        blurRadius: 0,
+                        offset: const Offset(0, -1),
+                        spreadRadius: 0,
+                      ),
+                      ..._calculateShadows(),
+                    ],
+                    // Gradient overlay for depth
                     gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
                       colors: [
-                        Colors.white.withOpacity(0.1),
+                        Colors.white.withOpacity(0.12),
                         Colors.transparent,
-                        Colors.black.withOpacity(0.05),
+                        Colors.black.withOpacity(0.08),
                       ],
-                      stops: const [0.0, 0.5, 1.0],
+                      stops: const [0.0, 0.4, 1.0],
                     ),
                   ),
                   child: Center(child: _buildContent()),
