@@ -98,14 +98,14 @@ class _GlassmorphicCardState extends State<GlassmorphicCard> with SingleTickerPr
               decoration: BoxDecoration(
                 // Background opacity changes on hover/press
                 color: _isPressed
-                    ? (isDark ? accentColor.withOpacity(0.15) : accentColor.withOpacity(0.12))
+                    ? (isDark ? accentColor.withValues(alpha: 0.15) : accentColor.withValues(alpha: 0.12))
                     : _isHovered
-                        ? (isDark ? accentColor.withOpacity(0.12) : accentColor.withOpacity(0.10))
-                        : (isDark ? accentColor.withOpacity(0.08) : accentColor.withOpacity(0.06)),
+                        ? (isDark ? accentColor.withValues(alpha: 0.12) : accentColor.withValues(alpha: 0.10))
+                        : (isDark ? accentColor.withValues(alpha: 0.08) : accentColor.withValues(alpha: 0.06)),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: Colors.white.withOpacity(
-                    _isPressed ? 0.25 : _isHovered ? 0.20 : 0.15,
+                  color: Colors.white.withValues(
+                    alpha: _isPressed ? 0.25 : _isHovered ? 0.20 : 0.15,
                   ),
                   width: 1.5,
                 ),
@@ -113,7 +113,7 @@ class _GlassmorphicCardState extends State<GlassmorphicCard> with SingleTickerPr
                     ? [
                         // Compressed shadow when pressed
                         BoxShadow(
-                          color: accentColor.withOpacity(0.15),
+                          color: accentColor.withValues(alpha: 0.15),
                           blurRadius: 4,
                           offset: const Offset(0, 1),
                         ),
@@ -122,12 +122,12 @@ class _GlassmorphicCardState extends State<GlassmorphicCard> with SingleTickerPr
                         ? [
                             // Elevated shadow on hover
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.12),
+                              color: Colors.black.withValues(alpha: 0.12),
                               blurRadius: 12,
                               offset: const Offset(0, 4),
                             ),
                             BoxShadow(
-                              color: accentColor.withOpacity(0.25),
+                              color: accentColor.withValues(alpha: 0.25),
                               blurRadius: 20,
                               spreadRadius: 0,
                             ),
@@ -135,12 +135,12 @@ class _GlassmorphicCardState extends State<GlassmorphicCard> with SingleTickerPr
                         : [
                             // Default shadow
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
+                              color: Colors.black.withValues(alpha: 0.08),
                               blurRadius: 8,
                               offset: const Offset(0, 2),
                             ),
                             BoxShadow(
-                              color: accentColor.withOpacity(0.12),
+                              color: accentColor.withValues(alpha: 0.12),
                               blurRadius: 12,
                               spreadRadius: 0,
                             ),
@@ -150,9 +150,9 @@ class _GlassmorphicCardState extends State<GlassmorphicCard> with SingleTickerPr
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.white.withOpacity(0.08),
+                    Colors.white.withValues(alpha: 0.08),
                     Colors.transparent,
-                    Colors.black.withOpacity(0.05),
+                    Colors.black.withValues(alpha: 0.05),
                   ],
                   stops: const [0.0, 0.5, 1.0],
                 ),

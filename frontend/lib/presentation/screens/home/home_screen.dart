@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:ui';
-import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
@@ -13,10 +16,8 @@ import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart';
 import 'package:aico_frontend/presentation/widgets/chat/message_bubble.dart';
-import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
 import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
 
 /// Home screen featuring avatar-centric hub with integrated conversation interface.
 /// Serves as the primary interaction point with AICO, including conversation history
@@ -222,9 +223,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                       center: const Alignment(0, -0.25),
                       radius: 0.5,
                       colors: [
-                        avatarMoodColor.withOpacity(0.08),
-                        avatarMoodColor.withOpacity(0.04),
-                        avatarMoodColor.withOpacity(0.015),
+                        avatarMoodColor.withValues(alpha: 0.08),
+                        avatarMoodColor.withValues(alpha: 0.04),
+                        avatarMoodColor.withValues(alpha: 0.015),
                         Colors.transparent,
                       ],
                       stops: const [0.0, 0.35, 0.65, 1.0],
@@ -269,18 +270,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
               height: 32,
               decoration: BoxDecoration(
                 color: theme.brightness == Brightness.dark
-                    ? Colors.white.withOpacity(0.06)
-                    : Colors.white.withOpacity(0.8),
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.white.withValues(alpha: 0.8),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: theme.brightness == Brightness.dark
-                      ? Colors.white.withOpacity(0.1)
-                      : Colors.white.withOpacity(0.3),
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.white.withValues(alpha: 0.3),
                   width: 1,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.3 : 0.1),
+                    color: Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.3 : 0.1),
                     blurRadius: 8,
                     offset: const Offset(-2, 0),
                   ),
@@ -290,7 +291,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                 onPressed: () => setState(() => _isRightDrawerExpanded = !_isRightDrawerExpanded),
                 icon: Icon(
                   _isRightDrawerExpanded ? Icons.chevron_right : Icons.chevron_left,
-                  color: accentColor.withOpacity(0.6),
+                  color: accentColor.withValues(alpha: 0.6),
                   size: 16,
                 ),
                 tooltip: _isRightDrawerExpanded ? 'Collapse' : 'Expand',
@@ -318,7 +319,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                 onPressed: () => setState(() => _isRightDrawerOpen = true),
                 icon: Icon(
                   Icons.chevron_left,
-                  color: accentColor.withOpacity(0.6),
+                  color: accentColor.withValues(alpha: 0.6),
                   size: 20,
                 ),
                 tooltip: 'Show AICO\'s thoughts',
@@ -381,9 +382,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   Widget _buildConversationArea(BuildContext context, ThemeData theme, Color accentColor) {
     final conversationState = ref.watch(conversationProvider);
     final isDark = theme.brightness == Brightness.dark;
-    // Get avatar mood color for dynamic background adaptation
-    final avatarState = ref.watch(avatarRingStateProvider);
-    final avatarMoodColor = _getAvatarMoodColor(avatarState.mode, isDark);
+    // Avatar mood color available via _getAvatarMoodColor if needed for future features
     
     if (conversationState.isLoading) {
       return Center(
@@ -422,7 +421,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: theme.colorScheme.error.withOpacity(0.1),
+                  color: theme.colorScheme.error.withValues(alpha: 0.1),
                 ),
                 child: Icon(
                   Icons.error_outline_rounded,
@@ -441,7 +440,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
               Text(
                 conversationState.error!,
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -468,7 +467,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                   style: theme.textTheme.displaySmall?.copyWith(
                     fontWeight: FontWeight.w200,
                     letterSpacing: -0.3,
-                    color: theme.colorScheme.onSurface.withOpacity(0.9),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
                     height: 1.2,
                   ),
                 ),
@@ -572,14 +571,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                 decoration: BoxDecoration(
                   // Immersive frosted glass
                   color: isDark 
-                      ? Colors.white.withOpacity(0.06)
-                      : Colors.white.withOpacity(0.7),
+                      ? Colors.white.withValues(alpha: 0.06)
+                      : Colors.white.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
                   // Luminous border
                   border: Border.all(
                     color: isDark
-                        ? Colors.white.withOpacity(0.12)
-                        : Colors.white.withOpacity(0.5),
+                        ? Colors.white.withValues(alpha: 0.12)
+                        : Colors.white.withValues(alpha: 0.5),
                     width: 1.5,
                   ),
                   // Subtle ambient glow when active
@@ -592,7 +591,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                         pulseIntensity: 0.15, // Reduced from 0.4
                       ),
                     BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
+                      color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
                       blurRadius: 32,
                       offset: const Offset(0, 12),
                       spreadRadius: -8,
@@ -641,8 +640,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            accentColor.withOpacity(0.12),
-                            accentColor.withOpacity(0.06),
+                            accentColor.withValues(alpha: 0.12),
+                            accentColor.withValues(alpha: 0.06),
                           ],
                         ),
                       ),
@@ -653,14 +652,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                           AnimatedButton(
                           key: _voiceButtonKey,
                           onPressed: () {
-                            // TODO: Implement voice input
+                            // Voice input - to be implemented
                           },
                           icon: Icons.mic_rounded,
                           size: 48,
                           borderRadius: 24,
                           backgroundColor: isDark
-                              ? accentColor.withOpacity(0.15)
-                              : accentColor.withOpacity(0.12),
+                              ? accentColor.withValues(alpha: 0.15)
+                              : accentColor.withValues(alpha: 0.12),
                           foregroundColor: accentColor,
                           tooltip: 'Voice input',
                         ),
@@ -686,8 +685,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                           borderRadius: 24,
                           // Primary: uses accent color for both bg and icon
                           backgroundColor: isDark
-                              ? accentColor.withOpacity(0.20)  // Slightly more opaque
-                              : accentColor.withOpacity(0.18),
+                              ? accentColor.withValues(alpha: 0.20)  // Slightly more opaque
+                              : accentColor.withValues(alpha: 0.18),
                           foregroundColor: accentColor,  // Same color as voice button
                           tooltip: 'Send message',
                           isEnabled: _messageController.text.trim().isNotEmpty,
@@ -748,25 +747,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                       decoration: BoxDecoration(
                         // Frosted glass with breathing pulse
                         color: isDark
-                            ? Colors.white.withOpacity(glassOpacity)
-                            : Colors.white.withOpacity(glassOpacity),
+                            ? Colors.white.withValues(alpha: glassOpacity)
+                            : Colors.white.withValues(alpha: glassOpacity),
                         borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
                         border: Border.all(
                           color: isDark
-                              ? Colors.white.withOpacity(borderOpacity)
-                              : Colors.white.withOpacity(borderOpacity),
+                              ? Colors.white.withValues(alpha: borderOpacity)
+                              : Colors.white.withValues(alpha: borderOpacity),
                           width: 1.5,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+                            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
                             blurRadius: 40,
                             offset: const Offset(-8, 0),
                             spreadRadius: -10,
                           ),
                           if (isDark)
                             BoxShadow(
-                              color: accentColor.withOpacity(0.08 + (isActivelyThinking ? pulseValue * 0.06 : 0.0)),
+                              color: accentColor.withValues(alpha: 0.08 + (isActivelyThinking ? pulseValue * 0.06 : 0.0)),
                               blurRadius: 60 + (isActivelyThinking ? pulseValue * 20 : 0.0),
                               spreadRadius: -5,
                             ),
@@ -790,7 +789,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                                               child: Text(
                                                 'Thinking display disabled in settings',
                                                 style: theme.textTheme.bodySmall?.copyWith(
-                                                  color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                                                 ),
                                               ),
                                             )
@@ -887,15 +886,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      purpleAccent.withOpacity(0.0),
-                      purpleAccent.withOpacity(0.3 + pulseValue * 0.4), // Breathing center
-                      purpleAccent.withOpacity(0.0),
+                      purpleAccent.withValues(alpha: 0.0),
+                      purpleAccent.withValues(alpha: 0.3 + pulseValue * 0.4), // Breathing center
+                      purpleAccent.withValues(alpha: 0.0),
                     ],
                     stops: const [0.0, 0.5, 1.0],
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: purpleAccent.withOpacity(0.2 + pulseValue * 0.3),
+                      color: purpleAccent.withValues(alpha: 0.2 + pulseValue * 0.3),
                       blurRadius: 12 + (pulseValue * 8),
                       spreadRadius: 2,
                     ),
@@ -906,84 +905,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
           },
         ),
       ],
-    );
-  }
-
-  Widget _buildThoughtCard(BuildContext context, ThemeData theme, Color accentColor, {
-    required String type,
-    required String message,
-  }) {
-    final icons = {
-      'Suggestion': Icons.lightbulb_outline,
-      'Reminder': Icons.event_note,
-      'Memory': Icons.auto_stories,
-    };
-    
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: accentColor.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: accentColor.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icons[type], size: 16, color: accentColor),
-              const SizedBox(width: 6),
-              Text(
-                type,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: accentColor,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              Icon(Icons.close, size: 14, color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            message,
-            style: theme.textTheme.bodySmall,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMemoryItem(BuildContext context, ThemeData theme, Color accentColor, {
-    required String title,
-    required String time,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.1)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            time,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1072,25 +993,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
             decoration: BoxDecoration(
               // Frosted glass with organic shape
               color: isDark
-                  ? Colors.white.withOpacity(0.04)
-                  : Colors.white.withOpacity(0.6),
+                  ? Colors.white.withValues(alpha: 0.04)
+                  : Colors.white.withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withOpacity(0.1)
-                    : Colors.white.withOpacity(0.4),
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.white.withValues(alpha: 0.4),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+                  color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
                   blurRadius: 40,
                   offset: const Offset(8, 0),
                   spreadRadius: -10,
                 ),
                 if (isDark)
                   BoxShadow(
-                    color: accentColor.withOpacity(0.08),
+                    color: accentColor.withValues(alpha: 0.08),
                     blurRadius: 60,
                     spreadRadius: -5,
                   ),
@@ -1171,7 +1092,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
           onPressed: () => setState(() => _isLeftDrawerExpanded = true),
           icon: Icon(
             Icons.menu,
-            color: accentColor.withOpacity(0.6),
+            color: accentColor.withValues(alpha: 0.6),
             size: 20,
           ),
           tooltip: 'Expand menu',
@@ -1192,7 +1113,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
             onPressed: () => setState(() => _isLeftDrawerExpanded = false),
             icon: Icon(
               Icons.menu_open,
-              color: accentColor.withOpacity(0.6),
+              color: accentColor.withValues(alpha: 0.6),
               size: 20,
             ),
             tooltip: 'Collapse menu',
@@ -1223,16 +1144,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
                   // Only show background for active state
-                  color: isActive ? accentColor.withOpacity(0.15) : null,
+                  color: isActive ? accentColor.withValues(alpha: 0.15) : null,
                   border: isActive ? Border.all(
-                    color: accentColor.withOpacity(0.3),
+                    color: accentColor.withValues(alpha: 0.3),
                     width: 1,
                   ) : null,
                 ),
                 child: Icon(
                   icon,
                   size: 20,
-                  color: isActive ? accentColor : accentColor.withOpacity(0.6),
+                  color: isActive ? accentColor : accentColor.withValues(alpha: 0.6),
                 ),
               ),
             ),
@@ -1253,9 +1174,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              color: isActive ? accentColor.withOpacity(0.15) : null,
+              color: isActive ? accentColor.withValues(alpha: 0.15) : null,
               border: isActive ? Border.all(
-                color: accentColor.withOpacity(0.3),
+                color: accentColor.withValues(alpha: 0.3),
                 width: 1,
               ) : null,
             ),
@@ -1264,13 +1185,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                 Icon(
                   icon,
                   size: 20,
-                  color: isActive ? accentColor : accentColor.withOpacity(0.6),
+                  color: isActive ? accentColor : accentColor.withValues(alpha: 0.6),
                 ),
                 const SizedBox(width: 12),
                 Text(
                   title,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: isActive ? accentColor : theme.colorScheme.onSurface.withOpacity(0.7),
+                    color: isActive ? accentColor : theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
                   ),
                 ),
@@ -1377,7 +1298,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                 Text(
                   tooltip,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                 ),
               ],
@@ -1429,25 +1350,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                       child: Container(
                         decoration: BoxDecoration(
                           color: isDark
-                              ? Colors.white.withOpacity(0.04)
-                              : Colors.white.withOpacity(0.6),
+                              ? Colors.white.withValues(alpha: 0.04)
+                              : Colors.white.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
                           border: Border.all(
                             color: isDark
-                                ? Colors.white.withOpacity(0.1)
-                                : Colors.white.withOpacity(0.4),
+                                ? Colors.white.withValues(alpha: 0.1)
+                                : Colors.white.withValues(alpha: 0.4),
                             width: 1.5,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+                              color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
                               blurRadius: 40,
                               offset: const Offset(0, 20),
                               spreadRadius: -10,
                             ),
                             if (isDark)
                               BoxShadow(
-                                color: accentColor.withOpacity(0.1),
+                                color: accentColor.withValues(alpha: 0.1),
                                 blurRadius: 60,
                                 spreadRadius: -5,
                               ),

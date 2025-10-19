@@ -76,21 +76,21 @@ class _GlassmorphicSwitchState extends State<GlassmorphicSwitch> with SingleTick
               borderRadius: BorderRadius.circular(16),
               // More prominent background colors
               color: widget.value
-                  ? accentColor.withOpacity(0.35)
-                  : (isDark ? Colors.white.withOpacity(0.12) : Colors.black.withOpacity(0.15)),
+                  ? accentColor.withValues(alpha: 0.35)
+                  : (isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.15)),
               border: Border.all(
                 // Stronger borders for better visibility
                 color: widget.value
-                    ? accentColor.withOpacity(0.6)
-                    : Colors.white.withOpacity(0.25),
+                    ? accentColor.withValues(alpha: 0.6)
+                    : Colors.white.withValues(alpha: 0.25),
                 width: 2,
               ),
               boxShadow: [
                 // Crisp shadow - minimal blur
                 BoxShadow(
                   color: widget.value
-                      ? accentColor.withOpacity(0.2)
-                      : Colors.black.withOpacity(0.1),
+                      ? accentColor.withValues(alpha: 0.2)
+                      : Colors.black.withValues(alpha: 0.1),
                   blurRadius: 4,  // Very tight
                   offset: const Offset(0, 2),
                 ),
@@ -112,11 +112,11 @@ class _GlassmorphicSwitchState extends State<GlassmorphicSwitch> with SingleTick
                       // More vibrant thumb color when ON
                       color: widget.value
                           ? Colors.white
-                          : (isDark ? Colors.white.withOpacity(0.85) : Colors.white),
+                          : (isDark ? Colors.white.withValues(alpha: 0.85) : Colors.white),
                       boxShadow: [
                         // Crisp thumb shadow only
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Colors.black.withValues(alpha: 0.2),
                           blurRadius: 4,
                           offset: const Offset(0, 2),
                         ),
@@ -125,9 +125,9 @@ class _GlassmorphicSwitchState extends State<GlassmorphicSwitch> with SingleTick
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Colors.white.withOpacity(0.3),
+                          Colors.white.withValues(alpha: 0.3),
                           Colors.transparent,
-                          Colors.black.withOpacity(0.08),
+                          Colors.black.withValues(alpha: 0.08),
                         ],
                       ),
                     ),

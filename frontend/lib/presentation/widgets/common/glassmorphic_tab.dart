@@ -38,13 +38,13 @@ class _GlassmorphicTabState extends State<GlassmorphicTab> {
             borderRadius: BorderRadius.circular(12),
             // Show background when selected OR hovered
             color: widget.isSelected
-                ? accentColor.withOpacity(0.15)
+                ? accentColor.withValues(alpha: 0.15)
                 : _isHovered
-                    ? accentColor.withOpacity(0.08)
+                    ? accentColor.withValues(alpha: 0.08)
                     : Colors.transparent,
             border: widget.isSelected
                 ? Border.all(
-                    color: accentColor.withOpacity(0.3),
+                    color: accentColor.withValues(alpha: 0.3),
                     width: 1,
                   )
                 : null,
@@ -56,7 +56,7 @@ class _GlassmorphicTabState extends State<GlassmorphicTab> {
                 fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.normal,
                 color: widget.isSelected
                     ? accentColor
-                    : theme.colorScheme.onSurface.withOpacity(0.6),
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                 letterSpacing: 0.3,
               ),
             ),

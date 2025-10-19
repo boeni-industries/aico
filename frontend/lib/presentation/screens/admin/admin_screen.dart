@@ -316,8 +316,8 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
                     size: 40,
                     borderRadius: 20,
                     backgroundColor: theme.brightness == Brightness.dark
-                        ? theme.colorScheme.primary.withOpacity(0.15)
-                        : theme.colorScheme.primary.withOpacity(0.12),
+                        ? theme.colorScheme.primary.withValues(alpha: 0.15)
+                        : theme.colorScheme.primary.withValues(alpha: 0.12),
                     foregroundColor: theme.colorScheme.primary,
                     tooltip: 'Close',
                   ),
@@ -362,8 +362,8 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
                     size: 40,
                     borderRadius: 20,
                     backgroundColor: Theme.of(context).brightness == Brightness.dark
-                        ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
-                        : Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
+                        : Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                     foregroundColor: Theme.of(context).colorScheme.primary,
                     tooltip: 'Close',
                   ),
@@ -392,8 +392,8 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
             size: 40,
             borderRadius: 20,
             backgroundColor: Theme.of(context).brightness == Brightness.dark
-                ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
-                : Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
+                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
             foregroundColor: Theme.of(context).colorScheme.primary,
             tooltip: 'Close',
           ),
@@ -416,8 +416,8 @@ class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin
             size: 40,
             borderRadius: 20,
             backgroundColor: Theme.of(context).brightness == Brightness.dark
-                ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
-                : Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
+                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
             foregroundColor: Theme.of(context).colorScheme.primary,
             tooltip: 'Close',
           ),
@@ -603,7 +603,7 @@ class _ThinkingBubbleDemoState extends State<_ThinkingBubbleDemo>
             key: ValueKey(_showText),
             style: theme.textTheme.bodyLarge?.copyWith(
               fontWeight: FontWeight.w500,
-              color: theme.colorScheme.onSurface.withOpacity(0.7),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
             ),
           ),
         ),
@@ -614,7 +614,7 @@ class _ThinkingBubbleDemoState extends State<_ThinkingBubbleDemo>
           children: [
             CircleAvatar(
               radius: 16,
-              backgroundColor: const Color(0xFFB8A1EA).withOpacity(0.1),
+              backgroundColor: const Color(0xFFB8A1EA).withValues(alpha: 0.1),
               child: const Icon(
                 Icons.face,
                 size: 16,
@@ -654,7 +654,7 @@ class _ThinkingBubbleDemoState extends State<_ThinkingBubbleDemo>
                               color: theme.colorScheme.surface,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: theme.dividerColor.withOpacity(0.1),
+                                color: theme.dividerColor.withValues(alpha: 0.1),
                                 width: 1,
                               ),
                             ),

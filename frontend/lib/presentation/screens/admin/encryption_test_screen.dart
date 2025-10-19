@@ -103,8 +103,8 @@ class _EncryptionTestScreenState extends ConsumerState<EncryptionTestScreen> {
                 size: 48,
                 borderRadius: 24,
                 backgroundColor: Theme.of(context).brightness == Brightness.dark
-                    ? Theme.of(context).colorScheme.primary.withOpacity(0.20)
-                    : Theme.of(context).colorScheme.primary.withOpacity(0.18),
+                    ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.20)
+                    : Theme.of(context).colorScheme.primary.withValues(alpha: 0.18),
                 foregroundColor: Theme.of(context).colorScheme.primary,
                 tooltip: '1. Perform Handshake',
               ),
@@ -115,8 +115,8 @@ class _EncryptionTestScreenState extends ConsumerState<EncryptionTestScreen> {
                 size: 48,
                 borderRadius: 24,
                 backgroundColor: Theme.of(context).brightness == Brightness.dark
-                    ? Theme.of(context).colorScheme.primary.withOpacity(0.20)
-                    : Theme.of(context).colorScheme.primary.withOpacity(0.18),
+                    ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.20)
+                    : Theme.of(context).colorScheme.primary.withValues(alpha: 0.18),
                 foregroundColor: Theme.of(context).colorScheme.primary,
                 tooltip: '2. Send Encrypted Echo',
               ),

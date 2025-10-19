@@ -110,7 +110,7 @@ class MicroInteractionButtonTheme {
     final defaultColor = accentColor;
     final hoverColor = _adjustBrightness(accentColor, isDark ? 0.15 : 0.10);
     final pressedColor = _adjustBrightness(accentColor, isDark ? -0.10 : -0.05);
-    final disabledColor = theme.colorScheme.onSurface.withOpacity(0.3);
+    final disabledColor = theme.colorScheme.onSurface.withValues(alpha: 0.3);
     
     // Shadows: more subtle in light mode, more prominent in dark mode
     final shadowOpacity = isDark ? 0.4 : 0.2;
@@ -128,26 +128,26 @@ class MicroInteractionButtonTheme {
       disabledColor: disabledColor,
       defaultShadows: [
         BoxShadow(
-          color: accentColor.withOpacity(shadowOpacity),
+          color: accentColor.withValues(alpha: shadowOpacity),
           blurRadius: 8,
           offset: const Offset(0, 4),
         ),
       ],
       hoverShadows: [
         BoxShadow(
-          color: accentColor.withOpacity(shadowOpacity + 0.1),
+          color: accentColor.withValues(alpha: shadowOpacity + 0.1),
           blurRadius: 12,
           offset: const Offset(0, 4),
         ),
         BoxShadow(
-          color: accentColor.withOpacity(glowOpacity),
+          color: accentColor.withValues(alpha: glowOpacity),
           blurRadius: 16,
           spreadRadius: 2,
         ),
       ],
       pressedShadows: [
         BoxShadow(
-          color: accentColor.withOpacity(shadowOpacity - 0.1),
+          color: accentColor.withValues(alpha: shadowOpacity - 0.1),
           blurRadius: 4,
           offset: const Offset(0, 2),
         ),
@@ -200,7 +200,7 @@ class MicroInteractionIconTheme {
     required bool isHighContrast,
   }) {
     final accentColor = const Color(0xFFB8A1EA);
-    final defaultColor = theme.colorScheme.onSurface.withOpacity(0.7);
+    final defaultColor = theme.colorScheme.onSurface.withValues(alpha: 0.7);
     
     return MicroInteractionIconTheme(
       defaultScale: 1.0,
@@ -212,19 +212,19 @@ class MicroInteractionIconTheme {
       pressedColor: _adjustBrightness(accentColor, -0.1),
       activeColor: accentColor,
       defaultBackground: Colors.transparent,
-      hoverBackground: accentColor.withOpacity(0.05),
-      pressedBackground: accentColor.withOpacity(0.1),
-      activeBackground: accentColor.withOpacity(0.1),
+      hoverBackground: accentColor.withValues(alpha: 0.05),
+      pressedBackground: accentColor.withValues(alpha: 0.1),
+      activeBackground: accentColor.withValues(alpha: 0.1),
       hoverGlow: isDark ? [
         BoxShadow(
-          color: accentColor.withOpacity(0.2),
+          color: accentColor.withValues(alpha: 0.2),
           blurRadius: 8,
           spreadRadius: 0,
         ),
       ] : null,
       activeGlow: isDark ? [
         BoxShadow(
-          color: accentColor.withOpacity(0.15),
+          color: accentColor.withValues(alpha: 0.15),
           blurRadius: 12,
           spreadRadius: 0,
         ),
@@ -263,14 +263,14 @@ class MicroInteractionInputTheme {
       focusScale: isHighContrast ? 1.03 : 1.02,
       focusGlow: [
         BoxShadow(
-          color: accentColor.withOpacity(isDark ? 0.3 : 0.2),
+          color: accentColor.withValues(alpha: isDark ? 0.3 : 0.2),
           blurRadius: 12,
           spreadRadius: 0,
         ),
       ],
       errorGlow: [
         BoxShadow(
-          color: errorColor.withOpacity(isDark ? 0.3 : 0.2),
+          color: errorColor.withValues(alpha: isDark ? 0.3 : 0.2),
           blurRadius: 12,
           spreadRadius: 0,
         ),

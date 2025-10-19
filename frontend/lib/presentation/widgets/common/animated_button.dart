@@ -1,5 +1,5 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
+
 import 'package:aico_frontend/presentation/theme/micro_interactions.dart';
 
 /// Reusable animated button with comprehensive micro-interactions
@@ -91,7 +91,6 @@ class _AnimatedButtonState extends State<AnimatedButton>
   late AnimationController _successController;
   late AnimationController _errorController;
   
-  late Animation<double> _successScaleAnimation;
   late Animation<double> _errorShakeAnimation;
   
   bool _isHovered = false;
@@ -118,20 +117,6 @@ class _AnimatedButtonState extends State<AnimatedButton>
       duration: const Duration(milliseconds: 400),
       vsync: this,
     );
-    
-    // Subtle success: barely perceptible scale (1.0 → 1.02 → 1.0)
-    _successScaleAnimation = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 1.02)
-            .chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 40,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.02, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeInCubic)),
-        weight: 60,
-      ),
-    ]).animate(_successController);
     
     // Error shake animation
     _errorController = AnimationController(
@@ -230,7 +215,7 @@ class _AnimatedButtonState extends State<AnimatedButton>
     final buttonTheme = microTheme.button;
     
     if (!widget.isEnabled) {
-      return buttonTheme.disabledColor.withOpacity(0.15);
+      return buttonTheme.disabledColor.withValues(alpha: 0.15);
     }
     
     // Glassmorphic: semi-transparent backgrounds (30-50% opacity)
@@ -240,24 +225,24 @@ class _AnimatedButtonState extends State<AnimatedButton>
     if (_errorController.value > 0) {
       final errorIntensity = _errorController.value;
       return Color.lerp(
-        baseColor.withOpacity(0.3),
-        Colors.red.withOpacity(0.6),
+        baseColor.withValues(alpha: 0.3),
+        Colors.red.withValues(alpha: 0.6),
         errorIntensity * 0.5, // 50% red blend at peak - more visible
       )!;
     }
     
     if (_isPressed) {
       // Pressed: more opaque (feels solid)
-      return baseColor.withOpacity(0.5);
+      return baseColor.withValues(alpha: 0.5);
     }
     
     if (_isHovered) {
       // Hover: lighter (more transparent)
-      return baseColor.withOpacity(0.35);
+      return baseColor.withValues(alpha: 0.35);
     }
     
     // Default: semi-transparent glass
-    return baseColor.withOpacity(0.3);
+    return baseColor.withValues(alpha: 0.3);
   }
   
   double _calculateBorderOpacity() {
@@ -283,13 +268,13 @@ class _AnimatedButtonState extends State<AnimatedButton>
       return [
         // Inner glow
         BoxShadow(
-          color: baseColor.withOpacity(0.4 * glowIntensity),
+          color: baseColor.withValues(alpha: 0.4 * glowIntensity),
           blurRadius: 8,
           spreadRadius: -2,
         ),
         // Outer glow
         BoxShadow(
-          color: baseColor.withOpacity(0.2 * glowIntensity),
+          color: baseColor.withValues(alpha: 0.2 * glowIntensity),
           blurRadius: 16,
           spreadRadius: 0,
         ),
@@ -300,7 +285,7 @@ class _AnimatedButtonState extends State<AnimatedButton>
     if (_isPressed) {
       return [
         BoxShadow(
-          color: baseColor.withOpacity(0.15),
+          color: baseColor.withValues(alpha: 0.15),
           blurRadius: 4,
           offset: const Offset(0, 1),
         ),
@@ -312,19 +297,19 @@ class _AnimatedButtonState extends State<AnimatedButton>
       return [
         // Close depth shadow
         BoxShadow(
-          color: Colors.black.withOpacity(0.12),
+          color: Colors.black.withValues(alpha: 0.12),
           blurRadius: 8,
           offset: const Offset(0, 2),
         ),
         // Mid depth shadow
         BoxShadow(
-          color: Colors.black.withOpacity(0.08),
+          color: Colors.black.withValues(alpha: 0.08),
           blurRadius: 16,
           offset: const Offset(0, 4),
         ),
         // Glow layer
         BoxShadow(
-          color: baseColor.withOpacity(0.3),
+          color: baseColor.withValues(alpha: 0.3),
           blurRadius: 20,
           spreadRadius: 0,
         ),
@@ -335,19 +320,19 @@ class _AnimatedButtonState extends State<AnimatedButton>
     return [
       // Layer 1: Close shadow
       BoxShadow(
-        color: baseColor.withOpacity(0.12),
+        color: baseColor.withValues(alpha: 0.12),
         blurRadius: 4,
         offset: const Offset(0, 1),
       ),
       // Layer 2: Mid shadow
       BoxShadow(
-        color: baseColor.withOpacity(0.10),
+        color: baseColor.withValues(alpha: 0.10),
         blurRadius: 8,
         offset: const Offset(0, 2),
       ),
       // Layer 3: Far shadow (depth)
       BoxShadow(
-        color: Colors.black.withOpacity(0.06),
+        color: Colors.black.withValues(alpha: 0.06),
         blurRadius: 16,
         offset: const Offset(0, 4),
       ),
@@ -382,7 +367,7 @@ class _AnimatedButtonState extends State<AnimatedButton>
         _calculateIcon(),
         color: widget.isEnabled 
           ? (widget.foregroundColor ?? theme.colorScheme.onPrimary)
-          : (widget.foregroundColor ?? theme.colorScheme.onPrimary).withOpacity(0.4),
+          : (widget.foregroundColor ?? theme.colorScheme.onPrimary).withValues(alpha: 0.4),
         size: widget.size * 0.5,
       );
     }
@@ -426,13 +411,13 @@ class _AnimatedButtonState extends State<AnimatedButton>
                     color: _calculateBackgroundColor(),
                     borderRadius: BorderRadius.circular(widget.borderRadius),
                     border: Border.all(
-                      color: Colors.white.withOpacity(_calculateBorderOpacity()),
+                      color: Colors.white.withValues(alpha: _calculateBorderOpacity()),
                       width: 1.5,
                     ),
                     boxShadow: [
                       // Inset top highlight (light from above)
                       BoxShadow(
-                        color: Colors.white.withOpacity(0.15),
+                        color: Colors.white.withValues(alpha: 0.15),
                         blurRadius: 0,
                         offset: const Offset(0, -1),
                         spreadRadius: 0,
@@ -444,9 +429,9 @@ class _AnimatedButtonState extends State<AnimatedButton>
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.white.withOpacity(0.12),
+                        Colors.white.withValues(alpha: 0.12),
                         Colors.transparent,
-                        Colors.black.withOpacity(0.08),
+                        Colors.black.withValues(alpha: 0.08),
                       ],
                       stops: const [0.0, 0.4, 1.0],
                     ),

@@ -149,8 +149,8 @@ class _ThinkingBubbleState extends State<ThinkingBubble>
                 center: Alignment.center,
                 radius: 1.5,
                 colors: [
-                  const Color(0xFFB8A1EA).withOpacity(_glowAnimation.value * 0.5),
-                  surfaceColor.withOpacity(0.0),
+                  const Color(0xFFB8A1EA).withValues(alpha: _glowAnimation.value * 0.5),
+                  surfaceColor.withValues(alpha: 0.0),
                 ],
               ),
             ),
@@ -291,16 +291,16 @@ class _ParticleWidgetState extends State<ParticleWidget>
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    widget.particle.color.withOpacity(0.9),
-                    widget.particle.color.withOpacity(0.4),
-                    widget.particle.color.withOpacity(0.1),
-                    widget.particle.color.withOpacity(0.0),
+                    widget.particle.color.withValues(alpha: 0.9),
+                    widget.particle.color.withValues(alpha: 0.4),
+                    widget.particle.color.withValues(alpha: 0.1),
+                    widget.particle.color.withValues(alpha: 0.0),
                   ],
                   stops: const [0.0, 0.4, 0.7, 1.0],
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: widget.particle.color.withOpacity(0.3),
+                    color: widget.particle.color.withValues(alpha: 0.3),
                     blurRadius: widget.particle.size * 2.0,
                     spreadRadius: 0,
                   ),

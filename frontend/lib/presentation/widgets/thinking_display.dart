@@ -145,7 +145,7 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
           Text(
             'Inner Monologue',
             style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.6),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               fontWeight: FontWeight.w500,
               fontSize: 11,
               letterSpacing: 0.8,
@@ -165,7 +165,7 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: purpleAccent.withOpacity(_pulseAnimation.value * 0.4),
+                        color: purpleAccent.withValues(alpha: _pulseAnimation.value * 0.4),
                         blurRadius: 6,
                         spreadRadius: 2,
                       ),
@@ -196,13 +196,13 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
             Icon(
               Icons.psychology_outlined,
               size: 40,
-              color: purpleAccent.withOpacity(0.25),
+              color: purpleAccent.withValues(alpha: 0.25),
             ),
             const SizedBox(height: 16), // 8px grid: 2×8
             Text(
               'No thoughts yet',
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.5),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                 fontSize: 13,
                 letterSpacing: 0.02,
               ),
@@ -211,7 +211,7 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
             Text(
               'Reasoning will appear here',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.35),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
                 fontSize: 11,
                 letterSpacing: 0.02,
               ),
@@ -290,11 +290,11 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
               // Subtle background only - no borders (Apple/Microsoft pattern)
               color: isCurrentTurn
                   ? (isDark
-                      ? purpleAccent.withOpacity(0.08)
-                      : purpleAccent.withOpacity(0.06))
+                      ? purpleAccent.withValues(alpha: 0.08)
+                      : purpleAccent.withValues(alpha: 0.06))
                   : (isDark
-                      ? Colors.white.withOpacity(0.04)
-                      : Colors.white.withOpacity(0.03)),
+                      ? Colors.white.withValues(alpha: 0.04)
+                      : Colors.white.withValues(alpha: 0.03)),
               borderRadius: BorderRadius.circular(GlassTheme.radiusLarge),
               // No border - content floats within drawer
             ),
@@ -308,7 +308,7 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
                 Text(
                   _formatTimestamp(turn.timestamp),
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.35),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
                     fontSize: 10,
                     fontWeight: FontWeight.w500,
                     letterSpacing: 0.02, // AICO: 0.02em on captions
@@ -334,7 +334,7 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: purpleAccent.withOpacity(0.4),
+                                    color: purpleAccent.withValues(alpha: 0.4),
                                     blurRadius: 4,
                                     spreadRadius: 1,
                                   ),
@@ -346,7 +346,7 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
                           Text(
                             'Live',
                             style: theme.textTheme.labelSmall?.copyWith(
-                              color: purpleAccent.withOpacity(0.8),
+                              color: purpleAccent.withValues(alpha: 0.8),
                               fontSize: 9,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 0.5,
@@ -366,7 +366,7 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
             SelectableText(
               turn.content.trim(),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.6), // Muted for secondary information
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6), // Muted for secondary information
                 height: 1.5, // AICO: 1.5× font size line-height
                 fontSize: 13, // Slightly larger for better readability
                 letterSpacing: 0.02, // AICO standard

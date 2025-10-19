@@ -37,12 +37,12 @@ class GlassTheme {
     List<BoxShadow>? shadows,
   }) {
     final baseColor = isDark 
-        ? Colors.white.withOpacity(opacity)
-        : Colors.black.withOpacity(opacity * 0.5);
+        ? Colors.white.withValues(alpha: opacity)
+        : Colors.black.withValues(alpha: opacity * 0.5);
     
     final borderColor = isDark
-        ? Colors.white.withOpacity(0.1)
-        : Colors.black.withOpacity(0.05);
+        ? Colors.white.withValues(alpha: 0.1)
+        : Colors.black.withValues(alpha: 0.05);
     
     return BoxDecoration(
       color: tint ?? baseColor,
@@ -53,7 +53,7 @@ class GlassTheme {
       ) : null,
       boxShadow: shadows ?? [
         BoxShadow(
-          color: Colors.black.withOpacity(isDark ? 0.3 : 0.1),
+          color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1),
           blurRadius: 20,
           offset: const Offset(0, 10),
         ),
@@ -74,17 +74,17 @@ class GlassTheme {
       blur: blur,
       opacity: opacity,
       radius: radius,
-      tint: accentColor?.withOpacity(opacity * 0.3),
+      tint: accentColor?.withValues(alpha: opacity * 0.3),
       shadows: [
         BoxShadow(
-          color: Colors.black.withOpacity(isDark ? 0.4 : 0.15),
+          color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
           blurRadius: 30,
           offset: const Offset(0, 15),
           spreadRadius: -5,
         ),
         if (accentColor != null)
           BoxShadow(
-            color: accentColor.withOpacity(0.2),
+            color: accentColor.withValues(alpha: 0.2),
             blurRadius: 40,
             offset: const Offset(0, 0),
           ),
@@ -105,7 +105,7 @@ class GlassTheme {
       addBorder: true,
       shadows: [
         BoxShadow(
-          color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
+          color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
           blurRadius: 10,
           offset: const Offset(0, 4),
         ),
@@ -121,12 +121,12 @@ class GlassTheme {
   }) {
     return [
       BoxShadow(
-        color: color.withOpacity(intensity),
+        color: color.withValues(alpha: intensity),
         blurRadius: blur,
         spreadRadius: blur * 0.3,
       ),
       BoxShadow(
-        color: color.withOpacity(intensity * 0.5),
+        color: color.withValues(alpha: intensity * 0.5),
         blurRadius: blur * 1.5,
         spreadRadius: blur * 0.5,
       ),
@@ -172,12 +172,12 @@ class GlassTheme {
         end: end,
         colors: colors ?? (isDark
             ? [
-                Colors.white.withOpacity(0.1),
-                Colors.white.withOpacity(0.0),
+                Colors.white.withValues(alpha: 0.1),
+                Colors.white.withValues(alpha: 0.0),
               ]
             : [
-                Colors.black.withOpacity(0.05),
-                Colors.black.withOpacity(0.0),
+                Colors.black.withValues(alpha: 0.05),
+                Colors.black.withValues(alpha: 0.0),
               ]),
       ),
     );

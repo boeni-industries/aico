@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
 
 class ChatInput extends StatefulWidget {
@@ -51,7 +52,7 @@ class _ChatInputState extends State<ChatInput> {
       // Show success animation after send
       Future.delayed(const Duration(milliseconds: 100), () {
         final state = _sendButtonKey.currentState;
-        if (state != null && state is State && state.mounted) {
+        if (state != null && state.mounted) {
           // Access showSuccess through dynamic call since state type is private
           (state as dynamic).showSuccess();
         }

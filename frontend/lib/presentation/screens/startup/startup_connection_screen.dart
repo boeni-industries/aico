@@ -463,8 +463,8 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
               size: 48,
               borderRadius: 24,
               backgroundColor: Theme.of(context).brightness == Brightness.dark
-                  ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
-                  : Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                  ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
+                  : Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
               foregroundColor: Theme.of(context).colorScheme.primary,
               tooltip: 'Close',
             ),

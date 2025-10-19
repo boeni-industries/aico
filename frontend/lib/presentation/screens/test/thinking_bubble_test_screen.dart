@@ -37,7 +37,7 @@ class ThinkingBubbleTestScreen extends StatelessWidget {
                   // Avatar
                   CircleAvatar(
                     radius: 16,
-                    backgroundColor: const Color(0xFFB8A1EA).withOpacity(0.1),
+                    backgroundColor: const Color(0xFFB8A1EA).withValues(alpha: 0.1),
                     child: const Icon(
                       Icons.face,
                       size: 16,

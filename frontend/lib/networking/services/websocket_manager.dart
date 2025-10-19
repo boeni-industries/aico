@@ -115,7 +115,7 @@ class WebSocketManager {
   }
 
   /// Handle connection errors
-  void _handleError(error) {
+  void _handleError(Object error) {
     debugPrint('[WebSocket] Error: $error');
     _updateState(WebSocketState.disconnected);
   }

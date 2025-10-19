@@ -155,8 +155,8 @@ class _MessageBubbleState extends State<MessageBubble>
               child: CircleAvatar(
                 radius: 18,
                 backgroundColor: isDark
-                    ? widget.accentColor.withOpacity(0.2)
-                    : widget.accentColor.withOpacity(0.15),
+                    ? widget.accentColor.withValues(alpha: 0.2)
+                    : widget.accentColor.withValues(alpha: 0.15),
                 child: Icon(
                   Icons.face,
                   size: 18,
@@ -259,21 +259,21 @@ class _MessageBubbleState extends State<MessageBubble>
             // Immersive glassmorphism with depth
             color: widget.isFromAico
                 ? (isDark 
-                    ? Colors.white.withOpacity(0.08) // Frosted glass
-                    : Colors.white.withOpacity(0.6))
+                    ? Colors.white.withValues(alpha: 0.08) // Frosted glass
+                    : Colors.white.withValues(alpha: 0.6))
                 : (isDark
-                    ? widget.accentColor.withOpacity(0.15) // Accent glow glass
-                    : widget.accentColor.withOpacity(0.12)),
+                    ? widget.accentColor.withValues(alpha: 0.15) // Accent glow glass
+                    : widget.accentColor.withValues(alpha: 0.12)),
             borderRadius: BorderRadius.circular(GlassTheme.radiusLarge),
             // Luminous border with gradient
             border: Border.all(
               color: widget.isFromAico
                   ? (isDark 
-                      ? Colors.white.withOpacity(0.15)
-                      : Colors.white.withOpacity(0.4))
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Colors.white.withValues(alpha: 0.4))
                   : (isDark
-                      ? widget.accentColor.withOpacity(0.4)
-                      : widget.accentColor.withOpacity(0.3)),
+                      ? widget.accentColor.withValues(alpha: 0.4)
+                      : widget.accentColor.withValues(alpha: 0.3)),
               width: 1.5,
             ),
             // Ambient glow with depth
@@ -281,13 +281,13 @@ class _MessageBubbleState extends State<MessageBubble>
               if (isDark) ...
                 GlassTheme.ambientGlow(
                   color: widget.isFromAico
-                      ? theme.colorScheme.primary.withOpacity(0.3)
+                      ? theme.colorScheme.primary.withValues(alpha: 0.3)
                       : widget.accentColor,
                   intensity: 0.2,
                   blur: 20,
                 ),
               BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.4 : 0.1),
+                color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.1),
                 blurRadius: 24,
                 offset: const Offset(0, 8),
                 spreadRadius: -4,
@@ -310,7 +310,7 @@ class _MessageBubbleState extends State<MessageBubble>
                 Text(
                   _formatTimestamp(widget.timestamp),
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                     letterSpacing: 0.5,
                   ),
                 ),

@@ -211,38 +211,38 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
     // Avatar mode takes priority over connection status
     switch (avatarMode) {
       case AvatarMode.thinking:
-        return isDark ? purple.withOpacity(0.95) : purple; // More visible
+        return isDark ? purple.withValues(alpha: 0.95) : purple; // More visible
       case AvatarMode.processing:
-        return isDark ? violet.withOpacity(0.95) : violet;
+        return isDark ? violet.withValues(alpha: 0.95) : violet;
       case AvatarMode.listening:
-        return isDark ? sapphire.withOpacity(0.95) : sapphire; // Blue for user typing
+        return isDark ? sapphire.withValues(alpha: 0.95) : sapphire; // Blue for user typing
       case AvatarMode.speaking:
-        return isDark ? purple.withOpacity(0.8) : purple.withOpacity(0.9);
+        return isDark ? purple.withValues(alpha: 0.8) : purple.withValues(alpha: 0.9);
       case AvatarMode.success:
-        return isDark ? emerald.withOpacity(1.0) : emerald;
+        return isDark ? emerald.withValues(alpha: 1.0) : emerald;
       case AvatarMode.error:
-        return isDark ? coral.withOpacity(0.9) : coral;
+        return isDark ? coral.withValues(alpha: 0.9) : coral;
       case AvatarMode.attention:
-        return isDark ? amber.withOpacity(0.8) : amber;
+        return isDark ? amber.withValues(alpha: 0.8) : amber;
       case AvatarMode.connecting:
-        return isDark ? sapphire.withOpacity(0.8) : sapphire;
+        return isDark ? sapphire.withValues(alpha: 0.8) : sapphire;
       case AvatarMode.idle:
         // Fall back to connection status for idle mode
         if (!_isAuthenticated) {
-          return isDark ? coral.withOpacity(0.7) : coral.withOpacity(0.8);
+          return isDark ? coral.withValues(alpha: 0.7) : coral.withValues(alpha: 0.8);
         }
         
         switch (_currentStatus) {
           case InternalConnectionStatus.connected:
-            return isDark ? emerald.withOpacity(0.9) : emerald;
+            return isDark ? emerald.withValues(alpha: 0.9) : emerald;
           case InternalConnectionStatus.connecting:
-            return isDark ? sapphire.withOpacity(0.8) : sapphire;
+            return isDark ? sapphire.withValues(alpha: 0.8) : sapphire;
           case InternalConnectionStatus.disconnected:
-            return isDark ? amber.withOpacity(0.7) : amber;
+            return isDark ? amber.withValues(alpha: 0.7) : amber;
           case InternalConnectionStatus.offline:
-            return isDark ? coral.withOpacity(0.6) : coral.withOpacity(0.7);
+            return isDark ? coral.withValues(alpha: 0.6) : coral.withValues(alpha: 0.7);
           case InternalConnectionStatus.error:
-            return isDark ? coral.withOpacity(0.9) : coral;
+            return isDark ? coral.withValues(alpha: 0.9) : coral;
         }
     }
   }
@@ -417,39 +417,39 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                         shape: BoxShape.circle,
                         color: Colors.transparent,
                         border: Border.all(
-                          color: ringColor.withOpacity(theme.brightness == Brightness.dark ? ringOpacity * 0.75 : ringOpacity * 0.95),
+                          color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? ringOpacity * 0.75 : ringOpacity * 0.95),
                           width: 3.0,
                         ),
                         boxShadow: [
                           // Dark contrast shadow behind ring for definition
                           BoxShadow(
-                            color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.4 : 0.15),
+                            color: Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.4 : 0.15),
                             blurRadius: 8,
                             spreadRadius: -2,
                           ),
                           // Multi-layer glow for smooth gradient (reduces banding)
                           BoxShadow(
-                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? 0.4 : 0.3),
+                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.4 : 0.3),
                             blurRadius: 50,
                             spreadRadius: 15,
                           ),
                           BoxShadow(
-                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? 0.3 : 0.22),
+                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.3 : 0.22),
                             blurRadius: 70,
                             spreadRadius: 22,
                           ),
                           BoxShadow(
-                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? 0.22 : 0.16),
+                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.22 : 0.16),
                             blurRadius: 90,
                             spreadRadius: 28,
                           ),
                           BoxShadow(
-                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? 0.15 : 0.11),
+                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.15 : 0.11),
                             blurRadius: 110,
                             spreadRadius: 35,
                           ),
                           BoxShadow(
-                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? 0.08 : 0.06),
+                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.08 : 0.06),
                             blurRadius: 130,
                             spreadRadius: 42,
                           ),
@@ -464,19 +464,19 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                           shape: BoxShape.circle,
                           color: Colors.transparent,
                           border: Border.all(
-                            color: ringColor.withOpacity(theme.brightness == Brightness.dark ? ringOpacity * 0.65 : ringOpacity * 0.8),
+                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? ringOpacity * 0.65 : ringOpacity * 0.8),
                             width: 1.8,
                           ),
                           boxShadow: [
                             // Dark contrast shadow for definition
                             BoxShadow(
-                              color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.3 : 0.1),
+                              color: Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.3 : 0.1),
                               blurRadius: 6,
                               spreadRadius: -1,
                             ),
                             // Subtle inner glow for depth
                             BoxShadow(
-                              color: ringColor.withOpacity(theme.brightness == Brightness.dark ? 0.15 : 0.12),
+                              color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.15 : 0.12),
                               blurRadius: 10,
                               spreadRadius: 0,
                             ),
@@ -516,8 +516,8 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                                     colors: [
                                       Colors.transparent, // Clear center - avatar fully visible
                                       Colors.transparent, // Keep center clear
-                                      ringColor.withOpacity(0.08), // Very subtle at mid-range
-                                      ringColor.withOpacity(0.18), // Gentle glow at edges
+                                      ringColor.withValues(alpha: 0.08), // Very subtle at mid-range
+                                      ringColor.withValues(alpha: 0.18), // Gentle glow at edges
                                     ],
                                     stops: const [0.0, 0.4, 0.7, 1.0],
                                   ),
