@@ -456,37 +456,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
         child: AnimatedBuilder(
           animation: _glowAnimationController,
           builder: (context, child) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: GlassTheme.pulsingGlow(
-                      color: avatarMoodColor,
-                      animationValue: _glowAnimation.value,
-                      baseIntensity: 0.15,
-                      pulseIntensity: 0.35,
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.waving_hand_rounded,
-                    size: 32,
-                    color: avatarMoodColor.withOpacity(0.8),
+            // Gentle fade-in only (no jitter, no scale)
+            final fadeOpacity = 0.85 + (_glowAnimation.value * 0.15);
+            
+            return Opacity(
+              opacity: fadeOpacity,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 48),
+                child: Text(
+                  'I\'m here',
+                  style: theme.textTheme.displaySmall?.copyWith(
+                    fontWeight: FontWeight.w200,
+                    letterSpacing: -0.3,
+                    color: theme.colorScheme.onSurface.withOpacity(0.9),
+                    height: 1.2,
                   ),
                 ),
-                const SizedBox(height: 20),
-                Text(
-                  'I\'m listening...',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w300,
-                    letterSpacing: 0.5,
-                    color: theme.colorScheme.onSurface.withOpacity(0.5),
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ],
+              ),
             );
           },
         ),
