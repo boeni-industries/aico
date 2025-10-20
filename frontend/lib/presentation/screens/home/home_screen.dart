@@ -15,7 +15,7 @@ import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart';
-import 'package:aico_frontend/presentation/widgets/chat/message_bubble.dart';
+import 'package:aico_frontend/presentation/widgets/chat/interactive_message_bubble.dart';
 import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
 import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
 
@@ -540,7 +540,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                        isLastMessage && 
                        isStreamingOrProcessing;
     
-    return MessageBubble(
+    return InteractiveMessageBubble(
       content: message.message,
       isFromAico: message.isFromAico,
       isThinking: isThinking,
