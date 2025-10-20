@@ -253,10 +253,11 @@ class _MessageActionBarState extends State<MessageActionBar>
     if (!isEnabled) {
       iconColor = theme.colorScheme.onSurface.withValues(alpha: 0.3);
     } else if (isExecuted) {
-      // More prominent success color
-      iconColor = widget.accentColor;
+      // Bright, saturated success color - very visible
+      iconColor = widget.accentColor.withValues(alpha: 1.0);
     } else {
-      iconColor = theme.colorScheme.onSurface.withValues(alpha: 0.7);
+      // Muted gray for contrast
+      iconColor = theme.colorScheme.onSurface.withValues(alpha: 0.5);
     }
 
     return Tooltip(
@@ -279,10 +280,10 @@ class _MessageActionBarState extends State<MessageActionBar>
             width: 32,
             height: 32,
             alignment: Alignment.center,
-            // More visible background
+            // Prominent background highlight
             decoration: BoxDecoration(
               color: isExecuted
-                  ? widget.accentColor.withValues(alpha: 0.25) // More visible
+                  ? widget.accentColor.withValues(alpha: 0.35) // Much more visible
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(8),
             ),
