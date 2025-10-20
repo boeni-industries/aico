@@ -851,8 +851,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     );
   }
 
-  /// Subtle ambient glow indicator - no icons, pure atmosphere
-  /// Follows minimalism and progressive disclosure principles
+  /// Award-winning ambient thinking indicator with clear state differentiation
+  /// Active streaming: Breathing purple glow
+  /// Completed thoughts: Subtle static purple presence
   Widget _buildCollapsedThinkingIndicator(
     BuildContext context,
     ThemeData theme,
@@ -862,48 +863,102 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     final isDark = theme.brightness == Brightness.dark;
     final purpleAccent = isDark ? const Color(0xFFB9A7E6) : const Color(0xFFB8A1EA);
     
-    if (!isStreaming) {
-      return const SizedBox.shrink(); // Completely invisible when idle
+    // Show static indicator when thoughts exist but not streaming
+    final hasThoughts = thoughtCount > 0;
+    
+    if (!isStreaming && !hasThoughts) {
+      return const SizedBox.shrink(); // Invisible when no data
     }
     
-    // Subtle vertical gradient bar on left edge with breathing glow
     return Stack(
-      key: const ValueKey('collapsed'),
+      key: ValueKey('collapsed-$isStreaming-$thoughtCount'),
       children: [
+        // Prominent vertical bar with breathing animation
         AnimatedBuilder(
           animation: _glowAnimationController,
           builder: (context, child) {
-            final pulseValue = _glowAnimation.value;
+            final pulseValue = isStreaming ? _glowAnimation.value : 0.0;
             
             return Positioned(
               left: 0,
               top: 0,
               bottom: 0,
               child: Container(
-                width: 3,
+                width: 6, // Wider for visibility
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      purpleAccent.withValues(alpha: 0.0),
-                      purpleAccent.withValues(alpha: 0.3 + pulseValue * 0.4), // Breathing center
-                      purpleAccent.withValues(alpha: 0.0),
-                    ],
+                    colors: isStreaming
+                        ? [
+                            purpleAccent.withValues(alpha: 0.0),
+                            purpleAccent.withValues(alpha: 0.6 + pulseValue * 0.4), // Prominent breathing
+                            purpleAccent.withValues(alpha: 0.0),
+                          ]
+                        : [
+                            purpleAccent.withValues(alpha: 0.0),
+                            purpleAccent.withValues(alpha: 0.3), // Static presence
+                            purpleAccent.withValues(alpha: 0.0),
+                          ],
                     stops: const [0.0, 0.5, 1.0],
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: purpleAccent.withValues(alpha: 0.2 + pulseValue * 0.3),
-                      blurRadius: 12 + (pulseValue * 8),
-                      spreadRadius: 2,
-                    ),
-                  ],
+                  boxShadow: isStreaming
+                      ? [
+                          // Multi-layer glow for depth
+                          BoxShadow(
+                            color: purpleAccent.withValues(alpha: 0.4 + pulseValue * 0.4),
+                            blurRadius: 20 + (pulseValue * 16),
+                            spreadRadius: 4,
+                          ),
+                          BoxShadow(
+                            color: purpleAccent.withValues(alpha: 0.2 + pulseValue * 0.3),
+                            blurRadius: 40 + (pulseValue * 24),
+                            spreadRadius: 8,
+                          ),
+                        ]
+                      : [
+                          // Subtle static glow
+                          BoxShadow(
+                            color: purpleAccent.withValues(alpha: 0.2),
+                            blurRadius: 12,
+                            spreadRadius: 2,
+                          ),
+                        ],
                 ),
               ),
             );
           },
         ),
+        
+        // Shimmer overlay when actively streaming
+        if (isStreaming)
+          AnimatedBuilder(
+            animation: _glowAnimationController,
+            builder: (context, child) {
+              final pulseValue = _glowAnimation.value;
+              
+              return Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                child: Container(
+                  width: 6,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.0),
+                        Colors.white.withValues(alpha: 0.15 * pulseValue), // Shimmer highlight
+                        Colors.white.withValues(alpha: 0.0),
+                      ],
+                      stops: const [0.3, 0.5, 0.7],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
       ],
     );
   }
