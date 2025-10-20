@@ -98,11 +98,11 @@ class _InteractiveMessageBubbleState extends State<InteractiveMessageBubble> {
               accentColor: widget.accentColor,
             ),
 
-            // Action bar (positioned at top-right of bubble - industry standard)
+            // Action bar (positioned inside bubble at top-right with equal spacing)
             if (_showActionBar && !widget.isThinking && widget.content.isNotEmpty)
               Positioned(
-                top: -8, // Slight overlap with bubble top
-                right: widget.isFromAico ? 8 : 68, // Right-aligned, account for spacing
+                top: 12, // Equal distance from top
+                right: 12, // Equal distance from right
                 child: MessageActionBar(
                   messageContent: widget.content,
                   isFromAico: widget.isFromAico,

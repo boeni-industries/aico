@@ -53,27 +53,21 @@ class _MessageActionBarState extends State<MessageActionBar>
   void initState() {
     super.initState();
 
-    // Smooth entrance animation
+    // Smooth entrance with spring physics
     _fadeController = AnimationController(
-      duration: const Duration(milliseconds: 150),
+      duration: const Duration(milliseconds: 200),
       vsync: this,
     );
 
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
+
+    _scaleAnimation = CurvedAnimation(
       parent: _fadeController,
       curve: Curves.easeOutCubic,
-    ));
-
-    _scaleAnimation = Tween<double>(
-      begin: 0.9,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeOutBack, // Subtle bounce for delight
-    ));
+    );
 
     // Start animation
     _fadeController.forward();
@@ -95,13 +89,13 @@ class _MessageActionBarState extends State<MessageActionBar>
     // Copy to clipboard
     await Clipboard.setData(ClipboardData(text: widget.messageContent));
 
-    // Visual feedback - icon changes to checkmark with glow
+    // Visual feedback - smooth sine wave animation
     setState(() {
       _executedAction = 'copy';
     });
 
-    // Reset visual feedback after delay - quicker for better flow
-    Future.delayed(const Duration(milliseconds: 1200), () {
+    // Reset after animation completes
+    Future.delayed(const Duration(milliseconds: 700), () {
       if (mounted) {
         setState(() {
           _executedAction = null;
@@ -119,55 +113,32 @@ class _MessageActionBarState extends State<MessageActionBar>
       opacity: _fadeAnimation,
       child: ScaleTransition(
         scale: _scaleAnimation,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(
-              sigmaX: 30, // Heavy blur for true frosted glass
-              sigmaY: 30,
+        child: Container(
+          decoration: BoxDecoration(
+            // Semi-transparent background - matches bubble better
+            color: isDark
+                ? const Color(0xFF2F3241).withValues(alpha: 0.92) // Elevated surface
+                : const Color(0xFFF5F6FA).withValues(alpha: 0.92), // Background tint
+            borderRadius: BorderRadius.circular(12),
+            // Minimal border
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : Colors.black.withValues(alpha: 0.08),
+              width: 1.0,
             ),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-              decoration: BoxDecoration(
-                // Enhanced glassmorphism with noise texture feel
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: isDark
-                      ? [
-                          Colors.white.withValues(alpha: 0.08),
-                          Colors.white.withValues(alpha: 0.04),
-                        ]
-                      : [
-                          Colors.white.withValues(alpha: 0.8),
-                          Colors.white.withValues(alpha: 0.7),
-                        ],
-                ),
-                borderRadius: BorderRadius.circular(24),
-                // Prominent luminous border for definition
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: isDark ? 0.25 : 0.5),
-                  width: 1.5,
-                ),
-                // Multi-layer shadows for depth
-                boxShadow: [
-                  // Primary shadow
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.7 : 0.2),
-                    blurRadius: 40,
-                    offset: const Offset(0, 10),
-                    spreadRadius: -5,
-                  ),
-                  // Inner highlight (top edge)
-                  BoxShadow(
-                    color: Colors.white.withValues(alpha: isDark ? 0.1 : 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, -1),
-                    spreadRadius: -2,
-                  ),
-                ],
+            // Subtle shadow
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+                blurRadius: 12,
+                offset: const Offset(0, 2),
+                spreadRadius: 0,
               ),
-              child: Row(
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+            child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Copy Text (Universal)
@@ -261,14 +232,12 @@ class _MessageActionBarState extends State<MessageActionBar>
                   ],
                 ],
               ),
-            ),
-          ),
         ),
       ),
     );
   }
 
-  /// Build individual action button with proper styling and states
+  /// Build individual action button with clear hover and active states
   Widget _buildActionButton({
     required IconData icon,
     required String tooltip,
@@ -277,64 +246,55 @@ class _MessageActionBarState extends State<MessageActionBar>
     bool isEnabled = true,
   }) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     
-    // Consistent color scheme with rest of app
+    // Clear, prominent color scheme
     final Color iconColor;
     if (!isEnabled) {
-      // Inactive state - very subtle
-      iconColor = theme.colorScheme.onSurface.withValues(alpha: 0.25);
+      iconColor = theme.colorScheme.onSurface.withValues(alpha: 0.3);
     } else if (isExecuted) {
-      // Success state - accent color
+      // More prominent success color
       iconColor = widget.accentColor;
     } else {
-      // Active state - consistent with navigation
       iconColor = theme.colorScheme.onSurface.withValues(alpha: 0.7);
     }
 
     return Tooltip(
       message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: const Duration(milliseconds: 500),
       child: Material(
         color: Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: isEnabled ? onTap : null,
-          borderRadius: BorderRadius.circular(GlassTheme.radiusSmall),
-          child: Container(
-            width: 36,
-            height: 36,
+          borderRadius: BorderRadius.circular(8),
+          // More visible hover effect
+          hoverColor: isDark
+              ? Colors.white.withValues(alpha: 0.1)
+              : Colors.black.withValues(alpha: 0.05),
+          splashColor: widget.accentColor.withValues(alpha: 0.2),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic,
+            width: 32,
+            height: 32,
             alignment: Alignment.center,
-            decoration: isExecuted
-                ? BoxDecoration(
-                    borderRadius: BorderRadius.circular(GlassTheme.radiusSmall),
-                    boxShadow: [
-                      // Success glow - beautiful and prominent
-                      BoxShadow(
-                        color: widget.accentColor.withValues(alpha: 0.5),
-                        blurRadius: 16,
-                        spreadRadius: 0,
-                      ),
-                      BoxShadow(
-                        color: widget.accentColor.withValues(alpha: 0.3),
-                        blurRadius: 32,
-                        spreadRadius: 4,
-                      ),
-                    ],
-                  )
-                : null,
+            // More visible background
+            decoration: BoxDecoration(
+              color: isExecuted
+                  ? widget.accentColor.withValues(alpha: 0.25) // More visible
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+            ),
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
+              duration: const Duration(milliseconds: 300),
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
               transitionBuilder: (child, animation) {
-                return ScaleTransition(
-                  scale: Tween<double>(begin: 0.7, end: 1.0).animate(
-                    CurvedAnimation(
-                      parent: animation,
-                      curve: Curves.easeOutBack,
-                    ),
-                  ),
-                  child: FadeTransition(
-                    opacity: animation,
+                return FadeTransition(
+                  opacity: animation,
+                  child: ScaleTransition(
+                    scale: Tween<double>(begin: 0.8, end: 1.0).animate(animation),
                     child: child,
                   ),
                 );
@@ -342,7 +302,7 @@ class _MessageActionBarState extends State<MessageActionBar>
               child: Icon(
                 icon,
                 key: ValueKey(icon),
-                size: 18,
+                size: 16,
                 color: iconColor,
               ),
             ),
