@@ -127,25 +127,43 @@ class _MessageActionBarState extends State<MessageActionBar>
               sigmaY: 30,
             ),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
               decoration: BoxDecoration(
-                // True glassmorphism - semi-transparent with heavy blur
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : Colors.white.withValues(alpha: 0.7),
+                // Enhanced glassmorphism with noise texture feel
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: isDark
+                      ? [
+                          Colors.white.withValues(alpha: 0.08),
+                          Colors.white.withValues(alpha: 0.04),
+                        ]
+                      : [
+                          Colors.white.withValues(alpha: 0.8),
+                          Colors.white.withValues(alpha: 0.7),
+                        ],
+                ),
                 borderRadius: BorderRadius.circular(24),
-                // Subtle luminous border
+                // Prominent luminous border for definition
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: isDark ? 0.15 : 0.4),
+                  color: Colors.white.withValues(alpha: isDark ? 0.25 : 0.5),
                   width: 1.5,
                 ),
-                // Floating elevation
+                // Multi-layer shadows for depth
                 boxShadow: [
+                  // Primary shadow
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.6 : 0.15),
-                    blurRadius: 32,
-                    offset: const Offset(0, 8),
-                    spreadRadius: -4,
+                    color: Colors.black.withValues(alpha: isDark ? 0.7 : 0.2),
+                    blurRadius: 40,
+                    offset: const Offset(0, 10),
+                    spreadRadius: -5,
+                  ),
+                  // Inner highlight (top edge)
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: isDark ? 0.1 : 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, -1),
+                    spreadRadius: -2,
                   ),
                 ],
               ),
@@ -161,12 +179,22 @@ class _MessageActionBarState extends State<MessageActionBar>
                     isEnabled: true,
                   ),
                   
-                  // Subtle divider
+                  // Divider with gradient for depth
                   Container(
                     width: 1,
-                    height: 20,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    color: Colors.white.withValues(alpha: isDark ? 0.1 : 0.2),
+                    height: 24,
+                    margin: const EdgeInsets.symmetric(horizontal: 6),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.white.withValues(alpha: 0.0),
+                          Colors.white.withValues(alpha: isDark ? 0.2 : 0.3),
+                          Colors.white.withValues(alpha: 0.0),
+                        ],
+                      ),
+                    ),
                   ),
                   
                   // Remember This (Universal)
@@ -182,9 +210,19 @@ class _MessageActionBarState extends State<MessageActionBar>
                     // Divider
                     Container(
                       width: 1,
-                      height: 20,
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      color: Colors.white.withValues(alpha: isDark ? 0.1 : 0.2),
+                      height: 24,
+                      margin: const EdgeInsets.symmetric(horizontal: 6),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.white.withValues(alpha: 0.0),
+                            Colors.white.withValues(alpha: isDark ? 0.2 : 0.3),
+                            Colors.white.withValues(alpha: 0.0),
+                          ],
+                        ),
+                      ),
                     ),
                     
                     // This Helped
@@ -198,9 +236,19 @@ class _MessageActionBarState extends State<MessageActionBar>
                     // Divider
                     Container(
                       width: 1,
-                      height: 20,
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      color: Colors.white.withValues(alpha: isDark ? 0.1 : 0.2),
+                      height: 24,
+                      margin: const EdgeInsets.symmetric(horizontal: 6),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.white.withValues(alpha: 0.0),
+                            Colors.white.withValues(alpha: isDark ? 0.2 : 0.3),
+                            Colors.white.withValues(alpha: 0.0),
+                          ],
+                        ),
+                      ),
                     ),
                     
                     // Not Quite
