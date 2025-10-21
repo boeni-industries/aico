@@ -18,6 +18,8 @@ import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart'
 import 'package:aico_frontend/presentation/widgets/chat/interactive_message_bubble.dart';
 import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
 import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
+import 'package:aico_frontend/presentation/widgets/thinking/ambient_thinking_indicator.dart';
+import 'package:aico_frontend/presentation/widgets/thinking/thinking_preview_card.dart';
 
 /// Home screen featuring avatar-centric hub with integrated conversation interface.
 /// Serves as the primary interaction point with AICO, including conversation history
@@ -49,6 +51,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   Timer? _typingTimer;
   bool _isUserTyping = false;
   String? _scrollToThoughtId; // Track which thought to scroll to
+  bool _showThinkingPreview = false; // Track preview card visibility
+  Timer? _hoverTimer; // Delay before showing preview
   
   // Animation controllers for immersive effects
   late AnimationController _backgroundAnimationController;
@@ -120,6 +124,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   @override
   void dispose() {
     _typingTimer?.cancel();
+    _hoverTimer?.cancel();
     _messageController.removeListener(_onTypingChanged);
     _messageController.dispose();
     _conversationController.dispose();
@@ -776,9 +781,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                           children: [
                             // Thinking display section (header integrated into ThinkingDisplay widget)
                             Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.only(bottom: 24), 
-                                child: Consumer(
+                              child: Consumer(
                                   builder: (context, ref, child) {
                                     final conversationState = ref.watch(conversationProvider);
                                     final settings = ref.watch(settingsProvider);
@@ -826,16 +829,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                                               isStreaming: isActivelyThinking,
                                               scrollToMessageId: _scrollToThoughtId,
                                             )
-                                          : _buildCollapsedThinkingIndicator(
+                                          : _buildNewCollapsedIndicator(
                                               context,
-                                              theme,
+                                              conversationState,
                                               isActivelyThinking,
-                                              conversationState.thinkingHistory.length,
                                             ),
                                     );
                                   },
                                 ),
-                              ),
                             ),
                           ],
                         ),
@@ -851,113 +852,100 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     );
   }
 
-  /// Award-winning ambient thinking indicator with clear state differentiation
-  /// Active streaming: Breathing purple glow
-  /// Completed thoughts: Subtle static purple presence
-  Widget _buildCollapsedThinkingIndicator(
+  /// New three-layer progressive disclosure thinking indicator
+  /// Layer 1: Ambient indicator (bar + badge + icon)
+  /// Layer 2: Preview card on hover
+  /// Layer 3: Full drawer expansion
+  Widget _buildNewCollapsedIndicator(
     BuildContext context,
-    ThemeData theme,
+    ConversationState conversationState,
     bool isStreaming,
-    int thoughtCount,
   ) {
-    final isDark = theme.brightness == Brightness.dark;
-    final purpleAccent = isDark ? const Color(0xFFB9A7E6) : const Color(0xFFB8A1EA);
-    
-    // Show static indicator when thoughts exist but not streaming
-    final hasThoughts = thoughtCount > 0;
-    
-    if (!isStreaming && !hasThoughts) {
-      return const SizedBox.shrink(); // Invisible when no data
-    }
-    
     return Stack(
-      key: ValueKey('collapsed-$isStreaming-$thoughtCount'),
       children: [
-        // Prominent vertical bar with breathing animation
-        AnimatedBuilder(
-          animation: _glowAnimationController,
-          builder: (context, child) {
-            final pulseValue = isStreaming ? _glowAnimation.value : 0.0;
-            
-            return Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              child: Container(
-                width: 6, // Wider for visibility
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: isStreaming
-                        ? [
-                            purpleAccent.withValues(alpha: 0.0),
-                            purpleAccent.withValues(alpha: 0.6 + pulseValue * 0.4), // Prominent breathing
-                            purpleAccent.withValues(alpha: 0.0),
-                          ]
-                        : [
-                            purpleAccent.withValues(alpha: 0.0),
-                            purpleAccent.withValues(alpha: 0.3), // Static presence
-                            purpleAccent.withValues(alpha: 0.0),
-                          ],
-                    stops: const [0.0, 0.5, 1.0],
-                  ),
-                  boxShadow: isStreaming
-                      ? [
-                          // Multi-layer glow for depth
-                          BoxShadow(
-                            color: purpleAccent.withValues(alpha: 0.4 + pulseValue * 0.4),
-                            blurRadius: 20 + (pulseValue * 16),
-                            spreadRadius: 4,
-                          ),
-                          BoxShadow(
-                            color: purpleAccent.withValues(alpha: 0.2 + pulseValue * 0.3),
-                            blurRadius: 40 + (pulseValue * 24),
-                            spreadRadius: 8,
-                          ),
-                        ]
-                      : [
-                          // Subtle static glow
-                          BoxShadow(
-                            color: purpleAccent.withValues(alpha: 0.2),
-                            blurRadius: 12,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                ),
-              ),
-            );
-          },
+        // Layer 1: Ambient Thinking Indicator
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          child: AmbientThinkingIndicator(
+            isStreaming: isStreaming,
+            thoughtCount: conversationState.thinkingHistory.length,
+            onTap: () {
+              setState(() {
+                _isRightDrawerExpanded = true;
+                _showThinkingPreview = false;
+              });
+            },
+            onHoverStart: () {
+              // Start timer for delayed preview
+              _hoverTimer?.cancel();
+              _hoverTimer = Timer(const Duration(milliseconds: 300), () {
+                if (mounted) {
+                  setState(() => _showThinkingPreview = true);
+                }
+              });
+            },
+            onHoverEnd: () {
+              // Cancel timer and hide preview
+              _hoverTimer?.cancel();
+              setState(() => _showThinkingPreview = false);
+            },
+          ),
         ),
-        
-        // Shimmer overlay when actively streaming
-        if (isStreaming)
-          AnimatedBuilder(
-            animation: _glowAnimationController,
-            builder: (context, child) {
-              final pulseValue = _glowAnimation.value;
-              
-              return Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                child: Container(
-                  width: 6,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.white.withValues(alpha: 0.0),
-                        Colors.white.withValues(alpha: 0.15 * pulseValue), // Shimmer highlight
-                        Colors.white.withValues(alpha: 0.0),
-                      ],
-                      stops: const [0.3, 0.5, 0.7],
+
+        // Layer 2: Preview Card (on hover) - positioned to overlay conversation area
+        if (_showThinkingPreview)
+          Positioned(
+            left: -296, // Position to the left of the drawer (280px card + 16px spacing)
+            top: 0,
+            bottom: 0,
+            child: Align(
+              alignment: Alignment.center,
+              child: TweenAnimationBuilder<Offset>(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                tween: Tween<Offset>(
+                  begin: const Offset(20, 0), // Slide from right
+                  end: Offset.zero,
+                ),
+                builder: (context, offset, child) {
+                  return Transform.translate(
+                    offset: offset,
+                    child: FadeTransition(
+                      opacity: AlwaysStoppedAnimation(
+                        1.0 - (offset.dx / 20.0).clamp(0.0, 1.0),
+                      ),
+                      child: child,
+                    ),
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 60), // Vertical padding to avoid screen edges
+                  child: MouseRegion(
+                    onEnter: (_) {
+                      // Keep preview visible when hovering over it
+                      _hoverTimer?.cancel();
+                    },
+                    onExit: (_) {
+                      // Hide preview when leaving
+                      setState(() => _showThinkingPreview = false);
+                    },
+                    child: ThinkingPreviewCard(
+                      recentThoughts: conversationState.thinkingHistory,
+                      streamingThought: conversationState.streamingThinking,
+                      isStreaming: isStreaming,
+                      onExpand: () {
+                        setState(() {
+                          _isRightDrawerExpanded = true;
+                          _showThinkingPreview = false;
+                        });
+                      },
                     ),
                   ),
                 ),
-              );
-            },
+              ),
+            ),
           ),
       ],
     );
