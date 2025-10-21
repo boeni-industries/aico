@@ -829,10 +829,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                                               isStreaming: isActivelyThinking,
                                               scrollToMessageId: _scrollToThoughtId,
                                             )
-                                          : _buildNewCollapsedIndicator(
-                                              context,
-                                              conversationState,
-                                              isActivelyThinking,
+                                          : Container(
+                                              key: const ValueKey('collapsed'),
+                                              child: _buildNewCollapsedIndicator(
+                                                context,
+                                                conversationState,
+                                                isActivelyThinking,
+                                              ),
                                             ),
                                     );
                                   },
@@ -869,6 +872,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
           top: 0,
           bottom: 0,
           child: AmbientThinkingIndicator(
+            key: const ValueKey('ambient_indicator'), // Stable key to preserve widget state
             isStreaming: isStreaming,
             thoughtCount: conversationState.thinkingHistory.length,
             onTap: () {

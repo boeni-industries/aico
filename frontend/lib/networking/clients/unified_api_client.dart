@@ -144,9 +144,6 @@ class UnifiedApiClient {
     Function(Map<String, List<String>> headers)? onHeaders,
     bool skipTokenRefresh = false,
   }) async {
-    AICOLog.info('🚀 STARTING STREAMING REQUEST', 
-      topic: 'network/streaming/start',
-      extra: {'method': method, 'endpoint': endpoint});
     
     // Auto-initialize if not done yet
     if (!_isInitialized) {
@@ -168,9 +165,6 @@ class UnifiedApiClient {
           : _encryptionService.createEncryptedRequest({});
 
       // Make streaming request using Dio
-      AICOLog.info('📡 Making Dio streaming request', 
-        topic: 'network/streaming/dio_request',
-        extra: {'endpoint': endpoint, 'method': method});
       
       final response = await _dio!.request<ResponseBody>(
         endpoint,
@@ -182,10 +176,6 @@ class UnifiedApiClient {
           responseType: ResponseType.stream, // Enable streaming response
         ),
       );
-
-      AICOLog.info('📡 Dio response received', 
-        topic: 'network/streaming/dio_response',
-        extra: {'status_code': response.statusCode, 'has_data': response.data != null});
 
       // Extract and pass headers if callback provided
       if (onHeaders != null && response.headers.map.isNotEmpty) {
@@ -215,27 +205,14 @@ class UnifiedApiClient {
       
       if (response.statusCode == 200 && response.data != null) {
         // Handle streaming response
-        AICOLog.info('🔄 Starting stream processing', 
-          topic: 'network/streaming/stream_start');
         
         final stream = response.data!.stream;
         String buffer = '';
         
         await for (final chunkBytes in stream) {
           final chunk = utf8.decode(chunkBytes);
-          AICOLog.info('📦 Raw chunk received', 
-            topic: 'network/streaming/raw_chunk',
-            extra: {'chunk_length': chunk.length, 'chunk_preview': chunk.length > 50 ? '${chunk.substring(0, 50)}...' : chunk});
           
           buffer += chunk;
-          
-          AICOLog.info('📋 Buffer updated', 
-            topic: 'network/streaming/buffer_update',
-            extra: {
-              'buffer_length': buffer.length, 
-              'newline_count': '\n'.allMatches(buffer).length,
-              'buffer_preview': buffer.length > 100 ? '${buffer.substring(0, 100)}...' : buffer
-            });
           
           // Process complete JSON objects (split on newlines)
           final lines = buffer.split('\n');
@@ -247,46 +224,18 @@ class UnifiedApiClient {
             buffer = '';
           }
           
-          AICOLog.info('📝 Lines split', 
-            topic: 'network/streaming/lines_split',
-            extra: {'lines_count': lines.length, 'remaining_buffer_length': buffer.length});
-          
           for (final line in lines) {
             if (line.trim().isNotEmpty) {
-              AICOLog.info('🔍 Processing line', 
-                topic: 'network/streaming/line_process',
-                extra: {'line_length': line.length, 'line_preview': line.length > 100 ? '${line.substring(0, 100)}...' : line});
               try {
                 final jsonData = jsonDecode(line);
-                AICOLog.info('✅ JSON parsed successfully', 
-                  topic: 'network/streaming/json_parsed',
-                  extra: {'has_encrypted': jsonData.containsKey('encrypted')});
                 
                 // ALL streaming responses MUST be encrypted per AICO security requirements
                 if (jsonData.containsKey('encrypted') && jsonData['encrypted'] == true) {
-                  AICOLog.info('Decrypting streaming chunk', 
-                    topic: 'network/streaming/decrypt',
-                    extra: {'payload_length': jsonData['payload']?.toString().length ?? 0});
                   
                   final decryptedData = _encryptionService.decryptPayload(jsonData['payload']);
                   
-                  AICOLog.info('Decrypted streaming chunk', 
-                    topic: 'network/streaming/decrypted',
-                    extra: {
-                      'type': decryptedData['type'],
-                      'content_length': decryptedData['content']?.toString().length ?? 0,
-                      'content_preview': decryptedData['content']?.toString().substring(0, 
-                        (decryptedData['content']?.toString().length ?? 0) > 20 ? 20 : (decryptedData['content']?.toString().length ?? 0)) ?? ''
-                    });
-                  
                   if (decryptedData['type'] == 'chunk') {
                     // Pass full decrypted data including content_type
-                    AICOLog.info('Passing chunk to onChunk', 
-                      topic: 'network/streaming/chunk_pass',
-                      extra: {
-                        'content': decryptedData['content'] ?? '',
-                        'content_type': decryptedData['content_type'] ?? 'response'
-                      });
                     onChunk(decryptedData);
                   } else if (decryptedData['type'] == 'error') {
                     onError(decryptedData['error'] ?? 'Unknown streaming error');

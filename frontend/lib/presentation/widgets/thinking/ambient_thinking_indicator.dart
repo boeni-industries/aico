@@ -54,13 +54,15 @@ class _AmbientThinkingIndicatorState extends State<AmbientThinkingIndicator>
 
     // Handle streaming state changes with mounted check
     if (widget.isStreaming && !oldWidget.isStreaming) {
+      // Start pulsing when thinking stream starts
       if (mounted) {
         _glowController.repeat(reverse: true);
       }
     } else if (!widget.isStreaming && oldWidget.isStreaming) {
+      // Stop pulsing when thinking stream ends
       if (mounted) {
         _glowController.stop();
-        _glowController.reset(); // Reset to beginning
+        _glowController.value = 0.0; // Reset to begin value (0.3)
       }
     }
   }
@@ -120,16 +122,11 @@ class _AmbientThinkingIndicatorState extends State<AmbientThinkingIndicator>
   Widget _buildCenteredGradientLine(Color purpleAccent, bool isDark) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Use static animation when not streaming to prevent continuous pulsing
-        final animation = widget.isStreaming 
-            ? _glowAnimation 
-            : const AlwaysStoppedAnimation<double>(0.3);
-        
         return AnimatedBuilder(
-          animation: animation,
+          animation: _glowAnimation,
           builder: (context, child) {
-            // Lock intensity to 0.3 when not streaming
-            final glowIntensity = widget.isStreaming ? animation.value : 0.3;
+            // Always use the animation value, but it will be static when not streaming
+            final glowIntensity = _glowAnimation.value;
             
             // Visual symmetry: match the top spacing
             // Top has SafeArea + rounded corner, so bottom should match

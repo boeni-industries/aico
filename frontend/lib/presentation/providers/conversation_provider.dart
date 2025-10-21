@@ -75,11 +75,11 @@ class ConversationState {
     bool? isLoading,
     bool? isSendingMessage,
     bool? isStreaming,
-    String? streamingContent,
-    String? streamingMessageId,
-    String? streamingThinking,
+    Object? streamingContent = _undefined,
+    Object? streamingMessageId = _undefined,
+    Object? streamingThinking = _undefined,
     List<ThinkingTurn>? thinkingHistory,
-    String? error,
+    Object? error = _undefined,
     String? currentConversationId,
   }) {
     return ConversationState(
@@ -87,11 +87,11 @@ class ConversationState {
       isLoading: isLoading ?? this.isLoading,
       isSendingMessage: isSendingMessage ?? this.isSendingMessage,
       isStreaming: isStreaming ?? this.isStreaming,
-      streamingContent: streamingContent ?? this.streamingContent,
-      streamingMessageId: streamingMessageId ?? this.streamingMessageId,
-      streamingThinking: streamingThinking ?? this.streamingThinking,
+      streamingContent: streamingContent == _undefined ? this.streamingContent : streamingContent as String?,
+      streamingMessageId: streamingMessageId == _undefined ? this.streamingMessageId : streamingMessageId as String?,
+      streamingThinking: streamingThinking == _undefined ? this.streamingThinking : streamingThinking as String?,
       thinkingHistory: thinkingHistory ?? this.thinkingHistory,
-      error: error ?? this.error,
+      error: error == _undefined ? this.error : error as String?,
       currentConversationId: currentConversationId ?? this.currentConversationId,
     );
   }
@@ -100,6 +100,9 @@ class ConversationState {
     return copyWith(error: null);
   }
 }
+
+// Sentinel value to distinguish between "not provided" and "provided as null"
+const _undefined = Object();
 
 /// Conversation provider using Riverpod Notifier
 @riverpod
