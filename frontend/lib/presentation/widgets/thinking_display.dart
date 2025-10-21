@@ -41,6 +41,11 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
     _pulseAnimation = Tween<double>(begin: 0.4, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+    
+    // Scroll to bottom when widget is first displayed (drawer expanded)
+    if (widget.thinkingHistory.isNotEmpty || widget.currentThinking != null) {
+      _scrollToBottom();
+    }
   }
 
   @override
@@ -59,16 +64,20 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
     // Simple logic: scroll when history changes or current thinking updates
     if (widget.thinkingHistory.length != oldWidget.thinkingHistory.length ||
         widget.currentThinking != oldWidget.currentThinking) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-        }
-      });
+      _scrollToBottom();
     }
+  }
+  
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
   
   void _scrollToThought(String messageId) {

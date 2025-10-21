@@ -7,7 +7,6 @@ import 'package:aico_frontend/domain/entities/message.dart';
 import 'package:aico_frontend/domain/repositories/message_repository.dart';
 import 'package:aico_frontend/domain/usecases/send_message_usecase.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
-import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:uuid/uuid.dart';
 
@@ -127,9 +126,6 @@ class ConversationNotifier extends _$ConversationNotifier {
   }
 
   void _initializeConversation() {
-    AICOLog.info('Initializing conversation provider', 
-      topic: 'conversation_provider/init',
-      extra: {'user_id': _userId});
     
     // Initial state already has null conversation ID - backend will assign one for the first message
     // No need to mutate state here as it causes circular dependency
@@ -164,14 +160,6 @@ class ConversationNotifier extends _$ConversationNotifier {
       isSendingMessage: true,
       error: null,
     );
-
-    AICOLog.info('Sending message', 
-      topic: 'conversation_provider/send_message',
-      extra: {
-        'message_id': messageId,
-        'conversation_id': state.currentConversationId,
-        'streaming': stream,
-      });
 
     try {
       if (stream) {
@@ -307,13 +295,6 @@ class ConversationNotifier extends _$ConversationNotifier {
           streamingThinking: null, // Clear streaming thinking
           thinkingHistory: updatedHistory, // Update history
         );
-        
-        AICOLog.info('Streaming completed successfully', 
-          topic: 'conversation_provider/streaming_complete',
-          extra: {
-            'ai_message_id': aiMessageId,
-            'final_length': finalResponse.length,
-          });
       },
       (String error) {
         // Handle streaming error
@@ -344,9 +325,6 @@ class ConversationNotifier extends _$ConversationNotifier {
       onConversationId: (String conversationId) {
         // Update conversation ID from backend
         state = state.copyWith(currentConversationId: conversationId);
-        AICOLog.info('Updated conversation_id from backend',
-          topic: 'conversation_provider/conversation_id_updated',
-          extra: {'conversation_id': conversationId});
       },
     );
   }
@@ -396,10 +374,6 @@ class ConversationNotifier extends _$ConversationNotifier {
       final aiResponseContent = userMessage.metadata?['ai_response'] as String?;
       
       if (aiResponseContent != null && aiResponseContent.isNotEmpty) {
-        // Debug: Print the backend timestamp to see what we're actually getting
-        final backendTimestamp = userMessage.metadata?['backend_timestamp'] as String?;
-        debugPrint('Backend timestamp debug: $backendTimestamp, Current time: ${DateTime.now().toIso8601String()}');
-        
         // For now, use current time to eliminate the 2-hour offset
         final aiTimestamp = DateTime.now();
         
@@ -416,14 +390,6 @@ class ConversationNotifier extends _$ConversationNotifier {
         state = state.copyWith(
           messages: [...state.messages, aiMessage],
         );
-
-        AICOLog.info('AI response added from backend', 
-          topic: 'conversation_provider/ai_response',
-          extra: {
-            'ai_message_id': aiMessage.id,
-            'conversation_id': aiMessage.conversationId,
-            'content_length': aiResponseContent.length,
-          });
       } else {
         AICOLog.warn('No AI response received from backend', 
           topic: 'conversation_provider/ai_response_missing',
@@ -447,10 +413,6 @@ class ConversationNotifier extends _$ConversationNotifier {
     
     state = state.copyWith(isLoading: true, error: null);
 
-    AICOLog.info('Loading conversation messages', 
-      topic: 'conversation_provider/load_messages',
-      extra: {'conversation_id': targetConversationId});
-
     try {
       final messages = await _messageRepository.getMessages(targetConversationId);
       
@@ -459,14 +421,6 @@ class ConversationNotifier extends _$ConversationNotifier {
         isLoading: false,
         currentConversationId: targetConversationId,
       );
-
-      AICOLog.info('Messages loaded successfully', 
-        topic: 'conversation_provider/load_success',
-        extra: {
-          'conversation_id': targetConversationId,
-          'message_count': messages.length,
-        });
-
     } catch (e) {
       AICOLog.error('Failed to load messages', 
         topic: 'conversation_provider/load_error',
@@ -482,9 +436,6 @@ class ConversationNotifier extends _$ConversationNotifier {
 
   /// Clear current conversation
   void clearConversation() {
-    AICOLog.info('Clearing conversation', 
-      topic: 'conversation_provider/clear');
-    
     state = const ConversationState(currentConversationId: null);
   }
 
@@ -510,11 +461,7 @@ class ConversationNotifier extends _$ConversationNotifier {
       return;
     }
 
-    AICOLog.info('Retrying failed message', 
-      topic: 'conversation_provider/retry',
-      extra: {'message_id': messageId});
-
-    // Remove the failed message and resend
+    // Remove failed message and resend
     final updatedMessages = state.messages.where((msg) => msg.id != messageId).toList();
     state = state.copyWith(messages: updatedMessages);
 
