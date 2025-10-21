@@ -175,82 +175,40 @@ class _AmbientThinkingIndicatorState extends State<AmbientThinkingIndicator>
   }
 
   Widget _buildGlassmorphicBadge(Color purpleAccent, bool isDark) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.08)
-                : Colors.white.withValues(alpha: 0.70),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: Colors.white.withValues(alpha: isDark ? 0.25 : 0.40),
-              width: 1.5,
-            ),
-            boxShadow: [
-              // Inset top highlight (light from above)
-              BoxShadow(
-                color: Colors.white.withValues(alpha: 0.15),
-                blurRadius: 0,
-                offset: const Offset(0, -1),
-                spreadRadius: 0,
-              ),
-              // Close depth shadow
-              BoxShadow(
-                color: purpleAccent.withValues(alpha: 0.12),
-                blurRadius: 4,
-                offset: const Offset(0, 1),
-              ),
-              // Mid depth shadow
-              BoxShadow(
-                color: purpleAccent.withValues(alpha: 0.10),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-              // Far shadow (depth)
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-              // Ambient glow
-              BoxShadow(
-                color: purpleAccent.withValues(alpha: 0.2),
-                blurRadius: 30,
-                offset: Offset.zero,
-                spreadRadius: -5,
-              ),
-            ],
-            // Gradient overlay for depth (from AnimatedButton pattern)
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.white.withValues(alpha: 0.12),
-                Colors.transparent,
-                Colors.black.withValues(alpha: 0.08),
-              ],
-              stops: const [0.0, 0.4, 1.0],
-            ),
+    // Match chevron size and style exactly
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.06)
+            : Colors.white.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.1)
+              : Colors.white.withValues(alpha: 0.3),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-          child: Center(
-            child: Text(
-              '${widget.thoughtCount}',
-              style: TextStyle(
-                color: purpleAccent,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.5,
-              ),
-            ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          '${widget.thoughtCount}',
+          style: TextStyle(
+            color: purpleAccent.withValues(alpha: 0.6),
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            letterSpacing: -0.1,
           ),
         ),
       ),
     );
   }
-
 }

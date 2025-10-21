@@ -12,6 +12,7 @@ class ThinkingDisplay extends StatefulWidget {
   final String? currentThinking; // Currently streaming thinking
   final bool isStreaming;
   final String? scrollToMessageId; // Message ID to scroll to
+  final VoidCallback? onCollapse; // Callback to collapse drawer
 
   const ThinkingDisplay({
     super.key,
@@ -19,6 +20,7 @@ class ThinkingDisplay extends StatefulWidget {
     this.currentThinking,
     this.isStreaming = false,
     this.scrollToMessageId,
+    this.onCollapse,
   });
 
   @override
@@ -132,58 +134,95 @@ class _ThinkingDisplayState extends State<ThinkingDisplay>
         : const Color(0xFFB8A1EA);
     
     return Padding(
-      padding: const EdgeInsets.only(left: 20, right: 20, top: 16, bottom: 24),
+      padding: const EdgeInsets.only(left: 12, right: 20, top: 16, bottom: 24),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Elegant sparkles icon for thinking
-          AnimatedBuilder(
-            animation: _pulseAnimation,
-            builder: (context, child) {
-              return Opacity(
-                opacity: widget.isStreaming ? (0.6 + _pulseAnimation.value * 0.4) : 0.7,
-                child: Icon(
-                  Icons.auto_awesome_rounded,
-                  size: 14,
-                  color: purpleAccent,
+          // Collapse button on left (inner edge) - mirrors left drawer's hamburger
+          if (widget.onCollapse != null)
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.white.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.white.withValues(alpha: 0.3),
+                  width: 1,
                 ),
-              );
-            },
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Inner Monologue',
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-              fontWeight: FontWeight.w500,
-              fontSize: 11,
-              letterSpacing: 0.8,
+              ),
+              child: IconButton(
+                onPressed: widget.onCollapse,
+                icon: Icon(
+                  Icons.chevron_right,
+                  color: purpleAccent.withValues(alpha: 0.6),
+                  size: 16,
+                ),
+                tooltip: 'Collapse',
+                padding: EdgeInsets.zero,
+                iconSize: 16,
+              ),
             ),
-          ),
-          if (widget.isStreaming) ...[
-            const SizedBox(width: 8),
-            // Pulsing dot with soft purple
-            AnimatedBuilder(
-              animation: _pulseAnimation,
-              builder: (context, child) {
-                return Container(
-                  width: 4,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: purpleAccent,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: purpleAccent.withValues(alpha: _pulseAnimation.value * 0.4),
-                        blurRadius: 6,
-                        spreadRadius: 2,
+          if (widget.onCollapse != null) const SizedBox(width: 12),
+          // Centered content
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Elegant sparkles icon for thinking
+                AnimatedBuilder(
+                  animation: _pulseAnimation,
+                  builder: (context, child) {
+                    return Opacity(
+                      opacity: widget.isStreaming ? (0.6 + _pulseAnimation.value * 0.4) : 0.7,
+                      child: Icon(
+                        Icons.auto_awesome_rounded,
+                        size: 14,
+                        color: purpleAccent,
                       ),
-                    ],
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Inner Monologue',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    fontWeight: FontWeight.w500,
+                    fontSize: 11,
+                    letterSpacing: 0.8,
                   ),
-                );
-              },
+                ),
+                if (widget.isStreaming) ...[
+                  const SizedBox(width: 8),
+                  // Pulsing dot with soft purple
+                  AnimatedBuilder(
+                    animation: _pulseAnimation,
+                    builder: (context, child) {
+                      return Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: purpleAccent,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: purpleAccent.withValues(alpha: _pulseAnimation.value * 0.4),
+                              blurRadius: 6,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );

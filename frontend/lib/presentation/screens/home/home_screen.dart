@@ -265,47 +265,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
         ), // Close AnimatedBuilder
       floatingActionButton: Stack(
         children: [
-        // Right drawer toggle - positioned at drawer edge
-        if (isDesktop && _isRightDrawerOpen)
-          Positioned(
-            right: _isRightDrawerExpanded ? 316 : 88, // Account for drawer width + padding
-            top: MediaQuery.of(context).size.height / 2 - 16,
-            child: Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: theme.brightness == Brightness.dark
-                    ? Colors.white.withValues(alpha: 0.06)
-                    : Colors.white.withValues(alpha: 0.8),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: theme.brightness == Brightness.dark
-                      ? Colors.white.withValues(alpha: 0.1)
-                      : Colors.white.withValues(alpha: 0.3),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.3 : 0.1),
-                    blurRadius: 8,
-                    offset: const Offset(-2, 0),
-                  ),
-                ],
-              ),
-              child: IconButton(
-                onPressed: () => setState(() => _isRightDrawerExpanded = !_isRightDrawerExpanded),
-                icon: Icon(
-                  _isRightDrawerExpanded ? Icons.chevron_right : Icons.chevron_left,
-                  color: accentColor.withValues(alpha: 0.6),
-                  size: 16,
-                ),
-                tooltip: _isRightDrawerExpanded ? 'Collapse' : 'Expand',
-                style: IconButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                ),
-              ),
-            ),
-          ),
+        // Floating chevron removed - collapse button now in drawer header
         
         // Show right drawer button when drawer is hidden
         if (isDesktop && !_isRightDrawerOpen)
@@ -828,6 +788,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                                               currentThinking: conversationState.streamingThinking,
                                               isStreaming: isActivelyThinking,
                                               scrollToMessageId: _scrollToThoughtId,
+                                              onCollapse: () {
+                                                setState(() => _isRightDrawerExpanded = false);
+                                              },
                                             )
                                           : Container(
                                               key: const ValueKey('collapsed'),
@@ -864,39 +827,46 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     ConversationState conversationState,
     bool isStreaming,
   ) {
-    return Stack(
-      children: [
-        // Layer 1: Ambient Thinking Indicator
-        Positioned(
-          left: 0,
-          top: 0,
-          bottom: 0,
-          child: AmbientThinkingIndicator(
-            key: const ValueKey('ambient_indicator'), // Stable key to preserve widget state
-            isStreaming: isStreaming,
-            thoughtCount: conversationState.thinkingHistory.length,
-            onTap: () {
-              setState(() {
-                _isRightDrawerExpanded = true;
-                _showThinkingPreview = false;
-              });
-            },
-            onHoverStart: () {
-              // Start timer for delayed preview
-              _hoverTimer?.cancel();
-              _hoverTimer = Timer(const Duration(milliseconds: 300), () {
-                if (mounted) {
-                  setState(() => _showThinkingPreview = true);
-                }
-              });
-            },
-            onHoverEnd: () {
-              // Cancel timer and hide preview
-              _hoverTimer?.cancel();
-              setState(() => _showThinkingPreview = false);
-            },
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _isRightDrawerExpanded = true;
+          _showThinkingPreview = false;
+        });
+      },
+      child: Stack(
+        children: [
+          // Layer 1: Ambient Thinking Indicator
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: AmbientThinkingIndicator(
+              key: const ValueKey('ambient_indicator'), // Stable key to preserve widget state
+              isStreaming: isStreaming,
+              thoughtCount: conversationState.thinkingHistory.length,
+              onTap: () {
+                setState(() {
+                  _isRightDrawerExpanded = true;
+                  _showThinkingPreview = false;
+                });
+              },
+              onHoverStart: () {
+                // Start timer for delayed preview
+                _hoverTimer?.cancel();
+                _hoverTimer = Timer(const Duration(milliseconds: 300), () {
+                  if (mounted) {
+                    setState(() => _showThinkingPreview = true);
+                  }
+                });
+              },
+              onHoverEnd: () {
+                // Cancel timer and hide preview
+                _hoverTimer?.cancel();
+                setState(() => _showThinkingPreview = false);
+              },
+            ),
           ),
-        ),
 
         // Layer 2: Preview Card (on hover) - positioned to overlay conversation area
         if (_showThinkingPreview)
@@ -951,7 +921,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
               ),
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 

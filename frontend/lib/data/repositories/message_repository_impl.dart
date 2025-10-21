@@ -18,86 +18,54 @@ class MessageRepositoryImpl implements MessageRepository {
       throw UnimplementedError('Use sendMessageStreaming() for streaming');
     }
     try {
-      AICOLog.info('Sending message to backend', 
-        topic: 'message_repository/send',
-        extra: {
-          'message_id': message.id,
-          'content_length': message.content.length,
-          'conversation_id': message.conversationId,
-        });
-
-      // Convert domain entity to data model for API
-      final messageModel = MessageModel.fromEntity(message);
-      
-      // Prepare request payload for backend /conversation/messages endpoint
-      // Using UnifiedMessageRequest format matching backend schema
-      final requestData = {
-        'message': messageModel.content,
-        'message_type': 'text', // Use literal string instead of enum
-        'conversation_id': messageModel.conversationId, // Top-level field for thread continuity
-        'context': {
-          'frontend_client': 'flutter',
-        },
-        'metadata': messageModel.metadata ?? {},
-      };
-
-      // Send POST request to backend using UnifiedApiClient
-      // This should never block UI - any auth issues will be handled asynchronously
       final response = await _apiClient.request<Map<String, dynamic>>(
         'POST',
         '/conversation/messages',
-        data: requestData,
+        data: {
+          'message': message.content,
+          'message_type': 'text',
+          'conversation_id': message.conversationId,
+          'context': {
+            'frontend_client': 'flutter',
+          },
+          'metadata': message.metadata ?? {},
+        },
       );
 
       if (response != null) {
-        // Backend returns UnifiedMessageResponse with fields:
-        // success, message_id, conversation_id, conversation_action, status, timestamp, ai_response
-        
-        // Create a message entity from the backend response
         final sentMessage = Message(
           id: response['message_id'] as String,
-          content: message.content, // Use original message content
+          content: message.content,
           userId: message.userId,
           conversationId: response['conversation_id'] as String,
           type: message.type,
-          status: MessageStatus.sent, // Message was successfully sent
-          timestamp: message.timestamp, // Keep original frontend timestamp
+          status: MessageStatus.sent,
+          timestamp: message.timestamp,
           metadata: {
             'conversation_action': response['conversation_action'] as String,
             'conversation_reasoning': response['conversation_reasoning'] as String,
             'backend_status': response['status'] as String,
-            'ai_response': response['ai_response'] as String?, // Store AI response for later use
-            'backend_timestamp': response['timestamp'] as String, // Store backend timestamp separately
+            'ai_response': response['ai_response'] as String?,
+            'backend_timestamp': response['timestamp'] as String,
           },
         );
-        
-        AICOLog.info('Message sent successfully', 
-          topic: 'message_repository/send_success',
-          extra: {
-            'message_id': sentMessage.id,
-            'conversation_id': sentMessage.conversationId,
-            'conversation_action': response['conversation_action'],
-            'has_ai_response': response.containsKey('ai_response') && response['ai_response'] != null,
-          });
 
         return sentMessage;
       } else {
-        // Handle null response gracefully - backend may be unavailable
-        AICOLog.warn('Message send failed: backend unavailable', 
+        AICOLog.warn('Message send failed: backend unavailable',
           topic: 'message_repository/send_backend_unavailable',
           extra: {
             'message_id': message.id,
             'conversation_id': message.conversationId,
           });
-        
-        // Return message with failed status instead of throwing
+
         return Message(
           id: message.id,
           content: message.content,
           userId: message.userId,
           conversationId: message.conversationId,
           type: message.type,
-          status: MessageStatus.failed, // Mark as failed
+          status: MessageStatus.failed,
           timestamp: message.timestamp,
           metadata: {
             'error': 'Backend unavailable',
@@ -106,12 +74,11 @@ class MessageRepositoryImpl implements MessageRepository {
         );
       }
     } catch (e) {
-      AICOLog.error('Failed to send message', 
+      AICOLog.error('Failed to send message',
         topic: 'message_repository/send_error',
         error: e,
         extra: {'message_id': message.id});
-      
-      // Return failed message instead of rethrowing
+
       return Message(
         id: message.id,
         content: message.content,
@@ -130,25 +97,19 @@ class MessageRepositoryImpl implements MessageRepository {
 
   /// Send message with streaming response
   Future<void> sendMessageStreaming(
-    Message message, 
+    Message message,
     Function(String chunk, {String? contentType}) onChunk,
     Function(String finalResponse, {String? thinking}) onComplete,
     Function(String error) onError, {
     Function(String conversationId)? onConversationId,
   }) async {
     try {
-      AICOLog.info('Starting streaming message send', 
-        topic: 'message_repository/send_streaming',
-        extra: {
-          'content_length': message.content.length,
-          'conversation_id': message.conversationId,
-        });
+      String? backendConversationId;
 
-      // Prepare request payload - same as regular sendMessage
       final requestData = {
         'message': message.content,
         'message_type': 'text',
-        'conversation_id': message.conversationId, // Top-level field for thread continuity
+        'conversation_id': message.conversationId,
         'context': {
           'frontend_client': 'flutter',
         },
@@ -157,66 +118,46 @@ class MessageRepositoryImpl implements MessageRepository {
 
       String accumulatedContent = '';
       String accumulatedThinking = '';
-      String? backendConversationId;
 
-      // Use the new streaming method from UnifiedApiClient
       await _apiClient.requestStream(
         'POST',
         '/conversation/messages',
         data: requestData,
         queryParameters: {'stream': 'true'},
         onHeaders: (Map<String, List<String>> headers) {
-          // Extract conversation_id from response headers
           if (headers.containsKey('x-conversation-id')) {
             backendConversationId = headers['x-conversation-id']!.first;
-            AICOLog.info('Received conversation_id from headers',
-              topic: 'message_repository/conversation_id_received',
-              extra: {'conversation_id': backendConversationId});
           }
         },
         onChunk: (Map<String, dynamic> chunkData) {
-          // Extract content and content_type from chunk
           final chunk = chunkData['content'] as String? ?? '';
           final contentType = chunkData['content_type'] as String? ?? 'response';
-          
-          // Track thinking separately
+
           if (contentType == 'thinking') {
             accumulatedThinking += chunk;
           } else {
             accumulatedContent += chunk;
           }
-          
-          // Forward to provider with content_type
+
           onChunk(chunk, contentType: contentType);
         },
         onComplete: () {
-          // Notify provider of conversation_id if callback provided
           if (backendConversationId != null && onConversationId != null) {
             onConversationId(backendConversationId!);
           }
-          
-          // Pass both response and thinking to completion callback
+
           onComplete(accumulatedContent, thinking: accumulatedThinking.isNotEmpty ? accumulatedThinking : null);
-          AICOLog.info('Streaming completed successfully', 
-            topic: 'message_repository/streaming_complete',
-            extra: {
-              'message_id': message.id,
-              'response_length': accumulatedContent.length,
-              'thinking_length': accumulatedThinking.length,
-              'conversation_id': backendConversationId,
-            });
         },
         onError: (String error) {
-          AICOLog.error('Streaming failed', 
+          AICOLog.error('Streaming failed',
             topic: 'message_repository/streaming_error',
             error: error,
             extra: {'message_id': message.id});
           onError(error);
         },
       );
-      
     } catch (e) {
-      AICOLog.error('Streaming request failed', 
+      AICOLog.error('Streaming request failed',
         topic: 'message_repository/streaming_http_error',
         error: e,
         extra: {'message_id': message.id});
@@ -228,14 +169,6 @@ class MessageRepositoryImpl implements MessageRepository {
   @override
   Future<List<Message>> getMessages(String conversationId, {int? limit, String? beforeMessageId}) async {
     try {
-      AICOLog.info('Fetching messages from backend', 
-        topic: 'message_repository/get_messages',
-        extra: {
-          'conversation_id': conversationId,
-          'limit': limit,
-          'before_message_id': beforeMessageId,
-        });
-
       final queryParams = <String, String>{
         'page': '1',
         if (limit != null) 'page_size': limit.toString(),
@@ -256,13 +189,6 @@ class MessageRepositoryImpl implements MessageRepository {
             .map((json) => MessageModel.fromJson(json as Map<String, dynamic>))
             .map((model) => model.toEntity())
             .toList();
-
-        AICOLog.info('Messages fetched successfully', 
-          topic: 'message_repository/get_messages_success',
-          extra: {
-            'conversation_id': conversationId,
-            'message_count': messages.length,
-          });
 
         return messages;
       } else {
