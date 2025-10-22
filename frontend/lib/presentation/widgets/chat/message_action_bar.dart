@@ -137,7 +137,7 @@ class _MessageActionBarState extends State<MessageActionBar>
               ),
             ],
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          padding: const EdgeInsets.all(10),
             child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -154,7 +154,7 @@ class _MessageActionBarState extends State<MessageActionBar>
                   Container(
                     width: 1,
                     height: 24,
-                    margin: const EdgeInsets.symmetric(horizontal: 6),
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
@@ -182,7 +182,7 @@ class _MessageActionBarState extends State<MessageActionBar>
                     Container(
                       width: 1,
                       height: 24,
-                      margin: const EdgeInsets.symmetric(horizontal: 6),
+                      margin: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
@@ -208,7 +208,7 @@ class _MessageActionBarState extends State<MessageActionBar>
                     Container(
                       width: 1,
                       height: 24,
-                      margin: const EdgeInsets.symmetric(horizontal: 6),
+                      margin: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
@@ -260,10 +260,7 @@ class _MessageActionBarState extends State<MessageActionBar>
       iconColor = theme.colorScheme.onSurface.withValues(alpha: 0.5);
     }
 
-    return Tooltip(
-      message: tooltip,
-      waitDuration: const Duration(milliseconds: 500),
-      child: Material(
+    return Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
@@ -303,13 +300,12 @@ class _MessageActionBarState extends State<MessageActionBar>
               child: Icon(
                 icon,
                 key: ValueKey(icon),
-                size: 16,
+                size: 18,
                 color: iconColor,
               ),
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }

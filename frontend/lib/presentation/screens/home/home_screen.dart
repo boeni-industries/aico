@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
@@ -20,6 +21,7 @@ import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
 import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
 import 'package:aico_frontend/presentation/widgets/thinking/ambient_thinking_indicator.dart';
 import 'package:aico_frontend/presentation/widgets/thinking/thinking_preview_card.dart';
+import 'package:aico_frontend/presentation/widgets/conversation/share_conversation_modal.dart';
 
 /// Home screen featuring avatar-centric hub with integrated conversation interface.
 /// Serves as the primary interaction point with AICO, including conversation history
@@ -53,6 +55,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   String? _scrollToThoughtId; // Track which thought to scroll to
   bool _showThinkingPreview = false; // Track preview card visibility
   Timer? _hoverTimer; // Delay before showing preview
+  bool _showConversationActions = false; // Show contextual actions on hover
   
   // Animation controllers for immersive effects
   late AnimationController _backgroundAnimationController;
@@ -347,7 +350,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   Widget _buildConversationArea(BuildContext context, ThemeData theme, Color accentColor) {
     final conversationState = ref.watch(conversationProvider);
     final isDark = theme.brightness == Brightness.dark;
-    // Avatar mood color available via _getAvatarMoodColor if needed for future features
+    final hasMessages = conversationState.messages.isNotEmpty;
     
     if (conversationState.isLoading) {
       return Center(
@@ -443,17 +446,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
       );
     }
 
-    return ShaderMask(
-        shaderCallback: (Rect bounds) {
-          return LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: const [
-              Colors.transparent,
-              Colors.black,
-              Colors.black,
-              Colors.transparent,
-            ],
+    return MouseRegion(
+      onEnter: hasMessages ? (_) => setState(() => _showConversationActions = true) : null,
+      onExit: hasMessages ? (_) => setState(() => _showConversationActions = false) : null,
+      child: Stack(
+        children: [
+          ShaderMask(
+            shaderCallback: (Rect bounds) {
+              return LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: const [
+                  Colors.transparent,
+                  Colors.black,
+                  Colors.black,
+                  Colors.transparent,
+                ],
             stops: const [0.0, 0.15, 0.85, 1.0],
           ).createShader(bounds);
         },
@@ -480,7 +488,94 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
             ),
           ),
         ),
-      );
+      ),
+      
+      // Contextual actions - dock to bottom center on hover
+      if (_showConversationActions && hasMessages)
+        Positioned(
+          bottom: 16,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: TweenAnimationBuilder<double>(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOutCubic,
+              tween: Tween(begin: 0.0, end: 1.0),
+              builder: (context, value, child) {
+                return Opacity(
+                  opacity: value,
+                  child: Transform.translate(
+                    offset: Offset(0, 12 * (1 - value)), // Slide up from bottom
+                    child: child,
+                  ),
+                );
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.05)
+                          : Colors.white.withValues(alpha: 0.65),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.12)
+                            : Colors.white.withValues(alpha: 0.35),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                          spreadRadius: -2,
+                        ),
+                      ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          _handleShareConversation();
+                        },
+                        borderRadius: BorderRadius.circular(24),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.ios_share_rounded,
+                                size: 20,
+                                color: accentColor,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Share conversation',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w500,
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
   }
 
   Widget _buildMessageBubble(BuildContext context, ThemeData theme, Color accentColor, ConversationMessage message) {
@@ -1406,8 +1501,70 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
             ),
           ),
         ),
+        
       ],
     );
+  }
+  
+  /// Handle share conversation action
+  void _handleShareConversation() {
+    HapticFeedback.mediumImpact();
+    
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      builder: (dialogContext) => ShareConversationModal(
+        accentColor: const Color(0xFFB8A1EA),
+        onExport: _exportConversation,
+      ),
+    );
+  }
+  
+  /// Export conversation to file
+  Future<void> _exportConversation(ShareConversationConfig config) async {
+    // TODO: Implement actual file export
+    // For now, just show a success message
+    final conversationState = ref.read(conversationProvider);
+    
+    // Generate markdown content
+    final buffer = StringBuffer();
+    buffer.writeln('# Conversation with AICO');
+    buffer.writeln();
+    
+    if (config.includeTimestamps) {
+      buffer.writeln('**Date:** ${DateTime.now().toString().split('.')[0]}');
+      buffer.writeln();
+    }
+    
+    for (final message in conversationState.messages) {
+      final sender = message.userId == 'aico' ? 'AICO' : (config.removePersonalInfo ? 'User' : 'You');
+      
+      if (config.includeTimestamps) {
+        final time = message.timestamp.toString().split(' ')[1].substring(0, 5);
+        buffer.writeln('**$sender ($time):** ${message.content}');
+      } else {
+        buffer.writeln('**$sender:** ${message.content}');
+      }
+      buffer.writeln();
+    }
+    
+    // TODO: Save to file using file picker
+    // For now, copy to clipboard as fallback
+    await Clipboard.setData(ClipboardData(text: buffer.toString()));
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Conversation copied to clipboard'),
+          backgroundColor: const Color(0xFFB8A1EA),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    }
   }
 }
 
