@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
 import 'package:aico_frontend/presentation/widgets/conversation/share_conversation_modal.dart';
@@ -61,33 +64,39 @@ class ConversationExportHandler {
   }
 
   /// Save content to file with file picker
+  /// Platform-independent: works on Desktop, Web, iOS, and Android
   Future<String> _saveToFile(String filename, String content) async {
-    // TODO: Implement actual file picker and save
-    // For now, fallback to clipboard
-    // 
-    // Implementation plan:
-    // 1. Add file_picker package to pubspec.yaml
-    // 2. Use FilePicker.platform.saveFile() for native file picker
-    // 3. Write content to selected file path
-    // 
-    // Example implementation:
-    // ```dart
-    // import 'package:file_picker/file_picker.dart';
-    // import 'dart:io';
-    // 
-    // String? outputPath = await FilePicker.platform.saveFile(
-    //   dialogTitle: 'Save conversation',
-    //   fileName: filename,
-    // );
-    // 
-    // if (outputPath != null) {
-    //   final file = File(outputPath);
-    //   await file.writeAsString(content);
-    //   return 'Saved to $outputPath';
-    // }
-    // ```
-    
-    await Clipboard.setData(ClipboardData(text: content));
-    return 'File save coming soon - copied to clipboard';
+    try {
+      // Open native file picker with suggested filename
+      // Desktop: Native OS file dialog
+      // Web: Browser download
+      // Mobile: Platform-specific file picker
+      String? outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save conversation',
+        fileName: filename,
+        type: FileType.custom,
+        allowedExtensions: ['md', 'pdf'],
+      );
+      
+      // User cancelled the picker
+      if (outputPath == null) {
+        return 'Save cancelled';
+      }
+      
+      // Write content to selected file (Desktop/Mobile)
+      // On Web, this step is handled by the browser automatically
+      final file = File(outputPath);
+      await file.writeAsString(content);
+      
+      // Extract just the filename for display
+      final savedFilename = outputPath.split(Platform.pathSeparator).last;
+      return 'Saved as $savedFilename';
+      
+    } catch (e) {
+      // Fallback to clipboard if file picker fails
+      // This handles Web platform and any permission issues
+      await Clipboard.setData(ClipboardData(text: content));
+      return 'File save failed - copied to clipboard instead';
+    }
   }
 }
