@@ -74,8 +74,6 @@ class ConversationExportHandler {
       String? outputPath = await FilePicker.platform.saveFile(
         dialogTitle: 'Save conversation',
         fileName: filename,
-        type: FileType.custom,
-        allowedExtensions: ['md', 'pdf'],
       );
       
       // User cancelled the picker
@@ -92,11 +90,19 @@ class ConversationExportHandler {
       final savedFilename = outputPath.split(Platform.pathSeparator).last;
       return 'Saved as $savedFilename';
       
-    } catch (e) {
+    } catch (e, stackTrace) {
+      // Log the actual error for debugging
+      print('═══════════════════════════════════════════════════════');
+      print('FILE SAVE ERROR:');
+      print('Error: $e');
+      print('Stack trace: $stackTrace');
+      print('═══════════════════════════════════════════════════════');
+      
       // Fallback to clipboard if file picker fails
-      // This handles Web platform and any permission issues
       await Clipboard.setData(ClipboardData(text: content));
-      return 'File save failed - copied to clipboard instead';
+      
+      // Return simple message for UI (detailed error is in console)
+      return 'File save failed - copied to clipboard';
     }
   }
 }
