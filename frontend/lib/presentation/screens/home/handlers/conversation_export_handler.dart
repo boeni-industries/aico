@@ -52,10 +52,9 @@ class ConversationExportHandler {
     
     final content = buffer.toString();
     
-    // Generate filename with timestamp
-    final timestamp = DateTime.now().toIso8601String().split('T')[0];
+    // Generate filename: topic_date_time.extension
     final extension = config.format == ExportFormat.markdown ? 'md' : 'pdf';
-    final filename = 'conversation-$timestamp.$extension';
+    final filename = _generateFilename(conversationState, extension);
     
     // Save to file
     final result = await _saveToFile(filename, content);
@@ -103,5 +102,56 @@ class ConversationExportHandler {
       // Return simple message for UI (detailed error is in console)
       return 'File save failed - copied to clipboard';
     }
+  }
+
+  /// Generate unique filename: topic_YYYY-MM-DD_HHmmss.ext
+  String _generateFilename(dynamic conversationState, String extension) {
+    final now = DateTime.now();
+    
+    // Format date: YYYY-MM-DD
+    final dateStr = '${now.year}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+    
+    // Format time: HHmmss (24-hour)
+    final timeStr = '${now.hour.toString().padLeft(2, '0')}'
+        '${now.minute.toString().padLeft(2, '0')}'
+        '${now.second.toString().padLeft(2, '0')}';
+    
+    // Generate topic slug from conversation
+    final topicSlug = _generateTopicSlug(conversationState);
+    
+    return '${topicSlug}_${dateStr}_${timeStr}.$extension';
+  }
+
+  /// Extract topic from conversation for filename
+  String _generateTopicSlug(dynamic conversationState) {
+    // Try to get first user message for topic
+    if (conversationState.messages.isNotEmpty) {
+      final firstUserMessage = conversationState.messages.firstWhere(
+        (m) => m.userId != 'aico',
+        orElse: () => conversationState.messages.first,
+      );
+      
+      if (firstUserMessage.content.isNotEmpty) {
+        return _slugify(firstUserMessage.content, maxWords: 4);
+      }
+    }
+    
+    // Fallback to generic
+    return 'conversation';
+  }
+
+  /// Convert text to slug (kebab-case, max words)
+  String _slugify(String text, {int maxWords = 4}) {
+    // Remove special characters, lowercase, limit words
+    final words = text
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s-]'), '')
+        .split(RegExp(r'\s+'))
+        .take(maxWords)
+        .toList();
+    
+    return words.join('-');
   }
 }

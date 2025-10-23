@@ -375,6 +375,7 @@ class MemoryManager(BaseAIProcessor):
             # Store in working memory (LMDB) - short-term conversation state
             if self._working_store:
                 message_data = {
+                    "user_id": user_id,  # CRITICAL: Add user_id for proper retrieval
                     "conversation_id": conversation_id,
                     "content": content,
                     "role": role,

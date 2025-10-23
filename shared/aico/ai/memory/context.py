@@ -470,7 +470,8 @@ class ContextAssembler:
             current_message_content = None
             if all_messages:
                 # Use most recent message as semantic anchor
-                current_message_content = all_messages[-1].get('message_content', '')
+                # CRITICAL FIX: Use 'content' field (matches storage format)
+                current_message_content = all_messages[-1].get('content', '')
             
             # 4. INTELLIGENT SELECTION: Combine all signals
             relevant_messages = []
@@ -482,7 +483,8 @@ class ContextAssembler:
                 
                 for i, msg in enumerate(current_conversation_messages):
                     msg_start = datetime.utcnow()
-                    msg_content = msg.get('message_content', '')
+                    # CRITICAL FIX: Use 'content' field (matches storage format)
+                    msg_content = msg.get('content', '')
                     if msg_content and len(msg_content.strip()) > 0:
                         print(f"⏱️ [TIMING] Processing message {i+1}/{len(current_conversation_messages)}")
                         
