@@ -1,11 +1,10 @@
 import 'dart:ui';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 // Forward declaration - NavigationPage enum is defined in home_screen.dart
 // This is a workaround to avoid circular dependencies

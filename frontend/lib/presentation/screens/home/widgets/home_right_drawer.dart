@@ -1,15 +1,14 @@
 import 'dart:async';
 import 'dart:ui';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
 import 'package:aico_frontend/presentation/providers/settings_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
-import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
 import 'package:aico_frontend/presentation/widgets/thinking/ambient_thinking_indicator.dart';
 import 'package:aico_frontend/presentation/widgets/thinking/thinking_preview_card.dart';
+import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Right drawer for thoughts and thinking display
 /// Features progressive disclosure with three layers:

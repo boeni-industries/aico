@@ -1,6 +1,7 @@
 import 'dart:ui';
-import 'package:flutter/material.dart';
+
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
+import 'package:flutter/material.dart';
 
 /// Preview card showing last 2-3 thoughts when hovering over ambient indicator
 /// Slides in from right with glassmorphic design

@@ -1,27 +1,26 @@
 import 'dart:async';
 import 'dart:ui';
 
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
-import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
-import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
-import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
-import 'package:aico_frontend/presentation/widgets/chat/interactive_message_bubble.dart';
-import 'package:aico_frontend/presentation/widgets/conversation/share_conversation_modal.dart';
-import 'package:aico_frontend/presentation/widgets/common/glassmorphic_toast.dart';
-import 'package:aico_frontend/presentation/screens/home/widgets/home_toolbar.dart';
+import 'package:aico_frontend/presentation/screens/home/handlers/conversation_export_handler.dart';
+import 'package:aico_frontend/presentation/screens/home/helpers/home_screen_helpers.dart';
 import 'package:aico_frontend/presentation/screens/home/widgets/home_avatar_header.dart';
 import 'package:aico_frontend/presentation/screens/home/widgets/home_input_area.dart';
 import 'package:aico_frontend/presentation/screens/home/widgets/home_left_drawer.dart';
 import 'package:aico_frontend/presentation/screens/home/widgets/home_right_drawer.dart';
-import 'package:aico_frontend/presentation/screens/home/handlers/conversation_export_handler.dart';
-import 'package:aico_frontend/presentation/screens/home/helpers/home_screen_helpers.dart';
+import 'package:aico_frontend/presentation/screens/home/widgets/home_toolbar.dart';
+import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
+import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
+import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
+import 'package:aico_frontend/presentation/widgets/chat/interactive_message_bubble.dart';
+import 'package:aico_frontend/presentation/widgets/common/glassmorphic_toast.dart';
+import 'package:aico_frontend/presentation/widgets/conversation/share_conversation_modal.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 // Export NavigationPage from home_left_drawer to avoid duplication
 export 'package:aico_frontend/presentation/screens/home/widgets/home_left_drawer.dart' show NavigationPage;

@@ -1,7 +1,6 @@
-import 'package:flutter/material.dart';
-
 import 'package:aico_frontend/presentation/widgets/chat/message_action_bar.dart';
 import 'package:aico_frontend/presentation/widgets/chat/message_bubble.dart';
+import 'package:flutter/material.dart';
 
 /// Interactive wrapper for MessageBubble that adds hover detection and action bar
 /// 

@@ -1,6 +1,5 @@
-import 'package:flutter/material.dart';
-
 import 'package:aico_frontend/presentation/theme/micro_interactions.dart';
+import 'package:flutter/material.dart';
 
 /// Reusable animated button with comprehensive micro-interactions
 /// 

@@ -1,6 +1,5 @@
-import 'package:flutter/material.dart';
-
 import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
+import 'package:flutter/material.dart';
 
 class ChatInput extends StatefulWidget {
   final TextEditingController controller;
