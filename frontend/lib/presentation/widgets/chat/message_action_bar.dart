@@ -6,15 +6,18 @@ import 'package:flutter/services.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 
 /// Glassmorphic action toolbar that appears on message bubble hover/long-press
-/// Implements progressive disclosure with award-winning visual fidelity
+/// Implements progressive disclosure with relationship-first design
 /// 
 /// Design Principles:
 /// - Hidden by default (clean conversation)
 /// - Appears on hover (desktop) or long-press (mobile)
-/// - Heavy glassmorphism with proper borders and shadows
+/// - Sub-500ms interactions, non-blocking
 /// - Context-sensitive actions (user vs AICO messages)
-/// - Consistent icon styling with rest of app
-/// - Clear inactive states for unimplemented features
+/// - Ambient emotional feedback through avatar presence
+/// 
+/// Actions:
+/// - User Messages: [Copy] | [Remember]
+/// - AICO Messages: [Copy] | [Remember] [Regenerate]
 class MessageActionBar extends StatefulWidget {
   /// Message content for actions (e.g., copy text)
   final String messageContent;
@@ -178,54 +181,10 @@ class _MessageActionBarState extends State<MessageActionBar>
                   
                   // AICO-specific actions
                   if (widget.isFromAico) ...[
-                    // Divider
-                    Container(
-                      width: 1,
-                      height: 24,
-                      margin: const EdgeInsets.symmetric(horizontal: 8),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.white.withValues(alpha: 0.0),
-                            Colors.white.withValues(alpha: isDark ? 0.2 : 0.3),
-                            Colors.white.withValues(alpha: 0.0),
-                          ],
-                        ),
-                      ),
-                    ),
-                    
-                    // This Helped
+                    // Regenerate Response
                     _buildActionButton(
-                      icon: Icons.favorite_rounded,
-                      tooltip: 'This helped',
-                      onTap: () {}, // TODO: Implement
-                      isEnabled: false,
-                    ),
-                    
-                    // Divider
-                    Container(
-                      width: 1,
-                      height: 24,
-                      margin: const EdgeInsets.symmetric(horizontal: 8),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.white.withValues(alpha: 0.0),
-                            Colors.white.withValues(alpha: isDark ? 0.2 : 0.3),
-                            Colors.white.withValues(alpha: 0.0),
-                          ],
-                        ),
-                      ),
-                    ),
-                    
-                    // Not Quite
-                    _buildActionButton(
-                      icon: Icons.lightbulb_outline_rounded,
-                      tooltip: 'Not quite',
+                      icon: Icons.refresh_rounded,
+                      tooltip: 'Regenerate response',
                       onTap: () {}, // TODO: Implement
                       isEnabled: false,
                     ),
