@@ -38,6 +38,7 @@ class InteractiveMessageBubble extends StatefulWidget {
 class _InteractiveMessageBubbleState extends State<InteractiveMessageBubble> {
   bool _isHovered = false;
   bool _showActionBar = false;
+  bool _isToolbarHovered = false; // Track if mouse is over the toolbar itself
 
   /// Handle mouse enter (desktop hover)
   void _onHoverEnter() {
@@ -62,7 +63,39 @@ class _InteractiveMessageBubbleState extends State<InteractiveMessageBubble> {
   void _onHoverExit() {
     setState(() {
       _isHovered = false;
-      _showActionBar = false;
+    });
+    
+    // Only hide toolbar if mouse is not over the toolbar itself
+    // This allows user to scroll long messages and still access the toolbar
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted && !_isHovered && !_isToolbarHovered) {
+        setState(() {
+          _showActionBar = false;
+        });
+      }
+    });
+  }
+
+  /// Handle toolbar hover (keeps toolbar visible even when scrolling)
+  void _onToolbarHoverEnter() {
+    setState(() {
+      _isToolbarHovered = true;
+    });
+  }
+
+  /// Handle toolbar hover exit
+  void _onToolbarHoverExit() {
+    setState(() {
+      _isToolbarHovered = false;
+    });
+    
+    // Hide toolbar if bubble is also not hovered
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted && !_isHovered && !_isToolbarHovered) {
+        setState(() {
+          _showActionBar = false;
+        });
+      }
     });
   }
 
@@ -98,20 +131,27 @@ class _InteractiveMessageBubbleState extends State<InteractiveMessageBubble> {
               accentColor: widget.accentColor,
             ),
 
-            // Action bar (positioned inside bubble at top-right with equal spacing)
+            // Action bar - positioned to align with bubble's internal content
+            // Position from right side only to avoid expansion
+            // AICO: bubble padding (20px) from right
+            // USER: bubble padding (20px) + right spacing (60px) = 80px
             if (_showActionBar && !widget.isThinking && widget.content.isNotEmpty)
               Positioned(
-                top: 12, // Equal distance from top
-                right: 12, // Equal distance from right
-                child: MessageActionBar(
-                  messageContent: widget.content,
-                  isFromAico: widget.isFromAico,
-                  accentColor: widget.accentColor,
-                  onDismiss: () {
-                    setState(() {
-                      _showActionBar = false;
-                    });
-                  },
+                top: 16, // Matches bubble's vertical padding
+                right: widget.isFromAico ? 20 : 80,
+                child: MouseRegion(
+                  onEnter: (_) => _onToolbarHoverEnter(),
+                  onExit: (_) => _onToolbarHoverExit(),
+                  child: MessageActionBar(
+                    messageContent: widget.content,
+                    isFromAico: widget.isFromAico,
+                    accentColor: widget.accentColor,
+                    onDismiss: () {
+                      setState(() {
+                        _showActionBar = false;
+                      });
+                    },
+                  ),
                 ),
               ),
           ],
