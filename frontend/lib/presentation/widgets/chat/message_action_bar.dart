@@ -248,16 +248,16 @@ class _MessageActionBarState extends State<MessageActionBar>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     
-    // Clear, prominent color scheme
+    // Consistent color scheme with conversation toolbar
     final Color iconColor;
     if (!isEnabled) {
       iconColor = theme.colorScheme.onSurface.withValues(alpha: 0.3);
     } else if (isExecuted) {
-      // Bright, saturated success color - very visible
-      iconColor = widget.accentColor.withValues(alpha: 1.0);
+      // Bright success state - accent color
+      iconColor = widget.accentColor;
     } else {
-      // Muted gray for contrast
-      iconColor = theme.colorScheme.onSurface.withValues(alpha: 0.5);
+      // Normal state - accent color (consistent with toolbar)
+      iconColor = widget.accentColor;
     }
 
     return Material(

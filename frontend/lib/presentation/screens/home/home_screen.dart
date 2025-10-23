@@ -6,22 +6,25 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
-import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
-import 'package:aico_frontend/presentation/providers/settings_provider.dart';
-import 'package:aico_frontend/presentation/providers/theme_provider.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
-import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart';
 import 'package:aico_frontend/presentation/widgets/chat/interactive_message_bubble.dart';
-import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
-import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
-import 'package:aico_frontend/presentation/widgets/thinking/ambient_thinking_indicator.dart';
-import 'package:aico_frontend/presentation/widgets/thinking/thinking_preview_card.dart';
 import 'package:aico_frontend/presentation/widgets/conversation/share_conversation_modal.dart';
+import 'package:aico_frontend/presentation/widgets/common/glassmorphic_toast.dart';
+import 'package:aico_frontend/presentation/screens/home/widgets/home_toolbar.dart';
+import 'package:aico_frontend/presentation/screens/home/widgets/home_avatar_header.dart';
+import 'package:aico_frontend/presentation/screens/home/widgets/home_input_area.dart';
+import 'package:aico_frontend/presentation/screens/home/widgets/home_left_drawer.dart';
+import 'package:aico_frontend/presentation/screens/home/widgets/home_right_drawer.dart';
+import 'package:aico_frontend/presentation/screens/home/handlers/conversation_export_handler.dart';
+import 'package:aico_frontend/presentation/screens/home/helpers/home_screen_helpers.dart';
+
+// Export NavigationPage from home_left_drawer to avoid duplication
+export 'package:aico_frontend/presentation/screens/home/widgets/home_left_drawer.dart' show NavigationPage;
 
 /// Home screen featuring avatar-centric hub with integrated conversation interface.
 /// Serves as the primary interaction point with AICO, including conversation history
@@ -31,13 +34,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
-}
-
-enum NavigationPage {
-  home,
-  memory,
-  admin,
-  settings,
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStateMixin {
@@ -53,7 +49,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   Timer? _typingTimer;
   bool _isUserTyping = false;
   String? _scrollToThoughtId; // Track which thought to scroll to
-  bool _showThinkingPreview = false; // Track preview card visibility
   Timer? _hoverTimer; // Delay before showing preview
   bool _showConversationActions = false; // Show contextual actions on hover
   
@@ -147,7 +142,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     final isDesktop = screenWidth > 800;
     
     // Get avatar mood color for atmospheric effect
-    final avatarMoodColor = _getAvatarMoodColor(avatarState.mode, theme.brightness == Brightness.dark);
+    final avatarMoodColor = HomeScreenHelpers.getAvatarMoodColor(avatarState.mode, theme.brightness == Brightness.dark);
     
     // Listen for conversation changes to auto-scroll
     ref.listen<ConversationState>(conversationProvider, (previous, next) {
@@ -178,9 +173,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
         }
         
         if (shouldScroll) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _scrollToBottom();
-          });
+          HomeScreenHelpers.scrollToBottom(_conversationController);
         }
       }
     });
@@ -246,7 +239,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
               children: [
                 // Left drawer for navigation - always visible on desktop, toggles between expanded/collapsed
                 if (isDesktop)
-                  _buildLeftDrawer(context, theme, accentColor),
+                  HomeLeftDrawer(
+                    accentColor: accentColor,
+                    isExpanded: _isLeftDrawerExpanded,
+                    currentPage: _currentPage,
+                    onToggle: () => setState(() => _isLeftDrawerExpanded = !_isLeftDrawerExpanded),
+                    onPageChange: _switchToPage,
+                  ),
             
             // Main content area - switches based on selected page
             Expanded(
@@ -258,7 +257,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
             
                 // Right drawer for thoughts and memory - always visible on desktop, toggles between expanded/collapsed
                 if (_isRightDrawerOpen && isDesktop)
-                  _buildRightDrawer(context, theme, accentColor),
+                  HomeRightDrawer(
+                    accentColor: accentColor,
+                    glowController: _glowAnimationController,
+                    glowAnimation: _glowAnimation,
+                    isExpanded: _isRightDrawerExpanded,
+                    onToggle: () => setState(() => _isRightDrawerExpanded = !_isRightDrawerExpanded),
+                    scrollToMessageId: _scrollToThoughtId,
+                  ),
               ],
             ),
           ],
@@ -301,50 +307,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endTop,
     ); // Close Scaffold
-  }
-
-  Widget _buildAvatarHeader(BuildContext context, ThemeData theme, Color accentColor) {
-    final conversationState = ref.watch(conversationProvider);
-    final isDark = theme.brightness == Brightness.dark;
-    
-    // Update avatar state based on conversation state
-    final avatarState = ref.watch(avatarRingStateProvider);
-    final isThinking = conversationState.isSendingMessage || conversationState.isStreaming;
-    
-    // Sync avatar mode with thinking state
-    if (isThinking && avatarState.mode != AvatarMode.thinking) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref.read(avatarRingStateProvider.notifier).startThinking(intensity: 0.8);
-      });
-    } else if (!isThinking && avatarState.mode == AvatarMode.thinking) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref.read(avatarRingStateProvider.notifier).returnToIdle();
-      });
-    }
-    
-    // Get avatar mood color for ambient glow
-    final avatarMoodColor = _getAvatarMoodColor(avatarState.mode, isDark);
-    
-    return AnimatedBuilder(
-      animation: _glowAnimationController,
-      builder: (context, child) {
-        return Container(
-          padding: const EdgeInsets.all(16),
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              boxShadow: GlassTheme.pulsingGlow(
-                color: avatarMoodColor,
-                animationValue: _glowAnimation.value,
-                baseIntensity: 0.2,
-                pulseIntensity: 0.5,
-              ),
-            ),
-            child: const CompanionAvatar(),
-          ),
-        );
-      },
-    );
   }
 
   Widget _buildConversationArea(BuildContext context, ThemeData theme, Color accentColor) {
@@ -493,119 +455,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     ),
           
           // Drawer toolbar that slides out from under conversation container
-          AnimatedSize(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            child: _showConversationActions && hasMessages
-                ? ClipRRect(
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(GlassTheme.radiusXLarge),
-                      bottomRight: Radius.circular(GlassTheme.radiusXLarge),
-                    ),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(
-                        sigmaX: GlassTheme.blurHeavy,
-                        sigmaY: GlassTheme.blurHeavy,
-                      ),
-                      child: Container(
-                        height: 56,
-                        decoration: BoxDecoration(
-                          // EXACT same background as conversation container
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.04)
-                              : Colors.white.withValues(alpha: 0.6),
-                          // Only round bottom corners - top edge merges seamlessly
-                          borderRadius: const BorderRadius.only(
-                            bottomLeft: Radius.circular(GlassTheme.radiusXLarge),
-                            bottomRight: Radius.circular(GlassTheme.radiusXLarge),
-                          ),
-                          // Border on sides and bottom ONLY - no top border for seamless merge
-                          border: Border(
-                            left: BorderSide(
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.1)
-                                  : Colors.white.withValues(alpha: 0.4),
-                              width: 1.5,
-                            ),
-                            right: BorderSide(
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.1)
-                                  : Colors.white.withValues(alpha: 0.4),
-                              width: 1.5,
-                            ),
-                            bottom: BorderSide(
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.1)
-                                  : Colors.white.withValues(alpha: 0.4),
-                              width: 1.5,
-                            ),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                              spreadRadius: -4,
-                            ),
-                          ],
-                        ),
-                    child: Center(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildToolbarAction(
-                            icon: Icons.ios_share_rounded,
-                            onTap: _handleShareConversation,
-                            accentColor: accentColor,
-                          ),
-                          const SizedBox(width: 12),
-                          _buildToolbarAction(
-                            icon: Icons.auto_awesome_rounded,
-                            onTap: () {}, // TODO: Implement
-                            accentColor: accentColor,
-                          ),
-                          const SizedBox(width: 12),
-                          _buildToolbarAction(
-                            icon: Icons.bookmark_outline_rounded,
-                            onTap: () {}, // TODO: Implement
-                            accentColor: accentColor,
-                          ),
-                        ],
-                      ),
-                    ),
-                      ),
-                    ),
-                  )
-                : const SizedBox.shrink(),
+          HomeToolbar(
+            isVisible: _showConversationActions,
+            hasMessages: hasMessages,
+            accentColor: accentColor,
+            onCopy: _handleCopyToClipboard,
+            onSave: _handleSaveToFile,
+            onBookmark: null, // TODO: Implement
           ),
         ],
-      ),
-    );
-  }
-  
-  Widget _buildToolbarAction({
-    required IconData icon,
-    required VoidCallback onTap,
-    required Color accentColor,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.lightImpact();
-          onTap();
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          child: Icon(
-            icon,
-            size: 22,
-            color: accentColor,
-          ),
-        ),
       ),
     );
   }
@@ -641,710 +499,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     );
   }
 
-  Widget _buildInputArea(BuildContext context, ThemeData theme, Color accentColor) {
-    final isDark = theme.brightness == Brightness.dark;
-    final conversationState = ref.watch(conversationProvider);
-    final isActive = conversationState.isSendingMessage || conversationState.isStreaming;
-    
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 12),
-      child: AnimatedBuilder(
-        animation: _glowAnimationController,
-        builder: (context, child) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(
-                sigmaX: GlassTheme.blurHeavy,
-                sigmaY: GlassTheme.blurHeavy,
-              ),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                decoration: BoxDecoration(
-                  // Immersive frosted glass
-                  color: isDark 
-                      ? Colors.white.withValues(alpha: 0.06)
-                      : Colors.white.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
-                  // Luminous border
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.12)
-                        : Colors.white.withValues(alpha: 0.5),
-                    width: 1.5,
-                  ),
-                  // Subtle ambient glow when active
-                  boxShadow: [
-                    if (isActive) ...
-                      GlassTheme.pulsingGlow(
-                        color: accentColor,
-                        animationValue: _glowAnimation.value,
-                        baseIntensity: 0.08,  // Much more subtle
-                        pulseIntensity: 0.15, // Reduced from 0.4
-                      ),
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
-                      blurRadius: 32,
-                      offset: const Offset(0, 12),
-                      spreadRadius: -8,
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _messageController,
-                        focusNode: _messageFocusNode,
-                        autofocus: true,
-                        maxLines: null,
-                        textInputAction: TextInputAction.send,
-                        decoration: InputDecoration(
-                          hintText: 'Share what\'s on your mind...',
-                          border: InputBorder.none,
-                          hintStyle: TextStyle(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                            fontSize: 15,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                        style: const TextStyle(
-                          fontSize: 15,
-                          height: 1.5,
-                          letterSpacing: 0.2,
-                        ),
-                        onSubmitted: _sendMessage,
-                        onEditingComplete: () {
-                          final text = _messageController.text.trim();
-                          if (text.isNotEmpty) {
-                            _sendMessage(text);
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    // Modern button container with depth
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(28),
-                        // Subtle gradient background
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            accentColor.withValues(alpha: 0.12),
-                            accentColor.withValues(alpha: 0.06),
-                          ],
-                        ),
-                      ),
-                      padding: const EdgeInsets.all(6),
-                      child: Row(
-                        children: [
-                          // Voice button with micro-interactions
-                          AnimatedButton(
-                          key: _voiceButtonKey,
-                          onPressed: () {
-                            // Voice input - to be implemented
-                          },
-                          icon: Icons.mic_rounded,
-                          size: 48,
-                          borderRadius: 24,
-                          backgroundColor: isDark
-                              ? accentColor.withValues(alpha: 0.15)
-                              : accentColor.withValues(alpha: 0.12),
-                          foregroundColor: accentColor,
-                          tooltip: 'Voice input',
-                        ),
-                        const SizedBox(width: 12),
-                        // Send button - primary action (more prominent when enabled)
-                        AnimatedButton(
-                          key: _sendButtonKey,
-                          onPressed: () {
-                            final text = _messageController.text.trim();
-                            if (text.isEmpty) {
-                              // Trigger error shake if empty
-                              final state = _sendButtonKey.currentState;
-                              if (state != null && state.mounted) {
-                                (state as dynamic).showError();
-                              }
-                            } else {
-                              _sendMessage(text);
-                            }
-                          },
-                          icon: Icons.send_rounded,
-                          successIcon: Icons.check_rounded,
-                          size: 48,
-                          borderRadius: 24,
-                          // Primary: uses accent color for both bg and icon
-                          backgroundColor: isDark
-                              ? accentColor.withValues(alpha: 0.20)  // Slightly more opaque
-                              : accentColor.withValues(alpha: 0.18),
-                          foregroundColor: accentColor,  // Same color as voice button
-                          tooltip: 'Send message',
-                          isEnabled: _messageController.text.trim().isNotEmpty,
-                        ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildRightDrawer(BuildContext context, ThemeData theme, Color accentColor) {
-    final isDark = theme.brightness == Brightness.dark;
-    
-    return Consumer(
-      builder: (context, ref, child) {
-        final conversationState = ref.watch(conversationProvider);
-        final isActivelyThinking = conversationState.streamingThinking != null && 
-                                   conversationState.streamingThinking!.isNotEmpty;
-        
-        return Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
-            child: AnimatedBuilder(
-              animation: _glowAnimationController,
-              builder: (context, child) {
-                // Beautiful breathing effect - glass becomes more/less frosted
-                final pulseValue = _glowAnimation.value;
-                final blurIntensity = isActivelyThinking
-                    ? GlassTheme.blurHeavy + (pulseValue * 6.0) // 20 → 26 breathing
-                    : GlassTheme.blurHeavy;
-                
-                final glassOpacity = isActivelyThinking
-                    ? (isDark ? 0.04 : 0.6) + (pulseValue * (isDark ? 0.02 : 0.08))
-                    : (isDark ? 0.04 : 0.6);
-                
-                final borderOpacity = isActivelyThinking
-                    ? (isDark ? 0.1 : 0.4) + (pulseValue * 0.15)
-                    : (isDark ? 0.1 : 0.4);
-                
-                return BackdropFilter(
-                  filter: ImageFilter.blur(
-                    sigmaX: blurIntensity,
-                    sigmaY: blurIntensity,
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
-                    clipBehavior: Clip.hardEdge,
-                    child: Container(
-                      width: _isRightDrawerExpanded ? 300 : 72,
-                      decoration: BoxDecoration(
-                        // Frosted glass with breathing pulse
-                        color: isDark
-                            ? Colors.white.withValues(alpha: glassOpacity)
-                            : Colors.white.withValues(alpha: glassOpacity),
-                        borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
-                        border: Border.all(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: borderOpacity)
-                              : Colors.white.withValues(alpha: borderOpacity),
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
-                            blurRadius: 40,
-                            offset: const Offset(-8, 0),
-                            spreadRadius: -10,
-                          ),
-                          if (isDark)
-                            BoxShadow(
-                              color: accentColor.withValues(alpha: 0.08 + (isActivelyThinking ? pulseValue * 0.06 : 0.0)),
-                              blurRadius: 60 + (isActivelyThinking ? pulseValue * 20 : 0.0),
-                              spreadRadius: -5,
-                            ),
-                        ],
-                      ),
-                      child: SafeArea(
-                        child: Column(
-                          children: [
-                            // Thinking display section (header integrated into ThinkingDisplay widget)
-                            Expanded(
-                              child: Consumer(
-                                  builder: (context, ref, child) {
-                                    final conversationState = ref.watch(conversationProvider);
-                                    final settings = ref.watch(settingsProvider);
-                                    
-                                    if (!settings.showThinking) {
-                                      return _isRightDrawerExpanded
-                                          ? Center(
-                                              child: Text(
-                                                'Thinking display disabled in settings',
-                                                style: theme.textTheme.bodySmall?.copyWith(
-                                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                                                ),
-                                              ),
-                                            )
-                                          : const SizedBox.shrink();
-                                    }
-                                    
-                                    // Show different content based on expanded state
-                                    // Check if actively thinking (not just streaming response)
-                                    final isActivelyThinking = conversationState.streamingThinking != null && 
-                                                               conversationState.streamingThinking!.isNotEmpty;
-                                    
-                                    return AnimatedSwitcher(
-                                      duration: const Duration(milliseconds: 300),
-                                      transitionBuilder: (child, animation) {
-                                        return FadeTransition(
-                                          opacity: animation,
-                                          child: SlideTransition(
-                                            position: Tween<Offset>(
-                                              begin: const Offset(0.1, 0),
-                                              end: Offset.zero,
-                                            ).animate(CurvedAnimation(
-                                              parent: animation,
-                                              curve: Curves.easeOutCubic,
-                                            )),
-                                            child: child,
-                                          ),
-                                        );
-                                      },
-                                      child: _isRightDrawerExpanded
-                                          ? ThinkingDisplay(
-                                              key: const ValueKey('expanded'),
-                                              thinkingHistory: conversationState.thinkingHistory,
-                                              currentThinking: conversationState.streamingThinking,
-                                              isStreaming: isActivelyThinking,
-                                              scrollToMessageId: _scrollToThoughtId,
-                                              onCollapse: () {
-                                                setState(() => _isRightDrawerExpanded = false);
-                                              },
-                                            )
-                                          : Container(
-                                              key: const ValueKey('collapsed'),
-                                              child: _buildNewCollapsedIndicator(
-                                                context,
-                                                conversationState,
-                                                isActivelyThinking,
-                                              ),
-                                            ),
-                                    );
-                                  },
-                                ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  /// New three-layer progressive disclosure thinking indicator
-  /// Layer 1: Ambient indicator (bar + badge + icon)
-  /// Layer 2: Preview card on hover
-  /// Layer 3: Full drawer expansion
-  Widget _buildNewCollapsedIndicator(
-    BuildContext context,
-    ConversationState conversationState,
-    bool isStreaming,
-  ) {
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _isRightDrawerExpanded = true;
-          _showThinkingPreview = false;
-        });
-      },
-      child: Stack(
-        children: [
-          // Layer 1: Ambient Thinking Indicator
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: AmbientThinkingIndicator(
-              key: const ValueKey('ambient_indicator'), // Stable key to preserve widget state
-              isStreaming: isStreaming,
-              thoughtCount: conversationState.thinkingHistory.length,
-              onTap: () {
-                setState(() {
-                  _isRightDrawerExpanded = true;
-                  _showThinkingPreview = false;
-                });
-              },
-              onHoverStart: () {
-                // Start timer for delayed preview
-                _hoverTimer?.cancel();
-                _hoverTimer = Timer(const Duration(milliseconds: 300), () {
-                  if (mounted) {
-                    setState(() => _showThinkingPreview = true);
-                  }
-                });
-              },
-              onHoverEnd: () {
-                // Cancel timer and hide preview
-                _hoverTimer?.cancel();
-                setState(() => _showThinkingPreview = false);
-              },
-            ),
-          ),
-
-        // Layer 2: Preview Card (on hover) - positioned to overlay conversation area
-        if (_showThinkingPreview)
-          Positioned(
-            left: -296, // Position to the left of the drawer (280px card + 16px spacing)
-            top: 0,
-            bottom: 0,
-            child: Align(
-              alignment: Alignment.center,
-              child: TweenAnimationBuilder<Offset>(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                tween: Tween<Offset>(
-                  begin: const Offset(20, 0), // Slide from right
-                  end: Offset.zero,
-                ),
-                builder: (context, offset, child) {
-                  return Transform.translate(
-                    offset: offset,
-                    child: FadeTransition(
-                      opacity: AlwaysStoppedAnimation(
-                        1.0 - (offset.dx / 20.0).clamp(0.0, 1.0),
-                      ),
-                      child: child,
-                    ),
-                  );
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 60), // Vertical padding to avoid screen edges
-                  child: MouseRegion(
-                    onEnter: (_) {
-                      // Keep preview visible when hovering over it
-                      _hoverTimer?.cancel();
-                    },
-                    onExit: (_) {
-                      // Hide preview when leaving
-                      setState(() => _showThinkingPreview = false);
-                    },
-                    child: ThinkingPreviewCard(
-                      recentThoughts: conversationState.thinkingHistory,
-                      streamingThought: conversationState.streamingThinking,
-                      isStreaming: isStreaming,
-                      onExpand: () {
-                        setState(() {
-                          _isRightDrawerExpanded = true;
-                          _showThinkingPreview = false;
-                        });
-                      },
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-
-  /// Get avatar mood color for atmospheric lighting
-  Color _getAvatarMoodColor(AvatarMode mode, bool isDark) {
-    const coral = Color(0xFFED7867);
-    const emerald = Color(0xFF10B981);
-    const amber = Color(0xFFF59E0B);
-    const sapphire = Color(0xFF3B82F6);
-    const purple = Color(0xFFB8A1EA);
-    const violet = Color(0xFF8B5CF6);
-    
-    switch (mode) {
-      case AvatarMode.thinking:
-        return purple;
-      case AvatarMode.processing:
-        return violet;
-      case AvatarMode.listening:
-        return sapphire;
-      case AvatarMode.speaking:
-        return purple;
-      case AvatarMode.success:
-        return emerald;
-      case AvatarMode.error:
-        return coral;
-      case AvatarMode.attention:
-        return amber;
-      case AvatarMode.connecting:
-        return sapphire;
-      case AvatarMode.idle:
-        return emerald;
-    }
-  }
-
+  // Helper methods
   void _sendMessage(String text) async {
-    final trimmedText = text.trim();
-    if (trimmedText.isEmpty) return;
-    
-    // Clear input immediately for better UX
-    _messageController.clear();
-    _messageFocusNode.requestFocus();
-    
-    // Show success animation immediately after send
-    Future.delayed(const Duration(milliseconds: 100), () {
-      final state = _sendButtonKey.currentState;
-      if (state != null && state.mounted) {
-        (state as dynamic).showSuccess();
-      }
-    });
-    
-    // Send message via provider with streaming enabled (don't await before success animation)
-    await ref.read(conversationProvider.notifier).sendMessage(trimmedText, stream: true);
-  }
-
-  void _scrollToBottom() {
-    // Use a slight delay to ensure content is fully rendered
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 50), () {
-        if (_conversationController.hasClients) {
-          _conversationController.animateTo(
-            _conversationController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-          );
-        }
-      });
-    });
-  }
-
-
-  Widget _buildLeftDrawer(BuildContext context, ThemeData theme, Color accentColor) {
-    final isDark = theme.brightness == Brightness.dark;
-    
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: GlassTheme.blurHeavy,
-            sigmaY: GlassTheme.blurHeavy,
-          ),
-          child: Container(
-            width: _isLeftDrawerExpanded ? 240 : 72,
-            decoration: BoxDecoration(
-              // Frosted glass with organic shape
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.04)
-                  : Colors.white.withValues(alpha: 0.6),
-              borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
-              border: Border.all(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.1)
-                    : Colors.white.withValues(alpha: 0.4),
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
-                  blurRadius: 40,
-                  offset: const Offset(8, 0),
-                  spreadRadius: -10,
-                ),
-                if (isDark)
-                  BoxShadow(
-                    color: accentColor.withValues(alpha: 0.08),
-                    blurRadius: 60,
-                    spreadRadius: -5,
-                  ),
-              ],
-            ),
-              child: SafeArea(
-                child: Column(
-                  children: [
-                    // Main navigation items
-                    Expanded(
-                      child: ListView(
-                        padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
-                        children: [
-                          // Toggle button as first nav item
-                          _buildToggleItem(context, theme, accentColor),
-                          const SizedBox(height: 8),
-                          _buildNavItem(context, theme, accentColor, Icons.home, 'Home', _currentPage == NavigationPage.home, () => _switchToPage(NavigationPage.home)),
-                          const SizedBox(height: 8),
-                          _buildNavItem(context, theme, accentColor, Icons.auto_stories, 'Memory', _currentPage == NavigationPage.memory, () => _switchToPage(NavigationPage.memory)),
-                          _buildNavItem(context, theme, accentColor, Icons.admin_panel_settings, 'Admin', _currentPage == NavigationPage.admin, () => _switchToPage(NavigationPage.admin)),
-                          _buildNavItem(context, theme, accentColor, Icons.settings, 'Settings', _currentPage == NavigationPage.settings, () => _switchToPage(NavigationPage.settings)),
-                        ],
-                      ),
-                    ),
-                    
-                    // System controls at bottom
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: _isLeftDrawerExpanded ? 16 : 8, vertical: 8),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          top: BorderSide(color: theme.dividerColor),
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Theme toggle removed - dark mode only
-                          _buildSystemControl(
-                            context,
-                            theme,
-                            accentColor,
-                            () async {
-                              final currentState = ref.read(themeControllerProvider);
-                              await ref.read(themeControllerProvider.notifier).setHighContrastEnabled(!currentState.isHighContrast);
-                            },
-                            'Contrast',
-                            isContrast: true,
-                          ),
-                          const SizedBox(height: 4),
-                          _buildSystemControl(
-                            context,
-                            theme,
-                            accentColor,
-                            () {
-                              ref.read(authProvider.notifier).logout();
-                            },
-                            'Logout',
-                            isLogout: true,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-  }
-
-  Widget _buildToggleItem(BuildContext context, ThemeData theme, Color accentColor) {
-    if (!_isLeftDrawerExpanded) {
-      // Collapsed mode - just the burger icon
-      return Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        child: IconButton(
-          onPressed: () => setState(() => _isLeftDrawerExpanded = true),
-          icon: Icon(
-            Icons.menu,
-            color: accentColor.withValues(alpha: 0.6),
-            size: 20,
-          ),
-          tooltip: 'Expand menu',
-          style: IconButton.styleFrom(
-            padding: EdgeInsets.zero,
-          ),
-        ),
-      );
-    }
-    
-    // Expanded mode - right-aligned toggle
-    return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          IconButton(
-            onPressed: () => setState(() => _isLeftDrawerExpanded = false),
-            icon: Icon(
-              Icons.menu_open,
-              color: accentColor.withValues(alpha: 0.6),
-              size: 20,
-            ),
-            tooltip: 'Collapse menu',
-            style: IconButton.styleFrom(
-              padding: EdgeInsets.zero,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavItem(BuildContext context, ThemeData theme, Color accentColor, IconData icon, String title, bool isActive, VoidCallback onTap) {
-    if (!_isLeftDrawerExpanded) {
-      // Collapsed mode - subtle icon-only button
-      return Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        child: Tooltip(
-          message: title,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  // Only show background for active state
-                  color: isActive ? accentColor.withValues(alpha: 0.15) : null,
-                  border: isActive ? Border.all(
-                    color: accentColor.withValues(alpha: 0.3),
-                    width: 1,
-                  ) : null,
-                ),
-                child: Icon(
-                  icon,
-                  size: 20,
-                  color: isActive ? accentColor : accentColor.withValues(alpha: 0.6),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-    
-    // Expanded mode - subtle list tile
-    return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: isActive ? accentColor.withValues(alpha: 0.15) : null,
-              border: isActive ? Border.all(
-                color: accentColor.withValues(alpha: 0.3),
-                width: 1,
-              ) : null,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  size: 20,
-                  color: isActive ? accentColor : accentColor.withValues(alpha: 0.6),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  title,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: isActive ? accentColor : theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                    fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    await HomeScreenHelpers.sendMessage(
+      ref: ref,
+      text: text,
+      controller: _messageController,
+      focusNode: _messageFocusNode,
+      sendButtonKey: _sendButtonKey,
     );
   }
 
@@ -1352,106 +514,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     setState(() {
       _currentPage = page;
     });
-  }
-
-  Widget _buildSystemControl(
-    BuildContext context,
-    ThemeData theme,
-    Color accentColor,
-    VoidCallback onTap,
-    String tooltip, {
-    bool isContrast = false,
-    bool isLogout = false,
-  }) {
-    // Determine icon based on control type
-    Widget icon;
-    if (isContrast) {
-      icon = Consumer(
-        builder: (context, ref, child) {
-          final themeState = ref.watch(themeControllerProvider);
-          return Icon(
-            Icons.contrast,
-            color: themeState.isHighContrast
-                ? accentColor
-                : theme.colorScheme.onSurface.withValues(alpha: 0.7),
-            size: 20,
-          );
-        },
-      );
-    } else if (isLogout) {
-      icon = Icon(
-        Icons.logout,
-        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-        size: 20,
-      );
-    } else {
-      // Theme toggle
-      icon = Consumer(
-        builder: (context, ref, child) {
-          final themeState = ref.watch(themeControllerProvider);
-          return Icon(
-            themeState.themeMode == ThemeMode.light ? Icons.wb_sunny : Icons.nightlight_round,
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-            size: 20,
-          );
-        },
-      );
-    }
-
-    if (!_isLeftDrawerExpanded) {
-      // Collapsed mode - subtle icon only
-      return Container(
-        margin: const EdgeInsets.only(bottom: 4),
-        child: Tooltip(
-          message: tooltip,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: icon,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Expanded mode - subtle list tile
-    return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                icon,
-                const SizedBox(width: 12),
-                Text(
-                  tooltip,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildMainContent(BuildContext context, ThemeData theme, Color accentColor) {
@@ -1479,7 +541,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
             child: Column(
               children: [
                 // Floating avatar with ambient space
-                _buildAvatarHeader(context, theme, accentColor),
+                HomeAvatarHeader(
+                  accentColor: accentColor,
+                  glowController: _glowAnimationController,
+                  glowAnimation: _glowAnimation,
+                ),
                 
                 const SizedBox(height: 16),
                 
@@ -1528,7 +594,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                 const SizedBox(height: 16),
                 
                 // Floating input area
-                _buildInputArea(context, theme, accentColor),
+                HomeInputArea(
+                  controller: _messageController,
+                  focusNode: _messageFocusNode,
+                  accentColor: accentColor,
+                  onSend: () => _sendMessage(_messageController.text),
+                  onVoice: () {}, // TODO: Implement voice input
+                  sendButtonKey: _sendButtonKey,
+                  voiceButtonKey: _voiceButtonKey,
+                ),
               ],
             ),
           ),
@@ -1538,8 +612,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     );
   }
   
-  /// Handle share conversation action
-  void _handleShareConversation() {
+  /// Quick copy conversation to clipboard
+  Future<void> _handleCopyToClipboard() async {
+    HapticFeedback.lightImpact();
+    
+    final handler = ConversationExportHandler(ref);
+    final message = await handler.copyToClipboard();
+    
+    if (mounted) {
+      GlassmorphicToast.show(
+        context,
+        message: message,
+        icon: Icons.check_circle_rounded,
+        accentColor: const Color(0xFFB8A1EA),
+      );
+    }
+  }
+  
+  /// Save conversation to file with options
+  void _handleSaveToFile() {
     HapticFeedback.mediumImpact();
     
     showDialog(
@@ -1548,53 +639,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
       barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (dialogContext) => ShareConversationModal(
         accentColor: const Color(0xFFB8A1EA),
-        onExport: _exportConversation,
+        onExport: _exportToFile,
       ),
     );
   }
   
-  /// Export conversation to file
-  Future<void> _exportConversation(ShareConversationConfig config) async {
-    // TODO: Implement actual file export
-    // For now, just show a success message
-    final conversationState = ref.read(conversationProvider);
-    
-    // Generate markdown content
-    final buffer = StringBuffer();
-    buffer.writeln('# Conversation with AICO');
-    buffer.writeln();
-    
-    if (config.includeTimestamps) {
-      buffer.writeln('**Date:** ${DateTime.now().toString().split('.')[0]}');
-      buffer.writeln();
-    }
-    
-    for (final message in conversationState.messages) {
-      final sender = message.userId == 'aico' ? 'AICO' : (config.removePersonalInfo ? 'User' : 'You');
-      
-      if (config.includeTimestamps) {
-        final time = message.timestamp.toString().split(' ')[1].substring(0, 5);
-        buffer.writeln('**$sender ($time):** ${message.content}');
-      } else {
-        buffer.writeln('**$sender:** ${message.content}');
-      }
-      buffer.writeln();
-    }
-    
-    // TODO: Save to file using file picker
-    // For now, copy to clipboard as fallback
-    await Clipboard.setData(ClipboardData(text: buffer.toString()));
+  /// Export conversation to file (markdown or PDF)
+  Future<void> _exportToFile(ShareConversationConfig config) async {
+    final handler = ConversationExportHandler(ref);
+    final message = await handler.exportToFile(config);
     
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Conversation copied to clipboard'),
-          backgroundColor: const Color(0xFFB8A1EA),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
+      GlassmorphicToast.show(
+        context,
+        message: message,
+        icon: Icons.info_outline_rounded,
+        accentColor: const Color(0xFFB8A1EA),
       );
     }
   }

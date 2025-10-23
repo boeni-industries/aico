@@ -43,8 +43,6 @@ class _ShareConversationModalState extends State<ShareConversationModal>
   
   // Export configuration
   ExportFormat _selectedFormat = ExportFormat.markdown;
-  bool _removePersonalInfo = false;
-  bool _includeTimestamps = true;
   
   @override
   void initState() {
@@ -95,8 +93,6 @@ class _ShareConversationModalState extends State<ShareConversationModal>
     
     final config = ShareConversationConfig(
       format: _selectedFormat,
-      removePersonalInfo: _removePersonalInfo,
-      includeTimestamps: _includeTimestamps,
     );
     
     widget.onExport?.call(config);
@@ -183,8 +179,6 @@ class _ShareConversationModalState extends State<ShareConversationModal>
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         _buildFormatSelection(theme, isDark),
-                                        const SizedBox(height: 24),
-                                        _buildPrivacyControls(theme, isDark),
                                       ],
                                     ),
                                   ),
@@ -430,119 +424,6 @@ class _ShareConversationModalState extends State<ShareConversationModal>
     );
   }
   
-  Widget _buildPrivacyControls(ThemeData theme, bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Privacy',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 12),
-        
-        // Remove personal info toggle
-        _buildToggleOption(
-          theme: theme,
-          isDark: isDark,
-          icon: Icons.shield_outlined,
-          title: 'Remove personal information',
-          description: 'Replaces your name with "User"',
-          value: _removePersonalInfo,
-          onChanged: (value) {
-            HapticFeedback.selectionClick();
-            setState(() => _removePersonalInfo = value);
-          },
-        ),
-        
-        const SizedBox(height: 12),
-        
-        // Include timestamps toggle
-        _buildToggleOption(
-          theme: theme,
-          isDark: isDark,
-          icon: Icons.schedule_outlined,
-          title: 'Include timestamps',
-          description: 'Show when messages were sent',
-          value: _includeTimestamps,
-          onChanged: (value) {
-            HapticFeedback.selectionClick();
-            setState(() => _includeTimestamps = value);
-          },
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildToggleOption({
-    required ThemeData theme,
-    required bool isDark,
-    required IconData icon,
-    required String title,
-    required String description,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(GlassTheme.radiusMedium),
-          border: Border.all(
-            color: theme.dividerColor.withValues(alpha: 0.2),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            // Icon
-            Icon(
-              icon,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-              size: 24,
-            ),
-            
-            const SizedBox(width: 12),
-            
-            // Text
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    description,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            
-            const SizedBox(width: 12),
-            
-            // Toggle switch
-            Switch(
-              value: value,
-              onChanged: onChanged,
-              activeColor: widget.accentColor,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  
   Widget _buildActions(ThemeData theme, bool isDark) {
     return Container(
       padding: const EdgeInsets.all(24),
@@ -626,12 +507,8 @@ enum ExportFormat {
 /// Configuration for conversation export
 class ShareConversationConfig {
   final ExportFormat format;
-  final bool removePersonalInfo;
-  final bool includeTimestamps;
 
   const ShareConversationConfig({
     required this.format,
-    required this.removePersonalInfo,
-    required this.includeTimestamps,
   });
 }

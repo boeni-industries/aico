@@ -1,0 +1,134 @@
+import 'dart:ui';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
+
+/// Conversation toolbar that slides out from under conversation container
+/// Provides quick actions: copy to clipboard, save to file, bookmark
+class HomeToolbar extends StatelessWidget {
+  final bool isVisible;
+  final bool hasMessages;
+  final Color accentColor;
+  final VoidCallback onCopy;
+  final VoidCallback onSave;
+  final VoidCallback? onBookmark;
+
+  const HomeToolbar({
+    super.key,
+    required this.isVisible,
+    required this.hasMessages,
+    required this.accentColor,
+    required this.onCopy,
+    required this.onSave,
+    this.onBookmark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      child: isVisible && hasMessages
+          ? Container(
+              height: 56,
+              decoration: BoxDecoration(
+                // EXACT same background as conversation container
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.04)
+                    : Colors.white.withValues(alpha: 0.6),
+                // Only round bottom corners - top edge merges seamlessly
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(GlassTheme.radiusXLarge),
+                  bottomRight: Radius.circular(GlassTheme.radiusXLarge),
+                ),
+                // NO borders - container borders continue seamlessly
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                    spreadRadius: -4,
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _ToolbarAction(
+                      icon: Icons.content_copy_rounded,
+                      onTap: onCopy,
+                      accentColor: accentColor,
+                      isEnabled: true,
+                    ),
+                    const SizedBox(width: 12),
+                    _ToolbarAction(
+                      icon: Icons.save_outlined,
+                      onTap: onSave,
+                      accentColor: accentColor,
+                      isEnabled: true,
+                    ),
+                    const SizedBox(width: 12),
+                    _ToolbarAction(
+                      icon: Icons.bookmark_outline_rounded,
+                      onTap: onBookmark ?? () {},
+                      accentColor: accentColor,
+                      isEnabled: onBookmark != null,
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : const SizedBox.shrink(),
+    );
+  }
+}
+
+class _ToolbarAction extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color accentColor;
+  final bool isEnabled;
+
+  const _ToolbarAction({
+    required this.icon,
+    required this.onTap,
+    required this.accentColor,
+    this.isEnabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: isEnabled
+            ? () {
+                HapticFeedback.lightImpact();
+                onTap();
+              }
+            : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          child: Icon(
+            icon,
+            size: 22,
+            color: isEnabled
+                ? accentColor
+                : theme.colorScheme.onSurface.withValues(alpha: 0.3),
+          ),
+        ),
+      ),
+    );
+  }
+}
