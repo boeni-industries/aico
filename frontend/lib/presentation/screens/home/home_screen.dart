@@ -449,19 +449,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     return MouseRegion(
       onEnter: hasMessages ? (_) => setState(() => _showConversationActions = true) : null,
       onExit: hasMessages ? (_) => setState(() => _showConversationActions = false) : null,
-      child: Stack(
+      child: Column(
         children: [
-          ShaderMask(
-            shaderCallback: (Rect bounds) {
-              return LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: const [
-                  Colors.transparent,
-                  Colors.black,
-                  Colors.black,
-                  Colors.transparent,
-                ],
+          Expanded(
+            child: ShaderMask(
+              shaderCallback: (Rect bounds) {
+                return LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: const [
+                    Colors.transparent,
+                    Colors.black,
+                    Colors.black,
+                    Colors.transparent,
+                  ],
             stops: const [0.0, 0.15, 0.85, 1.0],
           ).createShader(bounds);
         },
@@ -489,93 +490,124 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
           ),
         ),
       ),
-      
-      // Contextual actions - dock to bottom center on hover
-      if (_showConversationActions && hasMessages)
-        Positioned(
-          bottom: 16,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: TweenAnimationBuilder<double>(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOutCubic,
-              tween: Tween(begin: 0.0, end: 1.0),
-              builder: (context, value, child) {
-                return Opacity(
-                  opacity: value,
-                  child: Transform.translate(
-                    offset: Offset(0, 12 * (1 - value)), // Slide up from bottom
-                    child: child,
-                  ),
-                );
-              },
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.05)
-                          : Colors.white.withValues(alpha: 0.65),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.12)
-                            : Colors.white.withValues(alpha: 0.35),
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
-                          spreadRadius: -2,
-                        ),
-                      ],
+    ),
+          
+          // Drawer toolbar that slides out from under conversation container
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            child: _showConversationActions && hasMessages
+                ? ClipRRect(
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(GlassTheme.radiusXLarge),
+                      bottomRight: Radius.circular(GlassTheme.radiusXLarge),
                     ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          _handleShareConversation();
-                        },
-                        borderRadius: BorderRadius.circular(24),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.ios_share_rounded,
-                                size: 20,
-                                color: accentColor,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Share conversation',
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w500,
-                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-                                ),
-                              ),
-                            ],
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(
+                        sigmaX: GlassTheme.blurHeavy,
+                        sigmaY: GlassTheme.blurHeavy,
+                      ),
+                      child: Container(
+                        height: 56,
+                        decoration: BoxDecoration(
+                          // EXACT same background as conversation container
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.04)
+                              : Colors.white.withValues(alpha: 0.6),
+                          // Only round bottom corners - top edge merges seamlessly
+                          borderRadius: const BorderRadius.only(
+                            bottomLeft: Radius.circular(GlassTheme.radiusXLarge),
+                            bottomRight: Radius.circular(GlassTheme.radiusXLarge),
                           ),
+                          // Border on sides and bottom ONLY - no top border for seamless merge
+                          border: Border(
+                            left: BorderSide(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.1)
+                                  : Colors.white.withValues(alpha: 0.4),
+                              width: 1.5,
+                            ),
+                            right: BorderSide(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.1)
+                                  : Colors.white.withValues(alpha: 0.4),
+                              width: 1.5,
+                            ),
+                            bottom: BorderSide(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.1)
+                                  : Colors.white.withValues(alpha: 0.4),
+                              width: 1.5,
+                            ),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                              spreadRadius: -4,
+                            ),
+                          ],
                         ),
+                    child: Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildToolbarAction(
+                            icon: Icons.ios_share_rounded,
+                            onTap: _handleShareConversation,
+                            accentColor: accentColor,
+                          ),
+                          const SizedBox(width: 12),
+                          _buildToolbarAction(
+                            icon: Icons.auto_awesome_rounded,
+                            onTap: () {}, // TODO: Implement
+                            accentColor: accentColor,
+                          ),
+                          const SizedBox(width: 12),
+                          _buildToolbarAction(
+                            icon: Icons.bookmark_outline_rounded,
+                            onTap: () {}, // TODO: Implement
+                            accentColor: accentColor,
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ),
-              ),
-            ),
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildToolbarAction({
+    required IconData icon,
+    required VoidCallback onTap,
+    required Color accentColor,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          child: Icon(
+            icon,
+            size: 22,
+            color: accentColor,
           ),
         ),
-      ],
-    ),
-  );
+      ),
+    );
   }
 
   Widget _buildMessageBubble(BuildContext context, ThemeData theme, Color accentColor, ConversationMessage message) {
