@@ -148,34 +148,39 @@ class _HomeRightDrawerState extends ConsumerState<HomeRightDrawer> {
           : const SizedBox.shrink();
     }
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      transitionBuilder: (child, animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0.1, 0),
-              end: Offset.zero,
-            ).animate(CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-            )),
-            child: child,
-          ),
-        );
-      },
-      child: widget.isExpanded
-          ? ThinkingDisplay(
-              key: const ValueKey('expanded'),
-              thinkingHistory: conversationState.thinkingHistory,
-              currentThinking: conversationState.streamingThinking,
-              isStreaming: isActivelyThinking,
-              scrollToMessageId: widget.scrollToMessageId,
-              onCollapse: widget.onToggle,
-            )
-          : _buildCollapsedIndicator(conversationState, isActivelyThinking),
-    );
+    // Progressive disclosure: Only render full ThinkingDisplay when expanded
+    // This prevents overflow errors when collapsed to 72px width
+    if (widget.isExpanded) {
+      return AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (child, animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.1, 0),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              )),
+              child: child,
+            ),
+          );
+        },
+        child: ThinkingDisplay(
+          key: const ValueKey('expanded'),
+          thinkingHistory: conversationState.thinkingHistory,
+          currentThinking: conversationState.streamingThinking,
+          isStreaming: isActivelyThinking,
+          scrollToMessageId: widget.scrollToMessageId,
+          onCollapse: widget.onToggle,
+        ),
+      );
+    }
+
+    // Collapsed state: Only show ambient indicator (fits in 72px)
+    return _buildCollapsedIndicator(conversationState, isActivelyThinking);
   }
 
   Widget _buildCollapsedIndicator(ConversationState conversationState, bool isStreaming) {
