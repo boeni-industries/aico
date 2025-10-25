@@ -10,6 +10,19 @@
 
 AICO's feedback system moves beyond traditional thumbs-up/down patterns to create a **relationship-first feedback architecture** that feels natural and non-intrusive. The system integrates ambient behavioral signals, contextual actions, and meaningful reflection while maintaining AICO's core principles of emotional presence, privacy-first design, and progressive disclosure.
 
+**Document Relationship:**
+This document defines the **backend architecture** for feedback and memory systems. See also:
+- **[memory-album-design.md](memory-album-design.md)** - Client-side UI/UX for Memory Album (how users interact with memories)
+- **[/docs/concepts/data/data-layer.md](../data/data-layer.md)** - Storage layer details (LibSQL, ChromaDB, LMDB)
+- **[/docs/architecture/architecture-overview.md](../../architecture/architecture-overview.md)** - System architecture
+
+**Scope:**
+- ✅ Feedback system architecture (3-tier: ambient, contextual, explicit)
+- ✅ Storage schemas (SQL tables, JSON payloads)
+- ✅ "Remember This" backend implementation
+- ❌ UI/UX design (see memory-album-design.md)
+- ❌ Frontend implementation (see memory-album-design.md)
+
 **Core Philosophy:** Feedback should feel like natural relationship dynamics—not AI training. Users provide feedback through authentic interaction patterns, not forced rating systems.
 
 ---
@@ -152,10 +165,9 @@ AICO's feedback system moves beyond traditional thumbs-up/down patterns to creat
 
 #### Remember This (User-Curated Facts)
 **Purpose:** Bookmark important information for guaranteed recall  
-**Visual:** ✨ icon, purple accent, ambient avatar smile  
-**Flow:** Click → Haptic → Purple glow → Stored confirmation (200-300ms)  
-**Storage:** Semantic memory with `user_curated: true` flag, confidence: 1.0  
-**Feedback Signal:** Critical information user wants preserved
+**Backend:** Dual storage (feedback event + fact in `facts_metadata`)  
+**Feedback Signal:** Critical information user wants preserved  
+**UI/UX:** See [memory-album-design.md](memory-album-design.md) for client-side implementation
 
 #### Regenerate Response
 **Purpose:** Try again without explaining why (feels like "let's rephrase")  
@@ -293,50 +305,41 @@ CREATE INDEX IF NOT EXISTS idx_feedback_message
 
 ### 6.3 Event Type Taxonomy
 
-#### Event Types (Single Source of Truth)
+**Event Types (Single Source of Truth):**
 
-```python
-# /shared/aico/data/schemas/feedback.py
+**FeedbackEventType:**
+- `signal` - Tier 1: Ambient behavioral signals
+- `action` - Tier 2: Contextual user actions
+- `rating` - Tier 3: Explicit conversation ratings
+- `survey` - Tier 3: Explicit survey responses
 
-from enum import Enum
+**SignalCategory:**
+- `engagement` - Conversation depth, continuation
+- `timing` - Response times, session duration
+- `editing` - User edits their messages
+- `navigation` - App usage patterns
+- `content_interaction` - Copy, scroll, read time
 
-class FeedbackEventType(str, Enum):
-    """Top-level feedback event classification"""
-    SIGNAL = "signal"    # Tier 1: Ambient behavioral signals
-    ACTION = "action"    # Tier 2: Contextual user actions
-    RATING = "rating"    # Tier 3: Explicit conversation ratings
-    SURVEY = "survey"    # Tier 3: Explicit survey responses
+**ActionCategory:**
+- `remember` - User bookmarks message
+- `regenerate` - Request new response
+- `copy` - Copy message text
+- `explain` - Show reasoning/sources
+- `edit` - Edit user's own message
+- `dismiss` - Dismiss suggestion/prompt
 
-class SignalCategory(str, Enum):
-    """Categories for ambient signals (Tier 1)"""
-    ENGAGEMENT = "engagement"           # Conversation depth, continuation
-    TIMING = "timing"                   # Response times, session duration
-    EDITING = "editing"                 # User edits their messages
-    NAVIGATION = "navigation"           # App usage patterns
-    CONTENT_INTERACTION = "content_interaction"  # Copy, scroll, read time
+**RatingCategory:**
+- `conversation_quality` - End-of-conversation rating
+- `message_quality` - Single message rating
+- `feature_satisfaction` - Specific feature rating
 
-class ActionCategory(str, Enum):
-    """Categories for contextual actions (Tier 2)"""
-    REMEMBER = "remember"               # User bookmarks message
-    REGENERATE = "regenerate"           # Request new response
-    COPY = "copy"                       # Copy message text
-    EXPLAIN = "explain"                 # Show reasoning/sources
-    EDIT = "edit"                       # Edit user's own message
-    DISMISS = "dismiss"                 # Dismiss suggestion/prompt
+**SurveyCategory:**
+- `weekly_check` - Weekly quality survey
+- `health_check` - Monthly relationship health
+- `feature_discovery` - Feature awareness survey
+- `nps` - Net Promoter Score
 
-class RatingCategory(str, Enum):
-    """Categories for explicit ratings (Tier 3)"""
-    CONVERSATION_QUALITY = "conversation_quality"  # End-of-conversation rating
-    MESSAGE_QUALITY = "message_quality"            # Single message rating
-    FEATURE_SATISFACTION = "feature_satisfaction"  # Specific feature rating
-
-class SurveyCategory(str, Enum):
-    """Categories for surveys (Tier 3)"""
-    WEEKLY_CHECK = "weekly_check"       # Weekly quality survey
-    HEALTH_CHECK = "health_check"       # Monthly relationship health
-    FEATURE_DISCOVERY = "feature_discovery"  # Feature awareness survey
-    NPS = "nps"                         # Net Promoter Score
-```
+Implementation: `/shared/aico/feedback/types.py`
 
 ### 6.4 Payload Schemas (Type-Specific)
 
@@ -406,11 +409,17 @@ class SurveyCategory(str, Enum):
     "message_id": "msg_abc123",
     "fact_id": "fact_xyz789",
     "content_preview": "I'm allergic to shellfish",
-    "fact_type": "user_curated",
-    "confidence": 1.0
+    "fact_category": "dietary",
+    "action_timestamp": 1729800000
   }
 }
 ```
+
+**Note:** "Remember This" serves dual purposes:
+1. **Feedback signal** (stored here) - tracks that user explicitly bookmarked this
+2. **Memory storage** (stored in `facts_metadata` table) - the actual fact with `extraction_method='user_curated'`
+
+The `fact_id` links the feedback event to the stored fact for bidirectional traceability.
 
 **Regenerate Action:**
 ```json
@@ -500,153 +509,108 @@ class SurveyCategory(str, Enum):
 }
 ```
 
-### 6.5 Data Access Patterns
+### 6.5 Query Patterns
 
-**Insert Feedback Event:**
-```python
-# /backend/services/feedback_service.py
-
-async def record_feedback_event(
-    user_uuid: str,
-    conversation_id: str,
-    event_type: FeedbackEventType,
-    event_category: str,
-    payload: dict,
-    message_id: Optional[str] = None,
-    is_sensitive: bool = False
-) -> str:
-    """Record a feedback event (append-only)"""
-    
-    event_id = f"fb_{uuid.uuid4().hex}"
-    
-    await db.execute(
-        """
-        INSERT INTO feedback_events (
-            id, user_uuid, conversation_id, message_id,
-            event_type, event_category, payload, timestamp, is_sensitive
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            event_id,
-            user_uuid,
-            conversation_id,
-            message_id,
-            event_type.value,
-            event_category,
-            json.dumps(payload),
-            int(time.time()),
-            1 if is_sensitive else 0
-        )
-    )
-    
-    return event_id
+**Correlation Analysis (SQL):**
+```sql
+-- Get regeneration patterns after low engagement
+SELECT 
+    e1.conversation_id,
+    json_extract(e1.payload, '$.value') as engagement_score,
+    COUNT(e2.id) as regeneration_count
+FROM feedback_events e1
+LEFT JOIN feedback_events e2 
+  ON e1.conversation_id = e2.conversation_id
+  AND e2.event_type = 'action'
+  AND e2.event_category = 'regenerate'
+  AND e2.timestamp > e1.timestamp
+WHERE e1.user_uuid = ?
+  AND e1.event_type = 'signal'
+  AND e1.event_category = 'engagement'
+  AND e1.timestamp > ?
+  AND CAST(json_extract(e1.payload, '$.value') AS REAL) < 3.0
+GROUP BY e1.conversation_id
 ```
 
-**Query Feedback Patterns:**
-```python
-# Get regeneration patterns after low engagement
-async def analyze_regeneration_patterns(user_uuid: str, days: int = 7):
-    """Correlate engagement signals with regeneration actions"""
-    
-    cutoff = int(time.time()) - (days * 86400)
-    
-    results = await db.execute(
-        """
-        SELECT 
-            e1.conversation_id,
-            json_extract(e1.payload, '$.value') as engagement_score,
-            COUNT(e2.id) as regeneration_count
-        FROM feedback_events e1
-        LEFT JOIN feedback_events e2 
-          ON e1.conversation_id = e2.conversation_id
-          AND e2.event_type = 'action'
-          AND e2.event_category = 'regenerate'
-          AND e2.timestamp > e1.timestamp
-        WHERE e1.user_uuid = ?
-          AND e1.event_type = 'signal'
-          AND e1.event_category = 'engagement'
-          AND e1.timestamp > ?
-          AND CAST(json_extract(e1.payload, '$.value') AS REAL) < 3.0
-        GROUP BY e1.conversation_id
-        """,
-        (user_uuid, cutoff)
-    )
-    
-    return results
+**Federated Export (SQL):**
+```sql
+-- Export anonymized feedback for federated learning (opt-in)
+SELECT 
+    event_type,
+    event_category,
+    payload,
+    timestamp
+FROM feedback_events
+WHERE user_uuid = ?
+  AND is_sensitive = 0
+  AND federated_at IS NULL
+  AND timestamp > ?
 ```
 
-**Export for Federated Learning:**
-```python
-async def export_for_federation(user_uuid: str, since_timestamp: int):
-    """Export anonymized feedback for federated learning (opt-in)"""
-    
-    events = await db.execute(
-        """
-        SELECT 
-            event_type,
-            event_category,
-            payload,
-            timestamp
-        FROM feedback_events
-        WHERE user_uuid = ?
-          AND is_sensitive = 0
-          AND federated_at IS NULL
-          AND timestamp > ?
-        """,
-        (user_uuid, since_timestamp)
-    )
-    
-    # Anonymize payload (remove identifiable information)
-    anonymized = []
-    for event in events:
-        payload = json.loads(event['payload'])
-        # Remove message_id, fact_id, content_preview, etc.
-        anonymized_payload = anonymize_payload(payload, event['event_category'])
-        anonymized.append({
-            'event_type': event['event_type'],
-            'event_category': event['event_category'],
-            'payload': anonymized_payload,
-            'timestamp': event['timestamp']
-        })
-    
-    return anonymized
+### 6.6 Storage Architecture
+
+**Three-Tier Storage:**
+
+| System | Technology | Purpose | Data |
+|--------|-----------|---------|------|
+| **LibSQL** | SQLite | Structured data, ACID | `feedback_events`, `facts_metadata` (extended) |
+| **ChromaDB** | Vector DB | Semantic search | Conversation segments (existing) |
+| **LMDB** | Key-value | Fast ephemeral | Active sessions (existing) |
+
+**Schema Changes (v6 migration):**
+
+1. **New table:** `feedback_events`
+2. **Extend existing:** `facts_metadata` with columns:
+   - `user_note TEXT`
+   - `tags_json TEXT`
+   - `is_favorite INTEGER`
+   - `revisit_count INTEGER`
+   - `last_revisited TIMESTAMP`
+   - `emotional_tone TEXT`
+   - `memory_type TEXT`
+
+**"Remember This" Dual Storage:**
+
+When user clicks "Remember This" (see [memory-album-design.md](memory-album-design.md) for UI flow):
+
+1. **Store fact** in `facts_metadata` with `extraction_method='user_curated'`
+2. **Record feedback event** in `feedback_events` with `event_category='remember'`
+
+**Why Extend `facts_metadata`?**
+- Already has content, provenance, timestamps
+- `extraction_method='user_curated'` distinguishes from AI-extracted
+- Single source of truth for "what AICO remembers"
+- No joins needed
+
+**Shared Implementation:**
+```
+/shared/aico/
+├── ai/memory/facts.py          # FactStore (user-curated facts)
+├── feedback/events.py          # FeedbackEventStore  
+└── feedback/types.py           # Enums
+```
+Both backend and CLI use same code.
+
+**Client-Side:** See [memory-album-design.md](memory-album-design.md) for:
+- Memory Album UI (timeline, grid, story views)
+- User annotations (notes, tags, favorites)
+- Memory revisit tracking
+- Export and sharing features
+
+### 6.7 Privacy & Data Management
+
+**User Data Deletion (SQL):**
+```sql
+-- Delete all feedback data for user (GDPR compliance)
+DELETE FROM feedback_events WHERE user_uuid = ?
 ```
 
-### 6.6 Privacy & Data Management
-
-**User Data Deletion:**
-```python
-async def delete_user_feedback(user_uuid: str):
-    """Delete all feedback data for user (GDPR compliance)"""
-    
-    result = await db.execute(
-        "DELETE FROM feedback_events WHERE user_uuid = ?",
-        (user_uuid,)
-    )
-    
-    return result.rowcount
-```
-
-**Data Export:**
-```python
-async def export_user_feedback(user_uuid: str) -> dict:
-    """Export all feedback data for user (GDPR compliance)"""
-    
-    events = await db.execute(
-        """
-        SELECT * FROM feedback_events 
-        WHERE user_uuid = ? 
-        ORDER BY timestamp DESC
-        """,
-        (user_uuid,)
-    )
-    
-    return {
-        'user_uuid': user_uuid,
-        'export_timestamp': datetime.utcnow().isoformat(),
-        'total_events': len(events),
-        'events': [dict(row) for row in events]
-    }
+**Data Export (SQL):**
+```sql
+-- Export all feedback data for user (GDPR compliance)
+SELECT * FROM feedback_events 
+WHERE user_uuid = ? 
+ORDER BY timestamp DESC
 ```
 
 ---
@@ -822,37 +786,97 @@ Users must have clear visibility into:
 
 ---
 
-## 12. Implementation Roadmap
+## 12. Backend Implementation Guide
 
-### Phase 1: Foundation (Weeks 1-2)
-- ✅ Copy Text (already implemented)
-- Ambient signal collection infrastructure
-- Feedback database schema
-- Basic pattern analysis
+### 12.1 Memory Album Backend Requirements
 
-### Phase 2: Contextual Actions (Weeks 3-4)
-- Remember This (user-curated facts)
+**Minimum Viable Implementation:**
+
+1. **Schema Migration (v6)**
+   - Create `feedback_events` table
+   - Extend `facts_metadata` with Memory Album columns
+   - Location: `/shared/aico/data/schemas/feedback.py`
+
+2. **Shared Modules**
+   - `FactStore` class in `/shared/aico/ai/memory/facts.py`
+     - `store_user_curated_fact()` - Store memory
+     - `get_user_curated_facts()` - Query memories
+     - `update_fact_metadata()` - Update notes/tags/favorites
+     - `record_revisit()` - Track when user views memory
+   
+   - `FeedbackEventStore` class in `/shared/aico/feedback/events.py`
+     - `record_event()` - Record feedback event
+     - `get_events()` - Query feedback events
+   
+   - Enums in `/shared/aico/feedback/types.py`
+     - `FeedbackEventType`, `ActionCategory`, etc.
+
+3. **API Endpoints** (new router: `/backend/api/memory_album/router.py`)
+   - `POST /messages/{message_id}/remember` - User clicks "Remember This"
+   - `GET /memory-album` - List user's memories (with filters)
+   - `GET /memory-album/{memory_id}` - Get single memory with context
+   - `PATCH /memory-album/{memory_id}` - Update notes/tags/favorites
+   - `DELETE /memory-album/{memory_id}` - Delete memory
+   - `POST /memory-album/{memory_id}/revisit` - Track revisit
+
+4. **Integration Points**
+   - Conversation engine: Trigger "Remember This" from chat
+   - Memory manager: Query user-curated facts for context
+   - Frontend: API client calls from Flutter
+
+**Implementation Order:**
+
+**Week 1: Schema & Core**
+- [ ] Create schema v6 migration
+- [ ] Create `/shared/aico/feedback/types.py` (enums)
+- [ ] Run migration, verify tables created
+
+**Week 2: Shared Modules**
+- [ ] Implement `FactStore` in `/shared/aico/ai/memory/facts.py`
+- [ ] Implement `FeedbackEventStore` in `/shared/aico/feedback/events.py`
+- [ ] Write unit tests for both stores
+
+**Week 3: API Layer**
+- [ ] Create `/backend/api/memory_album/router.py`
+- [ ] Implement all 6 endpoints
+- [ ] Add to main API router
+- [ ] Test with curl/Postman
+
+**Week 4: Integration**
+- [ ] Add "Remember This" handler to conversation engine
+- [ ] Update memory manager to query user-curated facts
+- [ ] Integration tests
+
+### 12.2 Full Feedback System Roadmap
+
+**Phase 1: Memory Album (Weeks 1-4)** ← Start here
+- Schema v6, shared modules, API endpoints
+- See section 12.1 above
+
+**Phase 2: Contextual Actions (Weeks 5-6)**
 - Regenerate Response
 - Show Sources/Explain Reasoning
-- Avatar emotional feedback integration
+- Copy Text (already implemented)
 
-### Phase 3: Explicit Reflection (Weeks 5-6)
+**Phase 3: Ambient Signals (Weeks 7-8)**
+- Engagement tracking
+- Timing signals
+- Content interaction signals
+
+**Phase 4: Explicit Reflection (Weeks 9-10)**
 - Conversation quality ratings
 - Weekly quality surveys
 - Monthly relationship health checks
-- Feedback UI components
 
-### Phase 4: Learning Loop (Weeks 7-8)
-- Local model adaptation
+**Phase 5: Learning Loop (Weeks 11-12)**
 - Pattern analysis algorithms
 - Well-being monitoring
 - Ethical safeguards
 
-### Phase 5: Federated Learning (Future)
+**Phase 6: Federated Learning (Future)**
 - Differential privacy implementation
 - Anonymization pipeline
 - Federation protocol
-- Opt-in/opt-out controls
 
 ---
 
@@ -882,8 +906,4 @@ This approach aligns with AICO's vision of being a **true companion**—emotiona
 - Harvard Business School (2025): "Emotional Manipulation by AI Companions"
 - Francesca Tabor (2025): "AI-Driven Feedback and Learning Loops"
 
-**Related AICO Documentation:**
-- `/docs/architecture/architecture-overview.md` - System architecture and design principles
-- `/docs/WIP_information_design.md` - Progressive disclosure and visual hierarchy
-- `/docs/WIP_chat_bubble_features.md` - Chat bubble feature specifications
-- `/README.md` - AICO core principles and vision
+
