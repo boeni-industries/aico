@@ -765,13 +765,26 @@ class BackendLifecycleManager:
         from backend.api.admin.router import router as admin_router
         from backend.api.logs.router import router as logs_router
         from backend.api.conversation.router import router as conversation_router
+        from backend.api.memory_album import router as memory_album_router
         
         # Mount routers with prefixes
         self.app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/echo", "tags": ["echo"]})
+        
         self.app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/users", "tags": ["users"]})
+        
         self.app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/admin", "tags": ["admin"]})
+        
         self.app.include_router(logs_router, prefix="/api/v1/logs", tags=["logs"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/logs", "tags": ["logs"]})
+        
         self.app.include_router(conversation_router, prefix="/api/v1/conversation", tags=["conversation"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/conversation", "tags": ["conversation"]})
+        
+        self.app.include_router(memory_album_router, prefix="/api/v1/memory-album", tags=["memory-album"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/memory-album", "tags": ["memory-album"]})
         
     
     def _display_routes(self) -> None:

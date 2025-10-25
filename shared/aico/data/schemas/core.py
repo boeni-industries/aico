@@ -372,6 +372,86 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP TABLE IF EXISTS fact_relationships", 
             "DROP TABLE IF EXISTS facts_metadata"
         ]
+    ),
+    
+    6: SchemaVersion(
+        version=6,
+        name="Feedback & Memory Album System",
+        description="Add feedback_events table and extend facts_metadata for Memory Album",
+        sql_statements=[
+            # Create feedback_events table
+            """CREATE TABLE IF NOT EXISTS feedback_events (
+                id TEXT PRIMARY KEY,
+                user_uuid TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                message_id TEXT,
+                event_type TEXT NOT NULL,
+                event_category TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                is_sensitive INTEGER DEFAULT 0,
+                federated_at INTEGER,
+                FOREIGN KEY (user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            
+            # Indexes for feedback_events
+            "CREATE INDEX IF NOT EXISTS idx_feedback_user_time ON feedback_events(user_uuid, timestamp DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_feedback_conversation ON feedback_events(conversation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_feedback_type ON feedback_events(event_type, event_category)",
+            "CREATE INDEX IF NOT EXISTS idx_feedback_message ON feedback_events(message_id) WHERE message_id IS NOT NULL",
+            
+            # Extend facts_metadata for Memory Album
+            "ALTER TABLE facts_metadata ADD COLUMN user_note TEXT",
+            "ALTER TABLE facts_metadata ADD COLUMN tags_json TEXT",
+            "ALTER TABLE facts_metadata ADD COLUMN is_favorite INTEGER DEFAULT 0",
+            "ALTER TABLE facts_metadata ADD COLUMN revisit_count INTEGER DEFAULT 0",
+            "ALTER TABLE facts_metadata ADD COLUMN last_revisited TIMESTAMP",
+            "ALTER TABLE facts_metadata ADD COLUMN emotional_tone TEXT",
+            "ALTER TABLE facts_metadata ADD COLUMN memory_type TEXT",
+            
+            # Indexes for Memory Album queries
+            "CREATE INDEX IF NOT EXISTS idx_facts_user_curated ON facts_metadata(user_id, extraction_method) WHERE extraction_method = 'user_curated'",
+            "CREATE INDEX IF NOT EXISTS idx_facts_favorite ON facts_metadata(user_id, is_favorite) WHERE is_favorite = 1",
+        ],
+        rollback_statements=[
+            # Drop indexes
+            "DROP INDEX IF EXISTS idx_facts_favorite",
+            "DROP INDEX IF EXISTS idx_facts_user_curated",
+            "DROP INDEX IF EXISTS idx_feedback_message",
+            "DROP INDEX IF EXISTS idx_feedback_type",
+            "DROP INDEX IF EXISTS idx_feedback_conversation",
+            "DROP INDEX IF EXISTS idx_feedback_user_time",
+            
+            # Drop table
+            "DROP TABLE IF EXISTS feedback_events",
+            
+            # Note: SQLite doesn't support DROP COLUMN
+            # Columns added to facts_metadata will remain
+        ]
+    ),
+    
+    7: SchemaVersion(
+        version=7,
+        name="Conversation-Level Memory Support",
+        description="Extend facts_metadata to support full conversation memories",
+        sql_statements=[
+            # Add conversation-level memory fields
+            "ALTER TABLE facts_metadata ADD COLUMN content_type TEXT DEFAULT 'message'",
+            "ALTER TABLE facts_metadata ADD COLUMN conversation_title TEXT",
+            "ALTER TABLE facts_metadata ADD COLUMN conversation_summary TEXT",
+            "ALTER TABLE facts_metadata ADD COLUMN turn_range TEXT",
+            "ALTER TABLE facts_metadata ADD COLUMN key_moments_json TEXT",
+            
+            # Index for content type filtering
+            "CREATE INDEX IF NOT EXISTS idx_facts_content_type ON facts_metadata(user_id, content_type) WHERE extraction_method = 'user_curated'",
+        ],
+        rollback_statements=[
+            # Drop index
+            "DROP INDEX IF EXISTS idx_facts_content_type",
+            
+            # Note: SQLite doesn't support DROP COLUMN
+            # Columns added to facts_metadata will remain
+        ]
     )
 })
 
