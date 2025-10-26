@@ -15,7 +15,7 @@ class MemoryAlbumRepository {
   /// Remember a message or conversation
   Future<String> rememberContent(RememberRequest request) async {
     final response = await _apiClient.post<Map<String, dynamic>>(
-      '/api/v1/memory-album/remember',
+      '/memory-album/remember',
       data: request.toJson(),
     );
 
@@ -33,26 +33,31 @@ class MemoryAlbumRepository {
     int limit = 50,
     int offset = 0,
   }) async {
-    final queryParams = <String, dynamic>{
-      'limit': limit,
-      'offset': offset,
-    };
+    try {
+      final queryParams = <String, dynamic>{
+        'limit': limit,
+        'offset': offset,
+      };
 
-    if (category != null) queryParams['category'] = category;
-    if (favoritesOnly) queryParams['favorites_only'] = true;
+      if (category != null) queryParams['category'] = category;
+      if (favoritesOnly) queryParams['favorites_only'] = true;
 
-    final response = await _apiClient.get<Map<String, dynamic>>(
-      '/api/v1/memory-album',
-      queryParameters: queryParams,
-    );
+      final response = await _apiClient.get<Map<String, dynamic>>(
+        '/memory-album',
+        queryParameters: queryParams,
+      );
 
-    if (response != null && response['memories'] != null) {
-      final memories = (response['memories'] as List)
-          .map((json) => MemoryEntry.fromJson(json as Map<String, dynamic>))
-          .toList();
-      return memories;
-    } else {
-      return [];
+      if (response != null && response['memories'] != null) {
+        final memories = (response['memories'] as List)
+            .map((json) => MemoryEntry.fromJson(json as Map<String, dynamic>))
+            .toList();
+        return memories;
+      } else {
+        return [];
+      }
+    } catch (e) {
+      print('Error loading memories: $e');
+      rethrow;
     }
   }
 
@@ -62,7 +67,7 @@ class MemoryAlbumRepository {
     UpdateMemoryRequest request,
   ) async {
     final response = await _apiClient.put<Map<String, dynamic>>(
-      '/api/v1/memory-album/$memoryId',
+      '/memory-album/$memoryId',
       data: request.toJson(),
     );
 
@@ -76,7 +81,7 @@ class MemoryAlbumRepository {
   /// Delete a memory
   Future<bool> deleteMemory(String memoryId) async {
     try {
-      await _apiClient.delete('/api/v1/memory-album/$memoryId');
+      await _apiClient.delete('/memory-album/$memoryId');
       return true;
     } catch (e) {
       return false;
