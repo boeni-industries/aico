@@ -656,18 +656,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     if (conversationState.messages.isEmpty) return;
     
     try {
-      // Generate a simple summary from the conversation
-      final messageCount = conversationState.messages.length;
+      // Use first message as title
       final firstMessage = conversationState.messages.first.content;
-      final summary = firstMessage.length > 100 
-          ? '${firstMessage.substring(0, 100)}...'
+      final title = firstMessage.length > 60
+          ? '${firstMessage.substring(0, 60)}...'
           : firstMessage;
+      
+      // Create full conversation text (all messages with alternating speakers)
+      final fullConversation = conversationState.messages
+          .asMap()
+          .entries
+          .map((entry) {
+            // Alternate between user and AICO (odd indices = user, even = AICO)
+            final speaker = entry.key.isOdd ? "AICO" : "You";
+            return '$speaker: ${entry.value.content}';
+          })
+          .join('\n\n');
       
       // Save conversation to Memory Album
       final memoryId = await ref.read(memoryAlbumProvider.notifier).rememberConversation(
         conversationId: conversationState.currentConversationId!,
-        title: 'Conversation with $messageCount messages',
-        summary: summary,
+        title: title,
+        summary: fullConversation, // Store FULL conversation, not truncated
       );
       
       if (memoryId != null && mounted) {

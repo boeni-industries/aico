@@ -6,6 +6,7 @@ library;
 
 import 'package:aico_frontend/data/models/memory_album_model.dart';
 import 'package:aico_frontend/networking/clients/unified_api_client.dart';
+import 'package:aico_frontend/core/logging/aico_log.dart';
 
 class MemoryAlbumRepository {
   final UnifiedApiClient _apiClient;
@@ -14,16 +15,43 @@ class MemoryAlbumRepository {
 
   /// Remember a message or conversation
   Future<String> rememberContent(RememberRequest request) async {
+    AICOLog.info('Saving memory', topic: 'memory_album_repository', extra: {
+      'content_type': request.contentType.value,
+      'conversation_id': request.conversationId,
+      'has_message_id': request.messageId != null,
+    });
+    
     final response = await _apiClient.post<Map<String, dynamic>>(
       '/memory-album/remember',
       data: request.toJson(),
     );
 
-    if (response != null && response['fact_id'] != null) {
-      return response['fact_id'] as String;
-    } else {
-      throw Exception('Failed to save memory');
+    AICOLog.debug('Response received', topic: 'memory_album_repository', extra: {
+      'response_is_null': response == null,
+      'response_type': response.runtimeType.toString(),
+      'response_keys': response?.keys.toList(),
+    });
+    
+    if (response == null) {
+      AICOLog.error('Response is null despite 201 status', topic: 'memory_album_repository');
+      throw Exception('Failed to save memory: Response is null');
     }
+    
+    // Backend returns: { "success": true, "fact_id": "...", "message": "..." }
+    final factId = response['fact_id'] as String?;
+    
+    if (factId == null) {
+      AICOLog.error('fact_id missing from response', topic: 'memory_album_repository', extra: {
+        'response_keys': response.keys.toList(),
+        'response': response.toString(),
+      });
+      throw Exception('Failed to save memory: fact_id missing from response');
+    }
+    
+    AICOLog.info('Memory saved successfully', topic: 'memory_album_repository', extra: {
+      'fact_id': factId,
+    });
+    return factId;
   }
 
   /// Get memories with optional filters

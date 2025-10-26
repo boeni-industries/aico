@@ -128,10 +128,14 @@ class ConversationExportHandler {
   String _generateTopicSlug(dynamic conversationState) {
     // Try to get first user message for topic
     if (conversationState.messages.isNotEmpty) {
-      final firstUserMessage = conversationState.messages.firstWhere(
-        (m) => m.userId != 'aico',
-        orElse: () => conversationState.messages.first,
-      );
+      // Find first non-AICO message, or use first message if all are from AICO
+      var firstUserMessage = conversationState.messages.first;
+      for (var msg in conversationState.messages) {
+        if (msg.userId != 'aico') {
+          firstUserMessage = msg;
+          break;
+        }
+      }
       
       if (firstUserMessage.content.isNotEmpty) {
         return _slugify(firstUserMessage.content, maxWords: 4);

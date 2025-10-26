@@ -54,11 +54,48 @@ class _MemoryCardState extends State<MemoryCard> {
                   emotionalTone: emotionalColor,
                 ),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header: Actions
+                    // Header: Type indicator + Actions
                     Row(
                       children: [
+                        // Type indicator
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: widget.memory.isConversationMemory
+                                ? const Color(0xFFB8A1EA).withOpacity(0.15)
+                                : MemoryAlbumTheme.silver.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                widget.memory.isConversationMemory
+                                    ? Icons.forum_rounded
+                                    : Icons.chat_bubble_rounded,
+                                size: 14,
+                                color: widget.memory.isConversationMemory
+                                    ? const Color(0xFFB8A1EA)
+                                    : MemoryAlbumTheme.silver.withOpacity(0.7),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                widget.memory.isConversationMemory ? 'Conversation' : 'Message',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: widget.memory.isConversationMemory
+                                      ? const Color(0xFFB8A1EA)
+                                      : MemoryAlbumTheme.silver.withOpacity(0.7),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        
                         const Spacer(),
                         
                         // Delete button
@@ -113,40 +150,15 @@ class _MemoryCardState extends State<MemoryCard> {
                       ],
                     ),
                     
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     
                     // Content
-                    if (widget.memory.isConversationMemory) ...[
-                      // Conversation title
-                      if (widget.memory.conversationTitle != null)
-                        Text(
-                          widget.memory.conversationTitle!,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: MemoryAlbumTheme.textPrimary,
-                            height: 1.4,
-                          ),
-                        ),
-                      const SizedBox(height: 8),
-                      
-                      // Conversation summary
-                      if (widget.memory.conversationSummary != null)
-                        Text(
-                          widget.memory.conversationSummary!,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: MemoryAlbumTheme.textSecondary,
-                            height: 1.6,
-                          ),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                    ] else ...[
-                      // Message content
-                      Text(
-                        widget.memory.content,
-                        style: const TextStyle(
+                    Flexible(
+                      child: Text(
+                        (widget.memory.isConversationMemory 
+                            ? (widget.memory.conversationSummary ?? widget.memory.content)
+                            : widget.memory.content).trim(),
+                        style: TextStyle(
                           fontSize: 15,
                           color: MemoryAlbumTheme.textPrimary,
                           height: 1.6,
@@ -154,9 +166,9 @@ class _MemoryCardState extends State<MemoryCard> {
                         maxLines: 4,
                         overflow: TextOverflow.ellipsis,
                       ),
-                    ],
+                    ),
                     
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     
                     // Footer: Date, Tags
                     Row(

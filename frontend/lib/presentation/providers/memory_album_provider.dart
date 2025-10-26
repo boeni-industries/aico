@@ -4,6 +4,7 @@
 /// Handles loading, creating, and updating memories.
 library;
 
+import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/data/models/memory_album_model.dart';
 import 'package:aico_frontend/data/repositories/memory_album_repository.dart';
@@ -176,6 +177,12 @@ class MemoryAlbumNotifier extends _$MemoryAlbumNotifier {
     String? userNote,
     List<String>? tags,
   }) async {
+    AICOLog.info('Remember conversation called', topic: 'memory_album_provider', extra: {
+      'conversation_id': conversationId,
+      'title': title,
+      'has_key_moments': keyMoments != null,
+    });
+    
     try {
       final request = RememberRequest(
         conversationId: conversationId,
@@ -190,16 +197,49 @@ class MemoryAlbumNotifier extends _$MemoryAlbumNotifier {
         memoryType: 'moment',
       );
       
+      AICOLog.debug('Calling repository', topic: 'memory_album_provider');
       final memoryId = await _repository.rememberContent(request);
+      
+      // Check if provider is still mounted after async operation
+      if (!ref.mounted) {
+        AICOLog.warn('Provider unmounted after save, skipping state update', topic: 'memory_album_provider');
+        return memoryId;
+      }
+      
+      AICOLog.debug('Repository returned', topic: 'memory_album_provider', extra: {
+        'memory_id': memoryId,
+      });
       
       // Reload from beginning
       state = state.copyWith(currentPage: 0, memories: []);
       await loadMemories();
       
+      // Check again after second async operation
+      if (!ref.mounted) {
+        AICOLog.warn('Provider unmounted after reload, skipping final log', topic: 'memory_album_provider');
+        return memoryId;
+      }
+      
+      AICOLog.info('Conversation saved successfully', topic: 'memory_album_provider', extra: {
+        'memory_id': memoryId,
+      });
       return memoryId;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [MemoryAlbumProvider] EXCEPTION: $e');
+      print('❌ Exception type: ${e.runtimeType}');
+      print('❌ Stack trace: $stackTrace');
+      
+      AICOLog.error('Failed to save conversation', 
+        topic: 'memory_album_provider',
+        error: e,
+        stackTrace: stackTrace,
+        extra: {
+          'error_type': e.runtimeType.toString(),
+          'error_message': e.toString(),
+        },
+      );
       state = state.copyWith(error: e.toString());
-      return null;
+      rethrow; // Re-throw so UI can show specific error
     }
   }
 

@@ -58,6 +58,43 @@ class MemoryDetailScreen extends ConsumerWidget {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
 
+                // Type badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: memory.isConversationMemory
+                        ? const Color(0xFFB8A1EA).withOpacity(0.15)
+                        : MemoryAlbumTheme.silver.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        memory.isConversationMemory
+                            ? Icons.forum_rounded
+                            : Icons.chat_bubble_rounded,
+                        size: 16,
+                        color: memory.isConversationMemory
+                            ? const Color(0xFFB8A1EA)
+                            : MemoryAlbumTheme.silver.withOpacity(0.7),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        memory.isConversationMemory ? 'Conversation' : 'Message',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: memory.isConversationMemory
+                              ? const Color(0xFFB8A1EA)
+                              : MemoryAlbumTheme.silver.withOpacity(0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
                 // Title (for conversation memories)
                 if (memory.isConversationMemory &&
                     memory.conversationTitle != null) ...[
@@ -70,18 +107,30 @@ class MemoryDetailScreen extends ConsumerWidget {
                       height: 1.3,
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  
+                  // Summary for conversations
+                  if (memory.conversationSummary != null)
+                    Text(
+                      memory.conversationSummary!,
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: MemoryAlbumTheme.textSecondary,
+                        height: 1.6,
+                      ),
+                    ),
                   const SizedBox(height: 24),
-                ],
-
-                // Main content
-                Text(
-                  memory.content,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    color: MemoryAlbumTheme.textPrimary,
-                    height: 1.6,
+                ] else ...[
+                  // Full content for messages
+                  Text(
+                    memory.content,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      color: MemoryAlbumTheme.textPrimary,
+                      height: 1.6,
+                    ),
                   ),
-                ),
+                ],
 
                 const SizedBox(height: 32),
 
