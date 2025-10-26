@@ -26,7 +26,7 @@ class MemoryAlbumTheme {
   static const Color purpleGlowDark = Color(0xFF9B84D4);
   
   // Text colors
-  static const Color textPrimary = Color(0xFFFFFFFF);
+  static const Color textPrimary = Color(0xFFCDD1DB); // Soft blue-gray (noticeably softer than white)
   static const Color textSecondary = Color(0xFF8B95A5);
   static const Color textTertiary = Color(0xFF5A6370);
   

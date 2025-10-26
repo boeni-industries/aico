@@ -158,7 +158,7 @@ class _MemoryCardState extends State<MemoryCard> {
                         (widget.memory.isConversationMemory 
                             ? (widget.memory.conversationSummary ?? widget.memory.content)
                             : widget.memory.content).trim(),
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 15,
                           color: MemoryAlbumTheme.textPrimary,
                           height: 1.6,
