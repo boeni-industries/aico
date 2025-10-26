@@ -291,3 +291,50 @@ async def update_memory(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update memory: {str(e)}"
         )
+
+
+@router.delete("/{fact_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_memory(
+    fact_id: str,
+    current_user = Depends(get_current_user),
+    db = Depends(get_database)
+):
+    """
+    Delete a memory from the album.
+    """
+    try:
+        user_uuid = current_user['user_uuid']
+        
+        fact_store = FactStore(db)
+        
+        # Delete the fact
+        success = await fact_store.delete_fact(
+            fact_id=fact_id,
+            user_id=user_uuid,
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Memory not found or access denied"
+            )
+        
+        logger.info(f"Memory deleted: {fact_id}", extra={
+            "user_uuid": user_uuid,
+            "fact_id": fact_id,
+        })
+        
+        return None
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete memory: {e}", extra={
+            "user_uuid": current_user.get('user_uuid'),
+            "fact_id": fact_id,
+            "error": str(e),
+        })
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete memory: {str(e)}"
+        )

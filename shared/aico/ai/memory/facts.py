@@ -69,9 +69,9 @@ class FactStore:
         """
         
         fact_id = f"fact_{uuid.uuid4().hex}"
-        now = datetime.utcnow()
+        now = datetime.utcnow().isoformat()
         
-        await self.db.execute(
+        cursor = self.db.execute(
             """
             INSERT INTO facts_metadata (
                 fact_id, user_id, fact_type, category, confidence,
@@ -108,6 +108,7 @@ class FactStore:
                 now,
             )
         )
+        cursor.close()
         
         logger.info(f"Stored user-curated fact: {fact_id}", extra={
             "user_id": user_id,
@@ -177,9 +178,12 @@ class FactStore:
         query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         
-        results = await self.db.execute(query, tuple(params))
+        cursor = self.db.execute(query, tuple(params))
+        results = cursor.fetchall()
         
-        return [dict(row) for row in results]
+        # Convert rows to dictionaries using column names
+        columns = [desc[0] for desc in cursor.description]
+        return [dict(zip(columns, row)) for row in results]
     
     async def update_fact_metadata(
         self,
@@ -232,8 +236,10 @@ class FactStore:
             WHERE fact_id = ? AND user_id = ?
         """
         
-        result = await self.db.execute(query, tuple(params))
-        return result.rowcount > 0
+        cursor = self.db.execute(query, tuple(params))
+        rowcount = cursor.rowcount
+        cursor.close()
+        return rowcount > 0
     
     async def record_revisit(self, fact_id: str, user_id: str) -> bool:
         """
@@ -247,16 +253,16 @@ class FactStore:
             True if update succeeded, False otherwise
         """
         
-        await self.db.execute(
+        cursor = self.db.execute(
             """
             UPDATE facts_metadata
             SET revisit_count = revisit_count + 1,
-                last_revisited = ?
+                last_revisited = CURRENT_TIMESTAMP
             WHERE fact_id = ? AND user_id = ?
             """,
-            (datetime.utcnow().isoformat(), fact_id, user_id)
+            (fact_id, user_id)
         )
-        
+        cursor.close()
         return True
     
     async def delete_fact(self, fact_id: str, user_id: str) -> bool:
@@ -271,15 +277,16 @@ class FactStore:
             True if deletion succeeded, False otherwise
         """
         
-        result = await self.db.execute(
+        cursor = self.db.execute(
             """
             DELETE FROM facts_metadata
             WHERE fact_id = ? AND user_id = ? AND extraction_method = 'user_curated'
             """,
             (fact_id, user_id)
         )
-        
-        if result.rowcount > 0:
+        rowcount = cursor.rowcount
+        cursor.close()
+        if rowcount > 0:
             logger.info(f"Deleted user-curated fact: {fact_id}", extra={
                 "user_id": user_id,
                 "fact_id": fact_id,

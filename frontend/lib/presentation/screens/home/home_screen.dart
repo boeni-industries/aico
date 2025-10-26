@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:aico_frontend/presentation/models/conversation_message.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
+import 'package:aico_frontend/presentation/providers/memory_album_provider.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
 import 'package:aico_frontend/presentation/screens/home/handlers/conversation_export_handler.dart';
 import 'package:aico_frontend/presentation/screens/home/helpers/home_screen_helpers.dart';
@@ -441,6 +442,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                 final message = conversationState.messages[index];
                 // Convert domain Message to presentation ConversationMessage
                 final conversationMessage = ConversationMessage(
+                  id: message.id,
                   isFromAico: message.userId == 'aico',
                   message: message.content,
                   timestamp: message.timestamp,
@@ -460,7 +462,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
             accentColor: accentColor,
             onCopy: _handleCopyToClipboard,
             onSave: _handleSaveToFile,
-            onBookmark: null, // TODO: Implement
+            onRemember: hasMessages ? _handleRememberConversation : null,
           ),
         ],
       ),
@@ -495,6 +497,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
       isThinking: isThinking,
       timestamp: message.timestamp,
       accentColor: accentColor,
+      messageId: message.id,
+      conversationId: conversationState.currentConversationId,
     );
   }
 
@@ -641,6 +645,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
         onExport: _exportToFile,
       ),
     );
+  }
+  
+  /// Remember this conversation
+  Future<void> _handleRememberConversation() async {
+    HapticFeedback.lightImpact();
+    
+    final conversationState = ref.read(conversationProvider);
+    if (conversationState.currentConversationId == null) return;
+    if (conversationState.messages.isEmpty) return;
+    
+    try {
+      // Generate a simple summary from the conversation
+      final messageCount = conversationState.messages.length;
+      final firstMessage = conversationState.messages.first.content;
+      final summary = firstMessage.length > 100 
+          ? '${firstMessage.substring(0, 100)}...'
+          : firstMessage;
+      
+      // Save conversation to Memory Album
+      final memoryId = await ref.read(memoryAlbumProvider.notifier).rememberConversation(
+        conversationId: conversationState.currentConversationId!,
+        title: 'Conversation with $messageCount messages',
+        summary: summary,
+      );
+      
+      if (memoryId != null && mounted) {
+        GlassmorphicToast.show(
+          context,
+          message: 'Conversation saved to Memory Album',
+          icon: Icons.auto_awesome_rounded,
+          accentColor: const Color(0xFFD4AF37), // Gold
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        GlassmorphicToast.show(
+          context,
+          message: 'Failed to save conversation',
+          icon: Icons.error_outline_rounded,
+          accentColor: const Color(0xFFED7867), // Error red
+        );
+      }
+    }
   }
   
   /// Export conversation to file (markdown or PDF)

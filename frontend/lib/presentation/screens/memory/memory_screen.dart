@@ -1,22 +1,8 @@
-import 'package:flutter/material.dart';
+/// Memory Screen
+/// 
+/// Re-exports the Memory Album screen implementation.
 
-/// Memory timeline screen showing personal experiences and shared moments.
-class MemoryScreen extends StatelessWidget {
-  const MemoryScreen({super.key});
+import 'package:aico_frontend/presentation/screens/memory_album/memory_album_screen.dart';
 
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.auto_stories, size: 64, color: Colors.grey),
-          SizedBox(height: 16),
-          Text('Memory Timeline', 
-               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          Text('Personal memory timeline coming soon'),
-        ],
-      ),
-    );
-  }
-}
+// Alias for backward compatibility
+typedef MemoryScreen = MemoryAlbumScreen;

@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 /// Conversation toolbar that slides out from under conversation container
-/// Provides quick actions: copy to clipboard, save to file, bookmark
+/// Provides quick actions: copy to clipboard, save to file, remember this
 class HomeToolbar extends StatelessWidget {
   final bool isVisible;
   final bool hasMessages;
   final Color accentColor;
   final VoidCallback onCopy;
   final VoidCallback onSave;
-  final VoidCallback? onBookmark;
+  final VoidCallback? onRemember;
 
   const HomeToolbar({
     super.key,
@@ -19,7 +19,7 @@ class HomeToolbar extends StatelessWidget {
     required this.accentColor,
     required this.onCopy,
     required this.onSave,
-    this.onBookmark,
+    this.onRemember,
   });
 
   @override
@@ -72,10 +72,10 @@ class HomeToolbar extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     _ToolbarAction(
-                      icon: Icons.bookmark_outline_rounded,
-                      onTap: onBookmark ?? () {},
+                      icon: Icons.auto_awesome_rounded,
+                      onTap: onRemember ?? () {},
                       accentColor: accentColor,
-                      isEnabled: onBookmark != null,
+                      isEnabled: onRemember != null,
                     ),
                   ],
                 ),

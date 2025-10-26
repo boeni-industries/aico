@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:aico_frontend/presentation/providers/memory_album_provider.dart';
 
 /// Glassmorphic action toolbar that appears on message bubble hover/long-press
 /// Implements progressive disclosure with relationship-first design
@@ -14,7 +16,7 @@ import 'package:flutter/services.dart';
 /// Actions:
 /// - User Messages: [Copy] | [Remember]
 /// - AICO Messages: [Copy] | [Remember] [Regenerate]
-class MessageActionBar extends StatefulWidget {
+class MessageActionBar extends ConsumerStatefulWidget {
   /// Message content for actions (e.g., copy text)
   final String messageContent;
   
@@ -26,6 +28,12 @@ class MessageActionBar extends StatefulWidget {
   
   /// Callback when action bar should be dismissed
   final VoidCallback? onDismiss;
+  
+  /// Message ID for remembering
+  final String? messageId;
+  
+  /// Conversation ID for remembering
+  final String? conversationId;
 
   const MessageActionBar({
     super.key,
@@ -33,13 +41,15 @@ class MessageActionBar extends StatefulWidget {
     required this.isFromAico,
     required this.accentColor,
     this.onDismiss,
+    this.messageId,
+    this.conversationId,
   });
 
   @override
-  State<MessageActionBar> createState() => _MessageActionBarState();
+  ConsumerState<MessageActionBar> createState() => _MessageActionBarState();
 }
 
-class _MessageActionBarState extends State<MessageActionBar>
+class _MessageActionBarState extends ConsumerState<MessageActionBar>
     with SingleTickerProviderStateMixin {
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
@@ -101,6 +111,44 @@ class _MessageActionBarState extends State<MessageActionBar>
         });
       }
     });
+  }
+  
+  /// Remember this message
+  Future<void> _handleRememberThis() async {
+    if (widget.messageContent.isEmpty) return;
+    if (widget.messageId == null || widget.conversationId == null) return;
+
+    // Haptic feedback
+    HapticFeedback.lightImpact();
+
+    // Show visual feedback immediately
+    setState(() {
+      _executedAction = 'remember';
+    });
+
+    try {
+      // Save to Memory Album
+      final memoryId = await ref.read(memoryAlbumProvider.notifier).rememberMessage(
+        conversationId: widget.conversationId!,
+        messageId: widget.messageId!,
+        content: widget.messageContent,
+      );
+
+      if (memoryId != null) {
+        // Success - keep checkmark visible longer
+        await Future.delayed(const Duration(milliseconds: 1000));
+      }
+    } catch (e) {
+      // Error - could show error state
+      debugPrint('Failed to save memory: $e');
+    }
+
+    // Reset after animation completes
+    if (mounted) {
+      setState(() {
+        _executedAction = null;
+      });
+    }
   }
 
   @override
@@ -169,10 +217,11 @@ class _MessageActionBarState extends State<MessageActionBar>
                   
                   // Remember This (Universal)
                   _buildActionButton(
-                    icon: Icons.auto_awesome_rounded,
+                    icon: _executedAction == 'remember' ? Icons.check_rounded : Icons.auto_awesome_rounded,
                     tooltip: 'Remember this',
-                    onTap: () {}, // TODO: Implement
-                    isEnabled: false,
+                    onTap: _handleRememberThis,
+                    isExecuted: _executedAction == 'remember',
+                    isEnabled: widget.messageId != null && widget.conversationId != null,
                   ),
                   
                   // AICO-specific actions

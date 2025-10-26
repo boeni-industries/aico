@@ -60,7 +60,7 @@ class FeedbackEventStore:
         
         event_id = f"fb_{uuid.uuid4().hex}"
         
-        await self.db.execute(
+        cursor = self.db.execute(
             """
             INSERT INTO feedback_events (
                 id, user_uuid, conversation_id, message_id,
@@ -79,6 +79,7 @@ class FeedbackEventStore:
                 1 if is_sensitive else 0,
             )
         )
+        cursor.close()
         
         logger.info(f"Recorded feedback event: {event_type.value}/{event_category}", extra={
             "event_id": event_id,
@@ -142,6 +143,9 @@ class FeedbackEventStore:
         query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         
-        results = await self.db.execute(query, tuple(params))
+        cursor = self.db.execute(query, tuple(params))
+        results = cursor.fetchall()
         
-        return [dict(row) for row in results]
+        # Convert rows to dictionaries using column names
+        columns = [desc[0] for desc in cursor.description]
+        return [dict(zip(columns, row)) for row in results]

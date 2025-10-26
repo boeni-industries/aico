@@ -44,7 +44,7 @@ final class SettingsNotifierProvider
   }
 }
 
-String _$settingsNotifierHash() => r'05318b3bc9995e891bf0f856c5b26345c4c28384';
+String _$settingsNotifierHash() => r'aec33bf177ae26c5b8e5538a3dca59b26b4ebc3c';
 
 /// Settings provider using Notifier
 
@@ -157,3 +157,48 @@ final class HighContrastProvider extends $FunctionalProvider<bool, bool, bool>
 }
 
 String _$highContrastHash() => r'2f0842072b01f2b74b62e141e9cdb60e7ac72d60';
+
+/// Show thinking provider (convenience)
+
+@ProviderFor(showThinking)
+const showThinkingProvider = ShowThinkingProvider._();
+
+/// Show thinking provider (convenience)
+
+final class ShowThinkingProvider extends $FunctionalProvider<bool, bool, bool>
+    with $Provider<bool> {
+  /// Show thinking provider (convenience)
+  const ShowThinkingProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'showThinkingProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$showThinkingHash();
+
+  @$internal
+  @override
+  $ProviderElement<bool> $createElement($ProviderPointer pointer) =>
+      $ProviderElement(pointer);
+
+  @override
+  bool create(Ref ref) {
+    return showThinking(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(bool value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<bool>(value),
+    );
+  }
+}
+
+String _$showThinkingHash() => r'3948a6137ca08e762e5c9252efe6004f2b159fc8';

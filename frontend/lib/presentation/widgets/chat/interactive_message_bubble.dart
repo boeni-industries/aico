@@ -20,6 +20,8 @@ class InteractiveMessageBubble extends StatefulWidget {
   final bool isThinking;
   final DateTime timestamp;
   final Color accentColor;
+  final String? messageId;
+  final String? conversationId;
 
   const InteractiveMessageBubble({
     super.key,
@@ -28,6 +30,8 @@ class InteractiveMessageBubble extends StatefulWidget {
     required this.isThinking,
     required this.timestamp,
     required this.accentColor,
+    this.messageId,
+    this.conversationId,
   });
 
   @override
@@ -145,6 +149,8 @@ class _InteractiveMessageBubbleState extends State<InteractiveMessageBubble> {
                     messageContent: widget.content,
                     isFromAico: widget.isFromAico,
                     accentColor: widget.accentColor,
+                    messageId: widget.messageId,
+                    conversationId: widget.conversationId,
                     onDismiss: () {
                       setState(() {
                         _showActionBar = false;
