@@ -137,11 +137,12 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
             controller: _scrollController,
             physics: const BouncingScrollPhysics(),
             slivers: [
-              // Floating header
+              // Floating header (pinned to stay visible)
               SliverAppBar(
-                backgroundColor: Colors.transparent,
+                backgroundColor: MemoryAlbumTheme.background.withOpacity(0.95),
                 elevation: 0,
                 floating: true,
+                pinned: true,
                 leading: IconButton(
                   icon: Icon(
                     Icons.arrow_back_rounded,
