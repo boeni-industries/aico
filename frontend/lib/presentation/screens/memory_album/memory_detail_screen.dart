@@ -169,40 +169,13 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                 ],
               ),
 
-              // Glassmorphic container with conversation
+              // Content without background container
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(40, 20, 40, 40),
                 sliver: SliverToBoxAdapter(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(36),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.04),
-                          borderRadius: BorderRadius.circular(36),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.1),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.4),
-                              blurRadius: 40,
-                              offset: const Offset(0, 20),
-                              spreadRadius: -10,
-                            ),
-                            BoxShadow(
-                              color: moodColor.withOpacity(0.1),
-                              blurRadius: 60,
-                              spreadRadius: -5,
-                            ),
-                          ],
-                        ),
-                        padding: const EdgeInsets.all(48),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
 
                             // Header section
                             Container(
@@ -356,17 +329,19 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                                                 width: 2,
                                               ),
                                             ),
-                                            child: Center(
-                                              child: Text(
-                                                isYou ? 'Y' : 'A',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: isYou
-                                                      ? Colors.white.withOpacity(0.6)
-                                                      : moodColor,
-                                                ),
-                                              ),
+                                            child: ClipOval(
+                                              child: isYou
+                                                  ? Icon(
+                                                      Icons.person,
+                                                      size: 18,
+                                                      color: Colors.white.withOpacity(0.6),
+                                                    )
+                                                  : Image.asset(
+                                                      'assets/images/aico.png',
+                                                      width: 20,
+                                                      height: 20,
+                                                      fit: BoxFit.cover,
+                                                    ),
                                             ),
                                           ),
                                           
@@ -518,9 +493,6 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                               ),
                             ],
                           ],
-                        ),
-                      ),
-                    ),
                   ),
                 ),
               ),
