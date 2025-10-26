@@ -385,159 +385,186 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Minimal Timeline Thread (silver, not gold - respects design principles)
+          // Timeline column with date label and thread
           SizedBox(
-            width: 40,
+            width: 80,
             child: Column(
               children: [
-                // Connecting thread from previous (or start indicator)
-                if (isFirst)
-                  // Start of timeline - dotted line indicating "newer memories above"
-                  // Use Expanded to match card height, then align to bottom
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: SizedBox(
-                        height: 40,
-                        child: CustomPaint(
-                          painter: _DottedLinePainter(
-                            color: MemoryAlbumTheme.silver.withOpacity(0.3),
-                            strokeWidth: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
-                else
-                  Expanded(
-                    child: Container(
-                      width: 1.5,
-                      color: MemoryAlbumTheme.silver.withOpacity(0.15),
+              // Top thread segment
+              if (isFirst)
+                // Start of timeline - dotted line indicating "newer memories above"
+                SizedBox(
+                  height: 40,
+                  child: CustomPaint(
+                    painter: _DottedLinePainter(
+                      color: MemoryAlbumTheme.silver.withOpacity(0.3),
+                      strokeWidth: 2,
                     ),
                   ),
-                
-                // Memory node - minimal, clean
+                )
+              else
                 Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isFavorite 
-                        ? MemoryAlbumTheme.gold 
-                        : MemoryAlbumTheme.silver.withOpacity(0.4),
-                    boxShadow: isFavorite ? [
-                      BoxShadow(
-                        color: MemoryAlbumTheme.gold.withOpacity(0.3),
-                        blurRadius: 8,
-                        spreadRadius: 1,
-                      ),
-                    ] : null,
-                  ),
+                  width: 2,
+                  height: 40,
+                  color: MemoryAlbumTheme.silver.withOpacity(0.2),
                 ),
-                
-                // Connecting thread to next (or end indicator)
-                if (isLast)
-                  // End of timeline - dotted line indicating "older memories below"
-                  // Use Expanded to match card height, then align to top
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      child: SizedBox(
-                        height: 40,
-                        child: CustomPaint(
-                          painter: _DottedLinePainter(
-                            color: MemoryAlbumTheme.silver.withOpacity(0.3),
-                            strokeWidth: 1.5,
-                          ),
+              
+              // Date label and node
+              MouseRegion(
+                cursor: SystemMouseCursors.help,
+                child: Tooltip(
+                  message: _formatSwissDate(memory.createdAt),
+                  textStyle: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    children: [
+                      // Short date label
+                      Text(
+                        _formatShortDate(memory.createdAt),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: MemoryAlbumTheme.silver.withOpacity(0.6),
                         ),
                       ),
-                    ),
-                  )
-                else
-                  Expanded(
-                    child: Container(
-                      width: 1.5,
-                      color: MemoryAlbumTheme.silver.withOpacity(0.15),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          
-          const SizedBox(width: 16),
-          
-          // Memory card content with bottom margin for spacing
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : 16),
-              child: GestureDetector(
-                onTap: () => _openMemoryDetail(memory),
-                child: Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.04),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.1),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      // Floating depth (design principles: multi-layer shadows)
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.4),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
-                        spreadRadius: -4,
+                      const SizedBox(height: 6),
+                      
+                      // Memory node - larger, more present
+                      Container(
+                        width: isFavorite ? 12 : 10,
+                        height: isFavorite ? 12 : 10,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isFavorite 
+                              ? MemoryAlbumTheme.gold 
+                              : MemoryAlbumTheme.silver.withOpacity(0.5),
+                          boxShadow: isFavorite ? [
+                            BoxShadow(
+                              color: MemoryAlbumTheme.gold.withOpacity(0.4),
+                              blurRadius: 12,
+                              spreadRadius: 2,
+                            ),
+                          ] : [
+                            BoxShadow(
+                              color: MemoryAlbumTheme.silver.withOpacity(0.2),
+                              blurRadius: 4,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header with date and favorite
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _formatSwissDate(memory.createdAt),
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: MemoryAlbumTheme.textSecondary,
+                ),
+              ),
+              
+              const SizedBox(height: 6),
+              
+              // Bottom thread segment - extends to fill remaining card height
+              Expanded(
+                child: Container(
+                  width: 2,
+                  color: MemoryAlbumTheme.silver.withOpacity(0.2),
+                ),
+              ),
+              
+              // Bottom extension for last card or spacing
+              if (isLast)
+                SizedBox(
+                  height: 40,
+                  child: CustomPaint(
+                    painter: _DottedLinePainter(
+                      color: MemoryAlbumTheme.silver.withOpacity(0.3),
+                      strokeWidth: 2,
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  width: 2,
+                  height: 16,
+                  color: MemoryAlbumTheme.silver.withOpacity(0.2),
+                ),
+            ],
+          ),
+        ),
+          
+          
+          // Memory card content
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 40),
+              child: Column(
+                children: [
+                  GestureDetector(
+                    onTap: () => _openMemoryDetail(memory),
+                    child: Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.04),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.1),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          // Floating depth (design principles: multi-layer shadows)
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.4),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                            spreadRadius: -4,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              contentPreview,
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: MemoryAlbumTheme.textPrimary,
+                                height: 1.6,
+                                letterSpacing: 0.2,
+                              ),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                        ),
-                        if (memory.isFavorite)
-                          Icon(
-                            Icons.star_rounded,
-                            size: 18,
-                            color: MemoryAlbumTheme.gold,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    // Content preview
-                    Text(
-                      contentPreview,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: MemoryAlbumTheme.textPrimary,
-                        height: 1.6,
-                        letterSpacing: 0.2,
+                          if (memory.isFavorite) ...[
+                            const SizedBox(width: 12),
+                            Icon(
+                              Icons.star_rounded,
+                              size: 18,
+                              color: MemoryAlbumTheme.gold,
+                            ),
+                          ],
+                        ],
                       ),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ],
-                ),
-                ),
+                  ),
+                  if (!isLast) const SizedBox(height: 0),
+                ],
               ),
             ),
           ),
         ],
       ),
     );
+  }
+  
+  String _formatShortDate(DateTime date) {
+    final localDate = date.toLocal();
+    final day = localDate.day.toString().padLeft(2, '0');
+    final month = localDate.month.toString().padLeft(2, '0');
+    return '$day.$month';
   }
   
   String _formatSwissDate(DateTime date) {
