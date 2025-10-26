@@ -15,7 +15,7 @@ class MemoryAlbumRepository {
   /// Remember a message or conversation
   Future<String> rememberContent(RememberRequest request) async {
     final response = await _apiClient.post<Map<String, dynamic>>(
-      '/memory-album/remember',
+      '/api/v1/memory-album/remember',
       data: request.toJson(),
     );
 
@@ -26,7 +26,7 @@ class MemoryAlbumRepository {
     }
   }
 
-  /// Get all memories with optional filters
+  /// Get memories with optional filters
   Future<List<MemoryEntry>> getMemories({
     String? category,
     bool favoritesOnly = false,
@@ -36,12 +36,13 @@ class MemoryAlbumRepository {
     final queryParams = <String, dynamic>{
       'limit': limit,
       'offset': offset,
-      if (category != null) 'category': category,
-      if (favoritesOnly) 'favorites_only': true,
     };
 
+    if (category != null) queryParams['category'] = category;
+    if (favoritesOnly) queryParams['favorites_only'] = true;
+
     final response = await _apiClient.get<Map<String, dynamic>>(
-      '/memory-album',
+      '/api/v1/memory-album',
       queryParameters: queryParams,
     );
 
@@ -61,7 +62,7 @@ class MemoryAlbumRepository {
     UpdateMemoryRequest request,
   ) async {
     final response = await _apiClient.put<Map<String, dynamic>>(
-      '/memory-album/$memoryId',
+      '/api/v1/memory-album/$memoryId',
       data: request.toJson(),
     );
 
@@ -75,7 +76,7 @@ class MemoryAlbumRepository {
   /// Delete a memory
   Future<bool> deleteMemory(String memoryId) async {
     try {
-      await _apiClient.delete('/memory_album/$memoryId');
+      await _apiClient.delete('/api/v1/memory-album/$memoryId');
       return true;
     } catch (e) {
       return false;
