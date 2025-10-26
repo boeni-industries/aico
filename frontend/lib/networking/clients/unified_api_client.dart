@@ -126,6 +126,12 @@ class UnifiedApiClient {
     );
   }
 
+  Future<T?> patch<T>(String endpoint, {Map<String, dynamic>? data}) async {
+    return _connectionManager.executeWithRetry(() => 
+      _makeEncryptedRequest<T>('PATCH', endpoint, data: data)
+    );
+  }
+
   Future<T?> delete<T>(String endpoint) async {
     return _connectionManager.executeWithRetry(() => 
       _makeEncryptedRequest<T>('DELETE', endpoint)

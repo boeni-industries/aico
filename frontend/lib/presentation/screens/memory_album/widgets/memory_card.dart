@@ -25,41 +25,8 @@ class MemoryCard extends StatefulWidget {
   State<MemoryCard> createState() => _MemoryCardState();
 }
 
-class _MemoryCardState extends State<MemoryCard>
-    with SingleTickerProviderStateMixin {
+class _MemoryCardState extends State<MemoryCard> {
   bool _isHovered = false;
-  late AnimationController _glowController;
-  late Animation<double> _glowAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    
-    // Subtle pulsing glow for favorites
-    if (widget.memory.isFavorite) {
-      _glowController = AnimationController(
-        vsync: this,
-        duration: const Duration(seconds: 2),
-      )..repeat(reverse: true);
-      
-      _glowAnimation = Tween<double>(
-        begin: 0.15,
-        end: 0.25,
-      ).animate(CurvedAnimation(
-        parent: _glowController,
-        curve: Curves.easeInOut,
-      ));
-    } else {
-      _glowController = AnimationController(vsync: this);
-      _glowAnimation = AlwaysStoppedAnimation(0.0);
-    }
-  }
-
-  @override
-  void dispose() {
-    _glowController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,13 +34,13 @@ class _MemoryCardState extends State<MemoryCard>
       widget.memory.emotionalTone,
     );
 
+    // Debug: Print favorite status on rebuild
+    print('🎨 MemoryCard building: ${widget.memory.memoryId.substring(0, 8)}... isFavorite=${widget.memory.isFavorite}');
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      child: AnimatedBuilder(
-        animation: _glowAnimation,
-        builder: (context, child) {
-          return GestureDetector(
+      child: GestureDetector(
             onTap: widget.onTap,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
@@ -89,75 +56,57 @@ class _MemoryCardState extends State<MemoryCard>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header: Icon, Type, Favorite
+                    // Header: Actions
                     Row(
                       children: [
-                        // Memory type icon with color
-                        Text(
-                          widget.memory.iconEmoji,
-                          style: const TextStyle(fontSize: 24),
-                        ),
-                        const SizedBox(width: 12),
-                        
-                        // Memory type label
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: MemoryAlbumTheme.getMemoryTypeColor(
-                              widget.memory.type.value,
-                            ).withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: MemoryAlbumTheme.getMemoryTypeColor(
-                                widget.memory.type.value,
-                              ).withOpacity(0.3),
-                              width: 1.0,
-                            ),
-                          ),
-                          child: Text(
-                            widget.memory.type.value.toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: MemoryAlbumTheme.getMemoryTypeColor(
-                                widget.memory.type.value,
-                              ),
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                        ),
-                        
                         const Spacer(),
                         
                         // Delete button
                         if (widget.onDelete != null)
-                          GestureDetector(
-                            onTap: widget.onDelete,
-                            child: Icon(
-                              Icons.delete_outline_rounded,
-                              color: MemoryAlbumTheme.silver.withOpacity(0.5),
-                              size: 20,
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () {
+                                widget.onDelete?.call();
+                              },
+                              borderRadius: BorderRadius.circular(20),
+                              hoverColor: Colors.red.withOpacity(0.2),
+                              splashColor: Colors.red.withOpacity(0.3),
+                              child: Padding(
+                                padding: const EdgeInsets.all(6),
+                                child: Icon(
+                                  Icons.delete_outline_rounded,
+                                  color: MemoryAlbumTheme.silver.withOpacity(0.7),
+                                  size: 20,
+                                ),
+                              ),
                             ),
                           ),
                         
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         
                         // Favorite star
-                        GestureDetector(
-                          onTap: widget.onFavoriteToggle,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            child: Icon(
-                              widget.memory.isFavorite
-                                  ? Icons.star_rounded
-                                  : Icons.star_outline_rounded,
-                              color: widget.memory.isFavorite
-                                  ? MemoryAlbumTheme.gold
-                                  : MemoryAlbumTheme.silver.withOpacity(0.5),
-                              size: 24,
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              print('⭐ Star tapped! Current state: ${widget.memory.isFavorite}');
+                              widget.onFavoriteToggle?.call();
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            hoverColor: const Color(0xFFFFD700).withOpacity(0.2),
+                            splashColor: const Color(0xFFFFD700).withOpacity(0.3),
+                            child: Padding(
+                              padding: const EdgeInsets.all(6),
+                              child: Icon(
+                                widget.memory.isFavorite
+                                    ? Icons.star_rounded
+                                    : Icons.star_outline_rounded,
+                                color: widget.memory.isFavorite
+                                    ? const Color(0xFFFFD700) // Bright yellow when starred
+                                    : MemoryAlbumTheme.silver.withOpacity(0.7),
+                                size: 24,
+                              ),
                             ),
                           ),
                         ),
@@ -254,27 +203,21 @@ class _MemoryCardState extends State<MemoryCard>
                 ),
               ),
             ),
-          );
-        },
-      ),
+          ),
     );
   }
 
   String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
+    // Convert UTC to local time
+    final localDate = date.toLocal();
     
-    if (difference.inDays == 0) {
-      return 'Today';
-    } else if (difference.inDays == 1) {
-      return 'Yesterday';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
-    } else {
-      // Simple date format: "Jan 15, 2025"
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return '${months[date.month - 1]} ${date.day}, ${date.year}';
-    }
+    // Swiss format: DD.MM.YYYY HH:MM
+    final day = localDate.day.toString().padLeft(2, '0');
+    final month = localDate.month.toString().padLeft(2, '0');
+    final year = localDate.year.toString();
+    final hour = localDate.hour.toString().padLeft(2, '0');
+    final minute = localDate.minute.toString().padLeft(2, '0');
+    
+    return '$day.$month.$year $hour:$minute';
   }
 }

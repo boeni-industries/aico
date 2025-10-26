@@ -67,20 +67,6 @@ class MemoryAlbumTheme {
           offset: const Offset(0, 20),
           spreadRadius: -10,
         ),
-        // Gold glow for favorites
-        if (isFavorite)
-          BoxShadow(
-            color: gold.withOpacity(0.2),
-            blurRadius: 60,
-            spreadRadius: -5,
-          ),
-        // Emotional tone glow
-        if (emotionalTone != null)
-          BoxShadow(
-            color: emotionalTone.withOpacity(0.1),
-            blurRadius: 50,
-            spreadRadius: -8,
-          ),
       ],
     );
   }

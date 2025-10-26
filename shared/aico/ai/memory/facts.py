@@ -6,7 +6,7 @@ Shared between backend and CLI for consistent fact management.
 """
 
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import uuid
 
@@ -69,7 +69,8 @@ class FactStore:
         """
         
         fact_id = f"fact_{uuid.uuid4().hex}"
-        now = datetime.utcnow().isoformat()
+        # Store UTC time with explicit timezone marker
+        now = datetime.now(timezone.utc).isoformat()
         
         cursor = self.db.execute(
             """
@@ -226,7 +227,7 @@ class FactStore:
             return False
         
         updates.append("updated_at = ?")
-        params.append(datetime.utcnow().isoformat())
+        params.append(datetime.now(timezone.utc).isoformat())
         
         params.extend([fact_id, user_id])
         

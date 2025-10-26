@@ -6,8 +6,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:aico_frontend/presentation/theme/memory_album_theme.dart';
-import 'package:aico_frontend/presentation/screens/memory_album/widgets/memory_empty_state.dart';
 import 'package:aico_frontend/presentation/screens/memory_album/widgets/memory_card.dart';
+import 'package:aico_frontend/presentation/screens/memory_album/memory_detail_screen.dart';
 import 'package:aico_frontend/presentation/providers/memory_album_provider.dart';
 import 'package:aico_frontend/data/models/memory_album_model.dart';
 
@@ -18,8 +18,11 @@ class MemoryAlbumScreen extends ConsumerStatefulWidget {
   ConsumerState<MemoryAlbumScreen> createState() => _MemoryAlbumScreenState();
 }
 
+enum MemoryFilter { all, starred }
+
 class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
   final ScrollController _scrollController = ScrollController();
+  MemoryFilter _currentFilter = MemoryFilter.all;
 
   @override
   void initState() {
@@ -55,7 +58,7 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
         child: memoryState.isLoading
             ? _buildLoadingState()
             : memoryState.memories.isEmpty
-                ? const MemoryEmptyState()
+                ? _buildEmptyState()
                 : _buildMemoryGrid(memoryState.memories),
       ),
     );
@@ -71,8 +74,50 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
     );
   }
 
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.auto_awesome_outlined,
+            size: 64,
+            color: MemoryAlbumTheme.silver.withOpacity(0.3),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'No memories yet',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w600,
+              color: MemoryAlbumTheme.silver.withOpacity(0.7),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Save your first memory from a conversation',
+            style: TextStyle(
+              fontSize: 16,
+              color: MemoryAlbumTheme.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMemoryGrid(List memories) {
     final memoryState = ref.watch(memoryAlbumProvider);
+    
+    // Filter memories based on current filter
+    final filteredMemories = memories.where((memory) {
+      switch (_currentFilter) {
+        case MemoryFilter.starred:
+          return memory.isFavorite;
+        case MemoryFilter.all:
+          return true;
+      }
+    }).toList();
     
     return CustomScrollView(
       controller: _scrollController,
@@ -80,7 +125,7 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
         // Header
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(40, 32, 40, 24),
+            padding: const EdgeInsets.fromLTRB(40, 32, 40, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -98,7 +143,7 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
                 
                 // Subtitle
                 Text(
-                  '${memories.length} ${memories.length == 1 ? 'memory' : 'memories'} saved',
+                  '${filteredMemories.length} ${filteredMemories.length == 1 ? 'memory' : 'memories'}',
                   style: TextStyle(
                     fontSize: 14,
                     color: MemoryAlbumTheme.textSecondary,
@@ -109,7 +154,15 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
           ),
         ),
         
-        // Memory grid
+        // Filter tabs
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(40, 0, 40, 24),
+            child: _buildFilterTabs(),
+          ),
+        ),
+        
+        // Memory grid - single unified grid
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(40, 0, 40, 40),
           sliver: SliverGrid(
@@ -121,7 +174,7 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
             ),
             delegate: SliverChildBuilderDelegate(
               (context, index) {
-                final memory = memories[index];
+                final memory = filteredMemories[index];
                 return MemoryCard(
                   memory: memory,
                   onTap: () => _openMemoryDetail(memory),
@@ -129,7 +182,7 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
                   onDelete: () => _deleteMemory(memory),
                 );
               },
-              childCount: memories.length,
+              childCount: filteredMemories.length,
             ),
           ),
         ),
@@ -152,9 +205,73 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
     );
   }
 
+  Widget _buildFilterTabs() {
+    return Row(
+      children: [
+        _buildFilterChip('All', MemoryFilter.all, Icons.grid_view_rounded),
+        const SizedBox(width: 12),
+        _buildFilterChip('Starred', MemoryFilter.starred, Icons.star_rounded),
+      ],
+    );
+  }
+
+  Widget _buildFilterChip(String label, MemoryFilter filter, IconData icon) {
+    final isSelected = _currentFilter == filter;
+    
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _currentFilter = filter;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? MemoryAlbumTheme.gold.withOpacity(0.15)
+              : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected
+                ? MemoryAlbumTheme.gold.withOpacity(0.5)
+                : MemoryAlbumTheme.silver.withOpacity(0.2),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected
+                  ? MemoryAlbumTheme.gold
+                  : MemoryAlbumTheme.silver.withOpacity(0.7),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: isSelected
+                    ? MemoryAlbumTheme.gold
+                    : MemoryAlbumTheme.silver.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _openMemoryDetail(MemoryEntry memory) {
-    // TODO: Navigate to memory detail screen
-    debugPrint('Open memory: ${memory.memoryId}');
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MemoryDetailScreen(memory: memory),
+      ),
+    );
   }
 
   void _toggleFavorite(MemoryEntry memory) {

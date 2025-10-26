@@ -151,6 +151,7 @@ class MemoryAlbumNotifier extends _$MemoryAlbumNotifier {
         userNote: userNote,
         tags: tags,
         emotionalTone: emotionalTone,
+        memoryType: 'moment', // Memory Album is for capturing moments
       );
       
       final memoryId = await _repository.rememberContent(request);
@@ -205,22 +206,28 @@ class MemoryAlbumNotifier extends _$MemoryAlbumNotifier {
   /// Toggle favorite status
   Future<void> toggleFavorite(MemoryEntry memory) async {
     try {
+      print('🌟 Toggling favorite for ${memory.memoryId}: ${memory.isFavorite} -> ${!memory.isFavorite}');
+      
       final request = UpdateMemoryRequest(
         isFavorite: !memory.isFavorite,
       );
       
-      await _repository.updateMemory(memory.memoryId, request);
+      final updatedMemory = await _repository.updateMemory(memory.memoryId, request);
       
-      // Update local state
+      print('🌟 Backend returned: isFavorite=${updatedMemory.isFavorite}');
+      
+      // Update local state with the response from backend
       final updatedMemories = state.memories.map((m) {
         if (m.memoryId == memory.memoryId) {
-          return m.copyWith(isFavorite: !m.isFavorite);
+          return updatedMemory;
         }
         return m;
       }).toList();
       
       state = state.copyWith(memories: updatedMemories);
+      print('🌟 State updated, new count: ${updatedMemories.length}');
     } catch (e) {
+      print('🌟 ERROR toggling favorite: $e');
       state = state.copyWith(error: e.toString());
     }
   }
@@ -270,5 +277,6 @@ class MemoryAlbumNotifier extends _$MemoryAlbumNotifier {
       return false;
     }
   }
+
 }
 

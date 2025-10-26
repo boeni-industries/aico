@@ -221,20 +221,36 @@ async def update_memory(
                 detail="Memory not found or access denied"
             )
         
-        # Retrieve updated fact
-        facts = await fact_store.get_user_curated_facts(
-            user_id=user_uuid,
-            limit=1,
-            offset=0,
-        )
+        # Retrieve the specific updated fact by querying with fact_id
+        cursor = db.execute("""
+            SELECT 
+                fact_id, content, category, fact_type,
+                user_note, tags_json, is_favorite, emotional_tone, memory_type,
+                source_conversation_id, source_message_id,
+                revisit_count, last_revisited,
+                content_type, conversation_title, conversation_summary,
+                turn_range, key_moments_json,
+                created_at, updated_at
+            FROM facts_metadata
+            WHERE fact_id = ? AND user_id = ? AND extraction_method = 'user_curated'
+        """, (fact_id, user_uuid))
         
-        # Find the updated fact
-        updated_fact = next((f for f in facts if f['fact_id'] == fact_id), None)
-        if not updated_fact:
+        row = cursor.fetchone()
+        cursor.close()
+        
+        if not row:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Memory not found after update"
             )
+        
+        # Convert row to dict
+        columns = ['fact_id', 'content', 'category', 'fact_type', 'user_note', 'tags_json',
+                   'is_favorite', 'emotional_tone', 'memory_type', 'source_conversation_id',
+                   'source_message_id', 'revisit_count', 'last_revisited', 'content_type',
+                   'conversation_title', 'conversation_summary', 'turn_range', 'key_moments_json',
+                   'created_at', 'updated_at']
+        updated_fact = dict(zip(columns, row))
         
         # Parse JSON fields
         tags = None

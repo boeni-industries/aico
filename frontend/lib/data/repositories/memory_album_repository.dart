@@ -66,7 +66,7 @@ class MemoryAlbumRepository {
     String memoryId,
     UpdateMemoryRequest request,
   ) async {
-    final response = await _apiClient.put<Map<String, dynamic>>(
+    final response = await _apiClient.patch<Map<String, dynamic>>(
       '/memory-album/$memoryId',
       data: request.toJson(),
     );
