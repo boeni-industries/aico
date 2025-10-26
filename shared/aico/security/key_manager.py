@@ -251,7 +251,11 @@ class AICOKeyManager:
                 return master_key
             
         # Need password
-        if password:
+        if password is not None:
+            # CRITICAL: Reject empty passwords immediately
+            if not password.strip():
+                raise ValueError("Password cannot be empty")
+            
             # Verify password by deriving key and comparing
             derived_key = self._derive_key(password)
             # For first setup, store it
@@ -263,6 +267,11 @@ class AICOKeyManager:
             
         elif interactive:
             password = getpass.getpass("Enter AICO master password: ")
+            
+            # CRITICAL: Reject empty passwords immediately
+            if not password or not password.strip():
+                raise ValueError("Password cannot be empty")
+            
             return self.authenticate(password, interactive=False, force_fresh=force_fresh)
             
         else:

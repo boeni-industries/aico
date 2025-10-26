@@ -147,6 +147,11 @@ def setup(
             password = typer.prompt("Enter master password", hide_input=True)
             confirm_password = typer.prompt("Confirm master password", hide_input=True)
             
+            # CRITICAL: Reject empty passwords immediately
+            if not password or not password.strip():
+                console.print("❌ [red]Password cannot be empty[/red]")
+                raise typer.Exit(1)
+            
             if password != confirm_password:
                 console.print("❌ [red]Passwords do not match[/red]")
                 raise typer.Exit(1)
@@ -275,6 +280,11 @@ def passwd():
         old_password = typer.prompt("Enter current master password", hide_input=True)
         new_password = typer.prompt("Enter new master password", hide_input=True)
         confirm_password = typer.prompt("Confirm new master password", hide_input=True)
+        
+        # CRITICAL: Reject empty passwords immediately
+        if not new_password or not new_password.strip():
+            console.print("❌ [red]New password cannot be empty[/red]")
+            raise typer.Exit(1)
         
         if new_password != confirm_password:
             console.print("❌ [red]New passwords do not match[/red]")

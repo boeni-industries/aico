@@ -761,6 +761,12 @@ def _get_database_connection():
             else:
                 # Need password
                 password = typer.prompt("Enter master password", hide_input=True)
+                
+                # CRITICAL: Reject empty passwords immediately
+                if not password or not password.strip():
+                    console.print("[red]Error: Password cannot be empty[/red]")
+                    raise typer.Exit(1)
+                
                 master_key = key_manager.authenticate(password, interactive=False)
                 db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
         
