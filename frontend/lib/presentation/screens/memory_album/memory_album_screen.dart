@@ -389,153 +389,159 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
           // Timeline column with date label and thread (100px to accommodate date)
           SizedBox(
             width: 100,
-            child: Column(
+            child: Stack(
               children: [
-              // Top thread segment - centered at 50px
-              if (isFirst)
-                // Start of timeline - dotted line indicating "newer memories above"
-                Align(
-                  alignment: Alignment.center,
-                  child: SizedBox(
-                    height: 40,
-                    width: 2,
-                    child: CustomPaint(
-                      painter: _DottedLinePainter(
-                        color: MemoryAlbumTheme.silver.withValues(alpha: 0.3),
-                        strokeWidth: 2,
+                // Continuous thread line - full height
+                Column(
+                  children: [
+                    // Top segment
+                    if (isFirst)
+                      Align(
+                        alignment: Alignment.center,
+                        child: SizedBox(
+                          height: 40,
+                          width: 2,
+                          child: CustomPaint(
+                            painter: _DottedLinePainter(
+                              color: MemoryAlbumTheme.silver.withValues(alpha: 0.3),
+                              strokeWidth: 2,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      Align(
+                        alignment: Alignment.center,
+                        child: Container(
+                          width: 2,
+                          height: 40,
+                          color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
+                        ),
+                      ),
+                    
+                    // Middle segment - continuous through dot area
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: Container(
+                          width: 2,
+                          color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
+                        ),
                       ),
                     ),
-                  ),
-                )
-              else
-                Align(
-                  alignment: Alignment.center,
-                  child: Container(
-                    width: 2,
-                    height: 40,
-                    color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
-                  ),
+                    
+                    // Bottom extension
+                    if (isLast)
+                      Align(
+                        alignment: Alignment.center,
+                        child: SizedBox(
+                          height: 40,
+                          width: 2,
+                          child: CustomPaint(
+                            painter: _DottedLinePainter(
+                              color: MemoryAlbumTheme.silver.withValues(alpha: 0.3),
+                              strokeWidth: 2,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      Align(
+                        alignment: Alignment.center,
+                        child: Container(
+                          width: 2,
+                          height: 16,
+                          color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
+                        ),
+                      ),
+                  ],
                 ),
-              
-              // Spacer to center node with card content
-              const SizedBox(height: 40),
-              
-              // Date label and node - dot at exact 50px position
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Date label - fixed width to position dot at 50px
-                  SizedBox(
-                    width: 34, // 50px (center) - 6px (radius) - 10px (spacing) = 34px
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.help,
-                      child: Tooltip(
-                        message: _formatSwissDate(memory.createdAt),
-                        textStyle: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.white,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.9),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          _formatShortDate(memory.createdAt),
-                          textAlign: TextAlign.right,
-                          softWrap: false,
-                          maxLines: 1,
-                          overflow: TextOverflow.visible,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                            color: MemoryAlbumTheme.silver.withValues(alpha: 0.6),
+                
+                // Date and dot overlaid on top of thread
+                Positioned(
+                  top: 80, // 40px top segment + 40px spacer
+                  left: 0,
+                  right: 0,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Date label - fixed width to position dot at 50px
+                      SizedBox(
+                        width: 34, // 50px (center) - 6px (radius) - 10px (spacing) = 34px
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.help,
+                          child: Tooltip(
+                            message: _formatSwissDate(memory.createdAt),
+                            textStyle: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.white,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.9),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              _formatShortDate(memory.createdAt),
+                              textAlign: TextAlign.right,
+                              softWrap: false,
+                              maxLines: 1,
+                              overflow: TextOverflow.visible,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                                color: MemoryAlbumTheme.silver.withValues(alpha: 0.6),
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  
-                  const SizedBox(width: 10), // 10px spacing
-                  
-                  // Memory node - at 50px (34 + 10 + 6 = 50)
-                  MouseRegion(
-                    cursor: SystemMouseCursors.help,
-                    child: Tooltip(
-                      message: _formatSwissDate(memory.createdAt),
-                      textStyle: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.white,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isGold
-                              ? MemoryAlbumTheme.gold 
-                              : MemoryAlbumTheme.silver.withValues(alpha: 0.5),
-                          boxShadow: isGold ? [
-                            BoxShadow(
-                              color: MemoryAlbumTheme.gold.withValues(alpha: 0.4),
-                              blurRadius: 12,
-                              spreadRadius: 2,
+                      
+                      const SizedBox(width: 10), // 10px spacing
+                      
+                      // Memory node - at 50px (34 + 10 + 6 = 50)
+                      MouseRegion(
+                        cursor: SystemMouseCursors.help,
+                        child: Tooltip(
+                          message: _formatSwissDate(memory.createdAt),
+                          textStyle: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.white,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.9),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isGold
+                                  ? MemoryAlbumTheme.gold 
+                                  : MemoryAlbumTheme.silver.withValues(alpha: 0.5),
+                              boxShadow: isGold ? [
+                                BoxShadow(
+                                  color: MemoryAlbumTheme.gold.withValues(alpha: 0.4),
+                                  blurRadius: 12,
+                                  spreadRadius: 2,
+                                ),
+                              ] : [
+                                BoxShadow(
+                                  color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
+                                  blurRadius: 4,
+                                  spreadRadius: 1,
+                                ),
+                              ],
                             ),
-                          ] : [
-                            BoxShadow(
-                              color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
-                              blurRadius: 4,
-                              spreadRadius: 1,
-                            ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                ],
-              ),
-              
-              // Bottom thread segment - extends to fill remaining card height, centered
-              Expanded(
-                child: Align(
-                  alignment: Alignment.center,
-                  child: Container(
-                    width: 2,
-                    color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
+                    ],
                   ),
                 ),
-              ),
-              
-              // Bottom extension for last card or spacing - centered
-              if (isLast)
-                Align(
-                  alignment: Alignment.center,
-                  child: SizedBox(
-                    height: 40,
-                    width: 2,
-                    child: CustomPaint(
-                      painter: _DottedLinePainter(
-                        color: MemoryAlbumTheme.silver.withValues(alpha: 0.3),
-                        strokeWidth: 2,
-                      ),
-                    ),
-                  ),
-                )
-              else
-                Align(
-                  alignment: Alignment.center,
-                  child: Container(
-                    width: 2,
-                    height: 16,
-                    color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
-                  ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
           
           
           // Memory card content
