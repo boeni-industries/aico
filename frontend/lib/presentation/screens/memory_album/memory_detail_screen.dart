@@ -2,13 +2,15 @@
 /// 
 /// Emotional scroll story design - award-winning visual fidelity
 /// Conversation flows like poetry with page-turning momentum
+library;
 
 import 'dart:ui';
+
+import 'package:aico_frontend/data/models/memory_album_model.dart';
+import 'package:aico_frontend/presentation/providers/memory_album_provider.dart';
+import 'package:aico_frontend/presentation/theme/memory_album_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:aico_frontend/data/models/memory_album_model.dart';
-import 'package:aico_frontend/presentation/theme/memory_album_theme.dart';
-import 'package:aico_frontend/presentation/providers/memory_album_provider.dart';
 
 class MemoryDetailScreen extends ConsumerStatefulWidget {
   final MemoryEntry memory;
@@ -122,8 +124,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                     center: Alignment.topCenter,
                     radius: 1.5,
                     colors: [
-                      moodColor.withOpacity(0.08),
-                      moodColor.withOpacity(0.04),
+                      moodColor.withValues(alpha: 0.08),
+                      moodColor.withValues(alpha: 0.04),
                       Colors.transparent,
                     ],
                   ),
@@ -139,7 +141,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
             slivers: [
               // Floating header (pinned to stay visible)
               SliverAppBar(
-                backgroundColor: MemoryAlbumTheme.background.withOpacity(0.95),
+                backgroundColor: MemoryAlbumTheme.background.withValues(alpha: 0.95),
                 elevation: 0,
                 floating: true,
                 pinned: true,
@@ -159,7 +161,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                           : Icons.star_outline_rounded,
                       color: widget.memory.isFavorite
                           ? MemoryAlbumTheme.gold
-                          : MemoryAlbumTheme.silver.withOpacity(0.7),
+                          : MemoryAlbumTheme.silver.withValues(alpha: 0.7),
                       size: 28,
                     ),
                     onPressed: () {
@@ -182,10 +184,10 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                             Container(
                               padding: const EdgeInsets.all(20),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.02),
+                                color: Colors.white.withValues(alpha: 0.02),
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
-                                  color: Colors.white.withOpacity(0.05),
+                                  color: Colors.white.withValues(alpha: 0.05),
                                   width: 1,
                                 ),
                               ),
@@ -196,8 +198,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                     decoration: BoxDecoration(
                                       color: widget.memory.isConversationMemory
-                                          ? const Color(0xFFB8A1EA).withOpacity(0.15)
-                                          : MemoryAlbumTheme.silver.withOpacity(0.1),
+                                          ? const Color(0xFFB8A1EA).withValues(alpha: 0.15)
+                                          : MemoryAlbumTheme.silver.withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Row(
@@ -210,7 +212,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                                           size: 14,
                                           color: widget.memory.isConversationMemory
                                               ? const Color(0xFFB8A1EA)
-                                              : MemoryAlbumTheme.silver.withOpacity(0.7),
+                                              : MemoryAlbumTheme.silver.withValues(alpha: 0.7),
                                         ),
                                         const SizedBox(width: 6),
                                         Text(
@@ -220,7 +222,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                                             fontWeight: FontWeight.w600,
                                             color: widget.memory.isConversationMemory
                                                 ? const Color(0xFFB8A1EA)
-                                                : MemoryAlbumTheme.silver.withOpacity(0.7),
+                                                : MemoryAlbumTheme.silver.withValues(alpha: 0.7),
                                           ),
                                         ),
                                       ],
@@ -309,7 +311,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                                             Container(
                                               width: 2,
                                               height: spacingBefore,
-                                              color: Colors.white.withOpacity(0.12),
+                                              color: Colors.white.withValues(alpha: 0.12),
                                             )
                                           else
                                             SizedBox(height: spacingBefore),
@@ -321,12 +323,12 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                                             decoration: BoxDecoration(
                                               shape: BoxShape.circle,
                                               color: isYou
-                                                  ? Colors.white.withOpacity(0.08)
-                                                  : moodColor.withOpacity(0.2),
+                                                  ? Colors.white.withValues(alpha: 0.08)
+                                                  : moodColor.withValues(alpha: 0.2),
                                               border: Border.all(
                                                 color: isYou
-                                                    ? Colors.white.withOpacity(0.2)
-                                                    : moodColor.withOpacity(0.5),
+                                                    ? Colors.white.withValues(alpha: 0.2)
+                                                    : moodColor.withValues(alpha: 0.5),
                                                 width: 2,
                                               ),
                                             ),
@@ -335,7 +337,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                                                   ? Icon(
                                                       Icons.person,
                                                       size: 18,
-                                                      color: Colors.white.withOpacity(0.6),
+                                                      color: Colors.white.withValues(alpha: 0.6),
                                                     )
                                                   : Image.asset(
                                                       'assets/images/aico.png',
@@ -352,7 +354,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                                             Expanded(
                                               child: Container(
                                                 width: 2,
-                                                color: Colors.white.withOpacity(0.12),
+                                                color: Colors.white.withValues(alpha: 0.12),
                                               ),
                                             ),
                                         ],
@@ -373,8 +375,8 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                           decoration: BoxDecoration(
                                             color: isYou
-                                                ? Colors.white.withOpacity(0.05)
-                                                : moodColor.withOpacity(0.1),
+                                                ? Colors.white.withValues(alpha: 0.05)
+                                                : moodColor.withValues(alpha: 0.1),
                                             borderRadius: BorderRadius.circular(6),
                                           ),
                                           child: Text(
@@ -401,18 +403,18 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                                               padding: const EdgeInsets.all(20),
                                               decoration: BoxDecoration(
                                                 color: isYou
-                                                    ? Colors.white.withOpacity(0.04)
-                                                    : moodColor.withOpacity(0.08),
+                                                    ? Colors.white.withValues(alpha: 0.04)
+                                                    : moodColor.withValues(alpha: 0.08),
                                                 borderRadius: BorderRadius.circular(20),
                                                 border: Border.all(
                                                   color: isYou
-                                                      ? Colors.white.withOpacity(0.08)
-                                                      : moodColor.withOpacity(0.2),
+                                                      ? Colors.white.withValues(alpha: 0.08)
+                                                      : moodColor.withValues(alpha: 0.2),
                                                   width: 1,
                                                 ),
                                                 boxShadow: [
                                                   BoxShadow(
-                                                    color: Colors.black.withOpacity(0.2),
+                                                    color: Colors.black.withValues(alpha: 0.2),
                                                     blurRadius: 20,
                                                     offset: const Offset(0, 6),
                                                     spreadRadius: -4,
@@ -440,7 +442,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                                 ],
                               ),
                               );
-                            }).toList(),
+                            }),
                             
                             const SizedBox(height: 32),
 
@@ -452,7 +454,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                                   decoration: BoxDecoration(
                                     boxShadow: [
                                       BoxShadow(
-                                        color: const Color(0xFFB8A1EA).withOpacity(0.15),
+                                        color: const Color(0xFFB8A1EA).withValues(alpha: 0.15),
                                         blurRadius: 30,
                                         spreadRadius: 5,
                                       ),
@@ -485,7 +487,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                                       '#$tag',
                                       style: TextStyle(
                                         fontSize: 13,
-                                        color: MemoryAlbumTheme.silver.withOpacity(0.6),
+                                        color: MemoryAlbumTheme.silver.withValues(alpha: 0.6),
                                         letterSpacing: 0.5,
                                       ),
                                     );
@@ -514,7 +516,7 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
                     end: Alignment.topCenter,
                     colors: [
                       MemoryAlbumTheme.background,
-                      MemoryAlbumTheme.background.withOpacity(0.0),
+                      MemoryAlbumTheme.background.withValues(alpha: 0.0),
                     ],
                   ),
                 ),

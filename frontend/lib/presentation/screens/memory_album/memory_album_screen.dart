@@ -2,14 +2,15 @@
 /// 
 /// Premium gold-on-blue aesthetic inspired by treasured family photo albums.
 /// Deep navy background with silver/gold accents.
+library;
 
+import 'package:aico_frontend/data/models/memory_album_model.dart';
+import 'package:aico_frontend/presentation/providers/memory_album_provider.dart';
+import 'package:aico_frontend/presentation/screens/memory_album/memory_detail_screen.dart';
+import 'package:aico_frontend/presentation/screens/memory_album/widgets/memory_card.dart';
+import 'package:aico_frontend/presentation/theme/memory_album_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:aico_frontend/presentation/theme/memory_album_theme.dart';
-import 'package:aico_frontend/presentation/screens/memory_album/widgets/memory_card.dart';
-import 'package:aico_frontend/presentation/screens/memory_album/memory_detail_screen.dart';
-import 'package:aico_frontend/presentation/providers/memory_album_provider.dart';
-import 'package:aico_frontend/data/models/memory_album_model.dart';
 
 class MemoryAlbumScreen extends ConsumerStatefulWidget {
   const MemoryAlbumScreen({super.key});
@@ -84,7 +85,7 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
           Icon(
             Icons.auto_awesome_outlined,
             size: 64,
-            color: MemoryAlbumTheme.silver.withOpacity(0.3),
+            color: MemoryAlbumTheme.silver.withValues(alpha: 0.3),
           ),
           const SizedBox(height: 24),
           Text(
@@ -92,7 +93,7 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w600,
-              color: MemoryAlbumTheme.silver.withOpacity(0.7),
+              color: MemoryAlbumTheme.silver.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(height: 12),
@@ -232,10 +233,10 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: MemoryAlbumTheme.silver.withOpacity(0.2),
+          color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -265,7 +266,7 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: isSelected
-              ? MemoryAlbumTheme.gold.withOpacity(0.2)
+              ? MemoryAlbumTheme.gold.withValues(alpha: 0.2)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
@@ -274,7 +275,7 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
           size: 20,
           color: isSelected
               ? MemoryAlbumTheme.gold
-              : MemoryAlbumTheme.silver.withOpacity(0.5),
+              : MemoryAlbumTheme.silver.withValues(alpha: 0.5),
         ),
       ),
     );
@@ -293,13 +294,13 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected
-              ? MemoryAlbumTheme.gold.withOpacity(0.15)
-              : Colors.white.withOpacity(0.05),
+              ? MemoryAlbumTheme.gold.withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected
-                ? MemoryAlbumTheme.gold.withOpacity(0.5)
-                : MemoryAlbumTheme.silver.withOpacity(0.2),
+                ? MemoryAlbumTheme.gold.withValues(alpha: 0.5)
+                : MemoryAlbumTheme.silver.withValues(alpha: 0.2),
             width: 1,
           ),
         ),
@@ -311,7 +312,7 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
               size: 16,
               color: isSelected
                   ? MemoryAlbumTheme.gold
-                  : MemoryAlbumTheme.silver.withOpacity(0.7),
+                  : MemoryAlbumTheme.silver.withValues(alpha: 0.7),
             ),
             const SizedBox(width: 8),
             Text(
@@ -321,7 +322,7 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 color: isSelected
                     ? MemoryAlbumTheme.gold
-                    : MemoryAlbumTheme.silver.withOpacity(0.7),
+                    : MemoryAlbumTheme.silver.withValues(alpha: 0.7),
               ),
             ),
           ],
@@ -378,118 +379,159 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
         ? '${trimmedContent.substring(0, 200)}...' 
         : trimmedContent;
     
-    // Calculate subtle glow based on favorite status only (design principles: minimal, restrained accents)
-    final isFavorite = memory.isFavorite;
+    // First (newest) memory is gold, all others silver
+    final isGold = isFirst;
     
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Timeline column with date label and thread
+          // Timeline column with date label and thread (100px to accommodate date)
           SizedBox(
-            width: 80,
+            width: 100,
             child: Column(
               children: [
-              // Top thread segment
+              // Top thread segment - centered at 50px
               if (isFirst)
                 // Start of timeline - dotted line indicating "newer memories above"
-                SizedBox(
-                  height: 40,
-                  child: CustomPaint(
-                    painter: _DottedLinePainter(
-                      color: MemoryAlbumTheme.silver.withOpacity(0.3),
-                      strokeWidth: 2,
+                Align(
+                  alignment: Alignment.center,
+                  child: SizedBox(
+                    height: 40,
+                    width: 2,
+                    child: CustomPaint(
+                      painter: _DottedLinePainter(
+                        color: MemoryAlbumTheme.silver.withValues(alpha: 0.3),
+                        strokeWidth: 2,
+                      ),
                     ),
                   ),
                 )
               else
-                Container(
-                  width: 2,
-                  height: 40,
-                  color: MemoryAlbumTheme.silver.withOpacity(0.2),
+                Align(
+                  alignment: Alignment.center,
+                  child: Container(
+                    width: 2,
+                    height: 40,
+                    color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
+                  ),
                 ),
               
-              // Date label and node
-              MouseRegion(
-                cursor: SystemMouseCursors.help,
-                child: Tooltip(
-                  message: _formatSwissDate(memory.createdAt),
-                  textStyle: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    children: [
-                      // Short date label
-                      Text(
-                        _formatShortDate(memory.createdAt),
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: MemoryAlbumTheme.silver.withOpacity(0.6),
+              // Spacer to center node with card content
+              const SizedBox(height: 40),
+              
+              // Date label and node - dot at exact 50px position
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Date label - fixed width to position dot at 50px
+                  SizedBox(
+                    width: 34, // 50px (center) - 6px (radius) - 10px (spacing) = 34px
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.help,
+                      child: Tooltip(
+                        message: _formatSwissDate(memory.createdAt),
+                        textStyle: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _formatShortDate(memory.createdAt),
+                          textAlign: TextAlign.right,
+                          softWrap: false,
+                          maxLines: 1,
+                          overflow: TextOverflow.visible,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                            color: MemoryAlbumTheme.silver.withValues(alpha: 0.6),
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      
-                      // Memory node - larger, more present
-                      Container(
-                        width: isFavorite ? 12 : 10,
-                        height: isFavorite ? 12 : 10,
+                    ),
+                  ),
+                  
+                  const SizedBox(width: 10), // 10px spacing
+                  
+                  // Memory node - at 50px (34 + 10 + 6 = 50)
+                  MouseRegion(
+                    cursor: SystemMouseCursors.help,
+                    child: Tooltip(
+                      message: _formatSwissDate(memory.createdAt),
+                      textStyle: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Container(
+                        width: 12,
+                        height: 12,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: isFavorite 
+                          color: isGold
                               ? MemoryAlbumTheme.gold 
-                              : MemoryAlbumTheme.silver.withOpacity(0.5),
-                          boxShadow: isFavorite ? [
+                              : MemoryAlbumTheme.silver.withValues(alpha: 0.5),
+                          boxShadow: isGold ? [
                             BoxShadow(
-                              color: MemoryAlbumTheme.gold.withOpacity(0.4),
+                              color: MemoryAlbumTheme.gold.withValues(alpha: 0.4),
                               blurRadius: 12,
                               spreadRadius: 2,
                             ),
                           ] : [
                             BoxShadow(
-                              color: MemoryAlbumTheme.silver.withOpacity(0.2),
+                              color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
                               blurRadius: 4,
                               spreadRadius: 1,
                             ),
                           ],
                         ),
                       ),
-                    ],
+                    ),
+                  ),
+                ],
+              ),
+              
+              // Bottom thread segment - extends to fill remaining card height, centered
+              Expanded(
+                child: Align(
+                  alignment: Alignment.center,
+                  child: Container(
+                    width: 2,
+                    color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
                   ),
                 ),
               ),
               
-              const SizedBox(height: 6),
-              
-              // Bottom thread segment - extends to fill remaining card height
-              Expanded(
-                child: Container(
-                  width: 2,
-                  color: MemoryAlbumTheme.silver.withOpacity(0.2),
-                ),
-              ),
-              
-              // Bottom extension for last card or spacing
+              // Bottom extension for last card or spacing - centered
               if (isLast)
-                SizedBox(
-                  height: 40,
-                  child: CustomPaint(
-                    painter: _DottedLinePainter(
-                      color: MemoryAlbumTheme.silver.withOpacity(0.3),
-                      strokeWidth: 2,
+                Align(
+                  alignment: Alignment.center,
+                  child: SizedBox(
+                    height: 40,
+                    width: 2,
+                    child: CustomPaint(
+                      painter: _DottedLinePainter(
+                        color: MemoryAlbumTheme.silver.withValues(alpha: 0.3),
+                        strokeWidth: 2,
+                      ),
                     ),
                   ),
                 )
               else
-                Container(
-                  width: 2,
-                  height: 16,
-                  color: MemoryAlbumTheme.silver.withOpacity(0.2),
+                Align(
+                  alignment: Alignment.center,
+                  child: Container(
+                    width: 2,
+                    height: 16,
+                    color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
+                  ),
                 ),
             ],
           ),
@@ -499,24 +541,22 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
           // Memory card content
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.only(top: 40),
-              child: Column(
-                children: [
-                  GestureDetector(
+              padding: EdgeInsets.only(top: 40, bottom: isLast ? 0 : 16),
+              child: GestureDetector(
                     onTap: () => _openMemoryDetail(memory),
                     child: Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.04),
+                        color: Colors.white.withValues(alpha: 0.04),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Colors.white.withValues(alpha: 0.1),
                           width: 1.5,
                         ),
                         boxShadow: [
                           // Floating depth (design principles: multi-layer shadows)
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.4),
+                            color: Colors.black.withValues(alpha: 0.4),
                             blurRadius: 20,
                             offset: const Offset(0, 8),
                             spreadRadius: -4,
@@ -549,9 +589,6 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
                         ],
                       ),
                     ),
-                  ),
-                  if (!isLast) const SizedBox(height: 0),
-                ],
               ),
             ),
           ),
@@ -564,7 +601,8 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
     final localDate = date.toLocal();
     final day = localDate.day.toString().padLeft(2, '0');
     final month = localDate.month.toString().padLeft(2, '0');
-    return '$day.$month';
+    final year = localDate.year.toString().substring(2); // Get last 2 digits (e.g., "2025" -> "25")
+    return '$day.$month.$year';
   }
   
   String _formatSwissDate(DateTime date) {

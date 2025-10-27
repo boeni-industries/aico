@@ -110,13 +110,8 @@ class AppRouter {
 
     // Navigation guards and redirects
     redirect: (context, state) {
-      // Add authentication checks here if needed
-      // For admin routes, could check permissions
-      if (state.matchedLocation.startsWith('/admin')) {
-        // TODO: Add admin authentication check
-        // if (!isAdminAuthenticated) return '/settings';
-      }
-      
+      // Note: Admin route protection is implemented at screen level
+      // See AdminScreen and LogsScreen for role-based access control
       return null; // No redirect needed
     },
   );

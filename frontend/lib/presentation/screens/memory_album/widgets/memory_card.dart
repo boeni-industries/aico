@@ -2,10 +2,11 @@
 /// 
 /// Glassmorphic card with premium gold-on-blue aesthetic.
 /// Silver borders, gold accents for favorites, emotional tone glows.
+library;
 
-import 'package:flutter/material.dart';
 import 'package:aico_frontend/data/models/memory_album_model.dart';
 import 'package:aico_frontend/presentation/theme/memory_album_theme.dart';
+import 'package:flutter/material.dart';
 
 class MemoryCard extends StatefulWidget {
   final MemoryEntry memory;
@@ -35,7 +36,7 @@ class _MemoryCardState extends State<MemoryCard> {
     );
 
     // Debug: Print favorite status on rebuild
-    print('🎨 MemoryCard building: ${widget.memory.memoryId.substring(0, 8)}... isFavorite=${widget.memory.isFavorite}');
+    debugPrint('🎨 MemoryCard building: ${widget.memory.memoryId.substring(0, 8)}... isFavorite=${widget.memory.isFavorite}');
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -45,8 +46,11 @@ class _MemoryCardState extends State<MemoryCard> {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeOut,
-              transform: Matrix4.identity()
-                ..scale(_isHovered ? 1.02 : 1.0),
+              transform: Matrix4.diagonal3Values(
+                _isHovered ? 1.02 : 1.0,
+                _isHovered ? 1.02 : 1.0,
+                1.0,
+              ),
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: MemoryAlbumTheme.glassCard(
@@ -65,8 +69,8 @@ class _MemoryCardState extends State<MemoryCard> {
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: widget.memory.isConversationMemory
-                                ? const Color(0xFFB8A1EA).withOpacity(0.15)
-                                : MemoryAlbumTheme.silver.withOpacity(0.1),
+                                ? const Color(0xFFB8A1EA).withValues(alpha: 0.15)
+                                : MemoryAlbumTheme.silver.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -79,7 +83,7 @@ class _MemoryCardState extends State<MemoryCard> {
                                 size: 14,
                                 color: widget.memory.isConversationMemory
                                     ? const Color(0xFFB8A1EA)
-                                    : MemoryAlbumTheme.silver.withOpacity(0.7),
+                                    : MemoryAlbumTheme.silver.withValues(alpha: 0.7),
                               ),
                               const SizedBox(width: 4),
                               Text(
@@ -89,7 +93,7 @@ class _MemoryCardState extends State<MemoryCard> {
                                   fontWeight: FontWeight.w600,
                                   color: widget.memory.isConversationMemory
                                       ? const Color(0xFFB8A1EA)
-                                      : MemoryAlbumTheme.silver.withOpacity(0.7),
+                                      : MemoryAlbumTheme.silver.withValues(alpha: 0.7),
                                 ),
                               ),
                             ],
@@ -107,13 +111,13 @@ class _MemoryCardState extends State<MemoryCard> {
                                 widget.onDelete?.call();
                               },
                               borderRadius: BorderRadius.circular(20),
-                              hoverColor: Colors.red.withOpacity(0.2),
-                              splashColor: Colors.red.withOpacity(0.3),
+                              hoverColor: Colors.red.withValues(alpha: 0.2),
+                              splashColor: Colors.red.withValues(alpha: 0.3),
                               child: Padding(
                                 padding: const EdgeInsets.all(6),
                                 child: Icon(
                                   Icons.delete_outline_rounded,
-                                  color: MemoryAlbumTheme.silver.withOpacity(0.7),
+                                  color: MemoryAlbumTheme.silver.withValues(alpha: 0.7),
                                   size: 20,
                                 ),
                               ),
@@ -127,12 +131,12 @@ class _MemoryCardState extends State<MemoryCard> {
                           color: Colors.transparent,
                           child: InkWell(
                             onTap: () {
-                              print('⭐ Star tapped! Current state: ${widget.memory.isFavorite}');
+                              debugPrint('⭐ Star tapped! Current state: ${widget.memory.isFavorite}');
                               widget.onFavoriteToggle?.call();
                             },
                             borderRadius: BorderRadius.circular(20),
-                            hoverColor: const Color(0xFFFFD700).withOpacity(0.2),
-                            splashColor: const Color(0xFFFFD700).withOpacity(0.3),
+                            hoverColor: const Color(0xFFFFD700).withValues(alpha: 0.2),
+                            splashColor: const Color(0xFFFFD700).withValues(alpha: 0.3),
                             child: Padding(
                               padding: const EdgeInsets.all(6),
                               child: Icon(
@@ -141,7 +145,7 @@ class _MemoryCardState extends State<MemoryCard> {
                                     : Icons.star_outline_rounded,
                                 color: widget.memory.isFavorite
                                     ? const Color(0xFFFFD700) // Bright yellow when starred
-                                    : MemoryAlbumTheme.silver.withOpacity(0.7),
+                                    : MemoryAlbumTheme.silver.withValues(alpha: 0.7),
                                 size: 24,
                               ),
                             ),
@@ -177,7 +181,7 @@ class _MemoryCardState extends State<MemoryCard> {
                         Icon(
                           Icons.calendar_today_rounded,
                           size: 14,
-                          color: MemoryAlbumTheme.silver.withOpacity(0.6),
+                          color: MemoryAlbumTheme.silver.withValues(alpha: 0.6),
                         ),
                         const SizedBox(width: 6),
                         Text(
@@ -195,7 +199,7 @@ class _MemoryCardState extends State<MemoryCard> {
                           Icon(
                             Icons.label_rounded,
                             size: 14,
-                            color: MemoryAlbumTheme.silver.withOpacity(0.6),
+                            color: MemoryAlbumTheme.silver.withValues(alpha: 0.6),
                           ),
                           const SizedBox(width: 6),
                           Expanded(

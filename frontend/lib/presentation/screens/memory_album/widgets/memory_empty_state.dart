@@ -2,9 +2,10 @@
 /// 
 /// Beautiful empty state with silver book icon and gold shimmer.
 /// Inviting, warm, and premium aesthetic.
+library;
 
-import 'package:flutter/material.dart';
 import 'package:aico_frontend/presentation/theme/memory_album_theme.dart';
+import 'package:flutter/material.dart';
 
 class MemoryEmptyState extends StatefulWidget {
   const MemoryEmptyState({super.key});

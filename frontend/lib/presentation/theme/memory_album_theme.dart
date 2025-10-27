@@ -2,6 +2,7 @@
 /// 
 /// Premium gold-on-blue color palette inspired by treasured family photo albums.
 /// Creates an intimate, precious aesthetic for user-curated memories.
+library;
 
 import 'package:flutter/material.dart';
 
@@ -56,13 +57,13 @@ class MemoryAlbumTheme {
       color: glassLight,
       borderRadius: BorderRadius.circular(36), // XLarge radius
       border: Border.all(
-        color: isFavorite ? gold.withOpacity(0.4) : glassBorder,
+        color: isFavorite ? gold.withValues(alpha: 0.4) : glassBorder,
         width: 1.5,
       ),
       boxShadow: [
         // Floating depth
         BoxShadow(
-          color: Colors.black.withOpacity(0.4),
+          color: Colors.black.withValues(alpha: 0.4),
           blurRadius: 40,
           offset: const Offset(0, 20),
           spreadRadius: -10,
@@ -107,8 +108,8 @@ class MemoryAlbumTheme {
   
   /// Shimmer effect for empty state
   static List<Color> get shimmerGradient => [
-    silver.withOpacity(0.3),
-    gold.withOpacity(0.5),
-    silver.withOpacity(0.3),
+    silver.withValues(alpha: 0.3),
+    gold.withValues(alpha: 0.5),
+    silver.withValues(alpha: 0.3),
   ];
 }

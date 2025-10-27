@@ -4,9 +4,10 @@
 /// Manages user-curated memories (facts) via the backend API.
 library;
 
+import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/data/models/memory_album_model.dart';
 import 'package:aico_frontend/networking/clients/unified_api_client.dart';
-import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:flutter/foundation.dart';
 
 class MemoryAlbumRepository {
   final UnifiedApiClient _apiClient;
@@ -84,7 +85,17 @@ class MemoryAlbumRepository {
         return [];
       }
     } catch (e) {
-      print('Error loading memories: $e');
+      debugPrint('Error loading memories: $e');
+      AICOLog.error('Failed to load memories', 
+        topic: 'memory_album_repository',
+        error: e,
+        extra: {
+          'category': category,
+          'favorites_only': favoritesOnly,
+          'limit': limit,
+          'offset': offset,
+        },
+      );
       rethrow;
     }
   }

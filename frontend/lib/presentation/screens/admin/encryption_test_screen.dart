@@ -1,5 +1,4 @@
 import 'package:aico_frontend/core/providers/networking_providers.dart';
-import 'package:aico_frontend/core/providers/storage_providers.dart';
 import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -52,24 +51,20 @@ class _EncryptionTestScreenState extends ConsumerState<EncryptionTestScreen> {
     
     try {
       final apiClient = ref.read(unifiedApiClientProvider);
-      final encryptionService = ref.read(encryptionServiceProvider);
+      final encryptionService = ref.read(networkingEncryptionServiceProvider);
       
-      _log('Running encrypted echo test...');
+      _log('Running encryption session test...');
       _log('Using API client: ${apiClient.runtimeType}');
       _log('Using encryption service: ${encryptionService.runtimeType}');
+      _log('Encryption initialized: ${encryptionService.isInitialized}');
+      _log('Session active: ${encryptionService.isSessionActive}');
       
-      const testMessage = 'Hello, encrypted world!';
-      final encrypted = encryptionService.encrypt(testMessage);
-      final decrypted = encryptionService.decrypt(encrypted);
-      
-      _log('Original: $testMessage');
-      _log('Encrypted: $encrypted');
-      _log('Decrypted: $decrypted');
-      
-      if (testMessage == decrypted) {
-        _log('✅ Encryption test passed');
+      if (!encryptionService.isSessionActive) {
+        _log('⚠️ No active encryption session - handshake required');
+        _log('Encryption session must be established via API handshake');
       } else {
-        _log('❌ Encryption test failed');
+        _log('✅ Encryption session is active');
+        _log('Client ID: ${encryptionService.clientId}');
       }
       
     } catch (e) {
@@ -86,9 +81,14 @@ class _EncryptionTestScreenState extends ConsumerState<EncryptionTestScreen> {
       children: [
             Consumer(
               builder: (context, ref, child) {
-                final encryptionService = ref.watch(encryptionServiceProvider);
+                final encryptionService = ref.watch(networkingEncryptionServiceProvider);
+                final status = encryptionService.isSessionActive 
+                    ? 'Session Active' 
+                    : encryptionService.isInitialized 
+                        ? 'Initialized (No Session)' 
+                        : 'Not Initialized';
                 return Text(
-                  'Encryption Status: Ready (${encryptionService.runtimeType})',
+                  'Encryption Status: $status',
                   style: Theme.of(context).textTheme.titleMedium,
                 );
               },

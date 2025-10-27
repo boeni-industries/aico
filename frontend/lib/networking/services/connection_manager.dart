@@ -11,7 +11,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 enum ConnectionMode {
   http,
   websocket,
-  ipc, // Future implementation
 }
 
 enum InternalConnectionStatus {
@@ -108,9 +107,6 @@ class ConnectionManager {
         connected = true;
       } else if (await _tryWebSocketConnection()) {
         _currentMode = ConnectionMode.websocket;
-        connected = true;
-      } else if (await _tryIpcConnection()) {
-        _currentMode = ConnectionMode.ipc;
         connected = true;
       }
       
@@ -211,12 +207,6 @@ class ConnectionManager {
     
     // Return a graceful failure instead of throwing
     throw lastException ?? Exception('Operation failed after all retries');
-  }
-
-  Future<bool> _tryIpcConnection() async {
-    // TODO: Implement IPC connection testing
-    // For now, IPC is not available
-    return false;
   }
 
   Future<bool> _tryWebSocketConnection() async {
@@ -330,18 +320,6 @@ class ConnectionManager {
       extra: {'current_mode': _currentMode.toString()});
       
     switch (_currentMode) {
-      case ConnectionMode.ipc:
-        if (await _tryWebSocketConnection()) {
-          _currentMode = ConnectionMode.websocket;
-          AICOLog.info('Fell back to WebSocket mode', topic: 'network/connection/fallback');
-          return true;
-        } else if (await _tryHttpConnection()) {
-          _currentMode = ConnectionMode.http;
-          AICOLog.info('Fell back to HTTP mode', topic: 'network/connection/fallback');
-          return true;
-        }
-        break;
-        
       case ConnectionMode.websocket:
         await _wsClient.disconnect();
         if (await _tryHttpConnection()) {
@@ -413,9 +391,6 @@ class ConnectionManager {
           break;
         case ConnectionMode.http:
           isHealthy = await _tryHttpConnection();
-          break;
-        case ConnectionMode.ipc:
-          isHealthy = await _tryIpcConnection();
           break;
       }
       

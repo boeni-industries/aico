@@ -1,6 +1,9 @@
 import 'package:aico_frontend/core/logging/providers/logging_providers.dart';
 import 'package:aico_frontend/core/logging/services/aico_logger.dart';
+import 'package:aico_frontend/domain/entities/user.dart';
+import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/screens/admin/encryption_test_screen.dart';
+import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
 import 'package:aico_frontend/presentation/widgets/chat/thinking_bubble.dart';
 import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
 import 'package:aico_frontend/presentation/widgets/common/glassmorphic_card.dart';
@@ -10,20 +13,39 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Admin screen for system administration and developer tools.
 /// Uses main content area following three-pane layout design principles.
-class AdminScreen extends StatefulWidget {
+/// Requires admin role - redirects non-admin users to settings.
+class AdminScreen extends ConsumerStatefulWidget {
   const AdminScreen({super.key});
 
   @override
-  State<AdminScreen> createState() => _AdminScreenState();
+  ConsumerState<AdminScreen> createState() => _AdminScreenState();
 }
 
-class _AdminScreenState extends State<AdminScreen> with TickerProviderStateMixin {
+class _AdminScreenState extends ConsumerState<AdminScreen> with TickerProviderStateMixin {
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    
+    // Check admin access on init
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAdminAccess();
+    });
+  }
+  
+  void _checkAdminAccess() {
+    final authState = ref.read(authProvider);
+    
+    // Redirect if not authenticated or not admin
+    if (!authState.isAuthenticated || authState.user?.role.isAdmin != true) {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const SettingsScreen()),
+        );
+      }
+    }
   }
 
   @override

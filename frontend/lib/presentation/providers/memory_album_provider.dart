@@ -8,6 +8,7 @@ import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/data/models/memory_album_model.dart';
 import 'package:aico_frontend/data/repositories/memory_album_repository.dart';
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'memory_album_provider.g.dart';
@@ -225,9 +226,9 @@ class MemoryAlbumNotifier extends _$MemoryAlbumNotifier {
       });
       return memoryId;
     } catch (e, stackTrace) {
-      print('❌ [MemoryAlbumProvider] EXCEPTION: $e');
-      print('❌ Exception type: ${e.runtimeType}');
-      print('❌ Stack trace: $stackTrace');
+      debugPrint('❌ [MemoryAlbumProvider] EXCEPTION: $e');
+      debugPrint('❌ Exception type: ${e.runtimeType}');
+      debugPrint('❌ Stack trace: $stackTrace');
       
       AICOLog.error('Failed to save conversation', 
         topic: 'memory_album_provider',
@@ -246,7 +247,7 @@ class MemoryAlbumNotifier extends _$MemoryAlbumNotifier {
   /// Toggle favorite status
   Future<void> toggleFavorite(MemoryEntry memory) async {
     try {
-      print('🌟 Toggling favorite for ${memory.memoryId}: ${memory.isFavorite} -> ${!memory.isFavorite}');
+      debugPrint('🌟 Toggling favorite for ${memory.memoryId}: ${memory.isFavorite} -> ${!memory.isFavorite}');
       
       final request = UpdateMemoryRequest(
         isFavorite: !memory.isFavorite,
@@ -254,7 +255,7 @@ class MemoryAlbumNotifier extends _$MemoryAlbumNotifier {
       
       final updatedMemory = await _repository.updateMemory(memory.memoryId, request);
       
-      print('🌟 Backend returned: isFavorite=${updatedMemory.isFavorite}');
+      debugPrint('🌟 Backend returned: isFavorite=${updatedMemory.isFavorite}');
       
       // Update local state with the response from backend
       final updatedMemories = state.memories.map((m) {
@@ -265,9 +266,9 @@ class MemoryAlbumNotifier extends _$MemoryAlbumNotifier {
       }).toList();
       
       state = state.copyWith(memories: updatedMemories);
-      print('🌟 State updated, new count: ${updatedMemories.length}');
+      debugPrint('🌟 State updated, new count: ${updatedMemories.length}');
     } catch (e) {
-      print('🌟 ERROR toggling favorite: $e');
+      debugPrint('🌟 ERROR toggling favorite: $e');
       state = state.copyWith(error: e.toString());
     }
   }

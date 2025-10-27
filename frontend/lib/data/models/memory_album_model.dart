@@ -2,6 +2,7 @@
 /// 
 /// Client-side models for Memory Album feature.
 /// Maps to backend API schemas with additional UI metadata.
+library;
 
 import 'package:flutter/material.dart';
 

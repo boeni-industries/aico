@@ -96,9 +96,8 @@ class LogEntry {
       if (sessionId != null) 'session_id': sessionId,
       if (extra != null) 'extra': extra,
       if (errorDetails != null) 'error_details': errorDetails,
-      // Backend expects these fields
+      // Backend expects origin field and will add environment from its own config
       'origin': 'frontend',
-      'environment': 'development', // TODO: Get from config
     };
   }
 

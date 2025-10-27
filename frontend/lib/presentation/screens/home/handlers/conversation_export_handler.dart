@@ -1,8 +1,10 @@
 import 'dart:io';
 
+import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
 import 'package:aico_frontend/presentation/widgets/conversation/share_conversation_modal.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -90,11 +92,20 @@ class ConversationExportHandler {
       
     } catch (e, stackTrace) {
       // Log the actual error for debugging
-      print('═══════════════════════════════════════════════════════');
-      print('FILE SAVE ERROR:');
-      print('Error: $e');
-      print('Stack trace: $stackTrace');
-      print('═══════════════════════════════════════════════════════');
+      debugPrint('═══════════════════════════════════════════════════════');
+      debugPrint('FILE SAVE ERROR:');
+      debugPrint('Error: $e');
+      debugPrint('Stack trace: $stackTrace');
+      debugPrint('═══════════════════════════════════════════════════════');
+      
+      AICOLog.error('File save failed', 
+        topic: 'conversation_export',
+        error: e,
+        stackTrace: stackTrace,
+        extra: {
+          'filename': filename,
+        },
+      );
       
       // Fallback to clipboard if file picker fails
       await Clipboard.setData(ClipboardData(text: content));
@@ -121,7 +132,7 @@ class ConversationExportHandler {
     // Generate topic slug from conversation
     final topicSlug = _generateTopicSlug(conversationState);
     
-    return '${topicSlug}_${dateStr}_${timeStr}.$extension';
+    return '${topicSlug}_${dateStr}_$timeStr.$extension';
   }
 
   /// Extract topic from conversation for filename
