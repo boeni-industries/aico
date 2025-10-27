@@ -198,30 +198,34 @@ Subtle prompt: "View in Album" (dismissible)
 └─────────────────────────────────────┘
 ```
 
-#### Option C: Story View (Narrative Flow)
+#### Option C: Journey Map View (Chronological Exploration)
 ```
 ┌─────────────────────────────────────┐
-│  Our Story Together              ⚙️  │
+│  Our Journey Together           🔍±  │
 │  89 days • 247 moments               │
 ├─────────────────────────────────────┤
 │                                      │
-│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
-│  │                                   │
-│  ● "I realized I need boundaries"   │
-│    2 days ago                        │
-│    Late night chat about work        │
-│    [View conversation context →]     │
-│  │                                   │
-│  ● "AICO's advice about saying no"  │
-│    5 days ago                        │
-│    You helped me see clearly         │
-│  │                                   │
-│  ● "I got the promotion!"           │
-│    6 days ago                        │
-│    Celebrating together              │
-│  │                                   │
-│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+│  Oct 2024     Dec 2024     Feb 2025 │
+│     ●━━━━━━━━━━⬤━━━━━━━━━━●       │
+│   First    Breakthrough   Current   │
+│   Chat        Phase                  │
+│   (12)        (85)        (150)      │
+│                                      │
+│  Chapters:                           │
+│  🌱 Getting to Know You (Oct-Nov)   │
+│  💡 Opening Up (Dec-Jan)            │
+│  🌟 Deep Trust (Feb-Present)        │
+│                                      │
+│  [Pinch to zoom • Tap nodes]        │
 └─────────────────────────────────────┘
+
+Features:
+- Zoomable timeline (year → month → week)
+- Node size reflects importance (favorites, revisits)
+- Auto-detected relationship chapters
+- Milestone markers (🎊 100th memory, etc.)
+- Density heatmap shows active periods
+- Spatial exploration vs. linear reading
 ```
 
 ### 3.3 Memory Detail View

@@ -10,6 +10,7 @@ import 'package:aico_frontend/presentation/screens/memory_album/memory_detail_sc
 import 'package:aico_frontend/presentation/screens/memory_album/widgets/memory_card.dart';
 import 'package:aico_frontend/presentation/theme/memory_album_theme.dart';
 import 'package:aico_frontend/presentation/widgets/timeline/timeline_widget.dart';
+import 'package:aico_frontend/presentation/widgets/journey_map/journey_map_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -351,20 +352,131 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
   }
 
   List<Widget> _buildStoryView(List memories) {
-    // TODO: Implement story view
+    // Convert memories to journey nodes
+    final nodes = memories.map<JourneyNode>((memory) {
+      return JourneyNode(
+        id: memory.memoryId,
+        timestamp: memory.createdAt,
+        title: _extractTitle(memory),
+        preview: _extractPreview(memory),
+        isFavorite: memory.isFavorite,
+        isMilestone: _isMilestone(memory, memories),
+        revisitCount: 0, // TODO: Track revisit count
+        hasNote: memory.userNote != null && memory.userNote!.isNotEmpty,
+        color: memory.isConversationMemory 
+            ? MemoryAlbumTheme.gold 
+            : MemoryAlbumTheme.silver,
+        onTap: () => _openMemoryDetail(memory),
+      );
+    }).toList();
+    
+    // Auto-detect chapters
+    final chapters = _detectChapters(memories);
+    
     return [
-      const SliverToBoxAdapter(
-        child: Center(
-          child: Padding(
-            padding: EdgeInsets.all(40),
-            child: Text(
-              'Story view coming soon...',
-              style: TextStyle(color: Colors.white70, fontSize: 16),
-            ),
+      SliverToBoxAdapter(
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height - 200,
+          child: JourneyMapWidget(
+            nodes: nodes,
+            chapters: chapters,
+            initialZoom: 1.0,
           ),
         ),
       ),
     ];
+  }
+  
+  String _extractTitle(MemoryEntry memory) {
+    final content = memory.conversationSummary ?? memory.content;
+    // Extract first line or first 50 chars
+    final firstLine = content.split('\n').first.trim();
+    return firstLine.length > 50 
+        ? '${firstLine.substring(0, 50)}...' 
+        : firstLine;
+  }
+  
+  String _extractPreview(MemoryEntry memory) {
+    final content = memory.conversationSummary ?? memory.content;
+    return content.length > 100 
+        ? '${content.substring(0, 100)}...' 
+        : content;
+  }
+  
+  bool _isMilestone(MemoryEntry memory, List memories) {
+    final index = memories.indexOf(memory);
+    // Mark every 10th, 50th, 100th memory as milestone
+    final count = memories.length - index;
+    return count == 1 || count == 10 || count == 50 || count == 100 || count == 250;
+  }
+  
+  List<JourneyChapter> _detectChapters(List memories) {
+    if (memories.isEmpty) return [];
+    
+    // Simple chapter detection: group by month
+    final chapters = <JourneyChapter>[];
+    DateTime? currentStart;
+    int currentCount = 0;
+    
+    for (int i = 0; i < memories.length; i++) {
+      final memory = memories[i];
+      final date = memory.createdAt;
+      
+      if (currentStart == null) {
+        currentStart = date;
+        currentCount = 1;
+      } else if (date.month != currentStart.month || date.year != currentStart.year) {
+        // New chapter
+        chapters.add(JourneyChapter(
+          title: _getMonthName(currentStart.month),
+          emoji: _getChapterEmoji(chapters.length),
+          startDate: currentStart,
+          endDate: memories[i - 1].createdAt,
+          color: _getChapterColor(chapters.length),
+          memoryCount: currentCount,
+        ));
+        currentStart = date;
+        currentCount = 1;
+      } else {
+        currentCount++;
+      }
+    }
+    
+    // Add last chapter
+    if (currentStart != null) {
+      chapters.add(JourneyChapter(
+        title: _getMonthName(currentStart.month),
+        emoji: _getChapterEmoji(chapters.length),
+        startDate: currentStart,
+        endDate: memories.last.createdAt,
+        color: _getChapterColor(chapters.length),
+        memoryCount: currentCount,
+      ));
+    }
+    
+    return chapters;
+  }
+  
+  String _getMonthName(int month) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return months[month - 1];
+  }
+  
+  String _getChapterEmoji(int index) {
+    const emojis = ['🌱', '💡', '🌟', '🎯', '🚀', '💫', '🌈', '✨'];
+    return emojis[index % emojis.length];
+  }
+  
+  Color _getChapterColor(int index) {
+    const colors = [
+      Color(0xFFB8A1EA), // Purple
+      Color(0xFF8DD686), // Green
+      Color(0xFF8DD6B8), // Mint
+      Color(0xFFE8A87C), // Orange
+      Color(0xFF85C1E2), // Blue
+    ];
+    return colors[index % colors.length];
   }
 
   List<Widget> _buildTimelineView(List memories) {
