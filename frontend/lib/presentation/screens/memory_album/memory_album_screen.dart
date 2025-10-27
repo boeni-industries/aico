@@ -9,6 +9,7 @@ import 'package:aico_frontend/presentation/providers/memory_album_provider.dart'
 import 'package:aico_frontend/presentation/screens/memory_album/memory_detail_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory_album/widgets/memory_card.dart';
 import 'package:aico_frontend/presentation/theme/memory_album_theme.dart';
+import 'package:aico_frontend/presentation/widgets/timeline/timeline_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -344,261 +345,217 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
     ref.read(memoryAlbumProvider.notifier).toggleFavorite(memory);
   }
 
+  void _deleteMemory(MemoryEntry memory) {
+    // TODO: Implement delete functionality
+    ref.read(memoryAlbumProvider.notifier).deleteMemory(memory.memoryId);
+  }
+
+  List<Widget> _buildStoryView(List memories) {
+    // TODO: Implement story view
+    return [
+      const SliverToBoxAdapter(
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(40),
+            child: Text(
+              'Story view coming soon...',
+              style: TextStyle(color: Colors.white70, fontSize: 16),
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
   List<Widget> _buildTimelineView(List memories) {
-    // Single continuous timeline - no grouping, time flows continuously
+    // Convert memories to timeline entries
+    final timelineEntries = memories.map<TimelineEntry>((memory) {
+      final isFirst = memories.indexOf(memory) == 0;
+      
+      return TimelineEntry(
+        timestamp: memory.createdAt,
+        label: Text(_formatShortDate(memory.createdAt)),
+        isHighlighted: isFirst, // First (newest) is highlighted
+        content: _buildMemoryCard(memory),
+      );
+    }).toList();
+    
     return [
       SliverPadding(
         padding: const EdgeInsets.fromLTRB(40, 0, 40, 0),
-        sliver: SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              final memory = memories[index];
-              final isFirst = index == 0;
-              final isLast = index == memories.length - 1;
-              
-              // No padding wrapper - spacing handled inside card with timeline extension
-              return _buildTimelineCard(memory, isFirst: isFirst, isLast: isLast);
-            },
-            childCount: memories.length,
+        sliver: SliverToBoxAdapter(
+          child: TimelineWidget(
+            entries: timelineEntries,
+            axis: Axis.vertical,
+            style: TimelineStyle(
+              threadColor: MemoryAlbumTheme.silver,
+              threadWidth: 2.0,
+              nodeColor: MemoryAlbumTheme.silver,
+              nodeSize: 12.0,
+              highlightedNodeColor: MemoryAlbumTheme.gold,
+              highlightedNodeSize: 12.0,
+              nodeLabelSpacing: 14.0,
+              contentSpacing: 16.0,
+              threadNodeSpacing: 0.0, // Not used - dots will be centered on content
+              labelTextStyle: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: MemoryAlbumTheme.silver.withValues(alpha: 0.6),
+              ),
+              showDottedEnds: true,
+            ),
+            threadPosition: 0.5, // Thread at 50px in 100px column
           ),
         ),
       ),
     ];
   }
   
-  Widget _buildTimelineCard(MemoryEntry memory, {bool isFirst = false, bool isLast = false}) {
-    // Get first 200 characters of content for preview, trim leading newlines
-    final rawContent = memory.isConversationMemory 
-        ? memory.content
-        : memory.conversationSummary ?? memory.content;
+  Widget _buildMemoryCard(MemoryEntry memory) {
+    // Extract user query for conversation memories
+    String contentPreview;
+    if (memory.isConversationMemory) {
+      // Parse conversation to extract just the user's query
+      final lines = memory.content.split('\n');
+      final userLines = <String>[];
+      bool isUserMessage = false;
+      
+      for (final line in lines) {
+        if (line.startsWith('You:')) {
+          isUserMessage = true;
+          userLines.add(line.substring(4).trim());
+        } else if (line.startsWith('AICO:')) {
+          break; // Stop at first AICO response
+        } else if (isUserMessage && line.trim().isNotEmpty) {
+          userLines.add(line.trim());
+        }
+      }
+      
+      final userQuery = userLines.join(' ').trim();
+      contentPreview = userQuery.length > 150 
+          ? '${userQuery.substring(0, 150)}...' 
+          : userQuery;
+    } else {
+      // For non-conversation memories, use summary or content
+      final rawContent = memory.conversationSummary ?? memory.content;
+      final trimmedContent = rawContent.replaceAll(RegExp(r'^\n+'), '');
+      contentPreview = trimmedContent.length > 200 
+          ? '${trimmedContent.substring(0, 200)}...' 
+          : trimmedContent;
+    }
     
-    // Remove leading newlines
-    final trimmedContent = rawContent.replaceAll(RegExp(r'^\n+'), '');
-    
-    final contentPreview = trimmedContent.length > 200 
-        ? '${trimmedContent.substring(0, 200)}...' 
-        : trimmedContent;
-    
-    // First (newest) memory is gold, all others silver
-    final isGold = isFirst;
-    
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Timeline column with date label and thread (100px to accommodate date)
-          SizedBox(
-            width: 100,
-            child: Stack(
+    return GestureDetector(
+      onTap: () => _openMemoryDetail(memory),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.1),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.4),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+              spreadRadius: -4,
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Content preview
+            Text(
+              contentPreview,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Tags and favorite
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Continuous thread line - full height
-                Column(
-                  children: [
-                    // Top segment
-                    if (isFirst)
-                      Align(
-                        alignment: Alignment.center,
-                        child: SizedBox(
-                          height: 40,
-                          width: 2,
-                          child: CustomPaint(
-                            painter: _DottedLinePainter(
-                              color: MemoryAlbumTheme.silver.withValues(alpha: 0.3),
-                              strokeWidth: 2,
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      Align(
-                        alignment: Alignment.center,
-                        child: Container(
-                          width: 2,
-                          height: 40,
-                          color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
-                        ),
-                      ),
-                    
-                    // Middle segment - continuous through dot area
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.center,
-                        child: Container(
-                          width: 2,
-                          color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
-                        ),
-                      ),
+                // Type badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: memory.isConversationMemory 
+                        ? MemoryAlbumTheme.gold.withValues(alpha: 0.15)
+                        : MemoryAlbumTheme.silver.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: memory.isConversationMemory 
+                          ? MemoryAlbumTheme.gold.withValues(alpha: 0.3)
+                          : MemoryAlbumTheme.silver.withValues(alpha: 0.3),
                     ),
-                    
-                    // Bottom extension
-                    if (isLast)
-                      Align(
-                        alignment: Alignment.center,
-                        child: SizedBox(
-                          height: 40,
-                          width: 2,
-                          child: CustomPaint(
-                            painter: _DottedLinePainter(
-                              color: MemoryAlbumTheme.silver.withValues(alpha: 0.3),
-                              strokeWidth: 2,
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      Align(
-                        alignment: Alignment.center,
-                        child: Container(
-                          width: 2,
-                          height: 16,
-                          color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
-                        ),
-                      ),
-                  ],
+                  ),
+                  child: Text(
+                    memory.isConversationMemory ? 'Conversation' : 'Note',
+                    style: TextStyle(
+                      color: memory.isConversationMemory 
+                          ? MemoryAlbumTheme.gold
+                          : MemoryAlbumTheme.silver,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
                 
-                // Date and dot overlaid on top of thread
-                Positioned(
-                  top: 80, // 40px top segment + 40px spacer
-                  left: 0,
-                  right: 0,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // Date label - fixed width to position dot at 50px
-                      SizedBox(
-                        width: 34, // 50px (center) - 6px (radius) - 10px (spacing) = 34px
-                        child: MouseRegion(
-                          cursor: SystemMouseCursors.help,
-                          child: Tooltip(
-                            message: _formatSwissDate(memory.createdAt),
-                            textStyle: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.white,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.9),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              _formatShortDate(memory.createdAt),
-                              textAlign: TextAlign.right,
-                              softWrap: false,
-                              maxLines: 1,
-                              overflow: TextOverflow.visible,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w500,
-                                color: MemoryAlbumTheme.silver.withValues(alpha: 0.6),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      
-                      const SizedBox(width: 10), // 10px spacing
-                      
-                      // Memory node - at 50px (34 + 10 + 6 = 50)
-                      MouseRegion(
-                        cursor: SystemMouseCursors.help,
-                        child: Tooltip(
-                          message: _formatSwissDate(memory.createdAt),
-                          textStyle: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.white,
-                          ),
+                const SizedBox(width: 8),
+                
+                // Tags
+                if (memory.tags.isNotEmpty)
+                  Expanded(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: memory.tags.take(2).map((tag) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.9),
+                            color: MemoryAlbumTheme.silver.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: isGold
-                                  ? MemoryAlbumTheme.gold 
-                                  : MemoryAlbumTheme.silver.withValues(alpha: 0.5),
-                              boxShadow: isGold ? [
-                                BoxShadow(
-                                  color: MemoryAlbumTheme.gold.withValues(alpha: 0.4),
-                                  blurRadius: 12,
-                                  spreadRadius: 2,
-                                ),
-                              ] : [
-                                BoxShadow(
-                                  color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
-                                  blurRadius: 4,
-                                  spreadRadius: 1,
-                                ),
-                              ],
+                            border: Border.all(
+                              color: MemoryAlbumTheme.silver.withValues(alpha: 0.2),
                             ),
                           ),
-                        ),
-                      ),
-                    ],
+                          child: Text(
+                            tag,
+                            style: TextStyle(
+                              color: MemoryAlbumTheme.silver.withValues(alpha: 0.8),
+                              fontSize: 11,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  )
+                else
+                  const Spacer(),
+                
+                // Favorite star - right aligned
+                IconButton(
+                  icon: Icon(
+                    memory.isFavorite ? Icons.star : Icons.star_border,
+                    color: memory.isFavorite ? MemoryAlbumTheme.gold : MemoryAlbumTheme.silver.withValues(alpha: 0.5),
+                    size: 20,
                   ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => _toggleFavorite(memory),
                 ),
               ],
             ),
-          ),
-          
-          
-          // Memory card content
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(top: 40, bottom: isLast ? 0 : 16),
-              child: GestureDetector(
-                    onTap: () => _openMemoryDetail(memory),
-                    child: Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.04),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.1),
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          // Floating depth (design principles: multi-layer shadows)
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.4),
-                            blurRadius: 20,
-                            offset: const Offset(0, 8),
-                            spreadRadius: -4,
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              contentPreview,
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: MemoryAlbumTheme.textPrimary,
-                                height: 1.6,
-                                letterSpacing: 0.2,
-                              ),
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (memory.isFavorite) ...[
-                            const SizedBox(width: 12),
-                            Icon(
-                              Icons.star_rounded,
-                              size: 18,
-                              color: MemoryAlbumTheme.gold,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -611,97 +568,4 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
     return '$day.$month.$year';
   }
   
-  String _formatSwissDate(DateTime date) {
-    final localDate = date.toLocal();
-    final day = localDate.day.toString().padLeft(2, '0');
-    final month = localDate.month.toString().padLeft(2, '0');
-    final year = localDate.year;
-    final hour = localDate.hour.toString().padLeft(2, '0');
-    final minute = localDate.minute.toString().padLeft(2, '0');
-    
-    return '$day.$month.$year $hour:$minute';
-  }
-  
-  List<Widget> _buildStoryView(List memories) {
-    // TODO: Implement story view
-    return [
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.all(40),
-          child: Center(
-            child: Text(
-              'Story view coming soon',
-              style: TextStyle(
-                fontSize: 16,
-                color: MemoryAlbumTheme.textSecondary,
-              ),
-            ),
-          ),
-        ),
-      ),
-    ];
-  }
-  
-  Future<void> _deleteMemory(MemoryEntry memory) async {
-    // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Memory'),
-        content: const Text('Are you sure you want to delete this memory? This action cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      await ref.read(memoryAlbumProvider.notifier).deleteMemory(memory.memoryId);
-    }
-  }
-}
-
-// Custom painter for dotted timeline lines
-class _DottedLinePainter extends CustomPainter {
-  final Color color;
-  final double strokeWidth;
-  
-  _DottedLinePainter({
-    required this.color,
-    required this.strokeWidth,
-  });
-  
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-    
-    const dashHeight = 4.0;
-    const dashSpace = 4.0;
-    double startY = 0;
-    
-    while (startY < size.height) {
-      canvas.drawLine(
-        Offset(size.width / 2, startY),
-        Offset(size.width / 2, startY + dashHeight),
-        paint,
-      );
-      startY += dashHeight + dashSpace;
-    }
-  }
-  
-  @override
-  bool shouldRepaint(_DottedLinePainter oldDelegate) {
-    return oldDelegate.color != color || oldDelegate.strokeWidth != strokeWidth;
-  }
 }
