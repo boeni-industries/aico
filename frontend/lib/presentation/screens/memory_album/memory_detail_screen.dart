@@ -70,6 +70,16 @@ class _MemoryDetailScreenState extends ConsumerState<MemoryDetailScreen> {
 
   List<Map<String, String>> _parseConversation() {
     final content = widget.memory.conversationSummary ?? widget.memory.content;
+    
+    // For non-conversation memories (Messages), format as single AICO message
+    if (!widget.memory.isConversationMemory) {
+      return [{
+        'speaker': 'AICO',
+        'content': content.trim(),
+      }];
+    }
+    
+    // For conversations, parse the dialogue
     final lines = content.split('\n\n');
     final exchanges = <Map<String, String>>[];
     
