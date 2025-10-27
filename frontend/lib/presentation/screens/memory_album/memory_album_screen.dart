@@ -432,15 +432,15 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
       }
       
       final userQuery = userLines.join(' ').trim();
-      contentPreview = userQuery.length > 150 
-          ? '${userQuery.substring(0, 150)}...' 
+      contentPreview = userQuery.length > 500 
+          ? '${userQuery.substring(0, 500)}...' 
           : userQuery;
     } else {
       // For non-conversation memories, use summary or content
       final rawContent = memory.conversationSummary ?? memory.content;
       final trimmedContent = rawContent.replaceAll(RegExp(r'^\n+'), '');
-      contentPreview = trimmedContent.length > 200 
-          ? '${trimmedContent.substring(0, 200)}...' 
+      contentPreview = trimmedContent.length > 500 
+          ? '${trimmedContent.substring(0, 500)}...' 
           : trimmedContent;
     }
     
@@ -498,7 +498,7 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
                     ),
                   ),
                   child: Text(
-                    memory.isConversationMemory ? 'Conversation' : 'Note',
+                    memory.isConversationMemory ? 'Conversation' : 'Message',
                     style: TextStyle(
                       color: memory.isConversationMemory 
                           ? MemoryAlbumTheme.gold
