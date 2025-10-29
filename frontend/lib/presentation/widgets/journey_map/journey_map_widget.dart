@@ -18,6 +18,7 @@ class JourneyNode {
   final String? preview;
   final bool isFavorite;
   final bool isMilestone;
+  final String? milestoneReason;
   final int revisitCount;
   final bool hasNote;
   final Color color;
@@ -30,6 +31,7 @@ class JourneyNode {
     this.preview,
     this.isFavorite = false,
     this.isMilestone = false,
+    this.milestoneReason,
     this.revisitCount = 0,
     this.hasNote = false,
     required this.color,
@@ -309,12 +311,20 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
     if (_hoveredNode == null) return const SizedBox.shrink();
     
     final node = _hoveredNode!;
-    final preview = node.preview ?? node.title;
     
-    // Limit to 120 characters for more compact display
-    final displayText = preview.length > 120 
-        ? '${preview.substring(0, 120)}...' 
-        : preview;
+    // Show milestone reason if it's a milestone, otherwise show preview
+    String displayText;
+    if (node.isMilestone && node.milestoneReason != null) {
+      displayText = '⭐ ${node.milestoneReason}\n\n${node.preview ?? node.title}';
+      if (displayText.length > 150) {
+        displayText = '⭐ ${node.milestoneReason}\n\n${(node.preview ?? node.title).substring(0, 100)}...';
+      }
+    } else {
+      final preview = node.preview ?? node.title;
+      displayText = preview.length > 120 
+          ? '${preview.substring(0, 120)}...' 
+          : preview;
+    }
     
     // Calculate position accounting for scroll
     final nodeY = _getNodeYPosition(node);
@@ -358,21 +368,28 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
   }
   
   double _getNodeYPosition(JourneyNode node) {
+    const firstNodeY = 75.0; // Fixed position for first (latest) node
+    
+    final index = widget.nodes.indexOf(node);
+    if (index == -1) return firstNodeY;
+    
+    // First node always at fixed position
+    if (index == 0) return firstNodeY;
+    
     final earliest = widget.nodes.first.timestamp;
     final latest = widget.nodes.last.timestamp;
     final totalDays = math.max(1, latest.difference(earliest).inDays);
     final allSameDay = totalDays < 2;
-    final height = _calculateTimelineHeight();
-    
-    final index = widget.nodes.indexOf(node);
-    if (index == -1) return 0;
     
     if (allSameDay) {
-      final spacing = height / (widget.nodes.length + 1);
-      return spacing * (index + 1);
+      // Spacing scales with zoom
+      final spacing = 100.0 * math.pow(_currentZoom, 2) * 3.0;
+      return firstNodeY + (index * spacing);
     } else {
-      final daysSinceStart = node.timestamp.difference(earliest).inDays;
-      return (daysSinceStart / totalDays) * height;
+      // Position based on days from first node
+      final daysSinceFirst = node.timestamp.difference(earliest).inDays;
+      final pixelsPerDay = 100.0 * math.pow(_currentZoom, 2);
+      return firstNodeY + (daysSinceFirst * pixelsPerDay);
     }
   }
   
@@ -383,22 +400,29 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
   }
   
   void _zoomIn() {
-    final newZoom = (_currentZoom + 0.5).clamp(0.5, 3.0);
-    setState(() {
-      _currentZoom = newZoom;
-    });
+    _adjustZoom(_currentZoom + 0.5);
   }
   
   void _zoomOut() {
-    final newZoom = (_currentZoom - 0.5).clamp(0.5, 3.0);
+    _adjustZoom(_currentZoom - 0.5);
+  }
+  
+  void _adjustZoom(double newZoom) {
+    final clampedZoom = newZoom.clamp(0.5, 3.0);
+    if (clampedZoom == _currentZoom) return;
+    
     setState(() {
-      _currentZoom = newZoom;
+      _currentZoom = clampedZoom;
     });
+    
+    // No scroll adjustment needed - first node is always pinned at top
   }
   
   double _calculateTimelineHeight() {
     // Calculate height based on time span and zoom level
     if (widget.nodes.isEmpty) return 800;
+    
+    const firstNodeY = 75.0; // Fixed position for first (latest) node
     
     final earliest = widget.nodes.first.timestamp;
     final latest = widget.nodes.last.timestamp;
@@ -406,21 +430,16 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
     
     // If all memories are on same day, use count-based height
     if (daySpan < 2) {
-      // Exponential zoom for dramatic effect
-      // 0.5x = 100px spacing (very compressed - all visible in viewport)
-      // 1.0x = 300px spacing (comfortable)
-      // 3.0x = 1800px spacing (very expanded)
+      // Spacing between nodes scales with zoom
       final spacing = 100.0 * math.pow(_currentZoom, 2) * 3.0;
-      // Add padding at top and bottom
-      return (widget.nodes.length + 1) * spacing;
+      // First node at fixed Y, then spacing for remaining nodes
+      return firstNodeY + ((widget.nodes.length - 1) * spacing) + 200; // +200 bottom padding
     }
     
-    // Zoom affects pixels per day - exponential for dramatic effect
-    // 0.5x = 25px/day (year view - very compressed)
-    // 1.0x = 100px/day (month view)
-    // 3.0x = 900px/day (week view - very expanded)
+    // Zoom affects pixels per day
     final pixelsPerDay = 100.0 * math.pow(_currentZoom, 2);
-    return math.max(800, daySpan * pixelsPerDay);
+    // First node at fixed Y, then scale by days
+    return firstNodeY + (daySpan * pixelsPerDay) + 200; // +200 bottom padding
   }
   
   void _handleHover(Offset position) {
@@ -575,21 +594,25 @@ class JourneyMapPainter extends CustomPainter {
       ..strokeWidth = 2.0
       ..style = PaintingStyle.stroke;
     
-    // Calculate first and last node positions
+    const firstNodeY = 75.0; // Fixed position for first (latest) node
     final earliest = nodes.first.timestamp;
     final latest = nodes.last.timestamp;
     final totalDays = math.max(1, latest.difference(earliest).inDays);
     final allSameDay = totalDays < 2;
     
-    double firstY, lastY;
+    // First node always at fixed Y
+    final firstY = firstNodeY;
+    double lastY;
     
-    if (allSameDay) {
-      final spacing = size.height / (nodes.length + 1);
-      firstY = spacing;
-      lastY = spacing * nodes.length;
+    if (nodes.length == 1) {
+      lastY = firstNodeY;
+    } else if (allSameDay) {
+      final spacing = 100.0 * math.pow(zoom, 2) * 3.0;
+      lastY = firstNodeY + ((nodes.length - 1) * spacing);
     } else {
-      firstY = _dateToY(nodes.first.timestamp, earliest, totalDays, size.height);
-      lastY = _dateToY(nodes.last.timestamp, earliest, totalDays, size.height);
+      final daySpan = latest.difference(earliest).inDays;
+      final pixelsPerDay = 100.0 * math.pow(zoom, 2);
+      lastY = firstNodeY + (daySpan * pixelsPerDay);
     }
     
     // Draw line only between first and last nodes
@@ -601,19 +624,25 @@ class JourneyMapPainter extends CustomPainter {
   }
   
   void _drawNodes(Canvas canvas, Size size, double centerX, DateTime earliest, int totalDays) {
-    // If all nodes are on same day, space them evenly
+    const firstNodeY = 75.0; // Fixed position for first (latest) node
     final allSameDay = totalDays < 2;
     
     for (int i = 0; i < nodes.length; i++) {
       final node = nodes[i];
       final double y;
       
-      if (allSameDay) {
-        // Space nodes evenly across the height
-        final spacing = size.height / (nodes.length + 1);
-        y = spacing * (i + 1);
+      // First node always at fixed position
+      if (i == 0) {
+        y = firstNodeY;
+      } else if (allSameDay) {
+        // Spacing scales with zoom
+        final spacing = 100.0 * math.pow(zoom, 2) * 3.0;
+        y = firstNodeY + (i * spacing);
       } else {
-        y = _dateToY(node.timestamp, earliest, totalDays, size.height);
+        // Position based on days from first node
+        final daysSinceFirst = node.timestamp.difference(earliest).inDays;
+        final pixelsPerDay = 100.0 * math.pow(zoom, 2);
+        y = firstNodeY + (daysSinceFirst * pixelsPerDay);
       }
       
       // All nodes same size - simple and clear

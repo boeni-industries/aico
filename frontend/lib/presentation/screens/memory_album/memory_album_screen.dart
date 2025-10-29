@@ -354,18 +354,20 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
   List<Widget> _buildStoryView(List memories) {
     // Convert memories to journey nodes
     final nodes = memories.map<JourneyNode>((memory) {
+      final isMilestone = _isMilestone(memory, memories);
       return JourneyNode(
         id: memory.memoryId,
         timestamp: memory.createdAt,
         title: _extractTitle(memory),
         preview: _extractPreview(memory),
         isFavorite: memory.isFavorite,
-        isMilestone: _isMilestone(memory, memories),
+        isMilestone: isMilestone,
+        milestoneReason: isMilestone ? _getMilestoneReason(memory, memories) : null,
         revisitCount: 0, // TODO: Track revisit count
         hasNote: memory.userNote != null && memory.userNote!.isNotEmpty,
         color: memory.isConversationMemory 
-            ? MemoryAlbumTheme.gold 
-            : MemoryAlbumTheme.silver,
+            ? Colors.amber 
+            : Colors.white70,
         onTap: () => _openMemoryDetail(memory),
       );
     }).toList();
@@ -433,9 +435,20 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
   
   bool _isMilestone(MemoryEntry memory, List memories) {
     final index = memories.indexOf(memory);
-    // Mark every 10th, 50th, 100th memory as milestone
     final count = memories.length - index;
     return count == 1 || count == 10 || count == 50 || count == 100 || count == 250;
+  }
+  
+  String _getMilestoneReason(MemoryEntry memory, List memories) {
+    final index = memories.indexOf(memory);
+    final count = memories.length - index;
+    
+    if (count == 1) return 'First Memory';
+    if (count == 10) return '10th Memory';
+    if (count == 50) return '50th Memory';
+    if (count == 100) return '100th Memory';
+    if (count == 250) return '250th Memory';
+    return '';
   }
   
   List<JourneyChapter> _detectChapters(List memories) {
