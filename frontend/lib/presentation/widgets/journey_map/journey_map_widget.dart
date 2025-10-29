@@ -127,31 +127,47 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
         
         const SizedBox(height: 16),
         
-        // Interactive journey map
+        // Interactive journey map with overlay
         Expanded(
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            child: SizedBox(
-              width: MediaQuery.of(context).size.width,
-              height: _calculateTimelineHeight(),
-              child: CustomPaint(
-                painter: JourneyMapPainter(
-                  nodes: widget.nodes,
-                  chapters: widget.chapters,
-                  zoom: _currentZoom,
-                  hoveredNode: _hoveredNode,
-                ),
-                child: GestureDetector(
-                  onTapUp: (details) => _handleTap(details.localPosition),
-                  child: Container(color: Colors.transparent),
+          child: Stack(
+            clipBehavior: Clip.none, // Allow overflow
+            children: [
+              // Scrollable timeline
+              SingleChildScrollView(
+                controller: _scrollController,
+                child: MouseRegion(
+                  cursor: _hoveredNode != null 
+                      ? SystemMouseCursors.click 
+                      : SystemMouseCursors.basic,
+                  onHover: (event) => _handleHover(event.localPosition),
+                  onExit: (_) => setState(() => _hoveredNode = null),
+                  child: SizedBox(
+                    width: MediaQuery.of(context).size.width,
+                    height: _calculateTimelineHeight(),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapUp: (details) => _handleTap(details.localPosition),
+                      child: CustomPaint(
+                        painter: JourneyMapPainter(
+                          nodes: widget.nodes,
+                          chapters: widget.chapters,
+                          zoom: _currentZoom,
+                          hoveredNode: _hoveredNode,
+                        ),
+                        size: Size(
+                          MediaQuery.of(context).size.width,
+                          _calculateTimelineHeight(),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
+              // Speech bubble overlay - outside scroll area
+              if (_hoveredNode != null) _buildSpeechBubbleOverlay(),
+            ],
           ),
         ),
-        
-        // Hovered node preview
-        if (_hoveredNode != null) _buildNodePreview(_hoveredNode!),
       ],
     );
   }
@@ -207,6 +223,36 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
             tooltip: 'Zoom in',
           ),
           
+          const SizedBox(width: 24),
+          
+          // Visual legend
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildLegendItem(
+                    Icons.circle,
+                    'Memory',
+                    Colors.white70,
+                  ),
+                  const SizedBox(width: 16),
+                  _buildLegendItem(
+                    Icons.star,
+                    'Starred',
+                    Colors.amber,
+                  ),
+                  const SizedBox(width: 16),
+                  _buildLegendItem(
+                    Icons.stars,
+                    'Milestone',
+                    Colors.amber,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
           const Spacer(),
           
           // Chapter legend
@@ -242,55 +288,92 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
     );
   }
   
-  Widget _buildNodePreview(JourneyNode node) {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: node.color.withValues(alpha: 0.3),
+  Widget _buildLegendItem(IconData icon, String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white60,
+            fontSize: 12,
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              if (node.isMilestone)
-                const Icon(Icons.stars, color: Colors.amber, size: 16),
-              if (node.isFavorite)
-                const Icon(Icons.star, color: Colors.amber, size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  node.title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+      ],
+    );
+  }
+  
+  Widget _buildSpeechBubbleOverlay() {
+    if (_hoveredNode == null) return const SizedBox.shrink();
+    
+    final node = _hoveredNode!;
+    final preview = node.preview ?? node.title;
+    
+    // Limit to 120 characters for more compact display
+    final displayText = preview.length > 120 
+        ? '${preview.substring(0, 120)}...' 
+        : preview;
+    
+    // Calculate position accounting for scroll
+    final nodeY = _getNodeYPosition(node);
+    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final visibleY = nodeY - scrollOffset;
+    
+    return Positioned(
+      left: MediaQuery.of(context).size.width / 2 + 24,
+      top: math.max(10, visibleY - 30), // Adjust for scroll and prevent top cutoff
+      child: IgnorePointer(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: CustomPaint(
+            painter: GlassBubblePainter(
+              accentColor: node.color,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(22, 14, 16, 14),
+              child: Text(
+                displayText,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.95),
+                  fontSize: 13,
+                  height: 1.5,
+                  fontWeight: FontWeight.w400,
+                  letterSpacing: 0.3,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      offset: const Offset(0, 1),
+                      blurRadius: 2,
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-          if (node.preview != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              node.preview!,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 12,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
-          ],
-        ],
+          ),
+        ),
       ),
     );
+  }
+  
+  double _getNodeYPosition(JourneyNode node) {
+    final earliest = widget.nodes.first.timestamp;
+    final latest = widget.nodes.last.timestamp;
+    final totalDays = math.max(1, latest.difference(earliest).inDays);
+    final allSameDay = totalDays < 2;
+    final height = _calculateTimelineHeight();
+    
+    final index = widget.nodes.indexOf(node);
+    if (index == -1) return 0;
+    
+    if (allSameDay) {
+      final spacing = height / (widget.nodes.length + 1);
+      return spacing * (index + 1);
+    } else {
+      final daysSinceStart = node.timestamp.difference(earliest).inDays;
+      return (daysSinceStart / totalDays) * height;
+    }
   }
   
   String _getZoomLevelLabel() {
@@ -340,14 +423,16 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
     return math.max(800, daySpan * pixelsPerDay);
   }
   
-  void _handleTap(Offset position) {
-    // Find node at tap position
+  void _handleHover(Offset position) {
+    // Find node at hover position
     final centerX = MediaQuery.of(context).size.width / 2;
     final earliest = widget.nodes.first.timestamp;
     final latest = widget.nodes.last.timestamp;
     final totalDays = math.max(1, latest.difference(earliest).inDays);
     final allSameDay = totalDays < 2;
     final height = _calculateTimelineHeight();
+    
+    JourneyNode? newHoveredNode;
     
     for (int i = 0; i < widget.nodes.length; i++) {
       final node = widget.nodes[i];
@@ -361,18 +446,66 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
         y = (daysSinceStart / totalDays) * height;
       }
       
-      final nodeSize = node.getSize(12.0);
       final distance = math.sqrt(
         math.pow(position.dx - centerX, 2) + math.pow(position.dy - y, 2)
       );
       
-      if (distance < nodeSize) {
+      // Same radius as tap
+      if (distance < 120) {
+        newHoveredNode = node;
+        break;
+      }
+    }
+    
+    // Only update if hover state changed
+    if (newHoveredNode != _hoveredNode) {
+      setState(() {
+        _hoveredNode = newHoveredNode;
+      });
+    }
+  }
+  
+  void _handleTap(Offset position) {
+    print('Journey Map tapped at: $position');
+    
+    // Find node at tap position
+    final centerX = MediaQuery.of(context).size.width / 2;
+    final earliest = widget.nodes.first.timestamp;
+    final latest = widget.nodes.last.timestamp;
+    final totalDays = math.max(1, latest.difference(earliest).inDays);
+    final allSameDay = totalDays < 2;
+    final height = _calculateTimelineHeight();
+    
+    print('Center X: $centerX, Height: $height, Nodes: ${widget.nodes.length}');
+    
+    for (int i = 0; i < widget.nodes.length; i++) {
+      final node = widget.nodes[i];
+      final double y;
+      
+      if (allSameDay) {
+        final spacing = height / (widget.nodes.length + 1);
+        y = spacing * (i + 1);
+      } else {
+        final daysSinceStart = node.timestamp.difference(earliest).inDays;
+        y = (daysSinceStart / totalDays) * height;
+      }
+      
+      final distance = math.sqrt(
+        math.pow(position.dx - centerX, 2) + math.pow(position.dy - y, 2)
+      );
+      
+      print('Node $i at y=$y, distance=$distance');
+      
+      // Large tap target area - 120px radius to make tapping easier
+      if (distance < 120) {
+        print('Node $i tapped! Opening detail...');
         // Node tapped!
         node.onTap();
         return;
       }
     }
     
+    print('No node tapped');
     // No node tapped, clear hover
     setState(() {
       _hoveredNode = null;
@@ -435,22 +568,39 @@ class JourneyMapPainter extends CustomPainter {
   }
   
   void _drawTimeline(Canvas canvas, Size size, double centerX) {
+    if (nodes.isEmpty) return;
+    
     final paint = Paint()
       ..color = Colors.white.withValues(alpha: 0.2)
       ..strokeWidth = 2.0
       ..style = PaintingStyle.stroke;
     
+    // Calculate first and last node positions
+    final earliest = nodes.first.timestamp;
+    final latest = nodes.last.timestamp;
+    final totalDays = math.max(1, latest.difference(earliest).inDays);
+    final allSameDay = totalDays < 2;
+    
+    double firstY, lastY;
+    
+    if (allSameDay) {
+      final spacing = size.height / (nodes.length + 1);
+      firstY = spacing;
+      lastY = spacing * nodes.length;
+    } else {
+      firstY = _dateToY(nodes.first.timestamp, earliest, totalDays, size.height);
+      lastY = _dateToY(nodes.last.timestamp, earliest, totalDays, size.height);
+    }
+    
+    // Draw line only between first and last nodes
     canvas.drawLine(
-      Offset(centerX, 0),
-      Offset(centerX, size.height),
+      Offset(centerX, firstY),
+      Offset(centerX, lastY),
       paint,
     );
   }
   
   void _drawNodes(Canvas canvas, Size size, double centerX, DateTime earliest, int totalDays) {
-    // Node size is CONSTANT regardless of zoom
-    final baseNodeSize = 12.0;
-    
     // If all nodes are on same day, space them evenly
     final allSameDay = totalDays < 2;
     
@@ -466,37 +616,77 @@ class JourneyMapPainter extends CustomPainter {
         y = _dateToY(node.timestamp, earliest, totalDays, size.height);
       }
       
-      final nodeSize = node.getSize(baseNodeSize);
+      // All nodes same size - simple and clear
+      const nodeRadius = 10.0;
+      final isHovered = hoveredNode?.id == node.id;
       
-      // Node shadow/glow
-      if (node.isFavorite || node.isMilestone) {
+      // Enhanced glow when hovered
+      if (isHovered) {
         final glowPaint = Paint()
-          ..color = node.color.withValues(alpha: 0.4)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
-        canvas.drawCircle(Offset(centerX, y), nodeSize + 4, glowPaint);
+          ..color = node.color.withValues(alpha: 0.6)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16);
+        canvas.drawCircle(Offset(centerX, y), nodeRadius + 8, glowPaint);
       }
       
-      // Node circle
-      final nodePaint = Paint()
-        ..color = node.color
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(Offset(centerX, y), nodeSize / 2, nodePaint);
+      // Soft ambient glow for all nodes
+      final ambientGlow = Paint()
+        ..color = node.color.withValues(alpha: 0.3)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+      canvas.drawCircle(Offset(centerX, y), nodeRadius + 4, ambientGlow);
       
-      // Node border
+      // Node circle with gradient effect
+      final nodePaint = Paint()
+        ..shader = RadialGradient(
+          colors: [
+            node.color.withValues(alpha: 1.0),
+            node.color.withValues(alpha: 0.85),
+          ],
+        ).createShader(Rect.fromCircle(center: Offset(centerX, y), radius: nodeRadius))
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(centerX, y), nodeRadius, nodePaint);
+      
+      // Luminous border
       final borderPaint = Paint()
-        ..color = Colors.white.withValues(alpha: 0.3)
+        ..color = Colors.white.withValues(alpha: 0.4)
         ..strokeWidth = 2.0
         ..style = PaintingStyle.stroke;
-      canvas.drawCircle(Offset(centerX, y), nodeSize / 2, borderPaint);
+      canvas.drawCircle(Offset(centerX, y), nodeRadius, borderPaint);
       
-      // Milestone icon
+      // Star icon for milestones - high contrast
       if (node.isMilestone) {
-        _drawStar(canvas, Offset(centerX, y), nodeSize / 2, Colors.white);
+        // Dark background for contrast
+        final starBgPaint = Paint()
+          ..color = Colors.black.withValues(alpha: 0.5)
+          ..style = PaintingStyle.fill;
+        canvas.drawCircle(Offset(centerX, y), nodeRadius * 0.75, starBgPaint);
+        
+        // Bright star with glow
+        _drawStar(canvas, Offset(centerX, y), nodeRadius * 0.6, Colors.white);
+        
+        // Add subtle glow to star
+        final starGlowPaint = Paint()
+          ..color = Colors.white.withValues(alpha: 0.6)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3)
+          ..style = PaintingStyle.fill;
+        _drawStarPath(canvas, Offset(centerX, y), nodeRadius * 0.6, starGlowPaint);
       }
     }
   }
   
   void _drawStar(Canvas canvas, Offset center, double radius, Color color) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    final path = _createStarPath(center, radius);
+    canvas.drawPath(path, paint);
+  }
+  
+  void _drawStarPath(Canvas canvas, Offset center, double radius, Paint paint) {
+    final path = _createStarPath(center, radius);
+    canvas.drawPath(path, paint);
+  }
+  
+  Path _createStarPath(Offset center, double radius) {
     final path = Path();
     const points = 5;
     const innerRadius = 0.4;
@@ -514,11 +704,7 @@ class JourneyMapPainter extends CustomPainter {
       }
     }
     path.close();
-    
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-    canvas.drawPath(path, paint);
+    return path;
   }
   
   double _dateToY(DateTime date, DateTime earliest, int totalDays, double height) {
@@ -532,4 +718,164 @@ class JourneyMapPainter extends CustomPainter {
         oldDelegate.hoveredNode != hoveredNode ||
         oldDelegate.nodes.length != nodes.length;
   }
+}
+
+/// Glass bubble painter with tail
+class GlassBubblePainter extends CustomPainter {
+  final Color accentColor;
+  
+  GlassBubblePainter({required this.accentColor});
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = _createBubblePath(size);
+    
+    // Shadow layers
+    canvas.drawShadow(
+      path,
+      Colors.black.withValues(alpha: 0.5),
+      12,
+      true,
+    );
+    
+    // Glass fill with gradient
+    final glassPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.white.withValues(alpha: 0.15),
+          Colors.white.withValues(alpha: 0.08),
+        ],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..style = PaintingStyle.fill;
+    
+    canvas.drawPath(path, glassPaint);
+    
+    // Accent glow
+    final glowPaint = Paint()
+      ..color = accentColor.withValues(alpha: 0.12)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20)
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(path, glowPaint);
+    
+    // Border
+    final borderPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawPath(path, borderPaint);
+  }
+  
+  Path _createBubblePath(Size size) {
+    final path = Path();
+    const radius = 16.0;
+    const tailWidth = 12.0;
+    const tailHeight = 10.0;
+    
+    // Start from top-left
+    path.moveTo(tailWidth + radius, 0);
+    
+    // Top-right corner
+    path.lineTo(size.width - radius, 0);
+    path.quadraticBezierTo(size.width, 0, size.width, radius);
+    
+    // Right side
+    path.lineTo(size.width, size.height - radius);
+    
+    // Bottom-right corner
+    path.quadraticBezierTo(size.width, size.height, size.width - radius, size.height);
+    
+    // Bottom side
+    path.lineTo(tailWidth + radius, size.height);
+    
+    // Bottom-left corner
+    path.quadraticBezierTo(tailWidth, size.height, tailWidth, size.height - radius);
+    
+    // Left side with tail
+    final tailTop = size.height / 2 - tailHeight;
+    final tailBottom = size.height / 2 + tailHeight;
+    
+    path.lineTo(tailWidth, tailBottom);
+    path.quadraticBezierTo(tailWidth / 2, size.height / 2 + tailHeight / 2, 0, size.height / 2);
+    path.quadraticBezierTo(tailWidth / 2, size.height / 2 - tailHeight / 2, tailWidth, tailTop);
+    path.lineTo(tailWidth, radius);
+    
+    // Top-left corner
+    path.quadraticBezierTo(tailWidth, 0, tailWidth + radius, 0);
+    
+    path.close();
+    return path;
+  }
+  
+  @override
+  bool shouldRepaint(GlassBubblePainter oldDelegate) => oldDelegate.accentColor != accentColor;
+}
+
+/// Custom clipper for speech bubble with tail
+class SpeechBubbleClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    const radius = 16.0;
+    const tailWidth = 12.0;
+    const tailHeight = 10.0;
+    
+    // Start from top-left, after the tail
+    path.moveTo(tailWidth + radius, 0);
+    
+    // Top-right corner
+    path.lineTo(size.width - radius, 0);
+    path.quadraticBezierTo(
+      size.width, 0,
+      size.width, radius,
+    );
+    
+    // Right side
+    path.lineTo(size.width, size.height - radius);
+    
+    // Bottom-right corner
+    path.quadraticBezierTo(
+      size.width, size.height,
+      size.width - radius, size.height,
+    );
+    
+    // Bottom side
+    path.lineTo(tailWidth + radius, size.height);
+    
+    // Bottom-left corner
+    path.quadraticBezierTo(
+      tailWidth, size.height,
+      tailWidth, size.height - radius,
+    );
+    
+    // Left side with smooth tail pointing left
+    final tailTop = size.height / 2 - tailHeight;
+    final tailBottom = size.height / 2 + tailHeight;
+    
+    path.lineTo(tailWidth, tailBottom);
+    // Smooth curve to tail tip
+    path.quadraticBezierTo(
+      tailWidth / 2, size.height / 2 + tailHeight / 2,
+      0, size.height / 2,
+    );
+    // Smooth curve back from tail tip
+    path.quadraticBezierTo(
+      tailWidth / 2, size.height / 2 - tailHeight / 2,
+      tailWidth, tailTop,
+    );
+    path.lineTo(tailWidth, radius);
+    
+    // Top-left corner
+    path.quadraticBezierTo(
+      tailWidth, 0,
+      tailWidth + radius, 0,
+    );
+    
+    path.close();
+    return path;
+  }
+  
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
 }

@@ -389,8 +389,31 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
   
   String _extractTitle(MemoryEntry memory) {
     final content = memory.conversationSummary ?? memory.content;
-    // Extract first line or first 50 chars
-    final firstLine = content.split('\n').first.trim();
+    
+    // Remove leading/trailing whitespace and newlines
+    final cleaned = content.trim();
+    if (cleaned.isEmpty) return 'Untitled Memory';
+    
+    // Extract first non-empty line
+    final lines = cleaned.split('\n');
+    String firstLine = '';
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isNotEmpty) {
+        firstLine = trimmed;
+        break;
+      }
+    }
+    
+    if (firstLine.isEmpty) return 'Untitled Memory';
+    
+    // If it starts with "You:" or "AICO:", extract the actual content
+    if (firstLine.startsWith('You:')) {
+      firstLine = firstLine.substring(4).trim();
+    } else if (firstLine.startsWith('AICO:')) {
+      firstLine = firstLine.substring(5).trim();
+    }
+    
     return firstLine.length > 50 
         ? '${firstLine.substring(0, 50)}...' 
         : firstLine;
@@ -398,9 +421,14 @@ class _MemoryAlbumScreenState extends ConsumerState<MemoryAlbumScreen> {
   
   String _extractPreview(MemoryEntry memory) {
     final content = memory.conversationSummary ?? memory.content;
-    return content.length > 100 
-        ? '${content.substring(0, 100)}...' 
-        : content;
+    
+    // Remove leading/trailing whitespace
+    final cleaned = content.trim();
+    if (cleaned.isEmpty) return '';
+    
+    return cleaned.length > 100 
+        ? '${cleaned.substring(0, 100)}...' 
+        : cleaned;
   }
   
   bool _isMilestone(MemoryEntry memory, List memories) {
