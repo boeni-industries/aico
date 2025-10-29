@@ -416,16 +416,8 @@ class JourneyMapPainter extends CustomPainter {
   void _drawChapters(Canvas canvas, Size size, double centerX, DateTime earliest, int totalDays) {
     for (final chapter in chapters) {
       final startY = _dateToY(chapter.startDate, earliest, totalDays, size.height);
-      final endY = _dateToY(chapter.endDate, earliest, totalDays, size.height);
       
-      // Chapter background
-      final rect = Rect.fromLTRB(0, startY, size.width, endY);
-      final paint = Paint()
-        ..color = chapter.color.withValues(alpha: 0.05)
-        ..style = PaintingStyle.fill;
-      canvas.drawRect(rect, paint);
-      
-      // Chapter label - CONSTANT SIZE
+      // Chapter label only - no background
       final textPainter = TextPainter(
         text: TextSpan(
           text: '${chapter.emoji} ${chapter.title}',
