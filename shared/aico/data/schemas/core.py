@@ -452,6 +452,52 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             # Note: SQLite doesn't support DROP COLUMN
             # Columns added to facts_metadata will remain
         ]
+    ),
+    
+    8: SchemaVersion(
+        version=8,
+        name="Property Graph Preparation - Cleanup Unused Tables",
+        description="Remove unused tables in preparation for property graph implementation. Keep facts_metadata for migration.",
+        sql_statements=[
+            # Drop unused fact_relationships table (never implemented)
+            "DROP INDEX IF EXISTS idx_fact_relationships_target",
+            "DROP INDEX IF EXISTS idx_fact_relationships_source",
+            "DROP TABLE IF EXISTS fact_relationships",
+            
+            # Drop unused session_metadata table (LMDB coordination never implemented)
+            "DROP INDEX IF EXISTS idx_session_metadata_accessed",
+            "DROP INDEX IF EXISTS idx_session_metadata_user",
+            "DROP TABLE IF EXISTS session_metadata",
+        ],
+        rollback_statements=[
+            # Recreate session_metadata table
+            """CREATE TABLE IF NOT EXISTS session_metadata (
+                session_key TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                last_accessed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                message_count INTEGER DEFAULT 0,
+                context_summary TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_session_metadata_user ON session_metadata(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_session_metadata_accessed ON session_metadata(last_accessed)",
+            
+            # Recreate fact_relationships table
+            """CREATE TABLE IF NOT EXISTS fact_relationships (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_fact_id TEXT NOT NULL,
+                target_fact_id TEXT NOT NULL,
+                relationship_type TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (source_fact_id) REFERENCES facts_metadata(fact_id) ON DELETE CASCADE,
+                FOREIGN KEY (target_fact_id) REFERENCES facts_metadata(fact_id) ON DELETE CASCADE,
+                UNIQUE(source_fact_id, target_fact_id, relationship_type)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_fact_relationships_source ON fact_relationships(source_fact_id)",
+            "CREATE INDEX IF NOT EXISTS idx_fact_relationships_target ON fact_relationships(target_fact_id)",
+        ]
     )
 })
 

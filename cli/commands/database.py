@@ -37,7 +37,16 @@ from aico.core.config import ConfigurationManager
 # Remove shared logging dependency - use CLI-specific logging
 # from aico.core.logging import initialize_cli_logging, get_logger
 
-# Import schemas to ensure they're registered
+# Force fresh import of schemas to avoid bytecode cache issues
+import importlib
+import sys
+
+# Remove schema module from cache if it exists
+schema_modules = [key for key in sys.modules.keys() if key.startswith('aico.data.schemas')]
+for module in schema_modules:
+    del sys.modules[module]
+
+# Now import fresh - this ensures schema changes are always picked up
 import aico.data.schemas.core
 
 # Import shared utilities using the same pattern as other CLI modules
@@ -312,8 +321,13 @@ def init(
             
             # Apply any missing schemas
             console.print("📋 Checking for missing database schemas...")
-            # Import core schema to ensure registration
-            import aico.data.schemas.core
+            # Force fresh import to avoid cache issues
+            import importlib
+            import sys
+            if 'aico.data.schemas.core' in sys.modules:
+                importlib.reload(sys.modules['aico.data.schemas.core'])
+            else:
+                import aico.data.schemas.core
             applied_schemas = SchemaRegistry.apply_core_schemas(conn)
             
             if applied_schemas:
@@ -341,8 +355,13 @@ def init(
             
             # Apply core schemas using schema registry
             console.print("📋 Applying core database schemas...")
-            # Import core schema to ensure registration
-            import aico.data.schemas.core
+            # Force fresh import to avoid cache issues
+            import importlib
+            import sys
+            if 'aico.data.schemas.core' in sys.modules:
+                importlib.reload(sys.modules['aico.data.schemas.core'])
+            else:
+                import aico.data.schemas.core
             applied_schemas = SchemaRegistry.apply_core_schemas(conn)
             
             console.print("✅ [green]Database created successfully![/green]")
