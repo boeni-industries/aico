@@ -60,6 +60,7 @@ from cli.commands.modelservice import app as modelservice_app
 from cli.commands.ollama import app as ollama_app
 from cli.commands.lmdb import app as lmdb_app
 from cli.commands.chroma import app as chroma_app
+from cli.commands.kg import app as kg_app
 from cli.utils.platform import get_platform_chars
 
 # Get platform-appropriate characters
@@ -78,6 +79,7 @@ app.add_typer(version_app, name="version", help=f"{chars['package']} Version and
 app.add_typer(database_app, name="db", help=f"{chars['database']} Database management")
 app.add_typer(lmdb_app, name="lmdb", help=f"{chars['database']} LMDB working memory management")
 app.add_typer(chroma_app, name="chroma", help=f"{chars['database']} ChromaDB semantic memory management")
+app.add_typer(kg_app, name="kg", help="🔗 Knowledge graph management")
 app.add_typer(security_app, name="security", help=f"{chars['security']} Security and encryption")
 app.add_typer(logs_app, name="logs", help=f"{chars['logs']} Log management and analysis")
 app.add_typer(scheduler_app, name="scheduler", help="⏰ Task scheduler management")
@@ -115,6 +117,7 @@ def main(ctx: typer.Context, help: bool = typer.Option(False, "--help", "-h", he
             (chars["database"], "db", "Database initialization, status, and management"),
             (chars["database"], "lmdb", "LMDB working memory management"),
             (chars["database"], "chroma", "ChromaDB semantic memory management"),
+            ("🔗", "kg", "Knowledge graph management and inspection"),
             (chars["security"], "security", "Master password setup and security management"),
             (chars["config"], "config", "Configuration management and validation"),
             (chars["logs"], "logs", "Log management and analysis"),

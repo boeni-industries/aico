@@ -71,6 +71,15 @@ from .working import WorkingMemoryStore
 from .semantic import SemanticMemoryStore
 from .context import ContextAssembler
 
+# Import knowledge graph components
+from aico.ai.knowledge_graph import (
+    PropertyGraphStorage,
+    MultiPassExtractor,
+    EntityResolver,
+    GraphFusion
+)
+from aico.ai.knowledge_graph.modelservice_client import ModelserviceClient
+
 logger = get_logger("shared", "ai.memory.manager")
 
 
@@ -127,6 +136,14 @@ class MemoryManager(BaseAIProcessor):
         
         # Processing components
         self._context_assembler: Optional[ContextAssembler] = None
+        
+        # Knowledge graph components (lazy initialization)
+        self._kg_modelservice: Optional[ModelserviceClient] = None
+        self._kg_storage: Optional[PropertyGraphStorage] = None
+        self._kg_extractor: Optional[MultiPassExtractor] = None
+        self._kg_resolver: Optional[EntityResolver] = None
+        self._kg_fusion: Optional[GraphFusion] = None
+        self._kg_initialized = False
         
         # Configuration following AICO patterns
         self._memory_config = self.config.get("core.memory", {})
@@ -215,6 +232,9 @@ class MemoryManager(BaseAIProcessor):
                 procedural_store=None
             )
             
+            # Initialize knowledge graph components
+            await self._initialize_knowledge_graph()
+            
             self._initialized = True
             logger.info("🧠 [MEMORY_MANAGER] ✅ Memory manager initialized successfully")
             logger.info("Memory manager initialized successfully")
@@ -230,6 +250,74 @@ class MemoryManager(BaseAIProcessor):
             logger.error(f"🚨 [MEMORY_INIT_ERROR] Full stack trace:\n{stack_trace}")
             print(f"🚨 [MEMORY_INIT_ERROR] Full stack trace:\n{stack_trace}")
             raise
+    
+    async def _initialize_knowledge_graph(self) -> None:
+        """Initialize knowledge graph components for structured memory extraction."""
+        try:
+            logger.info("🕸️ [KG] Initializing knowledge graph components...")
+            
+            # Get database connection from working store (reuse existing connection)
+            if not self._working_store:
+                logger.warning("🕸️ [KG] Working store not available, skipping KG initialization")
+                return
+            
+            # Get encrypted database connection
+            from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+            from aico.core.paths import AICOPaths
+            from aico.security import AICOKeyManager
+            
+            # Create encrypted database connection for KG
+            key_manager = AICOKeyManager()
+            master_key = key_manager.authenticate(interactive=False)
+            db_path = AICOPaths.get_database_path()
+            db_key = key_manager.derive_database_key(master_key, "libsql", "aico.db")
+            db_connection = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+            
+            # Get ChromaDB client from semantic store
+            chromadb_client = None
+            if self._semantic_store and hasattr(self._semantic_store, '_chroma_client'):
+                chromadb_client = self._semantic_store._chroma_client
+            else:
+                logger.warning("🕸️ [KG] ChromaDB client not available from semantic store")
+                # Create our own ChromaDB client
+                import chromadb
+                from chromadb.config import Settings
+                chromadb_path = AICOPaths.get_semantic_memory_path()
+                chromadb_client = chromadb.PersistentClient(
+                    path=str(chromadb_path),
+                    settings=Settings(anonymized_telemetry=False, allow_reset=True)
+                )
+            
+            # Initialize modelservice client
+            self._kg_modelservice = ModelserviceClient()
+            await self._kg_modelservice.connect()
+            logger.info("🕸️ [KG] Modelservice client connected")
+            
+            # Initialize storage
+            self._kg_storage = PropertyGraphStorage(db_connection, chromadb_client)
+            logger.info("🕸️ [KG] Storage initialized")
+            
+            # Initialize extraction pipeline
+            self._kg_extractor = MultiPassExtractor(self._kg_modelservice, self.config)
+            logger.info("🕸️ [KG] Extractor initialized")
+            
+            # Initialize entity resolver
+            self._kg_resolver = EntityResolver(self._kg_modelservice, self.config)
+            logger.info("🕸️ [KG] Entity resolver initialized")
+            
+            # Initialize graph fusion
+            self._kg_fusion = GraphFusion(self._kg_modelservice, self.config)
+            logger.info("🕸️ [KG] Graph fusion initialized")
+            
+            self._kg_initialized = True
+            logger.info("🕸️ [KG] ✅ Knowledge graph components initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"🕸️ [KG] ❌ Failed to initialize knowledge graph: {e}")
+            import traceback
+            logger.error(f"🕸️ [KG] Traceback: {traceback.format_exc()}")
+            # Don't fail overall initialization if KG fails
+            self._kg_initialized = False
     async def process(self, context: ProcessingContext) -> ProcessingResult:
         """
         Process memory operations based on context.
@@ -392,6 +480,10 @@ class MemoryManager(BaseAIProcessor):
                     role=role,
                     content=content
                 )
+            
+            # Extract knowledge graph in background (non-blocking)
+            if self._kg_initialized and role == "user":  # Only extract from user messages
+                asyncio.create_task(self._extract_knowledge_graph(user_id, content))
             
             logger.info(f"✅ Stored {role} message in memory")
             return True
@@ -622,3 +714,35 @@ class MemoryManager(BaseAIProcessor):
         except Exception as e:
             logger.error(f"Error during memory manager shutdown: {e}")
             raise
+    
+    async def _extract_knowledge_graph(self, user_id: str, text: str) -> None:
+        """Background knowledge graph extraction from user message."""
+        try:
+            logger.info(f"🕸️ [KG] Starting background extraction for user {user_id}")
+            
+            # 1. Extract entities and relationships
+            new_graph = await self._kg_extractor.extract(text, user_id)
+            logger.info(f"🕸️ [KG] Extracted {len(new_graph.nodes)} nodes, {len(new_graph.edges)} edges")
+            
+            if len(new_graph.nodes) == 0 and len(new_graph.edges) == 0:
+                logger.info("🕸️ [KG] No entities extracted, skipping")
+                return
+            
+            # 2. Resolve entities (deduplicate)
+            existing_nodes = await self._kg_storage.get_user_nodes(user_id, current_only=True)
+            resolved_graph = await self._kg_resolver.resolve(new_graph, user_id, existing_nodes)
+            logger.info(f"🕸️ [KG] Resolved to {len(resolved_graph.nodes)} nodes after deduplication")
+            
+            # 3. Fuse with existing graph
+            existing_graph = await self._kg_storage.get_user_graph(user_id, current_only=True)
+            fused_graph = await self._kg_fusion.fuse(resolved_graph, existing_graph)
+            logger.info(f"🕸️ [KG] Fused graph: {len(fused_graph.nodes)} nodes, {len(fused_graph.edges)} edges")
+            
+            # 4. Save to storage
+            await self._kg_storage.save_graph(fused_graph)
+            logger.info(f"🕸️ [KG] ✅ Knowledge graph saved successfully")
+            
+        except Exception as e:
+            logger.error(f"🕸️ [KG] ❌ Background extraction failed: {e}")
+            import traceback
+            logger.error(f"🕸️ [KG] Traceback: {traceback.format_exc()}")

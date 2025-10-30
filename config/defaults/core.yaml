@@ -328,5 +328,16 @@ memory:
     # Weighted fusion (legacy, used if fusion_method="weighted")
     semantic_weight: 0.7  # Weight for semantic similarity (0-1)
     bm25_weight: 0.3  # Weight for BM25 keyword matching (0-1)
+    
+    # Knowledge Graph configuration (Property Graph for structured memory)
+    knowledge_graph:
+      max_gleanings: 2  # Number of gleaning passes for completeness (0-2 recommended, 2 = 90%+ recall)
+      llm_timeout_seconds: 30.0  # Timeout for LLM operations (relation extraction, entity matching)
+      
+      # Entity resolution (deduplication) settings
+      entity_resolution:
+        similarity_threshold: 0.85  # Cosine similarity threshold for semantic blocking (0-1, higher = stricter)
+        use_llm_matching: true  # Use LLM (Eve) for entity matching with chain-of-thought reasoning
+        use_llm_merging: true  # Use LLM (Eve) for entity merging with conflict resolution
 
 # AI Processing Configuration
