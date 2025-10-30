@@ -47,6 +47,8 @@ from .storage import PropertyGraphStorage
 from .extractor import MultiPassExtractor
 from .entity_resolution import EntityResolver
 from .fusion import GraphFusion
+from .query import GraphQueryEngine
+from .analytics import GraphAnalytics
 
 __all__ = [
     # Data models
@@ -54,9 +56,13 @@ __all__ = [
     "Edge", 
     "PropertyGraph",
     
-    # Core components
+    # Core components (Phase 1)
     "PropertyGraphStorage",
     "MultiPassExtractor",
     "EntityResolver",
     "GraphFusion",
+    
+    # Advanced features (Phase 2)
+    "GraphQueryEngine",
+    "GraphAnalytics",
 ]
