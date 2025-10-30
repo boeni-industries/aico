@@ -445,25 +445,12 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
   void _handleHover(Offset position) {
     // Find node at hover position
     final centerX = MediaQuery.of(context).size.width / 2;
-    final earliest = widget.nodes.first.timestamp;
-    final latest = widget.nodes.last.timestamp;
-    final totalDays = math.max(1, latest.difference(earliest).inDays);
-    final allSameDay = totalDays < 2;
-    final height = _calculateTimelineHeight();
     
     JourneyNode? newHoveredNode;
     
-    for (int i = 0; i < widget.nodes.length; i++) {
-      final node = widget.nodes[i];
-      final double y;
-      
-      if (allSameDay) {
-        final spacing = height / (widget.nodes.length + 1);
-        y = spacing * (i + 1);
-      } else {
-        final daysSinceStart = node.timestamp.difference(earliest).inDays;
-        y = (daysSinceStart / totalDays) * height;
-      }
+    for (final node in widget.nodes) {
+      // Use same positioning logic as painter
+      final y = _getNodeYPosition(node);
       
       final distance = math.sqrt(
         math.pow(position.dx - centerX, 2) + math.pow(position.dy - y, 2)
@@ -489,25 +476,11 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
     
     // Find node at tap position
     final centerX = MediaQuery.of(context).size.width / 2;
-    final earliest = widget.nodes.first.timestamp;
-    final latest = widget.nodes.last.timestamp;
-    final totalDays = math.max(1, latest.difference(earliest).inDays);
-    final allSameDay = totalDays < 2;
-    final height = _calculateTimelineHeight();
-    
-    print('Center X: $centerX, Height: $height, Nodes: ${widget.nodes.length}');
     
     for (int i = 0; i < widget.nodes.length; i++) {
       final node = widget.nodes[i];
-      final double y;
-      
-      if (allSameDay) {
-        final spacing = height / (widget.nodes.length + 1);
-        y = spacing * (i + 1);
-      } else {
-        final daysSinceStart = node.timestamp.difference(earliest).inDays;
-        y = (daysSinceStart / totalDays) * height;
-      }
+      // Use same positioning logic as painter
+      final y = _getNodeYPosition(node);
       
       final distance = math.sqrt(
         math.pow(position.dx - centerX, 2) + math.pow(position.dy - y, 2)
