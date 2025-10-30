@@ -498,6 +498,149 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "CREATE INDEX IF NOT EXISTS idx_fact_relationships_source ON fact_relationships(source_fact_id)",
             "CREATE INDEX IF NOT EXISTS idx_fact_relationships_target ON fact_relationships(target_fact_id)",
         ]
+    ),
+    
+    9: SchemaVersion(
+        version=9,
+        name="Property Graph Foundation",
+        description="Add knowledge graph tables for structured entity and relationship storage with automatic property indexing",
+        sql_statements=[
+            # Nodes table - entities with typed properties
+            """CREATE TABLE IF NOT EXISTS kg_nodes (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                label TEXT NOT NULL,
+                properties JSON NOT NULL,
+                confidence REAL NOT NULL,
+                source_text TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            
+            # Edges table - relationships with typed properties
+            """CREATE TABLE IF NOT EXISTS kg_edges (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                target_id TEXT NOT NULL,
+                relation_type TEXT NOT NULL,
+                properties JSON NOT NULL,
+                confidence REAL NOT NULL,
+                source_text TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (source_id) REFERENCES kg_nodes(id) ON DELETE CASCADE,
+                FOREIGN KEY (target_id) REFERENCES kg_nodes(id) ON DELETE CASCADE
+            )""",
+            
+            # Node property index - denormalized for fast property queries
+            """CREATE TABLE IF NOT EXISTS kg_node_properties (
+                node_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                PRIMARY KEY (node_id, key, value),
+                FOREIGN KEY (node_id) REFERENCES kg_nodes(id) ON DELETE CASCADE
+            )""",
+            
+            # Edge property index - denormalized for fast property queries
+            """CREATE TABLE IF NOT EXISTS kg_edge_properties (
+                edge_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                PRIMARY KEY (edge_id, key, value),
+                FOREIGN KEY (edge_id) REFERENCES kg_edges(id) ON DELETE CASCADE
+            )""",
+            
+            # Indexes for performance
+            "CREATE INDEX IF NOT EXISTS idx_kg_nodes_user_label ON kg_nodes(user_id, label)",
+            "CREATE INDEX IF NOT EXISTS idx_kg_nodes_user_created ON kg_nodes(user_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_kg_edges_source ON kg_edges(source_id)",
+            "CREATE INDEX IF NOT EXISTS idx_kg_edges_target ON kg_edges(target_id)",
+            "CREATE INDEX IF NOT EXISTS idx_kg_edges_user_relation ON kg_edges(user_id, relation_type)",
+            "CREATE INDEX IF NOT EXISTS idx_kg_node_properties_kv ON kg_node_properties(key, value)",
+            "CREATE INDEX IF NOT EXISTS idx_kg_edge_properties_kv ON kg_edge_properties(key, value)",
+            
+            # Triggers for automatic property index synchronization
+            # Node property sync - INSERT
+            """CREATE TRIGGER IF NOT EXISTS sync_node_properties_insert
+            AFTER INSERT ON kg_nodes
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO kg_node_properties (node_id, key, value)
+                SELECT NEW.id, key, value FROM json_each(NEW.properties);
+            END""",
+            
+            # Node property sync - UPDATE
+            """CREATE TRIGGER IF NOT EXISTS sync_node_properties_update
+            AFTER UPDATE OF properties ON kg_nodes
+            FOR EACH ROW
+            BEGIN
+                DELETE FROM kg_node_properties WHERE node_id = NEW.id;
+                INSERT INTO kg_node_properties (node_id, key, value)
+                SELECT NEW.id, key, value FROM json_each(NEW.properties);
+            END""",
+            
+            # Node property sync - DELETE
+            """CREATE TRIGGER IF NOT EXISTS sync_node_properties_delete
+            AFTER DELETE ON kg_nodes
+            FOR EACH ROW
+            BEGIN
+                DELETE FROM kg_node_properties WHERE node_id = OLD.id;
+            END""",
+            
+            # Edge property sync - INSERT
+            """CREATE TRIGGER IF NOT EXISTS sync_edge_properties_insert
+            AFTER INSERT ON kg_edges
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO kg_edge_properties (edge_id, key, value)
+                SELECT NEW.id, key, value FROM json_each(NEW.properties);
+            END""",
+            
+            # Edge property sync - UPDATE
+            """CREATE TRIGGER IF NOT EXISTS sync_edge_properties_update
+            AFTER UPDATE OF properties ON kg_edges
+            FOR EACH ROW
+            BEGIN
+                DELETE FROM kg_edge_properties WHERE edge_id = NEW.id;
+                INSERT INTO kg_edge_properties (edge_id, key, value)
+                SELECT NEW.id, key, value FROM json_each(NEW.properties);
+            END""",
+            
+            # Edge property sync - DELETE
+            """CREATE TRIGGER IF NOT EXISTS sync_edge_properties_delete
+            AFTER DELETE ON kg_edges
+            FOR EACH ROW
+            BEGIN
+                DELETE FROM kg_edge_properties WHERE edge_id = OLD.id;
+            END""",
+        ],
+        rollback_statements=[
+            # Drop triggers
+            "DROP TRIGGER IF EXISTS sync_edge_properties_delete",
+            "DROP TRIGGER IF EXISTS sync_edge_properties_update",
+            "DROP TRIGGER IF EXISTS sync_edge_properties_insert",
+            "DROP TRIGGER IF EXISTS sync_node_properties_delete",
+            "DROP TRIGGER IF EXISTS sync_node_properties_update",
+            "DROP TRIGGER IF EXISTS sync_node_properties_insert",
+            
+            # Drop indexes
+            "DROP INDEX IF EXISTS idx_kg_edge_properties_kv",
+            "DROP INDEX IF EXISTS idx_kg_node_properties_kv",
+            "DROP INDEX IF EXISTS idx_kg_edges_user_relation",
+            "DROP INDEX IF EXISTS idx_kg_edges_target",
+            "DROP INDEX IF EXISTS idx_kg_edges_source",
+            "DROP INDEX IF EXISTS idx_kg_nodes_user_created",
+            "DROP INDEX IF EXISTS idx_kg_nodes_user_label",
+            
+            # Drop tables
+            "DROP TABLE IF EXISTS kg_edge_properties",
+            "DROP TABLE IF EXISTS kg_node_properties",
+            "DROP TABLE IF EXISTS kg_edges",
+            "DROP TABLE IF EXISTS kg_nodes",
+        ]
     )
 })
 
