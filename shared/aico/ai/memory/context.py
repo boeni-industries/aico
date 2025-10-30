@@ -1,5 +1,27 @@
 """
-AICO Memory Context Assembler
+⚠️⚠️⚠️ DEPRECATED - DO NOT USE ⚠️⚠️⚠️
+
+THIS FILE IS DEPRECATED AND WILL BE REMOVED!
+
+Use the new modular structure instead:
+    from aico.ai.memory.context import ContextAssembler, ContextItem
+
+New structure location:
+    /shared/aico/ai/memory/context/
+    ├── __init__.py
+    ├── models.py
+    ├── assembler.py
+    ├── retrievers.py
+    ├── scorers.py
+    └── graph_ranking.py
+
+TODO: Remove this file once all imports are verified to work with new structure.
+
+⚠️⚠️⚠️ DEPRECATED - DO NOT USE ⚠️⚠️⚠️
+
+================================================================================
+
+AICO Memory Context Assembler (LEGACY - DEPRECATED)
 
 This module provides intelligent cross-tier memory context assembly for AI processing,
 coordinating retrieval and scoring of relevant information from working, episodic, 
@@ -56,10 +78,20 @@ import asyncio
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
+import warnings
 
 from aico.core.logging import get_logger
 
 logger = get_logger("ai", "memory.context")
+
+# ⚠️ DEPRECATION WARNING ⚠️
+warnings.warn(
+    "⚠️⚠️⚠️ DEPRECATED: aico.ai.memory.context.py is deprecated! "
+    "Use 'from aico.ai.memory.context import ContextAssembler' instead. "
+    "This file will be removed in a future version. ⚠️⚠️⚠️",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 
 @dataclass
