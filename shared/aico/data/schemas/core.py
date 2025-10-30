@@ -641,6 +641,54 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP TABLE IF EXISTS kg_edges",
             "DROP TABLE IF EXISTS kg_nodes",
         ]
+    ),
+    
+    10: SchemaVersion(
+        version=10,
+        name="Knowledge Graph Phase 1.5 - Temporal Model & Personal Graph Support",
+        description="Add bi-temporal tracking, entity disambiguation, and indexes for personal graph and temporal reasoning",
+        sql_statements=[
+            # Temporal fields for nodes - track when facts are valid (event time) vs recorded (ingestion time)
+            "ALTER TABLE kg_nodes ADD COLUMN valid_from TEXT",
+            "ALTER TABLE kg_nodes ADD COLUMN valid_until TEXT",
+            "ALTER TABLE kg_nodes ADD COLUMN is_current INTEGER DEFAULT 1",
+            
+            # Temporal fields for edges
+            "ALTER TABLE kg_edges ADD COLUMN valid_from TEXT",
+            "ALTER TABLE kg_edges ADD COLUMN valid_until TEXT", 
+            "ALTER TABLE kg_edges ADD COLUMN is_current INTEGER DEFAULT 1",
+            
+            # Entity disambiguation fields for nodes
+            "ALTER TABLE kg_nodes ADD COLUMN canonical_id TEXT",
+            "ALTER TABLE kg_nodes ADD COLUMN aliases_json TEXT",
+            
+            # Temporal indexes for point-in-time queries and current fact filtering
+            "CREATE INDEX IF NOT EXISTS idx_kg_nodes_temporal ON kg_nodes(user_id, is_current, valid_from)",
+            "CREATE INDEX IF NOT EXISTS idx_kg_edges_temporal ON kg_edges(user_id, is_current, valid_from)",
+            
+            # Canonical ID index for entity disambiguation
+            "CREATE INDEX IF NOT EXISTS idx_kg_nodes_canonical ON kg_nodes(canonical_id)",
+            
+            # Label-specific indexes for personal graph queries
+            # These enable fast queries like "Get all user's active projects" or "Find all goals"
+            "CREATE INDEX IF NOT EXISTS idx_kg_nodes_label_user ON kg_nodes(user_id, label, is_current)",
+            
+            # Relation type index for personal graph traversal
+            # Enables fast queries like "Find all WORKING_ON relationships" or "Get task dependencies"
+            "CREATE INDEX IF NOT EXISTS idx_kg_edges_relation_user ON kg_edges(user_id, relation_type, is_current)",
+        ],
+        rollback_statements=[
+            # Drop indexes
+            "DROP INDEX IF EXISTS idx_kg_edges_relation_user",
+            "DROP INDEX IF EXISTS idx_kg_nodes_label_user",
+            "DROP INDEX IF EXISTS idx_kg_nodes_canonical",
+            "DROP INDEX IF EXISTS idx_kg_edges_temporal",
+            "DROP INDEX IF EXISTS idx_kg_nodes_temporal",
+            
+            # Note: SQLite doesn't support DROP COLUMN
+            # Columns added to kg_nodes and kg_edges will remain after rollback
+            # This is acceptable as they will be NULL and unused
+        ]
     )
 })
 

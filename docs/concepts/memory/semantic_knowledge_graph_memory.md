@@ -972,11 +972,471 @@ core:
 
 ### Future Enhancements
 
-- **Graph Algorithms**: Implement path finding, centrality measures, community detection
-- **Temporal Reasoning**: Add time-based relationship analysis
-- **Multi-hop Queries**: Enable complex relationship traversal
-- **Graph Visualization**: Add tools for exploring knowledge relationships
-- **Performance Optimization**: Implement graph indexing and caching strategies
+#### **Priority 1: Critical Additions (Phase 1.5)**
+
+##### **1. Temporal/Bi-Temporal Data Model** ⭐ **HIGH PRIORITY**
+
+**Problem:** Current schema only tracks when facts were recorded (`created_at`, `updated_at`), not when they were valid in real life.
+
+**Why Critical:**
+- **Relationship evolution:** "Sarah was my girlfriend" → "Sarah is my wife" (temporal validity)
+- **Historical context:** "What was I working on last month?" requires point-in-time queries
+- **Autonomous agency:** Planning requires understanding temporal sequences
+- **Emotional memory:** "How did I feel about X over time?" needs temporal tracking
+
+**Implementation:**
+
+Add indexed temporal fields to tables:
+```sql
+ALTER TABLE kg_nodes ADD COLUMN valid_from TEXT;
+ALTER TABLE kg_nodes ADD COLUMN valid_until TEXT;
+ALTER TABLE kg_nodes ADD COLUMN is_current INTEGER DEFAULT 1;
+
+ALTER TABLE kg_edges ADD COLUMN valid_from TEXT;
+ALTER TABLE kg_edges ADD COLUMN valid_until TEXT;
+ALTER TABLE kg_edges ADD COLUMN is_current INTEGER DEFAULT 1;
+
+-- Indexes for temporal queries
+CREATE INDEX idx_kg_nodes_temporal ON kg_nodes(user_id, is_current, valid_from);
+CREATE INDEX idx_kg_edges_temporal ON kg_edges(user_id, is_current, valid_from);
+```
+
+Property conventions (stored in JSON `properties` field):
+```yaml
+temporal:
+  valid_from: "2024-01-01T00:00:00Z"    # When fact became true (event time)
+  valid_until: "2025-12-31T23:59:59Z"   # When fact stopped being true (null = current)
+  recorded_at: "2024-01-15T10:30:00Z"   # When AICO learned about it (ingestion time)
+  is_current: true                       # Quick filter for active facts
+```
+
+**Benefits:**
+- Point-in-time queries: "Show my relationships as of 6 months ago"
+- Temporal reasoning: "What changed since last week?"
+- Real-time incremental updates without batch reprocessing
+- Foundation for autonomous agency temporal planning
+
+**Research Basis:** Graphiti/Zep's bi-temporal model (2025) - state-of-the-art for agent memory
+
+---
+
+##### **2. Personal Graph Layer** ⭐ **HIGH PRIORITY**
+
+**Problem:** Current proposal focuses on knowledge graph (facts about the world) but lacks personal graph (user's activities, projects, goals).
+
+**Why Critical:**
+- **Autonomous agency:** Requires understanding user's active projects, priorities, goals
+- **Proactive engagement:** "You mentioned wanting to learn piano—here's a practice reminder"
+- **Context assembly:** "What am I currently working on?" needs activity tracking
+- **Relationship intelligence:** Collaboration patterns, interaction frequency
+
+**Implementation:**
+
+New node labels (use existing `kg_nodes.label` field):
+```python
+# Personal graph entities
+- PROJECT: User's active projects
+- GOAL: User's objectives (short/long-term)
+- TASK: Actionable items
+- ACTIVITY: User actions (created doc, attended meeting, etc.)
+- INTEREST: User's developing interests
+- PRIORITY: User's current priorities
+```
+
+New edge types (use existing `kg_edges.relation_type` field):
+```python
+# Personal graph relationships
+- WORKING_ON: User → Project
+- HAS_GOAL: User → Goal
+- CONTRIBUTES_TO: Task → Goal
+- DEPENDS_ON: Task → Task (dependencies)
+- COLLABORATES_WITH: User → Person (on Project)
+- INTERESTED_IN: User → Topic
+- PRIORITIZES: User → Priority
+```
+
+Property conventions for personal graph:
+```yaml
+# Project properties
+project:
+  status: "active"                       # active/paused/completed
+  progress: 0.6                          # Float 0-1
+  deadline: "2025-12-31T23:59:59Z"      # Target completion
+  priority: 1                            # Int 1-5 (1=highest)
+  
+# Goal properties
+goal:
+  type: "short_term"                     # short_term/long_term
+  status: "in_progress"                  # pending/in_progress/achieved/abandoned
+  motivation: "personal_growth"          # Why user wants this
+  
+# Activity properties
+activity:
+  activity_type: "document_created"      # Type of activity
+  timestamp: "2025-10-30T10:00:00Z"     # When activity occurred
+  duration_minutes: 45                   # How long it took
+  context: "work"                        # work/personal/learning
+```
+
+**Benefits:**
+- Proactive assistance: Surface priorities, detect conflicts
+- Collaboration pattern detection
+- Personalized context assembly
+- Foundation for autonomous goal generation
+
+**Research Basis:** Glean's Personal Graph (2025) - activity tracking + LLM reasoning for work context
+
+---
+
+##### **3. Graph Traversal & Multi-Hop Reasoning** ⭐ **MEDIUM PRIORITY**
+
+**Problem:** Current proposal has basic CRUD but lacks graph traversal algorithms for multi-hop queries.
+
+**Why Critical:**
+- **Context assembly:** "Find all information related to Sarah's piano recital" (multi-hop)
+- **Relationship intelligence:** "How do I know John?" (path finding)
+- **Autonomous agency:** "What dependencies block this goal?" (dependency chains)
+
+**Implementation:**
+
+Add to `aico/ai/knowledge_graph/query.py`:
+```python
+async def traverse(
+    start_node: str,
+    relation_types: List[str],
+    max_depth: int = 3,
+    filters: Dict = None
+) -> PropertyGraph:
+    """Multi-hop graph traversal with filtering
+    
+    Example: Find all entities connected to "Sarah" within 2 hops
+    via KNOWS or FAMILY_MEMBER relationships
+    """
+    
+async def find_path(
+    source: str,
+    target: str,
+    max_depth: int = 5
+) -> List[Path]:
+    """Find shortest paths between entities
+    
+    Example: "How do I know John?" → User → Sarah → John
+    """
+    
+async def get_neighborhood(
+    node_id: str,
+    depth: int = 2,
+    relation_filter: List[str] = None
+) -> PropertyGraph:
+    """Get local subgraph around entity
+    
+    Example: Get all entities within 2 hops of "piano_recital" event
+    """
+
+async def find_dependencies(
+    node_id: str,
+    relation_type: str = "DEPENDS_ON"
+) -> List[Node]:
+    """Find dependency chains for tasks/goals
+    
+    Example: "What blocks this goal?" → Task1 → Task2 → Task3
+    """
+```
+
+**SQL Implementation:**
+```sql
+-- Recursive CTE for graph traversal (libSQL supports this)
+WITH RECURSIVE graph_traversal(node_id, depth, path) AS (
+    SELECT id, 0, id FROM kg_nodes WHERE id = ?
+    UNION ALL
+    SELECT e.target_id, gt.depth + 1, gt.path || ',' || e.target_id
+    FROM graph_traversal gt
+    JOIN kg_edges e ON gt.node_id = e.source_id
+    WHERE gt.depth < ? AND e.relation_type IN (?)
+)
+SELECT DISTINCT node_id FROM graph_traversal;
+```
+
+**Benefits:**
+- Rich context retrieval with relationship awareness
+- Path finding for relationship intelligence
+- Dependency analysis for autonomous agency
+- Foundation for complex reasoning
+
+---
+
+#### **Priority 2: Important Enhancements (Phase 2)**
+
+##### **4. Graph-Based Context Ranking** ⭐ **MEDIUM PRIORITY**
+
+**Problem:** Current proposal uses semantic similarity for retrieval but doesn't leverage graph structure for ranking.
+
+**Why Important:**
+- **Better context:** Entities with more connections are more central/important
+- **Relationship-aware retrieval:** "Sarah" (close friend) ranks higher than "Sarah" (mentioned once)
+- **Temporal relevance:** Recent facts rank higher than old facts
+
+**Implementation:**
+
+Add graph metrics to nodes:
+```python
+# Computed metrics (stored in properties JSON or separate fields)
+graph_metrics:
+  degree_centrality: 0.85              # How many connections? (0-1)
+  temporal_recency: 0.92               # How recently discussed? (0-1)
+  interaction_frequency: 45            # How often mentioned? (count)
+  emotional_salience: 0.75             # Emotional intensity (0-1)
+  importance_score: 0.87               # Combined importance (0-1)
+```
+
+Context ranking algorithm:
+```python
+def rank_context(nodes: List[Node], query: str) -> List[Node]:
+    """Rank retrieved nodes by combined score"""
+    for node in nodes:
+        semantic_sim = compute_similarity(query, node.embedding)
+        graph_centrality = node.properties.get('graph_metrics', {}).get('degree_centrality', 0)
+        temporal_recency = compute_recency(node.updated_at)
+        emotional_salience = node.properties.get('graph_metrics', {}).get('emotional_salience', 0)
+        
+        # Weighted combination
+        node.context_score = (
+            0.4 * semantic_sim +
+            0.3 * graph_centrality +
+            0.2 * temporal_recency +
+            0.1 * emotional_salience
+        )
+    
+    return sorted(nodes, key=lambda n: n.context_score, reverse=True)
+```
+
+**Benefits:**
+- More relevant context retrieval
+- Relationship-aware ranking
+- Temporal and emotional awareness
+- Better than pure semantic similarity
+
+---
+
+##### **5. Entity Disambiguation & Canonical IDs** ⭐ **MEDIUM PRIORITY**
+
+**Problem:** Entity resolution merges duplicates but doesn't maintain canonical entity IDs for disambiguation.
+
+**Why Important:**
+- **Multi-modal recognition:** Voice says "Sarah" → Which Sarah? (use graph context)
+- **Relationship intelligence:** "Sarah" (daughter) vs "Sarah" (colleague)
+- **Cross-conversation consistency:** Same entity across sessions
+
+**Implementation:**
+
+Add to `kg_nodes` table:
+```sql
+ALTER TABLE kg_nodes ADD COLUMN canonical_id TEXT;
+ALTER TABLE kg_nodes ADD COLUMN aliases_json TEXT;  -- ["SF", "San Francisco", "The City"]
+CREATE INDEX idx_kg_nodes_canonical ON kg_nodes(canonical_id);
+```
+
+Property conventions:
+```yaml
+disambiguation:
+  canonical_id: "person_sarah_001"       # Stable ID across merges
+  aliases: ["Sarah", "Sarah M.", "Mom"]  # Known variations
+  disambiguation_context:
+    relationship: "daughter"              # How related to user
+    age: 8                                # Disambiguating attribute
+    primary_context: "family"            # Main context for this entity
+```
+
+Entity resolution enhancement:
+```python
+async def resolve_entity(
+    mention: str,
+    context: Dict
+) -> Node:
+    """Resolve ambiguous entity mention using graph context
+    
+    Example: "Sarah" + context{"conversation_topic": "piano"} 
+             → Sarah (daughter) not Sarah (colleague)
+    """
+    candidates = await search_nodes(mention)
+    if len(candidates) == 1:
+        return candidates[0]
+    
+    # Use graph context for disambiguation
+    for candidate in candidates:
+        score = compute_context_match(candidate, context)
+        candidate.disambiguation_score = score
+    
+    return max(candidates, key=lambda c: c.disambiguation_score)
+```
+
+**Benefits:**
+- Accurate entity resolution in conversations
+- Multi-modal recognition support
+- Cross-session consistency
+- Foundation for relationship intelligence
+
+---
+
+##### **6. Conflict Resolution & Fact Versioning** ⭐ **LOW PRIORITY**
+
+**Problem:** Current fusion has conflict resolution but no version history for facts.
+
+**Why Useful:**
+- **Debugging:** "Why does AICO think I live in SF?" (trace fact provenance)
+- **Correction:** "Actually, I moved to NYC" (update with history)
+- **Trust:** Show users how facts evolved over time
+- **Audit trail:** Track how knowledge changed
+
+**Implementation:**
+
+Add optional history table:
+```sql
+CREATE TABLE IF NOT EXISTS kg_node_history (
+    id TEXT PRIMARY KEY,
+    node_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    properties JSON NOT NULL,
+    valid_from TEXT NOT NULL,
+    valid_until TEXT,
+    created_at TEXT NOT NULL,
+    change_reason TEXT,  -- "user_correction", "conflict_resolution", "new_information"
+    FOREIGN KEY (node_id) REFERENCES kg_nodes(id) ON DELETE CASCADE,
+    INDEX idx_node_history_node (node_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS kg_edge_history (
+    id TEXT PRIMARY KEY,
+    edge_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    properties JSON NOT NULL,
+    valid_from TEXT NOT NULL,
+    valid_until TEXT,
+    created_at TEXT NOT NULL,
+    change_reason TEXT,
+    FOREIGN KEY (edge_id) REFERENCES kg_edges(id) ON DELETE CASCADE,
+    INDEX idx_edge_history_edge (edge_id, version)
+);
+```
+
+Versioning logic:
+```python
+async def update_node_with_history(
+    node_id: str,
+    new_properties: Dict,
+    change_reason: str
+):
+    """Update node and preserve history"""
+    # Get current version
+    current = await get_node(node_id)
+    
+    # Archive current version
+    await archive_node_version(
+        node_id=node_id,
+        version=current.version,
+        properties=current.properties,
+        change_reason=change_reason
+    )
+    
+    # Update to new version
+    await update_node(node_id, new_properties, version=current.version + 1)
+```
+
+**Benefits:**
+- Fact provenance tracking
+- User trust through transparency
+- Debugging and correction support
+- Audit trail for compliance
+
+---
+
+#### **Priority 3: Advanced Features (Phase 3)**
+
+##### **7. Graph Analytics & Insights** ⭐ **LOW PRIORITY**
+
+**Problem:** No graph algorithms for discovering patterns and insights.
+
+**Why Useful:**
+- **Autonomous agency:** Detect emerging interests, suggest goals
+- **Relationship intelligence:** Identify relationship clusters, detect drift
+- **Proactive engagement:** "You haven't talked to John in 3 months"
+- **Self-awareness:** Help user understand their own patterns
+
+**Implementation:**
+
+Add analytics module `aico/ai/knowledge_graph/analytics.py`:
+```python
+async def detect_communities(
+    user_id: str
+) -> List[Community]:
+    """Identify relationship clusters using community detection
+    
+    Example: Family cluster, work cluster, hobby cluster
+    """
+
+async def compute_centrality(
+    user_id: str,
+    metric: str = "degree"  # degree, betweenness, closeness
+) -> Dict[str, float]:
+    """Compute node importance using centrality measures
+    
+    Example: Most important people, topics, projects
+    """
+
+async def detect_anomalies(
+    user_id: str,
+    time_window: str = "7d"
+) -> List[Anomaly]:
+    """Detect unusual patterns in user's graph
+    
+    Example: Sudden drop in communication with close friend
+    """
+
+async def analyze_trends(
+    user_id: str,
+    entity_type: str = "INTEREST"
+) -> List[Trend]:
+    """Analyze emerging or declining patterns
+    
+    Example: Growing interest in photography, declining interest in gaming
+    """
+
+async def suggest_goals(
+    user_id: str
+) -> List[Goal]:
+    """Generate goal suggestions based on graph patterns
+    
+    Example: User talks about learning piano → Suggest "Learn piano" goal
+    """
+```
+
+**Benefits:**
+- Proactive goal suggestions
+- Relationship health monitoring
+- Pattern discovery and insights
+- Foundation for true autonomous agency
+
+---
+
+### Summary: Enhancement Priorities
+
+**Phase 1.5 (Critical - Add to MVP):**
+1. ✅ Temporal/bi-temporal data model (HIGH)
+2. ✅ Personal graph layer (HIGH)
+3. ✅ Graph traversal & multi-hop reasoning (MEDIUM)
+
+**Phase 2 (Important - Post-MVP):**
+4. Graph-based context ranking (MEDIUM)
+5. Entity disambiguation & canonical IDs (MEDIUM)
+6. Conflict resolution & fact versioning (LOW)
+
+**Phase 3 (Advanced - Future):**
+7. Graph analytics & insights (LOW)
+
+**Research Foundation:**
+- **Graphiti/Zep (2025):** Bi-temporal knowledge graphs for agent memory (state-of-the-art)
+- **Glean Personal Graph (2025):** Activity tracking + LLM reasoning for work context
+- **Industry Best Practices:** Multi-hop reasoning, graph-based ranking, entity disambiguation
 
 ## Coreference Resolution Optimizations for Property Graph
 
