@@ -775,13 +775,54 @@ class ConversationEngine(BaseService):
             memory_data = memory_context.get("memory_context", {})
             user_facts = memory_data.get("user_facts", [])
             recent_context = memory_data.get("recent_context", [])
+            kg_data = memory_context.get("knowledge_graph", {})
             
             self.logger.debug(f"Building system prompt: {len(user_facts)} facts, {len(recent_context)} messages")
+            
+            # Add knowledge graph context (entities and relationships)
+            print(f"🔍 [PROMPT_DEBUG] kg_data type: {type(kg_data)}, content: {kg_data}")
+            if kg_data:
+                entities = kg_data.get("entities", [])
+                relationships = kg_data.get("relationships", [])
+                print(f"🔍 [PROMPT_DEBUG] Found {len(entities)} entities, {len(relationships)} relationships")
+                
+                if entities or relationships:
+                    kg_parts = []
+                    
+                    # Find PERSON entities to identify the user
+                    person_entities = [e for e in entities if e.get('type') == 'PERSON']
+                    user_names = set()
+                    if person_entities:
+                        # Collect all PERSON entity names as potential user identities
+                        user_names = {e.get('name') for e in person_entities}
+                        # Use the highest confidence PERSON as primary user identity
+                        user_entity = max(person_entities, key=lambda e: e.get('confidence', 0))
+                        user_name = user_entity.get('name')
+                        kg_parts.append(f"The user's name is {user_name}.")
+                    
+                    if relationships:
+                        # Format relationships, replacing PERSON entities with "the user"
+                        rel_lines = []
+                        for r in relationships:
+                            source = r['source']
+                            target = r['target']
+                            
+                            # Replace PERSON entities with "the user"
+                            if source in user_names:
+                                source = "The user"
+                            if target in user_names:
+                                target = "the user"
+                            
+                            rel_lines.append(f"- {source} {r['relation']} {target}")
+                        kg_parts.append(f"Known facts:\n" + "\n".join(rel_lines))
+                    
+                    prompt_parts.append("\n".join(kg_parts))
+                    self.logger.debug(f"Added KG context: {len(entities)} entities, {len(relationships)} relationships")
             
             # Add user facts if available (conversation history goes in messages array, not system prompt)
             if user_facts:
                 facts_text = "\n".join([f"- {fact.get('content', '')}" for fact in user_facts[-5:]])
-                prompt_parts.append(f"Known Facts About User:\n{facts_text}")
+                prompt_parts.append(f"Additional facts:\n{facts_text}")
                 self.logger.debug(f"Added {len(user_facts)} user facts to system prompt")
             else:
                 # NOTE: Empty system prompt is OK - conversation history is in messages array (Ollama standard)
@@ -795,8 +836,12 @@ class ConversationEngine(BaseService):
         
         if prompt:
             self.logger.debug(f"🔍 [PROMPT_DEBUG] Final system prompt:\n{prompt}")
+            print(f"🔍 [PROMPT_DEBUG] ===== FINAL SYSTEM PROMPT =====")
+            print(prompt)
+            print(f"🔍 [PROMPT_DEBUG] ===== END SYSTEM PROMPT =====")
         else:
             self.logger.debug(f"🔍 [PROMPT_DEBUG] No system prompt - using Modelfile's SYSTEM instruction only")
+            print(f"🔍 [PROMPT_DEBUG] ⚠️ NO SYSTEM PROMPT - using Modelfile only")
         
         return prompt
     

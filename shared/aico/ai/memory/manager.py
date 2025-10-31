@@ -234,18 +234,21 @@ class MemoryManager(BaseAIProcessor):
             else:
                 logger.info("[SEMANTIC] Semantic memory disabled in config")
             
-            # Initialize processing components based on available stores
+            # Initialize knowledge graph components FIRST so ContextAssembler can use them
+            print("🔍 [MEMORY_MANAGER] About to call _initialize_knowledge_graph()...")
+            await self._initialize_knowledge_graph()
+            print(f"🔍 [MEMORY_MANAGER] _initialize_knowledge_graph() returned, _kg_initialized={self._kg_initialized}")
+            
+            # Initialize processing components based on available stores (including KG)
             self._context_assembler = ContextAssembler(
                 working_store=self._working_store,
                 episodic_store=None,
                 semantic_store=self._semantic_store,
-                procedural_store=None
+                procedural_store=None,
+                kg_storage=self._kg_storage if self._kg_initialized else None,
+                kg_modelservice=self._kg_modelservice if self._kg_initialized else None,
+                db_connection=self._db_connection
             )
-            
-            # Initialize knowledge graph components
-            print("🔍 [MEMORY_MANAGER] About to call _initialize_knowledge_graph()...")
-            await self._initialize_knowledge_graph()
-            print(f"🔍 [MEMORY_MANAGER] _initialize_knowledge_graph() returned, _kg_initialized={self._kg_initialized}")
             
             self._initialized = True
             logger.info("🧠 [MEMORY_MANAGER] ✅ Memory manager initialized successfully")
@@ -579,53 +582,29 @@ class MemoryManager(BaseAIProcessor):
             logger.info(f"🔍 [MEMORY_TIMING] Context assembly initialization took {init_duration:.3f}s")
             
         try:
-            # Use the context assembler if available
-            if self._context_assembler:
-                assembler_start = time.time()
-                logger.info(f"🔍 [MEMORY_TIMING] Starting context assembler...")
-                context = await self._context_assembler.assemble_context(
-                    user_id=user_id,
-                    current_message=current_message,
-                    max_context_items=20,
-                    conversation_id=conversation_id
-                )
-                assembler_duration = time.time() - assembler_start
-                logger.info(f"🔍 [MEMORY_TIMING] Context assembler completed in {assembler_duration:.3f}s")
-                
-                total_duration = time.time() - start_time
-                logger.info(f"🔍 [MEMORY_TIMING] MemoryManager.assemble_context() completed in {total_duration:.3f}s")
-                return context
-            else:
-                # Fallback: Direct store access
-                logger.info(f"🔍 [MEMORY_TIMING] No context assembler, using direct store access...")
-                context = {}
-                
-                # Get working memory (recent conversation)
-                if self._working_store:
-                    working_start = time.time()
-                    logger.info(f"🔍 [MEMORY_TIMING] Starting working memory context retrieval...")
-                    working_context = await self._working_store.get_context(user_id)
-                    working_duration = time.time() - working_start
-                    logger.info(f"🔍 [MEMORY_TIMING] Working memory context completed in {working_duration:.3f}s")
-                    context["working"] = working_context
-                
-                # Get semantic memory (facts and entities)
-                if self._semantic_store:
-                    semantic_start = time.time()
-                    logger.info(f"🔍 [MEMORY_TIMING] Starting semantic memory query...")
-                    semantic_context = await self._semantic_store.query(user_id, current_message, limit=5)
-                    semantic_duration = time.time() - semantic_start
-                    logger.info(f"🔍 [MEMORY_TIMING] Semantic memory query completed in {semantic_duration:.3f}s")
-                    context["semantic"] = semantic_context
-                
-                total_duration = time.time() - start_time
-                logger.info(f"🔍 [MEMORY_TIMING] MemoryManager.assemble_context() completed in {total_duration:.3f}s")
-                return context
+            # Use context assembler - if it's not available, the system is broken
+            if not self._context_assembler:
+                raise RuntimeError("ContextAssembler not initialized - memory system is broken")
+            
+            assembler_start = time.time()
+            logger.info(f"🔍 [MEMORY_TIMING] Starting context assembler...")
+            context = await self._context_assembler.assemble_context(
+                user_id=user_id,
+                current_message=current_message,
+                max_context_items=20,
+                conversation_id=conversation_id
+            )
+            assembler_duration = time.time() - assembler_start
+            logger.info(f"🔍 [MEMORY_TIMING] Context assembler completed in {assembler_duration:.3f}s")
+            
+            total_duration = time.time() - start_time
+            logger.info(f"🔍 [MEMORY_TIMING] MemoryManager.assemble_context() completed in {total_duration:.3f}s")
+            return context
             
         except Exception as e:
             total_duration = time.time() - start_time
             logger.error(f"🔍 [MEMORY_TIMING] Failed to assemble context after {total_duration:.3f}s: {e}")
-            return {}
+            raise  # Fail loudly, don't return empty context
 
     async def store_memory(self, memory_data: Dict[str, Any], memory_type: str = "working") -> bool:
         """Legacy API: Store memory in appropriate tier (based on available stores)"""

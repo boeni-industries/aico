@@ -377,9 +377,20 @@ class PropertyGraphStorage:
         
         where_filter = {"$and": where_conditions} if len(where_conditions) > 1 else where_conditions[0]
         
-        # Search ChromaDB
+        # Generate query embedding via modelservice (768-dim)
+        if not self.modelservice:
+            # Fallback: return all nodes if no modelservice available
+            return await self.get_user_nodes(user_id, label=label, current_only=True)
+        
+        embedding_result = await self.modelservice.generate_embeddings([query])
+        query_embedding = embedding_result.get("embeddings", [[]])[0]
+        
+        if not query_embedding:
+            return []
+        
+        # Search ChromaDB with pre-generated embedding
         results = self._node_collection.query(
-            query_texts=[query],
+            query_embeddings=[query_embedding],
             n_results=top_k,
             where=where_filter
         )

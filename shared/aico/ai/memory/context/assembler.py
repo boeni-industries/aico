@@ -31,7 +31,7 @@ class ContextAssembler:
     Provides unified, prioritized context for AI processing.
     """
     
-    def __init__(self, working_store, episodic_store, semantic_store, procedural_store):
+    def __init__(self, working_store, episodic_store, semantic_store, procedural_store, kg_storage=None, kg_modelservice=None, db_connection=None):
         """
         Initialize context assembler.
         
@@ -40,6 +40,9 @@ class ContextAssembler:
             episodic_store: Episodic memory store
             semantic_store: Semantic memory store
             procedural_store: Procedural memory store
+            kg_storage: Knowledge graph storage (optional)
+            kg_modelservice: KG modelservice client (optional)
+            db_connection: Database connection for KG queries (optional)
         """
         self.retrievers = ContextRetrievers(
             working_store,
@@ -50,6 +53,11 @@ class ContextAssembler:
         
         self.scorer = ContextScorer()
         self.graph_ranker = GraphContextRanker()
+        
+        # KG components
+        self.kg_storage = kg_storage
+        self.kg_modelservice = kg_modelservice
+        self.db_connection = db_connection
         
         # Configuration
         self._max_context_items = 50
@@ -124,6 +132,80 @@ class ContextAssembler:
                 except Exception as e:
                     logger.warning(f"Procedural memory context retrieval failed: {e}")
             
+            # 4.5 Get knowledge graph context (entities and relationships)
+            kg_context = {}
+            if self.kg_storage and self.kg_modelservice:
+                try:
+                    print(f"🕸️ [KG_CONTEXT] Retrieving KG context for query: {current_message[:50]}...")
+                    
+                    # Search for relevant nodes
+                    kg_nodes = await self.kg_storage.search_nodes(
+                        current_message, 
+                        user_id, 
+                        top_k=5
+                    )
+                    
+                    # Get edges connecting these nodes
+                    kg_edges = []
+                    if kg_nodes and self.db_connection:
+                        node_ids = [node.id for node in kg_nodes]
+                        
+                        # Query edges that connect any of these nodes
+                        placeholders = ','.join(['?' for _ in node_ids])
+                        edge_query = f"""
+                            SELECT 
+                                e.id, e.relation_type, e.confidence,
+                                n1.properties as source_props,
+                                n2.properties as target_props
+                            FROM kg_edges e
+                            JOIN kg_nodes n1 ON e.source_id = n1.id
+                            JOIN kg_nodes n2 ON e.target_id = n2.id
+                            WHERE e.user_id = ? 
+                            AND e.is_current = 1
+                            AND (e.source_id IN ({placeholders}) OR e.target_id IN ({placeholders}))
+                            LIMIT 10
+                        """
+                        
+                        params = [user_id] + node_ids + node_ids
+                        
+                        def _get_edges():
+                            with self.db_connection:
+                                return self.db_connection.execute(edge_query, params).fetchall()
+                        
+                        edge_results = await asyncio.to_thread(_get_edges)
+                        
+                        import json
+                        for row in edge_results:
+                            source_props = json.loads(row[3])
+                            target_props = json.loads(row[4])
+                            kg_edges.append({
+                                "relation": row[1],
+                                "source": source_props.get("name", "?"),
+                                "target": target_props.get("name", "?"),
+                                "confidence": row[2]
+                            })
+                    
+                    kg_context = {
+                        "entities": [
+                            {
+                                "name": node.properties.get("name", "?"),
+                                "type": node.label,
+                                "confidence": node.confidence
+                            }
+                            for node in kg_nodes
+                        ],
+                        "relationships": kg_edges
+                    }
+                    
+                    print(f"🕸️ [KG_CONTEXT] Retrieved {len(kg_nodes)} entities, {len(kg_edges)} relationships")
+                    logger.debug(f"Retrieved {len(kg_nodes)} KG entities, {len(kg_edges)} relationships")
+                    
+                except Exception as e:
+                    logger.warning(f"Knowledge graph context retrieval failed: {e}")
+                    print(f"🕸️ [KG_CONTEXT] ❌ Failed to retrieve KG context: {e}")
+                    import traceback
+                    print(f"🕸️ [KG_CONTEXT] Traceback:\n{traceback.format_exc()}")
+            
             # 5. Score and rank context items
             ranked_items = self.scorer.score_and_rank(all_items, max_items=max_items)
             
@@ -141,8 +223,9 @@ class ContextAssembler:
                 f"strength={conversation_strength:.2f}, time={assembly_time:.1f}ms"
             )
             
-            return {
+            result = {
                 "memory_context": memory_context,
+                "knowledge_graph": kg_context,
                 "metadata": {
                     "total_items": len(ranked_items),
                     "conversation_strength": conversation_strength,
@@ -150,6 +233,11 @@ class ContextAssembler:
                     "tiers_accessed": self._get_accessed_tiers(ranked_items)
                 }
             }
+            
+            print(f"🔍 [ASSEMBLER_DEBUG] Returning context with KG: {bool(kg_context)}")
+            print(f"🔍 [ASSEMBLER_DEBUG] KG entities: {len(kg_context.get('entities', []))}, relationships: {len(kg_context.get('relationships', []))}")
+            
+            return result
             
         except Exception as e:
             logger.error(f"Context assembly failed: {e}")

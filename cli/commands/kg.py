@@ -421,6 +421,67 @@ def list_entities(
     asyncio.run(_list())
 
 
+@app.command(name="edges", help="List relationships (edges).")
+def list_edges(
+    user_id: str = typer.Option(..., "--user-id", "-u", help="User ID"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Number of results")
+):
+    """List relationships in knowledge graph."""
+    async def _list_edges():
+        from aico.core.paths import AICOPaths
+        
+        try:
+            # Query database directly
+            db_path = AICOPaths.resolve_database_path("aico.db", "auto")
+            db_connection = _get_database_connection(str(db_path))
+            db_connection.connect()
+            
+            # Get edges with node names
+            query = """
+                SELECT 
+                    e.id,
+                    e.relation_type,
+                    e.confidence,
+                    n1.label as source_label,
+                    n1.properties as source_props,
+                    n2.label as target_label,
+                    n2.properties as target_props
+                FROM kg_edges e
+                JOIN kg_nodes n1 ON e.source_id = n1.id
+                JOIN kg_nodes n2 ON e.target_id = n2.id
+                WHERE e.user_id = ? AND e.is_current = 1
+                ORDER BY e.created_at DESC
+                LIMIT ?
+            """
+            
+            results = db_connection.execute(query, (user_id, limit)).fetchall()
+            
+            if results:
+                console.print(f"\n[green]Found {len(results)} relationships:[/green]\n")
+                table = Table(box=box.SIMPLE)
+                table.add_column("Relationship", style="cyan")
+                table.add_column("Confidence", style="green")
+                
+                for row in results:
+                    source_props = json.loads(row[4])
+                    target_props = json.loads(row[6])
+                    source_name = source_props.get("name", "?")
+                    target_name = target_props.get("name", "?")
+                    
+                    relationship = f"{source_name} [{row[1]}] {target_name}"
+                    table.add_row(relationship, f"{row[2]:.2f}")
+                
+                console.print(table)
+            else:
+                console.print("[yellow]No relationships found.[/yellow]")
+            
+        except Exception as e:
+            console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
+    
+    asyncio.run(_list_edges())
+
+
 @app.command(name="clear", help="Clear knowledge graph data (DESTRUCTIVE).")
 @destructive
 def clear(
