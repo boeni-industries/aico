@@ -68,7 +68,7 @@ class GLiNEREntityExtractor(ExtractionStrategy):
         Returns:
             PropertyGraph with extracted entities (nodes only)
         """
-        print(f"[{_ts()}] 🔍 [GLINER] Starting entity extraction for text: {text[:50]}...")
+        print(f"[{_ts()}] 🔍 [GLINER] Starting entity extraction for text: {text}")
         try:
             # Call modelservice for entity extraction
             # GLiNER is configured in modelservice.transformers.models.entity_extraction
@@ -183,6 +183,11 @@ Text: {text}{entity_context}
 
 Return valid JSON only, no explanation."""
             
+            print(f"[{_ts()}] 🔍 [LLM] Sending prompt ({len(prompt)} chars):")
+            print(f"[{_ts()}] 🔍 [LLM] FULL PROMPT:")
+            print(prompt)
+            print(f"[{_ts()}] 🔍 [LLM] END PROMPT")
+            
             # Call LLM (Eve - reasoning model)
             response = await asyncio.wait_for(
                 self.modelservice.generate_completion(
@@ -195,7 +200,12 @@ Return valid JSON only, no explanation."""
             )
             
             # Parse LLM response
-            result = self._parse_llm_response(response.get("text", ""))
+            response_text = response.get("text", "")
+            print(f"[{_ts()}] 🔍 [LLM] Received response ({len(response_text)} chars):")
+            print(f"[{_ts()}] 🔍 [LLM] FULL RESPONSE:")
+            print(response_text)
+            print(f"[{_ts()}] 🔍 [LLM] END RESPONSE")
+            result = self._parse_llm_response(response_text)
             
             graph = PropertyGraph()
             
@@ -393,19 +403,16 @@ class MultiPassExtractor:
         Returns:
             PropertyGraph with initial extraction
         """
-        # Run GLiNER and LLM extraction in parallel
-        print(f"[{_ts()}] 🔍 [EXTRACTOR] Starting parallel GLiNER + LLM extraction...")
-        entity_graph, relation_graph = await asyncio.gather(
-            self.gliner_extractor.extract(text, user_id, {}),
-            self.llm_extractor.extract(text, user_id, {})
-        )
-        print(f"[{_ts()}] 🔍 [EXTRACTOR] Parallel extraction complete")
+        # Step 1: Extract entities using GLiNER (fast)
+        print(f"[{_ts()}] 🔍 [EXTRACTOR] Starting entity extraction...")
+        entity_graph = await self.gliner_extractor.extract(text, user_id, {})
+        print(f"[{_ts()}] 🔍 [EXTRACTOR] Entity extraction complete: {len(entity_graph.nodes)} entities")
         
-        # Merge results
+        # Merge entity results
         graph = PropertyGraph()
         graph.merge(entity_graph)
         
-        # Build entity context for relation extraction
+        # Step 2: Build entity context for relation extraction
         entity_context = {
             "entities": [
                 {
@@ -417,8 +424,10 @@ class MultiPassExtractor:
             ]
         }
         
-        # Extract relations with entity context
+        # Step 3: Extract relations WITH entity context (only one LLM call needed)
+        print(f"[{_ts()}] 🔍 [EXTRACTOR] Starting relation extraction with {len(entity_context['entities'])} known entities...")
         relation_graph = await self.llm_extractor.extract(text, user_id, entity_context)
+        print(f"[{_ts()}] 🔍 [EXTRACTOR] Relation extraction complete: {len(relation_graph.edges)} relationships")
         graph.merge(relation_graph)
         
         return graph
@@ -478,6 +487,11 @@ What entities or relationships did we miss? Return JSON with:
 
 Return valid JSON only."""
             
+            print(f"[{_ts()}] 🔍 [GLEANING] Sending prompt ({len(prompt)} chars):")
+            print(f"[{_ts()}] 🔍 [GLEANING] FULL PROMPT:")
+            print(prompt)
+            print(f"[{_ts()}] 🔍 [GLEANING] END PROMPT")
+            
             response = await self.llm_extractor.modelservice.generate_completion(
                 prompt=prompt,
                 model="eve",
@@ -485,7 +499,13 @@ Return valid JSON only."""
                 max_tokens=1024
             )
             
-            result = self.llm_extractor._parse_llm_response(response.get("text", ""))
+            response_text = response.get("text", "")
+            print(f"[{_ts()}] 🔍 [GLEANING] Received response ({len(response_text)} chars):")
+            print(f"[{_ts()}] 🔍 [GLEANING] FULL RESPONSE:")
+            print(response_text)
+            print(f"[{_ts()}] 🔍 [GLEANING] END RESPONSE")
+            
+            result = self.llm_extractor._parse_llm_response(response_text)
             
             graph = PropertyGraph()
             
