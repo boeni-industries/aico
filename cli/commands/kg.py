@@ -310,11 +310,38 @@ def query(
                 settings=Settings(anonymized_telemetry=False, allow_reset=True)
             )
             
-            storage = PropertyGraphStorage(db_connection, chromadb_client)
+            # Generate query embedding using same model as storage (768-dim)
+            from sentence_transformers import SentenceTransformer
+            embedding_model = SentenceTransformer('paraphrase-multilingual-mpnet-base-v2')
+            query_embedding = embedding_model.encode(query_text).tolist()
             
-            # Search
+            # Build ChromaDB filter
+            where_conditions = [
+                {"user_id": user_id},
+                {"is_current": 1}
+            ]
+            if label:
+                where_conditions.append({"label": label})
+            
+            where_filter = {"$and": where_conditions} if len(where_conditions) > 1 else where_conditions[0]
+            
+            # Query ChromaDB directly with embedding
             console.print(f"\n[cyan]Searching for:[/cyan] {query_text}\n")
-            nodes = await storage.search_nodes(query_text, user_id, top_k=limit, label=label)
+            collection = chromadb_client.get_collection("kg_nodes")
+            results = collection.query(
+                query_embeddings=[query_embedding],
+                n_results=limit,
+                where=where_filter
+            )
+            
+            # Fetch full nodes from LibSQL
+            nodes = []
+            if results["ids"] and results["ids"][0]:
+                storage = PropertyGraphStorage(db_connection, chromadb_client, None)
+                for node_id in results["ids"][0]:
+                    node = await storage.get_node(node_id)
+                    if node:
+                        nodes.append(node)
             
             if nodes:
                 console.print(f"[green]Found {len(nodes)} results:[/green]\n")

@@ -7,6 +7,7 @@ Implements dual-write pattern for consistency.
 
 from typing import List, Optional, Dict, Any
 import json
+import asyncio
 
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.core.logging import get_logger
@@ -27,7 +28,8 @@ class PropertyGraphStorage:
     def __init__(
         self,
         db_connection: EncryptedLibSQLConnection,
-        chromadb_client: Any  # chromadb.Client
+        chromadb_client: Any,  # chromadb.Client
+        modelservice_client: Any = None  # ModelserviceClient for embeddings
     ):
         """
         Initialize storage with encrypted database and ChromaDB client.
@@ -35,11 +37,15 @@ class PropertyGraphStorage:
         Args:
             db_connection: Encrypted LibSQL connection (injected)
             chromadb_client: ChromaDB client for semantic search
+            modelservice_client: Modelservice client for embedding generation
         """
         self.db = db_connection
         self.chromadb = chromadb_client
+        self.modelservice = modelservice_client
         
         # Get or create collections
+        # NOTE: We provide embeddings manually (via modelservice) to avoid ChromaDB auto-generation
+        # which would block the thread pool. This follows the same pattern as semantic memory.
         self._node_collection = self.chromadb.get_or_create_collection(
             name="kg_nodes",
             metadata={"hnsw:space": "cosine"}
@@ -56,35 +62,69 @@ class PropertyGraphStorage:
         Args:
             node: Node to save
         """
+        import asyncio
+        
+        def _sync_save_to_db():
+            """Synchronous database write - runs in thread pool"""
+            try:
+                print(f"🕸️ [STORAGE_DB] Executing INSERT for node {node.id}...")
+                with self.db:
+                    self.db.execute(
+                        """
+                        INSERT INTO kg_nodes (
+                            id, user_id, label, properties, confidence, source_text,
+                            created_at, updated_at, valid_from, valid_until, is_current,
+                            canonical_id, aliases_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(id) DO UPDATE SET
+                            properties = excluded.properties,
+                            confidence = excluded.confidence,
+                            updated_at = excluded.updated_at,
+                            valid_until = excluded.valid_until,
+                            is_current = excluded.is_current
+                        """,
+                        node.to_libsql_tuple()
+                    )
+                    self.db.commit()
+                print(f"🕸️ [STORAGE_DB] INSERT committed for node {node.id}")
+            except Exception as e:
+                print(f"🕸️ [STORAGE_DB] ❌ Database write FAILED: {e}")
+                import traceback
+                print(f"🕸️ [STORAGE_DB] Traceback:\n{traceback.format_exc()}")
+                raise
+        
         try:
-            # Save to libSQL (relational)
-            with self.db:
-                self.db.execute(
-                    """
-                    INSERT INTO kg_nodes (
-                        id, user_id, label, properties, confidence, source_text,
-                        created_at, updated_at, valid_from, valid_until, is_current,
-                        canonical_id, aliases_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(id) DO UPDATE SET
-                        properties = excluded.properties,
-                        confidence = excluded.confidence,
-                        updated_at = excluded.updated_at,
-                        valid_until = excluded.valid_until,
-                        is_current = excluded.is_current
-                    """,
-                    node.to_libsql_tuple()
+            print(f"🕸️ [STORAGE] Saving node {node.id} (label={node.label})...")
+            
+            # Run blocking database operations in thread pool to avoid blocking event loop
+            print(f"🕸️ [STORAGE] Executing database INSERT in thread pool...")
+            await asyncio.to_thread(_sync_save_to_db)
+            print(f"🕸️ [STORAGE] Database INSERT complete")
+            
+            # Generate embedding and save to ChromaDB
+            print(f"🕸️ [STORAGE] Generating embedding for node...")
+            doc = node.to_chromadb_document()
+            
+            # Generate embedding via modelservice
+            embedding_result = await self.modelservice.generate_embeddings([doc["document"]])
+            embeddings = embedding_result.get("embeddings", [])
+            
+            print(f"🕸️ [STORAGE] Saving to ChromaDB with embedding...")
+            
+            def _sync_save_to_chroma():
+                """Synchronous ChromaDB write - runs in thread pool"""
+                self._node_collection.upsert(
+                    ids=[doc["id"]],
+                    embeddings=[embeddings[0]],
+                    documents=[doc["document"]],
+                    metadatas=[doc["metadata"]]
                 )
             
-            # Save to ChromaDB (semantic)
-            doc = node.to_chromadb_document()
-            self._node_collection.upsert(
-                ids=[doc["id"]],
-                documents=[doc["document"]],
-                metadatas=[doc["metadata"]]
-            )
+            await asyncio.to_thread(_sync_save_to_chroma)
+            print(f"🕸️ [STORAGE] ChromaDB upsert complete")
             
             logger.debug(f"Saved node {node.id} (label={node.label})")
+            print(f"🕸️ [STORAGE] ✅ Node {node.id} saved successfully")
             
         except Exception as e:
             logger.error(f"Failed to save node {node.id}: {e}")
@@ -97,8 +137,10 @@ class PropertyGraphStorage:
         Args:
             edge: Edge to save
         """
-        try:
-            # Save to libSQL (relational)
+        import asyncio
+        
+        def _sync_save_to_db():
+            """Synchronous database write - runs in thread pool"""
             with self.db:
                 self.db.execute(
                     """
@@ -116,14 +158,33 @@ class PropertyGraphStorage:
                     """,
                     edge.to_libsql_tuple()
                 )
-            
-            # Save to ChromaDB (semantic)
+        
+        def _sync_save_to_chroma():
+            """Synchronous ChromaDB write - runs in thread pool"""
             doc = edge.to_chromadb_document()
             self._edge_collection.upsert(
                 ids=[doc["id"]],
                 documents=[doc["document"]],
                 metadatas=[doc["metadata"]]
             )
+        
+        try:
+            # Run blocking database operations in thread pool
+            await asyncio.to_thread(_sync_save_to_db)
+            
+            # Generate embedding and save to ChromaDB
+            doc = edge.to_chromadb_document()
+            embedding_result = await self.modelservice.generate_embeddings([doc["document"]])
+            embeddings = embedding_result.get("embeddings", [])
+            
+            def _sync_save_to_chroma():
+                self._edge_collection.upsert(
+                    ids=[doc["id"]],
+                    embeddings=[embeddings[0]],
+                    documents=[doc["document"]],
+                    metadatas=[doc["metadata"]]
+                )
+            await asyncio.to_thread(_sync_save_to_chroma)
             
             logger.debug(f"Saved edge {edge.id} (type={edge.relation_type})")
             
@@ -140,13 +201,95 @@ class PropertyGraphStorage:
         """
         logger.info(f"Saving graph with {len(graph.nodes)} nodes and {len(graph.edges)} edges")
         
-        # Save nodes
-        for node in graph.nodes:
-            await self.save_node(node)
+        # Batch all database writes in single transaction to avoid lock contention
+        def _sync_save_all():
+            """Save all nodes and edges in single transaction"""
+            print(f"🕸️ [STORAGE_DB] Starting batch transaction for {len(graph.nodes)} nodes, {len(graph.edges)} edges...")
+            with self.db:
+                # Insert all nodes
+                for node in graph.nodes:
+                    self.db.execute(
+                        """
+                        INSERT INTO kg_nodes (
+                            id, user_id, label, properties, confidence, source_text,
+                            created_at, updated_at, valid_from, valid_until, is_current,
+                            canonical_id, aliases_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(id) DO UPDATE SET
+                            properties = excluded.properties,
+                            confidence = excluded.confidence,
+                            updated_at = excluded.updated_at,
+                            valid_until = excluded.valid_until,
+                            is_current = excluded.is_current
+                        """,
+                        node.to_libsql_tuple()
+                    )
+                
+                # Insert all edges
+                for edge in graph.edges:
+                    self.db.execute(
+                        """
+                        INSERT INTO kg_edges (
+                            id, user_id, source_id, target_id, relation_type,
+                            properties, confidence, source_text,
+                            created_at, updated_at, valid_from, valid_until, is_current
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(id) DO UPDATE SET
+                            properties = excluded.properties,
+                            confidence = excluded.confidence,
+                            updated_at = excluded.updated_at,
+                            valid_until = excluded.valid_until,
+                            is_current = excluded.is_current
+                        """,
+                        edge.to_libsql_tuple()
+                    )
+                
+                self.db.commit()
+            print(f"🕸️ [STORAGE_DB] Batch transaction committed")
         
-        # Save edges
-        for edge in graph.edges:
-            await self.save_edge(edge)
+        # Execute batch transaction in thread pool
+        await asyncio.to_thread(_sync_save_all)
+        
+        # Generate embeddings and save to ChromaDB (in parallel)
+        print(f"🕸️ [STORAGE] Generating embeddings for {len(graph.nodes)} nodes...")
+        node_docs = [node.to_chromadb_document() for node in graph.nodes]
+        node_texts = [doc["document"] for doc in node_docs]
+        
+        embedding_result = await self.modelservice.generate_embeddings(node_texts)
+        embeddings = embedding_result.get("embeddings", [])
+        
+        print(f"🕸️ [STORAGE] Saving {len(graph.nodes)} nodes to ChromaDB...")
+        
+        def _sync_save_nodes_to_chroma():
+            self._node_collection.upsert(
+                ids=[doc["id"] for doc in node_docs],
+                embeddings=embeddings,
+                documents=[doc["document"] for doc in node_docs],
+                metadatas=[doc["metadata"] for doc in node_docs]
+            )
+        
+        await asyncio.to_thread(_sync_save_nodes_to_chroma)
+        
+        # Save edges to ChromaDB
+        if graph.edges:
+            print(f"🕸️ [STORAGE] Generating embeddings for {len(graph.edges)} edges...")
+            edge_docs = [edge.to_chromadb_document() for edge in graph.edges]
+            edge_texts = [doc["document"] for doc in edge_docs]
+            
+            edge_embedding_result = await self.modelservice.generate_embeddings(edge_texts)
+            edge_embeddings = edge_embedding_result.get("embeddings", [])
+            
+            print(f"🕸️ [STORAGE] Saving {len(graph.edges)} edges to ChromaDB...")
+            
+            def _sync_save_edges_to_chroma():
+                self._edge_collection.upsert(
+                    ids=[doc["id"] for doc in edge_docs],
+                    embeddings=edge_embeddings,
+                    documents=[doc["document"] for doc in edge_docs],
+                    metadatas=[doc["metadata"] for doc in edge_docs]
+                )
+            
+            await asyncio.to_thread(_sync_save_edges_to_chroma)
         
         logger.info("Graph saved successfully")
     
@@ -224,10 +367,15 @@ class PropertyGraphStorage:
         Returns:
             List of nodes ranked by semantic similarity
         """
-        # Build ChromaDB filter
-        where_filter = {"user_id": user_id, "is_current": 1}
+        # Build ChromaDB filter with $and operator
+        where_conditions = [
+            {"user_id": user_id},
+            {"is_current": 1}
+        ]
         if label:
-            where_filter["label"] = label
+            where_conditions.append({"label": label})
+        
+        where_filter = {"$and": where_conditions} if len(where_conditions) > 1 else where_conditions[0]
         
         # Search ChromaDB
         results = self._node_collection.query(

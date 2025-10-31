@@ -212,10 +212,10 @@ class LogConsumerService(BaseService):
                     
                     # Check unpack success
                     if success:
-                        # Process the log entry
-                        # Process the log entry
-                        self._process_log_entry(log_entry)
-                        # Log processed successfully
+                        # Process the log entry asynchronously (don't block message handler)
+                        import asyncio
+                        asyncio.create_task(self._process_log_entry(log_entry))
+                        # Log processing task created
                     else:
                         # Unpack failed - type mismatch
                         self.logger.error("Unpack returned False - type mismatch")
@@ -230,7 +230,7 @@ class LogConsumerService(BaseService):
             # Message processing failed
             self.logger.error(f"Failed to process message: {e}")
     
-    def _process_log_entry(self, log_entry: LogEntry) -> None:
+    async def _process_log_entry(self, log_entry: LogEntry) -> None:
         """Process individual log entry"""
         try:
                         
@@ -238,22 +238,23 @@ class LogConsumerService(BaseService):
             if (log_entry.subsystem == "service" and log_entry.module and log_entry.module.startswith("log_consumer")):
                                 return
 
-                        # Insert to database
-            self._insert_log_to_database(log_entry)
+                        # Insert to database (async to avoid blocking event loop)
+            await self._insert_log_to_database(log_entry)
             
                             
         except Exception as e:
             self.logger.warning(f"Failed to process log entry: {e}")
     
-    def _insert_log_to_database(self, log_entry: LogEntry) -> None:
-        """Insert log entry to database with error handling"""
-        try:
+    async def _insert_log_to_database(self, log_entry: LogEntry) -> None:
+        """Insert log entry to database with error handling - runs in thread pool"""
+        import asyncio
+        
+        def _sync_db_write():
+            """Synchronous database write - runs in thread pool"""
             # Convert protobuf timestamp to ISO8601 string (TEXT column)
-            # google.protobuf.Timestamp has seconds and nanos
             ts_seconds = int(log_entry.timestamp.seconds)
             ts_nanos = int(getattr(log_entry.timestamp, 'nanos', 0))
             ts = ts_seconds + (ts_nanos / 1_000_000_000)
-            # Use datetime.utcfromtimestamp to properly interpret the timestamp as UTC
             timestamp_iso = datetime.utcfromtimestamp(ts).replace(tzinfo=timezone.utc).isoformat()
 
             # Level should be stored as TEXT (e.g., "INFO")
@@ -270,7 +271,7 @@ class LogConsumerService(BaseService):
                 extra_payload['extra'] = dict(log_entry.extra)
             extra_json = json.dumps(extra_payload) if extra_payload else None
 
-            # Insert to database using LibSQL execute() method with schema-compatible columns
+            # Insert to database using LibSQL execute() method
             self.db_connection.execute("""
                 INSERT INTO logs (
                     timestamp, level, subsystem, module, function_name, file_path, line_number, topic, message,
@@ -291,9 +292,11 @@ class LogConsumerService(BaseService):
                 getattr(log_entry, 'trace_id', None),
                 extra_json
             ))
-
             self.db_connection.commit()
         
+        try:
+            # Run blocking database write in thread pool to avoid event loop blocking
+            await asyncio.to_thread(_sync_db_write)
         except Exception as e:
             self.logger.error(f"Failed to insert log to database: {e}")
             # Don't raise - we don't want to crash the consumer for individual log failures

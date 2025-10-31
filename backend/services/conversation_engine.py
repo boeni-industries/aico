@@ -328,22 +328,28 @@ class ConversationEngine(BaseService):
             # Determine what components we need
             components_needed = []
             print(f"💬 [CONVERSATION_ENGINE] 🔧 Checking enabled features...")
+            print(f"💬 [CONVERSATION_ENGINE] 🧠 Memory integration enabled: {self.enable_memory_integration}")
             
             # Get memory context if enabled
             memory_context = None
             if self.enable_memory_integration:
+                print(f"💬 [CONVERSATION_ENGINE] 🧠 Calling _get_memory_context()...")
                 try:
                     memory_context = await self._get_memory_context(request_id, user_context, user_message)
                     if memory_context is None:
+                        print(f"💬 [CONVERSATION_ENGINE] ❌ _get_memory_context() returned None!")
                         self.logger.error(f"🚨 [CONTEXT_TRACE] _get_memory_context() returned None - context will NOT be passed to LLM!")
                     else:
+                        print(f"💬 [CONVERSATION_ENGINE] ✅ Got memory context!")
                         self.logger.info(f"🧠 [CONTEXT_TRACE] ✅ Got memory_context from _get_memory_context()")
                 except Exception as e:
+                    print(f"💬 [CONVERSATION_ENGINE] ❌ EXCEPTION in _get_memory_context(): {e}")
                     self.logger.error(f"🚨 [CONTEXT_TRACE] EXCEPTION calling _get_memory_context(): {e}")
                     import traceback
                     self.logger.error(f"🚨 [CONTEXT_TRACE] Traceback:\n{traceback.format_exc()}")
                     memory_context = None
             else:
+                print(f"💬 [CONVERSATION_ENGINE] ⚠️  Memory integration DISABLED")
                 self.logger.warning(f"🚨 [CONTEXT_TRACE] Memory integration DISABLED - no context will be retrieved")
             
             # Generate LLM response with memory context
@@ -416,10 +422,13 @@ class ConversationEngine(BaseService):
                 self.logger.warning(f"🧠 [CONTEXT_TRACE] ⚠️  Context is None or empty")
             
             # Store user message for future context
+            print(f"💬 [CONVERSATION_ENGINE] 💾 Storing user message (len: {len(message_text)})...")
             try:
                 await memory_manager.store_message(user_id, conversation_id, message_text, "user")
+                print(f"💬 [CONVERSATION_ENGINE] ✅ User message stored successfully!")
                 self.logger.debug(f"🧠 [CONTEXT_TRACE] User message stored for future context")
             except Exception as e:
+                print(f"💬 [CONVERSATION_ENGINE] ❌ Failed to store user message: {e}")
                 self.logger.warning(f"Failed to store user message: {e}")
             
             return context

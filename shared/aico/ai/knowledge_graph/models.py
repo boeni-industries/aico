@@ -94,7 +94,7 @@ class Node:
                 "label": self.label,
                 "confidence": self.confidence,
                 "created_at": self.created_at,
-                "is_current": self.is_current,
+                "is_current": int(self.is_current),
                 "canonical_id": self.canonical_id or self.id
             }
         }
@@ -203,7 +203,7 @@ class Edge:
                 "relation_type": self.relation_type,
                 "confidence": self.confidence,
                 "created_at": self.created_at,
-                "is_current": self.is_current
+                "is_current": int(self.is_current)
             }
         }
     

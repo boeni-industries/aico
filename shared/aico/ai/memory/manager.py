@@ -338,9 +338,9 @@ class MemoryManager(BaseAIProcessor):
             # Note: Connection will happen lazily on first use
             logger.info("🕸️ [KG] Modelservice client created (connection deferred)")
             
-            # Initialize storage
+            # Initialize storage (pass modelservice for embedding generation)
             print("🔍 [KG_DEBUG] Initializing PropertyGraphStorage...")
-            self._kg_storage = PropertyGraphStorage(db_connection, chromadb_client)
+            self._kg_storage = PropertyGraphStorage(db_connection, chromadb_client, self._kg_modelservice)
             logger.info("🕸️ [KG] Storage initialized")
             
             # Initialize extraction pipeline (modelservice will connect on first use)
@@ -536,12 +536,27 @@ class MemoryManager(BaseAIProcessor):
                 )
             
             # Extract knowledge graph in background (non-blocking)
+            print(f"🕸️ [KG_CHECK] Checking KG extraction: kg_initialized={self._kg_initialized}, role={role}")
             if self._kg_initialized and role == "user":  # Only extract from user messages
+                print(f"🕸️ [KG] ✅ Triggering background extraction for user message (len: {len(content)})")
                 logger.info(f"🕸️ [KG] Triggering background extraction for user message (len: {len(content)})")
-                task = asyncio.create_task(self._extract_knowledge_graph(user_id, content))
+                
+                # Wrap extraction with exception handling to catch silent failures
+                async def safe_extract():
+                    try:
+                        await self._extract_knowledge_graph(user_id, content)
+                    except Exception as e:
+                        print(f"🕸️ [KG] ❌ Background extraction EXCEPTION: {e}")
+                        logger.error(f"🕸️ [KG] Background extraction exception: {e}")
+                        import traceback
+                        print(f"🕸️ [KG] Traceback:\n{traceback.format_exc()}")
+                
+                task = asyncio.create_task(safe_extract())
                 self._kg_background_tasks.add(task)
                 task.add_done_callback(self._kg_background_tasks.discard)
+                print(f"🕸️ [KG] Background task created and added to tracking set")
             else:
+                print(f"🕸️ [KG] ⚠️  Skipping extraction: kg_initialized={self._kg_initialized}, role={role}")
                 logger.debug(f"🕸️ [KG] Skipping extraction: kg_initialized={self._kg_initialized}, role={role}")
             
             logger.info(f"✅ Stored {role} message in memory")
@@ -797,11 +812,14 @@ class MemoryManager(BaseAIProcessor):
     
     async def _extract_knowledge_graph(self, user_id: str, text: str) -> None:
         """Background knowledge graph extraction from user message."""
+        print(f"🕸️ [KG] 🚀 Background extraction task STARTED for user {user_id}")
         try:
+            print(f"🕸️ [KG] Calling extractor.extract()...")
             logger.info(f"🕸️ [KG] Starting background extraction for user {user_id}")
             
             # 1. Extract entities and relationships
             new_graph = await self._kg_extractor.extract(text, user_id)
+            print(f"🕸️ [KG] Extraction complete: {len(new_graph.nodes)} nodes, {len(new_graph.edges)} edges")
             logger.info(f"🕸️ [KG] Extracted {len(new_graph.nodes)} nodes, {len(new_graph.edges)} edges")
             
             if len(new_graph.nodes) == 0 and len(new_graph.edges) == 0:
@@ -813,11 +831,16 @@ class MemoryManager(BaseAIProcessor):
             logger.warning(f"🕸️ [KG] Skipping entity resolution and fusion (not yet compatible with background extraction)")
             
             # 3. Save directly to storage
+            print(f"🕸️ [KG] Saving graph to storage...")
             logger.info(f"🕸️ [KG] Saving graph to storage...")
             await self._kg_storage.save_graph(new_graph)
+            print(f"🕸️ [KG] ✅ Knowledge graph saved successfully!")
             logger.info(f"🕸️ [KG] ✅ Knowledge graph saved successfully")
             
         except Exception as e:
+            print(f"🕸️ [KG] ❌ Background extraction FAILED: {e}")
             logger.error(f"🕸️ [KG] ❌ Background extraction failed: {e}")
             import traceback
-            logger.error(f"🕸️ [KG] Traceback: {traceback.format_exc()}")
+            error_trace = traceback.format_exc()
+            print(f"🕸️ [KG] Traceback:\n{error_trace}")
+            logger.error(f"🕸️ [KG] Traceback: {error_trace}")
