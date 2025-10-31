@@ -44,7 +44,7 @@ class EntityResolver:
         self.config = config
         
         # Get config settings
-        kg_config = config.get("memory.semantic.knowledge_graph", {})
+        kg_config = config.get("core.memory.semantic.knowledge_graph", {})
         er_config = kg_config.get("entity_resolution", {})
         
         self.similarity_threshold = er_config.get("similarity_threshold", 0.85)

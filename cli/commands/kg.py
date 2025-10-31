@@ -71,23 +71,57 @@ app = typer.Typer(
 )
 
 
+def _get_database_connection(db_path: str) -> 'EncryptedLibSQLConnection':
+    """Get authenticated database connection."""
+    from aico.core.config import ConfigurationManager
+    from aico.security import AICOKeyManager
+    from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+    import keyring
+    
+    config = ConfigurationManager()
+    config.initialize(lightweight=True)
+    key_manager = AICOKeyManager(config)
+    
+    if not key_manager.has_stored_key():
+        console.print("[red]Error: Master key not found. Run 'aico security setup' first.[/red]")
+        raise typer.Exit(1)
+    
+    # Try session-based authentication first
+    cached_key = key_manager._get_cached_session()
+    if cached_key:
+        key_manager._extend_session()
+        db_key = key_manager.derive_database_key(cached_key, "libsql", str(db_path))
+        return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+    
+    # Try stored key from keyring
+    stored_key = keyring.get_password(key_manager.service_name, "master_key")
+    if stored_key:
+        master_key = bytes.fromhex(stored_key)
+        key_manager._cache_session(master_key)
+        db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+        return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+    
+    # Need password
+    password = typer.prompt("Enter master password", hide_input=True)
+    if not password or not password.strip():
+        console.print("[red]Error: Password cannot be empty[/red]")
+        raise typer.Exit(1)
+    
+    master_key = key_manager.authenticate(password, interactive=False)
+    db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
+    return EncryptedLibSQLConnection(str(db_path), encryption_key=db_key)
+
+
 @app.command(name="status", help="Show knowledge graph statistics.")
 def status():
     """Show knowledge graph statistics (nodes, edges, labels)."""
     async def _status():
-        from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
-        from aico.security import AICOKeyManager
-        from aico.data.libsql.encrypted import EncryptedLibSQLConnection
         
         try:
             # Get database connection
-            config = ConfigurationManager()
-            key_manager = AICOKeyManager()
-            master_key = key_manager.authenticate(interactive=False)
-            db_path = AICOPaths.get_database_path()
-            db_key = key_manager.derive_database_key(master_key, "libsql", "aico.db")
-            db_connection = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+            db_path = AICOPaths.resolve_database_path("aico.db", "auto")
+            db_connection = _get_database_connection(str(db_path))
             
             with db_connection:
                 # Get node statistics
@@ -172,12 +206,35 @@ def extract(
             
             # Initialize components
             config = ConfigurationManager()
-            modelservice = ModelserviceClient()
-            await modelservice.connect()
+            config.initialize(lightweight=True)
             
+            # Connect to modelservice via message bus
+            console.print("[dim]Connecting to message bus...[/dim]")
+            console.print(f"[dim]DEBUG: Creating ModelserviceClient instance...[/dim]")
+            modelservice = ModelserviceClient()
+            console.print(f"[dim]DEBUG: ModelserviceClient created: {modelservice}[/dim]")
+            
+            try:
+                console.print(f"[dim]DEBUG: Calling connect() with 10s timeout...[/dim]")
+                await asyncio.wait_for(modelservice.connect(), timeout=10.0)
+                console.print(f"[dim]DEBUG: connect() returned successfully[/dim]")
+                # Give message loop time to start processing
+                await asyncio.sleep(0.5)
+                console.print("[dim]✓ Connected to message bus[/dim]")
+            except asyncio.TimeoutError:
+                console.print("[red]Error: Connection to message bus timed out after 10s.[/red]")
+                console.print("Make sure backend is running: [cyan]aico gateway status[/cyan]")
+                return
+            except Exception as e:
+                console.print(f"[red]Error: Failed to connect to message bus: {e}[/red]")
+                console.print("Make sure backend is running: [cyan]aico gateway status[/cyan]")
+                return
+            
+            console.print("[dim]Initializing extractor...[/dim]")
             extractor = MultiPassExtractor(modelservice, config)
             
             # Extract
+            console.print("[dim]Extracting entities and relationships...[/dim]")
             start_time = time.time()
             graph = await extractor.extract(text, user_id)
             duration = time.time() - start_time
@@ -244,12 +301,8 @@ def query(
         
         try:
             # Initialize storage
-            config = ConfigurationManager()
-            key_manager = AICOKeyManager()
-            master_key = key_manager.authenticate(interactive=False)
-            db_path = AICOPaths.get_database_path()
-            db_key = key_manager.derive_database_key(master_key, "libsql", "aico.db")
-            db_connection = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+            db_path = AICOPaths.resolve_database_path("aico.db", "auto")
+            db_connection = _get_database_connection(str(db_path))
             
             chromadb_path = AICOPaths.get_semantic_memory_path()
             chromadb_client = chromadb.PersistentClient(
@@ -303,12 +356,8 @@ def list_entities(
         
         try:
             # Initialize storage
-            config = ConfigurationManager()
-            key_manager = AICOKeyManager()
-            master_key = key_manager.authenticate(interactive=False)
-            db_path = AICOPaths.get_database_path()
-            db_key = key_manager.derive_database_key(master_key, "libsql", "aico.db")
-            db_connection = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+            db_path = AICOPaths.resolve_database_path("aico.db", "auto")
+            db_connection = _get_database_connection(str(db_path))
             
             chromadb_path = AICOPaths.get_semantic_memory_path()
             chromadb_client = chromadb.PersistentClient(
@@ -352,17 +401,15 @@ def clear(
 ):
     """Clear knowledge graph data."""
     async def _clear():
+        from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security import AICOKeyManager
         from aico.data.libsql.encrypted import EncryptedLibSQLConnection
         
         try:
             # Get database connection
-            key_manager = AICOKeyManager()
-            master_key = key_manager.authenticate(interactive=False)
-            db_path = AICOPaths.get_database_path()
-            db_key = key_manager.derive_database_key(master_key, "libsql", "aico.db")
-            db_connection = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+            db_path = AICOPaths.resolve_database_path("aico.db", "auto")
+            db_connection = _get_database_connection(str(db_path))
             
             with db_connection:
                 if user_id:
@@ -402,12 +449,8 @@ def traverse(
         
         try:
             # Initialize storage and query engine
-            config = ConfigurationManager()
-            key_manager = AICOKeyManager()
-            master_key = key_manager.authenticate(interactive=False)
-            db_path = AICOPaths.get_database_path()
-            db_key = key_manager.derive_database_key(master_key, "libsql", "aico.db")
-            db_connection = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+            db_path = AICOPaths.resolve_database_path("aico.db", "auto")
+            db_connection = _get_database_connection(str(db_path))
             
             chromadb_path = AICOPaths.get_semantic_memory_path()
             chromadb_client = chromadb.PersistentClient(
@@ -467,12 +510,8 @@ def find_path(
         
         try:
             # Initialize
-            config = ConfigurationManager()
-            key_manager = AICOKeyManager()
-            master_key = key_manager.authenticate(interactive=False)
-            db_path = AICOPaths.get_database_path()
-            db_key = key_manager.derive_database_key(master_key, "libsql", "aico.db")
-            db_connection = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+            db_path = AICOPaths.resolve_database_path("aico.db", "auto")
+            db_connection = _get_database_connection(str(db_path))
             
             chromadb_path = AICOPaths.get_semantic_memory_path()
             chromadb_client = chromadb.PersistentClient(
@@ -524,12 +563,8 @@ def insights(
         
         try:
             # Initialize
-            config = ConfigurationManager()
-            key_manager = AICOKeyManager()
-            master_key = key_manager.authenticate(interactive=False)
-            db_path = AICOPaths.get_database_path()
-            db_key = key_manager.derive_database_key(master_key, "libsql", "aico.db")
-            db_connection = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+            db_path = AICOPaths.resolve_database_path("aico.db", "auto")
+            db_connection = _get_database_connection(str(db_path))
             
             chromadb_path = AICOPaths.get_semantic_memory_path()
             chromadb_client = chromadb.PersistentClient(
@@ -614,12 +649,8 @@ def subgraph(
         
         try:
             # Initialize
-            config = ConfigurationManager()
-            key_manager = AICOKeyManager()
-            master_key = key_manager.authenticate(interactive=False)
-            db_path = AICOPaths.get_database_path()
-            db_key = key_manager.derive_database_key(master_key, "libsql", "aico.db")
-            db_connection = EncryptedLibSQLConnection(db_path, encryption_key=db_key)
+            db_path = AICOPaths.resolve_database_path("aico.db", "auto")
+            db_connection = _get_database_connection(str(db_path))
             
             chromadb_path = AICOPaths.get_semantic_memory_path()
             chromadb_client = chromadb.PersistentClient(

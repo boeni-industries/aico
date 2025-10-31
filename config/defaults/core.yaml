@@ -332,7 +332,7 @@ memory:
     # Knowledge Graph configuration (Property Graph for structured memory)
     knowledge_graph:
       max_gleanings: 2  # Number of gleaning passes for completeness (0-2 recommended, 2 = 90%+ recall)
-      llm_timeout_seconds: 30.0  # Timeout for LLM operations (relation extraction, entity matching)
+      llm_timeout_seconds: 90.0  # Timeout for LLM operations (relation extraction, entity matching)
       
       # Entity resolution (deduplication) settings
       entity_resolution:

@@ -8,6 +8,7 @@ Uses GLiNER for entity extraction and LLM for relation extraction.
 from typing import List, Dict, Any, Optional
 import asyncio
 import json
+from datetime import datetime
 
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
@@ -15,6 +16,10 @@ from aico.core.config import ConfigurationManager
 from .models import Node, Edge, PropertyGraph
 
 logger = get_logger("shared", "ai.knowledge_graph.extractor")
+
+def _ts():
+    """Get timestamp for debug prints."""
+    return datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
 
 class ExtractionStrategy:
@@ -63,35 +68,54 @@ class GLiNEREntityExtractor(ExtractionStrategy):
         Returns:
             PropertyGraph with extracted entities (nodes only)
         """
+        print(f"[{_ts()}] 🔍 [GLINER] Starting entity extraction for text: {text[:50]}...")
         try:
             # Call modelservice for entity extraction
             # GLiNER is configured in modelservice.transformers.models.entity_extraction
-            response = await self.modelservice.extract_entities(
-                text=text,
-                labels=[
-                    "person", "organization", "location", "event",
-                    "date", "time", "product", "skill", "topic",
-                    "project", "goal", "task", "interest"
-                ]
-            )
+            print(f"[{_ts()}] 🔍 [GLINER] Calling modelservice.extract_entities...")
+            try:
+                response = await self.modelservice.extract_entities(
+                    text=text,
+                    labels=[
+                        "person", "organization", "location", "event",
+                        "date", "time", "product", "skill", "topic",
+                        "project", "goal", "task", "interest"
+                    ]
+                )
+                print(f"[{_ts()}] 🔍 [GLINER] extract_entities returned successfully")
+            except Exception as e:
+                print(f"[{_ts()}] 🔍 [GLINER] ❌ EXCEPTION in extract_entities: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
             
             graph = PropertyGraph()
             
             # Convert GLiNER entities to nodes
-            for entity in response.get("entities", []):
-                node = Node.create(
-                    user_id=user_id,
-                    label=entity["label"].upper(),
-                    properties={
-                        "name": entity["text"],
-                        "start": entity["start"],
-                        "end": entity["end"]
-                    },
-                    confidence=entity.get("score", 0.9),
-                    source_text=text
-                )
-                graph.add_node(node)
+            # Response format: {"entities": {"PERSON": [...], "ORGANIZATION": [...]}}
+            print(f"[{_ts()}] 🔍 [GLINER] Raw response: {response}")
+            entities_by_type = response.get("entities", {})
+            print(f"[{_ts()}] 🔍 [GLINER] Entities by type: {entities_by_type}")
             
+            for entity_type, entity_list in entities_by_type.items():
+                print(f"[{_ts()}] 🔍 [GLINER] Processing {len(entity_list)} entities of type {entity_type}")
+                for entity in entity_list:
+                    print(f"[{_ts()}] 🔍 [GLINER] Creating node for entity: {entity}")
+                    node = Node.create(
+                        user_id=user_id,
+                        label=entity["label"].upper(),
+                        properties={
+                            "name": entity["text"],
+                            "start": entity.get("start_pos", 0),
+                            "end": entity.get("end_pos", 0)
+                        },
+                        confidence=entity.get("confidence", 0.9),
+                        source_text=text
+                    )
+                    print(f"[{_ts()}] 🔍 [GLINER] Created node: {node.label} - {node.properties}")
+                    graph.add_node(node)
+            
+            print(f"[{_ts()}] 🔍 [GLINER] Total nodes in graph: {len(graph.nodes)}")
             logger.debug(f"GLiNER extracted {len(graph.nodes)} entities")
             return graph
             
@@ -123,7 +147,7 @@ class LLMRelationExtractor(ExtractionStrategy):
         self.config = config
         
         # Get LLM timeout from config
-        kg_config = config.get("memory.semantic.knowledge_graph", {})
+        kg_config = config.get("core.memory.semantic.knowledge_graph", {})
         self.llm_timeout = kg_config.get("llm_timeout_seconds", 30.0)
     
     async def extract(
@@ -304,7 +328,7 @@ class MultiPassExtractor:
         self.config = config
         
         # Get config settings
-        kg_config = config.get("memory.semantic.knowledge_graph", {})
+        kg_config = config.get("core.memory.semantic.knowledge_graph", {})
         self.max_gleanings = kg_config.get("max_gleanings", 2)
         
         # Initialize extraction strategies
@@ -370,10 +394,12 @@ class MultiPassExtractor:
             PropertyGraph with initial extraction
         """
         # Run GLiNER and LLM extraction in parallel
+        print(f"[{_ts()}] 🔍 [EXTRACTOR] Starting parallel GLiNER + LLM extraction...")
         entity_graph, relation_graph = await asyncio.gather(
             self.gliner_extractor.extract(text, user_id, {}),
             self.llm_extractor.extract(text, user_id, {})
         )
+        print(f"[{_ts()}] 🔍 [EXTRACTOR] Parallel extraction complete")
         
         # Merge results
         graph = PropertyGraph()

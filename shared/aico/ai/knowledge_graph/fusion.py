@@ -44,7 +44,7 @@ class GraphFusion:
         self.config = config
         
         # Get config settings
-        kg_config = config.get("memory.semantic.knowledge_graph", {})
+        kg_config = config.get("core.memory.semantic.knowledge_graph", {})
         self.llm_timeout = kg_config.get("llm_timeout_seconds", 30.0)
         
         logger.info("GraphFusion initialized")
