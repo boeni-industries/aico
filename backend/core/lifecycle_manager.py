@@ -285,8 +285,10 @@ class BackendLifecycleManager:
         from backend.services.modelservice_client import get_modelservice_client
 
         # Create and register the MemoryManager
-        # It requires the global config manager
-        memory_manager = MemoryManager(self.config)
+        # It requires the global config manager and database connection
+        db_connection = self.container.get_service("database")
+        memory_manager = MemoryManager(self.config, db_connection=db_connection)
+        self.logger.info("✅ Created MemoryManager with shared database connection")
         
         # Inject modelservice dependency for semantic memory
         try:

@@ -518,6 +518,16 @@ Return valid JSON only."""
             
             # Add new relationships
             for rel in result.get("new_relationships", []):
+                # Validate relationship structure
+                if not all(key in rel for key in ["source", "target", "relation_type"]):
+                    logger.warning(f"Skipping invalid relationship in gleaning: {rel}")
+                    continue
+                
+                # Skip self-referential relationships
+                if rel["source"].lower().strip() == rel["target"].lower().strip():
+                    logger.warning(f"Skipping self-referential relationship in gleaning: {rel['source']} -> {rel['relation_type']} -> {rel['target']}")
+                    continue
+                
                 source_node = self.llm_extractor._find_or_create_node(
                     rel["source"], user_id, text, graph, context
                 )
