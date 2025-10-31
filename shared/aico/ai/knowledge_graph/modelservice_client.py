@@ -110,7 +110,6 @@ class ModelserviceClient:
             await self.connect()
         
         request_id = str(uuid.uuid4())
-        print(f"[{_ts()}] 🔍 [KG CLIENT] Generated request_id: {request_id}")
         logger.info(f"🔍 [KG CLIENT] Generated request_id: {request_id}")
         
         # Create NER request
@@ -121,23 +120,17 @@ class ModelserviceClient:
         # Create future for response
         future = asyncio.Future()
         self._pending_requests[request_id] = future
-        print(f"[{_ts()}] 🔍 [KG CLIENT] Stored future for request_id: {request_id}")
-        print(f"[{_ts()}] 🔍 [KG CLIENT] Pending requests now: {list(self._pending_requests.keys())}")
         
         try:
             # Publish request
-            print(f"[{_ts()}] 🔍 [KG CLIENT] Publishing NER request to {AICOTopics.MODELSERVICE_NER_REQUEST}")
-            print(f"[{_ts()}] 🔍 [KG CLIENT] With correlation_id: {request_id}")
             await self.bus_client.publish(
                 AICOTopics.MODELSERVICE_NER_REQUEST,
                 ner_request,
                 correlation_id=request_id
             )
-            print(f"[{_ts()}] 🔍 [KG CLIENT] NER request published, waiting for response...")
             
             # Wait for response with timeout
             response = await asyncio.wait_for(future, timeout=30.0)
-            print(f"[{_ts()}] 🔍 [KG CLIENT] Received response for request_id: {request_id}")
             
             if not response.get("success", False):
                 logger.error(f"NER request failed: {response.get('error', 'Unknown error')}")
@@ -234,7 +227,6 @@ class ModelserviceClient:
             await self.connect()
         
         request_id = str(uuid.uuid4())
-        print(f"[{_ts()}] 🔍 [KG CLIENT LLM] Generated request_id: {request_id}")
         
         # Create completions request
         from aico.proto.aico_modelservice_pb2 import ConversationMessage
@@ -246,7 +238,6 @@ class ModelserviceClient:
         else:
             completions_request.model = model
         
-        print(f"[{_ts()}] 🔍 [KG CLIENT LLM] Using model: {completions_request.model}")
         
         # Add prompt as user message
         msg = completions_request.messages.add()
@@ -258,16 +249,13 @@ class ModelserviceClient:
         completions_request.max_tokens = max_tokens
         completions_request.stream = False  # Non-streaming for KG
         
-        print(f"[{_ts()}] 🔍 [KG CLIENT LLM] Request params: temp={temperature}, max_tokens={max_tokens}, stream=False")
         
         # Create future for response
         future = asyncio.Future()
         self._pending_requests[request_id] = future
-        print(f"[{_ts()}] 🔍 [KG CLIENT LLM] Stored future, pending requests: {list(self._pending_requests.keys())}")
         
         try:
             # Publish request
-            print(f"[{_ts()}] 🔍 [KG CLIENT LLM] Publishing to {AICOTopics.MODELSERVICE_CHAT_REQUEST}")
             await self.bus_client.publish(
                 AICOTopics.MODELSERVICE_CHAT_REQUEST,
                 completions_request,
@@ -293,44 +281,34 @@ class ModelserviceClient:
     async def _handle_ner_response(self, envelope) -> None:
         """Handle NER response from modelservice."""
         try:
-            print(f"[{_ts()}] 🔍 [KG CLIENT] Received NER response")
             logger.info(f"🔍 [KG CLIENT] Received NER response")
             
             # Extract correlation ID from attributes map
             try:
                 correlation_id = envelope.metadata.attributes.get("correlation_id", "")
                 if not correlation_id:
-                    print(f"[{_ts()}] 🔍 [KG CLIENT] ERROR: No correlation_id in attributes: {dict(envelope.metadata.attributes)}")
+                    logger.error(f"KG Client: No correlation_id in attributes: {dict(envelope.metadata.attributes)}")
                     return
-                print(f"[{_ts()}] 🔍 [KG CLIENT] Correlation ID: {correlation_id}")
             except Exception as e:
-                print(f"[{_ts()}] 🔍 [KG CLIENT] ERROR extracting correlation_id: {e}")
                 raise
             
-            print(f"[{_ts()}] 🔍 [KG CLIENT] Pending requests: {list(self._pending_requests.keys())}")
             
             if correlation_id not in self._pending_requests:
-                print(f"[{_ts()}] 🔍 [KG CLIENT] No pending request for correlation_id: {correlation_id}")
                 logger.warning(f"🔍 [KG CLIENT] No pending request for correlation_id: {correlation_id}")
                 return
             
             # Unpack NER response
-            print(f"[{_ts()}] 🔍 [KG CLIENT] Unpacking NER response...")
             ner_response = NerResponse()
             envelope.any_payload.Unpack(ner_response)
-            print(f"[{_ts()}] 🔍 [KG CLIENT] NER response unpacked successfully")
             
             # Convert to dict
-            print(f"[{_ts()}] 🔍 [KG CLIENT] Converting response to dict...")
             result = {
                 "success": ner_response.success,
                 "error": ner_response.error if ner_response.error else None,
                 "entities": {}
             }
-            print(f"[{_ts()}] 🔍 [KG CLIENT] Response success: {ner_response.success}")
             
             # Convert protobuf entities to dict
-            print(f"[{_ts()}] 🔍 [KG CLIENT] Converting {len(ner_response.entities)} entity types...")
             for entity_type, entity_list in ner_response.entities.items():
                 result["entities"][entity_type] = [
                     {
@@ -342,22 +320,18 @@ class ModelserviceClient:
                     }
                     for entity in entity_list.entities
                 ]
-            print(f"[{_ts()}] 🔍 [KG CLIENT] Entities converted: {result['entities']}")
             
             # Resolve future
-            print(f"[{_ts()}] 🔍 [KG CLIENT] Getting future for correlation_id: {correlation_id}")
             future = self._pending_requests.get(correlation_id)
             if future and not future.done():
-                print(f"[{_ts()}] 🔍 [KG CLIENT] Setting result on future...")
                 future.set_result(result)
-                print(f"[{_ts()}] 🔍 [KG CLIENT] ✅ Future resolved successfully!")
                 # Clean up after successful resolution
                 self._pending_requests.pop(correlation_id, None)
             else:
-                print(f"[{_ts()}] 🔍 [KG CLIENT] ⚠️ Future not found or already done: {future}")
+                logger.warning(f"KG Client: Future not found or already done: {future}")
                 
         except Exception as e:
-            print(f"[{_ts()}] 🔍 [KG CLIENT] ❌ EXCEPTION in handler: {e}")
+            logger.error(f"KG Client exception in handler: {e}")
             logger.error(f"Error handling NER response: {e}")
             import traceback
             traceback.print_exc()
@@ -395,21 +369,15 @@ class ModelserviceClient:
     async def _handle_completions_response(self, envelope) -> None:
         """Handle completions response from modelservice."""
         try:
-            print(f"[{_ts()}] 🔍 [KG CLIENT LLM] Received completions response")
             # Extract correlation ID from attributes map
             correlation_id = envelope.metadata.attributes.get("correlation_id", "")
-            print(f"[{_ts()}] 🔍 [KG CLIENT LLM] Correlation ID: {correlation_id}")
-            print(f"[{_ts()}] 🔍 [KG CLIENT LLM] Pending requests: {list(self._pending_requests.keys())}")
             
             if not correlation_id or correlation_id not in self._pending_requests:
-                print(f"[{_ts()}] 🔍 [KG CLIENT LLM] No pending request for correlation_id: {correlation_id}")
                 return
             
             # Unpack completions response
-            print(f"[{_ts()}] 🔍 [KG CLIENT LLM] Unpacking completions response...")
             completions_response = CompletionsResponse()
             envelope.any_payload.Unpack(completions_response)
-            print(f"[{_ts()}] 🔍 [KG CLIENT LLM] Unpacked successfully")
             
             # Convert to dict
             content = ""
@@ -421,22 +389,18 @@ class ModelserviceClient:
                 "error": completions_response.error if completions_response.error else None,
                 "content": content
             }
-            print(f"[{_ts()}] 🔍 [KG CLIENT LLM] Result: success={result['success']}, content_len={len(content)}")
             
             # Resolve future
-            print(f"[{_ts()}] 🔍 [KG CLIENT LLM] Getting future for correlation_id: {correlation_id}")
             future = self._pending_requests.get(correlation_id)
             if future and not future.done():
-                print(f"[{_ts()}] 🔍 [KG CLIENT LLM] Setting result on future...")
                 future.set_result(result)
-                print(f"[{_ts()}] 🔍 [KG CLIENT LLM] ✅ Future resolved successfully!")
                 # Clean up after successful resolution
                 self._pending_requests.pop(correlation_id, None)
             else:
-                print(f"[{_ts()}] 🔍 [KG CLIENT LLM] ⚠️ Future not found or already done: {future}")
+                logger.warning(f"KG Client LLM: Future not found or already done: {future}")
                 
         except Exception as e:
-            print(f"[{_ts()}] 🔍 [KG CLIENT LLM] ❌ EXCEPTION in handler: {e}")
+            logger.error(f"KG Client LLM exception in handler: {e}")
             logger.error(f"Error handling completions response: {e}")
             import traceback
             traceback.print_exc()

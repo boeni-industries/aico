@@ -68,11 +68,10 @@ class GLiNEREntityExtractor(ExtractionStrategy):
         Returns:
             PropertyGraph with extracted entities (nodes only)
         """
-        print(f"[{_ts()}] 🔍 [GLINER] Starting entity extraction for text: {text}")
+        logger.debug(f"Starting GLiNER entity extraction for text: {text[:100]}...")
         try:
             # Call modelservice for entity extraction
             # GLiNER is configured in modelservice.transformers.models.entity_extraction
-            print(f"[{_ts()}] 🔍 [GLINER] Calling modelservice.extract_entities...")
             try:
                 response = await self.modelservice.extract_entities(
                     text=text,
@@ -82,9 +81,9 @@ class GLiNEREntityExtractor(ExtractionStrategy):
                         "project", "goal", "task", "interest"
                     ]
                 )
-                print(f"[{_ts()}] 🔍 [GLINER] extract_entities returned successfully")
+                logger.debug(f"GLiNER extraction completed successfully")
             except Exception as e:
-                print(f"[{_ts()}] 🔍 [GLINER] ❌ EXCEPTION in extract_entities: {e}")
+                logger.error(f"GLiNER extract_entities failed: {e}")
                 import traceback
                 traceback.print_exc()
                 raise
@@ -93,14 +92,11 @@ class GLiNEREntityExtractor(ExtractionStrategy):
             
             # Convert GLiNER entities to nodes
             # Response format: {"entities": {"PERSON": [...], "ORGANIZATION": [...]}}
-            print(f"[{_ts()}] 🔍 [GLINER] Raw response: {response}")
             entities_by_type = response.get("entities", {})
-            print(f"[{_ts()}] 🔍 [GLINER] Entities by type: {entities_by_type}")
+            logger.debug(f"GLiNER found {len(entities_by_type)} entity types")
             
             for entity_type, entity_list in entities_by_type.items():
-                print(f"[{_ts()}] 🔍 [GLINER] Processing {len(entity_list)} entities of type {entity_type}")
                 for entity in entity_list:
-                    print(f"[{_ts()}] 🔍 [GLINER] Creating node for entity: {entity}")
                     node = Node.create(
                         user_id=user_id,
                         label=entity["label"].upper(),
@@ -112,10 +108,9 @@ class GLiNEREntityExtractor(ExtractionStrategy):
                         confidence=entity.get("confidence", 0.9),
                         source_text=text
                     )
-                    print(f"[{_ts()}] 🔍 [GLINER] Created node: {node.label} - {node.properties}")
                     graph.add_node(node)
             
-            print(f"[{_ts()}] 🔍 [GLINER] Total nodes in graph: {len(graph.nodes)}")
+            logger.info(f"GLiNER extracted {len(graph.nodes)} entities")
             logger.debug(f"GLiNER extracted {len(graph.nodes)} entities")
             return graph
             
@@ -175,18 +170,23 @@ class LLMRelationExtractor(ExtractionStrategy):
                 entity_list = [f"- {e['label']}: {e['name']}" for e in existing_entities]
                 entity_context = f"\n\nKnown entities:\n" + "\n".join(entity_list)
             
-            prompt = f"""Extract relationships from the following text. Return a JSON object with:
-- "relationships": array of {{source, relation_type, target, properties}}
+            prompt = f"""Extract relationships between DIFFERENT entities from the following text.
+
+IMPORTANT RULES:
+- Only extract relationships where source and target are DIFFERENT entities
+- Do NOT create self-referential relationships (e.g., "Michael" -> "has name" -> "Michael")
+- If there are no meaningful relationships between different entities, return empty arrays
+- Focus on relationships that connect distinct entities
+
+Return a JSON object with:
+- "relationships": array of {{source, relation_type, target, properties}} where source ≠ target
 - "new_entities": array of any entities not in the known list
 
 Text: {text}{entity_context}
 
 Return valid JSON only, no explanation."""
             
-            print(f"[{_ts()}] 🔍 [LLM] Sending prompt ({len(prompt)} chars):")
-            print(f"[{_ts()}] 🔍 [LLM] FULL PROMPT:")
-            print(prompt)
-            print(f"[{_ts()}] 🔍 [LLM] END PROMPT")
+            logger.debug(f"Sending LLM prompt ({len(prompt)} chars) for relation extraction")
             
             # Call LLM (Eve - reasoning model)
             response = await asyncio.wait_for(
@@ -201,10 +201,7 @@ Return valid JSON only, no explanation."""
             
             # Parse LLM response
             response_text = response.get("text", "")
-            print(f"[{_ts()}] 🔍 [LLM] Received response ({len(response_text)} chars):")
-            print(f"[{_ts()}] 🔍 [LLM] FULL RESPONSE:")
-            print(response_text)
-            print(f"[{_ts()}] 🔍 [LLM] END RESPONSE")
+            logger.debug(f"Received LLM response ({len(response_text)} chars)")
             result = self._parse_llm_response(response_text)
             
             graph = PropertyGraph()
@@ -222,6 +219,11 @@ Return valid JSON only, no explanation."""
             
             # Create edges for relationships
             for rel in result.get("relationships", []):
+                # Skip self-referential relationships (source == target)
+                if rel["source"].lower().strip() == rel["target"].lower().strip():
+                    logger.warning(f"Skipping self-referential relationship: {rel['source']} -> {rel['relation_type']} -> {rel['target']}")
+                    continue
+                
                 # Create placeholder nodes if not in context
                 source_node = self._find_or_create_node(
                     rel["source"],
@@ -404,9 +406,9 @@ class MultiPassExtractor:
             PropertyGraph with initial extraction
         """
         # Step 1: Extract entities using GLiNER (fast)
-        print(f"[{_ts()}] 🔍 [EXTRACTOR] Starting entity extraction...")
+        logger.debug("Starting entity extraction phase")
         entity_graph = await self.gliner_extractor.extract(text, user_id, {})
-        print(f"[{_ts()}] 🔍 [EXTRACTOR] Entity extraction complete: {len(entity_graph.nodes)} entities")
+        logger.info(f"Entity extraction complete: {len(entity_graph.nodes)} entities")
         
         # Merge entity results
         graph = PropertyGraph()
@@ -425,9 +427,9 @@ class MultiPassExtractor:
         }
         
         # Step 3: Extract relations WITH entity context (only one LLM call needed)
-        print(f"[{_ts()}] 🔍 [EXTRACTOR] Starting relation extraction with {len(entity_context['entities'])} known entities...")
+        logger.debug(f"Starting relation extraction with {len(entity_context['entities'])} known entities")
         relation_graph = await self.llm_extractor.extract(text, user_id, entity_context)
-        print(f"[{_ts()}] 🔍 [EXTRACTOR] Relation extraction complete: {len(relation_graph.edges)} relationships")
+        logger.info(f"Relation extraction complete: {len(relation_graph.edges)} relationships")
         graph.merge(relation_graph)
         
         return graph
@@ -487,10 +489,7 @@ What entities or relationships did we miss? Return JSON with:
 
 Return valid JSON only."""
             
-            print(f"[{_ts()}] 🔍 [GLEANING] Sending prompt ({len(prompt)} chars):")
-            print(f"[{_ts()}] 🔍 [GLEANING] FULL PROMPT:")
-            print(prompt)
-            print(f"[{_ts()}] 🔍 [GLEANING] END PROMPT")
+            logger.debug(f"Sending gleaning prompt ({len(prompt)} chars)")
             
             response = await self.llm_extractor.modelservice.generate_completion(
                 prompt=prompt,
@@ -500,10 +499,7 @@ Return valid JSON only."""
             )
             
             response_text = response.get("text", "")
-            print(f"[{_ts()}] 🔍 [GLEANING] Received response ({len(response_text)} chars):")
-            print(f"[{_ts()}] 🔍 [GLEANING] FULL RESPONSE:")
-            print(response_text)
-            print(f"[{_ts()}] 🔍 [GLEANING] END RESPONSE")
+            logger.debug(f"Received gleaning response ({len(response_text)} chars)")
             
             result = self.llm_extractor._parse_llm_response(response_text)
             
