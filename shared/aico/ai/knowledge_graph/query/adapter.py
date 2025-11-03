@@ -31,18 +31,8 @@ class KGGraphAdapter:
         self._nodes_cache = None
         self._edges_cache = None
     
-    def nodes(self) -> Dict[str, Dict[str, Any]]:
-        """
-        Return all nodes for the user in NetworkX format.
-        
-        Returns:
-            Dict of {node_id: {properties}} where properties include:
-            - label: Entity type (PERSON, PLACE, etc.)
-            - All properties from the node's properties JSON
-        """
-        if self._nodes_cache is not None:
-            return self._nodes_cache
-        
+    def _load_nodes(self) -> Dict[str, Dict[str, Any]]:
+        """Load nodes from database."""
         # Query nodes from libSQL
         cursor = self.db_connection.execute(
             "SELECT id, label, properties FROM kg_nodes WHERE user_id = ?",
@@ -61,21 +51,10 @@ class KGGraphAdapter:
             
             nodes[node_id] = properties
         
-        self._nodes_cache = nodes
         return nodes
     
-    def edges(self) -> List[Tuple[str, str, Dict[str, Any]]]:
-        """
-        Return all edges for the user in NetworkX format.
-        
-        Returns:
-            List of (source_id, target_id, properties) tuples where properties include:
-            - relation_type: Type of relationship
-            - All properties from the edge's properties JSON
-        """
-        if self._edges_cache is not None:
-            return self._edges_cache
-        
+    def _load_edges(self) -> List[Tuple[str, str, Dict[str, Any]]]:
+        """Load edges from database."""
         # Query edges from libSQL
         cursor = self.db_connection.execute(
             "SELECT source_id, target_id, relation_type, properties FROM kg_edges WHERE user_id = ?",
@@ -95,8 +74,35 @@ class KGGraphAdapter:
             
             edges.append((source_id, target_id, properties))
         
-        self._edges_cache = edges
         return edges
+    
+    @property
+    def nodes(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Return all nodes for the user in NetworkX format.
+        
+        Returns:
+            Dict of {node_id: {properties}} where properties include:
+            - label: Entity type (PERSON, PLACE, etc.)
+            - All properties from the node's properties JSON
+        """
+        if self._nodes_cache is None:
+            self._nodes_cache = self._load_nodes()
+        return self._nodes_cache
+    
+    @property
+    def edges(self) -> List[Tuple[str, str, Dict[str, Any]]]:
+        """
+        Return all edges for the user in NetworkX format.
+        
+        Returns:
+            List of (source_id, target_id, properties) tuples where properties include:
+            - relation_type: Type of relationship
+            - All properties from the edge's properties JSON
+        """
+        if self._edges_cache is None:
+            self._edges_cache = self._load_edges()
+        return self._edges_cache
     
     def clear_cache(self):
         """Clear cached nodes and edges."""
