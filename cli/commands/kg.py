@@ -584,7 +584,7 @@ def traverse(
         from aico.security import AICOKeyManager
         from aico.data.libsql.encrypted import EncryptedLibSQLConnection
         from aico.ai.knowledge_graph import PropertyGraphStorage
-        from aico.ai.knowledge_graph.query import GraphQueryEngine
+        from aico.ai.knowledge_graph.graph_traversal import GraphQueryEngine
         import chromadb
         from chromadb.config import Settings
         
@@ -645,7 +645,7 @@ def find_path(
         from aico.security import AICOKeyManager
         from aico.data.libsql.encrypted import EncryptedLibSQLConnection
         from aico.ai.knowledge_graph import PropertyGraphStorage
-        from aico.ai.knowledge_graph.query import GraphQueryEngine
+        from aico.ai.knowledge_graph.graph_traversal import GraphQueryEngine
         import chromadb
         from chromadb.config import Settings
         
@@ -784,7 +784,7 @@ def subgraph(
         from aico.security import AICOKeyManager
         from aico.data.libsql.encrypted import EncryptedLibSQLConnection
         from aico.ai.knowledge_graph import PropertyGraphStorage
-        from aico.ai.knowledge_graph.query import GraphQueryEngine
+        from aico.ai.knowledge_graph.graph_traversal import GraphQueryEngine
         import chromadb
         from chromadb.config import Settings
         

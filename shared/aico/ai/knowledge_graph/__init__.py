@@ -47,8 +47,9 @@ from .storage import PropertyGraphStorage
 from .extractor import MultiPassExtractor
 from .entity_resolution import EntityResolver
 from .fusion import GraphFusion
-from .query import GraphQueryEngine
+from .graph_traversal import GraphQueryEngine
 from .analytics import GraphAnalytics
+from .query import GQLQueryExecutor
 
 __all__ = [
     # Data models
@@ -63,6 +64,7 @@ __all__ = [
     "GraphFusion",
     
     # Advanced features (Phase 2)
-    "GraphQueryEngine",
+    "GraphQueryEngine",  # Graph traversal (BFS/DFS/path finding)
     "GraphAnalytics",
+    "GQLQueryExecutor",  # GQL/Cypher query execution
 ]
