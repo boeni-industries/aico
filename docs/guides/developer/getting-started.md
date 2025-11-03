@@ -137,7 +137,7 @@ AICO uses UV workspace management with a unified `pyproject.toml` at the root an
   cd aico
 
   # Initialize UV workspace with all optional dependencies
-  uv sync --extra cli --extra backend --extra test
+  uv sync --extra cli --extra backend --extra test --extra modelservice
 
   # Verify installation
   uv run aico --help

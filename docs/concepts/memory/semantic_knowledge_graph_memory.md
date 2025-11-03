@@ -1622,6 +1622,156 @@ Deduplication accuracy: 95%+ ✅
 
 ---
 
+## Current Limitations & Future Enhancements
+
+### 1. Additional Data Sources
+**Current:** Knowledge graph only extracts from user conversations
+**Limitation:** Cannot incorporate external knowledge or structured data sources
+**Future Enhancement:**
+- Import from calendar events, emails, documents
+- Integration with external APIs (LinkedIn, Google Calendar, etc.)
+- Manual fact entry via CLI/UI
+- Bulk import from structured data (CSV, JSON)
+
+### 2. Extended Relationship Types
+**Current:** Basic relationship types extracted from conversation (WORKS_AT, LIVES_IN, KNOWS)
+**Limitation:** Limited semantic expressiveness for complex relationships
+**Future Enhancement:**
+- Hierarchical relationship taxonomy (IS_A, PART_OF, BELONGS_TO)
+- Temporal relationships (WORKED_AT_FROM_TO, LIVED_IN_UNTIL)
+- Causal relationships (CAUSED_BY, RESULTED_IN)
+- Emotional relationships (FEELS_ABOUT, REMINDS_OF)
+- Probabilistic relationships with confidence scores
+- Custom user-defined relationship types
+
+### 3. Graph Analytics
+**Current:** Simple node/edge retrieval via semantic search
+**Limitation:** No graph-level analysis or pattern detection
+**Future Enhancement:**
+- **Centrality Analysis:** Identify most important entities in user's life
+- **Community Detection:** Discover clusters of related entities (work, family, hobbies)
+- **Path Finding:** Multi-hop reasoning ("How is X connected to Y?")
+- **Anomaly Detection:** Identify unusual patterns or contradictions
+- **Trend Analysis:** Track how relationships evolve over time
+- **Influence Propagation:** Understand how changes affect connected entities
+
+### 4. Cross-User Knowledge Sharing
+**Current:** Each user has isolated knowledge graph (user_id scoping)
+**Status:** ✅ **Already Implemented** - Data is user-bound via `user_id` in all tables
+**Clarification:** "Single-user graphs" refers to **lack of cross-user knowledge sharing**, not lack of user isolation
+**Future Enhancement:**
+- **Shared Knowledge Base:** Common facts accessible to all users (e.g., "Paris is in France")
+- **Privacy-Aware Sharing:** Users can opt-in to share specific facts
+- **Collaborative Learning:** System learns from aggregate patterns across users
+- **Entity Disambiguation:** Leverage cross-user data to resolve ambiguous entities
+- **Collective Intelligence:** Improve extraction quality using multi-user validation
+
+**Example Use Cases:**
+- Shared organizational knowledge (company structure, policies)
+- Public figure information (celebrities, politicians)
+- Common knowledge facts (geography, history)
+- Collaborative workspaces (team projects, shared goals)
+
+**Privacy Considerations:**
+- Default: All user data is private and isolated
+- Opt-in: Users explicitly choose what to share
+- Anonymization: Shared data stripped of personal identifiers
+- Access Control: Fine-grained permissions for shared knowledge
+
+---
+
+## Query Language: GQL/Cypher via GrandCypher
+
+### Why GQL?
+**GQL (Graph Query Language)** is the new ISO standard (ISO/IEC 39075:2024) for property graphs, published April 2024. It's the first new ISO database language since SQL, designed specifically for graph databases.
+
+### Implementation: GrandCypher
+AICO uses **GrandCypher**, a pure Python implementation of Cypher (90% compatible with GQL):
+
+**Benefits:**
+- ✅ **ISO Standard Syntax** - Future-proof, industry-wide adoption expected
+- ✅ **No Neo4j Dependency** - Works with our libSQL + ChromaDB backend
+- ✅ **Pure Python** - Easy installation, no C compilation required
+- ✅ **Extensible** - Can add GQL features as standard evolves
+- ✅ **Production-Ready** - Used by research labs and production systems
+
+**Example Query:**
+```cypher
+MATCH (user:PERSON {name: 'Geralt'})-[:WORKS_FOR]->(company)
+RETURN company.name, company.properties
+```
+
+**Supported Features:**
+- Pattern matching: `MATCH (a)-[r]->(b)`
+- Filtering: `WHERE a.property = 'value'`
+- Aggregations: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`
+- Ordering: `ORDER BY`, `LIMIT`, `SKIP`
+- Type filtering: `(:PERSON)`, `[:WORKS_FOR]`
+- Multi-hop traversal: `(a)-[]->(b)-[]->(c)`
+
+**Security:**
+- All queries automatically scoped to user_id
+- Query validation prevents injection attacks
+- Execution timeouts prevent DoS
+- Result size limits prevent memory exhaustion
+
+---
+
+## API Endpoints Reference
+
+### Graph Access
+- `GET /api/v1/kg/graph` - Get user's full graph (nodes + edges with filters)
+- `GET /api/v1/kg/nodes` - List all nodes (paginated, filtered by type/properties)
+- `GET /api/v1/kg/edges` - List all edges (paginated, filtered by relation type)
+- `GET /api/v1/kg/nodes/{node_id}` - Get single node with details and neighbors
+- `GET /api/v1/kg/edges/{edge_id}` - Get single edge with source/target details
+
+### Search & Query
+- `GET /api/v1/kg/search` - Semantic search across entities (vector similarity)
+- `POST /api/v1/kg/query` - Execute GQL/Cypher queries via GrandCypher (ISO standard syntax)
+- `GET /api/v1/kg/neighbors/{node_id}` - Get connected entities (1-hop or N-hop)
+- `GET /api/v1/kg/path` - Find shortest path between two entities
+
+### Analytics
+- `GET /api/v1/kg/analytics/centrality` - Most important entities (PageRank/degree)
+- `GET /api/v1/kg/analytics/communities` - Detect entity clusters (work, family, hobbies)
+- `GET /api/v1/kg/analytics/timeline` - Temporal fact evolution over time
+- `GET /api/v1/kg/analytics/stats` - Graph statistics (node/edge counts, type distribution)
+
+### Entity Management
+- `POST /api/v1/kg/nodes` - Create new entity (manual fact entry)
+- `PATCH /api/v1/kg/nodes/{node_id}` - Update entity properties/confidence
+- `DELETE /api/v1/kg/nodes/{node_id}` - Delete entity (with cascade option)
+- `POST /api/v1/kg/nodes/{node_id}/validate` - User confirms entity accuracy (confidence=1.0)
+
+### Relationship Management
+- `POST /api/v1/kg/edges` - Create new relationship between entities
+- `PATCH /api/v1/kg/edges/{edge_id}` - Update relationship properties/confidence
+- `DELETE /api/v1/kg/edges/{edge_id}` - Delete relationship
+- `POST /api/v1/kg/edges/{edge_id}/validate` - User confirms relationship accuracy
+
+### Temporal & History
+- `GET /api/v1/kg/nodes/{node_id}/history` - Entity version history (all changes)
+- `GET /api/v1/kg/nodes/{node_id}/timeline` - Entity temporal changes (valid_from/until)
+- `GET /api/v1/kg/temporal` - Query facts at specific timestamp (time-travel queries)
+
+### Batch Operations
+- `POST /api/v1/kg/batch/validate` - Validate multiple entities at once
+- `POST /api/v1/kg/batch/delete` - Delete multiple entities/relationships
+- `POST /api/v1/kg/batch/merge` - Merge duplicate entities (entity resolution)
+
+### Export & Import
+- `GET /api/v1/kg/export` - Export graph (JSON/GraphML/CSV formats)
+- `POST /api/v1/kg/import` - Import graph data (bulk upload)
+
+### Metadata & Config
+- `GET /api/v1/kg/schema` - Get available entity/relationship types
+- `GET /api/v1/kg/metadata` - Graph metadata (size, quality scores, extraction stats)
+
+**Total: 31 endpoints** supporting visualization, editing, analytics, and temporal reasoning.
+
+---
+
 ## Conclusion
 
 The property graph pipeline solves the deduplication problem while providing system-wide benefits for relationship intelligence, autonomous agency, emotional intelligence, and privacy. The 3x latency/cost increase is justified by infinite accuracy improvement and enhanced capabilities across AICO's core features.

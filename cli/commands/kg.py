@@ -282,24 +282,50 @@ def extract(
     asyncio.run(_extract())
 
 
-@app.command(name="query", help="Query knowledge graph semantically.")
+@app.command(name="query", help="Query knowledge graph semantically or with GQL/Cypher.")
 def query(
-    query_text: str = typer.Argument(..., help="Query text"),
+    query_text: Optional[str] = typer.Argument(None, help="Query text or GQL/Cypher query"),
     user_id: str = typer.Option(..., "--user-id", "-u", help="User ID"),
-    label: Optional[str] = typer.Option(None, "--label", "-l", help="Filter by node label"),
-    limit: int = typer.Option(10, "--limit", "-n", help="Number of results")
+    label: Optional[str] = typer.Option(None, "--label", "-l", help="Filter by node label (semantic search only)"),
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of results (semantic search only)"),
+    gql: bool = typer.Option(False, "--gql", help="Execute as GQL/Cypher query"),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="Read query from file"),
+    format: str = typer.Option("table", "--format", help="Output format: table, json, csv")
 ):
-    """Query knowledge graph semantically."""
+    """
+    Query knowledge graph semantically or with GQL/Cypher.
+    
+    Examples:
+      Semantic search: aico kg query "Where do I live?" --user-id user_123
+      GQL query: aico kg query --gql "MATCH (p:PERSON) RETURN p.name" --user-id user_123
+      From file: aico kg query --gql --file query.cypher --user-id user_123
+    """
     async def _query():
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security import AICOKeyManager
         from aico.data.libsql.encrypted import EncryptedLibSQLConnection
         from aico.ai.knowledge_graph import PropertyGraphStorage
+        from aico.ai.knowledge_graph.query import GQLQueryExecutor
         import chromadb
         from chromadb.config import Settings
+        from pathlib import Path
         
         try:
+            # Read query from file if specified
+            if file:
+                query_path = Path(file)
+                if not query_path.exists():
+                    console.print(f"[red]Error: File not found: {file}[/red]")
+                    raise typer.Exit(1)
+                query_text = query_path.read_text()
+                console.print(f"[dim]Reading query from: {file}[/dim]\n")
+            
+            # Validate query text
+            if not query_text:
+                console.print("[red]Error: Query text required (provide as argument or via --file)[/red]")
+                raise typer.Exit(1)
+            
             # Initialize storage
             db_path = AICOPaths.resolve_database_path("aico.db", "auto")
             db_connection = _get_database_connection(str(db_path))
@@ -310,56 +336,83 @@ def query(
                 settings=Settings(anonymized_telemetry=False, allow_reset=True)
             )
             
-            # Generate query embedding using same model as storage (768-dim)
-            from sentence_transformers import SentenceTransformer
-            embedding_model = SentenceTransformer('paraphrase-multilingual-mpnet-base-v2')
-            query_embedding = embedding_model.encode(query_text).tolist()
-            
-            # Build ChromaDB filter
-            where_conditions = [
-                {"user_id": user_id},
-                {"is_current": 1}
-            ]
-            if label:
-                where_conditions.append({"label": label})
-            
-            where_filter = {"$and": where_conditions} if len(where_conditions) > 1 else where_conditions[0]
-            
-            # Query ChromaDB directly with embedding
-            console.print(f"\n[cyan]Searching for:[/cyan] {query_text}\n")
-            collection = chromadb_client.get_collection("kg_nodes")
-            results = collection.query(
-                query_embeddings=[query_embedding],
-                n_results=limit,
-                where=where_filter
-            )
-            
-            # Fetch full nodes from LibSQL
-            nodes = []
-            if results["ids"] and results["ids"][0]:
+            # Execute GQL query or semantic search
+            if gql:
+                # GQL/Cypher query mode
+                console.print(f"[cyan]Executing GQL query:[/cyan]\n{query_text}\n")
+                
                 storage = PropertyGraphStorage(db_connection, chromadb_client, None)
-                for node_id in results["ids"][0]:
-                    node = await storage.get_node(node_id)
-                    if node:
-                        nodes.append(node)
+                executor = GQLQueryExecutor(storage, db_connection)
+                
+                result = await executor.execute(query_text, user_id, format=format)
+                
+                if result["success"]:
+                    if format == "json":
+                        console.print(result["data"])
+                    elif format == "csv":
+                        console.print(result["data"])
+                    else:  # table
+                        console.print(result["data"])
+                    
+                    metadata = result["metadata"]
+                    console.print(f"\n[dim]{metadata['row_count']} row(s) returned[/dim]")
+                else:
+                    console.print(f"[red]Query failed: {result['error']}[/red]")
+                    raise typer.Exit(1)
             
-            if nodes:
-                console.print(f"[green]Found {len(nodes)} results:[/green]\n")
-                table = Table(box=box.SIMPLE)
-                table.add_column("Label", style="yellow")
-                table.add_column("Properties", style="white")
-                table.add_column("Confidence", style="green")
-                
-                for node in nodes:
-                    props = json.dumps(node.properties, ensure_ascii=False)
-                    table.add_row(node.label, props[:80], f"{node.confidence:.2f}")
-                
-                console.print(table)
             else:
-                console.print("[yellow]No results found.[/yellow]")
+                # Semantic search mode (existing behavior)
+                from sentence_transformers import SentenceTransformer
+                embedding_model = SentenceTransformer('paraphrase-multilingual-mpnet-base-v2')
+                query_embedding = embedding_model.encode(query_text).tolist()
+                
+                # Build ChromaDB filter
+                where_conditions = [
+                    {"user_id": user_id},
+                    {"is_current": 1}
+                ]
+                if label:
+                    where_conditions.append({"label": label})
+                
+                where_filter = {"$and": where_conditions} if len(where_conditions) > 1 else where_conditions[0]
+                
+                # Query ChromaDB directly with embedding
+                console.print(f"\n[cyan]Searching for:[/cyan] {query_text}\n")
+                collection = chromadb_client.get_collection("kg_nodes")
+                results = collection.query(
+                    query_embeddings=[query_embedding],
+                    n_results=limit,
+                    where=where_filter
+                )
+                
+                # Fetch full nodes from LibSQL
+                nodes = []
+                if results["ids"] and results["ids"][0]:
+                    storage = PropertyGraphStorage(db_connection, chromadb_client, None)
+                    for node_id in results["ids"][0]:
+                        node = await storage.get_node(node_id)
+                        if node:
+                            nodes.append(node)
+                
+                if nodes:
+                    console.print(f"[green]Found {len(nodes)} results:[/green]\n")
+                    table = Table(box=box.SIMPLE)
+                    table.add_column("Label", style="yellow")
+                    table.add_column("Properties", style="white")
+                    table.add_column("Confidence", style="green")
+                    
+                    for node in nodes:
+                        props = json.dumps(node.properties, ensure_ascii=False)
+                        table.add_row(node.label, props[:80], f"{node.confidence:.2f}")
+                    
+                    console.print(table)
+                else:
+                    console.print("[yellow]No results found.[/yellow]")
             
         except Exception as e:
             console.print(f"[red]Error:[/red] {e}")
+            import traceback
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
             raise typer.Exit(1)
     
     asyncio.run(_query())

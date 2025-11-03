@@ -28,6 +28,7 @@ dependencies = [
     "lmdb>=1.7.3",
     "chromadb>=1.0.16", # Phase 2 semantic memory - core functionality
     "transformers==4.50.3",
+    "grand-cypher", # GQL/Cypher query language support for knowledge graph
 ]
 
 [project.optional-dependencies]
