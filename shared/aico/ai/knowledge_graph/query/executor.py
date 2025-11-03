@@ -89,12 +89,14 @@ class GQLQueryExecutor:
             
             # Step 3: Build graph adapter (user-isolated)
             adapter = KGGraphAdapter(self.kg_storage, self.db_connection, user_id)
+            graph = adapter.get_graph()
             
             logger.info(f"Executing GQL query for user {user_id}: {query[:100]}...")
+            logger.debug(f"Graph has {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges")
             
             # Step 4: Execute query via GrandCypher
             try:
-                gc = GrandCypher(adapter)
+                gc = GrandCypher(graph)
                 results = gc.run(query)
             except Exception as e:
                 logger.error(f"GrandCypher execution failed: {e}")

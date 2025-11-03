@@ -1659,9 +1659,10 @@ def user_list(
 @app.command("user-auth")
 def user_auth(
     user_uuid: str = typer.Argument(None, help="User UUID"),
-    pin: str = typer.Option(None, "--pin", "-p", help="User PIN", hide_input=True)
+    pin: str = typer.Option(None, "--pin", "-p", help="User PIN", hide_input=True),
+    token: bool = typer.Option(False, "--token", "-t", help="Generate and return JWT token for API testing")
 ):
-    """Authenticate user with PIN"""
+    """Authenticate user with PIN and optionally generate JWT token"""
     
     if user_uuid is None:
         console.print("\n❌ [red]Missing required argument: USER_UUID[/red]\n")
@@ -1670,8 +1671,11 @@ def user_auth(
         console.print("[bold yellow]Examples:[/bold yellow]")
         console.print('  aico security user-auth abc123def --pin 1234')
         console.print('  aico security user-auth 550e8400-e29b-41d4-a716-446655440000 -p 5678')
+        console.print('  aico security user-auth abc123def --pin 1234 --token  # Generate JWT token')
         console.print("\n[bold yellow]Required Options:[/bold yellow]")
         console.print("  --pin, -p         User's PIN for authentication")
+        console.print("\n[bold yellow]Optional Flags:[/bold yellow]")
+        console.print("  --token, -t       Generate JWT token for API testing")
         console.print("\n[dim]Use 'aico security user-list' to find user UUIDs[/dim]")
         raise typer.Exit(1)
     
@@ -1721,12 +1725,40 @@ def user_auth(
         
         if result["success"]:
             user = result["user"]
+            
+            # Generate JWT token if requested
+            jwt_token = None
+            if token:
+                from aico.core.authorization import AuthorizationService
+                from backend.api_gateway.models.core.auth import AuthenticationManager
+                
+                # Get user roles and permissions
+                authz_service = AuthorizationService(db_conn)
+                user_roles = authz_service.get_user_roles(user.uuid)
+                user_permissions = authz_service.get_user_permissions(user.uuid)
+                
+                # Initialize auth manager and generate token
+                auth_manager = AuthenticationManager(config_manager)
+                jwt_token = auth_manager.generate_jwt_token(
+                    user_uuid=user.uuid,
+                    username=user.full_name,
+                    roles=user_roles,
+                    permissions=user_permissions,
+                    device_uuid="cli-testing"
+                )
+            
             console.print(f"\n✅ [green]Authentication successful[/green]")
             console.print(f"User: {user.full_name}")
             if user.nickname:
                 console.print(f"Nickname: {user.nickname}")
             if result.get("last_login"):
                 console.print(f"Last login: {result['last_login']}")
+            
+            # Output token if generated
+            if jwt_token:
+                console.print(f"\n🔑 [bold cyan]JWT Token:[/bold cyan]")
+                console.print(f"{jwt_token}")
+                console.print(f"\n[dim]Use this token with: curl -H \"Authorization: Bearer <token>\"[/dim]")
         else:
             console.print(f"\n❌ [red]Authentication failed: {result['error']}[/red]")
             if result.get("failed_attempts"):
