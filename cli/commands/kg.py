@@ -312,17 +312,18 @@ def query(
         from pathlib import Path
         
         try:
-            # Read query from file if specified
+            # Read query from file if specified, otherwise use argument
+            final_query_text = query_text
             if file:
                 query_path = Path(file)
                 if not query_path.exists():
                     console.print(f"[red]Error: File not found: {file}[/red]")
                     raise typer.Exit(1)
-                query_text = query_path.read_text()
+                final_query_text = query_path.read_text()
                 console.print(f"[dim]Reading query from: {file}[/dim]\n")
             
             # Validate query text
-            if not query_text:
+            if not final_query_text:
                 console.print("[red]Error: Query text required (provide as argument or via --file)[/red]")
                 raise typer.Exit(1)
             
@@ -339,12 +340,12 @@ def query(
             # Execute GQL query or semantic search
             if gql:
                 # GQL/Cypher query mode
-                console.print(f"[cyan]Executing GQL query:[/cyan]\n{query_text}\n")
+                console.print(f"[cyan]Executing GQL query:[/cyan]\n{final_query_text}\n")
                 
                 storage = PropertyGraphStorage(db_connection, chromadb_client, None)
                 executor = GQLQueryExecutor(storage, db_connection)
                 
-                result = await executor.execute(query_text, user_id, format=format)
+                result = await executor.execute(final_query_text, user_id, format=format)
                 
                 if result["success"]:
                     if format == "json":
@@ -364,7 +365,7 @@ def query(
                 # Semantic search mode (existing behavior)
                 from sentence_transformers import SentenceTransformer
                 embedding_model = SentenceTransformer('paraphrase-multilingual-mpnet-base-v2')
-                query_embedding = embedding_model.encode(query_text).tolist()
+                query_embedding = embedding_model.encode(final_query_text).tolist()
                 
                 # Build ChromaDB filter
                 where_conditions = [
@@ -377,7 +378,7 @@ def query(
                 where_filter = {"$and": where_conditions} if len(where_conditions) > 1 else where_conditions[0]
                 
                 # Query ChromaDB directly with embedding
-                console.print(f"\n[cyan]Searching for:[/cyan] {query_text}\n")
+                console.print(f"\n[cyan]Searching for:[/cyan] {final_query_text}\n")
                 collection = chromadb_client.get_collection("kg_nodes")
                 results = collection.query(
                     query_embeddings=[query_embedding],
