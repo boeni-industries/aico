@@ -340,7 +340,9 @@ def query(
             # Execute GQL query or semantic search
             if gql:
                 # GQL/Cypher query mode
-                console.print(f"[cyan]Executing GQL query:[/cyan]\n{final_query_text}\n")
+                # Escape square brackets to prevent Rich from interpreting them as markup
+                escaped_query = final_query_text.replace("[", "\\[").replace("]", "\\]")
+                console.print(f"[cyan]Executing GQL query:[/cyan]\n{escaped_query}\n")
                 
                 storage = PropertyGraphStorage(db_connection, chromadb_client, None)
                 executor = GQLQueryExecutor(storage, db_connection)

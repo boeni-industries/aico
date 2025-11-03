@@ -14,8 +14,26 @@ from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
 
 from .models import Node, Edge, PropertyGraph
+from .modelservice_client import ModelserviceClient
 
 logger = get_logger("shared", "ai.knowledge_graph.extractor")
+
+
+def normalize_relation_type(relation_type: str) -> str:
+    """
+    Normalize relationship type to valid identifier format.
+    
+    Replaces spaces with underscores and ensures uppercase.
+    Examples: "WORKS FOR" -> "WORKS_FOR", "lives in" -> "LIVES_IN"
+    
+    Args:
+        relation_type: Raw relationship type from extraction
+        
+    Returns:
+        Normalized relationship type
+    """
+    return relation_type.upper().replace(" ", "_")
+
 
 def _ts():
     """Get timestamp for debug prints."""
@@ -244,7 +262,7 @@ Return valid JSON only, no explanation."""
                     user_id=user_id,
                     source_id=source_node.id,
                     target_id=target_node.id,
-                    relation_type=rel["relation_type"].upper(),
+                    relation_type=normalize_relation_type(rel["relation_type"]),
                     properties=rel.get("properties", {}),
                     confidence=0.85,
                     source_text=text
@@ -539,7 +557,7 @@ Return valid JSON only."""
                     user_id=user_id,
                     source_id=source_node.id,
                     target_id=target_node.id,
-                    relation_type=rel["relation_type"].upper(),
+                    relation_type=normalize_relation_type(rel["relation_type"]),
                     properties=rel.get("properties", {}),
                     confidence=0.75,
                     source_text=text
