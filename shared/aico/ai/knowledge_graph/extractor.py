@@ -35,6 +35,151 @@ def normalize_relation_type(relation_type: str) -> str:
     return relation_type.upper().replace(" ", "_")
 
 
+def normalize_entity_label(label: str) -> str:
+    """
+    Normalize entity label to canonical form.
+    
+    Maps GLiNER variant labels to canonical personal graph labels.
+    Examples: "work project" -> "PROJECT", "todo" -> "TASK"
+    
+    Args:
+        label: Raw entity label from GLiNER
+        
+    Returns:
+        Canonical entity label
+    """
+    label_lower = label.lower()
+    
+    # Project variants
+    if label_lower in ["work project", "personal project", "software project"]:
+        return "PROJECT"
+    
+    # Goal variants
+    if label_lower in ["objective", "ambition"]:
+        return "GOAL"
+    
+    # Task variants
+    if label_lower in ["todo", "action item"]:
+        return "TASK"
+    
+    # Interest variants
+    if label_lower in ["hobby", "passion"]:
+        return "INTEREST"
+    
+    # Activity variants
+    if label_lower in ["action"]:
+        return "ACTIVITY"
+    
+    # Priority variants
+    if label_lower in ["deadline"]:
+        return "PRIORITY"
+    
+    # Default: uppercase the label
+    return label.upper()
+
+
+# Semantic label definitions for embedding-based classification
+# Based on research: https://arxiv.org/abs/1803.03378 (label embeddings)
+# Concrete, example-rich definitions for better semantic matching
+# Include specific examples and keywords that appear in real entity mentions
+LABEL_DEFINITIONS = {
+    "PROJECT": "work project, software project, website redesign, app development, construction project, research project, business initiative, product launch, system upgrade, migration project",
+    "GOAL": "career goal, promotion goal, learning goal, get promoted, become senior, achieve certification, reach target, accomplish objective, personal aspiration",
+    "TASK": "complete task, finish work, review code, write document, send email, make call, schedule meeting, update system, fix bug, test feature",
+    "ACTIVITY": "working on, building, creating, developing, designing, implementing, testing, reviewing, planning, organizing, managing",
+    "INTEREST": "interested in, learning about, studying, exploring, researching, passionate about, curious about, want to know more about",
+    "PRIORITY": "urgent, important, critical, high priority, must do, need to focus on, top priority, time-sensitive"
+}
+
+# Cache for label embeddings (computed once)
+_label_embeddings_cache = {}
+
+
+async def correct_entity_label_semantic(
+    label: str, 
+    entity_text: str,
+    modelservice_client: Any
+) -> str:
+    """
+    Apply semantic similarity-based post-processing to correct GLiNER mislabeling.
+    
+    This is the production-standard approach using label embeddings:
+    1. Embed the entity text using multilingual embeddings
+    2. Embed all candidate label definitions
+    3. Compute cosine similarity
+    4. Return label with highest similarity
+    
+    This approach is:
+    - Language-agnostic (works for any language)
+    - Semantic (understands meaning, not keywords)
+    - Fast (just cosine similarity, no LLM)
+    
+    Based on research: https://arxiv.org/abs/1803.03378
+    
+    Args:
+        label: Label assigned by GLiNER
+        entity_text: The actual entity text
+        modelservice_client: Client for embedding generation
+        
+    Returns:
+        Corrected label
+    """
+    # Only classify ambiguous or universal labels
+    # ENTITY = from universal mention detection (needs classification)
+    # EVENT = often confused with PROJECT (needs correction)
+    # Other specific labels (PERSON, ORG, etc.) = keep as-is
+    if label not in ["EVENT", "ENTITY"]:
+        return label
+    
+    try:
+        # Get entity embedding
+        entity_result = await modelservice_client.generate_embeddings([entity_text])
+        
+        if not entity_result.get("embeddings"):
+            return label
+        
+        entity_embedding = entity_result["embeddings"][0]
+        if not entity_embedding:
+            return label
+        
+        # Get or compute label embeddings (cached)
+        if not _label_embeddings_cache:
+            definitions = list(LABEL_DEFINITIONS.values())
+            result = await modelservice_client.generate_embeddings(definitions)
+            if result.get("embeddings"):
+                for label_name, embedding in zip(LABEL_DEFINITIONS.keys(), result["embeddings"]):
+                    _label_embeddings_cache[label_name] = embedding
+        
+        # Compute cosine similarity with each label
+        import numpy as np
+        entity_vec = np.array(entity_embedding)
+        
+        best_label = label
+        best_similarity = -1.0
+        
+        for label_name, label_embedding in _label_embeddings_cache.items():
+            label_vec = np.array(label_embedding)
+            # Cosine similarity
+            similarity = np.dot(entity_vec, label_vec) / (np.linalg.norm(entity_vec) * np.linalg.norm(label_vec))
+            
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_label = label_name
+        
+        # Only override if similarity is reasonable (> 0.4)
+        # Lower threshold for better recall with example-based definitions
+        if best_similarity > 0.4:
+            logger.debug(f"Semantic correction: '{entity_text}' {label} → {best_label} (similarity: {best_similarity:.3f})")
+            return best_label
+        
+        logger.debug(f"Semantic correction: '{entity_text}' keeping {label} (best: {best_label} @ {best_similarity:.3f})")
+        return label
+        
+    except Exception as e:
+        logger.warning(f"Semantic correction failed for '{entity_text}': {e}")
+        return label
+
+
 def _ts():
     """Get timestamp for debug prints."""
     return datetime.now().strftime("%H:%M:%S.%f")[:-3]
@@ -86,20 +231,30 @@ class GLiNEREntityExtractor(ExtractionStrategy):
         Returns:
             PropertyGraph with extracted entities (nodes only)
         """
-        logger.debug(f"Starting GLiNER entity extraction for text: {text[:100]}...")
+        logger.debug(f"Starting two-stage entity extraction for text: {text[:100]}...")
         try:
-            # Call modelservice for entity extraction
-            # GLiNER is configured in modelservice.transformers.models.entity_extraction
+            # TWO-STAGE APPROACH (based on ToMMeR research, Oct 2024)
+            # Stage 1: Mention Detection - Extract ALL potential entity spans (high recall)
+            # Stage 2: Semantic Classification - Classify each span using label embeddings
+            
+            # STAGE 1: Universal mention detection with GLiNER
+            # Use broad labels + low threshold to catch all potential entities
+            # This solves the "website redesign project" problem - GLiNER will extract it as "entity"
             try:
+                print(f"🔍 [STAGE_1] Running mention detection with universal labels...")
                 response = await self.modelservice.extract_entities(
                     text=text,
                     labels=[
-                        "person", "organization", "location", "event",
-                        "date", "time", "product", "skill", "topic",
-                        "project", "goal", "task", "interest"
-                    ]
+                        # Universal labels for mention detection (high recall)
+                        "entity", "mention", "thing", "name", "concept",
+                        # Keep specific labels for better coverage
+                        "person", "organization", "location", 
+                        "date", "time", "event", "product", 
+                        "skill", "topic", "activity"
+                    ],
+                    threshold=0.1  # Low threshold for high recall (default is 0.5)
                 )
-                logger.debug(f"GLiNER extraction completed successfully")
+                logger.debug(f"Stage 1 (mention detection) completed successfully")
             except Exception as e:
                 logger.error(f"GLiNER extract_entities failed: {e}")
                 import traceback
@@ -108,25 +263,137 @@ class GLiNEREntityExtractor(ExtractionStrategy):
             
             graph = PropertyGraph()
             
-            # Convert GLiNER entities to nodes
+            # STAGE 2: Semantic classification of detected mentions
             # Response format: {"entities": {"PERSON": [...], "ORGANIZATION": [...]}}
             entities_by_type = response.get("entities", {})
-            logger.debug(f"GLiNER found {len(entities_by_type)} entity types")
+            logger.debug(f"Stage 1 extracted {len(entities_by_type)} entity types")
+            print(f"\n🔍 [STAGE_1_RESULTS] Detected {len(entities_by_type)} entity types:")
+            for etype, elist in entities_by_type.items():
+                print(f"  {etype}: {[e['text'] for e in elist]}")
             
+            logger.debug(f"Stage 2: Starting semantic classification...")
+            
+            # Collect all entities with their spans for deduplication
+            all_entities = []
             for entity_type, entity_list in entities_by_type.items():
                 for entity in entity_list:
-                    node = Node.create(
-                        user_id=user_id,
-                        label=entity["label"].upper(),
-                        properties={
-                            "name": entity["text"],
-                            "start": entity.get("start_pos", 0),
-                            "end": entity.get("end_pos", 0)
-                        },
-                        confidence=entity.get("confidence", 0.9),
-                        source_text=text
+                    all_entities.append({
+                        "text": entity["text"],
+                        "type": entity_type,
+                        "start": entity.get("start_pos", 0),
+                        "end": entity.get("end_pos", 0),
+                        "confidence": entity.get("confidence", 0.9)
+                    })
+            
+            # Deduplicate overlapping entities - keep longest span
+            print(f"\n🔍 [DEDUP] Starting deduplication: {len(all_entities)} total entities")
+            deduplicated = []
+            removed_count = 0
+            all_entities.sort(key=lambda e: (e["start"], -len(e["text"])))  # Sort by start, prefer longer
+            
+            for entity in all_entities:
+                # Check if this entity overlaps with any already kept entity
+                overlaps = False
+                for kept in deduplicated:
+                    # Check for overlap
+                    if not (entity["end"] <= kept["start"] or entity["start"] >= kept["end"]):
+                        # Overlaps - keep the longer one
+                        if len(entity["text"]) > len(kept["text"]):
+                            print(f"🔄 [DEDUP] Replacing '{kept['text']}' with longer '{entity['text']}'")
+                            deduplicated.remove(kept)
+                            removed_count += 1
+                            break
+                        else:
+                            print(f"❌ [DEDUP] Removing '{entity['text']}' (overlaps with '{kept['text']}')")
+                            overlaps = True
+                            removed_count += 1
+                            break
+                
+                if not overlaps:
+                    deduplicated.append(entity)
+            
+            print(f"✅ [DEDUP] Deduplication complete: {len(all_entities)} → {len(deduplicated)} entities ({removed_count} removed)")
+            logger.debug(f"Deduplication: {len(all_entities)} → {len(deduplicated)} entities")
+            
+            # Monitor false positive indicators
+            print(f"\n🔍 [QUALITY] Analyzing entity quality...")
+            low_confidence_count = sum(1 for e in deduplicated if e["confidence"] < 0.3)
+            medium_confidence_count = sum(1 for e in deduplicated if 0.3 <= e["confidence"] < 0.5)
+            high_confidence_count = sum(1 for e in deduplicated if e["confidence"] >= 0.5)
+            
+            print(f"📊 [QUALITY] Confidence distribution:")
+            print(f"  High (≥0.5):   {high_confidence_count}/{len(deduplicated)} ({high_confidence_count/len(deduplicated)*100:.1f}%)")
+            print(f"  Medium (0.3-0.5): {medium_confidence_count}/{len(deduplicated)} ({medium_confidence_count/len(deduplicated)*100:.1f}%)")
+            print(f"  Low (<0.3):    {low_confidence_count}/{len(deduplicated)} ({low_confidence_count/len(deduplicated)*100:.1f}%)")
+            
+            if low_confidence_count > len(deduplicated) * 0.3:  # >30% low confidence
+                print(f"⚠️  [QUALITY] HIGH FALSE POSITIVE RISK: {low_confidence_count}/{len(deduplicated)} entities have confidence < 0.3")
+                print(f"⚠️  [QUALITY] Consider increasing GLiNER threshold from 0.1 to 0.15-0.2")
+                logger.warning(f"High false positive risk: {low_confidence_count}/{len(deduplicated)} entities have confidence < 0.3")
+            else:
+                print(f"✅ [QUALITY] Quality check passed: Low confidence rate acceptable")
+            
+            # Show low confidence entities for review
+            if low_confidence_count > 0:
+                print(f"\n🔍 [QUALITY] Low confidence entities (review for false positives):")
+                for e in sorted(deduplicated, key=lambda x: x["confidence"])[:5]:  # Show worst 5
+                    if e["confidence"] < 0.3:
+                        print(f"  - '{e['text']}' ({e['type']}, confidence: {e['confidence']:.3f})")
+            
+            # Process deduplicated entities
+            for entity in deduplicated:
+                # Normalize label to canonical form
+                canonical_label = normalize_entity_label(entity["type"])
+                
+                # STAGE 2: Apply semantic classification
+                # For universal labels (entity, mention, thing, etc.), always classify
+                # For specific labels (person, organization), only reclassify if ambiguous
+                if entity["type"].lower() in ["entity", "mention", "thing", "name", "concept", "event"]:
+                    # Universal label - must classify semantically
+                    corrected_label = await correct_entity_label_semantic(
+                        "ENTITY",  # Treat as unknown
+                        entity["text"],
+                        self.modelservice
                     )
-                    graph.add_node(node)
+                else:
+                    # Specific label - keep it but allow correction for ambiguous cases
+                    corrected_label = await correct_entity_label_semantic(
+                        canonical_label, 
+                        entity["text"],
+                        self.modelservice
+                    )
+                
+                node = Node.create(
+                    user_id=user_id,
+                    label=corrected_label,
+                    properties={
+                        "name": entity["text"],
+                        "start": entity["start"],
+                        "end": entity["end"]
+                    },
+                    confidence=entity["confidence"],
+                    source_text=text
+                )
+                graph.add_node(node)
+            
+            # Final quality summary
+            print(f"\n📊 [FINAL] Extraction complete: {len(graph.nodes)} entities extracted")
+            
+            # Show label distribution
+            label_counts = {}
+            for node in graph.nodes:
+                label = node.label
+                label_counts[label] = label_counts.get(label, 0) + 1
+            
+            print(f"📊 [FINAL] Label distribution:")
+            for label, count in sorted(label_counts.items(), key=lambda x: -x[1]):
+                print(f"  {label}: {count}")
+            
+            # Show sample of extracted entities
+            print(f"\n📊 [FINAL] Sample entities (top 5 by confidence):")
+            sorted_nodes = sorted(graph.nodes, key=lambda n: n.confidence, reverse=True)[:5]
+            for node in sorted_nodes:
+                print(f"  - '{node.properties.get('name')}' ({node.label}, confidence: {node.confidence:.3f})")
             
             logger.info(f"GLiNER extracted {len(graph.nodes)} entities")
             logger.debug(f"GLiNER extracted {len(graph.nodes)} entities")
@@ -190,15 +457,25 @@ class LLMRelationExtractor(ExtractionStrategy):
             
             prompt = f"""Extract relationships between DIFFERENT entities from the following text.
 
+ENTITY TYPES:
+World Knowledge: PERSON, ORGANIZATION, LOCATION, EVENT, DATE, TIME, PRODUCT, SKILL, TOPIC
+Personal Graph: PROJECT, GOAL, TASK, ACTIVITY, INTEREST, PRIORITY
+
+RELATIONSHIP TYPES:
+World Knowledge: WORKS_FOR, WORKS_AT, LIVES_IN, LOCATED_IN, KNOWS, PART_OF, HAPPENED_IN
+Personal Graph: WORKING_ON, HAS_GOAL, CONTRIBUTES_TO, DEPENDS_ON, INTERESTED_IN, PRIORITIZES, COMPLETED, STARTED
+
 IMPORTANT RULES:
 - Only extract relationships where source and target are DIFFERENT entities
 - Do NOT create self-referential relationships (e.g., "Michael" -> "has name" -> "Michael")
+- Extract personal activities: projects user is working on, goals they have, tasks to complete
+- If user mentions working on something, create WORKING_ON relationship
+- If user mentions wanting to achieve something, create HAS_GOAL relationship
 - If there are no meaningful relationships between different entities, return empty arrays
-- Focus on relationships that connect distinct entities
 
 Return a JSON object with:
 - "relationships": array of {{source, relation_type, target, properties}} where source ≠ target
-- "new_entities": array of any entities not in the known list
+- "new_entities": array of any entities not in the known list (include label and name)
 
 Text: {text}{entity_context}
 

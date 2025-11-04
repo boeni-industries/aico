@@ -770,38 +770,42 @@ class ModelserviceZMQHandlers:
                 response.error = "GLiNER model not available"
                 return response
             
-            # V5: Balanced entity types (12 types) - optimized from testing
-            # Core standard types + proven conversational types
-            entity_types = [
-                # Core standard (5) - industry baseline
-                "Person", "Organization", "Location", "Date", "Time",
-                
-                # Conversational context (4) - proven effective in testing
-                "Event", "Activity", "Emotion", "Relationship",
-                
-                # User preferences/goals (3) - important for memory personalization
-                "Preference", "Skill", "Goal"
-            ]
+            # Use entity types from request if provided, otherwise use defaults
+            if request_payload.entity_types:
+                entity_types = list(request_payload.entity_types)
+                print(f"🔍 [NER_DEEP_ANALYSIS] Using {len(entity_types)} entity types from request")
+            else:
+                # V5: Balanced entity types (12 types) - optimized from testing
+                entity_types = [
+                    # Core standard (5) - industry baseline
+                    "Person", "Organization", "Location", "Date", "Time",
+                    
+                    # Conversational context (4) - proven effective in testing
+                    "Event", "Activity", "Emotion", "Relationship",
+                    
+                    # User preferences/goals (3) - important for memory personalization
+                    "Preference", "Skill", "Goal"
+                ]
+                print(f"🔍 [NER_DEEP_ANALYSIS] Using default {len(entity_types)} entity types")
             
-            # V6: Balanced threshold - not too high to miss real names
-            # 0.6 was too aggressive and filtered out legitimate names like "michael"
+            # Use threshold from request if provided, otherwise default to 0.5
+            threshold = request_payload.threshold if request_payload.HasField('threshold') else 0.5
+            
             inference_start = time.time()
             print(f"🔍 [NER_DEEP_ANALYSIS] Starting GLiNER inference [{inference_start:.6f}]")
             raw_entities = gliner_model.predict_entities(
                 text,
                 labels=entity_types,
-                threshold=0.5,  # Back to 0.5 - will filter in post-processing instead
-                flat_ner=True,  # Use flat NER for better entity boundaries
+                threshold=threshold,
+                flat_ner=False,  # Allow nested entities to capture complex phrases like "website redesign project"
                 multi_label=False  # Avoid overlapping entity classifications
             )
             inference_end = time.time()
             inference_duration = inference_end - inference_start
             print(f"🔍 [NER_DEEP_ANALYSIS] GLiNER inference COMPLETED in {inference_duration*1000:.2f}ms [{inference_end:.6f}]")
             
-            # DEBUG: Log ALL raw entities before filtering
-            self.logger.info(f"🔍 [GLINER_DEBUG] Raw GLiNER extracted {len(raw_entities)} entities from text: '{text}'")
-            for i, entity in enumerate(raw_entities):
-                self.logger.info(f"🔍 [GLINER_RAW_{i}] text='{entity.get('text', '')}', label='{entity.get('label', '')}', confidence={entity.get('score', 0.0):.3f}")
+            # Log entity count for monitoring
+            self.logger.debug(f"GLiNER extracted {len(raw_entities)} raw entities")
             
             # Group entities by type with intelligent filtering - PRESERVE CONFIDENCE SCORES
             entities = {}
@@ -818,11 +822,9 @@ class ModelserviceZMQHandlers:
                 # INTELLIGENT FILTERING: Use GLiNER confidence and linguistic rules
                 confidence = entity.get("score", 0.0)
                 
-                # V7: Clean confidence-only filtering - no language-specific patterns
-                # Let GLiNER's confidence scores do the work, as designed
-                if confidence < 0.5:
-                    self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Low confidence - '{entity_text}' (confidence: {confidence:.3f} < 0.5)")
-                    continue
+                # Respect the threshold parameter - don't add additional filtering
+                # The threshold was already applied by GLiNER during extraction
+                # Additional filtering here defeats the purpose of the configurable threshold
                 
                 # Clean possessive forms intelligently
                 if entity_text.lower().endswith(("'s", "'s")):

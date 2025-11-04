@@ -1,20 +1,23 @@
 """
-AICO Semantic Memory Store (V3 - Simplified)
+AICO Semantic Memory Store
 
 Conversation-segment storage with vector embeddings for context retrieval.
-Minimal, focused architecture: store conversation chunks, retrieve via semantic search.
+Hybrid search combining semantic similarity (embeddings) and keyword relevance (BM25).
 
 Core Functionality:
-- Segment storage: Store conversation chunks with embeddings
-- Semantic search: Query conversation history using natural language
+- Segment storage: Store conversation chunks with embeddings in ChromaDB
+- Hybrid search: RRF fusion of semantic (cosine) + keyword (BM25) ranking
 - Simple integration: Clean interface for memory manager
 
-V3 Simplification:
-- NO fact extraction (broken, removed)
-- NO coreference resolution (broken, removed)
-- NO complex deduplication (unnecessary for segments)
-- ChromaDB only: Vector storage for conversation segments
+Architecture:
+- ChromaDB: Vector storage for conversation segments with cosine similarity
+- BM25: Keyword-based ranking with IDF filtering for relevance
+- RRF Fusion: Reciprocal Rank Fusion for combining semantic + keyword scores
 - Direct modelservice integration for embeddings
+
+Note: Structured knowledge extraction (entities, relationships) is handled by
+MemoryManager using the knowledge graph module (PropertyGraphStorage, MultiPassExtractor).
+This store focuses solely on conversational segment retrieval.
 """
 
 import asyncio

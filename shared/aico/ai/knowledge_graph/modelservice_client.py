@@ -94,7 +94,8 @@ class ModelserviceClient:
     async def extract_entities(
         self,
         text: str,
-        labels: List[str]
+        labels: List[str],
+        threshold: float = 0.5
     ) -> Dict[str, Any]:
         """
         Extract entities using GLiNER.
@@ -102,6 +103,7 @@ class ModelserviceClient:
         Args:
             text: Text to extract entities from
             labels: Entity types to extract (e.g., ["person", "organization"])
+            threshold: Confidence threshold for entity detection (default: 0.5, lower = more recall)
             
         Returns:
             Dict with "entities" list containing extracted entities
@@ -115,7 +117,8 @@ class ModelserviceClient:
         # Create NER request
         ner_request = NerRequest()
         ner_request.text = text
-        # Note: GLiNER handler uses hardcoded labels, but we send them anyway
+        ner_request.entity_types.extend(labels)
+        ner_request.threshold = threshold
         
         # Create future for response
         future = asyncio.Future()

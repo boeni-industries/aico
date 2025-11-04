@@ -59,6 +59,7 @@ message EmbeddingsRequest {
 message NerRequest {
   string text = 1;
   repeated string entity_types = 2;  // Optional: filter by specific entity types
+  optional float threshold = 3;  // Optional: confidence threshold (default: 0.5)
 }
 
 // Intent classification request

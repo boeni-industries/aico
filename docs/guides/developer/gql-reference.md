@@ -79,12 +79,23 @@ aico kg query --gql "MATCH (p:PERSON) RETURN p.name LIMIT 10" --user-id <USER_ID
 ```
 
 **Available Labels:**
+
+*World Knowledge:*
 - `PERSON` - People (colleagues, friends, family, contacts)
 - `ORGANIZATION` / `ORG` - Companies, institutions, teams
 - `GPE` - Geopolitical entities (cities, countries, regions)
 - `LOCATION` - Physical places (buildings, addresses, landmarks)
 - `DATE` - Temporal references (dates, times, periods)
 - `EVENT` - Occurrences (meetings, deadlines, milestones)
+- `PRODUCT`, `SKILL`, `TOPIC` - Domain-specific entities
+
+*Personal Graph:*
+- `PROJECT` - User's active projects (e.g., "website redesign", "learning piano")
+- `GOAL` - User's objectives (e.g., "get promoted", "lose weight")
+- `TASK` - Actionable items (e.g., "finish report", "call dentist")
+- `ACTIVITY` - User actions (e.g., "created document", "attended meeting")
+- `INTEREST` - Developing interests (e.g., "AI", "photography")
+- `PRIORITY` - User's current priorities
 
 **Pro tip:** Labels are case-sensitive. Use uppercase for consistency (e.g., `PERSON` not `person`).
 
@@ -164,11 +175,22 @@ aico kg query --gql "MATCH (p:PERSON)-[r:WORKS_FOR]->(c:ORGANIZATION) RETURN p.n
 ```
 
 **Common Relationship Types:**
+
+*World Knowledge:*
 - `WORKS_FOR` / `WORKS_AT` - Employment relationships (person → company)
 - `LIVES_IN` / `LOCATED_IN` - Geographic relationships (person → city, company → location)
 - `KNOWS` - Personal connections (person → person)
 - `PART_OF` - Membership or belonging (person → team, team → organization)
 - `HAPPENED_IN` - Event location (event → place)
+
+*Personal Graph:*
+- `WORKING_ON` - User actively working on project (person → project)
+- `HAS_GOAL` - User's objectives (person → goal)
+- `CONTRIBUTES_TO` - Task contributes to goal (task → goal/project)
+- `DEPENDS_ON` - Task dependencies (task → task)
+- `INTERESTED_IN` - User's interests (person → interest/topic)
+- `PRIORITIZES` - User's priorities (person → priority)
+- `COMPLETED` / `STARTED` - Activity status (person → task/project)
 
 **Pro tip:** Relationship types are extracted automatically from conversation context. Check what types exist in your graph with `MATCH ()-[r]->() RETURN DISTINCT type(r)`.
 
