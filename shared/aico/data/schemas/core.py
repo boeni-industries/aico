@@ -689,8 +689,61 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             # Columns added to kg_nodes and kg_edges will remain after rollback
             # This is acceptable as they will be NULL and unused
         ]
+    ),
+    
+    11: SchemaVersion(
+        version=11,
+        name="Rename facts_metadata to user_memories",
+        description="Rename facts_metadata table to user_memories for clarity (Memory Album feature)",
+        sql_statements=[
+            # Rename table
+            "ALTER TABLE facts_metadata RENAME TO user_memories",
+            
+            # Rename indexes to match new table name
+            "DROP INDEX IF EXISTS idx_facts_user_type",
+            "DROP INDEX IF EXISTS idx_facts_category",
+            "DROP INDEX IF EXISTS idx_facts_confidence",
+            "DROP INDEX IF EXISTS idx_facts_immutable",
+            "DROP INDEX IF EXISTS idx_facts_validity",
+            "DROP INDEX IF EXISTS idx_facts_source",
+            "DROP INDEX IF EXISTS idx_facts_user_curated",
+            "DROP INDEX IF EXISTS idx_facts_favorite",
+            "DROP INDEX IF EXISTS idx_facts_content_type",
+            
+            "CREATE INDEX IF NOT EXISTS idx_user_memories_user_type ON user_memories(user_id, fact_type)",
+            "CREATE INDEX IF NOT EXISTS idx_user_memories_category ON user_memories(category)",
+            "CREATE INDEX IF NOT EXISTS idx_user_memories_confidence ON user_memories(confidence)",
+            "CREATE INDEX IF NOT EXISTS idx_user_memories_immutable ON user_memories(is_immutable)",
+            "CREATE INDEX IF NOT EXISTS idx_user_memories_validity ON user_memories(valid_from, valid_until)",
+            "CREATE INDEX IF NOT EXISTS idx_user_memories_source ON user_memories(source_conversation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_user_memories_user_curated ON user_memories(user_id, extraction_method) WHERE extraction_method = 'user_curated'",
+            "CREATE INDEX IF NOT EXISTS idx_user_memories_favorite ON user_memories(user_id, is_favorite) WHERE is_favorite = 1",
+            "CREATE INDEX IF NOT EXISTS idx_user_memories_content_type ON user_memories(user_id, content_type) WHERE extraction_method = 'user_curated'",
+        ],
+        rollback_statements=[
+            # Rename back
+            "ALTER TABLE user_memories RENAME TO facts_metadata",
+            
+            # Restore original index names
+            "DROP INDEX IF EXISTS idx_user_memories_user_type",
+            "DROP INDEX IF EXISTS idx_user_memories_category",
+            "DROP INDEX IF EXISTS idx_user_memories_confidence",
+            "DROP INDEX IF EXISTS idx_user_memories_immutable",
+            "DROP INDEX IF EXISTS idx_user_memories_validity",
+            "DROP INDEX IF EXISTS idx_user_memories_source",
+            "DROP INDEX IF EXISTS idx_user_memories_user_curated",
+            "DROP INDEX IF EXISTS idx_user_memories_favorite",
+            "DROP INDEX IF EXISTS idx_user_memories_content_type",
+            
+            "CREATE INDEX IF NOT EXISTS idx_facts_user_type ON facts_metadata(user_id, fact_type)",
+            "CREATE INDEX IF NOT EXISTS idx_facts_category ON facts_metadata(category)",
+            "CREATE INDEX IF NOT EXISTS idx_facts_confidence ON facts_metadata(confidence)",
+            "CREATE INDEX IF NOT EXISTS idx_facts_immutable ON facts_metadata(is_immutable)",
+            "CREATE INDEX IF NOT EXISTS idx_facts_validity ON facts_metadata(valid_from, valid_until)",
+            "CREATE INDEX IF NOT EXISTS idx_facts_source ON facts_metadata(source_conversation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_facts_user_curated ON facts_metadata(user_id, extraction_method) WHERE extraction_method = 'user_curated'",
+            "CREATE INDEX IF NOT EXISTS idx_facts_favorite ON facts_metadata(user_id, is_favorite) WHERE is_favorite = 1",
+            "CREATE INDEX IF NOT EXISTS idx_facts_content_type ON facts_metadata(user_id, content_type) WHERE extraction_method = 'user_curated'",
+        ]
     )
 })
-
-
-

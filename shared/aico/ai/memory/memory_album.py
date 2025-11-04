@@ -1,8 +1,8 @@
 """
-Fact Store
+Memory Album Store
 
-Manages user-curated facts in facts_metadata table.
-Shared between backend and CLI for consistent fact management.
+Manages user-curated memories in user_memories table.
+Shared between backend and CLI for consistent memory management.
 """
 
 from typing import Optional, List, Dict, Any
@@ -13,18 +13,18 @@ import uuid
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.core.logging import get_logger
 
-logger = get_logger("shared", "ai.memory.facts")
+logger = get_logger("shared", "ai.memory.memory_album")
 
 
-class FactStore:
+class MemoryAlbumStore:
     """
-    Manages user-curated facts in facts_metadata table.
-    Shared between backend and CLI for consistent fact management.
+    Manages user-curated memories in user_memories table.
+    Shared between backend and CLI for consistent memory management.
     """
     
     def __init__(self, db_connection: EncryptedLibSQLConnection):
         """
-        Initialize FactStore with encrypted database connection.
+        Initialize MemoryAlbumStore with encrypted database connection.
         
         Args:
             db_connection: Encrypted LibSQL connection (injected via dependency injection)
@@ -74,7 +74,7 @@ class FactStore:
         
         cursor = self.db.execute(
             """
-            INSERT INTO facts_metadata (
+            INSERT INTO user_memories (
                 fact_id, user_id, fact_type, category, confidence,
                 is_immutable, valid_from, content, extraction_method,
                 source_conversation_id, source_message_id,
@@ -154,7 +154,7 @@ class FactStore:
                 content_type, conversation_title, conversation_summary,
                 turn_range, key_moments_json,
                 created_at, updated_at
-            FROM facts_metadata
+            FROM user_memories
             WHERE user_id = ?
                 AND extraction_method = 'user_curated'
         """
@@ -232,7 +232,7 @@ class FactStore:
         params.extend([fact_id, user_id])
         
         query = f"""
-            UPDATE facts_metadata
+            UPDATE user_memories
             SET {', '.join(updates)}
             WHERE fact_id = ? AND user_id = ?
         """
@@ -256,7 +256,7 @@ class FactStore:
         
         cursor = self.db.execute(
             """
-            UPDATE facts_metadata
+            UPDATE user_memories
             SET revisit_count = revisit_count + 1,
                 last_revisited = CURRENT_TIMESTAMP
             WHERE fact_id = ? AND user_id = ?
@@ -280,7 +280,7 @@ class FactStore:
         
         cursor = self.db.execute(
             """
-            DELETE FROM facts_metadata
+            DELETE FROM user_memories
             WHERE fact_id = ? AND user_id = ? AND extraction_method = 'user_curated'
             """,
             (fact_id, user_id)

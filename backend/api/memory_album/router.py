@@ -7,7 +7,7 @@ REST API endpoints for user-curated memories (Memory Album feature).
 from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 from aico.core.logging import get_logger
-from aico.ai.memory.facts import FactStore
+from aico.ai.memory.memory_album import MemoryAlbumStore
 from aico.feedback.events import FeedbackEventStore
 from aico.feedback.types import FeedbackEventType, ActionCategory
 from backend.core.lifecycle_manager import get_database
@@ -31,17 +31,17 @@ async def remember_message(
 ):
     """
     User clicks 'Remember This' on a message.
-    Performs dual storage: fact in facts_metadata + feedback event in feedback_events.
+    Performs dual storage: memory in user_memories + feedback event in feedback_events.
     """
     try:
         user_uuid = current_user['user_uuid']
         
         # Initialize stores with encrypted DB connection
-        fact_store = FactStore(db)
+        memory_store = MemoryAlbumStore(db)
         feedback_store = FeedbackEventStore(db)
         
         # 1. Store the fact (memory content)
-        fact_id = await fact_store.store_user_curated_fact(
+        fact_id = await memory_store.store_user_curated_fact(
             user_id=user_uuid,
             conversation_id=request.conversation_id,
             message_id=request.message_id,
@@ -114,10 +114,10 @@ async def get_memories(
     try:
         user_uuid = current_user['user_uuid']
         
-        fact_store = FactStore(db)
+        memory_store = MemoryAlbumStore(db)
         
         # Query user-curated facts
-        facts = await fact_store.get_user_curated_facts(
+        facts = await memory_store.get_user_curated_facts(
             user_id=user_uuid,
             category=category,
             favorites_only=favorites_only,
@@ -204,10 +204,10 @@ async def update_memory(
     try:
         user_uuid = current_user['user_uuid']
         
-        fact_store = FactStore(db)
+        memory_store = MemoryAlbumStore(db)
         
         # Update the fact metadata
-        success = await fact_store.update_fact_metadata(
+        success = await memory_store.update_fact_metadata(
             fact_id=fact_id,
             user_id=user_uuid,
             user_note=request.user_note,
@@ -231,7 +231,7 @@ async def update_memory(
                 content_type, conversation_title, conversation_summary,
                 turn_range, key_moments_json,
                 created_at, updated_at
-            FROM facts_metadata
+            FROM user_memories
             WHERE fact_id = ? AND user_id = ? AND extraction_method = 'user_curated'
         """, (fact_id, user_uuid))
         
@@ -321,10 +321,10 @@ async def delete_memory(
     try:
         user_uuid = current_user['user_uuid']
         
-        fact_store = FactStore(db)
+        memory_store = MemoryAlbumStore(db)
         
         # Delete the fact
-        success = await fact_store.delete_fact(
+        success = await memory_store.delete_fact(
             fact_id=fact_id,
             user_id=user_uuid,
         )
