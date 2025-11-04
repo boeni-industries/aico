@@ -63,14 +63,14 @@ if low_confidence_count > len(deduplicated) * 0.3:
 ### Current Thresholds
 | Parameter | Value | Purpose |
 |-----------|-------|---------|
-| GLiNER threshold | 0.1 | High recall mention detection |
+| GLiNER threshold | 0.15 | Balanced recall/precision (filters low-confidence entities) |
 | Semantic similarity | 0.4 | Accept reasonable matches |
 | False positive alert | 30% | Warn if >30% entities have confidence < 0.3 |
 
 ### Adjusting Thresholds
-- **Increase GLiNER threshold (0.1 → 0.2)** if too many false positives
+- **Increase GLiNER threshold (0.15 → 0.2)** if still too many false positives
+- **Decrease GLiNER threshold (0.15 → 0.1)** if missing important entities
 - **Increase semantic threshold (0.4 → 0.5)** if incorrect label corrections
-- **Decrease thresholds** if missing important entities
 
 ## Impact on Graph Quality
 

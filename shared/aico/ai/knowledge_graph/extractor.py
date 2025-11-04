@@ -252,7 +252,7 @@ class GLiNEREntityExtractor(ExtractionStrategy):
                         "date", "time", "event", "product", 
                         "skill", "topic", "activity"
                     ],
-                    threshold=0.1  # Low threshold for high recall (default is 0.5)
+                    threshold=0.15  # Balanced threshold - filters low-confidence false positives
                 )
                 logger.debug(f"Stage 1 (mention detection) completed successfully")
             except Exception as e:
