@@ -286,28 +286,35 @@ class GLiNEREntityExtractor(ExtractionStrategy):
                     })
             
             # Deduplicate overlapping entities - keep longest span
+            # Use text-based overlap detection since GLiNER doesn't provide positions
             print(f"\n🔍 [DEDUP] Starting deduplication: {len(all_entities)} total entities")
             deduplicated = []
             removed_count = 0
-            all_entities.sort(key=lambda e: (e["start"], -len(e["text"])))  # Sort by start, prefer longer
+            
+            # Sort by length (longest first) to prioritize keeping longer entities
+            all_entities.sort(key=lambda e: -len(e["text"]))
             
             for entity in all_entities:
-                # Check if this entity overlaps with any already kept entity
+                # Check if this entity's text is contained in or contains any kept entity
                 overlaps = False
+                entity_text_lower = entity["text"].lower()
+                
                 for kept in deduplicated:
-                    # Check for overlap
-                    if not (entity["end"] <= kept["start"] or entity["start"] >= kept["end"]):
-                        # Overlaps - keep the longer one
-                        if len(entity["text"]) > len(kept["text"]):
-                            print(f"🔄 [DEDUP] Replacing '{kept['text']}' with longer '{entity['text']}'")
-                            deduplicated.remove(kept)
-                            removed_count += 1
-                            break
-                        else:
-                            print(f"❌ [DEDUP] Removing '{entity['text']}' (overlaps with '{kept['text']}')")
-                            overlaps = True
-                            removed_count += 1
-                            break
+                    kept_text_lower = kept["text"].lower()
+                    
+                    # Check if one is substring of the other
+                    if entity_text_lower in kept_text_lower:
+                        # Current entity is substring of kept entity - skip it
+                        print(f"❌ [DEDUP] Removing '{entity['text']}' (substring of '{kept['text']}')")
+                        overlaps = True
+                        removed_count += 1
+                        break
+                    elif kept_text_lower in entity_text_lower:
+                        # Kept entity is substring of current - replace it
+                        print(f"🔄 [DEDUP] Replacing '{kept['text']}' with longer '{entity['text']}'")
+                        deduplicated.remove(kept)
+                        removed_count += 1
+                        break
                 
                 if not overlaps:
                     deduplicated.append(entity)
