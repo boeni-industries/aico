@@ -2,45 +2,46 @@
 
 ## Implementation Phases
 
-### Phase 1: Session Context Management (Month 1)
+### ✅ Phase 1: Session Context Management (COMPLETE)
 
 **Core Deliverables:**
 - ✅ Working memory implementation with LMDB (`shared/aico/ai/memory/working.py`)
-- ✅ Basic session state persistence following AICO patterns
-- ✅ Simple thread continuation logic integrated with existing ThreadManager
-- ✅ Foundation context assembly framework (`shared/aico/ai/memory/context.py`)
-- ✅ MemoryManager base implementation extending BaseAIProcessor
+- ✅ Conversation-scoped context retrieval by conversation_id
+- ✅ Context assembly framework (`shared/aico/ai/memory/context.py`)
+- ✅ MemoryManager coordination layer (`shared/aico/ai/memory/manager.py`)
 
-#### Deliverables
-- ✅ **Session Continuity**: Conversations maintain context within active sessions
-- ✅ **Basic Thread Management**: Simple time-based thread creation/continuation
-- ✅ **Context Persistence**: Working memory survives application restarts
-- ✅ **Foundation Architecture**: Database schema and core classes established
+#### Implemented Features
+- ✅ **Conversation Isolation**: Each conversation_id has independent context
+- ✅ **User-Driven Selection**: Frontend UI handles conversation selection
+- ✅ **No Thread Resolution**: Explicit conversation_id pattern eliminates need
+- ✅ **TTL-Based Expiration**: Automatic cleanup of old messages (24h default)
 
 #### Key Components
-- ✅ Working Memory Manager for real-time conversation state
-- ✅ Basic Thread Manager with time-based heuristics
-- ✅ Core database schema for threads and messages
-- ✅ Working memory persistence for session recovery
+- ✅ Working Memory Store (LMDB) for fast message retrieval
+- ✅ Conversation ID pattern: `{user_id}_{timestamp}` (industry standard)
+- ✅ Context assembly with deduplication and relevance scoring
+- ✅ Cross-conversation message queries for semantic memory
 
 ---
 
-### Phase 2: User-Specific Long-Term Memory (Relationship Building)
-**Priority**: After Phase 1 completion  
-**Timeline**: 2-3 weeks  
-**Goal**: Zero-ambiguity storage of critical user facts for relationship building
+### ✅ Phase 2: Semantic Memory & Knowledge Graph (COMPLETE)
+**Status**: Production deployment with 204 nodes, 27 edges  
+**Goal**: Hybrid search + structured knowledge extraction
 
-#### Deliverables
-- **Personal Facts Storage**: Names, birthdates, and key personal information per user
-- **Multi-User Support**: Isolated storage preventing cross-user contamination
-- **Zero-Ambiguity Retrieval**: Guaranteed correct facts for the right user
-- **Relationship Context**: Foundation for personalized interactions
+#### Implemented Features
+- ✅ **Hybrid Search**: Semantic + BM25 with IDF filtering and RRF fusion
+- ✅ **Conversation Segments**: ChromaDB storage with embeddings
+- ✅ **Knowledge Graph**: Multi-pass extraction, entity resolution, graph fusion
+- ✅ **Production Data**: 204 nodes, 27 edges, 552 indexed properties
 
 #### Key Components
-- ✅ Semantic Memory Store implementation (`shared/aico/ai/memory/semantic.py`)
-- ✅ User-scoped fact storage with ChromaDB vector embeddings
-- ✅ Enhanced ChromaDB metadata structure for administrative queries
-- ✅ Confidence-based fact validation and contradiction detection
+- ✅ Semantic Memory Store (`shared/aico/ai/memory/semantic.py`) - Hybrid search
+- ✅ Knowledge Graph Module (`shared/aico/ai/knowledge_graph/`) - Complete implementation
+  - ✅ Multi-pass extractor with GLiNER + LLM
+  - ✅ Entity resolver (semantic blocking → LLM matching → merging)
+  - ✅ Graph fusion with conflict resolution
+  - ✅ Hybrid storage (ChromaDB + libSQL)
+- ✅ Database schema v7 + v8 (kg_nodes, kg_edges, temporal fields, triggers)
 
 #### Phase 2 Implementation Notes:
 - ✅ Semantic memory uses ChromaDB-only with enhanced metadata (no libSQL duplication)
@@ -72,105 +73,77 @@
 - **Important Dates**: Anniversaries, appointments, significant events
 - **Context Facts**: Work details, hobbies, personal history
 
-### **🎉 PHASE 2 STATUS: COMPLETE**
-
-**Memory Execution Flow Integration:**
-- ✅ **ContextAssembler Integration**: Semantic memory fully integrated into context assembly pipeline
-- ✅ **MemoryManager Integration**: Automatic fact extraction from user messages during storage
-- ✅ **Tier Weighting**: Proper precedence (Working: 1.0, Semantic: 0.6) with age-based decay
-- ✅ **User Scoping**: All queries properly scoped to prevent cross-user contamination
-- ✅ **Modelservice Dependency**: Proper injection for embeddings and fact extraction
-- ✅ **Configuration**: Semantic memory enabled by default in core.yaml
-
-**Complete Memory Pipeline:**
+**Memory Execution Flow:**
 ```
 User Message → MemoryManager → ContextAssembler → LLM Response
      ↓              ↓              ↓              ↓
-1. Store in    2. Extract      3. Query Both   4. Generate
-   Working        Personal       Working +      Personalized
-   Memory         Facts          Semantic       Response
+1. Store in    2. Extract KG   3. Query by    4. Generate
+   Working        Entities       conv_id +      Personalized
+   Memory         Relations      user_id        Response
      ↓              ↓              ↓
-   LMDB         ChromaDB      Combined Context
+   LMDB      ChromaDB+libSQL  Combined Context
 ```
 
-**Testing Ready:** Phase 2 semantic memory system is production-ready for relationship building and personalized interactions.
+**Production Status:** Fully operational with hybrid search and knowledge graph extraction.
 
 ---
 
-### Phase 3: Semantic Thread Resolution (Intelligence)
-**Priority**: After Phase 2 completion  
-**Timeline**: 3-4 weeks  
-**Goal**: Intelligent thread switching based on content similarity
+### ❌ Phase 3: Thread Resolution (OBSOLETE - NOT NEEDED)
+**Status**: Removed from roadmap  
+**Reason**: conversation_id pattern eliminates need for AI-driven thread resolution
 
-#### Deliverables
-- **Semantic Thread Matching**: Content-based thread resolution
-- **Vector Storage**: Efficient similarity search for thread matching
-- **Topic Coherence**: Maintain conversation topics across sessions
-- **Enhanced Context**: Richer context assembly with semantic relevance
+#### Why Not Needed
+- **User-Driven Selection**: Frontend UI provides conversation picker
+- **Explicit Scoping**: conversation_id = `{user_id}_{timestamp}` pattern
+- **Industry Standard**: Follows LangGraph, Azure AI Foundry, OpenAI patterns
+- **No Ambiguity**: Users explicitly choose "continue" or "new conversation"
+- **Memory Already Scoped**: Working memory filters by conversation_id
 
-#### Key Components
-- Semantic Thread Resolver with embedding models
-- Vector Storage Integration (ChromaDB) - building on Phase 2 foundation
-- Cosine similarity-based thread matching
-- Enhanced database schema with embeddings
+#### What Was Planned (Now Removed)
+- ~~Semantic thread matching with embeddings~~
+- ~~Topic coherence detection~~
+- ~~Automatic "should this continue thread X?" decisions~~
+- ~~Vector similarity for thread continuation~~
 
-#### Phase 3 Implementation Notes:
-- Builds on Phase 2 ChromaDB infrastructure for thread embeddings
-- Uses same multilingual embedding model for consistency
-- Thread resolution integrates with existing ThreadManager service
-- Source episodes continue to reference LMDB conversation_history keys
-- Performance remains viable on consumer hardware with proper model selection
+**Conclusion**: The problem thread resolution aimed to solve doesn't exist in AICO's architecture.
 
 ---
 
-### Phase 4: Behavioral Learning (Personalization)
-**Priority**: After Phase 3 completion  
-**Timeline**: 4-5 weeks  
-**Goal**: Learn user-specific conversation patterns and preferences
+### ❌ Phase 3: Behavioral Learning (NOT IMPLEMENTED)
+**Status**: Future enhancement  
+**Goal**: Learn user-specific patterns and preferences
 
-#### Deliverables
-- **Personalized Thresholds**: User-specific decision parameters
-- **Pattern Recognition**: Learn individual conversation rhythms
-- **Adaptive Behavior**: Continuous improvement based on user interactions
-- **Preference Learning**: Understand user communication style preferences
+#### Planned Features (Not Implemented)
+- ❌ Procedural memory store (libSQL)
+- ❌ User behavior pattern recognition
+- ❌ Adaptive personalization thresholds
+- ❌ Communication style learning
+- ❌ Interaction timing optimization
 
-#### Key Components
-- User Behavior Analyzer for pattern recognition
-- Adaptive Threshold Manager for dynamic adjustment
-- User Conversation Profile system
-- Feedback learning mechanisms
-- Procedural Memory Store implementation (`shared/aico/ai/memory/procedural.py`)
-
-#### Phase 4 Implementation Notes:
-- Procedural memory uses libSQL for behavior pattern storage requiring SQL queries
-- Source episodes reference LMDB conversation_history keys (same as other tiers)
-- Statistical analysis and pattern recognition from conversation data
-- Integration with semantic memory for comprehensive user understanding
+#### Why Not Implemented
+- Phase 1-2 provide sufficient functionality
+- Knowledge graph already captures user facts
+- Behavioral learning requires significant data collection
+- Privacy considerations for pattern tracking
 
 ---
 
-### Phase 5: Advanced Relationship Intelligence (Full System)
-**Priority**: After Phase 4 completion  
-**Timeline**: 6-8 weeks  
-**Goal**: Complete memory system with proactive capabilities
+### ❌ Phase 4: Proactive Engagement (NOT IMPLEMENTED)
+**Status**: Future research  
+**Goal**: Proactive initiative generation
 
-#### Deliverables
-- **Complete Memory System**: All four memory tiers fully operational
-- **Proactive Capabilities**: Initiative generation and engagement triggers
-- **Relationship Intelligence**: Deep understanding of user relationships
-- **Advanced Context**: Multi-modal context integration
+#### Planned Features (Not Implemented)
+- ❌ Proactive engagement triggers
+- ❌ Initiative generation based on context
+- ❌ Predictive conversation starters
+- ❌ Multi-modal context integration
+- ❌ Advanced relationship modeling
 
-#### Key Components
-- Proactive Engagement Engine for initiative generation
-- Advanced relationship modeling and cross-conversation learning
-- Multi-modal context integration
-- Complete memory system coordination and optimization
-
-#### Phase 5 Implementation Notes:
-- Unified memory system with all tiers working together
-- LMDB conversation_history remains the permanent episodic memory store
-- Advanced context assembly across all memory tiers
-- Proactive capabilities based on comprehensive user understanding
+#### Why Not Implemented
+- Requires Phase 3 behavioral learning foundation
+- Complex AI reasoning beyond current scope
+- Privacy and user control considerations
+- Focus on reactive conversation quality first
 
 ## Migration Strategy
 

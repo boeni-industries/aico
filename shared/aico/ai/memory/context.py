@@ -24,8 +24,8 @@ TODO: Remove this file once all imports are verified to work with new structure.
 AICO Memory Context Assembler (LEGACY - DEPRECATED)
 
 This module provides intelligent cross-tier memory context assembly for AI processing,
-coordinating retrieval and scoring of relevant information from working, episodic, 
-semantic, and procedural memory stores to create unified context for conversations.
+coordinating retrieval and scoring of relevant information from working memory, semantic memory
+(with knowledge graph), and procedural memory stores to create unified context for conversations.
 
 Core Functionality:
 - Cross-tier context retrieval: Intelligently queries all memory tiers based on current conversation context
@@ -36,10 +36,9 @@ Core Functionality:
 - Context summarization: Generates human-readable summaries of assembled context for transparency
 
 Memory Tier Integration:
-- Working Memory: Recent session context, active thread messages, temporary conversation state
-- Episodic Memory: Historical conversation threads, message sequences, temporal context patterns
-- Semantic Memory: Knowledge base queries, concept relationships, factual information retrieval
-- Procedural Memory: User behavior patterns, interaction preferences, learned response styles
+- Working Memory: Conversation history, session context, message storage (LMDB with 24hr TTL)
+- Semantic Memory: Hybrid search (ChromaDB segments + libSQL knowledge graph)
+- Procedural Memory: User behavior patterns, interaction preferences (planned)
 
 Technologies & Dependencies:
 - asyncio: Asynchronous context retrieval across multiple memory stores
@@ -69,7 +68,7 @@ Scoring & Filtering:
 Personalization Features:
 - Communication style adaptation based on procedural memory patterns and learned preferences
 - Response length preferences extracted from user interaction history analysis
-- Topic interest identification from semantic and episodic memory analysis using embeddings
+- Topic interest identification from semantic memory and knowledge graph analysis using embeddings
 - Interaction pattern recognition for conversational flow optimization
 - Behavioral learning integration for adaptive context assembly based on user feedback
 """
@@ -98,7 +97,7 @@ warnings.warn(
 class ContextItem:
     """Individual context item with metadata"""
     content: str
-    source_tier: str  # working, episodic, semantic, procedural
+    source_tier: str  # working, semantic, procedural
     relevance_score: float
     timestamp: datetime
     metadata: Dict[str, Any]
@@ -110,28 +109,26 @@ class ContextAssembler:
     Cross-tier memory context assembly coordinator.
     
     Retrieves and combines relevant context from all memory tiers:
-    - Working memory: Current session context
-    - Episodic memory: Conversation history
-    - Semantic memory: Related knowledge
-    - Procedural memory: User patterns and preferences
+    - Working memory: Conversation history and session context
+    - Semantic memory: Related knowledge and knowledge graph
+    - Procedural memory: User patterns and preferences (planned)
     
     Provides unified, prioritized context for AI processing.
     """
     
     def __init__(self, working_store, episodic_store, semantic_store, procedural_store):
         self.working_store = working_store
-        self.episodic_store = episodic_store
+        self.episodic_store = episodic_store  # Not implemented - kept for interface compatibility
         self.semantic_store = semantic_store
-        self.procedural_store = procedural_store
+        self.procedural_store = procedural_store  # Planned
         
         # Context assembly configuration
         self._max_context_items = 50
         self._relevance_threshold = 0.3
         self._tier_weights = {
             "working": 1.0,
-            "episodic": 0.8,
-            "semantic": 0.6,
-            "procedural": 0.7
+            "semantic": 0.7,
+            "procedural": 0.6
         }
         
         # Smart caching for expensive operations
@@ -204,7 +201,8 @@ class ContextAssembler:
                 print(f"🚨 [SEMANTIC_CONTEXT] ⚠️ FALLBACK: Semantic retrieval failed after {semantic_time:.2f}ms: {e}")
                 logger.warning(f"⚠️  SEMANTIC FALLBACK: Context retrieval failed: {e} - graceful degradation active")
             
-            # V2: Episodic and procedural memory retrieval removed
+            # Note: Episodic memory not implemented - working memory serves conversation history
+            # Note: Procedural memory planned for Phase 3
             
             logger.debug(f"Retrieved {len(all_items)} total items from all memory tiers")
             
@@ -301,7 +299,7 @@ class ContextAssembler:
         """Get context specifically for thread resolution - Phase 1 interface"""
         try:
             # TODO Phase 1: Implement thread-specific context
-            # - Focus on recent episodic and working memory
+            # - Focus on recent working memory (conversation history)
             # - Get temporal patterns for thread continuation
             # - Calculate context strength for thread resolution
             
@@ -729,7 +727,7 @@ class ContextAssembler:
     
     # V2: Removed _initialize_expensive_components() method - no automatic background initialization
 
-    # V2: Episodic memory retrieval removed
+    # Note: Episodic memory not implemented - working memory handles conversation history
     
     async def _get_semantic_context(self, current_message: str, user_id: str) -> List[ContextItem]:
         """Get context from semantic memory with the breadth of universal knowledge"""

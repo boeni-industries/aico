@@ -1,6 +1,6 @@
 # AICO Memory System
 
-The AICO memory system is the foundation of the AI companion's ability to maintain context, build relationships, and provide personalized interactions. It implements a sophisticated four-tier memory architecture that enables natural conversation flow, automatic thread management, and long-term relationship building.
+The AICO memory system is the foundation of the AI companion's ability to maintain context, build relationships, and provide personalized interactions. It implements a three-tier memory architecture that enables natural conversation flow, explicit conversation management, and long-term relationship building.
 
 ## Overview
 
@@ -13,38 +13,38 @@ AICO's memory system goes beyond simple conversation history to create a compreh
 
 ## Architecture Components
 
-The memory system consists of four interconnected tiers, each serving specific purposes:
+The memory system consists of three tiers (two implemented, one planned):
 
-### 1. Working Memory
-Real-time conversation state and immediate context management.
-- Current thread state and active conversation context
-- Emotional state and personality parameters
-- Immediate goals and conversation objectives
-- Token-optimized context windows
+### 1. Working Memory (LMDB) ✅ IMPLEMENTED
+Conversation history and immediate context management.
+- All conversation messages scoped by `conversation_id`
+- 24-hour TTL with automatic expiration
+- Fast key-value storage (memory-mapped)
+- Sub-millisecond retrieval performance
+- **Dual Role**: Serves both immediate context AND conversation history (no separate episodic tier needed)
 
-### 2. Episodic Memory  
-Conversation-specific events with rich temporal and emotional metadata.
-- Complete conversation history with turn-by-turn tracking
-- Emotional context and mood progression
-- Topic evolution and conversation phases
-- Thread-specific interaction patterns
+### 2. Semantic Memory + Knowledge Graph ✅ IMPLEMENTED
+Long-term knowledge storage with semantic search and graph relationships.
 
-### 3. Semantic Memory
-Knowledge base with hybrid search (semantic + BM25) for accurate retrieval.
+**Conversation Segments (ChromaDB):**
 - **Hybrid Search**: Combines semantic similarity with keyword matching (BM25)
 - **IDF Filtering**: Removes overly common words for precise results
 - **Relevance Thresholds**: Filters out irrelevant matches automatically
-- User preferences, facts, and learned information
-- Cross-conversation knowledge accumulation
-- Domain-specific context (work, personal, technical topics)
-- Relationship dynamics and communication styles
+- Stores conversation chunks with embeddings for retrieval
 
-### 4. Procedural Memory
-Learned interaction patterns and successful strategies.
-- Communication strategies that work for specific users
-- Thread switching preferences and triggers
-- Conversation flow patterns and timing
-- Behavioral adaptations and response styles
+**Knowledge Graph (ChromaDB + libSQL):**
+- **Entity Extraction**: Multi-pass extraction with GLiNER + LLM
+- **Entity Resolution**: 3-step deduplication (blocking → matching → merging)
+- **Graph Fusion**: Conflict resolution and temporal updates
+- **Structured Storage**: Nodes (entities) and edges (relationships) with properties
+- **Production Data**: 204 nodes, 27 edges, 552 indexed properties
+
+### 3. Procedural Memory (libSQL) 🔄 PLANNED
+User interaction patterns and behavioral adaptation.
+- **Pattern Learning**: Track response preferences, topic interests, engagement signals
+- **Adaptive Personalization**: Adjust response style based on learned patterns
+- **Conversation Quality**: Metrics on what works and what doesn't
+- **Time-Aware**: Context-aware behavior based on time of day, conversation history
 
 ## Key Features
 
@@ -54,11 +54,11 @@ Learned interaction patterns and successful strategies.
 - **Privacy-First**: All personal data remains on user's device
 - **Offline Capable**: Full functionality without internet connection
 
-### Intelligent Thread Management
-- **Automatic Thread Resolution**: Seamless conversation continuity without manual thread switching
-- **Semantic Understanding**: Vector similarity analysis for topic coherence
-- **Behavioral Learning**: Adapts to individual user conversation preferences
-- **Context Preservation**: Maintains conversation state across sessions
+### Conversation-Scoped Memory
+- **Explicit Conversation IDs**: User-driven conversation selection via UI
+- **Isolated Contexts**: Each conversation has independent memory scope
+- **Cross-Conversation Knowledge**: Knowledge graph accumulates facts across all conversations
+- **Context Preservation**: Working memory maintains session state per conversation
 
 ### Performance Optimized
 - **Hardware Efficient**: Designed for consumer-grade hardware
@@ -75,33 +75,30 @@ The memory system is implemented as a shared AI module at `shared/aico/ai/memory
 - **Message bus integration**: Seamless integration with AICO's message-driven architecture
 - **Frontend integration**: Flutter frontend accesses memory through REST API endpoints, maintaining separation of concerns
 
-## Implementation Strategy
+## Implementation Status
 
-The memory system implementation follows a phased approach, starting with essential session context and building toward full relationship intelligence:
+### ✅ Phase 1: Session Context Management (COMPLETE)
+- Working memory with LMDB storage
+- Conversation-scoped context retrieval
+- Context assembly with relevance scoring
+- Message history with automatic expiration
 
-### Phase 1: Session Context Management
-- Basic conversation state persistence
-- Simple thread continuation logic
-- Working memory implementation
-- Foundation for context assembly
+### ✅ Phase 2: Semantic Memory & Knowledge Graph (COMPLETE)
+- Hybrid search (semantic + BM25 with IDF filtering)
+- Multi-pass entity extraction (GLiNER + LLM)
+- Entity resolution with deduplication
+- Graph fusion with conflict resolution
+- Production deployment: 204 nodes, 27 edges
 
-### Phase 2: Semantic Thread Resolution
-- Vector embedding integration
-- Similarity-based thread matching
-- Topic modeling and coherence detection
-- Enhanced context retrieval
-
-### Phase 3: Behavioral Learning
+### ❌ Phase 3: Behavioral Learning (NOT IMPLEMENTED)
 - User pattern recognition
-- Adaptive threshold adjustment
-- Cross-conversation knowledge building
-- Personalized interaction strategies
+- Adaptive personalization
+- Procedural memory store
 
-### Phase 4: Advanced Relationship Intelligence
-- Multi-modal context integration
-- Predictive engagement triggers
-- Complex relationship modeling
-- Proactive initiative generation
+### ❌ Phase 4: Proactive Engagement (NOT IMPLEMENTED)
+- Predictive triggers
+- Initiative generation
+- Advanced relationship modeling
 
 ## Documentation Structure
 
@@ -110,7 +107,6 @@ This memory system documentation is organized into focused areas:
 - **[Architecture](architecture.md)**: Detailed technical architecture and component design
 - **[Hybrid Search](hybrid-search.md)**: **NEW** - Semantic + BM25 search implementation (V3)
 - **[Context Management](context-management.md)**: Context assembly, routing, and optimization
-- **[Thread Resolution](thread-resolution.md)**: Automatic thread management and decision logic
 - **[Implementation](implementation.md)**: Practical implementation guide and database schemas
 
 ## Integration Points

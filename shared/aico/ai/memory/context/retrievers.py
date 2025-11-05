@@ -24,15 +24,15 @@ class ContextRetrievers:
         Initialize retrievers with memory stores.
         
         Args:
-            working_store: Working memory store
-            episodic_store: Episodic memory store
-            semantic_store: Semantic memory store
-            procedural_store: Procedural memory store
+            working_store: Working memory store (conversation history + context)
+            episodic_store: Not implemented - kept for interface compatibility
+            semantic_store: Semantic memory store (segments + KG)
+            procedural_store: Procedural memory store (planned)
         """
         self.working_store = working_store
-        self.episodic_store = episodic_store
+        self.episodic_store = episodic_store  # Not implemented
         self.semantic_store = semantic_store
-        self.procedural_store = procedural_store
+        self.procedural_store = procedural_store  # Planned
     
     async def get_working_context(
         self,

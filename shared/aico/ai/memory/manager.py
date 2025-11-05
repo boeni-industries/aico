@@ -1,9 +1,9 @@
 """
 AICO Memory Manager
 
-This module provides the main interface and coordination layer for AICO's multi-tier memory system,
-integrating working, episodic, semantic, and procedural memory stores to deliver unified memory
-services for AI processing, conversation management, and personalized user interactions.
+This module provides the main interface and coordination layer for AICO's three-tier memory system,
+integrating working memory, semantic memory with knowledge graph, and procedural memory stores
+to deliver unified memory services for AI processing, conversation management, and personalized interactions.
 
 Core Functionality:
 - Memory system coordination: Unified interface for all memory operations across multiple storage tiers
@@ -15,10 +15,9 @@ Core Functionality:
 - Memory analytics: Usage statistics, performance metrics, and system health monitoring
 
 Memory Tier Integration:
-- Working Memory: Session context, active threads, temporary conversation state
-- Episodic Memory: Conversation history, thread sequences, temporal context patterns
-- Semantic Memory: Knowledge base, factual information, concept relationships
-- Procedural Memory: User patterns, preferences, behavioral learning, personalization data
+- Working Memory: Conversation history, session context, message storage (LMDB with 24hr TTL)
+- Semantic Memory: Knowledge base with hybrid search (ChromaDB segments + libSQL knowledge graph)
+- Procedural Memory: User patterns, preferences, behavioral learning (planned)
 - Context Assembly: Cross-tier context coordination and relevance scoring
 
 Technologies & Dependencies:
@@ -118,11 +117,11 @@ class MemoryManager(BaseAIProcessor):
     Integrates with message bus for loose coupling and follows
     AICO's privacy-first, local-only design principles.
     
-    Implementation phases:
-    - Phase 1: Working memory and basic context assembly
-    - Phase 2: Episodic storage and semantic analysis  
-    - Phase 3: Behavioral learning and procedural memory
-    - Phase 4: Advanced relationship intelligence
+    Implementation status:
+    - Phase 1 ✅: Working memory with LMDB storage and context assembly
+    - Phase 2 ✅: Semantic memory with hybrid search and knowledge graph
+    - Phase 3 🔄: Procedural memory for behavioral learning (planned)
+    - Phase 4 🔄: Advanced relationship intelligence and memory album
     """
     
     def __init__(self, config: ConfigurationManager, db_connection=None):
@@ -138,10 +137,9 @@ class MemoryManager(BaseAIProcessor):
         self._db_connection = db_connection  # Store provided database connection
         
         # Memory stores (lazy initialization)
-        self._working_store: Optional[WorkingMemoryStore] = None
-        self._episodic_store = None  # Future: EpisodicMemoryStore
-        self._semantic_store: Optional[SemanticMemoryStore] = None
-        self._procedural_store = None  # Future: ProceduralMemoryStore
+        self._working_store: Optional[WorkingMemoryStore] = None  # Conversation history + context
+        self._semantic_store: Optional[SemanticMemoryStore] = None  # Segments + KG
+        self._procedural_store = None  # Planned: User patterns and behavioral learning
         
         # Processing components
         self._context_assembler: Optional[ContextAssembler] = None
@@ -242,9 +240,9 @@ class MemoryManager(BaseAIProcessor):
             # Initialize processing components based on available stores (including KG)
             self._context_assembler = ContextAssembler(
                 working_store=self._working_store,
-                episodic_store=None,
+                episodic_store=None,  # Not implemented - working memory serves this role
                 semantic_store=self._semantic_store,
-                procedural_store=None,
+                procedural_store=None,  # Planned for Phase 3
                 kg_storage=self._kg_storage if self._kg_initialized else None,
                 kg_modelservice=self._kg_modelservice if self._kg_initialized else None,
                 db_connection=self._db_connection
@@ -777,8 +775,8 @@ class MemoryManager(BaseAIProcessor):
                 await self._semantic_store.shutdown(timeout=remaining_time)
             
             # Shutdown other stores (they don't have async shutdown currently)
-            # Working and episodic stores use synchronous cleanup
-            # TODO: Add proper shutdown for working/episodic stores if needed
+            # Working memory uses synchronous cleanup
+            # TODO: Add proper shutdown for working memory if needed
             
             self._initialized = False
             

@@ -4,10 +4,9 @@ AICO Memory Context Assembly
 Intelligent cross-tier memory context assembly for AI processing.
 
 This module provides context assembly from multiple memory tiers:
-- Working memory: Recent conversation context
-- Episodic memory: Historical conversations
-- Semantic memory: Knowledge base
-- Procedural memory: User patterns and preferences
+- Working memory: Conversation history and session context
+- Semantic memory: Knowledge base with hybrid search and knowledge graph
+- Procedural memory: User patterns and preferences (planned)
 
 Public API:
     - ContextItem: Data model for context items
