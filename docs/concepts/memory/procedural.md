@@ -27,23 +27,6 @@
 
 ---
 
-## Detailed Overview
-
-Procedural memory is AICO's system for learning *how* to interact. While semantic memory stores facts ("what"), procedural memory stores skills ("how"). It governs AICO's communication style, response formatting, proactivity, and other behaviors. By learning a library of skills, AICO can tailor its interactions to individual users, different contexts, and even specific times of day, making every conversation feel natural and intuitive.
-
-The system is designed to be modular, explicit, and continuously improving, ensuring that AICO evolves with each user relationship.
-
-### Foundational Principles
-
-The architecture is built on four pillars of modern AI research:
-
-1. **Skill-Based Modular Architecture**: Procedures are stored as discrete, interpretable "skills" rather than opaque patterns.
-2. **Reinforcement Learning from Human Feedback (RLHF)**: Learning is driven by explicit user feedback, providing a strong and clear signal for adaptation.
-3. **Meta-Learning for Rapid Adaptation**: AICO learns *how to learn*, allowing it to adapt to new users and changing preferences with minimal data.
-4. **Self-Correction and Exploration**: The system actively explores new interaction styles and learns from both successful and unsuccessful outcomes to refine its skills.
-
----
-
 ## Core Function: Skill-Based Interaction
 
 Procedural memory is modeled as a **Skill Store**, a library of discrete, context-aware procedures that AICO can learn and apply. This is more modular and interpretable than a monolithic set of learned patterns.
@@ -93,62 +76,14 @@ Explicit user feedback is the primary driver for skill acquisition and refinemen
 
 #### Implementation Details
 
-**Frontend UI Component** (Flutter):
-```dart
-// Add to message widget after AI responses
-Row(
-  children: [
-    IconButton(
-      icon: Icon(Icons.thumb_up_outlined),
-      onPressed: () => _showFeedbackDialog(messageId, skillId, 1),
-    ),
-    IconButton(
-      icon: Icon(Icons.thumb_down_outlined),
-      onPressed: () => _showFeedbackDialog(messageId, skillId, -1),
-    ),
-  ],
-)
-
-// Feedback dialog with optional reason
-void _showFeedbackDialog(String messageId, String skillId, int reward) {
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(reward > 0 ? 'What did you like?' : 'What went wrong?'),
-      content: Column(
-        children: [
-          // Optional dropdown
-          DropdownButton<String>(
-            hint: Text('Select a reason (optional)'),
-            items: [
-              DropdownMenuItem(value: 'too_verbose', child: Text('Too verbose')),
-              DropdownMenuItem(value: 'too_brief', child: Text('Too brief')),
-              DropdownMenuItem(value: 'wrong_tone', child: Text('Wrong tone')),
-              DropdownMenuItem(value: 'not_helpful', child: Text('Not helpful')),
-              DropdownMenuItem(value: 'incorrect', child: Text('Incorrect info')),
-            ],
-            onChanged: (value) => setState(() => _selectedReason = value),
-          ),
-          // Optional free text
-          TextField(
-            decoration: InputDecoration(
-              hintText: 'Additional feedback (optional, max 300 chars)',
-            ),
-            maxLength: 300,
-            onChanged: (value) => setState(() => _feedbackText = value),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => _submitFeedback(messageId, skillId, reward),
-          child: Text('Submit'),
-        ),
-      ],
-    ),
-  );
-}
-```
+**Frontend UI Requirements**:
+- Add thumbs up/down buttons to each AI message in the conversation view
+- Buttons should be subtle and non-intrusive (icon-only, positioned near message)
+- On click, show feedback dialog with:
+  - Optional dropdown: "Too verbose", "Too brief", "Wrong tone", "Not helpful", "Incorrect info"
+  - Optional free text field (max 300 chars)
+  - Submit button sends to `POST /api/v1/memory/feedback`
+- Use existing Flutter HTTP client (http/dio) for API calls
 
 **Backend API Endpoint**: `POST /api/v1/memory/feedback`
 
@@ -478,80 +413,6 @@ class FeedbackEvent(BaseModel):
 
 ---
 
-## Integration Points & System Synergies
-
-Procedural memory is not an isolated system; it is deeply integrated with AICO's other core capabilities, creating powerful synergies that enhance the entire platform.
-
-### Autonomous Agency
-
-Procedural memory provides the **"how"** for the agency's **"what."** When the agency's goal-generation system decides to act (e.g., proactively start a conversation or offer help), the procedural skill library defines the *method* of that interaction—the tone, style, and timing that has been learned to be most effective for that specific user and context.
-
-**Implementation**: The `AgencyEngine` will query the `SkillStore` before executing any proactive action, selecting the appropriate interaction skill based on the user and context.
-
-### Social Relationship Intelligence
-
-The multi-user personalization learned via RLHF is a direct input to the social relationship model. Each user's unique preference vector becomes a core component of their relationship graph, allowing AICO to seamlessly switch between learned interaction skills (e.g., `casual_chat_dad` vs. `homework_help_sarah`) based on who it's talking to.
-
-**Implementation**: The relationship graph will store references to preferred skills for each user, and the `ConversationEngine` will use the current user's relationship context to filter and select skills.
-
-### Emotional Intelligence
-
-Procedural memory learns the user's preferred ways for AICO to **express** its simulated emotions. For example, it can learn whether a user finds a direct statement of empathy ("I understand you're feeling down") more or less effective than a subtle, supportive action (like suggesting a calming activity). This makes AICO's emotional expression more personalized and impactful.
-
-**Implementation**: Emotion expression will be treated as a skill category, with different skills for different expression styles. The system will learn which emotional expression skills receive positive feedback from each user.
-
-### Embodiment & Presence
-
-Learned procedures can extend beyond text to include non-verbal cues. The system can learn which gestures, tones of voice, or avatar expressions are most positively received by the user during different types of interactions.
-
-**Implementation** (Future): Skills will include fields for non-verbal parameters (gesture type, voice tone, avatar expression), which will be passed to the embodiment layer for rendering.
-
-### Context Assembly
-
-The `ContextAssembly` engine will select the most relevant skill(s) based on the current user, topic, and time, and inject the corresponding procedural guidance into the prompt sent to the LLM.
-
-**Implementation** (`shared/aico/ai/memory/context/assembly.py`):
-```python
-def assemble_context(user_id: str, conversation_context: Dict) -> str:
-    # ... existing context assembly logic ...
-    
-    # Add procedural skill guidance
-    selected_skill = select_skill(user_id, conversation_context)
-    if selected_skill:
-        procedural_guidance = selected_skill.procedure_template
-        context_parts.append(f"Interaction Style: {procedural_guidance}")
-    
-    return "\n\n".join(context_parts)
-```
-
-### Conversation Engine
-
-The `ConversationEngine` applies the selected skill during response generation to adapt style, proactivity, and error handling.
-
-**Implementation** (`backend/services/conversation_engine.py`):
-```python
-async def generate_response(user_id: str, user_input: str) -> str:
-    # 1. Assemble context (includes skill selection)
-    context = assemble_context(user_id, {
-        "topic": detect_topic(user_input),
-        "time_of_day": get_time_of_day(),
-        "conversation_state": get_conversation_state()
-    })
-    
-    # 2. Generate response with LLM
-    response = await llm_client.generate(
-        prompt=context + "\n\nUser: " + user_input,
-        model=config.conversation_model
-    )
-    
-    # 3. Log the applied skill with the message for future feedback
-    await log_skill_application(user_id, selected_skill.skill_id, message_id)
-    
-    return response
-```
-
----
-
 ## Implementation Strategy
 
 The procedural memory system will be implemented as a complete, integrated solution with all components working together from the start. This approach ensures consistency and avoids technical debt from incremental builds.
@@ -604,29 +465,10 @@ The procedural memory system will be implemented as a complete, integrated solut
 
 ### Implementation Order
 
-**Week 1-2: Foundation**
-1. Database schema and migrations
-2. Data classes and SkillStore implementation
-3. ChromaDB collection setup
-4. Base skills definition and seeding
-
-**Week 3-4: Feedback Loop**
-5. Backend API endpoint for feedback
-6. Frontend UI components
-7. Confidence score update logic
-8. Basic skill selection in ConversationEngine
-
-**Week 5-6: Personalization**
-9. User preference vector system
-10. Preference-based skill matching
-11. Context extraction integration
-12. Trajectory logging
-
-**Week 7-8: Advanced Learning**
-13. DPO template refinement pipeline setup
-14. Scheduled task for batch refinement (daily)
-15. Exploration strategy implementation (ε-greedy)
-16. Performance metrics and monitoring dashboard
+**Weeks 1-2**: Database schema, SkillStore, ChromaDB collection, base skills  
+**Weeks 3-4**: Feedback API, UI components, confidence updates, skill selection  
+**Weeks 5-6**: Preference vectors, context extraction, trajectory logging  
+**Weeks 7-8**: DPO pipeline, exploration strategy, metrics dashboard
 
 ### Success Criteria
 
@@ -694,18 +536,7 @@ preference_embedding = embeddings_model.encode(user_preference_description)
 - Runs offline as scheduled task (daily)
 - Library: `trl>=0.7.0` (add to `pyproject.toml` under `[project.optional-dependencies.backend]`)
 
-**Important Clarification**: We use DPO to **refine prompt templates**, not to fine-tune the base model weights. The process:
-1. Collect trajectories (conversation turns with feedback)
-2. Group into preferred (positive feedback) vs. dispreferred (negative feedback)
-3. Use DPO to generate improved prompt templates that maximize preference
-4. Store refined templates in database
-5. Base model (Qwen3) remains unchanged
-
-**Why This Approach**:
-- **No model training**: We generate better prompts, not new model weights
-- **Fast**: Runs offline, doesn't block user interactions
-- **Reversible**: Can always revert to previous templates
-- **Storage-efficient**: Only stores text templates, not model checkpoints
+**Clarification**: DPO refines **prompt templates** (not model weights). Analyzes feedback trajectories to generate improved templates. Runs offline daily, fully reversible, storage-efficient.
 
 **Implementation** (`backend/scheduler/tasks/dpo_refinement.py`):
 ```python
@@ -778,17 +609,7 @@ async def refine_skill_templates():
 - Use cosine similarity for preference alignment
 - No separate neural network needed - leverage existing embedding space
 
-**Why Lightweight**: We don't train neural networks. Instead, we:
-1. Store user preferences as 768-dimensional vectors (same space as our embedding model)
-2. Store learned skills as text templates (prompt instructions)
-3. Match skills to context using vector similarity (fast, interpretable)
-
-This approach is:
-- **Simple**: No neural network training, just vector math
-- **Fast**: <10ms for skill selection
-- **Interpretable**: Can read preferences and skills as text
-- **Storage-efficient**: ~10-50KB per user
-- **Sufficient**: Handles complex personalization without model training
+**Why Lightweight**: Uses preference vectors (768-dim) + text templates instead of neural network training. Simple vector math, <10ms selection, interpretable, ~10-50KB per user.
 
 **Implementation** (`aico/ai/memory/procedural/preferences.py`):
 ```python
@@ -1000,26 +821,10 @@ logger.info("Skill applied", extra={
 
 **Purpose**: Capture and send user feedback from the mobile/desktop UI.
 
-**Libraries**: **REUSE EXISTING**
-- **http** or **dio**: Already used in AICO frontend for API calls
-- Use case: Send feedback to `POST /api/v1/memory/feedback`
-
-**UI Components**:
-- Custom thumbs up/down icon buttons using Flutter's built-in `IconButton`
-- Integrate into existing message UI components
-
-**Implementation** (Dart):
-```dart
-// Add to existing message widget
-IconButton(
-  icon: Icon(Icons.thumb_up_outlined),
-  onPressed: () => _sendFeedback(messageId, skillId, 1),
-)
-IconButton(
-  icon: Icon(Icons.thumb_down_outlined),
-  onPressed: () => _sendFeedback(messageId, skillId, -1),
-)
-```
+**Frontend Requirements**:
+- Use existing HTTP client (http/dio) to send feedback to `POST /api/v1/memory/feedback`
+- Integrate thumbs up/down buttons into message UI components
+- Maintain message_id and skill_id association for feedback submission
 
 ### Development & Testing
 
@@ -1049,121 +854,23 @@ tests/
     └── trajectories.py
 ```
 
-**Example Tests**:
+**Example Tests** (see `tests/unit/memory/test_skill_store.py`):
 ```python
-"""
-Unit tests for procedural memory skill confidence updates.
-
-Follows AICO testing conventions: descriptive names, clear assertions,
-minimal setup, focused scope.
-"""
-
 import pytest
 from aico.ai.memory.procedural import Skill, update_skill_confidence
-from aico.ai.memory.procedural.store import SkillStore
 
-
-class TestSkillConfidenceUpdates:
-    """Test suite for skill confidence score updates."""
-    
-    def test_positive_feedback_increases_confidence(self):
-        """Positive feedback should increase skill confidence score."""
-        skill = Skill(
-            user_id="test_user",
-            skill_name="concise_response",
-            procedure_template="Be brief and to the point.",
-            confidence_score=0.5
-        )
-        
-        updated = update_skill_confidence(skill, reward=1, learning_rate=0.1)
-        
-        assert updated.confidence_score == 0.6
-        assert updated.positive_feedback_count == 1
-    
-    def test_negative_feedback_decreases_confidence(self):
-        """Negative feedback should decrease skill confidence score."""
-        skill = Skill(
-            user_id="test_user",
-            skill_name="concise_response",
-            procedure_template="Be brief and to the point.",
-            confidence_score=0.5
-        )
-        
-        updated = update_skill_confidence(skill, reward=-1, learning_rate=0.1)
-        
-        assert updated.confidence_score == 0.4
-        assert updated.negative_feedback_count == 1
-    
-    def test_confidence_clamped_to_valid_range(self):
-        """Confidence scores should be clamped to [0.0, 1.0]."""
-        skill = Skill(
-            user_id="test_user",
-            skill_name="test",
-            procedure_template="test",
-            confidence_score=0.95
-        )
-        
-        # Multiple positive feedbacks should not exceed 1.0
-        for _ in range(10):
-            skill = update_skill_confidence(skill, reward=1, learning_rate=0.1)
-        
-        assert skill.confidence_score <= 1.0
-        assert skill.confidence_score >= 0.0
-
+def test_positive_feedback_increases_confidence():
+    skill = Skill(user_id="test", skill_name="concise", 
+                  procedure_template="Be brief.", confidence_score=0.5)
+    updated = update_skill_confidence(skill, reward=1, learning_rate=0.1)
+    assert updated.confidence_score == 0.6
 
 @pytest.mark.asyncio
-class TestFeedbackAPI:
-    """Integration tests for feedback API endpoint."""
-    
-    async def test_feedback_endpoint_success(self, test_client, mock_bus_client):
-        """Feedback endpoint should accept valid feedback and return updated confidence."""
-        response = await test_client.post(
-            "/api/v1/memory/feedback",
-            json={
-                "message_id": "msg_123",
-                "skill_id": "skill_456",
-                "reward": 1,
-                "reason": "perfect"
-            },
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert data["skill_updated"] is True
-        assert "new_confidence" in data
-    
-    async def test_feedback_endpoint_publishes_to_bus(self, test_client, mock_bus_client):
-        """Feedback endpoint should publish event to message bus."""
-        await test_client.post(
-            "/api/v1/memory/feedback",
-            json={
-                "message_id": "msg_123",
-                "skill_id": "skill_456",
-                "reward": 1
-            },
-            headers={"Authorization": "Bearer test_token"}
-        )
-        
-        # Verify message bus publish was called
-        mock_bus_client.publish.assert_called_once()
-        topic, message = mock_bus_client.publish.call_args[0]
-        assert topic == "memory/procedural/feedback/v1"
-        assert message.skill_id == "skill_456"
-    
-    async def test_feedback_endpoint_requires_auth(self, test_client):
-        """Feedback endpoint should require authentication."""
-        response = await test_client.post(
-            "/api/v1/memory/feedback",
-            json={
-                "message_id": "msg_123",
-                "skill_id": "skill_456",
-                "reward": 1
-            }
-        )
-        
-        assert response.status_code == 401
+async def test_feedback_endpoint(test_client, mock_bus_client):
+    response = await test_client.post("/api/v1/memory/feedback",
+        json={"message_id": "msg_123", "skill_id": "skill_456", "reward": 1})
+    assert response.status_code == 200
+    mock_bus_client.publish.assert_called_once()
 ```
 
 ### Configuration Management
@@ -1241,64 +948,13 @@ memory:
 
 ### Protocol Buffer Schemas
 
-**Following AICO's message-driven architecture, procedural memory requires Protocol Buffer schemas for message bus communication:**
+**New File**: `proto/aico_memory.proto` with messages:
+- `FeedbackEvent`: user_id, message_id, skill_id, reward, reason, free_text, timestamp
+- `SkillSelectionRequest`: user_id, conversation_id, message_text, context_tags, timestamp
+- `SkillSelectionResponse`: request_id, skill_id, skill_name, procedure_template, confidence_score, preference_alignment, is_exploration, selection_time_ms
+- `SkillApplicationEvent`: user_id, message_id, skill_id, skill_name, confidence_score, timestamp
 
-**New File**: `proto/aico_memory.proto`
-```protobuf
-syntax = "proto3";
-
-package aico.memory;
-
-import "aico_core_common.proto";
-
-// Feedback event published to message bus when user provides feedback
-message FeedbackEvent {
-    string user_id = 1;
-    string message_id = 2;
-    string skill_id = 3;
-    int32 reward = 4;  // 1 (positive), -1 (negative), 0 (neutral)
-    string reason = 5;  // Optional structured reason from dropdown
-    string free_text = 6;  // Optional free text explanation
-    int64 timestamp = 7;  // Unix timestamp
-}
-
-// Skill selection request published by Conversation Engine
-message SkillSelectionRequest {
-    string user_id = 1;
-    string conversation_id = 2;
-    string message_text = 3;
-    repeated string context_tags = 4;  // Intent, entities, sentiment
-    int64 timestamp = 5;
-}
-
-// Skill selection response published by Procedural Memory module
-message SkillSelectionResponse {
-    string request_id = 1;
-    string skill_id = 2;
-    string skill_name = 3;
-    string procedure_template = 4;
-    float confidence_score = 5;
-    float preference_alignment = 6;
-    bool is_exploration = 7;  // True if ε-greedy exploration
-    int64 selection_time_ms = 8;
-}
-
-// Skill application event for logging and analytics
-message SkillApplicationEvent {
-    string user_id = 1;
-    string message_id = 2;
-    string skill_id = 3;
-    string skill_name = 4;
-    float confidence_score = 5;
-    int64 timestamp = 6;
-}
-```
-
-**Message Bus Topics**:
-- `memory/procedural/feedback/v1`: Feedback events from API
-- `memory/procedural/skill_request/v1`: Skill selection requests from Conversation Engine
-- `memory/procedural/skill_response/v1`: Skill selection responses to Conversation Engine
-- `memory/procedural/skill_applied/v1`: Skill application events for logging
+**Topics**: `memory/procedural/{feedback,skill_request,skill_response,skill_applied}/v1`
 
 ### Complete Technology Stack Summary
 
@@ -1388,22 +1044,13 @@ uv pip install -e ".[backend,modelservice,cli,test]"
 - **Explanation system**: UI shows why each skill was applied (confidence score, preference alignment)
 - **Disable anytime**: Users can turn off procedural learning without data loss
 
-### Data Governance
-- **No external sharing**: Procedural memory data never leaves device
-- **No telemetry**: No usage statistics sent to external servers
-- **Export control**: Users can export their data in readable format (JSON)
-- **Audit logging**: All skill applications logged for user review
-- **Consent management**: Integrated with AICO's consent manager module
-
-### Message Bus Security
-- **Encrypted communication**: All message bus traffic uses CurveZMQ encryption
-- **Topic isolation**: Procedural memory topics isolated from other modules
-- **Access control**: Only authorized modules can publish/subscribe to procedural memory topics
-
-### Compliance
-- **GDPR-ready**: Right to access, modify, delete, and export data
-- **Zero-knowledge**: System learns patterns without exposing raw conversation content
-- **Privacy-preserving**: DPO refinement uses aggregated patterns, not individual messages
+### Data Governance & Compliance
+- **No external sharing**: Data never leaves device, no telemetry
+- **User export**: JSON format for full data portability
+- **Audit logging**: All skill applications logged for review
+- **Message bus security**: CurveZMQ encryption, topic isolation, access control
+- **GDPR-ready**: Full access, modify, delete, export rights
+- **Privacy-preserving**: DPO uses aggregated patterns, not raw messages
 
 ---
 
@@ -1479,50 +1126,11 @@ logger.info("DPO template refinement completed", extra={
 
 ### Monitoring Dashboard Queries
 
-**Example queries for monitoring (using log aggregation)**:
-
-```python
-# Skill accuracy over time
-SELECT 
-    DATE_TRUNC('hour', timestamp) as hour,
-    AVG(CASE WHEN reward > 0 THEN 1.0 ELSE 0.0 END) as positive_rate
-FROM logs
-WHERE metric_type = 'procedural_memory_feedback'
-GROUP BY hour
-ORDER BY hour DESC;
-
-# Slowest skills (need optimization)
-SELECT 
-    skill_name,
-    AVG(selection_time_ms) as avg_time,
-    COUNT(*) as usage_count
-FROM logs
-WHERE metric_type = 'procedural_memory_selection'
-GROUP BY skill_name
-HAVING avg_time > 10  -- Above target
-ORDER BY avg_time DESC;
-
-# User adaptation progress
-SELECT 
-    user_id,
-    COUNT(*) as total_interactions,
-    AVG(CASE WHEN reward > 0 THEN 1.0 ELSE 0.0 END) as positive_rate,
-    MIN(timestamp) as first_interaction,
-    MAX(timestamp) as last_interaction
-FROM logs
-WHERE metric_type = 'procedural_memory_feedback'
-GROUP BY user_id
-ORDER BY first_interaction DESC;
-
-# Exploration effectiveness (do explored skills improve?)
-SELECT 
-    exploration_mode,
-    AVG(confidence_score) as avg_confidence,
-    COUNT(*) as selection_count
-FROM logs
-WHERE metric_type = 'procedural_memory_selection'
-GROUP BY exploration_mode;
-```
+**Example queries** (filter by `metric_type` in logs):
+- **Skill accuracy**: `AVG(CASE WHEN reward > 0 THEN 1.0 ELSE 0.0 END)` grouped by hour
+- **Slow skills**: Skills with `AVG(selection_time_ms) > 10ms`
+- **User adaptation**: Positive rate over time per user
+- **Exploration effectiveness**: Compare confidence scores for explored vs. exploited skills
 
 ### Success Criteria
 
