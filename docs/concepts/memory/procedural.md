@@ -1,6 +1,6 @@
 # Procedural Memory: The Adaptive Learning System
 
-## Executive Summary
+## Summary
 
 **What It Does**: Procedural memory enables AICO to learn and adapt its interaction style based on user feedback, transforming from a static assistant into a personalized companion that evolves with each relationship.
 
