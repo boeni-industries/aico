@@ -68,7 +68,7 @@ from aico.ai.base import ProcessingContext, ProcessingResult, BaseAIProcessor
 # Import memory stores (will be implemented in phases)
 from .working import WorkingMemoryStore
 from .semantic import SemanticMemoryStore
-from .context import ContextAssembler, ContextItem
+from .context import ContextAssembler, ContextItem  # Uses context/ subdirectory
 
 # Import knowledge graph components
 from aico.ai.knowledge_graph import (

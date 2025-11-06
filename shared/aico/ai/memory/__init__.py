@@ -15,7 +15,7 @@ message bus integration for loose coupling and extensibility.
 from .manager import MemoryManager
 from .working import WorkingMemoryStore
 from .semantic import SemanticMemoryStore
-from .context import ContextAssembler
+from .context import ContextAssembler  # Uses context/ subdirectory
 
 __all__ = [
     "MemoryManager",
