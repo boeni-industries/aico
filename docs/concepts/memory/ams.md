@@ -675,160 +675,17 @@ Explicit user feedback is the primary driver for skill acquisition and refinemen
 
 **Backend API Endpoint**: `POST /api/v1/memory/feedback`
 
-**Following existing router.py patterns** (see `backend/api/conversation/router.py`):
-
 **Request Schema** (`backend/api/memory/schemas.py`):
-```python
-from pydantic import BaseModel, Field
-from typing import Optional
-
-class FeedbackRequest(BaseModel):
-    message_id: str = Field(..., description="UUID of the message being rated")
-    skill_id: str = Field(..., description="UUID of the skill that was applied")
-    reward: int = Field(..., ge=-1, le=1, description="Feedback: 1 (positive), -1 (negative), 0 (neutral)")
-    reason: Optional[str] = Field(None, description="Structured reason from dropdown")
-    free_text: Optional[str] = Field(None, max_length=300, description="Optional user explanation")
-
-class FeedbackResponse(BaseModel):
-    success: bool
-    message: str
-    skill_updated: bool
-    new_confidence: float
-```
+- Fields: message_id, skill_id, reward (1/-1/0), optional reason, optional free_text (max 300 chars)
+- Response: success status, skill_updated flag, new_confidence score
 
 **Router Implementation** (`backend/api/memory/router.py`):
-```python
-"""
-Procedural Memory API Router
-
-Provides REST endpoints for skill feedback and integrates with the message bus
-for procedural memory processing. Follows AICO's message-driven architecture.
-"""
-
-from fastapi import APIRouter, Depends, HTTPException, status
-from aico.core.logging import get_logger
-from aico.core.bus import MessageBusClient
-from aico.proto.aico_memory_pb2 import FeedbackEvent  # Protocol Buffer schema
-from backend.api.conversation.dependencies import get_current_user, get_message_bus_client
-from backend.api.memory.schemas import FeedbackRequest, FeedbackResponse
-from aico.ai.memory.procedural import SkillStore, update_skill_confidence
-
-router = APIRouter()
-logger = get_logger("backend", "api.memory")
-
-@router.post("/feedback", response_model=FeedbackResponse)
-async def submit_skill_feedback(
-    request: FeedbackRequest,
-    current_user = Depends(get_current_user),
-    bus_client = Depends(get_message_bus_client)
-):
-    """
-    Submit feedback on AI response skill application.
-    
-    Follows AICO's message-driven architecture: publishes feedback event to message bus
-    for processing by the Procedural Memory module.
-    
-    Args:
-        request: Feedback data (skill_id, reward, reason, free_text)
-        current_user: Authenticated user from dependency injection
-        bus_client: Message bus client for publishing events
-        
-    Returns:
-        FeedbackResponse with success status and updated confidence score
-        
-    Raises:
-        HTTPException: 404 if skill not found, 500 on processing error
-    """
-    try:
-        user_id = current_user['user_uuid']
-        
-        # Publish feedback event to message bus (message-driven architecture)
-        feedback_event = FeedbackEvent(
-            user_id=user_id,
-            message_id=request.message_id,
-            skill_id=request.skill_id,
-            reward=request.reward,
-            reason=request.reason or "",
-            free_text=request.free_text or "",
-            timestamp=int(datetime.utcnow().timestamp())
-        )
-        
-        await bus_client.publish("memory/procedural/feedback/v1", feedback_event)
-        
-        # Retrieve skill from store for immediate response
-        skill_store = SkillStore()
-        skill = await skill_store.get_skill(request.skill_id, user_id)
-        
-        if not skill:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Skill {request.skill_id} not found for user"
-            )
-        
-        # Update confidence score
-        learning_rate = 0.1  # From config: core.memory.procedural.learning_rate
-        old_confidence = skill.confidence_score
-        new_confidence = old_confidence + learning_rate * request.reward
-        new_confidence = max(0.0, min(1.0, new_confidence))  # Clamp to [0, 1]
-        
-        skill.confidence_score = new_confidence
-        
-        # Update feedback counters
-        if request.reward > 0:
-            skill.positive_feedback_count += 1
-        elif request.reward < 0:
-            skill.negative_feedback_count += 1
-        
-        skill.usage_count += 1
-        
-        # Persist to database
-        await skill_store.update_skill(skill)
-        
-        # Log feedback event with performance metrics
-        logger.info(
-            "Skill feedback received",
-            extra={
-                "user_id": user_id,
-                "skill_id": request.skill_id,
-                "skill_name": skill.skill_name,
-                "reward": request.reward,
-                "reason": request.reason,
-                "old_confidence": old_confidence,
-                "new_confidence": new_confidence,
-                "confidence_delta": new_confidence - old_confidence,
-                "total_usage": skill.usage_count,
-                "positive_rate": skill.positive_feedback_count / skill.usage_count if skill.usage_count > 0 else 0,
-                "has_free_text": bool(request.free_text),
-                "metric_type": "procedural_memory_feedback"
-            }
-        )
-        
-        # Note: Feedback event already published to message bus.
-        # Procedural Memory module will handle trajectory logging asynchronously.
-        
-        return FeedbackResponse(
-            success=True,
-            message="Feedback recorded successfully",
-            skill_updated=True,
-            new_confidence=new_confidence
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(
-            f"Failed to process skill feedback: {e}",
-            extra={
-                "user_id": current_user.get('user_uuid'),
-                "skill_id": request.skill_id,
-                "error": str(e)
-            }
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to process feedback"
-        )
-```
+- Follows AICO's message-driven architecture
+- Publishes feedback event to message bus for async processing
+- Updates skill confidence score using exponential moving average
+- Tracks feedback counters (positive/negative/total usage)
+- Returns immediate response with updated confidence
+- Logs feedback events with performance metrics
 
 ### 2. Meta-Learning for Rapid Adaptation
 
@@ -844,32 +701,15 @@ To quickly adapt to new users or changing preferences, AICO uses a meta-learning
 #### Implementation Details
 
 **User Preference Vectors** (`shared/aico/ai/memory/user_preferences.py`):
-- Each user has a latent preference vector (e.g., 16-32 dimensions) stored in the database.
-- This vector is initialized with default values and updated based on feedback patterns.
-- The vector encodes preferences like: formality, verbosity, proactivity tolerance, emotional expression style.
+- Each user has a latent preference vector (16-32 dimensions) stored in the database
+- Vector initialized with defaults and updated based on feedback patterns
+- Encodes preferences: formality, verbosity, proactivity tolerance, emotional expression style
 
 **Skill Matching Algorithm**:
-```python
-def select_skill(user_id: str, context: Dict[str, Any]) -> Skill:
-    # 1. Get user's preference vector
-    user_prefs = get_user_preferences(user_id)
-    
-    # 2. Query skills matching the context
-    candidate_skills = skill_store.query(
-        user_id=user_id,
-        context_filters=context
-    )
-    
-    # 3. Score each skill based on confidence + preference alignment
-    for skill in candidate_skills:
-        skill.score = (
-            0.7 * skill.confidence_score +
-            0.3 * cosine_similarity(skill.preference_profile, user_prefs)
-        )
-    
-    # 4. Return highest scoring skill
-    return max(candidate_skills, key=lambda s: s.score)
-```
+- Retrieves user's preference vector
+- Queries skills matching the current context
+- Scores each skill: 70% confidence score + 30% preference alignment (cosine similarity)
+- Returns highest scoring skill
 
 ### 3. Self-Correction and Exploration (Agent Q Model)
 
@@ -884,21 +724,19 @@ AICO actively refines its skills by learning from both its successes and failure
 #### Implementation Details
 
 **Exploration Strategy** (`shared/aico/ai/memory/exploration.py`):
-- With probability ε (e.g., 0.1), select a skill with lower confidence for exploration.
-- Explicitly ask the user for feedback: "I'm trying a new approach—let me know if you prefer this style."
-- Track exploration outcomes separately to measure learning effectiveness.
+- With probability ε (e.g., 0.1), select lower-confidence skills for exploration
+- Explicitly request user feedback on new approaches
+- Track exploration outcomes separately to measure learning effectiveness
 
 **Trajectory Logging** (`backend/services/trajectory_logger.py`):
-- Log each conversation turn with: user input, selected skill, AI response, user feedback.
-- Store successful trajectories (positive feedback) and unsuccessful ones (negative feedback).
-- Use these trajectories for offline learning and skill refinement.
+- Log each conversation turn: user input, selected skill, AI response, user feedback
+- Store successful (positive feedback) and unsuccessful (negative feedback) trajectories
+- Use trajectories for offline learning and skill refinement
 
 **Preference Optimization** (Phase 3 implementation):
-- Periodically run a batch process that analyzes trajectories.
-- Use DPO or similar algorithms to update skill templates based on preference pairs:
-  - Preferred: Trajectories with positive feedback
-  - Dispreferred: Trajectories with negative feedback
-- Update the skill templates to increase the likelihood of preferred patterns.
+- Batch process analyzes trajectories periodically
+- Uses DPO algorithm to update skill templates based on preference pairs
+- Increases likelihood of preferred patterns, decreases dispreferred ones
 
 ---
 
@@ -907,97 +745,26 @@ AICO actively refines its skills by learning from both its successes and failure
 ### Database Schema (`shared/aico/data/schemas/procedural.py`)
 
 **Skills Table**:
-```sql
-CREATE TABLE skills (
-    skill_id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    skill_name TEXT NOT NULL,
-    skill_type TEXT NOT NULL,  -- 'base', 'learned', 'user_created'
-    trigger_context TEXT,  -- JSON: {topic, time_of_day, conversation_state}
-    procedure_template TEXT NOT NULL,
-    confidence_score REAL DEFAULT 0.5,
-    preference_profile TEXT,  -- JSON: latent vector for preference matching
-    usage_count INTEGER DEFAULT 0,
-    positive_feedback_count INTEGER DEFAULT 0,
-    negative_feedback_count INTEGER DEFAULT 0,
-    last_used_timestamp INTEGER,
-    created_timestamp INTEGER NOT NULL,
-    updated_timestamp INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(user_id)
-);
-
-CREATE INDEX idx_skills_user ON skills(user_id);
-CREATE INDEX idx_skills_confidence ON skills(confidence_score DESC);
-```
+- Primary key: skill_id
+- Fields: user_id, skill_name, skill_type (base/learned/user_created), trigger_context (JSON), procedure_template, confidence_score (default 0.5), preference_profile (JSON latent vector), usage counters, timestamps
+- Indices: user_id, confidence_score (descending)
 
 **User Preferences Table**:
-```sql
-CREATE TABLE user_preferences (
-    user_id TEXT PRIMARY KEY,
-    preference_vector TEXT NOT NULL,  -- JSON: latent vector
-    learning_rate REAL DEFAULT 0.1,
-    exploration_rate REAL DEFAULT 0.1,
-    last_updated_timestamp INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(user_id)
-);
-```
+- Primary key: user_id
+- Fields: preference_vector (JSON latent vector), learning_rate (default 0.1), exploration_rate (default 0.1), last_updated_timestamp
 
 **Feedback Events Table**:
-```sql
-CREATE TABLE feedback_events (
-    event_id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    message_id TEXT NOT NULL,
-    skill_id TEXT NOT NULL,
-    reward INTEGER NOT NULL,  -- -1, 0, or 1
-    timestamp INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(user_id),
-    FOREIGN KEY (skill_id) REFERENCES skills(skill_id)
-);
-
-CREATE INDEX idx_feedback_user ON feedback_events(user_id);
-CREATE INDEX idx_feedback_skill ON feedback_events(skill_id);
-```
+- Primary key: event_id
+- Fields: user_id, message_id, skill_id, reward (-1/0/1), timestamp
+- Indices: user_id, skill_id
 
 ### Python Data Classes (`shared/aico/ai/memory/procedural.py`)
 
-```python
-from pydantic import BaseModel, Field
-from typing import Dict, Any, Optional
-from datetime import datetime
-import uuid
+**Skill**: Pydantic model with skill_id, user_id, skill_name, skill_type, trigger_context, procedure_template, confidence_score, preference_profile, usage counters, timestamps
 
-class Skill(BaseModel):
-    skill_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    user_id: str
-    skill_name: str
-    skill_type: str = "learned"  # 'base', 'learned', 'user_created'
-    trigger_context: Dict[str, Any] = {}
-    procedure_template: str
-    confidence_score: float = 0.5
-    preference_profile: Optional[list[float]] = None
-    usage_count: int = 0
-    positive_feedback_count: int = 0
-    negative_feedback_count: int = 0
-    last_used_timestamp: Optional[datetime] = None
-    created_timestamp: datetime = Field(default_factory=datetime.utcnow)
-    updated_timestamp: datetime = Field(default_factory=datetime.utcnow)
+**UserPreferences**: Pydantic model with user_id, preference_vector, learning_rate, exploration_rate, last_updated_timestamp
 
-class UserPreferences(BaseModel):
-    user_id: str
-    preference_vector: list[float]
-    learning_rate: float = 0.1
-    exploration_rate: float = 0.1
-    last_updated_timestamp: datetime = Field(default_factory=datetime.utcnow)
-
-class FeedbackEvent(BaseModel):
-    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    user_id: str
-    message_id: str
-    skill_id: str
-    reward: int  # -1, 0, or 1
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-```
+**FeedbackEvent**: Pydantic model with event_id, user_id, message_id, skill_id, reward, timestamp
 
 ---
 
