@@ -1,35 +1,384 @@
-# Procedural Memory: The Adaptive Learning System
+# Adaptive Memory System (AMS): Brain-Inspired Learning Architecture
 
 ## Summary
 
-**What It Does**: Procedural memory enables AICO to learn and adapt its interaction style based on user feedback, transforming from a static assistant into a personalized companion that evolves with each relationship.
+**What It Does**: The Adaptive Memory System (AMS) is AICO's brain-inspired memory **orchestration layer** that coordinates and enhances existing memory components (working, semantic, knowledge graph) with new capabilities (consolidation, behavioral learning, unified indexing). It implements complementary learning systems to enable genuine relationship evolution through dynamic memory consolidation, temporal preference tracking, and cross-tier memory integration.
+
+**Important**: AMS is **not a replacement**—it's an architectural pattern that:
+- **Keeps 80%** of existing memory code (working.py, semantic.py, knowledge_graph/)
+- **Adds 20%** new components (consolidation, behavioral learning, unified indexing)
+- **Enhances** existing components with temporal metadata and evolution tracking
+- **Coordinates** all memory tiers through brain-inspired principles
 
 **Value Proposition**: 
-- **Personalization**: Each user gets a unique interaction style tailored to their preferences (concise vs. detailed, formal vs. casual, proactive vs. reactive)
-- **Continuous Improvement**: System learns from every thumbs-up/down, becoming more aligned with user expectations over time
-- **Multi-User Intelligence**: Handles family environments by learning distinct preferences for each person (Dad prefers brief answers, Sarah wants detailed explanations)
-- **Zero Configuration**: No manual setup required—learns automatically from natural user feedback
+- **Genuine Evolution**: Not just learning preferences, but understanding how relationships and behaviors change over time
+- **Brain-Inspired Architecture**: Dual-system design (fast hippocampal + slow cortical learning) prevents catastrophic forgetting
+- **Dynamic Consolidation**: Background "sleep phases" integrate new experiences without disrupting existing knowledge
+- **Temporal Intelligence**: Tracks preference evolution, recognizes changing patterns, maintains historical context
+- **Unified Memory**: Seamless integration across raw data, structured knowledge, and behavioral patterns
+- **Multi-User Intelligence**: Distinct, evolving profiles for each family member with temporal awareness
+- **Zero Configuration**: Learns automatically from natural interactions and feedback
 
-**How It Works**: Instead of training neural networks (expensive, slow, opaque), the system learns **prompt templates**—text instructions that guide the existing conversation model. When a user gives feedback, the system adjusts which templates to use and how to apply them. Think of it as AICO learning "house rules" for each user rather than rewriting its brain.
+**How It Works**: AMS implements a complementary learning systems architecture inspired by the mammalian hippocampus-cortex system. Fast learning captures immediate experiences in working memory, while background consolidation gradually integrates knowledge into semantic memory and behavioral patterns. Temporal knowledge graphs track how preferences evolve, and unified memory representation enables seamless retrieval across all memory types.
+
+**Research Foundation**:
+- Rudroff et al. (2024): "Neuroplasticity Meets Artificial Intelligence: A Hippocampus-Inspired Approach to the Stability–Plasticity Dilemma"
+- Wei & Shang (2024): "Long Term Memory: The Foundation of AI Self-Evolution"
+- Contextual Memory Intelligence (2025): "A Foundational Paradigm for Human-AI Collaboration"
+- Rethinking Memory in AI (2025): "Taxonomy, Operations, Topics, and Future Directions"
 
 **System Integration**:
-- **Module Location**: Part of Memory System module in Intelligence & Memory domain
-- **Enriches Conversation Engine**: Injects learned interaction preferences via message bus
-- **Leverages Semantic Memory**: Uses existing embedding model and ChromaDB for skill matching
-- **Complements Emotional Intelligence**: Learns preferred ways to express empathy and support
-- **Supports Social Relationships**: Maintains distinct interaction profiles per family member
-- **Feeds Knowledge Graph**: Interaction patterns become part of user relationship data
+- **Module Location**: `/shared/aico/ai/memory/` - Core Intelligence & Memory domain
+- **Orchestration Role**: Coordinates existing + new memory components
+- **Fast Learning System**: ✅ Existing `working.py` (enhanced with temporal metadata)
+- **Slow Learning System**: ✅ Existing `semantic.py` + `knowledge_graph/` (enhanced with temporal tracking)
+- **Consolidation Engine**: ❌ NEW `consolidation/` module (background replay and transfer)
+- **Behavioral Learning**: ❌ NEW `behavioral/` module (skill library with RLHF)
+- **Unified Indexing**: ❌ NEW `unified/` module (cross-layer retrieval)
 - **Message-Driven Communication**: All module interactions via ZeroMQ message bus with Protocol Buffers
 
-**Storage Footprint**: ~10-50KB per user (vs. 4-8GB if we trained separate models)
+**Storage Footprint**: ~90KB per user (75% increase from 50KB baseline)
+- Temporal metadata: ~10KB
+- Knowledge graphs: ~15KB
+- Consolidation buffers: ~12KB
+- Behavioral patterns: ~8KB
 
-**Performance**: <10ms skill selection overhead, no additional memory usage (reuses existing models)
+**Performance**: 
+- Context assembly: <50ms (multi-tier retrieval)
+- Consolidation: 5-10 min/day per user (background)
+- Memory overhead: +175-350MB system-wide
 
 ---
 
-## Core Function: Skill-Based Interaction
+## Architecture Overview: Complementary Learning Systems
 
-Procedural memory is modeled as a **Skill Store**, a library of discrete, context-aware procedures that AICO can learn and apply. This is more modular and interpretable than a monolithic set of learned patterns.
+AMS implements a dual-system architecture inspired by the mammalian hippocampus-cortex system, solving the stability-plasticity dilemma through complementary learning mechanisms.
+
+### The Stability-Plasticity Dilemma
+
+AI systems face a fundamental challenge: how to learn new information quickly without forgetting existing knowledge (catastrophic forgetting). Traditional approaches either:
+- Learn slowly to preserve stability (poor user experience)
+- Learn quickly but forget previous knowledge (unreliable)
+
+Biological brains solve this through **complementary learning systems**: the hippocampus rapidly encodes new experiences, while the neocortex slowly integrates them into stable knowledge through memory consolidation during sleep.
+
+### AMS Dual-System Design
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  Adaptive Memory System                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │    Fast Learning System (Hippocampal Component)       │  │
+│  │  - Working Memory (LMDB, 24hr TTL)                    │  │
+│  │  - Rapid experience encoding                          │  │
+│  │  - Temporal metadata tracking                         │  │
+│  │  - Pattern separation for distinct experiences        │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                          ↓ Consolidation                     │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │   Memory Consolidation Engine (Transfer Layer)        │  │
+│  │  - Replay scheduler (idle detection)                  │  │
+│  │  - Experience replay generator                        │  │
+│  │  - Memory reconsolidation                             │  │
+│  │  - Temporal knowledge graph updates                   │  │
+│  │  - Consolidation state tracking                       │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                          ↓ Integration                       │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │     Slow Learning System (Cortical Component)         │  │
+│  │  - Semantic Memory (ChromaDB + libSQL)                │  │
+│  │  - Temporal Knowledge Graph (property graph)          │  │
+│  │  - Behavioral Learning Store (skill library)          │  │
+│  │  - Preference evolution tracking                      │  │
+│  │  - Pattern completion for generalization              │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                               │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │         Unified Memory Representation Layer            │  │
+│  │  L0: Raw data (conversations, events, interactions)   │  │
+│  │  L1: Structured memory (summaries, profiles, facts)   │  │
+│  │  L2: Parameterized memory (behavioral models, skills) │  │
+│  │  Cross-layer indexing & unified retrieval             │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                               │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │         Context Assembly & Fusion Engine               │  │
+│  │  - Multi-tier retrieval coordination                  │  │
+│  │  - Temporal-aware ranking                             │  │
+│  │  - Hybrid search (BM25 + semantic + graph)            │  │
+│  │  - Relevance scoring with recency weighting           │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Key Mechanisms
+
+**1. Fast Learning (Hippocampal)**
+- Rapid encoding of new experiences in working memory
+- Temporary storage with 24-hour TTL
+- Pattern separation: Distinct encoding of similar experiences
+- Immediate availability for context assembly
+
+**2. Memory Consolidation (Transfer)**
+- Background "sleep phases" during system idle periods
+- Experience replay: Reprocessing recent interactions
+- Memory reconsolidation: Updating existing knowledge with new information
+- Temporal graph evolution: Tracking preference changes over time
+
+**3. Slow Learning (Cortical)**
+- Gradual integration into stable semantic memory
+- Knowledge graph updates with temporal metadata
+- Behavioral pattern extraction and skill refinement
+- Long-term storage with efficient retrieval
+
+**4. Unified Memory Representation**
+- L0 (Raw Data): Unprocessed conversations and events
+- L1 (Structured): Summaries, profiles, extracted facts
+- L2 (Parameterized): Behavioral models and learned skills
+- Cross-layer indexing for seamless retrieval
+
+---
+
+## Implementation Structure
+
+### Directory Organization
+
+Following AICO's modular design principles (see `/docs/guides/developer/guidelines.md`), AMS is implemented as focused, single-responsibility modules:
+
+```
+/shared/aico/ai/memory/
+├── __init__.py                      # ✅ Existing: Module exports
+├── manager.py                       # ✅ Existing: Main orchestrator (enhanced)
+├── working.py                       # ✅ Existing: Fast learning (enhanced)
+├── semantic.py                      # ✅ Existing: Slow learning (enhanced)
+├── context/                         # ✅ Existing: Context assembly
+│   ├── __init__.py
+│   ├── assembler.py                 # Enhanced with temporal ranking
+│   ├── retrievers.py                # Enhanced with temporal queries
+│   ├── scorers.py                   # Enhanced with recency weighting
+│   ├── models.py                    # Enhanced with temporal metadata
+│   └── graph_ranking.py             # Existing graph-based ranking
+├── consolidation/                   # ❌ NEW: Memory consolidation engine
+│   ├── __init__.py
+│   ├── scheduler.py                 # Idle detection & replay scheduling
+│   ├── replay.py                    # Experience replay generator
+│   ├── reconsolidation.py           # Memory update mechanisms
+│   └── state.py                     # Consolidation state tracking
+├── behavioral/                      # ❌ NEW: Behavioral learning store
+│   ├── __init__.py
+│   ├── skills.py                    # Skill library management
+│   ├── rlhf.py                      # RLHF integration
+│   ├── preferences.py               # User preference tracking
+│   └── templates.py                 # Prompt template management
+├── unified/                         # ❌ NEW: Unified memory indexing
+│   ├── __init__.py
+│   ├── index.py                     # Cross-layer indexing
+│   ├── lifecycle.py                 # Memory lifecycle management
+│   └── retrieval.py                 # Unified retrieval interface
+└── temporal/                        # ❌ NEW: Temporal metadata utilities
+    ├── __init__.py
+    ├── metadata.py                  # Temporal metadata structures
+    ├── evolution.py                 # Preference evolution tracking
+    └── queries.py                   # Temporal query support
+```
+
+### Module Responsibilities
+
+#### Existing Modules (Enhanced)
+
+**`manager.py`** - Memory Manager (Orchestrator)
+- **Current**: Coordinates working, semantic, knowledge graph
+- **Enhancement**: Add consolidation scheduling, unified indexing coordination
+- **Size**: ~800 lines → ~1000 lines
+- **Changes**: Add consolidation triggers, unified retrieval methods
+
+**`working.py`** - Working Memory Store (Fast Learning)
+- **Current**: LMDB-based conversation history with 24hr TTL
+- **Enhancement**: Add temporal metadata to all stored messages
+- **Size**: ~290 lines → ~350 lines
+- **Changes**: Extend storage schema with temporal fields
+
+**`semantic.py`** - Semantic Memory Store (Slow Learning)
+- **Current**: ChromaDB with hybrid search (BM25 + vector)
+- **Enhancement**: Add temporal awareness to fact storage and retrieval
+- **Size**: ~450 lines → ~550 lines
+- **Changes**: Temporal metadata in ChromaDB, evolution tracking
+
+**`context/assembler.py`** - Context Assembly
+- **Current**: Multi-tier retrieval with relevance scoring
+- **Enhancement**: Add temporal-aware ranking and recency weighting
+- **Size**: ~350 lines → ~450 lines
+- **Changes**: Temporal scoring algorithms, evolution-aware retrieval
+
+#### New Modules (To Implement)
+
+**`consolidation/scheduler.py`** - Replay Scheduler
+- **Purpose**: Detect idle periods, schedule consolidation jobs
+- **Size**: ~200 lines
+- **Key Functions**:
+  - `detect_idle_period()`: Monitor system activity
+  - `schedule_consolidation()`: Trigger replay jobs
+  - `estimate_consolidation_time()`: Resource planning
+
+**`consolidation/replay.py`** - Experience Replay
+- **Purpose**: Generate replay sequences from working memory
+- **Size**: ~250 lines
+- **Key Functions**:
+  - `generate_replay_sequence()`: Select experiences to replay
+  - `prioritize_experiences()`: Importance-based selection
+  - `replay_to_semantic()`: Transfer to semantic memory
+
+**`consolidation/reconsolidation.py`** - Memory Reconsolidation
+- **Purpose**: Update existing memories with new information
+- **Size**: ~200 lines
+- **Key Functions**:
+  - `identify_conflicts()`: Find contradictory memories
+  - `merge_memories()`: Integrate new information
+  - `update_confidence()`: Adjust memory strength
+
+**`consolidation/state.py`** - Consolidation State
+- **Purpose**: Track consolidation progress and state
+- **Size**: ~150 lines
+- **Key Functions**:
+  - `get_consolidation_status()`: Current state
+  - `mark_consolidated()`: Update completion status
+  - `get_pending_items()`: Items awaiting consolidation
+
+**`behavioral/skills.py`** - Skill Library
+- **Purpose**: Manage skill definitions and selection
+- **Size**: ~300 lines
+- **Key Functions**:
+  - `register_skill()`: Add new skill
+  - `select_skill()`: Context-based selection
+  - `update_confidence()`: Adjust skill scores
+
+**`behavioral/rlhf.py`** - RLHF Integration
+- **Purpose**: Process user feedback for skill learning
+- **Size**: ~250 lines
+- **Key Functions**:
+  - `process_feedback()`: Handle thumbs up/down
+  - `update_skill_weights()`: Adjust based on feedback
+  - `calculate_reward()`: Compute reward signal
+
+**`behavioral/preferences.py`** - Preference Tracking
+- **Purpose**: Track user preference evolution over time
+- **Size**: ~200 lines
+- **Key Functions**:
+  - `store_preference()`: Record preference with timestamp
+  - `get_preference_history()`: Retrieve evolution
+  - `detect_preference_shift()`: Identify changes
+
+**`behavioral/templates.py`** - Prompt Templates
+- **Purpose**: Manage and apply prompt templates
+- **Size**: ~200 lines
+- **Key Functions**:
+  - `load_template()`: Retrieve template
+  - `apply_template()`: Inject into context
+  - `update_template()`: Refine based on feedback
+
+**`unified/index.py`** - Cross-Layer Indexing
+- **Purpose**: Unified indexing across L0/L1/L2
+- **Size**: ~250 lines
+- **Key Functions**:
+  - `build_unified_index()`: Create cross-layer index
+  - `query_unified()`: Search across all layers
+  - `update_index()`: Maintain index consistency
+
+**`unified/lifecycle.py`** - Memory Lifecycle
+- **Purpose**: Manage memory transitions between tiers
+- **Size**: ~200 lines
+- **Key Functions**:
+  - `promote_to_semantic()`: Working → Semantic
+  - `archive_memory()`: Long-term storage
+  - `cleanup_expired()`: TTL enforcement
+
+**`unified/retrieval.py`** - Unified Retrieval
+- **Purpose**: Single interface for all memory queries
+- **Size**: ~250 lines
+- **Key Functions**:
+  - `retrieve_unified()`: Query all tiers
+  - `rank_results()`: Cross-tier relevance
+  - `merge_results()`: Combine from multiple sources
+
+**`temporal/metadata.py`** - Temporal Metadata
+- **Purpose**: Data structures for temporal tracking
+- **Size**: ~150 lines
+- **Key Classes**:
+  - `TemporalMetadata`: Base temporal data
+  - `EvolutionRecord`: Preference change tracking
+  - `HistoricalState`: Point-in-time snapshots
+
+**`temporal/evolution.py`** - Evolution Tracking
+- **Purpose**: Track how preferences/behaviors evolve
+- **Size**: ~200 lines
+- **Key Functions**:
+  - `track_evolution()`: Record changes over time
+  - `analyze_trends()`: Identify patterns
+  - `predict_future()`: Anticipate changes
+
+**`temporal/queries.py`** - Temporal Queries
+- **Purpose**: Time-aware memory queries
+- **Size**: ~200 lines
+- **Key Functions**:
+  - `query_at_time()`: Point-in-time queries
+  - `query_range()`: Time-range queries
+  - `query_evolution()`: Change-over-time queries
+
+### Design Principles Applied
+
+**Modularity** (AICO Guideline: "Modular, Message-Driven Design")
+- Each module has single, clear responsibility
+- No module exceeds ~350 lines (existing) or ~300 lines (new)
+- Clear interfaces between modules
+- Message bus for inter-module communication
+
+**Simplicity** (AICO Guideline: "Simplicity First, KISS")
+- Focused, understandable modules
+- Clear naming conventions
+- Avoid overengineering
+- Solve problems with simplest viable approach
+
+**Extensibility** (AICO Guideline: "Modularity & Extensibility")
+- Well-defined interfaces
+- Composition over inheritance
+- Easy to add new consolidation strategies
+- Easy to add new behavioral learning methods
+
+**Resource Awareness** (AICO Guideline: "Resource Awareness")
+- Background consolidation during idle periods
+- Efficient temporal metadata storage
+- Incremental index updates
+- Memory-conscious data structures
+
+### Implementation Phases
+
+**Phase 1: Temporal Foundation** (Week 1-2)
+- Implement `temporal/` module
+- Enhance existing modules with temporal metadata
+- Add temporal queries to context assembly
+
+**Phase 2: Consolidation Engine** (Week 3-4)
+- Implement `consolidation/` module
+- Add replay scheduler and experience replay
+- Integrate with working → semantic transfer
+
+**Phase 3: Behavioral Learning** (Week 5-6)
+- Implement `behavioral/` module
+- Add skill library and RLHF integration
+- Implement preference tracking
+
+**Phase 4: Unified Indexing** (Week 7-8)
+- Implement `unified/` module
+- Add cross-layer indexing
+- Implement unified retrieval interface
+
+---
+
+## Core Function: Behavioral Learning & Skill-Based Interaction
+
+The Behavioral Learning component of AMS maintains a **Skill Store**, a library of discrete, context-aware procedures that AICO learns and applies. This is more modular and interpretable than monolithic learned patterns.
 
 ### What is a Skill?
 
