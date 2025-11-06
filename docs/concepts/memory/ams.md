@@ -1588,13 +1588,16 @@ consolidation:
 # Priority = |importance| + recency_bonus + feedback_bonus
 priority_i = abs(importance_score_i) + (1.0 / days_since_i) + (1.0 if has_feedback_i else 0.0)
 
-# Proportional sampling: P(i) = priority_i^α / Σ(priority_j^α)
+# Efficient sampling using SumTree (O(log N) instead of O(N))
+# SumTree stores priorities in binary tree structure
+# Sampling: uniform random [0, total_priority], traverse tree in O(log N)
+# Update: propagate priority changes up tree in O(log N)
 # α = 0.6 (config: consolidation.priority_alpha)
-P(i) = (priority_i ** 0.6) / sum(priority_j ** 0.6 for all j)
 ```
-- **Importance score**: Cosine similarity to recent queries (proxy for TD-error)
-- **Recency bonus**: `1 / days_since_interaction` (recent = higher priority)
+- **Importance score**: Cosine similarity to recent queries (last 10 queries)
+- **Recency bonus**: `1 / max(1, days_since_interaction)` (avoid division by zero)
 - **Feedback bonus**: +1.0 if interaction has user feedback
+- **Implementation**: Use SumTree data structure for O(log N) sampling
 
 **Memory Reconsolidation Strategy**:
 ```python
@@ -1684,38 +1687,50 @@ base_skills:
 ```
 
 **Preference Vector Dimensions**:
-- **Embedding space**: 768 dimensions (`paraphrase-multilingual-mpnet-base-v2`)
-- **User preference vector**: 32 dimensions (PCA-reduced from 768-dim skill embeddings)
-- **Reduction**: `sklearn.decomposition.PCA(n_components=32)`
+- **Storage**: 768 dimensions (same as embedding model)
+- **Representation**: Direct average of user's top-performing skill embeddings
+- **Initialization**: New users start with zero vector (neutral preferences)
+- **Update**: Weighted average of skill embeddings, weighted by confidence scores
+- **No PCA needed**: Store full 768-dim vectors (only ~3KB per user)
 
 **Confidence Score Update Formula** (Exponential Moving Average):
 ```python
 def update_confidence(current: float, reward: int, alpha: float = 0.1) -> float:
     """
-    EMA: new = α * target + (1-α) * current
-    reward: 1 (positive), -1 (negative), 0 (neutral)
+    EMA: new = α * reward + (1-α) * current
+    reward: 1 (positive), -1 (negative), 0 (neutral - no update)
     alpha: learning_rate from config (default 0.1)
     """
-    target = 0.5 + (reward * 0.3)  # Maps to: 0.8, 0.5, 0.2
-    new_confidence = alpha * target + (1 - alpha) * current
+    if reward == 0:  # Neutral feedback - no update
+        return current
+    
+    # Direct EMA on reward signal
+    new_confidence = alpha * reward + (1 - alpha) * current
     return max(0.1, min(0.9, new_confidence))  # Clamp [0.1, 0.9]
 ```
 
 **Multi-User Skill Storage**:
 ```python
-# Per-user skill instances (separate confidence scores)
-skill_key = f"{skill_name}:{user_id}"
+# Strategy: Base skills are user-agnostic templates
+# User-specific confidence stored separately
 
-# Example:
 skills_table:
-  - skill_id: "concise_response:alice" → confidence: 0.8
-  - skill_id: "concise_response:bob" → confidence: 0.3
+  - skill_id: "concise_response" (base skill, shared template)
+  - skill_id: "alice_custom_skill_1" (user-created)
+
+user_skill_confidence_table:
+  - (user_id="alice", skill_id="concise_response") → confidence: 0.8
+  - (user_id="bob", skill_id="concise_response") → confidence: 0.3
+
+# Base skill templates never change
+# Only per-user confidence scores evolve
 ```
 
 **Exploration Rate**:
 - **ε = 0.1**: 10% exploration, 90% exploitation (standard ε-greedy)
-- **Adaptive decay**: `ε_t = max(0.05, 0.1 * 0.995^t)` (minimum 5%)
-- **Justification**: Balances learning new patterns vs. using proven skills
+- **Adaptive decay**: `ε_t = max(0.05, 0.1 * 0.9^(t/100))` (reaches 5% after ~300 interactions)
+- **Per-user tracking**: Each user has own exploration counter
+- **Justification**: Faster decay allows quicker convergence to user preferences
 
 ---
 
@@ -1803,7 +1818,7 @@ CREATE TABLE feedback_events (
     INDEX idx_processed (processed)
 );
 
--- Trajectories table
+-- Trajectories table (with retention policy)
 CREATE TABLE trajectories (
     trajectory_id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -1814,20 +1829,68 @@ CREATE TABLE trajectories (
     ai_response TEXT NOT NULL,
     feedback_reward INTEGER,  -- 1, 0, -1, NULL
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_user_feedback (user_id, feedback_reward)
+    archived BOOLEAN DEFAULT FALSE,  -- For soft deletion
+    INDEX idx_user_feedback (user_id, feedback_reward),
+    INDEX idx_timestamp (timestamp)  -- For retention cleanup
 );
+
+-- User-skill confidence mapping (separate from skills table)
+CREATE TABLE user_skill_confidence (
+    user_id TEXT NOT NULL,
+    skill_id TEXT NOT NULL,
+    confidence_score REAL DEFAULT 0.5,
+    usage_count INTEGER DEFAULT 0,
+    positive_count INTEGER DEFAULT 0,
+    negative_count INTEGER DEFAULT 0,
+    last_used_at DATETIME,
+    PRIMARY KEY (user_id, skill_id),
+    INDEX idx_confidence (user_id, confidence_score DESC)
+);
+
+-- Retention policy: Archive trajectories older than 90 days
+-- Keep trajectories with feedback indefinitely
+-- Scheduled cleanup task runs weekly
 ```
 
 **Preference Vector Structure**:
 ```python
-# 32-dimensional PCA-reduced representation
-preference_vector = {
-    "dim_0": 0.7,   # Verbosity axis
-    "dim_1": 0.3,   # Formality axis
-    "dim_2": 0.5,   # Technical depth
-    "dim_3": -0.2,  # Proactivity
-    # ... 28 more dimensions
-}
+# 768-dimensional vector (same as embeddings)
+# Stored as JSON array in user_preferences table
+preference_vector = [0.01, -0.03, 0.05, ...]  # 768 floats
+
+# Initialization (cold start):
+# New users: zero vector np.zeros(768)
+# After first feedback: weighted average of applied skill embeddings
+
+# Update formula:
+# pref_new = 0.9 * pref_old + 0.1 * skill_embedding (if positive feedback)
+# pref_new = 0.9 * pref_old - 0.1 * skill_embedding (if negative feedback)
+```
+
+**Trajectory Retention Policy**:
+```python
+# Retention rules:
+# - Keep all trajectories with feedback (feedback_reward != NULL) indefinitely
+# - Archive trajectories without feedback after 90 days
+# - Hard delete archived trajectories after 365 days
+# - Cleanup runs weekly via scheduled task
+
+async def cleanup_trajectories():
+    # Archive old trajectories without feedback
+    await db.execute("""
+        UPDATE trajectories 
+        SET archived = TRUE
+        WHERE feedback_reward IS NULL 
+        AND timestamp < datetime('now', '-90 days')
+        AND archived = FALSE
+    """)
+    
+    # Delete very old archived trajectories
+    await db.execute("""
+        DELETE FROM trajectories
+        WHERE archived = TRUE
+        AND timestamp < datetime('now', '-365 days')
+    """)
 ```
 
 ---
@@ -1882,11 +1945,13 @@ async def generate_response(user_input: str, context: dict) -> str:
 
 **Consolidation Parallelization**:
 ```python
-# User sharding: distribute across days
+# User sharding: round-robin distribution
 async def schedule_consolidation():
     users = await get_active_users()
     day_of_week = datetime.now().weekday()
-    users_today = [u for u in users if hash(u.user_id) % 7 == day_of_week]
+    
+    # Assign users to days using modulo (ensures even distribution)
+    users_today = [u for i, u in enumerate(users) if i % 7 == day_of_week]
     
     # Max 4 concurrent
     async with asyncio.Semaphore(4):
@@ -1895,14 +1960,19 @@ async def schedule_consolidation():
 
 **Memory Pressure Handling**:
 ```python
-# LRU eviction for learned skills
+# LRU eviction: prioritize low-confidence skills regardless of type
 if storage_size > max_storage:
     evict_candidates = db.query("""
         SELECT skill_id FROM skills 
-        WHERE user_id = ? AND skill_type = 'learned'
-        ORDER BY last_used_at ASC, confidence_score ASC
+        WHERE user_id = ?
+        ORDER BY 
+            CASE WHEN skill_type = 'base' THEN confidence_score * 1.5 
+                 ELSE confidence_score END ASC,
+            last_used_at ASC
         LIMIT 10
     """)
+    # Base skills get 1.5x confidence boost (harder to evict)
+    # But still evictable if confidence very low
     for skill_id in evict_candidates:
         await archive_skill(skill_id)
 ```
