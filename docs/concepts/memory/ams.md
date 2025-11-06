@@ -37,11 +37,12 @@
 - **Unified Indexing**: ❌ NEW `unified/` module (cross-layer retrieval)
 - **Message-Driven Communication**: All module interactions via ZeroMQ message bus with Protocol Buffers
 
-**Storage Footprint**: ~90KB per user (75% increase from 50KB baseline)
+**Storage Footprint**: ~50-100KB per user (100-200% increase from 50KB baseline)
 - Temporal metadata: ~10KB
 - Knowledge graphs: ~15KB
-- Consolidation buffers: ~12KB
-- Behavioral patterns: ~8KB
+- Preference vector (768 floats as JSON): ~20KB
+- User-skill confidence (100 skills): ~10KB
+- Trajectories (90 days, ~1000 turns): ~30-50KB
 
 **Performance**: 
 - Context assembly: <50ms (multi-tier retrieval)
@@ -470,7 +471,7 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
 #### Background Operations (Non-Blocking)
 
 **Memory Consolidation** (scheduled via AICO Scheduler)
-- **Trigger**: System idle detection OR scheduled (e.g., "0 2 * * *" = 2 AM daily)
+- **Trigger**: System idle detection OR scheduled ("0 2 * * *" = 2 AM daily)
 - **Components**: Experience replay + Semantic storage + Graph updates
 - **Compute Time**: 5-10 minutes per user (estimated)
   - Experience selection: 30-60s (working memory scan)
@@ -479,7 +480,7 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
   - Graph updates: 1-2 min (entity resolution + storage)
 - **Memory Impact**: +200-400MB peak during consolidation
 - **Frequency**: Once per day per user (configurable)
-- **Parallelization**: Process users sequentially to limit resource usage
+- **Parallelization**: Max 4 concurrent users (Semaphore(4))
 
 **Temporal Graph Evolution** (scheduled)
 - **Trigger**: Weekly (e.g., "0 3 * * 0" = Sunday 3 AM)
@@ -492,11 +493,11 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
 - **Frequency**: Weekly (configurable)
 
 **Behavioral Learning Updates** (event-driven + scheduled)
-- **Trigger**: User feedback (immediate) + Batch refinement (daily)
-- **Components**: RLHF processing + Skill confidence updates
+- **Trigger**: User feedback (immediate) + Batch learning (daily at 4 AM)
+- **Components**: Confidence updates + Contextual bandit learning
 - **Compute Time**: 
   - Per feedback: 5-10ms (immediate confidence update)
-  - Batch refinement: 5-10 min/day (DPO template optimization)
+  - Batch learning: 2-5 min/day (Thompson Sampling parameter updates)
 - **Memory Impact**: Minimal for feedback, +100-200MB for batch
 - **Frequency**: Immediate + daily batch
 
@@ -818,10 +819,11 @@ AICO actively refines its skills by learning from both its successes and failure
 
 ### Database Schema (`shared/aico/data/schemas/behavioral.py`)
 
-**Skills Table**:
+**Skills Table** (user-agnostic templates):
 - Primary key: skill_id
-- Fields: user_id, skill_name, skill_type (base/learned/user_created), trigger_context (JSON), procedure_template, confidence_score (default 0.5), preference_profile (JSON latent vector), usage counters, timestamps
-- Indices: user_id, confidence_score (descending)
+- Fields: skill_name, skill_type (base/user_created), trigger_context (JSON), procedure_template, created_at, updated_at
+- Indices: skill_type
+- Note: No user_id or confidence (stored in separate user_skill_confidence table)
 
 **User Preferences Table**:
 - Primary key: user_id
@@ -834,7 +836,7 @@ AICO actively refines its skills by learning from both its successes and failure
 
 ### Python Data Classes (`shared/aico/ai/memory/behavioral.py`)
 
-**Skill**: Pydantic model with skill_id, user_id, skill_name, skill_type, trigger_context, procedure_template, confidence_score, preference_profile, usage counters, timestamps
+**Skill**: Pydantic model with skill_id, skill_name, skill_type, trigger_context, procedure_template, created_at, updated_at
 
 **UserPreferences**: Pydantic model with user_id, preference_vector, learning_rate, exploration_rate, last_updated_timestamp
 
@@ -849,10 +851,9 @@ The behavioral learning system will be implemented as a complete, integrated sol
 ### Core Implementation Components
 
 **1. Data Layer**
-- Database schema for `skills`, `user_preferences`, and `feedback_events` tables
-- ChromaDB collection for skill embeddings (`behavioral_skills`)
+- Database schema for `skills`, `user_skill_confidence`, `user_preferences`, and `feedback_events` tables
 - Python data classes (`Skill`, `UserPreferences`, `FeedbackEvent`)
-- `SkillStore` class with CRUD operations and vector search integration
+- `SkillStore` class with CRUD operations (no vector search needed for small skill sets)
 
 **2. Learning System**
 - Real-time feedback processing via `POST /api/v1/memory/feedback` endpoint
@@ -862,16 +863,16 @@ The behavioral learning system will be implemented as a complete, integrated sol
 
 **3. Skill Selection Engine**
 - Context extraction using existing NLP models (intent, entities, sentiment)
-- Hybrid skill matching: confidence score + preference alignment
-- ChromaDB vector search for similar skills
-- Exploration strategy (ε-greedy) for discovering new patterns
+- Hybrid skill matching: pattern matching (40%) + confidence (30%) + preference (30%)
+- Simple in-memory matching (no vector DB for ~10-20 skills)
+- Thompson Sampling for exploration/exploitation balance
 
-**4. DPO Template Refinement Pipeline**
+**4. Contextual Bandit Learning** (Thompson Sampling)
 - Offline batch process (scheduled task, runs daily)
-- Trajectory dataset preparation (preferred vs. dispreferred pairs)
-- DPO-based template generation using TRL library
-- Skill template updates in database (no model training)
-- Performance metrics logging
+- Trajectory analysis: success rate per (context, skill) pair
+- Update skill selection probabilities using Thompson Sampling
+- Balances exploration (try new skills) vs. exploitation (use proven skills)
+- No LLM fine-tuning needed (prompt template selection only)
 
 **5. Integration Points**
 - `ConversationEngine`: Apply selected skills during response generation
@@ -894,10 +895,10 @@ The behavioral learning system will be implemented as a complete, integrated sol
 
 ### Implementation Order
 
-**Weeks 1-2**: Database schema, SkillStore, ChromaDB collection, base skills  
+**Weeks 1-2**: Database schema, SkillStore, base skills (no ChromaDB needed)
 **Weeks 3-4**: Feedback API, UI components, confidence updates, skill selection  
 **Weeks 5-6**: Preference vectors, context extraction, trajectory logging  
-**Weeks 7-8**: DPO pipeline, exploration strategy, metrics dashboard
+**Weeks 7-8**: Contextual bandit learning, exploration strategy, metrics dashboard
 
 ### Success Criteria
 
@@ -1336,25 +1337,27 @@ memory:
       embedding_model: "paraphrase-multilingual-mpnet-base-v2"  # Reuse existing model (768-dim)
       # Note: UI constraints (max chars, dropdown options) are defined client-side in Flutter app
     
-    # DPO template refinement (offline batch process)
-    dpo:
+    # Contextual bandit learning (Thompson Sampling)
+    contextual_bandit:
       enabled: true
-      batch_size: 4
-      learning_rate: 5e-7
-      beta: 0.1  # KL penalty coefficient
-      max_length: 512
-      training_interval_hours: 24  # Run template refinement daily
-      min_trajectories: 10  # Minimum trajectories needed to run refinement
+      algorithm: "thompson_sampling"  # Thompson Sampling for exploration/exploitation
+      update_interval_hours: 24  # Run batch learning daily at 4 AM
+      min_trajectories: 10  # Minimum trajectories needed for update
+      prior_alpha: 1.0  # Beta distribution prior (successes)
+      prior_beta: 1.0  # Beta distribution prior (failures)
     
     # Trajectory logging for learning
     trajectory_logging:
       enabled: true
-      max_trajectory_length: 20  # Number of turns to store per trajectory
-      retention_days: 90  # Keep trajectories for 3 months
+      retention_days: 90  # Archive after 90 days
+      hard_delete_days: 365  # Delete after 1 year
+      keep_feedback_indefinitely: true  # Never delete trajectories with feedback
     
-    # ChromaDB collection for skill embeddings
-    chroma:
-      collection_name: "behavioral_skills"  # Separate collection from conversation_segments
+    # Skill matching
+    skill_matching:
+      match_threshold: 0.5  # Minimum score to consider skill applicable
+      use_embedding_similarity: false  # Use simple pattern matching (no ChromaDB)
+      max_candidates: 5  # Top N skills to consider
       distance_metric: "cosine"  # Same as semantic memory
     
     # Performance monitoring
@@ -1697,15 +1700,18 @@ base_skills:
 ```python
 def update_confidence(current: float, reward: int, alpha: float = 0.1) -> float:
     """
-    EMA: new = α * reward + (1-α) * current
+    EMA with reward mapped to [0, 1] range
     reward: 1 (positive), -1 (negative), 0 (neutral - no update)
     alpha: learning_rate from config (default 0.1)
     """
     if reward == 0:  # Neutral feedback - no update
         return current
     
-    # Direct EMA on reward signal
-    new_confidence = alpha * reward + (1 - alpha) * current
+    # Map reward to target confidence: -1→0.2, 1→0.8
+    target = 0.5 + (reward * 0.3)
+    
+    # EMA update: new = α * target + (1-α) * current
+    new_confidence = alpha * target + (1 - alpha) * current
     return max(0.1, min(0.9, new_confidence))  # Clamp [0.1, 0.9]
 ```
 
@@ -1782,23 +1788,16 @@ consolidation:
 
 **Complete Schemas**:
 ```sql
--- Skills table
+-- Skills table (user-agnostic templates)
 CREATE TABLE skills (
     skill_id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
     skill_name TEXT NOT NULL,
-    skill_type TEXT NOT NULL,  -- 'base', 'learned', 'user_created'
-    trigger_context TEXT NOT NULL,  -- JSON
+    skill_type TEXT NOT NULL,  -- 'base', 'user_created'
+    trigger_context TEXT NOT NULL,  -- JSON: {intent: [...], time_of_day: ...}
     procedure_template TEXT NOT NULL,
-    confidence_score REAL DEFAULT 0.5,
-    preference_profile TEXT,  -- JSON: 32-dim vector
-    usage_count INTEGER DEFAULT 0,
-    positive_feedback_count INTEGER DEFAULT 0,
-    negative_feedback_count INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_used_at DATETIME,
-    INDEX idx_user_confidence (user_id, confidence_score DESC)
+    INDEX idx_type (skill_type)
 );
 
 -- Feedback events table
@@ -1862,9 +1861,13 @@ preference_vector = [0.01, -0.03, 0.05, ...]  # 768 floats
 # New users: zero vector np.zeros(768)
 # After first feedback: weighted average of applied skill embeddings
 
-# Update formula:
-# pref_new = 0.9 * pref_old + 0.1 * skill_embedding (if positive feedback)
-# pref_new = 0.9 * pref_old - 0.1 * skill_embedding (if negative feedback)
+# Update formula (only for skills with positive feedback):
+# pref_new = 0.9 * pref_old + 0.1 * skill_embedding (if reward == 1)
+# No update for negative/neutral feedback
+
+# Preference matching:
+# score = cosine_similarity(user_pref_vector, skill_template_embedding)
+# Used as 30% weight in hybrid skill selection
 ```
 
 **Trajectory Retention Policy**:
@@ -1981,6 +1984,19 @@ if storage_size > max_storage:
 - **Default**: CPU-only operation (no GPU required)
 - **Optional**: GPU provides 10x speedup (100ms → 10ms per embedding)
 - **Config**: `modelservice.device: "cuda"` (if available) else `"cpu"`
+
+**Additional Clarifications**:
+
+1. **Skill Matching Threshold**: Skills with hybrid score ≥ 0.5 are considered applicable
+2. **Base Skills Mutability**: Base skills are immutable templates; only user-created skills can be modified
+3. **Trajectory Archival**: Archived = soft delete (still in DB, not queried); hard delete removes from DB
+4. **User-Skill Confidence Init**: Rows created on first skill use with default confidence 0.5
+5. **Importance Score**: Average cosine similarity to last 10 user queries
+6. **Temporal Decay Application**: Applied during weekly graph evolution task (Sunday 3 AM)
+7. **Concurrent Feedback**: Last-write-wins for confidence updates (acceptable for this use case)
+8. **Embedding Timing**: 50-100ms is per-embedding; semantic query does 1 embedding + vector search
+9. **Schedule Coordination**: Consolidation (2 AM), Feedback batch (4 AM) to avoid resource contention
+10. **SumTree Usage**: Only used if replay buffer > 1000 items; simple weighted sampling for smaller buffers
 
 ---
 
