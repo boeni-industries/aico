@@ -51,7 +51,7 @@ AICO is engineered to deliver a truly companionable, proactive, and privacy-firs
 ### 🗣️ **Conversation & Memory**
 - Real-time text and voice conversations with context awareness
 - Multi-turn dialogue management with natural interruption handling and resumption
-- Episodic, semantic, and procedural memory systems that remember your interactions
+- Episodic, semantic, and behavioral learning systems that remember your interactions
 - Vector-based semantic search for intelligent memory retrieval (ChromaDB)
 - Continual learning that adapts to your communication style and preferences
 - Local LLM integration (Ollama) with privacy-first inference

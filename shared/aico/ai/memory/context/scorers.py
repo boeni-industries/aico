@@ -30,7 +30,7 @@ class ContextScorer:
         self.tier_weights = tier_weights or {
             "working": 1.0,
             "semantic": 0.7,
-            "procedural": 0.6
+            "behavioral": 0.6
         }
         self.relevance_threshold = relevance_threshold
     

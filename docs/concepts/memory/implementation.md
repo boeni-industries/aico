@@ -57,7 +57,7 @@ shared/aico/ai/memory/
 - **Working Memory**: LMDB for high-performance ephemeral storage
 - **Episodic Memory**: Encrypted libSQL for conversation history persistence  
 - **Semantic Memory**: ChromaDB for vector similarity search and knowledge storage
-- **Procedural Memory**: Encrypted libSQL for user patterns and behavioral data
+- **Behavioral Learning**: Encrypted libSQL for user patterns and behavioral data
 
 **Integration Patterns:**
 The memory system integrates with AICO's architecture through established patterns:

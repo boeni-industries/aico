@@ -13,7 +13,7 @@ from typing import Dict, Any
 class ContextItem:
     """Individual context item with metadata"""
     content: str
-    source_tier: str  # working, episodic, semantic, procedural
+    source_tier: str  # working, episodic, semantic, behavioral
     relevance_score: float
     timestamp: datetime
     metadata: Dict[str, Any]

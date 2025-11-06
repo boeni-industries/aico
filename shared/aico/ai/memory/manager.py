@@ -2,7 +2,7 @@
 AICO Memory Manager
 
 This module provides the main interface and coordination layer for AICO's three-tier memory system,
-integrating working memory, semantic memory with knowledge graph, and procedural memory stores
+integrating working memory, semantic memory with knowledge graph, and behavioral memory stores
 to deliver unified memory services for AI processing, conversation management, and personalized interactions.
 
 Core Functionality:
@@ -139,7 +139,7 @@ class MemoryManager(BaseAIProcessor):
         # Memory stores (lazy initialization)
         self._working_store: Optional[WorkingMemoryStore] = None  # Conversation history + context
         self._semantic_store: Optional[SemanticMemoryStore] = None  # Segments + KG
-        self._procedural_store = None  # Planned: User patterns and behavioral learning
+        self._behavioral_store = None  # Planned: User patterns, skills, and preferences
         
         # Processing components
         self._context_assembler: Optional[ContextAssembler] = None
@@ -242,7 +242,7 @@ class MemoryManager(BaseAIProcessor):
                 working_store=self._working_store,
                 episodic_store=None,  # Not implemented - working memory serves this role
                 semantic_store=self._semantic_store,
-                procedural_store=None,  # Planned for Phase 3
+                behavioral_store=None,  # Planned for Phase 3
                 kg_storage=self._kg_storage if self._kg_initialized else None,
                 kg_modelservice=self._kg_modelservice if self._kg_initialized else None,
                 db_connection=self._db_connection

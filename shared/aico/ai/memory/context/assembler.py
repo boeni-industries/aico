@@ -26,12 +26,12 @@ class ContextAssembler:
     - Working memory: Current session context
     - Episodic memory: Conversation history
     - Semantic memory: Related knowledge
-    - Procedural memory: User patterns and preferences
+    - Behavioral memory: User patterns, skills, and preferences
     
     Provides unified, prioritized context for AI processing.
     """
     
-    def __init__(self, working_store, episodic_store, semantic_store, procedural_store, kg_storage=None, kg_modelservice=None, db_connection=None):
+    def __init__(self, working_store, episodic_store, semantic_store, behavioral_store, kg_storage=None, kg_modelservice=None, db_connection=None):
         """
         Initialize context assembler.
         
@@ -39,7 +39,7 @@ class ContextAssembler:
             working_store: Working memory store
             episodic_store: Episodic memory store
             semantic_store: Semantic memory store
-            procedural_store: Procedural memory store
+            behavioral_store: Behavioral memory store
             kg_storage: Knowledge graph storage (optional)
             kg_modelservice: KG modelservice client (optional)
             db_connection: Database connection for KG queries (optional)
@@ -48,7 +48,7 @@ class ContextAssembler:
             working_store,
             episodic_store,
             semantic_store,
-            procedural_store
+            behavioral_store
         )
         
         self.scorer = ContextScorer()
@@ -123,14 +123,14 @@ class ContextAssembler:
                 except Exception as e:
                     logger.warning(f"Episodic memory context retrieval failed: {e}")
             
-            # 4. Get procedural memory context (user patterns)
-            if self.retrievers.procedural_store:
+            # 4. Get behavioral memory context (user patterns, skills, preferences)
+            if self.retrievers.behavioral_store:
                 try:
-                    procedural_items = await self.retrievers.get_procedural_context(user_id)
-                    all_items.extend(procedural_items or [])
-                    logger.debug(f"Retrieved {len(procedural_items or [])} items from procedural memory")
+                    behavioral_items = await self.retrievers.get_behavioral_context(user_id)
+                    all_items.extend(behavioral_items or [])
+                    logger.debug(f"Retrieved {len(behavioral_items or [])} items from behavioral memory")
                 except Exception as e:
-                    logger.warning(f"Procedural memory context retrieval failed: {e}")
+                    logger.warning(f"Behavioral memory context retrieval failed: {e}")
             
             # 4.5 Get knowledge graph context (entities and relationships)
             kg_context = {}

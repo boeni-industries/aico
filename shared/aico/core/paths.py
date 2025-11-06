@@ -166,11 +166,11 @@ class AICOPaths:
         return episodic_dir
     
     @classmethod
-    def get_procedural_memory_path(cls) -> Path:
-        """Get procedural memory directory (libSQL files)."""
-        procedural_dir = cls.get_memory_directory() / "procedural"
-        procedural_dir.mkdir(parents=True, exist_ok=True)
-        return procedural_dir
+    def get_behavioral_memory_path(cls) -> Path:
+        """Get behavioral memory directory (libSQL files for skills, preferences, patterns)."""
+        behavioral_dir = cls.get_memory_directory() / "behavioral"
+        behavioral_dir.mkdir(parents=True, exist_ok=True)
+        return behavioral_dir
     
     @classmethod
     def get_directory_mode_from_config(cls) -> str:
@@ -295,7 +295,7 @@ class AICOPaths:
                 "working": str(cls.get_working_memory_path()),
                 "semantic": str(cls.get_semantic_memory_path()),
                 "episodic": str(cls.get_episodic_memory_path()),
-                "procedural": str(cls.get_procedural_memory_path()),
+                "behavioral": str(cls.get_behavioral_memory_path()),
             },
             "environment_overrides": {
                 "AICO_DATA_DIR": os.getenv("AICO_DATA_DIR"),

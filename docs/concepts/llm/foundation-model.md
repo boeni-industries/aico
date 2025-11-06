@@ -146,7 +146,7 @@ AICO's foundation model must excel in:
 #### **Memory System Integration**
 - **Episodic Memory**: Conversation history with emotional and personality context
 - **Semantic Memory**: Learned user preferences and relationship patterns
-- **Procedural Memory**: Interaction patterns and successful communication strategies
+- **Behavioral Learning**: Interaction patterns and successful communication strategies
 - **Working Memory**: Current conversation context and active personality state
 
 #### **Performance Requirements**

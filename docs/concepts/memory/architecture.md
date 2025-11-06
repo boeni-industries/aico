@@ -229,7 +229,7 @@ class EmbeddingService:
 - **Circuit Recovery**: 15-30 seconds automatic recovery
 - **Thread Utilization**: Scales with available CPU cores
 
-### 3. Procedural Memory (Planned)
+### 3. Behavioral Learning (Planned)
 
 **Purpose**: Learn user interaction patterns, preferences, and behavioral adaptation
 

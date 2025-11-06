@@ -39,7 +39,7 @@ Long-term knowledge storage with semantic search and graph relationships.
 - **Structured Storage**: Nodes (entities) and edges (relationships) with properties
 - **Production Data**: 204 nodes, 27 edges, 552 indexed properties
 
-### 3. Procedural Memory (libSQL) 🔄 PLANNED
+### 3. Behavioral Learning (libSQL) 🔄 PLANNED
 User interaction patterns and behavioral adaptation.
 - **Pattern Learning**: Track response preferences, topic interests, engagement signals
 - **Adaptive Personalization**: Adjust response style based on learned patterns

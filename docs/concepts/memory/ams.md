@@ -742,7 +742,7 @@ AICO actively refines its skills by learning from both its successes and failure
 
 ## Data Model & Storage
 
-### Database Schema (`shared/aico/data/schemas/procedural.py`)
+### Database Schema (`shared/aico/data/schemas/behavioral.py`)
 
 **Skills Table**:
 - Primary key: skill_id
@@ -758,7 +758,7 @@ AICO actively refines its skills by learning from both its successes and failure
 - Fields: user_id, message_id, skill_id, reward (-1/0/1), timestamp
 - Indices: user_id, skill_id
 
-### Python Data Classes (`shared/aico/ai/memory/procedural.py`)
+### Python Data Classes (`shared/aico/ai/memory/behavioral.py`)
 
 **Skill**: Pydantic model with skill_id, user_id, skill_name, skill_type, trigger_context, procedure_template, confidence_score, preference_profile, usage counters, timestamps
 
@@ -770,13 +770,13 @@ AICO actively refines its skills by learning from both its successes and failure
 
 ## Implementation Strategy
 
-The procedural memory system will be implemented as a complete, integrated solution with all components working together from the start. This approach ensures consistency and avoids technical debt from incremental builds.
+The behavioral learning system will be implemented as a complete, integrated solution with all components working together from the start. This approach ensures consistency and avoids technical debt from incremental builds.
 
 ### Core Implementation Components
 
 **1. Data Layer**
 - Database schema for `skills`, `user_preferences`, and `feedback_events` tables
-- ChromaDB collection for skill embeddings (`procedural_skills`)
+- ChromaDB collection for skill embeddings (`behavioral_skills`)
 - Python data classes (`Skill`, `UserPreferences`, `FeedbackEvent`)
 - `SkillStore` class with CRUD operations and vector search integration
 
@@ -851,7 +851,7 @@ The procedural memory system will be implemented as a complete, integrated solut
 
 ## Technology Stack & Dependencies
 
-This section details all AI models, libraries, and technologies required to implement the procedural memory system. **We maximize reuse of existing AICO infrastructure** to minimize dependencies and maintain consistency.
+This section details all AI models, libraries, and technologies required to implement the behavioral learning system. **We maximize reuse of existing AICO infrastructure** to minimize dependencies and maintain consistency.
 
 ### Core AI & Machine Learning
 
@@ -898,7 +898,7 @@ preference_embedding = embeddings_model.encode(user_preference_description)
 """
 DPO Template Refinement Task
 
-Scheduled task that refines procedural memory skill templates using
+Scheduled task that refines behavioral learning skill templates using
 Direct Preference Optimization (DPO) based on user feedback trajectories.
 
 Follows AICO's message-driven architecture and privacy-by-design principles.
@@ -950,7 +950,7 @@ async def refine_skill_templates():
         extra={
             "trajectories_analyzed": len(trajectories),
             "templates_updated": len(improved_templates),
-            "metric_type": "procedural_memory_dpo"
+            "metric_type": "behavioral_memory_dpo"
         }
     )
 ```
@@ -972,7 +972,7 @@ async def refine_skill_templates():
 User Preference Management
 
 Manages user-specific preference vectors in embedding space for rapid
-adaptation and personalization. Part of AICO's procedural memory system.
+adaptation and personalization. Part of AICO's behavioral learning system.
 
 Follows AICO's privacy-by-design: all data stored locally and encrypted.
 """
@@ -985,7 +985,7 @@ logger = get_logger("backend", "memory.procedural.preferences")
 
 class UserPreferenceManager:
     """
-    Manages user preference vectors for procedural memory personalization.
+    Manages user preference vectors for behavioral learning personalization.
     
     Preference vectors are stored in the same 768-dimensional space as the
     embedding model, enabling fast similarity-based skill matching.
@@ -1056,7 +1056,7 @@ class UserPreferenceManager:
 ```python
 # Add new collection to existing ChromaDB instance
 skill_collection = chroma_client.create_collection(
-    name="procedural_skills",
+    name="behavioral_skills",
     embedding_function=embeddings_model,  # Reuse existing embedding model
     metadata={"hnsw:space": "cosine"}
 )
@@ -1156,13 +1156,13 @@ def detect_sentiment(text: str) -> str:
 - Already configured in `core.yaml` at `logging`
 - ZeroMQ message bus for log transport
 - Use case: Track skill applications, feedback events, learning metrics
-- Subsystem: Add `procedural_memory` to logging configuration
+- Subsystem: Add `behavioral_memory` to logging configuration
 
 **Implementation**:
 ```python
 from shared.aico.core.logging import get_logger
 
-logger = get_logger("backend", "procedural_memory")
+logger = get_logger("backend", "behavioral_memory")
 logger.info("Skill applied", extra={
     "skill_id": skill.skill_id,
     "user_id": user_id,
@@ -1240,8 +1240,8 @@ async def test_feedback_endpoint(test_client, mock_bus_client):
 memory:
   # ... existing working and semantic config ...
   
-  # Procedural Memory - Adaptive interaction learning
-  procedural:
+  # Behavioral Learning - Adaptive interaction learning
+  behavioral:
     enabled: true
     
     # Learning parameters
@@ -1256,21 +1256,10 @@ memory:
     # Preference vectors (must match embedding model dimensions)
     preference_vector_dim: 768  # Matches paraphrase-multilingual-mpnet-base-v2
     
-    # Feedback collection
+    # Feedback processing (server-side)
     feedback:
-      require_thumbs: true  # Thumbs up/down required
-      enable_reason_dropdown: true  # Optional structured reason
-      enable_free_text: true  # Optional free text explanation
-      free_text_max_chars: 300
-      
-      # Dropdown options for structured feedback
-      reason_options:
-        - too_verbose
-        - too_brief
-        - wrong_tone
-        - not_helpful
-        - incorrect_info
-        - perfect  # For positive feedback
+      free_text_max_chars: 300  # Maximum length for free text feedback
+      # Note: UI options (dropdown choices, button styles) are defined client-side in Flutter app
     
     # DPO template refinement (offline batch process)
     dpo:
@@ -1290,7 +1279,7 @@ memory:
     
     # ChromaDB collection for skill embeddings
     chroma:
-      collection_name: "procedural_skills"  # Separate collection from conversation_segments
+      collection_name: "behavioral_skills"  # Separate collection from conversation_segments
       distance_metric: "cosine"  # Same as semantic memory
     
     # Performance monitoring
@@ -1352,7 +1341,7 @@ backend = [
 
 **Installation with UV**:
 ```bash
-# Install backend dependencies including procedural memory
+# Install backend dependencies including behavioral learning
 uv pip install -e ".[backend]"
 
 # Or install all optional dependencies
@@ -1384,12 +1373,12 @@ uv pip install -e ".[backend,modelservice,cli,test]"
 
 ## Privacy & Security Considerations
 
-**AICO's procedural memory system follows strict privacy-by-design principles:**
+**AICO's behavioral learning system follows strict privacy-by-design principles:**
 
 ### Local-First Architecture
 - **All data stored locally**: Skills, preferences, and trajectories stored in encrypted libSQL database
 - **No cloud dependencies**: System operates entirely on-device
-- **Encrypted at rest**: SQLCipher encryption for all procedural memory data
+- **Encrypted at rest**: SQLCipher encryption for all behavioral learning data
 - **Secure key management**: Uses AICO's key derivation system (`aico.security.AICOKeyManager`)
 
 ### User Control & Transparency
@@ -1415,7 +1404,7 @@ The system logs comprehensive metrics to track learning effectiveness and system
 
 ### Learning Effectiveness Metrics
 
-**Logged on every feedback event** (`metric_type: "procedural_memory_feedback"`):
+**Logged on every feedback event** (`metric_type: "behavioral_memory_feedback"`):
 ```python
 logger.info("Skill feedback received", extra={
     "user_id": user_id,
@@ -1430,11 +1419,11 @@ logger.info("Skill feedback received", extra={
     "positive_rate": skill.positive_feedback_count / skill.usage_count,
     "negative_rate": skill.negative_feedback_count / skill.usage_count,
     "has_free_text": bool(free_text),
-    "metric_type": "procedural_memory_feedback"
+    "metric_type": "behavioral_memory_feedback"
 })
 ```
 
-**Aggregated hourly** (`metric_type: "procedural_memory_aggregate"`):
+**Aggregated hourly** (`metric_type: "behavioral_memory_aggregate"`):
 - **Skill Accuracy**: Percentage of skills receiving positive feedback (target: >70%)
 - **User Satisfaction**: Average reward per user (target: >0.5)
 - **Adaptation Speed**: Number of interactions to reach 70% positive rate for new users (target: <10)
@@ -1442,7 +1431,7 @@ logger.info("Skill feedback received", extra={
 
 ### System Performance Metrics
 
-**Logged on every skill selection** (`metric_type: "procedural_memory_selection"`):
+**Logged on every skill selection** (`metric_type: "behavioral_memory_selection"`):
 ```python
 logger.info("Skill selected", extra={
     "user_id": user_id,
@@ -1454,11 +1443,11 @@ logger.info("Skill selected", extra={
     "context_extraction_time_ms": context_time_ms,  # Target: <30ms
     "total_candidates": len(candidate_skills),
     "exploration_mode": is_exploration,  # True if ε-greedy selected low-confidence skill
-    "metric_type": "procedural_memory_selection"
+    "metric_type": "behavioral_memory_selection"
 })
 ```
 
-**Aggregated hourly** (`metric_type: "procedural_memory_performance"`):
+**Aggregated hourly** (`metric_type: "behavioral_memory_performance"`):
 - **Response Time**: P50, P95, P99 skill selection latency (target: P95 <10ms)
 - **Memory Usage**: Current skill storage per user (target: <1MB)
 - **Processing Overhead**: Average skill selection time (target: <10ms)
@@ -1466,7 +1455,7 @@ logger.info("Skill selected", extra={
 
 ### DPO Template Refinement Metrics
 
-**Logged after each batch refinement** (`metric_type: "procedural_memory_dpo"`):
+**Logged after each batch refinement** (`metric_type: "behavioral_memory_dpo"`):
 ```python
 logger.info("DPO template refinement completed", extra={
     "trajectories_analyzed": len(trajectories),
@@ -1475,7 +1464,7 @@ logger.info("DPO template refinement completed", extra={
     "templates_updated": len(improved_templates),
     "avg_confidence_improvement": avg_improvement,
     "refinement_duration_seconds": duration,
-    "metric_type": "procedural_memory_dpo"
+    "metric_type": "behavioral_memory_dpo"
 })
 ```
 
@@ -1508,7 +1497,7 @@ logger.info("DPO template refinement completed", extra={
 The architecture described in this document is inspired by several key research papers in the fields of AI agency, reinforcement learning, and meta-learning.
 
 - **Modular AI Architecture**:
-  - [Procedural Memory Is Not All You Need: Bridging Cognitive Gaps in LLM-Based Agents](https://arxiv.org/abs/2505.03434)
+  - [Behavioral Learning Is Not All You Need: Bridging Cognitive Gaps in LLM-Based Agents](https://arxiv.org/abs/2505.03434)
   - This paper advocates for augmenting LLMs with modular semantic and associative memory systems, which inspires our skill-based architecture.
 
 - **Personalized Reinforcement Learning**:

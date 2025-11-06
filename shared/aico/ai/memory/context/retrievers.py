@@ -19,7 +19,7 @@ class ContextRetrievers:
     Retrieves context from different memory tiers.
     """
     
-    def __init__(self, working_store, episodic_store, semantic_store, procedural_store):
+    def __init__(self, working_store, episodic_store, semantic_store, behavioral_store):
         """
         Initialize retrievers with memory stores.
         
@@ -27,12 +27,12 @@ class ContextRetrievers:
             working_store: Working memory store (conversation history + context)
             episodic_store: Not implemented - kept for interface compatibility
             semantic_store: Semantic memory store (segments + KG)
-            procedural_store: Procedural memory store (planned)
+            behavioral_store: Behavioral memory store (planned)
         """
         self.working_store = working_store
         self.episodic_store = episodic_store  # Not implemented
         self.semantic_store = semantic_store
-        self.procedural_store = procedural_store  # Planned
+        self.behavioral_store = behavioral_store  # Planned
     
     async def get_working_context(
         self,
@@ -164,41 +164,41 @@ class ContextRetrievers:
             logger.error(f"Episodic memory retrieval failed: {e}")
             return []
     
-    async def get_procedural_context(
+    async def get_behavioral_context(
         self,
         user_id: str
     ) -> List[ContextItem]:
         """
-        Retrieve context from procedural memory.
+        Retrieve context from behavioral memory.
         
         Args:
             user_id: User ID
             
         Returns:
-            List of context items from procedural memory
+            List of context items from behavioral memory
         """
-        if not self.procedural_store:
+        if not self.behavioral_store:
             return []
         
         try:
-            # Get user patterns and preferences
-            patterns = await self.procedural_store.get_user_patterns(user_id)
+            # Get user patterns, skills, and preferences
+            patterns = await self.behavioral_store.get_user_patterns(user_id)
             
             # Convert to ContextItems
             items = []
             for pattern in patterns:
                 items.append(ContextItem(
                     content=pattern.get('description', ''),
-                    source_tier='procedural',
+                    source_tier='behavioral',
                     relevance_score=pattern.get('confidence', 0.5),
                     timestamp=datetime.fromisoformat(pattern.get('timestamp', datetime.utcnow().isoformat())),
                     metadata=pattern.get('metadata', {}),
                     item_type='pattern'
                 ))
             
-            logger.debug(f"Retrieved {len(items)} items from procedural memory")
+            logger.debug(f"Retrieved {len(items)} items from behavioral memory")
             return items
             
         except Exception as e:
-            logger.error(f"Procedural memory retrieval failed: {e}")
+            logger.error(f"Behavioral memory retrieval failed: {e}")
             return []

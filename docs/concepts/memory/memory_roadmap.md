@@ -150,7 +150,7 @@ User Message → MemoryManager → ContextAssembler → LLM Response
 ### Phase Transitions
 1. **Phase 1 → Phase 2**: Add semantic memory store for user facts, maintain LMDB working memory
 2. **Phase 2 → Phase 3**: Add vector storage for thread resolution, build on Phase 2 ChromaDB infrastructure
-3. **Phase 3 → Phase 4**: Add procedural memory for behavior patterns, maintain existing systems
+3. **Phase 3 → Phase 4**: Add behavioral learning for behavior patterns, maintain existing systems
 4. **Phase 4 → Phase 5**: Add advanced features and system coordination
 
 ### Simplified Architecture
@@ -204,7 +204,7 @@ memory:
 ### Phase 4 Configuration
 ```yaml
 memory:
-  procedural:
+  behavioral:
     db_path: "data/memory/procedural.db"
     pattern_retention_days: 180
     min_pattern_frequency: 3
@@ -232,7 +232,7 @@ memory:
 - **Minimal**: Phase 1 only, basic context management (LMDB working memory)
 - **Essential**: Phases 1-2, user facts storage with semantic memory (+ ChromaDB)
 - **Balanced**: Phases 1-3, semantic thread resolution (+ thread embeddings)
-- **Advanced**: Phases 1-4, behavioral learning (+ libSQL procedural memory)
+- **Advanced**: Phases 1-4, behavioral learning (+ libSQL behavioral learning)
 - **Full**: All phases, complete proactive system
 
 ### Resource Management

@@ -197,7 +197,7 @@ AICO System
 │   ├── Module: Memory System
 │   │   ├── Component: Episodic Memory
 │   │   ├── Component: Semantic Memory
-│   │   ├── Component: Procedural Memory
+│   │   ├── Component: Behavioral Learning
 │   │   └── Component: Memory Consolidation
 │   └── Module: Learning System
 │       ├── Component: Continual Learning
@@ -622,7 +622,7 @@ The Update System manages automatic updates for both frontend and backend compon
 #### Memory System
 - **Episodic Memory:** Stores personal experiences and interaction history.
 - **Semantic Memory:** Maintains knowledge base and learned concepts.
-- **Procedural Memory:** Stores learned skills and behavioral patterns.
+- **Behavioral Learning:** Stores learned skills and behavioral patterns.
 - **Memory Consolidation:** Long-term memory formation and optimization.
 
 #### Data & Storage Layer
