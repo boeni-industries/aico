@@ -432,17 +432,17 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
   - Memory: ~400MB
   - Compute: ~80-150ms per classification
 
-**6. RLHF Implementation** (Custom Lightweight)
+**6. Behavioral Learning** (Custom Lightweight)
 - **Library**: Custom Python implementation in `behavioral/rlhf.py` (no external RL framework)
-- **Algorithm**: Simplified DPO with direct feedback signals
+- **Algorithm**: Thompson Sampling (contextual bandit) for skill selection
 - **Memory**: Minimal (~10-20MB)
-- **Compute**: 5-10ms per feedback, 5-10 min batch refinement/day
+- **Compute**: 5-10ms per feedback, 2-5 min batch analysis/day
 - **Rationale**: 
-  - Learning prompt template **selection**, not LLM weight updates
-  - No neural network training required (confidence scores only)
+  - Learning prompt template **selection** via confidence scores, not LLM weight updates
+  - No neural network training required (simple statistical learning)
   - Privacy-preserving, local-only processing
-  - Sufficient for use case (guiding existing LLM vs. training new model)
-- **Future Options**: TRL library for adapter fine-tuning (if needed)
+  - Sufficient for use case (selecting which skill to apply)
+- **Note**: This is NOT LLM fine-tuning - we select between pre-written prompt templates based on user feedback
 
 ### Computational Impact Analysis
 
@@ -473,13 +473,16 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
 **Memory Consolidation** (scheduled via AICO Scheduler)
 - **Trigger**: System idle detection OR scheduled ("0 2 * * *" = 2 AM daily)
 - **Components**: Experience replay + Semantic storage + Graph updates
-- **Compute Time**: 5-10 minutes per user (estimated)
+- **Compute Time**: 5-10 minutes per user
   - Experience selection: 30-60s (working memory scan)
   - Embedding generation: 2-5 min (batch processing)
   - Semantic storage: 1-2 min (ChromaDB batch insert)
   - Graph updates: 1-2 min (entity resolution + storage)
+- **User Sharding**: Round-robin 7-day cycle (1/7 of users processed daily)
+  - Example: 70 users = ~10 users/day × 10 min = ~100 min total
+  - Prevents overwhelming system with large user bases
 - **Memory Impact**: +200-400MB peak during consolidation
-- **Frequency**: Once per day per user (configurable)
+- **Frequency**: Each user consolidated once per week (configurable)
 - **Parallelization**: Max 4 concurrent users (Semaphore(4))
 
 **Temporal Graph Evolution** (scheduled)
@@ -611,17 +614,17 @@ class MemoryConsolidationTask(BaseTask):
 5. **Query Caching**: Cache frequent context assembly results
 6. **Async Execution**: All background operations use async/await
 
-**Scaling Considerations**:
-- **10 users**: ~1GB total memory, <5 min consolidation/day
-- **50 users**: ~3GB total memory, ~20 min consolidation/day
-- **100 users**: ~5GB total memory, ~40 min consolidation/day
-- **500 users**: ~20GB total memory, ~3 hours consolidation/day (needs optimization)
+**Scaling Considerations** (with 7-day user sharding):
+- **10 users**: ~1GB total memory, ~15 min consolidation/day (1-2 users)
+- **50 users**: ~3GB total memory, ~70 min consolidation/day (~7 users)
+- **100 users**: ~5GB total memory, ~140 min consolidation/day (~14 users)
+- **500 users**: ~20GB total memory, ~700 min consolidation/day (~70 users)
 
-**For Large Deployments** (>100 users):
-- Implement user sharding (consolidate different users on different days)
-- Use GPU for embedding generation (10x speedup)
-- Implement distributed consolidation (multiple workers)
-- Add consolidation priority (active users first)
+**Optimization Strategies**:
+- **User sharding**: Round-robin 7-day cycle (default, already included above)
+- **GPU acceleration**: 10x speedup for embedding generation (optional)
+- **Priority scheduling**: Active users consolidated more frequently
+- **Adaptive batching**: Adjust batch size based on system load
 
 ---
 
@@ -732,8 +735,9 @@ We leverage AICO's existing multilingual embedding model (`paraphrase-multilingu
 **Performance**:
 - Startup: Generate ~30 category embeddings in 2-3 seconds
 - Per feedback: 50-100ms (embedding generation) + <1ms (similarity calculation)
-- Accuracy: 85% cross-lingual classification (research-backed)
+- Expected accuracy: 80-90% cross-lingual classification (based on similar multilingual sentiment analysis systems)
 - Languages: 50+ supported by the multilingual model
+- **Note**: Actual accuracy will be measured during Phase 3 implementation with real user feedback
 
 **Processing Pipeline**:
 
@@ -780,11 +784,12 @@ To quickly adapt to new users or changing preferences, AICO uses a meta-learning
 - Vector initialized with defaults and updated based on feedback patterns
 - Encodes preferences: formality, verbosity, proactivity tolerance, emotional expression style
 
-**Skill Matching Algorithm**:
-- Retrieves user's preference vector
-- Queries skills matching the current context
-- Scores each skill: 70% confidence score + 30% preference alignment (cosine similarity)
-- Returns highest scoring skill
+**Hybrid Skill Selection Algorithm**:
+1. **Filter applicable skills**: Trigger matching score ≥ 0.5 (see trigger matching above)
+2. **Compute preference alignment**: Cosine similarity between user preference vector and skill embedding
+3. **Final score**: 40% trigger match + 30% confidence + 30% preference alignment
+4. **Thompson Sampling**: Apply contextual bandit for exploration/exploitation balance
+5. **Return**: Highest scoring skill (or exploration candidate if ε-greedy triggers)
 
 ### 3. Self-Correction and Exploration (Agent Q Model)
 
@@ -956,78 +961,102 @@ embeddings_model = transformers_manager.get_model("embeddings")
 preference_embedding = embeddings_model.encode(user_preference_description)
 ```
 
-#### 2. **Reinforcement Learning Framework**
+#### 2. **Contextual Bandit Learning** (Thompson Sampling)
 
-**Purpose**: Implement RLHF feedback loops with DPO (Direct Preference Optimization).
+**Purpose**: Learn which skills work best in which contexts through statistical learning.
 
-**Library**: **TRL (Transformer Reinforcement Learning)** by Hugging Face
-- Provides production-ready DPO implementation
-- Use case: Refine prompt templates based on successful vs. unsuccessful trajectories
-- Runs offline as scheduled task (daily)
-- Library: `trl>=0.7.0` (add to `pyproject.toml` under `[project.optional-dependencies.backend]`)
+**Algorithm**: **Thompson Sampling** (Bayesian contextual bandit)
+- No external library needed - custom Python implementation
+- Use case: Select optimal skill based on context and past feedback
+- Runs real-time for selection + offline batch analysis (daily)
+- No neural network training required
 
-**Clarification**: DPO refines **prompt templates** (not model weights). Analyzes feedback trajectories to generate improved templates. Runs offline daily, fully reversible, storage-efficient.
+**How It Works**: Each skill maintains Beta distribution parameters (α, β) representing success/failure counts. Thompson Sampling draws from these distributions to balance exploration (trying uncertain skills) vs. exploitation (using proven skills).
 
-**Implementation** (`backend/scheduler/tasks/dpo_refinement.py`):
+**Implementation** (`shared/aico/ai/memory/behavioral/thompson_sampling.py`):
 ```python
 """
-DPO Template Refinement Task
+Thompson Sampling for Skill Selection
 
-Scheduled task that refines behavioral learning skill templates using
-Direct Preference Optimization (DPO) based on user feedback trajectories.
+Contextual bandit algorithm that learns which skills work best through
+Bayesian statistical learning. No neural network training required.
 
-Follows AICO's message-driven architecture and privacy-by-design principles.
+Follows AICO's privacy-by-design principles - all learning is local.
 """
 
-from trl import DPOTrainer, DPOConfig
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from aico.ai.memory.procedural import SkillStore, TrajectoryStore
+import numpy as np
+from aico.ai.memory.behavioral import SkillStore
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "scheduler.dpo_refinement")
+logger = get_logger("backend", "behavioral.thompson_sampling")
 
-async def refine_skill_templates():
+class ThompsonSamplingSelector:
     """
-    Refine prompt templates using DPO based on user feedback trajectories.
+    Select skills using Thompson Sampling (contextual bandit).
     
-    This task runs daily as a scheduled job. It analyzes recent user feedback
-    to generate improved prompt templates that maximize user satisfaction.
-    
-    Privacy: All data is local and encrypted. No external API calls.
+    Maintains Beta(α, β) distributions for each (context, skill) pair.
+    Balances exploration vs. exploitation automatically.
     """
     
-    # Load trajectories from last 24 hours
-    trajectory_store = TrajectoryStore()
-    trajectories = await trajectory_store.get_recent_trajectories(hours=24)
+    def __init__(self, prior_alpha=1.0, prior_beta=1.0):
+        self.prior_alpha = prior_alpha
+        self.prior_beta = prior_beta
     
-    if len(trajectories) < 10:  # Need minimum data
-        logger.info("Insufficient trajectories for DPO refinement")
-        return
+    async def select_skill(self, context: dict, candidate_skills: list) -> str:
+        """
+        Select best skill for given context using Thompson Sampling.
+        
+        Args:
+            context: Current conversation context (intent, topic, etc.)
+            candidate_skills: List of applicable skills
+        
+        Returns:
+            skill_id of selected skill
+        """
+        # Get success/failure counts for each skill in this context
+        skill_scores = {}
+        for skill in candidate_skills:
+            stats = await self._get_skill_stats(skill.skill_id, context)
+            
+            # Sample from Beta distribution
+            alpha = self.prior_alpha + stats['successes']
+            beta = self.prior_beta + stats['failures']
+            sampled_score = np.random.beta(alpha, beta)
+            
+            skill_scores[skill.skill_id] = sampled_score
+        
+        # Select skill with highest sampled score
+        selected_skill_id = max(skill_scores, key=skill_scores.get)
+        
+        logger.info("Skill selected via Thompson Sampling", extra={
+            "skill_id": selected_skill_id,
+            "sampled_score": skill_scores[selected_skill_id],
+            "metric_type": "behavioral_memory_selection"
+        })
+        
+        return selected_skill_id
     
-    # Prepare preference pairs
-    preferred = [t for t in trajectories if t.feedback_reward > 0]
-    dispreferred = [t for t in trajectories if t.feedback_reward < 0]
-    
-    # Use DPO to generate improved prompt templates
-    # (This uses the model to analyze patterns, not to train it)
-    improved_templates = await generate_improved_templates(
-        preferred_examples=preferred,
-        dispreferred_examples=dispreferred
-    )
-    
-    # Update skill templates in database
-    skill_store = SkillStore()
-    for skill_id, new_template in improved_templates.items():
-        await skill_store.update_skill_template(skill_id, new_template)
-    
-    logger.info(
-        "DPO template refinement completed",
-        extra={
-            "trajectories_analyzed": len(trajectories),
-            "templates_updated": len(improved_templates),
-            "metric_type": "behavioral_memory_dpo"
-        }
-    )
+    async def update_from_feedback(self, skill_id: str, context: dict, 
+                                   reward: int):
+        """
+        Update skill statistics based on user feedback.
+        
+        Args:
+            skill_id: ID of skill that was applied
+            context: Context in which skill was used
+            reward: 1 (success), -1 (failure), 0 (neutral - no update)
+        """
+        if reward == 0:
+            return  # Neutral feedback doesn't update statistics
+        
+        stats = await self._get_skill_stats(skill_id, context)
+        
+        if reward > 0:
+            stats['successes'] += 1
+        else:
+            stats['failures'] += 1
+        
+        await self._save_skill_stats(skill_id, context, stats)
 ```
 
 #### 3. **Meta-Learning Framework**
@@ -1112,37 +1141,53 @@ class UserPreferenceManager:
 
 #### 5. **Vector Similarity Search**
 
-**Purpose**: Fast nearest-neighbor search for skill matching.
+**Purpose**: Fast similarity matching for skill selection.
 
-**Library**: **REUSE EXISTING** - **ChromaDB**
-- Already configured in `core.yaml` for semantic memory at `memory.semantic`
-- Already running for conversation segment retrieval
-- Use case: Store skill embeddings for fast similarity-based retrieval
-- Advantages: Local-first, persistent, optimized for similarity search
-- Library: `chromadb` (Python)
+**Library**: **NumPy/SciPy** (already present)
+- Use case: Compute cosine similarity between preference vectors and skill embeddings
+- Advantages: No additional dependencies, sufficient for <100 skills
+- Library: `numpy`, `scipy.spatial.distance.cosine`
 
-**Why Reuse**: ChromaDB is already managing conversation embeddings. We can add a new collection for skill embeddings:
-- Reuses existing ChromaDB instance (no additional process)
-- Consistent vector search across memory systems
-- Optimized for similarity queries (faster than NumPy for >100 skills)
-- Already integrated with the embedding model
+**Why NumPy Instead of ChromaDB**: 
+- **Small scale**: 10-20 base skills + user-created skills = typically <100 total
+- **In-memory efficiency**: NumPy cosine similarity is ~1-2ms for 100 vectors
+- **Simplicity**: No additional database, simpler architecture
+- **Future scaling**: If skill count exceeds 100, can migrate to ChromaDB later
 
 **Implementation**:
 ```python
-# Add new collection to existing ChromaDB instance
-skill_collection = chroma_client.create_collection(
-    name="behavioral_skills",
-    embedding_function=embeddings_model,  # Reuse existing embedding model
-    metadata={"hnsw:space": "cosine"}
-)
+import numpy as np
+from scipy.spatial.distance import cosine
 
-# Query similar skills
-results = skill_collection.query(
-    query_texts=[user_preference_description],
-    n_results=10,
-    where={"user_id": user_id}
-)
+def select_best_skill(user_preference_vector: np.ndarray, 
+                     candidate_skills: list) -> str:
+    """
+    Select skill with highest preference alignment using NumPy.
+    
+    Args:
+        user_preference_vector: User's 768-dim preference vector
+        candidate_skills: List of applicable skills with embeddings
+    
+    Returns:
+        skill_id of best matching skill
+    """
+    best_skill_id = None
+    best_similarity = -1.0
+    
+    for skill in candidate_skills:
+        # Compute cosine similarity (1 - cosine distance)
+        similarity = 1 - cosine(user_preference_vector, skill.embedding)
+        
+        if similarity > best_similarity:
+            best_similarity = similarity
+            best_skill_id = skill.skill_id
+    
+    return best_skill_id
 ```
+
+**Performance**: ~1-2ms for 100 skills (negligible overhead)
+
+**Scaling Note**: If skill library grows beyond 100 skills per user, consider migrating to ChromaDB for HNSW-based approximate nearest neighbor search.
 
 ### Natural Language Processing
 
@@ -1356,9 +1401,9 @@ memory:
     # Skill matching
     skill_matching:
       match_threshold: 0.5  # Minimum score to consider skill applicable
-      use_embedding_similarity: false  # Use simple pattern matching (no ChromaDB)
+      use_embedding_similarity: true  # Use NumPy cosine similarity for preference alignment
       max_candidates: 5  # Top N skills to consider
-      distance_metric: "cosine"  # Same as semantic memory
+      distance_metric: "cosine"  # Cosine similarity via NumPy/SciPy
     
     # Performance monitoring
     metrics:
@@ -1402,31 +1447,21 @@ memory:
 
 **Only ONE new dependency required:**
 
-**Add to `pyproject.toml`** under `[project.optional-dependencies.backend]`:
-```toml
-[project.optional-dependencies]
-backend = [
-    "duckdb>=1.3.2",
-    "fastapi>=0.116.1",
-    "httpx>=0.28.1",
-    "libsql==0.1.8",
-    "pydantic>=2.11.7",
-    "pyjwt>=2.10.1",
-    "uvicorn>=0.35.0",
-    "trl>=0.7.0",  # ADD THIS: Transformer Reinforcement Learning for DPO template refinement
-]
-```
+**No new dependencies required** - all behavioral learning uses existing AICO infrastructure:
+- NumPy/SciPy for statistical computations (already present)
+- libSQL for skill storage (already present)
+- Existing embedding models for preference vectors (already present)
 
-**Installation with UV**:
+**Installation**:
 ```bash
-# Install backend dependencies including behavioral learning
+# No additional packages needed - behavioral learning uses existing dependencies
 uv pip install -e ".[backend]"
 
 # Or install all optional dependencies
 uv pip install -e ".[backend,modelservice,cli,test]"
 ```
 
-**All other dependencies are already present in AICO.**
+**All dependencies are already present in AICO.**
 
 ### Resource Requirements
 
@@ -1602,13 +1637,59 @@ priority_i = abs(importance_score_i) + (1.0 / days_since_i) + (1.0 if has_feedba
 - **Feedback bonus**: +1.0 if interaction has user feedback
 - **Implementation**: Use SumTree data structure for O(log N) sampling
 
-**Memory Reconsolidation Strategy**:
+**Memory Reconsolidation Strategy** (with variant limits):
 ```python
-# Confidence-weighted conflict resolution
-if new_fact.confidence > existing_fact.confidence:
-    update_fact(new_fact, mark_superseded=existing_fact)
-else:
-    store_variant(new_fact, related_to=existing_fact, temporal_link=True)
+# Confidence-weighted conflict resolution with variant limits
+async def reconsolidate_fact(new_fact, existing_fact):
+    """
+    Integrate new fact with existing knowledge, preventing variant bloat.
+    
+    Strategy:
+    - High confidence new fact: Update existing fact
+    - Low confidence new fact: Store as variant (up to max limit)
+    - Variant limit reached: Replace weakest variant
+    """
+    if new_fact.confidence > existing_fact.confidence:
+        # New fact is more confident - update existing
+        await update_fact(new_fact, mark_superseded=existing_fact)
+    else:
+        # New fact is less confident - store as variant
+        variant_count = await get_variant_count(existing_fact.fact_id)
+        
+        if variant_count < 3:  # max_fact_variants from config
+            # Store as new variant
+            await store_variant(
+                new_fact, 
+                related_to=existing_fact, 
+                temporal_link=True
+            )
+        else:
+            # Variant limit reached - replace weakest variant
+            weakest_variant = await get_weakest_variant(existing_fact.fact_id)
+            
+            if new_fact.confidence > weakest_variant.confidence:
+                # New fact is stronger than weakest variant
+                await replace_variant(weakest_variant.id, new_fact)
+            else:
+                # New fact is weaker - discard it
+                logger.info(f"Discarded low-confidence variant for fact {existing_fact.fact_id}")
+```
+
+**Variant Cleanup** (scheduled weekly):
+```python
+async def cleanup_old_variants():
+    """
+    Remove low-confidence variants older than 90 days.
+    Prevents accumulation of outdated alternative facts.
+    """
+    cutoff_date = datetime.now() - timedelta(days=90)
+    
+    await db.execute("""
+        DELETE FROM semantic_facts
+        WHERE is_variant = TRUE
+        AND confidence < 0.3
+        AND created_at < ?
+    """, (cutoff_date,))
 ```
 
 **Temporal Metadata Schema**:
@@ -1624,6 +1705,37 @@ class TemporalMetadata:
     superseded_by: Optional[str] = None
 ```
 
+**Storage Location**: Temporal metadata is stored as JSON in the `temporal_metadata` column of semantic memory tables (ChromaDB metadata + libSQL):
+
+```sql
+-- Add to semantic facts table in libSQL
+ALTER TABLE semantic_facts ADD COLUMN temporal_metadata TEXT;  -- JSON
+
+-- Example stored value:
+{
+  "created_at": "2025-01-15T10:30:00Z",
+  "last_updated": "2025-01-20T14:22:00Z",
+  "last_accessed": "2025-01-22T09:15:00Z",
+  "access_count": 12,
+  "confidence": 0.85,
+  "version": 2,
+  "superseded_by": null
+}
+```
+
+**ChromaDB Integration**: Temporal metadata is also stored in ChromaDB document metadata for efficient temporal queries:
+```python
+chroma_collection.add(
+    documents=[fact_text],
+    metadatas=[{
+        "user_id": user_id,
+        "created_at": timestamp.isoformat(),
+        "confidence": 0.9,
+        "version": 1
+    }]
+)
+```
+
 **Configuration**:
 ```yaml
 memory:
@@ -1631,16 +1743,20 @@ memory:
     enabled: true
     idle_threshold_cpu_percent: 20
     idle_duration_seconds: 300
-    schedule: "0 2 * * *"  # Cron format
+    schedule: "0 2 * * *"  # Cron format (2 AM daily)
+    user_sharding_cycle_days: 7  # Round-robin: 1/7 of users per day
     replay_batch_size: 100
     max_duration_minutes: 60
     priority_alpha: 0.6
+    max_concurrent_users: 4  # Semaphore limit
     
   temporal:
     enabled: true
     metadata_retention_days: 365
     evolution_tracking: true
     confidence_decay_rate: 0.001  # Per day without access
+    max_fact_variants: 3  # Maximum variants per fact (prevents bloat)
+    variant_cleanup_days: 90  # Delete low-confidence variants after 90 days
 ```
 
 ---
@@ -1650,17 +1766,22 @@ memory:
 **Skill Trigger Matching**:
 ```python
 def match_trigger(trigger_context: dict, current_context: dict) -> float:
-    """Hybrid: exact + fuzzy + embedding similarity"""
+    """
+    Hybrid context matching for skill applicability.
+    
+    Note: User preferences are handled separately via preference vectors.
+    This function only matches contextual factors (intent, time, topic).
+    """
     score = 0.0
     
     # Exact match (40%): intent
     if trigger_context.get("intent") == current_context.get("intent"):
         score += 0.4
     
-    # Fuzzy match (30%): time_of_day, user_id
+    # Contextual match (30%): time_of_day, sentiment
     if trigger_context.get("time_of_day") == current_context.get("time_of_day"):
         score += 0.15
-    if trigger_context.get("user_id") == current_context.get("user_id"):
+    if trigger_context.get("sentiment") == current_context.get("sentiment"):
         score += 0.15
     
     # Embedding similarity (30%): topic/entities
@@ -1672,6 +1793,14 @@ def match_trigger(trigger_context: dict, current_context: dict) -> float:
     
     return score  # Range: [0.0, 1.0]
 ```
+
+**Weight Distribution**:
+- **40% Intent**: Primary signal (question, request, chat, etc.)
+- **15% Time of Day**: Morning/afternoon/evening context
+- **15% Sentiment**: User's emotional state (positive, negative, neutral)
+- **30% Topic Similarity**: Semantic similarity of conversation topic
+
+**User Preference Matching**: Handled separately via preference vector cosine similarity (see lines 1089-1094)
 
 **Base Skills Definition** (`config/defaults/behavioral_skills.yaml`):
 ```yaml
@@ -1696,24 +1825,43 @@ base_skills:
 - **Update**: Weighted average of skill embeddings, weighted by confidence scores
 - **No PCA needed**: Store full 768-dim vectors (only ~3KB per user)
 
-**Confidence Score Update Formula** (Exponential Moving Average):
+**Confidence Score Update Formula** (Adaptive Exponential Moving Average):
 ```python
-def update_confidence(current: float, reward: int, alpha: float = 0.1) -> float:
+def update_confidence(current: float, reward: int, usage_count: int) -> float:
     """
-    EMA with reward mapped to [0, 1] range
-    reward: 1 (positive), -1 (negative), 0 (neutral - no update)
-    alpha: learning_rate from config (default 0.1)
+    Adaptive EMA with reward mapped to [0, 1] range.
+    Uses higher learning rate for new skills, lower for established skills.
+    
+    Args:
+        current: Current confidence score
+        reward: 1 (positive), -1 (negative), 0 (neutral - no update)
+        usage_count: Number of times skill has been used
+    
+    Returns:
+        Updated confidence score in range [0.2, 0.9]
     """
     if reward == 0:  # Neutral feedback - no update
         return current
+    
+    # Adaptive learning rate: faster for new skills, slower for established
+    # New skills (< 10 uses): alpha = 0.3 (fast adaptation)
+    # Established skills (>= 10 uses): alpha = 0.1 (stable learning)
+    alpha = 0.3 if usage_count < 10 else 0.1
     
     # Map reward to target confidence: -1→0.2, 1→0.8
     target = 0.5 + (reward * 0.3)
     
     # EMA update: new = α * target + (1-α) * current
     new_confidence = alpha * target + (1 - alpha) * current
-    return max(0.1, min(0.9, new_confidence))  # Clamp [0.1, 0.9]
+    
+    # Clamp to [0.2, 0.9] range (0.2 min ensures skills remain discoverable)
+    return max(0.2, min(0.9, new_confidence))
 ```
+
+**Adaptive Learning Benefits**:
+- **Fast initial adaptation**: New skills reach optimal confidence in ~5-7 feedback events (vs. ~22 with fixed alpha)
+- **Stable refinement**: Established skills change slowly, preventing volatility
+- **Smooth transition**: Gradual shift from exploration to exploitation
 
 **Multi-User Skill Storage**:
 ```python
@@ -1732,11 +1880,26 @@ user_skill_confidence_table:
 # Only per-user confidence scores evolve
 ```
 
-**Exploration Rate**:
-- **ε = 0.1**: 10% exploration, 90% exploitation (standard ε-greedy)
-- **Adaptive decay**: `ε_t = max(0.05, 0.1 * 0.9^(t/100))` (reaches 5% after ~300 interactions)
-- **Per-user tracking**: Each user has own exploration counter
-- **Justification**: Faster decay allows quicker convergence to user preferences
+**Exploration Rate** (ε-greedy with adaptive decay):
+- **Initial ε = 0.1**: 10% exploration, 90% exploitation
+- **Adaptive decay**: `ε_t = max(0.05, 0.1 * 0.95^(feedback_count))` where `feedback_count` is number of feedback events received
+- **Decay trigger**: Only decays when user provides feedback (not on total interactions)
+- **Per-user tracking**: Each user has own exploration rate and feedback counter
+- **Convergence**: Reaches 5% exploration after ~60 feedback events
+
+**Rationale**:
+- Decaying on feedback (not total interactions) ensures exploration continues until user actively guides the system
+- Users who don't provide feedback maintain higher exploration rate
+- 60 feedback events is realistic for active users over 2-3 weeks
+
+**Implementation**:
+```python
+def get_exploration_rate(user_id: str) -> float:
+    """Calculate current exploration rate for user."""
+    feedback_count = get_user_feedback_count(user_id)
+    epsilon = max(0.05, 0.1 * (0.95 ** feedback_count))
+    return epsilon
+```
 
 ---
 
@@ -1946,17 +2109,25 @@ async def generate_response(user_input: str, context: dict) -> str:
 
 ### Performance & Scaling
 
-**Consolidation Parallelization**:
+**Consolidation Parallelization with User Sharding**:
 ```python
-# User sharding: round-robin distribution
+# User sharding: round-robin 7-day cycle
 async def schedule_consolidation():
+    """
+    Consolidate 1/7 of users each day using round-robin sharding.
+    
+    This prevents overwhelming the system with large user bases.
+    Each user is consolidated once per week.
+    """
     users = await get_active_users()
-    day_of_week = datetime.now().weekday()
+    day_of_week = datetime.now().weekday()  # 0 (Monday) to 6 (Sunday)
     
     # Assign users to days using modulo (ensures even distribution)
     users_today = [u for i, u in enumerate(users) if i % 7 == day_of_week]
     
-    # Max 4 concurrent
+    logger.info(f"Consolidating {len(users_today)} of {len(users)} users today")
+    
+    # Max 4 concurrent users to prevent resource exhaustion
     async with asyncio.Semaphore(4):
         await asyncio.gather(*[consolidate_user(u) for u in users_today])
 ```
