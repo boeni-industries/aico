@@ -376,6 +376,245 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
 
 ---
 
+## AI Components & Computational Impact
+
+### AI Libraries & Models Used
+
+**1. Embedding Generation** (via ModelService)
+- **Library**: `sentence-transformers` (Hugging Face)
+- **Model**: `paraphrase-multilingual-MiniLM-L12-v2` (default)
+- **Purpose**: Generate embeddings for semantic search
+- **Memory**: ~500MB model size
+- **Compute**: ~50-100ms per embedding (CPU), ~10-20ms (GPU)
+- **Usage**: Every semantic query, fact storage, context retrieval
+
+**2. Vector Database**
+- **Library**: `chromadb` (persistent client)
+- **Storage**: Local file-based (ChromaDB format)
+- **Purpose**: Store and query conversation segment embeddings
+- **Memory**: ~100-200MB in-memory index
+- **Compute**: ~5-20ms per vector search query
+- **Usage**: Semantic memory queries, hybrid search
+
+**3. Keyword Search**
+- **Library**: Custom BM25 implementation (pure Python)
+- **Purpose**: Keyword-based relevance ranking
+- **Memory**: Minimal (~1-5MB for IDF statistics)
+- **Compute**: ~2-5ms per query
+- **Usage**: Hybrid search fusion with semantic results
+
+**4. Knowledge Graph**
+- **Library**: `libSQL` (embedded SQLite)
+- **Storage**: Local file-based (SQLite format)
+- **Purpose**: Store entities, relations, temporal metadata
+- **Memory**: ~50-100MB for typical graphs
+- **Compute**: ~1-10ms per graph query
+- **Usage**: Entity resolution, relationship traversal
+
+**5. NLP Models** (via ModelService)
+- **Sentiment Analysis**: `nlptown/bert-base-multilingual-uncased-sentiment`
+  - Memory: ~500MB
+  - Compute: ~100-200ms per analysis
+- **Entity Extraction**: GLiNER (planned)
+  - Memory: ~300-500MB
+  - Compute: ~50-150ms per extraction
+- **Intent Classification**: Custom transformer
+  - Memory: ~400MB
+  - Compute: ~80-150ms per classification
+
+**6. RLHF Implementation** (Custom Lightweight)
+- **Library**: Custom Python implementation in `behavioral/rlhf.py` (no external RL framework)
+- **Algorithm**: Simplified DPO with direct feedback signals
+- **Memory**: Minimal (~10-20MB)
+- **Compute**: 5-10ms per feedback, 5-10 min batch refinement/day
+- **Rationale**: 
+  - Learning prompt template **selection**, not LLM weight updates
+  - No neural network training required (confidence scores only)
+  - Privacy-preserving, local-only processing
+  - Sufficient for use case (guiding existing LLM vs. training new model)
+- **Future Options**: TRL library for adapter fine-tuning (if needed)
+
+### Computational Impact Analysis
+
+#### Real-Time Operations (User-Facing)
+
+**Context Assembly** (every conversation turn)
+- **Components**: Working memory + Semantic memory + Knowledge graph
+- **Compute Time**: 30-50ms total
+  - Working memory retrieval: 5-10ms (LMDB)
+  - Semantic query (with embedding): 60-80ms (embedding + vector search)
+  - Knowledge graph query: 5-10ms (libSQL)
+  - Fusion & ranking: 5-10ms (RRF algorithm)
+- **Memory Impact**: +50-100MB during query
+- **Frequency**: Every user message
+- **Optimization**: Results cached for conversation context
+
+**Behavioral Skill Selection** (when implemented)
+- **Components**: Skill library + User preferences
+- **Compute Time**: 5-15ms
+  - Skill matching: 2-5ms (pattern matching)
+  - Preference lookup: 1-3ms (libSQL)
+  - Template application: 2-7ms (string operations)
+- **Memory Impact**: Minimal (~5-10MB)
+- **Frequency**: Every AI response generation
+
+#### Background Operations (Non-Blocking)
+
+**Memory Consolidation** (scheduled via AICO Scheduler)
+- **Trigger**: System idle detection OR scheduled (e.g., "0 2 * * *" = 2 AM daily)
+- **Components**: Experience replay + Semantic storage + Graph updates
+- **Compute Time**: 5-10 minutes per user (estimated)
+  - Experience selection: 30-60s (working memory scan)
+  - Embedding generation: 2-5 min (batch processing)
+  - Semantic storage: 1-2 min (ChromaDB batch insert)
+  - Graph updates: 1-2 min (entity resolution + storage)
+- **Memory Impact**: +200-400MB peak during consolidation
+- **Frequency**: Once per day per user (configurable)
+- **Parallelization**: Process users sequentially to limit resource usage
+
+**Temporal Graph Evolution** (scheduled)
+- **Trigger**: Weekly (e.g., "0 3 * * 0" = Sunday 3 AM)
+- **Components**: Preference analysis + Evolution tracking
+- **Compute Time**: 2-5 minutes per user
+  - Preference history scan: 30-60s
+  - Trend analysis: 1-2 min
+  - Graph metadata updates: 30-60s
+- **Memory Impact**: +100-200MB
+- **Frequency**: Weekly (configurable)
+
+**Behavioral Learning Updates** (event-driven + scheduled)
+- **Trigger**: User feedback (immediate) + Batch refinement (daily)
+- **Components**: RLHF processing + Skill confidence updates
+- **Compute Time**: 
+  - Per feedback: 5-10ms (immediate confidence update)
+  - Batch refinement: 5-10 min/day (DPO template optimization)
+- **Memory Impact**: Minimal for feedback, +100-200MB for batch
+- **Frequency**: Immediate + daily batch
+
+### Scheduler Integration
+
+**AICO Backend Scheduler** (`/backend/scheduler/`)
+- **Type**: Cron-like task scheduler with async execution
+- **Features**: 
+  - Standard cron expressions (5-field format)
+  - Idle detection via `TaskContext.system_idle()`
+  - Task priority and resource limits
+  - Execution history and monitoring
+
+**AMS Scheduled Tasks**:
+
+```python
+# 1. Daily Memory Consolidation (2 AM, idle-aware)
+{
+    "task_id": "ams.consolidation.daily",
+    "schedule": "0 2 * * *",  # 2 AM daily
+    "enabled": True,
+    "config": {
+        "require_idle": True,
+        "max_duration_minutes": 30,
+        "users_per_batch": 5
+    }
+}
+
+# 2. Weekly Temporal Evolution Analysis (Sunday 3 AM)
+{
+    "task_id": "ams.temporal.evolution",
+    "schedule": "0 3 * * 0",  # Sunday 3 AM
+    "enabled": True,
+    "config": {
+        "lookback_days": 30,
+        "min_interactions": 10
+    }
+}
+
+# 3. Daily Behavioral Learning Batch (3 AM)
+{
+    "task_id": "ams.behavioral.batch_refinement",
+    "schedule": "0 3 * * *",  # 3 AM daily
+    "enabled": True,
+    "config": {
+        "min_feedback_count": 5,
+        "dpo_iterations": 3
+    }
+}
+
+# 4. Hourly Unified Index Maintenance (top of hour, idle-aware)
+{
+    "task_id": "ams.unified.index_maintenance",
+    "schedule": "0 * * * *",  # Every hour
+    "enabled": True,
+    "config": {
+        "require_idle": True,
+        "incremental": True
+    }
+}
+```
+
+**Task Implementation Pattern**:
+
+```python
+# /backend/scheduler/tasks/ams_consolidation.py
+from backend.scheduler.tasks.base import BaseTask, TaskContext, TaskResult
+
+class MemoryConsolidationTask(BaseTask):
+    task_id = "ams.consolidation.daily"
+    description = "Daily memory consolidation from working to semantic memory"
+    
+    async def execute(self, context: TaskContext) -> TaskResult:
+        # Check if system is idle (if required)
+        if context.get_config("require_idle", True):
+            if not context.system_idle():
+                return TaskResult(
+                    success=True,
+                    message="Skipped: system not idle",
+                    skipped=True
+                )
+        
+        # Get memory manager
+        memory_manager = await self._get_memory_manager(context)
+        
+        # Run consolidation
+        result = await memory_manager.consolidate_memories(
+            max_duration_minutes=context.get_config("max_duration_minutes", 30)
+        )
+        
+        return TaskResult(
+            success=True,
+            message=f"Consolidated {result['users_processed']} users",
+            data=result
+        )
+```
+
+### Resource Management
+
+**Peak Resource Usage** (all operations combined)
+- **Memory**: +400-600MB (during consolidation)
+- **CPU**: 1-2 cores (background tasks)
+- **Disk I/O**: Moderate (ChromaDB writes, libSQL updates)
+- **Network**: None (all local)
+
+**Optimization Strategies**:
+1. **Batch Processing**: Process users in small batches (5-10 at a time)
+2. **Idle Detection**: Run heavy operations only when system idle
+3. **Incremental Updates**: Update indices incrementally, not full rebuilds
+4. **Model Caching**: Keep embedding models loaded in ModelService
+5. **Query Caching**: Cache frequent context assembly results
+6. **Async Execution**: All background operations use async/await
+
+**Scaling Considerations**:
+- **10 users**: ~1GB total memory, <5 min consolidation/day
+- **50 users**: ~3GB total memory, ~20 min consolidation/day
+- **100 users**: ~5GB total memory, ~40 min consolidation/day
+- **500 users**: ~20GB total memory, ~3 hours consolidation/day (needs optimization)
+
+**For Large Deployments** (>100 users):
+- Implement user sharding (consolidate different users on different days)
+- Use GPU for embedding generation (10x speedup)
+- Implement distributed consolidation (multiple workers)
+- Add consolidation priority (active users first)
+
+---
+
 ## Core Function: Behavioral Learning & Skill-Based Interaction
 
 The Behavioral Learning component of AMS maintains a **Skill Store**, a library of discrete, context-aware procedures that AICO learns and applies. This is more modular and interpretable than monolithic learned patterns.
