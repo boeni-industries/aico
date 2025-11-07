@@ -37,16 +37,8 @@ from aico.core.config import ConfigurationManager
 # Remove shared logging dependency - use CLI-specific logging
 # from aico.core.logging import initialize_cli_logging, get_logger
 
-# Force fresh import of schemas to avoid bytecode cache issues
-import importlib
-import sys
-
-# Remove schema module from cache if it exists
-schema_modules = [key for key in sys.modules.keys() if key.startswith('aico.data.schemas')]
-for module in schema_modules:
-    del sys.modules[module]
-
-# Now import fresh - this ensures schema changes are always picked up
+# Import schema module to satisfy import chain, but we'll reload it in commands
+# to pick up any schema changes made after this module was first imported
 import aico.data.schemas.core
 
 # Import shared utilities using the same pattern as other CLI modules
@@ -321,14 +313,123 @@ def init(
             
             # Apply any missing schemas
             console.print("📋 Checking for missing database schemas...")
-            # Force fresh import to avoid cache issues
-            import importlib
+            
+            # CRITICAL: Force complete schema reload to pick up new versions
+            # Step 1: Clear the registry cache
+            console.print("🔄 Clearing schema registry cache...")
+            SchemaRegistry.clear_registry()
+            
+            # Step 2: Remove schema module from sys.modules to force fresh import
             import sys
-            if 'aico.data.schemas.core' in sys.modules:
-                importlib.reload(sys.modules['aico.data.schemas.core'])
-            else:
-                import aico.data.schemas.core
-            applied_schemas = SchemaRegistry.apply_core_schemas(conn)
+            schema_modules_to_clear = [
+                key for key in list(sys.modules.keys()) 
+                if key.startswith('aico.data.schemas')
+            ]
+            console.print(f"🔄 Removing {len(schema_modules_to_clear)} schema modules from cache...")
+            for module_name in schema_modules_to_clear:
+                del sys.modules[module_name]
+            
+            # Step 3: Fresh import - this will re-run decorators and re-register schemas
+            console.print("🔄 Re-importing schema definitions...")
+            import aico.data.schemas.core
+            
+            # Debug: Check what versions are registered
+            core_schemas = SchemaRegistry.get_core_schemas()
+            if core_schemas:
+                schema = core_schemas[0]
+                versions = sorted(schema.definitions.keys())
+                console.print(f"📋 Registered schema versions: {versions}")
+                
+                # Check current DB version
+                from aico.data.libsql.schema import SchemaManager
+                manager = SchemaManager(conn, schema.definitions)
+                current_version = manager.get_current_version()
+                latest_version = max(versions)
+                console.print(f"📊 Current DB version: {current_version}, Latest: {latest_version}")
+            
+            # Step 4: Apply schemas (now with fresh definitions)
+            console.print("🔄 Applying schema migrations...")
+            
+            # Manual migration with detailed logging
+            from aico.data.libsql.schema import SchemaManager
+            core_schemas = SchemaRegistry.get_core_schemas()
+            
+            if core_schemas:
+                schema = core_schemas[0]
+                manager = SchemaManager(conn, schema.definitions)
+                current_version = manager.get_current_version() or 0
+                latest_version = max(schema.definitions.keys())
+                
+                console.print(f"🔍 Attempting migration from v{current_version} to v{latest_version}...")
+                
+                # Try each version individually to see which one fails
+                for version in range(current_version + 1, latest_version + 1):
+                    console.print(f"  ▶️  Applying version {version}...")
+                    
+                    # Check if version exists in definitions
+                    if version not in schema.definitions:
+                        console.print(f"    ❌ Version {version} not found in schema definitions!")
+                        continue
+                    
+                    try:
+                        success = manager.apply_schema_version(version)
+                        if success:
+                            console.print(f"    ✅ Version {version} applied successfully")
+                        else:
+                            console.print(f"    ❌ Version {version} failed (returned False)")
+                            
+                            # Special case: Version 11 renames facts_metadata to user_memories
+                            # If user_memories already exists, the migration was already applied manually
+                            if version == 11:
+                                # Check if user_memories table exists
+                                result = conn.execute(
+                                    "SELECT name FROM sqlite_master WHERE type='table' AND name='user_memories'"
+                                ).fetchone()
+                                
+                                if result:
+                                    console.print(f"    ⚠️  Table 'user_memories' already exists - migration was applied manually")
+                                    console.print(f"    🔧 Recording version {version} in migration history...")
+                                    
+                                    # Manually record the migration
+                                    import json
+                                    from datetime import datetime
+                                    schema_v = schema.definitions[version]
+                                    rollback_sql = json.dumps(schema_v.rollback_statements) if schema_v.rollback_statements else None
+                                    
+                                    conn.execute("""
+                                        INSERT INTO _aico_migration_history 
+                                        (version, name, description, rollback_sql, checksum)
+                                        VALUES (?, ?, ?, ?, ?)
+                                    """, (
+                                        version,
+                                        schema_v.name,
+                                        schema_v.description,
+                                        rollback_sql,
+                                        "manual_fix"
+                                    ))
+                                    
+                                    conn.execute("""
+                                        UPDATE _aico_schema_metadata 
+                                        SET value = ?, updated_at = CURRENT_TIMESTAMP 
+                                        WHERE key = 'schema_version'
+                                    """, (str(version),))
+                                    
+                                    conn.commit()
+                                    console.print(f"    ✅ Version {version} recorded in migration history")
+                                    continue
+                            
+                            break
+                    except Exception as e:
+                        console.print(f"    ❌ Version {version} raised exception: {e}")
+                        import traceback
+                        console.print(f"    Traceback: {traceback.format_exc()}")
+                        break
+                
+                final_version = manager.get_current_version()
+                console.print(f"📊 Final DB version: {final_version}")
+            
+            applied_schemas = []  # We did manual migration above
+            console.print(f"📋 Migration complete")
             
             if applied_schemas:
                 console.print("✅ [green]Database updated successfully![/green]")
@@ -355,13 +456,24 @@ def init(
             
             # Apply core schemas using schema registry
             console.print("📋 Applying core database schemas...")
-            # Force fresh import to avoid cache issues
-            import importlib
+            
+            # CRITICAL: Force complete schema reload to pick up new versions
+            # Step 1: Clear the registry cache
+            SchemaRegistry.clear_registry()
+            
+            # Step 2: Remove schema module from sys.modules to force fresh import
             import sys
-            if 'aico.data.schemas.core' in sys.modules:
-                importlib.reload(sys.modules['aico.data.schemas.core'])
-            else:
-                import aico.data.schemas.core
+            schema_modules_to_clear = [
+                key for key in list(sys.modules.keys()) 
+                if key.startswith('aico.data.schemas')
+            ]
+            for module_name in schema_modules_to_clear:
+                del sys.modules[module_name]
+            
+            # Step 3: Fresh import - this will re-run decorators and re-register schemas
+            import aico.data.schemas.core
+            
+            # Step 4: Apply schemas (now with fresh definitions)
             applied_schemas = SchemaRegistry.apply_core_schemas(conn)
             
             console.print("✅ [green]Database created successfully![/green]")

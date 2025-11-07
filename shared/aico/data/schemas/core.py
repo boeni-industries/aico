@@ -745,5 +745,50 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "CREATE INDEX IF NOT EXISTS idx_facts_favorite ON facts_metadata(user_id, is_favorite) WHERE is_favorite = 1",
             "CREATE INDEX IF NOT EXISTS idx_facts_content_type ON facts_metadata(user_id, content_type) WHERE extraction_method = 'user_curated'",
         ]
+    ),
+    
+    12: SchemaVersion(
+        version=12,
+        name="AMS Phase 1 - Temporal Metadata Support",
+        description="Add temporal metadata column to user_memories for Adaptive Memory System temporal intelligence",
+        sql_statements=[
+            # Add temporal_metadata column to user_memories (formerly facts_metadata)
+            # Stores TemporalMetadata as JSON for flexibility
+            "ALTER TABLE user_memories ADD COLUMN temporal_metadata TEXT DEFAULT NULL",
+            
+            # Add indexes for temporal queries
+            "CREATE INDEX IF NOT EXISTS idx_user_memories_temporal ON user_memories(json_extract(temporal_metadata, '$.last_accessed'), json_extract(temporal_metadata, '$.confidence'))",
+            "CREATE INDEX IF NOT EXISTS idx_user_memories_superseded ON user_memories(json_extract(temporal_metadata, '$.superseded_by'))",
+        ],
+        rollback_statements=[
+            # Drop indexes
+            "DROP INDEX IF EXISTS idx_user_memories_superseded",
+            "DROP INDEX IF EXISTS idx_user_memories_temporal",
+            
+            # Note: SQLite doesn't support DROP COLUMN
+            # temporal_metadata column will remain after rollback but will be NULL and unused
+        ]
+    ),
+    
+    13: SchemaVersion(
+        version=13,
+        name="AMS Phase 1 - Consolidation State Tracking",
+        description="Add consolidation_state table for tracking memory consolidation progress",
+        sql_statements=[
+            # Create consolidation_state table
+            """CREATE TABLE IF NOT EXISTS consolidation_state (
+                id TEXT PRIMARY KEY,
+                state_json TEXT NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )""",
+            
+            # Create index for recent state queries
+            "CREATE INDEX IF NOT EXISTS idx_consolidation_state_updated ON consolidation_state(updated_at DESC)",
+        ],
+        rollback_statements=[
+            # Drop index and table
+            "DROP INDEX IF EXISTS idx_consolidation_state_updated",
+            "DROP TABLE IF EXISTS consolidation_state",
+        ]
     )
 })

@@ -22,7 +22,7 @@ This store focuses solely on conversational segment retrieval.
 
 import asyncio
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from dataclasses import dataclass
 import uuid
 import math
@@ -34,6 +34,7 @@ from aico.core.config import ConfigurationManager
 from aico.core.paths import AICOPaths
 from aico.core.logging import get_logger
 from .fusion import calculate_rrf_scores, calculate_weighted_scores
+from .temporal import TemporalMetadata
 
 logger = get_logger("shared", "ai.memory.semantic")
 
@@ -86,8 +87,13 @@ class SemanticMemoryStore:
         self._semantic_weight = memory_config.get("semantic_weight", 0.7)
         self._bm25_weight = memory_config.get("bm25_weight", 0.3)
         
+        # Temporal configuration (AMS)
+        temporal_config = self.config.get("core.memory.temporal", {})
+        self._temporal_enabled = temporal_config.get("enabled", True)
+        self._confidence_decay_rate = temporal_config.get("confidence_decay_rate", 0.001)
+        
         # CRITICAL: This log MUST show all three parameters to confirm code is loaded
-        logger.info(f"✅ SemanticMemoryStore V3 initialized (fusion={self._fusion_method}, rrf_k={self._rrf_rank_constant}, bm25_min_idf={self._bm25_min_idf})")
+        logger.info(f"✅ SemanticMemoryStore V3 initialized (fusion={self._fusion_method}, rrf_k={self._rrf_rank_constant}, bm25_min_idf={self._bm25_min_idf}, temporal={self._temporal_enabled})")
         logger.warning(f"🔍 DEBUG: Config values loaded - fusion={self._fusion_method}, rrf_k={self._rrf_rank_constant}, bm25_min_idf={self._bm25_min_idf}")
     
     def set_modelservice(self, modelservice):
@@ -178,17 +184,41 @@ class SemanticMemoryStore:
                 logger.error("No embedding returned from modelservice")
                 return False
             
-            # Store in ChromaDB
+            # Create temporal metadata (AMS)
+            temporal_meta = None
+            if self._temporal_enabled:
+                temporal_meta = TemporalMetadata(
+                    created_at=segment.timestamp,
+                    last_updated=segment.timestamp,
+                    last_accessed=segment.timestamp,
+                    access_count=0,
+                    confidence=1.0,
+                    version=1
+                )
+            
+            # Store in ChromaDB with temporal metadata
+            metadata = {
+                'user_id': user_id,
+                'conversation_id': conversation_id,
+                'role': role,
+                'timestamp': segment.timestamp.isoformat()
+            }
+            
+            # Add temporal fields to metadata
+            if temporal_meta:
+                metadata.update({
+                    'created_at': temporal_meta.created_at.isoformat(),
+                    'confidence': temporal_meta.confidence,
+                    'version': temporal_meta.version,
+                    'last_accessed': temporal_meta.last_accessed.isoformat(),
+                    'access_count': temporal_meta.access_count
+                })
+            
             self._collection.add(
                 ids=[segment.segment_id],
                 embeddings=[embedding],
                 documents=[content],
-                metadatas=[{
-                    'user_id': user_id,
-                    'conversation_id': conversation_id,
-                    'role': role,
-                    'timestamp': segment.timestamp.isoformat()
-                }]
+                metadatas=[metadata]
             )
             
             logger.info(f"✅ Stored segment: {role} message ({len(content)} chars)")
@@ -292,10 +322,15 @@ class SemanticMemoryStore:
             
             for doc in scored_docs:
                 if doc['hybrid_score'] >= similarity_threshold:
+                    # Apply confidence decay (AMS)
+                    metadata = doc['metadata']
+                    if self._temporal_enabled and 'confidence' in metadata and 'last_accessed' in metadata:
+                        metadata = self._apply_confidence_decay(metadata)
+                    
                     segments.append({
                         'segment_id': doc['id'],
                         'content': doc['document'],
-                        'metadata': doc['metadata'],
+                        'metadata': metadata,
                         'distance': doc['distance'],
                         'similarity': doc['semantic_score'],
                         'bm25_score': doc['bm25_score'],
@@ -443,3 +478,42 @@ class SemanticMemoryStore:
                 'total_segments': 0,
                 'error': str(e)
             }
+    
+    def _apply_confidence_decay(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Apply confidence decay based on time since last access (AMS).
+        
+        Args:
+            metadata: Segment metadata with temporal fields
+            
+        Returns:
+            Updated metadata with decayed confidence
+        """
+        try:
+            last_accessed_str = metadata.get('last_accessed')
+            if not last_accessed_str:
+                return metadata
+            
+            # Parse last accessed time
+            last_accessed = datetime.fromisoformat(last_accessed_str.replace('Z', ''))
+            
+            # Calculate days since last access
+            now = datetime.utcnow()
+            days_since = (now - last_accessed).total_seconds() / 86400.0
+            
+            # Apply decay
+            current_confidence = metadata.get('confidence', 1.0)
+            decay_factor = (1 - self._confidence_decay_rate) ** days_since
+            new_confidence = current_confidence * decay_factor
+            
+            # Update metadata
+            metadata['confidence'] = max(0.0, min(1.0, new_confidence))
+            metadata['last_accessed'] = now.isoformat()
+            metadata['access_count'] = metadata.get('access_count', 0) + 1
+            
+            logger.debug(f"Confidence decay: {current_confidence:.3f} → {new_confidence:.3f} ({days_since:.1f} days)")
+            
+        except Exception as e:
+            logger.debug(f"Failed to apply confidence decay: {e}")
+        
+        return metadata

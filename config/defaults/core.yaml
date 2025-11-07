@@ -339,5 +339,63 @@ memory:
         similarity_threshold: 0.85  # Cosine similarity threshold for semantic blocking (0-1, higher = stricter)
         use_llm_matching: true  # Use LLM (Eve) for entity matching with chain-of-thought reasoning
         use_llm_merging: true  # Use LLM (Eve) for entity merging with conflict resolution
+  
+  # Adaptive Memory System (AMS) - Brain-inspired memory consolidation and learning
+  # Temporal Intelligence - Preference evolution and time-aware memory
+  temporal:
+    enabled: true
+    metadata_retention_days: 365  # Keep temporal metadata for 1 year
+    evolution_tracking: true  # Track preference evolution over time
+    confidence_decay_rate: 0.001  # Confidence decay per day without access (0.1% per day)
+    max_fact_variants: 3  # Maximum variants per fact (prevents bloat)
+    variant_cleanup_days: 90  # Delete low-confidence variants after 90 days
+  
+  # Memory Consolidation - Brain-inspired transfer from working to semantic memory
+  consolidation:
+    enabled: true
+    schedule: "0 2 * * *"  # Cron: Daily at 2 AM
+    user_sharding_cycle_days: 7  # Process 1/7 of users each day (7-day cycle)
+    max_concurrent_users: 4  # Maximum parallel consolidation jobs
+    max_duration_minutes: 60  # Maximum duration per user
+    replay_batch_size: 100  # Experiences per replay batch
+    priority_alpha: 0.6  # Priority sampling weight (0.0 = uniform, 1.0 = greedy)
+    
+    # Idle detection for consolidation
+    idle_detection:
+      cpu_threshold_percent: 20  # Trigger when CPU < 20%
+      idle_duration_seconds: 300  # 5 minutes continuous idle required
+      check_interval_seconds: 60  # Check every minute
+  
+  # Behavioral Learning - Skill-based interaction with RLHF (Phase 3 - not yet implemented)
+  behavioral:
+    enabled: false  # Disabled until Phase 3 implementation
+    learning_rate: 0.1  # How quickly confidence scores adjust to feedback
+    exploration_rate: 0.1  # Probability of trying lower-confidence skills
+    max_skills_per_user: 100  # Maximum learned skills per user
+    skill_selection_timeout_ms: 10  # Max time for skill selection
+    min_confidence_threshold: 0.3  # Don't use skills below this confidence
+    preference_vector_dim: 16  # Number of explicit style dimensions
+    num_context_buckets: 100  # Context bucketing for contextual learning
+    
+    # Feedback classification (multilingual, uses embeddings)
+    feedback_classifier:
+      similarity_threshold: 0.6  # Minimum cosine similarity for category match
+      embedding_model: "paraphrase-multilingual-mpnet-base-v2"  # Reuse existing model
+    
+    # Contextual bandit learning (Thompson Sampling)
+    contextual_bandit:
+      enabled: false  # Disabled until Phase 3
+      algorithm: "thompson_sampling"  # Thompson Sampling for exploration/exploitation
+      update_interval_hours: 24  # Run batch learning daily at 4 AM
+      min_trajectories: 10  # Minimum trajectories needed for update
+      prior_alpha: 1.0  # Beta distribution prior (successes)
+      prior_beta: 1.0  # Beta distribution prior (failures)
+    
+    # Trajectory logging for learning
+    trajectory_logging:
+      enabled: false  # Disabled until Phase 3
+      retention_days: 90  # Archive after 90 days
+      hard_delete_days: 365  # Delete after 1 year
+      keep_feedback_indefinitely: true  # Never delete trajectories with feedback
 
 # AI Processing Configuration

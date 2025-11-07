@@ -47,6 +47,7 @@ import json
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.data.lmdb import get_lmdb_path, initialize_lmdb_env
+from aico.ai.memory.temporal import TemporalMetadata
 
 logger = get_logger("shared", "ai.memory.working")
 
@@ -110,10 +111,21 @@ class WorkingMemoryStore:
                 else:
                     serializable_message[msg_key] = msg_value
             
+            # Create temporal metadata for this message
+            temporal_meta = TemporalMetadata(
+                created_at=timestamp,
+                last_updated=timestamp,
+                last_accessed=timestamp,
+                access_count=0,
+                confidence=1.0,
+                version=1
+            )
+            
             storage_data = {
                 **serializable_message,
                 "_stored_at": timestamp.isoformat() + "Z",
-                "_expires_at": (timestamp + timedelta(seconds=self._ttl_seconds)).isoformat() + "Z"
+                "_expires_at": (timestamp + timedelta(seconds=self._ttl_seconds)).isoformat() + "Z",
+                "temporal_metadata": temporal_meta.to_dict()
             }
 
             with self.env.begin(write=True, db=db) as txn:
@@ -154,6 +166,8 @@ class WorkingMemoryStore:
                             # Optional: could delete expired entries here in a separate write txn
                             continue
 
+                        # Update temporal metadata on access
+                        self._update_temporal_access(data)
                         history.append(data)
                         if len(history) >= limit:
                             break
@@ -286,3 +300,14 @@ class WorkingMemoryStore:
             return is_expired
         except (ValueError, TypeError):
             return True
+    
+    def _update_temporal_access(self, data: Dict[str, Any]) -> None:
+        """Update temporal metadata to record access."""
+        temporal_meta_dict = data.get("temporal_metadata")
+        if temporal_meta_dict:
+            try:
+                temporal_meta = TemporalMetadata.from_dict(temporal_meta_dict)
+                temporal_meta.record_access()
+                data["temporal_metadata"] = temporal_meta.to_dict()
+            except Exception as e:
+                logger.debug(f"Failed to update temporal metadata: {e}")
