@@ -542,14 +542,14 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
     }
 }
 
-# 3. Daily Behavioral Learning Batch (3 AM)
+# 3. Daily Behavioral Learning Batch (4 AM)
 {
     "task_id": "ams.behavioral.batch_refinement",
-    "schedule": "0 3 * * *",  # 3 AM daily
+    "schedule": "0 4 * * *",  # 4 AM daily
     "enabled": True,
     "config": {
         "min_feedback_count": 5,
-        "dpo_iterations": 3
+        "thompson_sampling_update": True  # Update Beta distribution parameters
     }
 }
 
@@ -995,21 +995,58 @@ The behavioral learning system will be implemented as a complete, integrated sol
 
 This section details all AI models, libraries, and technologies required to implement the behavioral learning system. **We maximize reuse of existing AICO infrastructure** to minimize dependencies and maintain consistency.
 
+### Embedding Usage Clarification
+
+**CRITICAL: Embeddings are ONLY used in TWO specific places:**
+
+1. **Multilingual Feedback Classification** (lines 707-772)
+   - **What**: Classify free-text user feedback ("too verbose", "wrong tone", etc.)
+   - **Model**: `paraphrase-multilingual-mpnet-base-v2` (768 dimensions)
+   - **When**: During nightly batch processing (3 AM scheduled task)
+   - **How**: Cosine similarity between feedback text embedding and category centroids
+   - **Why**: Enables multilingual feedback understanding without translation
+
+2. **Optional Topic Matching in Skill Triggers** (lines 1881-1898)
+   - **What**: Match conversation topic to skill trigger topics
+   - **Model**: Same `paraphrase-multilingual-mpnet-base-v2` (768 dimensions)
+   - **When**: During skill selection (real-time, if enabled)
+   - **How**: Cosine similarity between topic embeddings
+   - **Alternative**: Can use keyword-based Jaccard similarity instead (no embeddings)
+   - **Note**: This is OPTIONAL - keyword matching works fine for most cases
+
+**EMBEDDINGS ARE NOT USED FOR:**
+- ❌ Preference vectors (use explicit 16 dimensions, Euclidean distance)
+- ❌ Skill selection scoring (use explicit dimensions, Euclidean distance)
+- ❌ Thompson Sampling (uses Beta distributions, no embeddings)
+- ❌ Confidence updates (simple arithmetic, no embeddings)
+
+**Quick Reference Table:**
+
+| Component | Dimensions | Distance Metric | Uses Embeddings? |
+|-----------|-----------|-----------------|------------------|
+| **Preference Vectors** | 16 explicit | Euclidean | ❌ No |
+| **Skill Dimensions** | 16 explicit | Euclidean | ❌ No |
+| **Feedback Classification** | 768 (embedding) | Cosine | ✅ Yes |
+| **Topic Matching (optional)** | 768 (embedding) | Cosine | ✅ Yes (or keywords) |
+| **Thompson Sampling** | N/A (Beta dist) | N/A | ❌ No |
+
 ### Core AI & Machine Learning
 
-#### 1. **Embedding Models** (for Feedback Classification ONLY)
+#### 1. **Embedding Models** (for Feedback Classification & Optional Topic Matching)
 
-**Purpose**: Multilingual feedback text classification (not for preference vectors).
+**Purpose**: Multilingual feedback text classification and optional topic similarity.
 
 **Model**: **REUSE EXISTING** - `sentence-transformers/paraphrase-multilingual-mpnet-base-v2`
 - Already configured in `core.yaml` at `modelservice.transformers.models.embeddings`
 - Already managed by `TransformersManager` in modelservice
-- 768 dimensions (used for semantic memory and feedback classification)
-- **NOT used for preference vectors** - those use explicit 16 dimensions
+- 768 dimensions (used for semantic memory, feedback classification, optional topic matching)
+- **NOT used for preference vectors** - those use explicit 16 dimensions with Euclidean distance
 
-**Use Case**: Classify user feedback text ("too verbose", "too brief", etc.) across 50+ languages using embedding similarity to category centroids.
+**Use Cases**:
+1. Classify user feedback text across 50+ languages (cosine similarity to category centroids)
+2. Optional: Match conversation topics to skill triggers (cosine similarity between topic embeddings)
 
-**No Implementation Needed Here**: Preference vectors use explicit dimensions (see lines 786-810), not embeddings.
+**Distance Metric**: Cosine similarity (for 768-dim embeddings only)
 
 #### 2. **Contextual Bandit Learning** (Thompson Sampling)
 
@@ -1232,12 +1269,13 @@ class ContextPreferenceManager:
 
 #### 5. **Preference Alignment Computation**
 
-**Purpose**: Fast preference matching for skill selection.
+**Purpose**: Fast preference matching for skill selection using explicit dimensions.
 
 **Library**: **NumPy** (already present)
-- Use case: Compute Euclidean distance between preference vectors and skill dimension vectors
-- Advantages: No additional dependencies, <1ms for 100 skills
+- Use case: Compute Euclidean distance between 16-dimensional preference vectors and skill dimension vectors
+- Advantages: No additional dependencies, <1ms for 100 skills, no embeddings needed
 - Library: `numpy` only (no scipy needed)
+- **Distance Metric**: Euclidean distance (for explicit 16-dim vectors)
 
 **Why NumPy Instead of ChromaDB**: 
 - **Small scale**: 10-20 base skills + user-created skills = typically <100 total
@@ -1878,12 +1916,24 @@ def match_trigger(trigger_context: dict, current_context: dict) -> float:
     if trigger_context.get("sentiment") == current_context.get("sentiment"):
         score += 0.15
     
-    # Embedding similarity (30%): topic/entities
-    topic_sim = cosine_similarity(
-        trigger_context["topic_embedding"],
-        current_context["topic_embedding"]
-    )
-    score += 0.3 * topic_sim
+    # Topic matching (30%): keyword overlap or semantic similarity
+    # Note: Can use either keyword matching OR embeddings for topic similarity
+    # If using embeddings: Generate topic embeddings via ModelService, use cosine similarity
+    # If using keywords: Use Jaccard similarity on topic keywords
+    if "topic_embedding" in trigger_context and "topic_embedding" in current_context:
+        # Embedding-based topic matching (requires ModelService call)
+        topic_sim = cosine_similarity(
+            trigger_context["topic_embedding"],
+            current_context["topic_embedding"]
+        )
+        score += 0.3 * topic_sim
+    elif "topic_keywords" in trigger_context and "topic_keywords" in current_context:
+        # Keyword-based topic matching (no embeddings needed)
+        trigger_keywords = set(trigger_context["topic_keywords"])
+        current_keywords = set(current_context["topic_keywords"])
+        if trigger_keywords or current_keywords:
+            jaccard_sim = len(trigger_keywords & current_keywords) / len(trigger_keywords | current_keywords)
+            score += 0.3 * jaccard_sim
     
     return score  # Range: [0.0, 1.0]
 ```
@@ -1894,7 +1944,7 @@ def match_trigger(trigger_context: dict, current_context: dict) -> float:
 - **15% Sentiment**: User's emotional state (positive, negative, neutral)
 - **30% Topic Similarity**: Semantic similarity of conversation topic
 
-**User Preference Matching**: Handled separately via preference vector cosine similarity (see lines 1089-1094)
+**User Preference Matching**: Handled separately via preference vector Euclidean distance (see lines 1203-1213). Uses explicit 16-dimensional preference vectors, NOT embeddings.
 
 **Base Skills Definition** (`config/defaults/behavioral_skills.yaml`):
 ```yaml
@@ -1903,19 +1953,19 @@ base_skills:
     skill_name: "Concise Response"
     template: "Provide a brief, bullet-point answer. Maximum 3 points."
     trigger: {intent: ["question", "request"]}
-    dimensions: [0.2, 0.5, 0.5, 0.5, 0.3, 0.7, 0.4, 0.5, 0.5, 0.5, 0.6, 0.5, 0.5, 0.5]  # 16 floats
+    dimensions: [0.2, 0.5, 0.5, 0.5, 0.3, 0.7, 0.4, 0.5, 0.5, 0.5, 0.6, 0.5, 0.5, 0.5, 0.5, 0.5]  # 16 floats
     # [verbosity, formality, technical_depth, proactivity, emotional_expression, structure,
     #  explanation_depth, example_usage, question_asking, reassurance_level, directness,
-    #  enthusiasm, patience, creativity, (2 reserved)]
+    #  enthusiasm, patience, creativity, reserved_1, reserved_2]
     
   - skill_id: "detailed_explanation"
     skill_name: "Detailed Explanation"
     template: "Provide in-depth explanation with examples and context."
     trigger: {intent: ["question", "learning"]}
-    dimensions: [0.9, 0.6, 0.7, 0.5, 0.4, 0.6, 0.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.7, 0.5]  # 16 floats
+    dimensions: [0.9, 0.6, 0.7, 0.5, 0.4, 0.6, 0.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.7, 0.5, 0.5, 0.5]  # 16 floats
     # [verbosity, formality, technical_depth, proactivity, emotional_expression, structure,
     #  explanation_depth, example_usage, question_asking, reassurance_level, directness,
-    #  enthusiasm, patience, creativity, (2 reserved)]
+    #  enthusiasm, patience, creativity, reserved_1, reserved_2]
     
   # ... 8 more base skills, each with explicit dimension values
 ```
