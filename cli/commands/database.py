@@ -158,7 +158,7 @@ app = typer.Typer(
     invoke_without_command=True,
     context_settings={"help_option_names": []}
 )
-console = Console()
+console = Console()  # Use default console
 
 
 def _get_database_connection(db_path: str, force_fresh: bool = False) -> EncryptedLibSQLConnection:
@@ -214,6 +214,10 @@ def _format_table_value(value, column_name: str, utc: bool = False, truncate: bo
         return ""
 
     str_value = str(value)
+    
+    # Don't format JSON columns
+    if str_value.startswith('{') or str_value.startswith('['):
+        return str_value
 
     # Detect timestamp columns by name and format
     timestamp_indicators = ['timestamp', 'created_at', 'updated_at', 'date', 'time']
@@ -1263,7 +1267,7 @@ def tail(
 @destructive("allows arbitrary SQL execution including DROP, DELETE, UPDATE")
 def exec(
     query: str = typer.Argument(..., help="SQL query to execute"),
-    format: str = typer.Option("table", "--format", help="Output format: table, json"),
+    format: str = typer.Option("table", "--format", help="Output format: table, json, raw"),
     utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Execute raw SQL query"""
@@ -1302,63 +1306,51 @@ def exec(
             
             data = [dict(zip(columns, row)) for row in result]
             console.print(json.dumps(data, indent=2, default=str))
+        elif format == "raw":
+            # Raw output - just print values without formatting
+            for row in result:
+                for val in row:
+                    print(val if val is not None else "")
         else:
-            # Table format
+            # Table format - use plain print to avoid Rich truncation
             if result and len(result[0]) > 0:
-                # Create table with dynamic columns
-                table = Table(
-                    title="✨ [bold cyan]Query Results[/bold cyan]",
-                    title_justify="left",
-                    border_style="bright_blue",
-                    header_style="bold yellow",
-                    box=box.SIMPLE_HEAD,
-                    padding=(0, 1),
-                    expand=True  # Allow table to expand to full width
-                )
-                
-                # Get proper column names from query description
+                # Get column names
                 try:
-                    # For simple queries, try to get column names from cursor description
                     cursor = conn.execute(query)
                     if hasattr(cursor, 'description') and cursor.description:
                         columns = [desc[0] for desc in cursor.description]
                     else:
-                        # Fallback: try to parse column names from query
-                        if "COUNT(*)" in query.upper():
-                            columns = ["count"]
-                        elif "SELECT *" in query.upper():
-                            # Get table name and use PRAGMA table_info
-                            import re
-                            table_match = re.search(r'FROM\s+(\w+)', query, re.IGNORECASE)
-                            if table_match:
-                                table_name = table_match.group(1)
-                                table_info = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-                                columns = [col[1] for col in table_info]
-                            else:
-                                columns = [f"col_{i+1}" for i in range(len(result[0]))]
-                        else:
-                            columns = [f"col_{i+1}" for i in range(len(result[0]))]
+                        columns = [f"col_{i+1}" for i in range(len(result[0]))]
                 except Exception:
-                    # Final fallback
                     columns = [f"col_{i+1}" for i in range(len(result[0]))]
                 
-                for col in columns:
-                    col_header = col + get_timezone_suffix(utc) if col.lower() in ['timestamp', 'created_at', 'updated_at', 'date'] else col
-                    # Enable wrapping for potentially long content
-                    table.add_column(col_header, style="white", overflow="fold", no_wrap=False)
+                # Print header
+                print()
+                print("✨ Query Results")
+                print()
                 
-                # Add rows
+                # Print column headers
+                print("  ".join(columns))
+                print("─" * 100)
+                
+                # Print rows
                 for row in result:
-                    row_data = []
+                    row_values = []
                     for i, val in enumerate(row):
-                        # Do not truncate values for exec command
                         formatted_value = _format_table_value(val, columns[i], utc, truncate=False)
-                        row_data.append(formatted_value)
-                    table.add_row(*row_data)
+                        row_values.append(str(formatted_value))
+                    
+                    # Print each row - one value per line if multiple columns
+                    if len(row_values) == 1:
+                        print(row_values[0])
+                    else:
+                        for j, (col, val) in enumerate(zip(columns, row_values)):
+                            print(f"{col}: {val}")
+                        print()  # Blank line between rows
                 
-                console.print()
-                console.print(table)
-                console.print()
+                print()
+                print(f"({len(result)} row{'s' if len(result) != 1 else ''})")
+                print()
             else:
                 console.print("[yellow]Query executed successfully (no results)[/yellow]")
         
