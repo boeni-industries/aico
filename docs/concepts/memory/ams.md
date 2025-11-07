@@ -393,7 +393,7 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
 **1. Embedding Generation** (via ModelService)
 - **Library**: `sentence-transformers` (Hugging Face)
 - **Model**: `paraphrase-multilingual-mpnet-base-v2` (768 dimensions)
-- **Purpose**: Generate embeddings for semantic search, feedback classification, skill matching
+- **Purpose**: Generate embeddings for semantic search and feedback classification
 - **Memory**: ~500MB model size
 - **Compute**: ~50-100ms per embedding (CPU), ~10-20ms (GPU)
 - **Usage**: Every semantic query, fact storage, context retrieval, feedback classification
@@ -464,7 +464,7 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
 - **Compute Time**: 5-15ms (preference vectors pre-computed, no embedding generation)
   - Skill matching: 2-5ms (pattern matching)
   - Preference lookup: 1-3ms (libSQL, returns cached vector)
-  - Preference alignment: 2-5ms (cosine similarity with pre-computed skill vectors)
+  - Preference alignment: 2-5ms (Euclidean distance with skill dimension vectors)
   - Template application: 1-2ms (string operations)
 - **Memory Impact**: Minimal (~5-10MB)
 - **Frequency**: Every AI response generation
@@ -881,7 +881,7 @@ The behavioral learning system will be implemented as a complete, integrated sol
 **2. Learning System**
 - Real-time feedback processing via `POST /api/v1/memory/feedback` endpoint
 - Confidence score updates using weighted learning
-- User preference vector management with embedding-based updates
+- User preference vector management with explicit dimension updates
 - Trajectory logging for successful/unsuccessful interactions
 
 **3. Skill Selection Engine**
