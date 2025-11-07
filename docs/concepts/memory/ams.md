@@ -997,28 +997,22 @@ This section details all AI models, libraries, and technologies required to impl
 
 ### Embedding Usage Clarification
 
-**CRITICAL: Embeddings are ONLY used in TWO specific places:**
+**CRITICAL: Embeddings are used in TWO specific places for behavioral learning:**
 
-1. **Multilingual Feedback Classification** (lines 707-772)
+1. **Multilingual Feedback Classification** 
    - **What**: Classify free-text user feedback ("too verbose", "wrong tone", etc.)
    - **Model**: `paraphrase-multilingual-mpnet-base-v2` (768 dimensions)
    - **When**: During nightly batch processing (3 AM scheduled task)
    - **How**: Cosine similarity between feedback text embedding and category centroids
    - **Why**: Enables multilingual feedback understanding without translation
 
-2. **Optional Topic Matching in Skill Triggers** (lines 1881-1898)
+2. **Topic Matching in Skill Triggers**
    - **What**: Match conversation topic to skill trigger topics
    - **Model**: Same `paraphrase-multilingual-mpnet-base-v2` (768 dimensions)
-   - **When**: During skill selection (real-time, if enabled)
+   - **When**: During skill selection (real-time)
    - **How**: Cosine similarity between topic embeddings
-   - **Alternative**: Can use keyword-based Jaccard similarity instead (no embeddings)
-   - **Note**: This is OPTIONAL - keyword matching works fine for most cases
-
-**EMBEDDINGS ARE NOT USED FOR:**
-- ❌ Preference vectors (use explicit 16 dimensions, Euclidean distance)
-- ❌ Skill selection scoring (use explicit dimensions, Euclidean distance)
-- ❌ Thompson Sampling (uses Beta distributions, no embeddings)
-- ❌ Confidence updates (simple arithmetic, no embeddings)
+   - **Why**: Required for multilingual support - keyword matching fails across languages
+   - **Optimization**: Skill trigger embeddings cached (computed once), only current topic embedded per request
 
 **Quick Reference Table:**
 
@@ -1027,24 +1021,26 @@ This section details all AI models, libraries, and technologies required to impl
 | **Preference Vectors** | 16 explicit | Euclidean | ❌ No |
 | **Skill Dimensions** | 16 explicit | Euclidean | ❌ No |
 | **Feedback Classification** | 768 (embedding) | Cosine | ✅ Yes |
-| **Topic Matching (optional)** | 768 (embedding) | Cosine | ✅ Yes (or keywords) |
+| **Topic Matching** | 768 (embedding) | Cosine | ✅ Yes |
 | **Thompson Sampling** | N/A (Beta dist) | N/A | ❌ No |
 
 ### Core AI & Machine Learning
 
-#### 1. **Embedding Models** (for Feedback Classification & Optional Topic Matching)
+#### 1. **Embedding Models** (for Feedback Classification & Topic Matching)
 
-**Purpose**: Multilingual feedback text classification and optional topic similarity.
+**Purpose**: Multilingual feedback text classification and topic similarity matching.
 
 **Model**: **REUSE EXISTING** - `sentence-transformers/paraphrase-multilingual-mpnet-base-v2`
 - Already configured in `core.yaml` at `modelservice.transformers.models.embeddings`
 - Already managed by `TransformersManager` in modelservice
-- 768 dimensions (used for semantic memory, feedback classification, optional topic matching)
-- **NOT used for preference vectors** - those use explicit 16 dimensions with Euclidean distance
+- 768 dimensions (used for semantic memory, feedback classification, topic matching)
 
 **Use Cases**:
 1. Classify user feedback text across 50+ languages (cosine similarity to category centroids)
-2. Optional: Match conversation topics to skill triggers (cosine similarity between topic embeddings)
+2. Match conversation topics to skill triggers (cosine similarity between topic embeddings)
+   - Required for multilingual support - keyword matching fails across languages
+   - Skill trigger embeddings cached (computed once per skill)
+   - Only current conversation topic embedded per request (~50-100ms)
 
 **Distance Metric**: Cosine similarity (for 768-dim embeddings only)
 
@@ -1463,7 +1459,7 @@ tests/
 **Example Tests** (see `tests/unit/memory/test_skill_store.py`):
 ```python
 import pytest
-from aico.ai.memory.procedural import Skill, update_skill_confidence
+from aico.ai.memory.behavioral import Skill, update_skill_confidence
 
 def test_positive_feedback_increases_confidence():
     skill = Skill(user_id="test", skill_name="concise", 
@@ -1554,7 +1550,7 @@ memory:
 - `SkillSelectionResponse`: request_id, skill_id, skill_name, procedure_template, confidence_score, preference_alignment, is_exploration, selection_time_ms
 - `SkillApplicationEvent`: user_id, message_id, skill_id, skill_name, confidence_score, timestamp
 
-**Topics**: `memory/procedural/{feedback,skill_request,skill_response,skill_applied}/v1`
+**Topics**: `memory/behavioral/{feedback,skill_request,skill_response,skill_applied}/v1`
 
 ### Complete Technology Stack Summary
 
@@ -1577,8 +1573,6 @@ memory:
 | **Testing** | pytest | ✅ Existing | Unit/integration tests |
 
 ### New Dependencies
-
-**Only ONE new dependency required:**
 
 **No new dependencies required** - all behavioral learning uses existing AICO infrastructure:
 - NumPy for statistical computations and vector operations (already present)
@@ -1608,7 +1602,7 @@ uv pip install -e ".[backend,modelservice,cli,test]"
 - Thompson Sampling updates (offline): Minimal memory, <10MB (runs daily, not real-time)
 
 **Compute**:
-- Skill selection: <10ms (vector similarity lookup in ChromaDB)
+- Skill selection: <10ms 
 - Context extraction: ~20-30ms (already happening for conversations)
 - Feedback processing: <5ms (simple confidence update)
 - Thompson Sampling updates: <1s per user, runs offline as scheduled task (not user-facing)
@@ -1628,11 +1622,11 @@ uv pip install -e ".[backend,modelservice,cli,test]"
 - **Secure key management**: Uses AICO's key derivation system (`aico.security.AICOKeyManager`)
 
 ### User Control & Transparency
-- **Explicit opt-in**: Users must enable procedural learning (disabled by default)
+- **Explicit opt-in**: Users must enable behavioral learning (disabled by default)
 - **Full visibility**: Users can view all learned skills and preferences via UI
 - **Edit capabilities**: Users can modify or delete any learned skill
 - **Explanation system**: UI shows why each skill was applied (confidence score, preference alignment)
-- **Disable anytime**: Users can turn off procedural learning without data loss
+- **Disable anytime**: Users can turn off behavioral learning without data loss
 
 ### Data Governance & Compliance
 - **No external sharing**: Data never leaves device, no telemetry
@@ -1916,24 +1910,16 @@ def match_trigger(trigger_context: dict, current_context: dict) -> float:
     if trigger_context.get("sentiment") == current_context.get("sentiment"):
         score += 0.15
     
-    # Topic matching (30%): keyword overlap or semantic similarity
-    # Note: Can use either keyword matching OR embeddings for topic similarity
-    # If using embeddings: Generate topic embeddings via ModelService, use cosine similarity
-    # If using keywords: Use Jaccard similarity on topic keywords
+    # Topic matching (30%): semantic similarity via embeddings
+    # Required for multilingual support - works across 50+ languages
+    # Skill trigger embeddings are cached (computed once per skill)
+    # Only current conversation topic needs embedding per request
     if "topic_embedding" in trigger_context and "topic_embedding" in current_context:
-        # Embedding-based topic matching (requires ModelService call)
         topic_sim = cosine_similarity(
             trigger_context["topic_embedding"],
             current_context["topic_embedding"]
         )
         score += 0.3 * topic_sim
-    elif "topic_keywords" in trigger_context and "topic_keywords" in current_context:
-        # Keyword-based topic matching (no embeddings needed)
-        trigger_keywords = set(trigger_context["topic_keywords"])
-        current_keywords = set(current_context["topic_keywords"])
-        if trigger_keywords or current_keywords:
-            jaccard_sim = len(trigger_keywords & current_keywords) / len(trigger_keywords | current_keywords)
-            score += 0.3 * jaccard_sim
     
     return score  # Range: [0.0, 1.0]
 ```
@@ -1944,7 +1930,7 @@ def match_trigger(trigger_context: dict, current_context: dict) -> float:
 - **15% Sentiment**: User's emotional state (positive, negative, neutral)
 - **30% Topic Similarity**: Semantic similarity of conversation topic
 
-**User Preference Matching**: Handled separately via preference vector Euclidean distance (see lines 1203-1213). Uses explicit 16-dimensional preference vectors, NOT embeddings.
+**User Preference Matching**: Handled separately via preference vector Euclidean distance. Uses explicit 16-dimensional preference vectors, NOT embeddings.
 
 **Base Skills Definition** (`config/defaults/behavioral_skills.yaml`):
 ```yaml
@@ -2332,12 +2318,14 @@ async def schedule_consolidation():
 # LRU eviction: prioritize low-confidence skills regardless of type
 if storage_size > max_storage:
     evict_candidates = db.query("""
-        SELECT skill_id FROM skills 
-        WHERE user_id = ?
+        SELECT usc.skill_id 
+        FROM user_skill_confidence usc
+        JOIN skills s ON usc.skill_id = s.skill_id
+        WHERE usc.user_id = ?
         ORDER BY 
-            CASE WHEN skill_type = 'base' THEN confidence_score * 1.5 
-                 ELSE confidence_score END ASC,
-            last_used_at ASC
+            CASE WHEN s.skill_type = 'base' THEN usc.confidence_score * 1.5 
+                 ELSE usc.confidence_score END ASC,
+            usc.last_used_at ASC
         LIMIT 10
     """)
     # Base skills get 1.5x confidence boost (harder to evict)
