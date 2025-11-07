@@ -686,6 +686,8 @@ Explicit user feedback is the primary driver for skill acquisition and refinemen
   - Submit button sends to `POST /api/v1/memory/feedback`
 - Use existing Flutter HTTP client (http/dio) for API calls
 
+**How Verbal/Text Feedback is Used**: When users provide free-text feedback (in any of 50+ languages), the system uses embedding-based classification to extract preference signals without translation. The text is converted to a 768-dimensional embedding using AICO's existing multilingual model, then compared via cosine similarity to pre-defined category centroids (too_verbose, too_brief, wrong_tone, etc.) to identify the user's concern. This classification happens during nightly batch processing (not real-time) and updates the user's preference vector—a learned representation of their interaction style preferences (verbosity, formality, tone). These preference vectors then influence future skill selection through Thompson Sampling, allowing the system to adapt to each user's unique communication style across languages without requiring explicit translation or language-specific rules.
+
 **Backend API Endpoint**: `POST /api/v1/memory/feedback`
 
 **Request Schema** (`backend/api/memory/schemas.py`):
