@@ -432,17 +432,17 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
   - Memory: ~400MB
   - Compute: ~80-150ms per classification
 
-**6. Behavioral Learning** (Custom Lightweight)
-- **Library**: Custom Python implementation in `behavioral/rlhf.py` (no external RL framework)
+**6. Behavioral Learning** (Custom Lightweight - Prompt Selection Only)
+- **Library**: Custom Python implementation in `behavioral/thompson_sampling.py` (no external RL framework)
 - **Algorithm**: Thompson Sampling (contextual bandit) for skill selection
 - **Memory**: Minimal (~10-20MB)
-- **Compute**: 5-10ms per feedback, 2-5 min batch analysis/day
-- **Rationale**: 
-  - Learning prompt template **selection** via confidence scores, not LLM weight updates
-  - No neural network training required (simple statistical learning)
-  - Privacy-preserving, local-only processing
-  - Sufficient for use case (selecting which skill to apply)
-- **Note**: This is NOT LLM fine-tuning - we select between pre-written prompt templates based on user feedback
+- **Compute**: 5-10ms per feedback, <1s per user batch update/day
+- **What We Learn**: 
+  - **Prompt template SELECTION** via Thompson Sampling Beta distributions
+  - **NOT LLM retraining**: No model weights modified, no fine-tuning, no DPO/TRL
+  - **Statistical learning only**: Track success/failure rates per (context, skill) pair
+  - **Privacy-preserving**: Local-only processing, aggregated counts only
+- **Clarification**: We select between pre-written prompt templates based on which works best in each context. The LLM itself is never retrained or modified.
 
 ### Computational Impact Analysis
 
@@ -799,7 +799,7 @@ AICO actively refines its skills by learning from both its successes and failure
 
 - **Exploration**: Occasionally, AICO will try a slightly different interaction style and ask for feedback (e.g., "I usually use bullet points, but would a paragraph be better here?"). This is a form of active learning to discover better procedures.
 - **Self-Critique**: When an interaction receives negative feedback, the system logs it as an "unsuccessful trajectory."
-- **Preference Optimization**: Using an algorithm like Direct Preference Optimization (DPO), the system learns to prefer successful interaction patterns over unsuccessful ones. This explicitly teaches the model what *not* to do, leading to more robust and reliable behavior.
+- **Template Refinement**: The system learns which prompt templates work best through statistical learning (Thompson Sampling). No LLM retraining occurs - we select between pre-written prompt templates based on user feedback.
 
 #### Implementation Details
 
@@ -813,10 +813,10 @@ AICO actively refines its skills by learning from both its successes and failure
 - Store successful (positive feedback) and unsuccessful (negative feedback) trajectories
 - Use trajectories for offline learning and skill refinement
 
-**Preference Optimization** (Phase 3 implementation):
+**Template Selection Refinement** (Phase 3 implementation):
 - Batch process analyzes trajectories periodically
-- Uses DPO algorithm to update skill templates based on preference pairs
-- Increases likelihood of preferred patterns, decreases dispreferred ones
+- Updates Thompson Sampling parameters (Beta distributions) based on success/failure patterns
+- Adjusts skill selection probabilities without modifying LLM weights or templates
 
 ---
 
@@ -972,6 +972,8 @@ preference_embedding = embeddings_model.encode(user_preference_description)
 - No neural network training required
 
 **How It Works**: Each skill maintains Beta distribution parameters (α, β) representing success/failure counts. Thompson Sampling draws from these distributions to balance exploration (trying uncertain skills) vs. exploitation (using proven skills).
+
+**Key Point**: This learns which **prompt template to select**, not how to modify the LLM. Skills are pre-written prompt templates (e.g., "Be concise", "Provide detailed explanation"). Thompson Sampling learns which template works best in each context through statistical learning from user feedback.
 
 **Implementation** (`shared/aico/ai/memory/behavioral/thompson_sampling.py`):
 ```python
@@ -1435,7 +1437,7 @@ memory:
 | **Sentiment Analysis** | `bert-base-multilingual-uncased-sentiment` | ✅ Existing | Emotional context |
 | **Vector Store** | ChromaDB | ✅ Existing | Skill similarity search |
 | **Database** | libSQL | ✅ Existing | Skill/preference storage |
-| **RLHF/DPO** | TRL (Hugging Face) | ➕ New | Preference optimization |
+| **Contextual Bandit** | Thompson Sampling (custom) | ➕ New | Statistical skill selection |
 | **Logging** | ZeroMQ message bus | ✅ Existing | Unified logging |
 | **Config** | YAML | ✅ Existing | Configuration management |
 | **Validation** | Pydantic v2 | ✅ Existing | Data validation |
@@ -1472,13 +1474,13 @@ uv pip install -e ".[backend,modelservice,cli,test]"
 
 **Memory**:
 - No additional runtime memory (reusing existing models)
-- DPO training (offline): ~2-4GB during batch training (runs daily, not real-time)
+- Thompson Sampling updates (offline): Minimal memory, <10MB (runs daily, not real-time)
 
 **Compute**:
 - Skill selection: <10ms (vector similarity lookup in ChromaDB)
 - Context extraction: ~20-30ms (already happening for conversations)
 - Feedback processing: <5ms (simple confidence update)
-- DPO training: Runs offline as scheduled task (not user-facing)
+- Thompson Sampling updates: <1s per user, runs offline as scheduled task (not user-facing)
 
 **All operations run locally on CPU; no GPU required.**
 
@@ -1507,7 +1509,7 @@ uv pip install -e ".[backend,modelservice,cli,test]"
 - **Audit logging**: All skill applications logged for review
 - **Message bus security**: CurveZMQ encryption, topic isolation, access control
 - **GDPR-ready**: Full access, modify, delete, export rights
-- **Privacy-preserving**: DPO uses aggregated patterns, not raw messages
+- **Privacy-preserving**: Thompson Sampling uses aggregated success/failure counts, not raw messages
 
 ---
 
@@ -1566,18 +1568,17 @@ logger.info("Skill selected", extra={
 - **Processing Overhead**: Average skill selection time (target: <10ms)
 - **Scalability**: Performance with increasing user count and skill library size
 
-### DPO Template Refinement Metrics
+### Thompson Sampling Batch Update Metrics
 
-**Logged after each batch refinement** (`metric_type: "behavioral_memory_dpo"`):
+**Logged after each batch update** (`metric_type: "behavioral_memory_thompson_sampling"`):
 ```python
-logger.info("DPO template refinement completed", extra={
+logger.info("Thompson Sampling parameters updated", extra={
     "trajectories_analyzed": len(trajectories),
-    "preferred_count": len(preferred),
-    "dispreferred_count": len(dispreferred),
-    "templates_updated": len(improved_templates),
-    "avg_confidence_improvement": avg_improvement,
-    "refinement_duration_seconds": duration,
-    "metric_type": "behavioral_memory_dpo"
+    "skills_updated": len(updated_skills),
+    "avg_alpha_change": avg_alpha_change,
+    "avg_beta_change": avg_beta_change,
+    "update_duration_seconds": duration,
+    "metric_type": "behavioral_memory_thompson_sampling"
 })
 ```
 
@@ -2189,7 +2190,7 @@ The architecture described in this document is inspired by several key research 
 
 - **Agent Self-Correction**:
   - [Agent Q: Advanced Reasoning and Learning for Autonomous AI Agents](https://arxiv.org/abs/2408.07199)
-  - This research inspires our self-correction and exploration mechanism, particularly the use of preference optimization (like DPO) to learn from both successful and unsuccessful interactions.
+  - This research inspires our self-correction and exploration mechanism, particularly the use of statistical learning from successful and unsuccessful interactions.
 
 - **Prioritized Experience Replay**:
   - [Prioritized Experience Replay (Schaul et al., 2015)](https://arxiv.org/abs/1511.05952)
