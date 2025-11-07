@@ -1749,19 +1749,25 @@ consolidation:
 
 **Replay Prioritization Algorithm** (based on Prioritized Experience Replay):
 ```python
+import random
+
 # Priority = |importance| + recency_bonus + feedback_bonus
 priority_i = abs(importance_score_i) + (1.0 / days_since_i) + (1.0 if has_feedback_i else 0.0)
 
-# Efficient sampling using SumTree (O(log N) instead of O(N))
-# SumTree stores priorities in binary tree structure
-# Sampling: uniform random [0, total_priority], traverse tree in O(log N)
-# Update: propagate priority changes up tree in O(log N)
-# α = 0.6 (config: consolidation.priority_alpha)
+# Simple weighted sampling using Python's random.choices
+# O(N) complexity but sufficient for typical replay buffer sizes (<10,000 experiences)
+priorities = [calculate_priority(exp) for exp in experiences]
+selected_experiences = random.choices(
+    experiences,
+    weights=priorities,
+    k=batch_size
+)
 ```
 - **Importance score**: Cosine similarity to recent queries (last 10 queries)
 - **Recency bonus**: `1 / max(1, days_since_interaction)` (avoid division by zero)
 - **Feedback bonus**: +1.0 if interaction has user feedback
-- **Implementation**: Use SumTree data structure for O(log N) sampling
+- **Implementation**: Simple weighted sampling (O(N)) - sufficient for expected buffer sizes
+- **Future optimization**: If replay buffer exceeds 10,000 experiences, consider SumTree (O(log N))
 
 **Memory Reconsolidation Strategy** (with variant limits):
 ```python
@@ -2350,7 +2356,7 @@ if storage_size > max_storage:
 7. **Concurrent Feedback**: Last-write-wins for confidence updates (acceptable for this use case)
 8. **Embedding Timing**: 50-100ms is per-embedding; semantic query does 1 embedding + vector search
 9. **Schedule Coordination**: Consolidation (2 AM), Feedback batch (4 AM) to avoid resource contention
-10. **SumTree Usage**: Only used if replay buffer > 1000 items; simple weighted sampling for smaller buffers
+10. **Prioritized Sampling**: Simple weighted sampling (O(N)) used for all buffer sizes; sufficient for expected <10,000 experiences per user
 
 ---
 
