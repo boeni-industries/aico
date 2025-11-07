@@ -51,7 +51,8 @@ class ContextAssembler:
             behavioral_store
         )
         
-        self.scorer = ContextScorer()
+        # Initialize scorer with temporal intelligence enabled (AMS Phase 1)
+        self.scorer = ContextScorer(temporal_enabled=True)
         self.graph_ranker = GraphContextRanker()
         
         # KG components
@@ -223,6 +224,9 @@ class ContextAssembler:
                 f"strength={conversation_strength:.2f}, time={assembly_time:.1f}ms"
             )
             
+            # Calculate temporal statistics (AMS Phase 1)
+            temporal_stats = self._calculate_temporal_stats(ranked_items)
+            
             result = {
                 "memory_context": memory_context,
                 "knowledge_graph": kg_context,
@@ -230,7 +234,8 @@ class ContextAssembler:
                     "total_items": len(ranked_items),
                     "conversation_strength": conversation_strength,
                     "assembly_time_ms": assembly_time,
-                    "tiers_accessed": self._get_accessed_tiers(ranked_items)
+                    "tiers_accessed": self._get_accessed_tiers(ranked_items),
+                    "temporal_stats": temporal_stats  # AMS Phase 1
                 }
             }
             
@@ -311,6 +316,55 @@ class ContextAssembler:
         """Get list of memory tiers that were accessed."""
         tiers = set(item.source_tier for item in items)
         return sorted(list(tiers))
+    
+    def _calculate_temporal_stats(self, items: List[ContextItem]) -> Dict[str, Any]:
+        """
+        Calculate temporal statistics for context items (AMS Phase 1).
+        
+        Args:
+            items: Context items
+            
+        Returns:
+            Dictionary with temporal statistics
+        """
+        if not items:
+            return {
+                "avg_age_hours": 0,
+                "oldest_item_hours": 0,
+                "newest_item_hours": 0,
+                "recency_distribution": {}
+            }
+        
+        now = datetime.utcnow()
+        ages_hours = [(now - item.timestamp).total_seconds() / 3600.0 for item in items]
+        
+        # Calculate age distribution buckets
+        recency_buckets = {
+            "last_hour": 0,
+            "last_day": 0,
+            "last_week": 0,
+            "last_month": 0,
+            "older": 0
+        }
+        
+        for age in ages_hours:
+            if age < 1:
+                recency_buckets["last_hour"] += 1
+            elif age < 24:
+                recency_buckets["last_day"] += 1
+            elif age < 168:  # 7 days
+                recency_buckets["last_week"] += 1
+            elif age < 720:  # 30 days
+                recency_buckets["last_month"] += 1
+            else:
+                recency_buckets["older"] += 1
+        
+        return {
+            "avg_age_hours": round(sum(ages_hours) / len(ages_hours), 2),
+            "oldest_item_hours": round(max(ages_hours), 2),
+            "newest_item_hours": round(min(ages_hours), 2),
+            "recency_distribution": recency_buckets
+        }
     
     async def query_memories(self, query) -> Any:
         """

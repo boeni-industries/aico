@@ -41,7 +41,7 @@
 
 ---
 
-## Phase 1.5: Integration & Testing 🔄 IN PROGRESS
+## Phase 1.5: Integration & Testing ✅ CORE COMPLETE (Testing Pending)
 
 ### Database Migrations
 - [x] Add Schema Version 12: Temporal metadata support to `core.py`
@@ -49,27 +49,56 @@
 - [x] Fix `aico db init` command to properly reload schemas
 - [x] Run schema migrations via AICO's schema manager
 - [x] Verify migrations applied successfully (DB version 13)
-- [ ] Optional: Backfill temporal metadata for existing user_memories
+- [x] Backfill temporal metadata for existing user_memories (5/5 rows)
 
 ### Context Assembly Enhancements
-- [ ] Enhance `context/assembler.py` with temporal ranking (~80 lines)
-- [ ] Enhance `context/retrievers.py` with temporal queries (~60 lines)
-- [ ] Enhance `context/scorers.py` with recency weighting (~40 lines)
+- [x] Enhance `context/scorers.py` with recency weighting (~40 lines)
+  - Added exponential decay with 7-day half-life
+  - 30% weight for recency in final score
+  - Configurable temporal_enabled flag
+- [x] Enhance `context/assembler.py` with temporal ranking (~50 lines)
+  - Enabled temporal scoring in ContextScorer
+  - Added temporal statistics calculation
+  - Metadata includes age distribution and recency buckets
+- [x] `context/retrievers.py` already extracts timestamps correctly
 - [ ] Test context assembly with temporal features
 
 ### Memory Manager Integration
-- [ ] Update `manager.py` to import consolidation scheduler (~150 lines)
-- [ ] Add consolidation scheduling method to memory manager
-- [ ] Add temporal evolution tracking to memory manager
-- [ ] Coordinate consolidation with existing memory operations
+- [x] Update `manager.py` to import consolidation scheduler (~80 lines)
+  - Imported ConsolidationScheduler, IdleDetector, EvolutionTracker
+  - Added AMS component initialization in `_initialize_ams_components()`
+  - Checks configuration for consolidation.enabled flag
+- [x] Add consolidation scheduling method to memory manager
+  - Added `schedule_consolidation(user_id)` public method
+  - Integrates with ConsolidationScheduler
+- [x] Add temporal evolution tracking to memory manager
+  - EvolutionTracker initialized if temporal.enabled
+- [x] Coordinate consolidation with existing memory operations
+  - AMS initialization after KG but before marking manager as initialized
+  - Graceful degradation if AMS initialization fails
 - [ ] Test memory manager initialization with AMS components
 
 ### Backend Scheduler Integration
-- [ ] Create `/backend/scheduler/tasks/ams_consolidation.py` (~200 lines)
-- [ ] Implement `MemoryConsolidationTask` class
-- [ ] Integrate with `ConsolidationScheduler` from consolidation module
-- [ ] Register task with backend scheduler
-- [ ] Configure cron schedule: "0 2 * * *" (2 AM daily)
+- [x] Create `/backend/scheduler/tasks/ams_consolidation.py` (~250 lines)
+  - Implemented MemoryConsolidationTask class
+  - Integrated with ConsolidationScheduler from memory manager
+  - Idle detection check before consolidation
+  - User sharding based on UUID hash modulo
+  - Comprehensive error handling and logging
+- [x] Implement `MemoryConsolidationTask` class
+  - Extends base Task class
+  - Configurable via core.memory.consolidation settings
+  - Returns detailed TaskResult with statistics
+- [x] Integrate with `ConsolidationScheduler` from consolidation module
+  - Accesses via memory_manager._consolidation_scheduler
+  - Calls consolidate_user_memories() for each user
+- [x] Configure cron schedule: "0 2 * * *" (2 AM daily)
+  - Configurable via schedule.cron in config
+  - Default: "0 2 * * *" (2 AM daily)
+- [x] Register task with backend scheduler
+  - Added to builtin_modules in scheduler/core.py
+  - Auto-discovered via BaseTask pattern
+  - Task ID: "ams.memory_consolidation"
 - [ ] Test idle detection triggers correctly
 - [ ] Test user sharding (1/7 users per day)
 

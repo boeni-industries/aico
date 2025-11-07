@@ -79,6 +79,10 @@ from aico.ai.knowledge_graph import (
 )
 from aico.ai.knowledge_graph.modelservice_client import ModelserviceClient
 
+# Import AMS components (Phase 1.5)
+from .consolidation import ConsolidationScheduler, IdleDetector
+from .temporal import EvolutionTracker
+
 logger = get_logger("shared", "ai.memory.manager")
 
 
@@ -152,6 +156,12 @@ class MemoryManager(BaseAIProcessor):
         self._kg_modelservice: Optional[ModelserviceClient] = None
         self._kg_initialized = False
         self._kg_background_tasks: set = set()  # Track background extraction tasks
+        
+        # AMS components (Phase 1.5)
+        self._consolidation_scheduler: Optional[ConsolidationScheduler] = None
+        self._idle_detector: Optional[IdleDetector] = None
+        self._evolution_tracker: Optional[EvolutionTracker] = None
+        self._ams_enabled = False
         
         # Configuration following AICO patterns
         self._memory_config = self.config.get("core.memory", {})
@@ -247,6 +257,9 @@ class MemoryManager(BaseAIProcessor):
                 kg_modelservice=self._kg_modelservice if self._kg_initialized else None,
                 db_connection=self._db_connection
             )
+            
+            # Initialize AMS components (Phase 1.5)
+            await self._initialize_ams_components()
             
             self._initialized = True
             logger.info("🧠 [MEMORY_MANAGER] ✅ Memory manager initialized successfully")
@@ -373,6 +386,89 @@ class MemoryManager(BaseAIProcessor):
             print(f"🔍 [KG_DEBUG] Full traceback:\n{error_trace}")
             # Don't fail overall initialization if KG fails
             self._kg_initialized = False
+    
+    async def _initialize_ams_components(self) -> None:
+        """
+        Initialize Adaptive Memory System components (Phase 1.5).
+        
+        Initializes:
+        - ConsolidationScheduler: For memory consolidation orchestration
+        - IdleDetector: For system idle period detection
+        - EvolutionTracker: For temporal preference tracking
+        """
+        try:
+            print("🧠 [AMS] Initializing Adaptive Memory System components...")
+            logger.info("🧠 [AMS] Initializing Adaptive Memory System components...")
+            
+            # Check if AMS is enabled in configuration
+            ams_config = self._memory_config.get("consolidation", {})
+            if not ams_config.get("enabled", False):
+                print("🧠 [AMS] ⚠️  Consolidation disabled in configuration, skipping AMS initialization")
+                logger.info("🧠 [AMS] Consolidation disabled in configuration, skipping AMS initialization")
+                return
+            
+            # Initialize idle detector
+            idle_config = ams_config.get("idle_detection", {})
+            self._idle_detector = IdleDetector(
+                cpu_threshold_percent=idle_config.get("cpu_threshold", 20.0),
+                check_interval_seconds=idle_config.get("check_interval_seconds", 60)
+            )
+            print("🧠 [AMS] ✅ Idle detector initialized")
+            logger.info("🧠 [AMS] Idle detector initialized")
+            
+            # Initialize consolidation scheduler
+            self._consolidation_scheduler = ConsolidationScheduler(
+                idle_detector=self._idle_detector,
+                max_concurrent_users=ams_config.get("max_concurrent_users", 4),
+                max_duration_minutes=ams_config.get("max_duration_minutes", 60),
+                user_sharding_cycle_days=ams_config.get("user_sharding_cycle_days", 7)
+            )
+            print("🧠 [AMS] ✅ Consolidation scheduler initialized")
+            logger.info("🧠 [AMS] Consolidation scheduler initialized")
+            
+            # Initialize evolution tracker
+            temporal_config = self._memory_config.get("temporal", {})
+            if temporal_config.get("enabled", True):
+                self._evolution_tracker = EvolutionTracker()
+                print("🧠 [AMS] ✅ Evolution tracker initialized")
+                logger.info("🧠 [AMS] Evolution tracker initialized")
+            
+            self._ams_enabled = True
+            print("🧠 [AMS] ✅✅✅ Adaptive Memory System components initialized successfully!")
+            logger.info("🧠 [AMS] ✅ Adaptive Memory System components initialized successfully")
+            
+        except Exception as e:
+            print(f"🧠 [AMS] ❌❌❌ Failed to initialize AMS components: {e}")
+            logger.error(f"🧠 [AMS] ❌ Failed to initialize AMS components: {e}")
+            import traceback
+            error_trace = traceback.format_exc()
+            print(f"🧠 [AMS] Traceback:\n{error_trace}")
+            logger.error(f"🧠 [AMS] Traceback: {error_trace}")
+            # Don't fail overall initialization if AMS fails
+            self._ams_enabled = False
+    
+    async def schedule_consolidation(self, user_id: str) -> bool:
+        """
+        Schedule memory consolidation for a specific user (AMS Phase 1.5).
+        
+        Args:
+            user_id: User ID to consolidate memories for
+            
+        Returns:
+            True if consolidation was scheduled successfully
+        """
+        if not self._ams_enabled or not self._consolidation_scheduler:
+            logger.warning("🧠 [AMS] Consolidation not available - AMS not initialized")
+            return False
+        
+        try:
+            logger.info(f"🧠 [AMS] Scheduling consolidation for user {user_id}")
+            await self._consolidation_scheduler.schedule_user_consolidation(user_id)
+            return True
+        except Exception as e:
+            logger.error(f"🧠 [AMS] Failed to schedule consolidation: {e}")
+            return False
+    
     async def process(self, context: ProcessingContext) -> ProcessingResult:
         """
         Process memory operations based on context.

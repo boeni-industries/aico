@@ -49,7 +49,8 @@ class TaskRegistry:
     async def _load_builtin_tasks(self):
         """Load built-in maintenance tasks"""
         builtin_modules = [
-            "backend.scheduler.tasks.maintenance"
+            "backend.scheduler.tasks.maintenance",
+            "backend.scheduler.tasks.ams_consolidation"  # AMS Phase 1.5
         ]
         
         for module_name in builtin_modules:
@@ -66,6 +67,7 @@ class TaskRegistry:
                         
                         self.tasks[obj.task_id] = obj
                         task_count += 1
+                        print(f"📋 [SCHEDULER] Registered built-in task: {obj.task_id}")
                         self.logger.debug(f"Registered built-in task: {obj.task_id}")
                 
                 self.logger.info(f"Loaded {task_count} tasks from {module_name}")

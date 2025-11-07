@@ -1,5 +1,5 @@
 """
-Unified Memory Module
+Unified Memory Module (Phase 4 - Planned)
 
 Provides unified indexing and retrieval across all memory tiers (L0/L1/L2).
 Enables seamless memory access regardless of storage location.
@@ -9,35 +9,12 @@ This module provides:
 - Unified retrieval interface
 - Memory lifecycle management
 - Tier transitions (working → semantic → archived)
+
+NOTE: This module is a placeholder for Phase 4 implementation.
+      Components will be implemented after Phase 2 & 3 are complete.
 """
 
-from .index import (
-    UnifiedIndex,
-    MemoryLayer,
-    IndexEntry
-)
-from .lifecycle import (
-    MemoryLifecycleManager,
-    LifecycleStage,
-    TransitionPolicy
-)
-from .retrieval import (
-    UnifiedRetriever,
-    RetrievalQuery,
-    RetrievalResult
-)
+# Phase 4 components - not yet implemented
+# These will be imported when the modules are created
 
-__all__ = [
-    # Indexing
-    "UnifiedIndex",
-    "MemoryLayer",
-    "IndexEntry",
-    # Lifecycle
-    "MemoryLifecycleManager",
-    "LifecycleStage",
-    "TransitionPolicy",
-    # Retrieval
-    "UnifiedRetriever",
-    "RetrievalQuery",
-    "RetrievalResult",
-]
+__all__ = []
