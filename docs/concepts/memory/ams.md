@@ -37,16 +37,16 @@
 - **Unified Indexing**: ❌ NEW `unified/` module (cross-layer retrieval)
 - **Message-Driven Communication**: All module interactions via ZeroMQ message bus with Protocol Buffers
 
-**Storage Footprint**: ~50-100KB per user (100-200% increase from 50KB baseline)
+**Storage Footprint**: ~38-88KB per user (76-176% increase from 50KB baseline)
 - Temporal metadata: ~10KB
 - Knowledge graphs: ~15KB
-- Preference vector (768 floats as JSON): ~20KB
+- Preference vectors (100 context buckets × 16 dims × 4 bytes): ~6.4KB
 - User-skill confidence (100 skills): ~10KB
 - Trajectories (90 days, ~1000 turns): ~30-50KB
 
 **Performance**: 
 - Context assembly: <50ms (multi-tier retrieval)
-- Consolidation: 5-10 min/day per user (background)
+- Consolidation: Daily task, 5-10 min per user, processes 1/7 of users each day (7-day cycle)
 - Memory overhead: +175-350MB system-wide
 
 ---
@@ -461,28 +461,29 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
 
 **Behavioral Skill Selection** (when implemented)
 - **Components**: Skill library + User preferences
-- **Compute Time**: 5-15ms
+- **Compute Time**: 5-15ms (preference vectors pre-computed, no embedding generation)
   - Skill matching: 2-5ms (pattern matching)
-  - Preference lookup: 1-3ms (libSQL)
-  - Template application: 2-7ms (string operations)
+  - Preference lookup: 1-3ms (libSQL, returns cached vector)
+  - Preference alignment: 2-5ms (cosine similarity with pre-computed skill vectors)
+  - Template application: 1-2ms (string operations)
 - **Memory Impact**: Minimal (~5-10MB)
 - **Frequency**: Every AI response generation
 
 #### Background Operations (Non-Blocking)
 
 **Memory Consolidation** (scheduled via AICO Scheduler)
-- **Trigger**: System idle detection OR scheduled ("0 2 * * *" = 2 AM daily)
+- **Trigger**: Daily at 2 AM ("0 2 * * *") with idle detection
+- **User Sharding**: Round-robin 7-day cycle - processes 1/7 of users each day
+  - Each user consolidated once per week
+  - Example: 70 users = ~10 users/day × 10 min = ~100 min/night
+  - Day 0 (Mon): Users 0,7,14,21... | Day 1 (Tue): Users 1,8,15,22... etc.
 - **Components**: Experience replay + Semantic storage + Graph updates
 - **Compute Time**: 5-10 minutes per user
   - Experience selection: 30-60s (working memory scan)
   - Embedding generation: 2-5 min (batch processing)
   - Semantic storage: 1-2 min (ChromaDB batch insert)
   - Graph updates: 1-2 min (entity resolution + storage)
-- **User Sharding**: Round-robin 7-day cycle (1/7 of users processed daily)
-  - Example: 70 users = ~10 users/day × 10 min = ~100 min total
-  - Prevents overwhelming system with large user bases
 - **Memory Impact**: +200-400MB peak during consolidation
-- **Frequency**: Each user consolidated once per week (configurable)
 - **Parallelization**: Max 4 concurrent users (Semaphore(4))
 
 **Temporal Graph Evolution** (scheduled)
@@ -517,15 +518,16 @@ Following AICO's modular design principles (see `/docs/guides/developer/guidelin
 **AMS Scheduled Tasks**:
 
 ```python
-# 1. Daily Memory Consolidation (2 AM, idle-aware)
+# 1. Daily Memory Consolidation (2 AM, idle-aware, 7-day user sharding)
 {
     "task_id": "ams.consolidation.daily",
     "schedule": "0 2 * * *",  # 2 AM daily
     "enabled": True,
     "config": {
         "require_idle": True,
-        "max_duration_minutes": 30,
-        "users_per_batch": 5
+        "max_duration_minutes": 120,  # 2 hours max
+        "user_sharding_cycle_days": 7,  # Process 1/7 of users each day
+        "max_concurrent_users": 4  # Semaphore limit
     }
 }
 
@@ -782,16 +784,30 @@ To quickly adapt to new users or changing preferences, AICO uses a meta-learning
 #### Implementation Details
 
 **User Preference Vectors** (`shared/aico/ai/memory/user_preferences.py`):
-- Each user has a latent preference vector (16-32 dimensions) stored in the database
-- Vector initialized with defaults and updated based on feedback patterns
-- Encodes preferences: formality, verbosity, proactivity tolerance, emotional expression style
+- **Context-Aware Preferences**: Each user has preference vectors per context bucket (not global)
+- **Storage**: (user_id, context_bucket) → 16-32 explicit preference dimensions
+- **Dimensions**: Explicit style attributes (not semantic embeddings):
+  - `verbosity`: 0.0 (concise) to 1.0 (verbose)
+  - `formality`: 0.0 (casual) to 1.0 (formal)
+  - `technical_depth`: 0.0 (simple) to 1.0 (technical)
+  - `proactivity`: 0.0 (reactive) to 1.0 (proactive)
+  - `emotional_expression`: 0.0 (neutral) to 1.0 (expressive)
+  - `structure`: 0.0 (freeform) to 1.0 (structured/bullet-points)
+  - ... 10-26 additional dimensions
+- **Multi-Language**: Dimensions are language-agnostic style attributes, not semantic content
+- **Context Integration**: Uses same context bucketing as Thompson Sampling (intent + sentiment + time_of_day)
+- **Example**: User wants verbosity=0.2 for technical topics (bucket 42) but verbosity=0.8 for casual chat (bucket 17)
+- **Storage per user**: 100 buckets × 16 dims × 4 bytes = 6.4KB (vs 3KB for single 768-dim vector)
 
 **Hybrid Skill Selection Algorithm**:
-1. **Filter applicable skills**: Trigger matching score ≥ 0.5 (see trigger matching above)
-2. **Compute preference alignment**: Cosine similarity between user preference vector and skill embedding
-3. **Final score**: 40% trigger match + 30% confidence + 30% preference alignment
-4. **Thompson Sampling**: Apply contextual bandit for exploration/exploitation balance
-5. **Return**: Highest scoring skill (or exploration candidate if ε-greedy triggers)
+1. **Hash context**: Get context_bucket from current conversation context
+2. **Filter applicable skills**: Trigger matching score ≥ 0.5 (see trigger matching above)
+3. **Load context-specific preferences**: Retrieve user's preference vector for this context_bucket
+4. **Compute preference alignment**: Euclidean distance between user preference vector and skill's dimension vector
+5. **Final score**: 40% trigger match + 30% Thompson Sampling + 30% preference alignment
+6. **Return**: Highest scoring skill (or exploration candidate if ε-greedy triggers)
+
+**Note**: Preference vectors are explicit dimensions (not embeddings), ensuring interpretability, efficiency (<1KB per context), and no embedding generation during selection (<15ms latency).
 
 ### 3. Self-Correction and Exploration (Agent Q Model)
 
@@ -937,31 +953,19 @@ This section details all AI models, libraries, and technologies required to impl
 
 ### Core AI & Machine Learning
 
-#### 1. **Embedding Models** (for Preference Vector Similarity)
+#### 1. **Embedding Models** (for Feedback Classification ONLY)
 
-**Purpose**: Generate and compare user preference vectors for skill matching.
+**Purpose**: Multilingual feedback text classification (not for preference vectors).
 
 **Model**: **REUSE EXISTING** - `sentence-transformers/paraphrase-multilingual-mpnet-base-v2`
 - Already configured in `core.yaml` at `modelservice.transformers.models.embeddings`
 - Already managed by `TransformersManager` in modelservice
-- 768 dimensions (same as semantic memory for consistency)
-- Multilingual support
-- Already loaded in memory for semantic memory operations
+- 768 dimensions (used for semantic memory and feedback classification)
+- **NOT used for preference vectors** - those use explicit 16-32 dimensions
 
-**Why Reuse**: This model is already running for semantic memory. Using the same model for preference vectors:
-- Eliminates additional memory overhead (~500MB saved)
-- Ensures consistency across memory systems
-- Leverages existing model management infrastructure
-- No additional downloads or configuration needed
+**Use Case**: Classify user feedback text ("too verbose", "too brief", etc.) across 50+ languages using embedding similarity to category centroids.
 
-**Implementation**:
-```python
-from modelservice.core.transformers_manager import TransformersManager
-
-# Use existing TransformersManager instance
-embeddings_model = transformers_manager.get_model("embeddings")
-preference_embedding = embeddings_model.encode(user_preference_description)
-```
+**No Implementation Needed Here**: Preference vectors use explicit dimensions (see lines 786-810), not embeddings.
 
 #### 2. **Contextual Bandit Learning** (Thompson Sampling)
 
@@ -973,9 +977,15 @@ preference_embedding = embeddings_model.encode(user_preference_description)
 - Runs real-time for selection + offline batch analysis (daily)
 - No neural network training required
 
-**How It Works**: Each skill maintains Beta distribution parameters (α, β) representing success/failure counts. Thompson Sampling draws from these distributions to balance exploration (trying uncertain skills) vs. exploitation (using proven skills).
+**How It Works**: Each (context_bucket, skill) pair maintains separate Beta distribution parameters (α, β) representing success/failure counts in that specific context. Context bucketing hashes conversation context (intent + sentiment + time_of_day) into ~100 buckets, allowing the system to learn context-specific skill effectiveness. Thompson Sampling draws from these distributions to balance exploration vs. exploitation.
 
-**Key Point**: This learns which **prompt template to select**, not how to modify the LLM. Skills are pre-written prompt templates (e.g., "Be concise", "Provide detailed explanation"). Thompson Sampling learns which template works best in each context through statistical learning from user feedback.
+**Context Bucketing**: Contexts are hashed into buckets to make learning tractable:
+- Hash function: `bucket_id = hash(intent + sentiment + time_of_day) % 100`
+- Example: "technical_question + neutral + morning" → bucket 42
+- Separate Beta(α, β) parameters stored for each (bucket_id, skill_id) pair
+- Allows learning "concise works for technical questions" vs "detailed works for learning questions"
+
+**Key Point**: This learns which **prompt template to select** in each context type, not how to modify the LLM. Skills are pre-written prompt templates (e.g., "Be concise", "Provide detailed explanation"). Thompson Sampling learns which template works best for each context bucket through statistical learning from user feedback.
 
 **Implementation** (`shared/aico/ai/memory/behavioral/thompson_sampling.py`):
 ```python
@@ -1006,21 +1016,31 @@ class ThompsonSamplingSelector:
         self.prior_alpha = prior_alpha
         self.prior_beta = prior_beta
     
+    def _hash_context(self, context: dict) -> int:
+        """Hash context into bucket ID for contextual learning."""
+        context_str = f"{context.get('intent', 'unknown')}_" \
+                     f"{context.get('sentiment', 'neutral')}_" \
+                     f"{context.get('time_of_day', 'any')}"
+        return hash(context_str) % 100  # 100 context buckets
+    
     async def select_skill(self, context: dict, candidate_skills: list) -> str:
         """
         Select best skill for given context using Thompson Sampling.
         
         Args:
-            context: Current conversation context (intent, topic, etc.)
+            context: Current conversation context (intent, sentiment, time_of_day, etc.)
             candidate_skills: List of applicable skills
         
         Returns:
             skill_id of selected skill
         """
-        # Get success/failure counts for each skill in this context
+        # Hash context into bucket for contextual learning
+        context_bucket = self._hash_context(context)
+        
+        # Get success/failure counts for each skill in this context bucket
         skill_scores = {}
         for skill in candidate_skills:
-            stats = await self._get_skill_stats(skill.skill_id, context)
+            stats = await self._get_skill_stats(skill.skill_id, context_bucket)
             
             # Sample from Beta distribution
             alpha = self.prior_alpha + stats['successes']
@@ -1034,6 +1054,7 @@ class ThompsonSamplingSelector:
         
         logger.info("Skill selected via Thompson Sampling", extra={
             "skill_id": selected_skill_id,
+            "context_bucket": context_bucket,
             "sampled_score": skill_scores[selected_skill_id],
             "metric_type": "behavioral_memory_selection"
         })
@@ -1047,20 +1068,25 @@ class ThompsonSamplingSelector:
         
         Args:
             skill_id: ID of skill that was applied
-            context: Context in which skill was used
+            context: Context in which skill was used (will be hashed to bucket)
             reward: 1 (success), -1 (failure), 0 (neutral - no update)
         """
         if reward == 0:
             return  # Neutral feedback doesn't update statistics
         
-        stats = await self._get_skill_stats(skill_id, context)
+        # Hash context into bucket
+        context_bucket = self._hash_context(context)
+        
+        # Get stats for this (context_bucket, skill) pair
+        stats = await self._get_skill_stats(skill_id, context_bucket)
         
         if reward > 0:
             stats['successes'] += 1
         else:
             stats['failures'] += 1
         
-        await self._save_skill_stats(skill_id, context, stats)
+        # Save stats for this specific context bucket
+        await self._save_skill_stats(skill_id, context_bucket, stats)
 ```
 
 #### 3. **Meta-Learning Framework**
@@ -1068,62 +1094,79 @@ class ThompsonSamplingSelector:
 **Purpose**: Implement rapid adaptation to new users with minimal data.
 
 **Approach**: **Lightweight custom implementation** using existing infrastructure
-- Store user-specific preference vectors (768-dim, matching embedding model)
-- Use cosine similarity for preference alignment
-- No separate neural network needed - leverage existing embedding space
+- Store user-specific preference vectors (16-32 explicit dimensions per context bucket)
+- Use Euclidean distance for preference alignment
+- No embeddings, no neural networks - just explicit style dimensions
 
-**Why Lightweight**: Uses preference vectors (768-dim) + text templates instead of neural network training. Simple vector math, <10ms selection, interpretable, ~10-50KB per user.
+**Why Lightweight**: Uses explicit preference dimensions (16-32 floats) + text templates instead of neural network training or semantic embeddings. Simple vector math, <10ms selection, fully interpretable, ~6-10KB per user.
 
-**Implementation** (`aico/ai/memory/procedural/preferences.py`):
+**Implementation** (`shared/aico/ai/memory/behavioral/preferences.py`):
 ```python
 """
 User Preference Management
 
-Manages user-specific preference vectors in embedding space for rapid
-adaptation and personalization. Part of AICO's behavioral learning system.
+Manages context-aware user preference vectors with explicit dimensions.
+Part of AICO's behavioral learning system.
 
 Follows AICO's privacy-by-design: all data stored locally and encrypted.
 """
 
 import numpy as np
-from scipy.spatial.distance import cosine
 from aico.core.logging import get_logger
 
-logger = get_logger("backend", "memory.procedural.preferences")
+logger = get_logger("backend", "memory.behavioral.preferences")
 
-class UserPreferenceManager:
+class ContextPreferenceManager:
     """
-    Manages user preference vectors for behavioral learning personalization.
+    Manages context-aware preference vectors with explicit dimensions.
     
-    Preference vectors are stored in the same 768-dimensional space as the
-    embedding model, enabling fast similarity-based skill matching.
+    Each (user_id, context_bucket) pair has a separate preference vector
+    with 16-32 explicit style dimensions (verbosity, formality, etc.).
     
     Attributes:
-        embedding_dim: Dimension of preference vectors (must match embedding model)
+        num_dimensions: Number of preference dimensions (16-32)
     """
     
-    def __init__(self, embedding_dim=768):
-        self.embedding_dim = embedding_dim
+    def __init__(self, num_dimensions: int = 16):
+        self.num_dimensions = num_dimensions
         
-    def initialize_user_preferences(self, user_id: str) -> np.ndarray:
-        """Initialize with neutral preference vector."""
-        return np.zeros(self.embedding_dim)
+    def initialize_preferences(self, user_id: str, context_bucket: int) -> np.ndarray:
+        """Initialize with neutral preference vector (all 0.5)."""
+        return np.full(self.num_dimensions, 0.5, dtype=np.float32)
     
-    def update_preferences(self, user_prefs: np.ndarray, 
-                          skill_embedding: np.ndarray, 
-                          reward: float, 
+    def update_preferences(self, current_prefs: np.ndarray, 
+                          skill_dimensions: np.ndarray, 
+                          reward: int, 
                           learning_rate: float = 0.1) -> np.ndarray:
-        """Update user preferences based on feedback."""
-        # Move preference vector toward/away from skill embedding
-        update = learning_rate * reward * skill_embedding
-        new_prefs = user_prefs + update
-        # Normalize to unit vector
-        return new_prefs / (np.linalg.norm(new_prefs) + 1e-8)
+        """Update preferences based on feedback.
+        
+        Args:
+            current_prefs: Current preference vector
+            skill_dimensions: Dimension values of applied skill
+            reward: 1 (positive), -1 (negative), 0 (neutral)
+            learning_rate: Adaptation rate (default 0.1)
+        """
+        if reward == 0:
+            return current_prefs
+        
+        # Move toward skill dimensions if positive, away if negative
+        direction = reward * learning_rate
+        new_prefs = current_prefs + direction * (skill_dimensions - current_prefs)
+        
+        # Clamp to [0, 1] range
+        return np.clip(new_prefs, 0.0, 1.0)
     
-    def compute_preference_alignment(self, user_prefs: np.ndarray, 
-                                     skill_embedding: np.ndarray) -> float:
-        """Compute how well a skill aligns with user preferences."""
-        return 1 - cosine(user_prefs, skill_embedding)
+    def compute_alignment(self, user_prefs: np.ndarray, 
+                         skill_dimensions: np.ndarray) -> float:
+        """Compute preference alignment score.
+        
+        Returns:
+            Alignment score in [0, 1] range (1 = perfect match)
+        """
+        # Euclidean distance, normalized to [0, 1]
+        distance = np.linalg.norm(user_prefs - skill_dimensions)
+        max_distance = np.sqrt(len(user_prefs))
+        return 1.0 - (distance / max_distance)
 ```
 
 ### Data Storage & Retrieval
@@ -1143,25 +1186,24 @@ class UserPreferenceManager:
 - Indexes for fast user-based and confidence-based queries
 - Foreign key constraints for data integrity
 
-#### 5. **Vector Similarity Search**
+#### 5. **Preference Alignment Computation**
 
-**Purpose**: Fast similarity matching for skill selection.
+**Purpose**: Fast preference matching for skill selection.
 
-**Library**: **NumPy/SciPy** (already present)
-- Use case: Compute cosine similarity between preference vectors and skill embeddings
-- Advantages: No additional dependencies, sufficient for <100 skills
-- Library: `numpy`, `scipy.spatial.distance.cosine`
+**Library**: **NumPy** (already present)
+- Use case: Compute Euclidean distance between preference vectors and skill dimension vectors
+- Advantages: No additional dependencies, <1ms for 100 skills
+- Library: `numpy` only (no scipy needed)
 
 **Why NumPy Instead of ChromaDB**: 
 - **Small scale**: 10-20 base skills + user-created skills = typically <100 total
-- **In-memory efficiency**: NumPy cosine similarity is ~1-2ms for 100 vectors
+- **In-memory efficiency**: NumPy Euclidean distance is <1ms for 100 vectors
 - **Simplicity**: No additional database, simpler architecture
-- **Future scaling**: If skill count exceeds 100, can migrate to ChromaDB later
+- **Explicit dimensions**: No embedding generation needed
 
 **Implementation**:
 ```python
 import numpy as np
-from scipy.spatial.distance import cosine
 
 def select_best_skill(user_preference_vector: np.ndarray, 
                      candidate_skills: list) -> str:
@@ -1169,29 +1211,32 @@ def select_best_skill(user_preference_vector: np.ndarray,
     Select skill with highest preference alignment using NumPy.
     
     Args:
-        user_preference_vector: User's 768-dim preference vector
-        candidate_skills: List of applicable skills with embeddings
+        user_preference_vector: User's 16-32 dim preference vector
+        candidate_skills: List of applicable skills with dimension vectors
     
     Returns:
         skill_id of best matching skill
     """
     best_skill_id = None
-    best_similarity = -1.0
+    best_score = -1
+    
+    max_distance = np.sqrt(len(user_preference_vector))
     
     for skill in candidate_skills:
-        # Compute cosine similarity (1 - cosine distance)
-        similarity = 1 - cosine(user_preference_vector, skill.embedding)
+        # Euclidean distance, normalized to [0, 1] alignment score
+        distance = np.linalg.norm(user_preference_vector - skill.dimensions)
+        alignment = 1.0 - (distance / max_distance)
         
-        if similarity > best_similarity:
-            best_similarity = similarity
+        if alignment > best_score:
+            best_score = alignment
             best_skill_id = skill.skill_id
     
     return best_skill_id
 ```
 
-**Performance**: ~1-2ms for 100 skills (negligible overhead)
+**Performance**: <1ms for 100 skills (negligible overhead)
 
-**Scaling Note**: If skill library grows beyond 100 skills per user, consider migrating to ChromaDB for HNSW-based approximate nearest neighbor search.
+**Scaling Note**: System is designed for <100 skills per user. Explicit dimensions scale better than embeddings.
 
 ### Natural Language Processing
 
@@ -1377,13 +1422,14 @@ memory:
     skill_selection_timeout_ms: 10  # Max time for skill selection
     min_confidence_threshold: 0.3  # Don't use skills below this confidence
     
-    # Preference vectors (must match embedding model dimensions)
-    preference_vector_dim: 768  # Matches paraphrase-multilingual-mpnet-base-v2
+    # Preference vectors (explicit dimensions, NOT embeddings)
+    preference_vector_dim: 16  # Number of explicit style dimensions (16-32)
+    num_context_buckets: 100  # Context bucketing for contextual learning
     
-    # Feedback classification (multilingual)
+    # Feedback classification (multilingual, uses embeddings)
     feedback_classifier:
       similarity_threshold: 0.6  # Minimum cosine similarity for category match
-      embedding_model: "paraphrase-multilingual-mpnet-base-v2"  # Reuse existing model (768-dim)
+      embedding_model: "paraphrase-multilingual-mpnet-base-v2"  # Reuse existing model
       # Note: UI constraints (max chars, dropdown options) are defined client-side in Flutter app
     
     # Contextual bandit learning (Thompson Sampling)
@@ -1394,6 +1440,7 @@ memory:
       min_trajectories: 10  # Minimum trajectories needed for update
       prior_alpha: 1.0  # Beta distribution prior (successes)
       prior_beta: 1.0  # Beta distribution prior (failures)
+      context_hash_buckets: 100  # Number of context buckets (matches num_context_buckets)
     
     # Trajectory logging for learning
     trajectory_logging:
@@ -1405,9 +1452,9 @@ memory:
     # Skill matching
     skill_matching:
       match_threshold: 0.5  # Minimum score to consider skill applicable
-      use_embedding_similarity: true  # Use NumPy cosine similarity for preference alignment
+      use_explicit_dimensions: true  # Use explicit dimensions (NOT embeddings)
       max_candidates: 5  # Top N skills to consider
-      distance_metric: "cosine"  # Cosine similarity via NumPy/SciPy
+      distance_metric: "euclidean"  # Euclidean distance for explicit dimensions
     
     # Performance monitoring
     metrics:
@@ -1433,17 +1480,17 @@ memory:
 
 | Component | Technology | Status | Purpose |
 |-----------|-----------|--------|---------|
-| **Embeddings** | `paraphrase-multilingual-mpnet-base-v2` | ✅ Existing | Preference vectors, skill embeddings |
+| **Embeddings** | `paraphrase-multilingual-mpnet-base-v2` | ✅ Existing | Feedback classification ONLY |
 | **Intent Classification** | `xlm-roberta-base` | ✅ Existing | Context extraction |
 | **Entity Extraction** | `gliner_medium-v2.1` | ✅ Existing | Topic/subject detection |
 | **Sentiment Analysis** | `bert-base-multilingual-uncased-sentiment` | ✅ Existing | Emotional context |
-| **Vector Store** | ChromaDB | ✅ Existing | Skill similarity search |
 | **Database** | libSQL | ✅ Existing | Skill/preference storage |
 | **Contextual Bandit** | Thompson Sampling (custom) | ➕ New | Statistical skill selection |
+| **Preference Vectors** | Explicit dimensions (custom) | ➕ New | Context-aware style preferences |
 | **Logging** | ZeroMQ message bus | ✅ Existing | Unified logging |
 | **Config** | YAML | ✅ Existing | Configuration management |
 | **Validation** | Pydantic v2 | ✅ Existing | Data validation |
-| **Numerical** | NumPy, SciPy | ✅ Existing | Vector operations |
+| **Numerical** | NumPy | ✅ Existing | Vector operations |
 | **Frontend** | Flutter/Dart | ✅ Existing | Feedback UI |
 | **Testing** | pytest | ✅ Existing | Unit/integration tests |
 
@@ -1452,9 +1499,9 @@ memory:
 **Only ONE new dependency required:**
 
 **No new dependencies required** - all behavioral learning uses existing AICO infrastructure:
-- NumPy/SciPy for statistical computations (already present)
+- NumPy for statistical computations and vector operations (already present)
 - libSQL for skill storage (already present)
-- Existing embedding models for preference vectors (already present)
+- Existing embedding models for feedback classification only (already present)
 
 **Installation**:
 ```bash
@@ -1811,22 +1858,27 @@ base_skills:
   - skill_id: "concise_response"
     skill_name: "Concise Response"
     template: "Provide a brief, bullet-point answer. Maximum 3 points."
-    trigger: {intent: ["question", "request"], verbosity_preference: "low"}
+    trigger: {intent: ["question", "request"]}
+    dimensions: [0.2, 0.5, 0.5, 0.5, 0.3, 0.7, 0.4, 0.5]  # 16-32 floats
+    # Dimension values: [verbosity=0.2 (concise), formality=0.5, technical_depth=0.5, ...]
     
   - skill_id: "detailed_explanation"
     skill_name: "Detailed Explanation"
     template: "Provide in-depth explanation with examples and context."
-    trigger: {intent: ["question", "learning"], verbosity_preference: "high"}
+    trigger: {intent: ["question", "learning"]}
+    dimensions: [0.9, 0.6, 0.7, 0.5, 0.4, 0.6, 0.8, 0.7]  # 16-32 floats
+    # Dimension values: [verbosity=0.9 (verbose), formality=0.6, technical_depth=0.7, ...]
     
-  # ... 8 more base skills
+  # ... 8 more base skills, each with explicit dimension values
 ```
 
-**Preference Vector Dimensions**:
-- **Storage**: 768 dimensions (same as embedding model)
-- **Representation**: Direct average of user's top-performing skill embeddings
-- **Initialization**: New users start with zero vector (neutral preferences)
-- **Update**: Weighted average of skill embeddings, weighted by confidence scores
-- **No PCA needed**: Store full 768-dim vectors (only ~3KB per user)
+**Skill Dimension Assignment**:
+- Each skill has explicit dimension values (16-32 floats in [0, 1] range)
+- Dimensions encode the skill's style characteristics
+- Example: "concise_response" has verbosity=0.2, "detailed_explanation" has verbosity=0.9
+- These are manually defined for base skills, learned for user-created skills
+
+**Note**: Preference vectors are now context-aware explicit dimensions (see lines 786-810), not global embedding-based vectors.
 
 **Confidence Score Update Formula** (Adaptive Exponential Moving Average):
 ```python
@@ -2012,6 +2064,28 @@ CREATE TABLE user_skill_confidence (
     INDEX idx_confidence (user_id, confidence_score DESC)
 );
 
+-- Thompson Sampling context-skill statistics (contextual bandit)
+CREATE TABLE context_skill_stats (
+    user_id TEXT NOT NULL,
+    context_bucket INTEGER NOT NULL,  -- Hash of (intent + sentiment + time_of_day) % 100
+    skill_id TEXT NOT NULL,
+    alpha REAL DEFAULT 1.0,  -- Beta distribution success parameter
+    beta REAL DEFAULT 1.0,   -- Beta distribution failure parameter
+    last_updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, context_bucket, skill_id),
+    INDEX idx_user_context (user_id, context_bucket)
+);
+
+-- Context-aware preference vectors (explicit dimensions)
+CREATE TABLE context_preference_vectors (
+    user_id TEXT NOT NULL,
+    context_bucket INTEGER NOT NULL,  -- Hash of (intent + sentiment + time_of_day) % 100
+    dimensions TEXT NOT NULL,  -- JSON array: [0.5, 0.7, 0.3, ...] (16-32 floats)
+    last_updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, context_bucket),
+    INDEX idx_user (user_id)
+);
+
 -- Retention policy: Archive trajectories older than 90 days
 -- Keep trajectories with feedback indefinitely
 -- Scheduled cleanup task runs weekly
@@ -2019,20 +2093,32 @@ CREATE TABLE user_skill_confidence (
 
 **Preference Vector Structure**:
 ```python
-# 768-dimensional vector (same as embeddings)
-# Stored as JSON array in user_preferences table
-preference_vector = [0.01, -0.03, 0.05, ...]  # 768 floats
+# Context-aware explicit preference dimensions (NOT embeddings)
+# Stored as JSON array in context_preference_vectors table
+
+# Example for user "alice" in context_bucket 42 (technical questions):
+preference_vector = [
+    0.2,  # verbosity (concise)
+    0.8,  # formality (formal)
+    0.9,  # technical_depth (very technical)
+    0.5,  # proactivity (balanced)
+    0.3,  # emotional_expression (neutral)
+    0.7,  # structure (structured)
+    # ... 10-26 more dimensions
+]  # 16-32 floats, each in [0.0, 1.0] range
 
 # Initialization (cold start):
-# New users: zero vector np.zeros(768)
-# After first feedback: weighted average of applied skill embeddings
+# New users: all dimensions = 0.5 (neutral)
+# After first feedback: move toward/away from skill dimensions
 
-# Update formula (only for skills with positive feedback):
-# pref_new = 0.9 * pref_old + 0.1 * skill_embedding (if reward == 1)
-# No update for negative/neutral feedback
+# Update formula (gradient-based):
+# direction = reward * learning_rate  # reward: +1 or -1
+# pref_new = pref_old + direction * (skill_dims - pref_old)
+# Clamp to [0.0, 1.0] range
 
 # Preference matching:
-# score = cosine_similarity(user_pref_vector, skill_template_embedding)
+# distance = euclidean_distance(user_pref_vector, skill_dimension_vector)
+# score = 1.0 - (distance / max_distance)  # Normalized to [0, 1]
 # Used as 30% weight in hybrid skill selection
 ```
 
