@@ -640,8 +640,9 @@ class MemoryManager(BaseAIProcessor):
                 asyncio.create_task(store_segment_background())
             
             # Extract knowledge graph in background (non-blocking)
-            print(f"🕸️ [KG_CHECK] Checking KG extraction: kg_initialized={self._kg_initialized}, role={role}")
-            if self._kg_initialized and role == "user":  # Only extract from user messages
+            # TEMPORARILY DISABLED to fix embedding timeout issues
+            print(f"🕸️ [KG_CHECK] KG extraction DISABLED (causes embedding timeouts)")
+            if False and self._kg_initialized and role == "user":  # DISABLED
                 print(f"🕸️ [KG] ✅ Triggering background extraction for user message (len: {len(content)})")
                 logger.info(f"🕸️ [KG] Triggering background extraction for user message (len: {len(content)})")
                 

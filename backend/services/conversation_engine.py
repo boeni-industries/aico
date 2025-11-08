@@ -576,12 +576,17 @@ class ConversationEngine(BaseService):
                 return
             
             # Build system prompt with memory context
+            print(f"🔍 [MEMORY_DEBUG] memory_context type: {type(memory_context)}")
+            print(f"🔍 [MEMORY_DEBUG] memory_context keys: {list(memory_context.keys()) if memory_context else 'None'}")
             if memory_context is None:
                 self.logger.warning(f"No memory context provided for request {request_id}")
             else:
                 memory_data = memory_context.get("memory_context", {})
+                print(f"🔍 [MEMORY_DEBUG] memory_data keys: {list(memory_data.keys())}")
                 user_facts = memory_data.get("user_facts", [])
                 recent_context = memory_data.get("recent_context", [])
+                print(f"🔍 [MEMORY_DEBUG] recent_context length: {len(recent_context)}")
+                print(f"🔍 [MEMORY_DEBUG] recent_context sample: {recent_context[:2] if recent_context else 'empty'}")
                 self.logger.info(f"Context: {len(user_facts)} facts, {len(recent_context)} messages")
             
             system_prompt = self._build_system_prompt(user_context, memory_context)
@@ -805,15 +810,22 @@ class ConversationEngine(BaseService):
         # Only add contextual information that helps with the current conversation
         prompt_parts = []
         
-        # Add identity context (user name) - CRITICAL for LLM to know who it's talking to
+        # Add identity context - CRITICAL for LLM to know who it is and who it's talking to
         identity_parts = []
+        
+        # CRITICAL: Tell the LLM its character name (e.g., "Eve" from model "eve:latest")
+        # This prevents the LLM from defaulting to its base model name (e.g., "Qwen")
+        if self.model_name:
+            # Extract character name from model (e.g., "eve" from "eve:latest")
+            character_name = self.model_name.split(':')[0].capitalize()
+            identity_parts.append(f"Your name is {character_name}.")
         
         # Get user's first name from database
         if user_context and hasattr(user_context, 'full_name') and user_context.full_name:
             try:
                 user_first_name = user_context.full_name.split()[0]
                 # Make this VERY explicit so the LLM doesn't ignore it
-                identity_parts.append(f"IMPORTANT: The person you are talking to is named {user_first_name}. This is their actual name from your memory system. When they ask if you remember their name, you should tell them their name is {user_first_name}.")
+                identity_parts.append(f"The person you are talking to is named {user_first_name}. This is their actual name from your memory system. When they ask if you remember their name, you should tell them their name is {user_first_name}.")
             except (IndexError, AttributeError):
                 # If full_name is empty or malformed, skip user name
                 pass

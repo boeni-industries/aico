@@ -50,14 +50,21 @@ class ContextRetrievers:
             List of context items from working memory
         """
         if not self.working_store:
+            print(f"🔍 [RETRIEVER] ❌ No working_store available!")
             return []
         
         try:
             # Get recent messages from working memory
+            print(f"🔍 [RETRIEVER] Getting messages: conversation_id={conversation_id}")
             if conversation_id:
-                messages = await self.working_store.get_conversation_messages(conversation_id)
+                messages = await self.working_store.retrieve_conversation_history(conversation_id, limit=20)
+                print(f"🔍 [RETRIEVER] Got {len(messages)} messages from conversation {conversation_id}")
             else:
-                messages = await self.working_store.get_recent_messages(user_id, limit=20)
+                messages = await self.working_store.retrieve_user_history(user_id, limit=20)
+                print(f"🔍 [RETRIEVER] Got {len(messages)} recent messages for user {user_id}")
+            
+            if messages:
+                print(f"🔍 [RETRIEVER] Sample message: {messages[0]}")
             
             # Convert to ContextItems
             items = []
@@ -71,11 +78,15 @@ class ContextRetrievers:
                     item_type='message'
                 ))
             
+            print(f"🔍 [RETRIEVER] Converted to {len(items)} ContextItems")
             logger.debug(f"Retrieved {len(items)} items from working memory")
             return items
             
         except Exception as e:
+            print(f"🔍 [RETRIEVER] ❌ Exception: {e}")
             logger.error(f"Working memory retrieval failed: {e}")
+            import traceback
+            print(f"🔍 [RETRIEVER] Traceback: {traceback.format_exc()}")
             return []
     
     async def get_semantic_context(

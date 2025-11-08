@@ -93,10 +93,15 @@ class ContextAssembler:
             
             # 1. Get working memory context (immediate conversation)
             try:
+                print(f"🔍 [ASSEMBLER] Calling get_working_context(user_id={user_id}, conversation_id={conversation_id})")
                 working_items = await self.retrievers.get_working_context(user_id, conversation_id)
+                print(f"🔍 [ASSEMBLER] Got {len(working_items or [])} working items")
+                if working_items:
+                    print(f"🔍 [ASSEMBLER] Sample working item: {working_items[0].__dict__ if working_items else 'N/A'}")
                 all_items.extend(working_items or [])
                 logger.debug(f"Retrieved {len(working_items or [])} items from working memory")
             except Exception as e:
+                print(f"🔍 [ASSEMBLER] ❌ Working memory retrieval FAILED: {e}")
                 logger.warning(f"Working memory context retrieval failed: {e}")
             
             # 2. Get semantic memory context (knowledge base)
@@ -134,8 +139,9 @@ class ContextAssembler:
                     logger.warning(f"Behavioral memory context retrieval failed: {e}")
             
             # 4.5 Get knowledge graph context (entities and relationships)
+            # TEMPORARILY DISABLED - KG data is causing identity confusion
             kg_context = {}
-            if self.kg_storage and self.kg_modelservice:
+            if False and self.kg_storage and self.kg_modelservice:  # DISABLED
                 try:
                     # Build search query from working memory context (recent conversation)
                     # This finds stored facts relevant to the conversation topic
