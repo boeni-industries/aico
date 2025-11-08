@@ -210,14 +210,27 @@ class MemoryConsolidationTask(BaseTask):
                     logger.info(f"🧠 [AMS_TASK] Processing user: {user_id}")
                     
                     # Execute consolidation via scheduler
-                    success = await consolidation_scheduler.consolidate_user_memories(user_id)
+                    result = await consolidation_scheduler.consolidate_user_memories(
+                        user_id=user_id,
+                        working_store=memory_manager._working_store,
+                        semantic_store=memory_manager._semantic_store,
+                        db_connection=db_connection,
+                        max_messages=100
+                    )
                     
-                    if success:
+                    if result.get("success"):
                         consolidation_results["successful"] += 1
-                        logger.info(f"🧠 [AMS_TASK] ✅ User {user_id} consolidated successfully")
+                        logger.info(
+                            f"🧠 [AMS_TASK] ✅ User {user_id} consolidated: "
+                            f"{result.get('memories_created')}/{result.get('messages_retrieved')} messages"
+                        )
                     else:
-                        consolidation_results["skipped"] += 1
-                        logger.warning(f"🧠 [AMS_TASK] ⚠️  User {user_id} consolidation skipped")
+                        consolidation_results["failed"] += 1
+                        consolidation_results["errors"].append({
+                            "user_id": user_id,
+                            "error": "; ".join(result.get("errors", ["Unknown error"]))
+                        })
+                        logger.error(f"🧠 [AMS_TASK] ❌ User {user_id} consolidation failed")
                     
                 except Exception as e:
                     consolidation_results["failed"] += 1

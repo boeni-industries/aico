@@ -167,10 +167,14 @@ class ModelserviceClient:
         if not self._connected:
             await self.connect()
         
-        # Generate embeddings one at a time (modelservice expects single text)
-        embeddings = []
+        # Send all embedding requests concurrently, then gather responses
+        # This allows modelservice to process them in parallel if it supports it,
+        # and at minimum reduces client-side sequential waiting
         
-        for text in texts:
+        # Phase 1: Send all requests (non-blocking)
+        request_map = {}  # request_id -> (future, text_index)
+        
+        for i, text in enumerate(texts):
             request_id = str(uuid.uuid4())
             
             # Create embeddings request
@@ -181,30 +185,50 @@ class ModelserviceClient:
             # Create future for response
             future = asyncio.Future()
             self._pending_requests[request_id] = future
+            request_map[request_id] = (future, i)
             
-            try:
-                # Publish request
-                await self.bus_client.publish(
-                    AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
-                    embeddings_request,
-                    correlation_id=request_id
-                )
-                
-                # Wait for response with timeout
-                response = await asyncio.wait_for(future, timeout=30.0)
-                
-                if not response.get("success", False):
-                    logger.error(f"Embeddings request failed: {response.get('error', 'Unknown error')}")
-                    embeddings.append([0.0] * 768)  # Dummy embedding
-                else:
-                    embeddings.append(list(response.get("embedding", [])))
-                
-            except asyncio.TimeoutError:
-                logger.error(f"Embeddings request timed out after 30s for request_id: {request_id}")
-                # Don't remove from pending - response might still arrive
-                embeddings.append([0.0] * 768)  # Dummy embedding
+            # Publish request (non-blocking - don't await response yet)
+            await self.bus_client.publish(
+                AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
+                embeddings_request,
+                correlation_id=request_id
+            )
         
-        logger.debug(f"Generated {len(embeddings)} embeddings")
+        # Phase 2: Gather all responses concurrently
+        embeddings = [None] * len(texts)  # Pre-allocate with correct order
+        
+        # Use asyncio.gather to wait for all futures concurrently
+        futures_list = [request_map[rid][0] for rid in request_map.keys()]
+        
+        try:
+            # Wait for all responses with timeout
+            responses = await asyncio.wait_for(
+                asyncio.gather(*futures_list, return_exceptions=True),
+                timeout=30.0
+            )
+            
+            # Process responses in order
+            for request_id, (future, text_idx) in request_map.items():
+                response_idx = list(request_map.keys()).index(request_id)
+                response = responses[response_idx]
+                
+                if isinstance(response, Exception):
+                    logger.error(f"Embedding request {text_idx+1}/{len(texts)} failed: {response}")
+                    embeddings[text_idx] = [0.0] * 768  # Dummy embedding
+                elif not response.get("success", False):
+                    logger.error(f"Embedding request {text_idx+1}/{len(texts)} failed: {response.get('error', 'Unknown error')}")
+                    embeddings[text_idx] = [0.0] * 768  # Dummy embedding
+                else:
+                    embeddings[text_idx] = list(response.get("embedding", []))
+                    
+        except asyncio.TimeoutError:
+            logger.error(f"Batch embedding request timed out after 30s for {len(texts)} texts")
+            # Fill any None values with dummy embeddings
+            for i in range(len(embeddings)):
+                if embeddings[i] is None:
+                    embeddings[i] = [0.0] * 768
+        
+        logger.debug(f"Generated {len(embeddings)} embeddings concurrently")
         return {"embeddings": embeddings}
     
     async def generate_completion(

@@ -137,11 +137,17 @@ class ContextAssembler:
             kg_context = {}
             if self.kg_storage and self.kg_modelservice:
                 try:
-                    print(f"🕸️ [KG_CONTEXT] Retrieving KG context for query: {current_message[:50]}...")
+                    # Build search query from working memory context (recent conversation)
+                    # This finds stored facts relevant to the conversation topic
+                    search_context = " ".join([
+                        item.content for item in working_items[-3:] if item.content
+                    ]) if working_items else current_message
                     
-                    # Search for relevant nodes
+                    print(f"🕸️ [KG_CONTEXT] Searching KG with context: {search_context[:50]}...")
+                    
+                    # Search for relevant nodes using conversation context
                     kg_nodes = await self.kg_storage.search_nodes(
-                        current_message, 
+                        search_context,
                         user_id, 
                         top_k=5
                     )

@@ -272,6 +272,59 @@ class WorkingMemoryStore:
             logger.error(f"Failed to get recent user messages: {e}")
             return []
 
+    async def cleanup_expired(self) -> int:
+        """
+        Delete expired entries from LMDB.
+        
+        Returns:
+            Number of entries deleted
+        """
+        if not self._initialized:
+            await self.initialize()
+        
+        deleted_count = 0
+        
+        try:
+            # Collect expired keys first (can't delete while iterating)
+            expired_keys = []
+            total_checked = 0
+            
+            session_db = self.dbs.get("session_memory")
+            if session_db is None:
+                logger.warning("session_memory database not found")
+                return 0
+            
+            with self.env.begin(db=session_db) as txn:
+                cursor = txn.cursor()
+                for key, value in cursor:
+                    total_checked += 1
+                    try:
+                        data = json.loads(value.decode('utf-8'))
+                        if self._is_expired(data):
+                            expired_keys.append(key)
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        # Invalid data, mark for deletion
+                        expired_keys.append(key)
+            
+            logger.info(f"Checked {total_checked} entries, found {len(expired_keys)} expired")
+            
+            # Delete expired entries in a write transaction
+            if expired_keys:
+                with self.env.begin(db=session_db, write=True) as txn:
+                    for key in expired_keys:
+                        txn.delete(key)
+                        deleted_count += 1
+                
+                logger.info(f"Cleaned up {deleted_count} expired entries from working memory")
+            else:
+                logger.debug("No expired entries to clean up")
+            
+            return deleted_count
+            
+        except Exception as e:
+            logger.error(f"Failed to cleanup expired entries: {e}")
+            return 0
+    
     async def cleanup(self) -> None:
         """Close the LMDB environment."""
         if self.env:

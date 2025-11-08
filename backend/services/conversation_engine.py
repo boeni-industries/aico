@@ -45,6 +45,8 @@ class UserContext:
     """Per-user conversation context"""
     user_id: str
     username: str
+    full_name: Optional[str] = None  # User's full name from database
+    nickname: Optional[str] = None  # User's nickname from database
     relationship_type: str = "user"  # user, family_member, admin, etc.
     preferences: Dict[str, Any] = field(default_factory=dict)
     conversation_style: str = "friendly"
@@ -246,13 +248,10 @@ class ConversationEngine(BaseService):
             print(f"💬 [CONVERSATION_ENGINE] ✅ Unpacked ConversationMessage successfully")
             
             # Extract user information from the message
-            user_id = conv_message.source  # This should be the authenticated user ID
+            # Use user_id field (actual user UUID), not source (which is just "conversation_api")
+            user_id = conv_message.user_id if conv_message.user_id else conv_message.source
             conversation_id = conv_message.message.conversation_id
             print(f"💬 [CONVERSATION_ENGINE] 📋 User ID: {user_id}, Conversation ID: {conversation_id}")
-            
-            # Use the actual user_id field if available
-            if hasattr(conv_message, 'user_id') and conv_message.user_id:
-                user_id = conv_message.user_id
             
             self.logger.info(f"[DEBUG] ConversationEngine: Received user input.", extra={
                 "conversation_id": conversation_id,
@@ -261,7 +260,7 @@ class ConversationEngine(BaseService):
             })
             
             # Get user context (simplified)
-            user_context = self._get_or_create_user_context(user_id)
+            user_context = await self._get_or_create_user_context(user_id)
             
             
             # Generate response using semantic memory approach
@@ -277,22 +276,58 @@ class ConversationEngine(BaseService):
     # USER & THREAD MANAGEMENT
     # ============================================================================
     
-    def _get_or_create_user_context(self, user_id: str) -> UserContext:
+    async def _get_or_create_user_context(self, user_id: str) -> UserContext:
         """Get or create user context for authenticated user"""
+        print(f"🔍 [USER_CONTEXT] _get_or_create_user_context called for user_id: {user_id}")
         if user_id not in self.user_contexts:
-            # TODO: Load user preferences from database
-            self.user_contexts[user_id] = UserContext(
-                user_id=user_id,
-                username=f"User_{user_id[:8]}",  # Placeholder
-                relationship_type="user",
-                conversation_style="friendly",
-                last_seen=datetime.utcnow()
-            )
+            print(f"🔍 [USER_CONTEXT] User not in cache, loading from database...")
+            # Load user data from database
+            user_profile = None
+            try:
+                # Access user_service directly from service container (not via dependency injection)
+                if hasattr(self, 'container') and self.container:
+                    user_service = self.container.get_service("user_service")
+                    print(f"🔍 [USER_CONTEXT] Got user_service from container: {user_service}")
+                    if user_service:
+                        print(f"🔍 [USER_CONTEXT] Calling user_service.get_user({user_id})...")
+                        user_profile = await user_service.get_user(user_id)
+                        print(f"🔍 [USER_CONTEXT] Got user_profile: {user_profile}")
+                else:
+                    print(f"🔍 [USER_CONTEXT] ⚠️  No service_container available")
+            except Exception as e:
+                print(f"🔍 [USER_CONTEXT] ❌ Exception loading user profile: {e}")
+                import traceback
+                print(f"🔍 [USER_CONTEXT] Traceback: {traceback.format_exc()}")
+                self.logger.warning(f"Failed to load user profile from database: {e}")
             
-            self.logger.info(f"Created new user context", extra={
-                "user_id": user_id,
-                "username": self.user_contexts[user_id].username
-            })
+            # Create context with database data or fallback to placeholder
+            if user_profile:
+                self.user_contexts[user_id] = UserContext(
+                    user_id=user_id,
+                    username=user_profile.nickname or user_profile.full_name or f"User_{user_id[:8]}",
+                    full_name=user_profile.full_name,
+                    nickname=user_profile.nickname,
+                    relationship_type="user",
+                    conversation_style="friendly",
+                    last_seen=datetime.utcnow()
+                )
+                self.logger.info(f"Loaded user context from database", extra={
+                    "user_id": user_id,
+                    "full_name": user_profile.full_name,
+                    "nickname": user_profile.nickname
+                })
+            else:
+                # Fallback to placeholder if database load fails
+                self.user_contexts[user_id] = UserContext(
+                    user_id=user_id,
+                    username=f"User_{user_id[:8]}",
+                    relationship_type="user",
+                    conversation_style="friendly",
+                    last_seen=datetime.utcnow()
+                )
+                self.logger.warning(f"Created placeholder user context (database load failed)", extra={
+                    "user_id": user_id
+                })
         else:
             # Update last seen
             self.user_contexts[user_id].last_seen = datetime.utcnow()
@@ -770,6 +805,24 @@ class ConversationEngine(BaseService):
         # Only add contextual information that helps with the current conversation
         prompt_parts = []
         
+        # Add identity context (user name and AICO clarification)
+        identity_parts = []
+        
+        # Get user's first name from database
+        if user_context and hasattr(user_context, 'full_name') and user_context.full_name:
+            try:
+                user_first_name = user_context.full_name.split()[0]
+                identity_parts.append(f"You are speaking with {user_first_name}.")
+            except (IndexError, AttributeError):
+                # If full_name is empty or malformed, skip user name
+                pass
+        
+        # Clarify AICO's identity (model name is 'eve')
+        identity_parts.append("Your name is Eve (AICO's conversational AI).")
+        
+        if identity_parts:
+            prompt_parts.append("\n".join(identity_parts))
+        
         # Add memory context if available
         if memory_context:
             memory_data = memory_context.get("memory_context", {})
@@ -779,45 +832,28 @@ class ConversationEngine(BaseService):
             
             self.logger.debug(f"Building system prompt: {len(user_facts)} facts, {len(recent_context)} messages")
             
-            # Add knowledge graph context (entities and relationships)
+            # Add knowledge graph context (relationships only)
             print(f"🔍 [PROMPT_DEBUG] kg_data type: {type(kg_data)}, content: {kg_data}")
             if kg_data:
                 entities = kg_data.get("entities", [])
                 relationships = kg_data.get("relationships", [])
                 print(f"🔍 [PROMPT_DEBUG] Found {len(entities)} entities, {len(relationships)} relationships")
                 
-                if entities or relationships:
+                # Add relationships as facts (entities are filtered at extraction time)
+                if relationships:
                     kg_parts = []
+                    rel_lines = []
+                    for r in relationships:
+                        # Use actual entity text, not type names
+                        source = r.get('source', '')
+                        target = r.get('target', '')
+                        relation = r.get('relation', '')
+                        rel_lines.append(f"- {source} {relation} {target}")
                     
-                    # Find PERSON entities to identify the user
-                    person_entities = [e for e in entities if e.get('type') == 'PERSON']
-                    user_names = set()
-                    if person_entities:
-                        # Collect all PERSON entity names as potential user identities
-                        user_names = {e.get('name') for e in person_entities}
-                        # Use the highest confidence PERSON as primary user identity
-                        user_entity = max(person_entities, key=lambda e: e.get('confidence', 0))
-                        user_name = user_entity.get('name')
-                        kg_parts.append(f"The user's name is {user_name}.")
-                    
-                    if relationships:
-                        # Format relationships, replacing PERSON entities with "the user"
-                        rel_lines = []
-                        for r in relationships:
-                            source = r['source']
-                            target = r['target']
-                            
-                            # Replace PERSON entities with "the user"
-                            if source in user_names:
-                                source = "The user"
-                            if target in user_names:
-                                target = "the user"
-                            
-                            rel_lines.append(f"- {source} {r['relation']} {target}")
+                    if rel_lines:
                         kg_parts.append(f"Known facts:\n" + "\n".join(rel_lines))
-                    
-                    prompt_parts.append("\n".join(kg_parts))
-                    self.logger.debug(f"Added KG context: {len(entities)} entities, {len(relationships)} relationships")
+                        prompt_parts.append("\n".join(kg_parts))
+                        self.logger.debug(f"Added {len(relationships)} KG relationships to system prompt")
             
             # Add user facts if available (conversation history goes in messages array, not system prompt)
             if user_facts:

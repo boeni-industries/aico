@@ -624,13 +624,20 @@ class MemoryManager(BaseAIProcessor):
                 await self._working_store.store_message(conversation_id, message_data)
             
             # Store in semantic memory (ChromaDB) - conversation segments for context retrieval
+            # Run in background to avoid blocking conversation flow with embedding generation
             if self._semantic_store:
-                await self._semantic_store.store_segment(
-                    user_id=user_id,
-                    conversation_id=conversation_id,
-                    role=role,
-                    content=content
-                )
+                async def store_segment_background():
+                    try:
+                        await self._semantic_store.store_segment(
+                            user_id=user_id,
+                            conversation_id=conversation_id,
+                            role=role,
+                            content=content
+                        )
+                    except Exception as e:
+                        logger.error(f"Background segment storage failed: {e}")
+                
+                asyncio.create_task(store_segment_background())
             
             # Extract knowledge graph in background (non-blocking)
             print(f"🕸️ [KG_CHECK] Checking KG extraction: kg_initialized={self._kg_initialized}, role={role}")

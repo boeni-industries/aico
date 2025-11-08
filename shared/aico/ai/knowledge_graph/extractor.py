@@ -396,14 +396,59 @@ class GLiNEREntityExtractor(ExtractionStrategy):
             for label, count in sorted(label_counts.items(), key=lambda x: -x[1]):
                 print(f"  {label}: {count}")
             
+            # Filter out low-quality entities before returning
+            # Uses language-agnostic structural heuristics
+            filtered_nodes = []
+            filtered_count = 0
+            for node in graph.nodes:
+                entity_text = node.properties.get('name', '')
+                entity_type = node.label
+                confidence = node.confidence
+                
+                # Quality filters (language-agnostic)
+                should_keep = True
+                text_stripped = entity_text.strip()
+                word_count = len(text_stripped.split())
+                
+                # 1. Minimum confidence threshold
+                if confidence < 0.25:
+                    should_keep = False
+                    
+                # 2. Filter very short entities (likely pronouns in any language)
+                elif len(text_stripped) <= 2:
+                    should_keep = False
+                    
+                # 3. Filter single very short words with low confidence (likely stopwords)
+                elif word_count == 1 and len(text_stripped) <= 4 and confidence < 0.35:
+                    should_keep = False
+                    
+                # 4. Filter generic time references without context (works across languages)
+                elif entity_type in ['TIME', 'DATE'] and word_count == 1:
+                    should_keep = False
+                    
+                # 5. Filter entities that are just punctuation or numbers
+                elif text_stripped.replace(' ', '').replace('-', '').isdigit():
+                    should_keep = False
+                
+                if should_keep:
+                    filtered_nodes.append(node)
+                else:
+                    filtered_count += 1
+                    logger.debug(f"Filtered entity: '{entity_text}' ({entity_type}, conf={confidence:.3f})")
+            
+            graph.nodes = filtered_nodes
+            
+            if filtered_count > 0:
+                print(f"\n🔍 [FILTER] Removed {filtered_count} low-quality entities")
+            
             # Show sample of extracted entities
             print(f"\n📊 [FINAL] Sample entities (top 5 by confidence):")
             sorted_nodes = sorted(graph.nodes, key=lambda n: n.confidence, reverse=True)[:5]
             for node in sorted_nodes:
                 print(f"  - '{node.properties.get('name')}' ({node.label}, confidence: {node.confidence:.3f})")
             
-            logger.info(f"GLiNER extracted {len(graph.nodes)} entities")
-            logger.debug(f"GLiNER extracted {len(graph.nodes)} entities")
+            logger.info(f"GLiNER extracted {len(graph.nodes)} entities (after filtering)")
+            logger.debug(f"GLiNER extracted {len(graph.nodes)} entities (after filtering)")
             return graph
             
         except Exception as e:

@@ -381,3 +381,148 @@ class ConsolidationScheduler:
     def get_job_history(self, limit: int = 10) -> List[ConsolidationJob]:
         """Get recent job history."""
         return self._job_history[-limit:]
+    
+    async def consolidate_user_memories(
+        self,
+        user_id: str,
+        working_store,
+        semantic_store,
+        db_connection,
+        max_messages: int = 100
+    ) -> Dict[str, Any]:
+        """
+        Consolidate memories for a single user.
+        
+        Transfers messages from working memory to semantic memory,
+        creating durable semantic segments for long-term storage.
+        
+        Args:
+            user_id: User ID to consolidate
+            working_store: WorkingMemoryStore instance
+            semantic_store: SemanticMemoryStore instance
+            db_connection: Database connection for state tracking
+            max_messages: Maximum messages to process
+            
+        Returns:
+            Dictionary with consolidation results:
+            {
+                "success": bool,
+                "messages_retrieved": int,
+                "memories_created": int,
+                "errors": List[str],
+                "duration_seconds": float
+            }
+        """
+        from datetime import datetime, timezone
+        
+        start_time = datetime.now(timezone.utc)
+        result = {
+            "success": False,
+            "messages_retrieved": 0,
+            "memories_created": 0,
+            "errors": [],
+            "duration_seconds": 0.0
+        }
+        
+        try:
+            logger.info(f"Starting consolidation for user {user_id}")
+            
+            # Step 1: Retrieve working memory messages
+            messages = await working_store.retrieve_user_history(user_id, limit=max_messages)
+            result["messages_retrieved"] = len(messages)
+            
+            if not messages:
+                logger.info(f"No messages found for user {user_id}")
+                result["success"] = True
+                return result
+            
+            logger.info(f"Retrieved {len(messages)} messages for consolidation")
+            
+            # Step 2: Transfer each message to semantic memory
+            consolidated_count = 0
+            for i, msg in enumerate(messages):
+                try:
+                    # Extract message content
+                    content = msg.get("content", "")
+                    role = msg.get("role", "")
+                    
+                    logger.info(f"Processing message {i+1}/{len(messages)}: role={role}, content_len={len(content)}")
+                    
+                    if not content:
+                        logger.warning(f"Message {i+1} has no content, skipping")
+                        continue
+                    
+                    # Store in semantic memory as a segment
+                    conversation_id = msg.get("conversation_id", f"consolidation_{user_id}")
+                    logger.info(f"Storing segment: user={user_id}, conv={conversation_id[:20]}..., role={role}")
+                    
+                    success = await semantic_store.store_segment(
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                        role=role,
+                        content=content
+                    )
+                    
+                    if success:
+                        consolidated_count += 1
+                        logger.info(f"✅ Message {i+1} consolidated successfully")
+                    else:
+                        logger.warning(f"❌ Message {i+1} store_segment returned False")
+                    
+                except Exception as e:
+                    error_msg = f"Failed to consolidate message {i+1}: {str(e)}"
+                    logger.error(error_msg)
+                    import traceback
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+                    result["errors"].append(error_msg)
+            
+            result["memories_created"] = consolidated_count
+            
+            # Step 3: Update consolidation state
+            try:
+                end_time = datetime.now(timezone.utc)
+                state_data = {
+                    "user_id": user_id,
+                    "last_consolidated_at": end_time.isoformat(),
+                    "messages_processed": consolidated_count,
+                    "status": "completed",
+                    "duration_seconds": (end_time - start_time).total_seconds()
+                }
+                
+                import json
+                db_connection.execute(
+                    """
+                    INSERT INTO consolidation_state (id, state_json, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        state_json = excluded.state_json,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        f"consolidation_{user_id}",
+                        json.dumps(state_data),
+                        end_time.isoformat()
+                    )
+                )
+                db_connection.commit()
+            except Exception as e:
+                error_msg = f"Failed to update consolidation state: {str(e)}"
+                logger.warning(error_msg)
+                result["errors"].append(error_msg)
+            
+            # Success!
+            result["success"] = True
+            result["duration_seconds"] = (datetime.now(timezone.utc) - start_time).total_seconds()
+            
+            logger.info(
+                f"Consolidation complete for user {user_id}: "
+                f"{consolidated_count}/{len(messages)} messages consolidated"
+            )
+            
+        except Exception as e:
+            error_msg = f"Consolidation failed for user {user_id}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            result["errors"].append(error_msg)
+            result["duration_seconds"] = (datetime.now(timezone.utc) - start_time).total_seconds()
+        
+        return result
