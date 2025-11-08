@@ -805,20 +805,18 @@ class ConversationEngine(BaseService):
         # Only add contextual information that helps with the current conversation
         prompt_parts = []
         
-        # Add identity context (user name and AICO clarification)
+        # Add identity context (user name) - CRITICAL for LLM to know who it's talking to
         identity_parts = []
         
         # Get user's first name from database
         if user_context and hasattr(user_context, 'full_name') and user_context.full_name:
             try:
                 user_first_name = user_context.full_name.split()[0]
-                identity_parts.append(f"You are speaking with {user_first_name}.")
+                # Make this VERY explicit so the LLM doesn't ignore it
+                identity_parts.append(f"IMPORTANT: The person you are talking to is named {user_first_name}. This is their actual name from your memory system. When they ask if you remember their name, you should tell them their name is {user_first_name}.")
             except (IndexError, AttributeError):
                 # If full_name is empty or malformed, skip user name
                 pass
-        
-        # Clarify AICO's identity (model name is 'eve')
-        identity_parts.append("Your name is Eve (AICO's conversational AI).")
         
         if identity_parts:
             prompt_parts.append("\n".join(identity_parts))
