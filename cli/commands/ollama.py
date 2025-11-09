@@ -118,6 +118,7 @@ def ollama_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
                 ("status", "Show Ollama status and available models"),
                 ("generate", "Generate AI character model from Modelfile"),
                 ("install", "Install Ollama binary (manual process)"),
+                ("update", "Update Ollama binary to latest version"),
                 ("serve", "Start Ollama server daemon"),
                 ("shutdown", "Stop Ollama server daemon"),
                 ("run", "Run a model interactively"),
@@ -127,6 +128,7 @@ def ollama_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             ],
             examples=[
                 "aico ollama status",
+                "aico ollama update",
                 "aico ollama generate eve",
                 "aico ollama serve",
                 "aico ollama run llama3.2:3b",
@@ -559,6 +561,225 @@ def install(force: bool = typer.Option(False, "--force", help="Force reinstall e
     console.print("[yellow]Note: This command requires manual Ollama installation.[/yellow]")
     console.print("[dim]Please visit https://ollama.com/download to install Ollama for your platform.[/dim]")
     console.print("[dim]After installation, use 'aico ollama status' to verify.[/dim]")
+    console.print()
+
+
+@app.command("update")
+def update(
+    force: bool = typer.Option(False, "--force", "-f", help="Force update even if already on latest version"),
+    check_only: bool = typer.Option(False, "--check", "-c", help="Only check for updates without installing")
+):
+    """Update Ollama binary to the latest version."""
+    asyncio.run(_update_async(force, check_only))
+
+
+async def _update_async(force: bool, check_only: bool):
+    """Async implementation of update command."""
+    console.print("\n✨ [bold cyan]Ollama Update[/bold cyan]")
+    
+    try:
+        # Import OllamaManager
+        import subprocess
+        import os
+        from pathlib import Path
+        
+        # Get Ollama binary path
+        ollama_bin = AICOPaths.get_data_directory() / "bin" / "ollama"
+        
+        # Get current version
+        current_version = "unknown"
+        if ollama_bin.exists():
+            try:
+                result = subprocess.run(
+                    [str(ollama_bin), "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    # Extract version from output like "ollama version is 0.11.10"
+                    output = result.stdout.strip()
+                    if "version is" in output:
+                        current_version = output.split("version is")[-1].strip()
+                    else:
+                        current_version = output
+            except Exception:
+                pass
+        
+        console.print(f"[dim]Current version: {current_version}[/dim]")
+        
+        # Get latest version from GitHub
+        console.print("[dim]Checking for latest version...[/dim]")
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get("https://api.github.com/repos/ollama/ollama/releases/latest")
+                if response.status_code == 200:
+                    release_data = response.json()
+                    latest_version = release_data.get("tag_name", "unknown").lstrip("v")
+                else:
+                    console.print(format_error("Failed to fetch latest version from GitHub"))
+                    return
+        except Exception as e:
+            console.print(format_error(f"Failed to check for updates: {str(e)}"))
+            return
+        
+        console.print(f"[dim]Latest version:  {latest_version}[/dim]\n")
+        
+        # Compare versions
+        if current_version == latest_version and not force:
+            console.print(format_success(f"Already on latest version: {latest_version}"))
+            console.print()
+            return
+        
+        if check_only:
+            if current_version != latest_version:
+                console.print(f"[yellow]Update available: {current_version} → {latest_version}[/yellow]")
+                console.print(f"[dim]Run 'aico ollama update' to install[/dim]")
+            console.print()
+            return
+        
+        # Perform update
+        console.print(f"[bold cyan]Updating from {current_version} to {latest_version}...[/bold cyan]\n")
+        
+        # Download and install directly
+        bin_dir = AICOPaths.get_data_directory() / "bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Determine platform-specific download URL
+        import platform as plat
+        system = plat.system()
+        
+        if system == "Darwin":
+            asset_name = "ollama-darwin.tgz"
+        elif system == "Linux":
+            asset_name = "ollama-linux-amd64"
+        elif system == "Windows":
+            asset_name = "ollama-windows-amd64.zip"
+        else:
+            console.print(format_error(f"Unsupported platform: {system}"))
+            return
+        
+        # Find download URL from release assets
+        download_url = None
+        for asset in release_data.get("assets", []):
+            if asset.get("name") == asset_name:
+                download_url = asset.get("browser_download_url")
+                break
+        
+        if not download_url:
+            console.print(format_error(f"Could not find download for {asset_name}"))
+            return
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Downloading Ollama...", total=None)
+            
+            try:
+                # Download file
+                import tempfile
+                temp_file = Path(tempfile.mktemp(suffix=f"_{asset_name}"))
+                
+                async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
+                    async with client.stream("GET", download_url) as response:
+                        response.raise_for_status()
+                        with open(temp_file, "wb") as f:
+                            async for chunk in response.aiter_bytes(chunk_size=8192):
+                                f.write(chunk)
+                
+                progress.update(task, description="Installing Ollama...")
+                
+                # Extract and install
+                if asset_name.endswith(".tgz"):
+                    # macOS tar.gz
+                    import tarfile
+                    import shutil
+                    import tempfile
+                    
+                    # Extract to temp directory first
+                    temp_extract_dir = Path(tempfile.mkdtemp())
+                    try:
+                        with tarfile.open(temp_file, 'r:gz') as tar:
+                            tar.extractall(temp_extract_dir)
+                        
+                        # Find the ollama binary in extracted files
+                        ollama_binary = None
+                        for root, dirs, files in os.walk(temp_extract_dir):
+                            if 'ollama' in files:
+                                ollama_binary = Path(root) / 'ollama'
+                                break
+                        
+                        if not ollama_binary:
+                            raise FileNotFoundError("Could not find ollama binary in archive")
+                        
+                        # Remove old binary if exists
+                        if ollama_bin.exists():
+                            ollama_bin.unlink()
+                        
+                        # Copy to final location
+                        shutil.copy2(str(ollama_binary), str(ollama_bin))
+                    finally:
+                        # Clean up temp extract directory
+                        shutil.rmtree(temp_extract_dir, ignore_errors=True)
+                elif asset_name.endswith(".zip"):
+                    # Windows zip
+                    import zipfile
+                    with zipfile.ZipFile(temp_file, 'r') as zip_ref:
+                        zip_ref.extract("ollama.exe", bin_dir)
+                else:
+                    # Linux binary
+                    import shutil
+                    ollama_bin.unlink(missing_ok=True)
+                    shutil.move(str(temp_file), str(ollama_bin))
+                
+                # Make executable
+                ollama_bin.chmod(0o755)
+                
+                # Clean up
+                temp_file.unlink(missing_ok=True)
+                
+                progress.update(task, description="Installation complete")
+                success = True
+                
+            except Exception as e:
+                progress.update(task, description="Installation failed")
+                console.print(format_error(f"Download/installation error: {str(e)}"))
+                success = False
+        
+        if success:
+            # Verify new version
+            new_version = "unknown"
+            try:
+                result = subprocess.run(
+                    [str(ollama_bin), "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    output = result.stdout.strip()
+                    if "version is" in output:
+                        new_version = output.split("version is")[-1].strip()
+                    else:
+                        new_version = output
+            except Exception:
+                pass
+            
+            console.print(format_success(f"Ollama updated successfully to version {new_version}"))
+            console.print(f"\n[bold cyan]Next Steps:[/bold cyan]")
+            console.print(f"  1. Restart Ollama if running: [bold]pkill ollama && ollama serve[/bold]")
+            console.print(f"  2. Verify update: [bold]aico ollama status[/bold]")
+            console.print(f"\n[dim]Note: If modelservice is running, restart it to use the new version:[/dim]")
+            console.print(f"[dim]      aico gateway restart[/dim]")
+        else:
+            console.print(format_error("Failed to update Ollama"))
+            console.print("[dim]Check logs for details or try manual installation from https://ollama.com/download[/dim]")
+    
+    except Exception as e:
+        console.print(format_error(f"Update failed: {str(e)}"))
+    
     console.print()
 
 
