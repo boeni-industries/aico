@@ -71,9 +71,13 @@ class AuthRepositoryImpl implements AuthRepository {
           
           debugPrint('AuthRepository: Token-based auto-login successful for user: $username (role: ${role.name})');
           
+          // Load refresh token if available
+          final refreshToken = await _localDataSource.getRefreshToken();
+          
           return AuthResult(
             user: user,
             token: token,
+            refreshToken: refreshToken,
           );
         }
       }
@@ -96,6 +100,12 @@ class AuthRepositoryImpl implements AuthRepository {
       // Store the new token from the authentication response
       debugPrint('AuthRepository: Re-authentication successful, storing new token');
       await _localDataSource.storeToken(authResult.token);
+      
+      // Store refresh token if provided
+      if (authResult.refreshToken != null) {
+        await _localDataSource.storeRefreshToken(authResult.refreshToken!);
+        debugPrint('AuthRepository: Stored refresh token from re-authentication');
+      }
       
       return authResult;
     } catch (e) {

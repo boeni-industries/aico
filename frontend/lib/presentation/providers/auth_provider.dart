@@ -1,10 +1,7 @@
-import 'dart:async';
 import 'package:aico_frontend/core/logging/aico_log.dart';
-import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/domain/entities/user.dart';
 import 'package:aico_frontend/domain/providers/domain_providers.dart';
 import 'package:aico_frontend/domain/usecases/auth_usecases.dart';
-import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -46,7 +43,6 @@ class AuthNotifier extends _$AuthNotifier {
   late final AutoLoginUseCase _autoLoginUseCase;
   late final LogoutUseCase _logoutUseCase;
   late final CheckAuthStatusUseCase _checkAuthStatusUseCase;
-  late final TokenManager _tokenManager;
   
   bool _isAutoLoginInProgress = false;
 
@@ -57,9 +53,7 @@ class AuthNotifier extends _$AuthNotifier {
     _autoLoginUseCase = ref.read(autoLoginUseCaseProvider);
     _logoutUseCase = ref.read(logoutUseCaseProvider);
     _checkAuthStatusUseCase = ref.read(checkAuthStatusUseCaseProvider);
-    _tokenManager = ref.read(tokenManagerProvider);
     
-    _setupReAuthenticationListener();
     return const AuthState();
   }
 
@@ -87,8 +81,6 @@ class AuthNotifier extends _$AuthNotifier {
     }
 
     _isAutoLoginInProgress = true;
-    bool authSuccess = false;
-    
     try {
       // Check if we have stored credentials first (fast local check)
       final hasCredentials = await _checkAuthStatusUseCase.execute();
@@ -113,7 +105,6 @@ class AuthNotifier extends _$AuthNotifier {
           isLoading: false,
           error: null,
         );
-        authSuccess = true;
       } else {
         state = state.copyWith(
           isLoading: false,
@@ -148,8 +139,6 @@ class AuthNotifier extends _$AuthNotifier {
       }
     } finally {
       _isAutoLoginInProgress = false;
-      // Notify TokenManager that re-authentication completed
-      _tokenManager.notifyReAuthenticationComplete(authSuccess);
     }
   }
 
@@ -218,24 +207,6 @@ class AuthNotifier extends _$AuthNotifier {
 
   void clearError() {
     state = state.copyWith(error: null);
-  }
-
-  /// Listen for token expiration events and trigger re-authentication
-  void _setupReAuthenticationListener() {
-    _tokenManager.reAuthenticationStream.listen((event) {
-      if (state.isAuthenticated && !_isAutoLoginInProgress) {
-        AICOLog.info('Token expiration detected, attempting re-authentication',
-          topic: 'auth/token/expiration_detected',
-          extra: {'reason': event.reason});
-        
-        // Schedule re-authentication with delay to prevent blocking UI thread
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (state.isAuthenticated && !_isAutoLoginInProgress) {
-            attemptAutoLogin();
-          }
-        });
-      }
-    });
   }
 
 }

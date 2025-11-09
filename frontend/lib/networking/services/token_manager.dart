@@ -45,9 +45,6 @@ class TokenManager {
   
   // UnifiedApiClient for encrypted refresh requests
   dynamic _apiClient;
-  
-  // Re-authentication completion tracking
-  Completer<bool>? _reAuthCompleter;
 
   /// Get access token (alias for getValidToken for compatibility)
   Future<String?> getAccessToken() async {
@@ -75,34 +72,6 @@ class TokenManager {
       }
     }
 
-    // If re-authentication is in progress, wait for it to complete
-    if (_reAuthCompleter != null && !_reAuthCompleter!.isCompleted) {
-      AICOLog.info('Waiting for re-authentication to complete',
-        topic: 'auth/token/waiting_for_reauth');
-      
-      try {
-        // Wait up to 20 seconds for re-auth to complete
-        final success = await _reAuthCompleter!.future.timeout(
-          const Duration(seconds: 20),
-          onTimeout: () {
-            AICOLog.warn('Re-authentication timeout',
-              topic: 'auth/token/reauth_timeout');
-            return false;
-          },
-        );
-        
-        if (success && _cachedToken != null && _isTokenValid()) {
-          AICOLog.info('Re-authentication completed successfully',
-            topic: 'auth/token/reauth_success');
-          return _cachedToken;
-        }
-      } catch (e) {
-        AICOLog.error('Error waiting for re-authentication',
-          topic: 'auth/token/reauth_wait_error',
-          error: e);
-      }
-    }
-
     debugPrint('TokenManager: No valid token available');
     return null;
   }
@@ -117,21 +86,22 @@ class TokenManager {
   /// This method is designed to be non-blocking and fail-fast
   Future<bool> refreshToken() async {
     try {
-      // If no refresh token available, trigger automatic re-authentication
+      // If no refresh token available, fail silently (expected for old sessions)
       if (_cachedRefreshToken == null) {
         await _loadTokensFromStorage();
         if (_cachedRefreshToken == null) {
-          AICOLog.warn('No refresh token available, triggering automatic re-authentication',
-            topic: 'auth/token/auto_reauth_required');
-          _triggerAutoReAuthentication();
+          AICOLog.debug('No refresh token available - user needs to login again',
+            topic: 'auth/token/no_refresh_token');
+          // Don't trigger re-auth loop - just fail and let UI handle it
           return false;
         }
       }
       
       // Use refresh token to get new access token
-      final response = await _apiClient.postForTokenRefresh('/users/refresh', {
-        'refresh_token': _cachedRefreshToken,
-      });
+      final response = await _apiClient.postForTokenRefresh(
+        '/users/refresh',
+        data: {'refresh_token': _cachedRefreshToken},
+      );
       
       if (response != null && response['success'] == true) {
         // Backend returns 'jwt_token' not 'access_token'
@@ -154,10 +124,11 @@ class TokenManager {
         
         return true;
       } else {
-        AICOLog.warn('Token refresh failed - invalid response, triggering re-authentication',
+        AICOLog.warn('Token refresh failed - invalid response',
           topic: 'auth/token/refresh_failed',
           extra: {'response': response});
-        _triggerAutoReAuthentication();
+        // Don't trigger re-auth for invalid responses - might be temporary backend issue
+        return false;
       }
     } catch (e) {
       // Check if this is a backend unavailable error
@@ -174,18 +145,21 @@ class TokenManager {
       
       // Check for authentication errors (refresh token expired/invalid)
       if (e.toString().contains('401') || e.toString().contains('403')) {
-        AICOLog.warn('Refresh token expired/invalid, triggering re-authentication', 
+        AICOLog.warn('Refresh token expired/invalid - user needs to login again', 
           topic: 'auth/token/refresh_token_expired',
           extra: {'error': e.toString()});
-        _triggerAutoReAuthentication();
+        // Clear invalid refresh token
+        _cachedRefreshToken = null;
+        await _storage.delete(key: _keyRefreshToken);
         return false;
       }
       
-      AICOLog.error('Token refresh failed with exception, triggering re-authentication', 
+      // For other errors (like NoSuchMethodError), just log and fail
+      AICOLog.error('Token refresh failed with exception', 
         topic: 'auth/token/refresh_error',
         extra: {'error': e.toString()});
       
-      _triggerAutoReAuthentication();
+      // Don't trigger re-auth loop for unexpected errors
     }
     return false;
   }
@@ -225,44 +199,6 @@ class TokenManager {
     });
   }
   
-  // Re-authentication stream for UI integration
-  final StreamController<ReAuthenticationRequired> _reAuthController = StreamController<ReAuthenticationRequired>.broadcast();
-  
-  /// Stream for re-authentication events
-  Stream<ReAuthenticationRequired> get reAuthenticationStream => _reAuthController.stream;
-  
-  /// Trigger automatic re-authentication flow
-  /// Emits event for UI layer - follows message-driven architecture
-  void _triggerAutoReAuthentication() {
-    // Don't clear tokens immediately - let AuthProvider handle it
-    // This prevents infinite loops where cleared tokens trigger more refresh attempts
-    
-    // Create completer if not already in progress
-    if (_reAuthCompleter == null || _reAuthCompleter!.isCompleted) {
-      _reAuthCompleter = Completer<bool>();
-    }
-    
-    AICOLog.info('Token refresh failed - triggering re-authentication',
-      topic: 'auth/token/reauth_required');
-    
-    // Simple event emission - let existing AuthProvider handle the logic
-    _reAuthController.add(ReAuthenticationRequired(
-      reason: 'Token refresh failed',
-      timestamp: DateTime.now(),
-    ));
-  }
-  
-  /// Notify that re-authentication completed (called by AuthProvider)
-  void notifyReAuthenticationComplete(bool success) {
-    if (_reAuthCompleter != null && !_reAuthCompleter!.isCompleted) {
-      _reAuthCompleter!.complete(success);
-      AICOLog.info('Re-authentication completion notified',
-        topic: 'auth/token/reauth_notified',
-        extra: {'success': success});
-    }
-  }
-
-
   /// Check if current token is valid (not expired)
   bool _isTokenValid() {
     // If no expiry is stored, assume token is valid (for backward compatibility)
@@ -455,18 +391,5 @@ class TokenManager {
   /// Dispose resources
   void dispose() {
     _refreshTimer?.cancel();
-    _reAuthController.close();
   }
 }
-
-/// Re-authentication required event
-class ReAuthenticationRequired {
-  final String reason;
-  final DateTime timestamp;
-  
-  const ReAuthenticationRequired({
-    required this.reason,
-    required this.timestamp,
-  });
-}
-
