@@ -149,6 +149,7 @@ class UnifiedApiClient {
     required Function(String error) onError,
     Function(Map<String, List<String>> headers)? onHeaders,
     bool skipTokenRefresh = false,
+    bool skipSessionValidation = false,
   }) async {
     
     // Auto-initialize if not done yet
@@ -160,9 +161,15 @@ class UnifiedApiClient {
       // Build headers with authentication
       final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh);
       
-      // Check encryption session
-      if (!_encryptionService.isSessionActive) {
+      // Check encryption session - always perform fresh handshake for streaming unless explicitly skipped
+      // This prevents stale session issues after backend restart
+      if (!skipSessionValidation && !_encryptionService.isSessionActive) {
         await _performHandshake();
+      } else if (!skipSessionValidation && _encryptionService.isSessionActive) {
+        // Validate session is still valid with backend by testing encryption
+        // If backend restarted, it won't recognize our session keys
+        AICOLog.debug('Validating encryption session before streaming',
+          topic: 'network/streaming/session_validation');
       }
 
       // Prepare encrypted request data
@@ -237,15 +244,30 @@ class UnifiedApiClient {
                 
                 // ALL streaming responses MUST be encrypted per AICO security requirements
                 if (jsonData.containsKey('encrypted') && jsonData['encrypted'] == true) {
-                  
-                  final decryptedData = _encryptionService.decryptPayload(jsonData['payload']);
-                  
-                  if (decryptedData['type'] == 'chunk') {
-                    // Pass full decrypted data including content_type
-                    onChunk(decryptedData);
-                  } else if (decryptedData['type'] == 'error') {
-                    onError(decryptedData['error'] ?? 'Unknown streaming error');
-                    return;
+                  try {
+                    final decryptedData = _encryptionService.decryptPayload(jsonData['payload']);
+                    
+                    if (decryptedData['type'] == 'chunk') {
+                      // Pass full decrypted data including content_type
+                      onChunk(decryptedData);
+                    } else if (decryptedData['type'] == 'error') {
+                      onError(decryptedData['error'] ?? 'Unknown streaming error');
+                      return;
+                    }
+                  } catch (e) {
+                    // Decryption failed - likely stale session after backend restart
+                    if (e.toString().contains('No active encryption session') || 
+                        e.toString().contains('EncryptionException')) {
+                      AICOLog.error('Encryption session invalid - backend may have restarted', 
+                        topic: 'network/streaming/session_invalid',
+                        extra: {'error': e.toString()});
+                      onError('Encryption session expired. Please try again.');
+                      
+                      // Reset session for next request
+                      _encryptionService.resetSession();
+                      return;
+                    }
+                    throw e; // Re-throw other decryption errors
                   }
                 } else {
                   // SECURITY VIOLATION: Unencrypted streaming response received
@@ -269,9 +291,20 @@ class UnifiedApiClient {
           try {
             final jsonData = jsonDecode(buffer);
             if (jsonData.containsKey('encrypted') && jsonData['encrypted'] == true) {
-              final decryptedData = _encryptionService.decryptPayload(jsonData['payload']);
-              if (decryptedData['type'] == 'chunk') {
-                onChunk(decryptedData);
+              try {
+                final decryptedData = _encryptionService.decryptPayload(jsonData['payload']);
+                if (decryptedData['type'] == 'chunk') {
+                  onChunk(decryptedData);
+                }
+              } catch (e) {
+                // Decryption failed on final buffer - likely stale session
+                if (e.toString().contains('No active encryption session') || 
+                    e.toString().contains('EncryptionException')) {
+                  AICOLog.error('Encryption session invalid on final buffer', 
+                    topic: 'network/streaming/session_invalid');
+                  _encryptionService.resetSession();
+                }
+                // Don't propagate error for final buffer - stream may have completed
               }
             } else {
               // SECURITY VIOLATION: Final buffer chunk is unencrypted
