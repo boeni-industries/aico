@@ -12,6 +12,9 @@ abstract class AuthLocalDataSource {
   Future<void> storeToken(String token);
   Future<String?> getToken();
   Future<void> clearToken();
+  Future<void> storeRefreshToken(String refreshToken);
+  Future<String?> getRefreshToken();
+  Future<void> clearRefreshToken();
 }
 
 class AuthLocalDataSourceImpl implements AuthLocalDataSource {
@@ -21,6 +24,7 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
   static const String _keyUserUuid = 'user_uuid';
   static const String _keyPin = 'user_pin';
   static const String _keyToken = 'auth_token';
+  static const String _keyRefreshToken = 'refresh_token';
   static const String _keyHasCredentials = 'has_stored_credentials';
 
   AuthLocalDataSourceImpl(this._secureStorage, this._sharedPreferences);
@@ -124,7 +128,9 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
       _secureStorage.delete(key: _keyUserUuid),
       _secureStorage.delete(key: _keyPin),
       _secureStorage.delete(key: _keyToken),
+      _secureStorage.delete(key: _keyRefreshToken),
       _secureStorage.delete(key: 'aico_access_token'),
+      _secureStorage.delete(key: 'aico_refresh_token'),
       _secureStorage.delete(key: 'aico_token_expiry'),
       _sharedPreferences.setBool(_keyHasCredentials, false),
     ]);
@@ -172,6 +178,26 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
       _secureStorage.delete(key: _keyToken),
       _secureStorage.delete(key: 'aico_access_token'),
       _secureStorage.delete(key: 'aico_token_expiry'),
+    ]);
+  }
+
+  @override
+  Future<void> storeRefreshToken(String refreshToken) async {
+    debugPrint('AuthLocalDataSource: Storing refresh token');
+    await _secureStorage.write(key: _keyRefreshToken, value: refreshToken);
+    await _secureStorage.write(key: 'aico_refresh_token', value: refreshToken);
+  }
+
+  @override
+  Future<String?> getRefreshToken() async {
+    return await _secureStorage.read(key: _keyRefreshToken);
+  }
+
+  @override
+  Future<void> clearRefreshToken() async {
+    await Future.wait([
+      _secureStorage.delete(key: _keyRefreshToken),
+      _secureStorage.delete(key: 'aico_refresh_token'),
     ]);
   }
 }

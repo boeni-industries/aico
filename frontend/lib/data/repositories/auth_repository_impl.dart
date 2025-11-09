@@ -21,6 +21,12 @@ class AuthRepositoryImpl implements AuthRepository {
       throw Exception('Authentication failed: Backend unavailable or invalid credentials');
     }
     
+    // Store refresh token if provided
+    if (authModel.refreshToken != null) {
+      await _localDataSource.storeRefreshToken(authModel.refreshToken!);
+      debugPrint('AuthRepository: Stored refresh token');
+    }
+    
     // Convert to domain entity
     final authResult = authModel.toDomain();
     
@@ -114,12 +120,33 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<bool> refreshToken() async {
     try {
-      final token = await _localDataSource.getToken();
-      if (token == null) return false;
+      // Get refresh token (not access token)
+      final refreshToken = await _localDataSource.getRefreshToken();
+      if (refreshToken == null) {
+        debugPrint('AuthRepository: No refresh token available');
+        return false;
+      }
 
-      final success = await _remoteDataSource.refreshToken(token);
-      return success;
+      // Call backend refresh endpoint with refresh token
+      final authModel = await _remoteDataSource.refreshToken(refreshToken);
+      if (authModel == null) {
+        debugPrint('AuthRepository: Token refresh failed');
+        return false;
+      }
+
+      // Store new access token
+      await _localDataSource.storeToken(authModel.token);
+      debugPrint('AuthRepository: New access token stored after refresh');
+      
+      // Store new refresh token if provided (token rotation)
+      if (authModel.refreshToken != null) {
+        await _localDataSource.storeRefreshToken(authModel.refreshToken!);
+        debugPrint('AuthRepository: New refresh token stored (token rotation)');
+      }
+
+      return true;
     } catch (e) {
+      debugPrint('AuthRepository: Token refresh error: $e');
       return false;
     }
   }

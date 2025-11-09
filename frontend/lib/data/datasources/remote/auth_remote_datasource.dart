@@ -3,7 +3,7 @@ import 'package:aico_frontend/networking/services/resilient_api_service.dart';
 
 abstract class AuthRemoteDataSource {
   Future<AuthModel?> authenticate(String userUuid, String pin);
-  Future<bool> refreshToken(String token);
+  Future<AuthModel?> refreshToken(String refreshToken);
   Future<Map<String, dynamic>?> getCurrentUser(String token);
 }
 
@@ -34,13 +34,23 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   }
 
   @override
-  Future<bool> refreshToken(String token) async {
+  Future<AuthModel?> refreshToken(String refreshToken) async {
+    // Temporarily store refresh token for this request
+    // The API client will use it in the Authorization header
     final responseData = await _resilientApi.executeOperation<dynamic>(
-      () => _resilientApi.apiClient.post('/users/refresh'),
+      () => _resilientApi.apiClient.request(
+        'POST',
+        '/users/refresh',
+        data: {'refresh_token': refreshToken},
+      ),
       operationName: 'Token Refresh',
     );
 
-    return responseData != null && responseData['success'] == true;
+    if (responseData != null && responseData['success'] == true) {
+      return AuthModel.fromJson(responseData);
+    }
+    
+    return null;
   }
 
   @override

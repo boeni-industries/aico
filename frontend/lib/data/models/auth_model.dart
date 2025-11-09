@@ -4,11 +4,13 @@ import 'package:aico_frontend/domain/repositories/auth_repository.dart';
 class AuthModel {
   final UserModel user;
   final String token;
+  final String? refreshToken;
   final DateTime? lastLogin;
 
   const AuthModel({
     required this.user,
     required this.token,
+    this.refreshToken,
     this.lastLogin,
   });
 
@@ -16,6 +18,7 @@ class AuthModel {
     return AuthModel(
       user: UserModel.fromJson(json['user'] ?? {}),
       token: json['jwt_token']?.toString() ?? json['token']?.toString() ?? '',
+      refreshToken: json['refresh_token']?.toString(),
       lastLogin: json['last_login'] != null 
           ? DateTime.parse(json['last_login'] as String)
           : null,
@@ -26,6 +29,7 @@ class AuthModel {
     return {
       'user': user.toJson(),
       'token': token,
+      'refresh_token': refreshToken,
       'last_login': lastLogin?.toIso8601String(),
     };
   }
@@ -35,6 +39,7 @@ class AuthModel {
     return AuthResult(
       user: user.toDomain(),
       token: token,
+      refreshToken: refreshToken,
       lastLogin: lastLogin,
     );
   }
@@ -44,6 +49,7 @@ class AuthModel {
     return AuthModel(
       user: UserModel.fromDomain(authResult.user),
       token: authResult.token,
+      refreshToken: authResult.refreshToken,
       lastLogin: authResult.lastLogin,
     );
   }

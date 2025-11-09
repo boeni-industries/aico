@@ -119,6 +119,7 @@ class ModelserviceZMQService:
     async def start(self):
         """Complete the ZMQ service initialization and subscribe to remaining topics."""
         try:
+            print("🔧 [ZMQ_SERVICE] start() method called!")
             self.logger.info("Completing modelservice ZMQ service initialization...")
             
             # Reuse existing bus_client from start_early() - don't create a new one
@@ -147,9 +148,11 @@ class ModelserviceZMQService:
             ]
             
             # DEBUG: Print all topics we're about to subscribe to
+            print(f"🔍 [ZMQ_SERVICE] About to subscribe to {len(modelservice_topics)} topics:")
             self.logger.info(f"🔍 [DEBUG] About to subscribe to {len(modelservice_topics)} topics:")
             for topic in modelservice_topics:
                 handler_exists = topic in self.topic_handlers
+                print(f"🔍 [ZMQ_SERVICE]   - {topic} (handler: {'✅' if handler_exists else '❌'})")
                 self.logger.info(f"🔍 [DEBUG]   - {topic} (handler: {'✅' if handler_exists else '❌'})")
             
             subscribed_topics = []
@@ -162,15 +165,19 @@ class ModelserviceZMQService:
                     self.logger.warning(f"No handler found for topic {topic} during subscription")
             
             # DEBUG: Final summary of subscribed topics
+            print(f"🔍 [ZMQ_SERVICE] Successfully subscribed to {len(subscribed_topics)} topics:")
             self.logger.info(f"🔍 [DEBUG] Successfully subscribed to {len(subscribed_topics)} topics:")
             for topic in subscribed_topics:
+                print(f"🔍 [ZMQ_SERVICE]   ✅ {topic}")
                 self.logger.info(f"🔍 [DEBUG]   ✅ {topic}")
             
             # DEBUG: Check if embeddings topic is specifically subscribed
             embeddings_topic = "modelservice/embeddings/request/v1"
             if embeddings_topic in subscribed_topics:
+                print(f"🔍 [ZMQ_SERVICE] ✅ EMBEDDINGS TOPIC IS SUBSCRIBED: {embeddings_topic}")
                 self.logger.info(f"🔍 [DEBUG] ✅ EMBEDDINGS TOPIC IS SUBSCRIBED: {embeddings_topic}")
             else:
+                print(f"🔍 [ZMQ_SERVICE] ❌ EMBEDDINGS TOPIC NOT SUBSCRIBED: {embeddings_topic}")
                 self.logger.error(f"🔍 [DEBUG] ❌ EMBEDDINGS TOPIC NOT SUBSCRIBED: {embeddings_topic}")
             
             # Initialize NER system now that all services are ready
@@ -223,6 +230,7 @@ class ModelserviceZMQService:
     
     async def _handle_message(self, envelope):
         """Handle incoming Protocol Buffer ZMQ messages and route to appropriate handlers."""
+        print(f"🔍 [ZMQ_SERVICE] 📨 Message handler called!")
         self.logger.info(f"[ZMQ_SERVICE] 📨 Message handler called with envelope: {type(envelope)}")
         try:
             # Extract information from AicoMessage envelope
@@ -239,6 +247,7 @@ class ModelserviceZMQService:
             
             # SPECIFIC DEBUGGING FOR EMBEDDINGS REQUESTS
             if "embeddings" in message_type.lower():
+                print(f"🔍 [EMBEDDINGS] ✅ EMBEDDINGS MESSAGE RECEIVED!")
                 self.logger.info(f"🔍 [EMBEDDINGS_ZMQ_DEBUG] ✅ EMBEDDINGS MESSAGE RECEIVED in ZMQ service!")
                 self.logger.info(f"🔍 [EMBEDDINGS_ZMQ_DEBUG] Message type: {message_type}")
                 self.logger.info(f"🔍 [EMBEDDINGS_ZMQ_DEBUG] Correlation ID: {correlation_id}")
@@ -293,6 +302,7 @@ class ModelserviceZMQService:
             
             handler = self.topic_handlers.get(topic)
             if not handler:
+                print(f"❌ [ZMQ_SERVICE] No handler found for topic: {topic}")
                 self.logger.error(f"[ZMQ_SERVICE] ❌ CRITICAL: No handler found for topic: {topic}")
                 if "sentiment" in topic.lower():
                     self.logger.error(f"🔍 [SENTIMENT_ZMQ_DEBUG] ❌ SENTIMENT HANDLER NOT FOUND!")
@@ -302,9 +312,11 @@ class ModelserviceZMQService:
             
             if topic in self.topic_handlers:
                 handler_name = self.topic_handlers[topic].__name__
+                print(f"✅ [ZMQ_SERVICE] Handler found: {handler_name}")
                 self.logger.info(f"[ZMQ_SERVICE] ✅ Handler found: {handler_name}")
                 
                 # Execute handler with correlation_id for streaming support
+                print(f"🔧 [ZMQ_SERVICE] Executing handler {handler_name}...")
                 self.logger.info(f"[ZMQ_SERVICE] Executing handler {handler_name} with payload type: {type(request_payload)}")
                 if topic == AICOTopics.MODELSERVICE_CHAT_REQUEST:
                     # Chat requests need correlation_id for streaming
@@ -312,6 +324,7 @@ class ModelserviceZMQService:
                 else:
                     # Other handlers don't need correlation_id yet
                     response = await self.topic_handlers[topic](request_payload)
+                print(f"✅ [ZMQ_SERVICE] Handler completed!")
                 self.logger.info(f"[ZMQ_SERVICE] Handler completed, response type: {type(response)}")
                 
                 # Send Protocol Buffer response if correlation_id is provided
@@ -319,9 +332,11 @@ class ModelserviceZMQService:
                     response_topic = self._get_response_topic(topic)
                     self.logger.info(f"[ZMQ_SERVICE] Response topic for '{topic}': {response_topic}")
                     if response_topic:
+                        print(f"📤 [ZMQ_SERVICE] Publishing response to {response_topic}...")
                         self.logger.info(f"[ZMQ_SERVICE] Publishing response to topic '{response_topic}' with correlation_id '{correlation_id}'")
                         # Pass raw response to MessageBusClient, let it handle envelope wrapping
                         await self.bus_client.publish(response_topic, response, correlation_id=correlation_id)
+                        print(f"✅ [ZMQ_SERVICE] Response published!")
                         self.logger.info(f"[ZMQ_SERVICE] ✅ Response published successfully to topic {response_topic}")
                     else:
                         self.logger.error(f"[ZMQ_SERVICE] ❌ No response topic found for request topic: {topic}")
