@@ -44,7 +44,11 @@ Usage Example:
 
 from .models import Node, Edge, PropertyGraph
 from .storage import PropertyGraphStorage
-from .extractor import MultiPassExtractor
+from .extractor import (
+    MultiPassExtractor,
+    clear_entity_embedding_cache,
+    get_cache_stats
+)
 from .entity_resolution import EntityResolver
 from .fusion import GraphFusion
 from .graph_traversal import GraphQueryEngine
@@ -67,4 +71,8 @@ __all__ = [
     "GraphQueryEngine",  # Graph traversal (BFS/DFS/path finding)
     "GraphAnalytics",
     "GQLQueryExecutor",  # GQL/Cypher query execution
+    
+    # Cache management
+    "clear_entity_embedding_cache",
+    "get_cache_stats",
 ]

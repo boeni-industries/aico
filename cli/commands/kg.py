@@ -538,37 +538,95 @@ def list_edges(
     asyncio.run(_list_edges())
 
 
-@app.command(name="clear", help="Clear knowledge graph data (DESTRUCTIVE).")
+@app.command(name="clear", help="Clear ALL KG data: libSQL tables, ChromaDB embeddings, and caches (DESTRUCTIVE).")
 @destructive
 def clear(
-    user_id: Optional[str] = typer.Option(None, "--user-id", "-u", help="User ID (if not specified, clears ALL data)")
+    user_id: Optional[str] = typer.Option(None, "--user-id", "-u", help="User ID (if not specified, clears ALL data for ALL users)")
 ):
-    """Clear knowledge graph data."""
+    """Clear knowledge graph data from ALL storage layers (libSQL, ChromaDB, cache)."""
     async def _clear():
         from aico.core.config import ConfigurationManager
         from aico.core.paths import AICOPaths
         from aico.security import AICOKeyManager
         from aico.data.libsql.encrypted import EncryptedLibSQLConnection
+        from aico.ai.knowledge_graph import clear_entity_embedding_cache
+        import chromadb
+        from chromadb.config import Settings
         
         try:
             # Get database connection
             db_path = AICOPaths.resolve_database_path("aico.db", "auto")
             db_connection = _get_database_connection(str(db_path))
             
-            with db_connection:
+            # Get ChromaDB client
+            chromadb_path = AICOPaths.get_semantic_memory_path()
+            chromadb_client = chromadb.PersistentClient(
+                path=str(chromadb_path),
+                settings=Settings(anonymized_telemetry=False, allow_reset=True)
+            )
+            
+            # Clear libSQL tables
+            if user_id:
+                # Clear user-specific data from libSQL
+                db_connection.execute("DELETE FROM kg_edges WHERE user_id = ?", (user_id,))
+                db_connection.execute("DELETE FROM kg_nodes WHERE user_id = ?", (user_id,))
+                db_connection.commit()
+                console.print(f"[green]✓[/green] Cleared libSQL tables for user: {user_id}")
+            else:
+                # Clear all data from libSQL
+                db_connection.execute("DELETE FROM kg_edges")
+                db_connection.execute("DELETE FROM kg_nodes")
+                db_connection.commit()
+                console.print("[green]✓[/green] Cleared all libSQL tables")
+            
+            # Clear ChromaDB collections
+            try:
+                kg_nodes_collection = chromadb_client.get_collection("kg_nodes")
+                kg_edges_collection = chromadb_client.get_collection("kg_edges")
+                
                 if user_id:
-                    # Clear user-specific data
-                    db_connection.execute("DELETE FROM kg_edges WHERE user_id = ?", (user_id,))
-                    db_connection.execute("DELETE FROM kg_nodes WHERE user_id = ?", (user_id,))
-                    console.print(f"[green]✓[/green] Cleared knowledge graph for user: {user_id}")
+                    # Delete user-specific embeddings
+                    # ChromaDB doesn't support WHERE clause, so we need to get IDs first
+                    nodes_result = kg_nodes_collection.get(where={"user_id": user_id})
+                    if nodes_result and nodes_result["ids"]:
+                        kg_nodes_collection.delete(ids=nodes_result["ids"])
+                        console.print(f"[green]✓[/green] Cleared {len(nodes_result['ids'])} node embeddings for user: {user_id}")
+                    
+                    edges_result = kg_edges_collection.get(where={"user_id": user_id})
+                    if edges_result and edges_result["ids"]:
+                        kg_edges_collection.delete(ids=edges_result["ids"])
+                        console.print(f"[green]✓[/green] Cleared {len(edges_result['ids'])} edge embeddings for user: {user_id}")
                 else:
-                    # Clear all data
-                    db_connection.execute("DELETE FROM kg_edges")
-                    db_connection.execute("DELETE FROM kg_nodes")
-                    console.print("[green]✓[/green] Cleared all knowledge graph data")
+                    # Clear all embeddings by deleting and recreating collections
+                    chromadb_client.delete_collection("kg_nodes")
+                    chromadb_client.delete_collection("kg_edges")
+                    console.print("[green]✓[/green] Cleared all ChromaDB embeddings")
+                    
+                    # Recreate empty collections
+                    chromadb_client.create_collection("kg_nodes")
+                    chromadb_client.create_collection("kg_edges")
+                    console.print("[green]✓[/green] Recreated empty ChromaDB collections")
+                    
+            except Exception as e:
+                console.print(f"[yellow]Warning:[/yellow] ChromaDB clear failed: {e}")
+            
+            # Clear entity embedding cache
+            clear_entity_embedding_cache(user_id=user_id)
+            if user_id:
+                console.print(f"[green]✓[/green] Cleared entity embedding cache for user: {user_id}")
+            else:
+                console.print("[green]✓[/green] Cleared all entity embedding caches")
+            
+            # Final summary
+            if user_id:
+                console.print(f"\n[bold green]✓ Complete:[/bold green] All KG data cleared for user {user_id}")
+            else:
+                console.print("\n[bold green]✓ Complete:[/bold green] All KG data cleared from all storage layers")
             
         except Exception as e:
             console.print(f"[red]Error:[/red] {e}")
+            import traceback
+            console.print(f"[red]{traceback.format_exc()}[/red]")
             raise typer.Exit(1)
     
     asyncio.run(_clear())
