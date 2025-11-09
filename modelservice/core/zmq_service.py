@@ -75,6 +75,13 @@ class ModelserviceZMQService:
         self.handlers.ollama_manager = ollama_manager
         self.logger.info("Ollama manager injected into ZMQ service")
     
+    def set_transformers_manager(self, transformers_manager):
+        """Set the TransformersManager to reuse preloaded models."""
+        self.handlers.transformers_manager = transformers_manager
+        self.handlers.transformers_initialized = True  # Mark as initialized
+        self.logger.info("✅ TransformersManager injected into ZMQ service with preloaded models")
+        print(f"✅ TransformersManager injected - transformers_initialized={self.handlers.transformers_initialized}")
+    
     async def start_early(self):
         """Start ZMQ service early for log capture, without full initialization."""
         try:

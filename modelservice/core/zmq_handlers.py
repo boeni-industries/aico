@@ -115,10 +115,15 @@ class ModelserviceZMQHandlers:
     
     async def initialize_transformers_system(self):
         """Initialize the Transformers system asynchronously using TransformersManager."""
+        print(f"🔍 [INIT_CHECK] initialize_transformers_system() called - transformers_initialized={self.transformers_initialized}")
+        
         if self.transformers_initialized:
+            self.logger.info("✅ Transformers system already initialized - skipping")
+            print("✅ Transformers system already initialized - using preloaded models")
             return
         
         try:
+            print(f"🔍 [INIT_START] Starting NEW Transformers initialization - transformers_initialized={self.transformers_initialized}")
             self.logger.info("Starting Transformers system initialization...")
             
             # Lazy initialization of TransformersManager

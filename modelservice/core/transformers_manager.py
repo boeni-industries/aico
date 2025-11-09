@@ -146,6 +146,9 @@ class TransformersManager:
         self.loaded_models: Dict[str, Any] = {}
         self.model_configs: Dict[str, TransformerModelConfig] = {}
         
+        # Initialization tracking
+        self._models_initialized = False
+        
         # Memory management
         self.max_memory_mb = self.transformers_config.get("max_memory_mb", 2048)
         self.auto_unload = self.transformers_config.get("auto_unload", True)
@@ -191,6 +194,12 @@ class TransformersManager:
         """Initialize and download required models at startup."""
         self._ensure_logger()
         
+        # Skip if already initialized
+        if self._models_initialized:
+            self.logger.info("✅ Transformers models already initialized - skipping")
+            print("✅ Transformers models already initialized - using cached models")
+            return True
+        
         # Beautiful startup messages like Ollama
         print("🤖 Initializing Transformers Models", flush=True)
         self.logger.info("Initializing Transformers models...")
@@ -229,12 +238,47 @@ class TransformersManager:
             
             print("✅ All Transformers models initialized successfully", flush=True)
             self.logger.info("✅ All required Transformers models initialized successfully")
+            
+            # Preload critical models into memory for instant first use
+            await self._preload_critical_models()
+            
+            # Mark as initialized to prevent re-initialization
+            self._models_initialized = True
+            
             return True
             
         except Exception as e:
             print(f"❌ Transformers initialization failed: {e}", flush=True)
             self.logger.error(f"Failed to initialize Transformers models: {e}")
             return False
+    
+    async def _preload_critical_models(self):
+        """Preload critical models into memory for instant first use."""
+        print("🚀 Preloading critical models into memory...", flush=True)
+        self.logger.info("Preloading critical models into memory...")
+        
+        # List of models to preload (high-priority, frequently used)
+        critical_models = [
+            "paraphrase-multilingual",  # Embedding model (used for every message)
+            "entity_extraction",  # GLiNER (used for KG extraction)
+        ]
+        
+        for model_name in critical_models:
+            try:
+                print(f"   → Loading {model_name}...", flush=True)
+                model = self.get_model(model_name)
+                if model is not None:
+                    print(f"   ✅ {model_name} loaded into memory", flush=True)
+                    self.logger.info(f"✅ Preloaded {model_name} into memory")
+                else:
+                    print(f"   ⚠️  {model_name} not available", flush=True)
+                    self.logger.warning(f"Could not preload {model_name}")
+            except Exception as e:
+                print(f"   ❌ Failed to preload {model_name}: {e}", flush=True)
+                self.logger.error(f"Failed to preload {model_name}: {e}")
+        
+        print("✅ Critical models preloaded and ready", flush=True)
+        self.logger.info("✅ Critical models preloaded successfully")
     
     async def ensure_models_loaded(self) -> bool:
         """Ensure all required models are loaded."""

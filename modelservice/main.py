@@ -148,6 +148,16 @@ async def initialize_modelservice():
         print(f"Full traceback:\n{full_traceback}")
         logger.error(f"Full traceback: {full_traceback}")
     
+    # Initialize and preload TransformersManager
+    from .core.transformers_manager import TransformersManager
+    transformers_manager = TransformersManager(cfg)
+    
+    # Initialize models (download + preload into memory)
+    await transformers_manager.initialize_models()
+    
+    # Inject the preloaded TransformersManager into ZMQ service
+    zmq_service.set_transformers_manager(transformers_manager)
+    
     print("=" * 60)
     print("[+] ZMQ service ready... (Press Ctrl+C to stop)\n")
     logger.info("Modelservice startup complete, ZMQ service ready")
