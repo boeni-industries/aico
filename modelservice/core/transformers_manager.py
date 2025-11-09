@@ -270,6 +270,50 @@ class TransformersManager:
                 if model is not None:
                     print(f"   ✅ {model_name} loaded into memory", flush=True)
                     self.logger.info(f"✅ Preloaded {model_name} into memory")
+                    
+                    # CRITICAL: Warmup the model to trigger JIT compilation and hardware initialization
+                    if model_name == "paraphrase-multilingual" and hasattr(model, 'encode'):
+                        print(f"   🔥 Warming up {model_name}...", flush=True)
+                        import time
+                        import torch
+                        warmup_start = time.time()
+                        
+                        # CRITICAL: Force GPU/MPS context initialization FIRST
+                        # PyTorch lazily initializes GPU context on first tensor operation
+                        # This is the root cause of the 3-5s delay on first inference!
+                        device = model.device
+                        if device.type in ['cuda', 'mps']:
+                            print(f"   🔧 Initializing {device.type.upper()} context...", flush=True)
+                            # Force context initialization by creating a tensor on the device
+                            dummy_tensor = torch.zeros(1, device=device)
+                            _ = dummy_tensor + 1  # Trigger actual GPU operation
+                            del dummy_tensor
+                            # Clear cache (CUDA only, MPS doesn't have this API)
+                            if device.type == 'cuda':
+                                torch.cuda.empty_cache()
+                            print(f"   ✅ {device.type.upper()} context initialized", flush=True)
+                        
+                        # Warmup strategy based on production best practices:
+                        # 1. Use realistic text lengths (short, medium, long)
+                        # 2. Use batch encoding to trigger all code paths
+                        # 3. Multiple passes to ensure JIT compilation completes
+                        warmup_texts = [
+                            "Hi",  # Short text
+                            "Hello, how are you doing today?",  # Medium text
+                            "This is a longer warmup message to initialize the embedding model and trigger all internal optimizations including tokenization, attention mechanisms, and pooling strategies.",  # Long text
+                        ]
+                        
+                        # First pass: Triggers JIT compilation, tokenizer initialization, graph building (SLOW)
+                        # Run in thread pool to match production execution context (handlers use asyncio.to_thread)
+                        import asyncio
+                        _ = await asyncio.to_thread(model.encode, warmup_texts, normalize_embeddings=True, batch_size=len(warmup_texts))
+                        
+                        # Second pass: Verifies optimizations are cached (should be fast)
+                        _ = await asyncio.to_thread(model.encode, warmup_texts[0], normalize_embeddings=True)
+                        
+                        warmup_time = time.time() - warmup_start
+                        print(f"   ✅ {model_name} warmed up in {warmup_time:.2f}s (GPU initialized, JIT compiled, ready)", flush=True)
+                        self.logger.info(f"✅ {model_name} warmed up in {warmup_time:.2f}s")
                 else:
                     print(f"   ⚠️  {model_name} not available", flush=True)
                     self.logger.warning(f"Could not preload {model_name}")

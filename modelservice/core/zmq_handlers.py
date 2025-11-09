@@ -692,7 +692,9 @@ class ModelserviceZMQHandlers:
                     encode_start = time.time()
                     self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Starting encoding for text of length {text_length}...")
                     # Explicitly normalize embeddings for cosine similarity
-                    embedding = transformer_model.encode(prompt, normalize_embeddings=True)
+                    # Run in thread pool to avoid blocking event loop and match warmup execution context
+                    import asyncio
+                    embedding = await asyncio.to_thread(transformer_model.encode, prompt, normalize_embeddings=True)
                     encode_time = time.time() - encode_start
                     self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] ✅ Encoding completed in {encode_time:.4f}s ({text_length/encode_time:.1f} chars/sec)")
                     

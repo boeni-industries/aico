@@ -129,21 +129,29 @@ class TokenManager {
       }
       
       // Use refresh token to get new access token
-      final response = await _apiClient.postForTokenRefresh('/auth/refresh', {
+      final response = await _apiClient.postForTokenRefresh('/users/refresh', {
         'refresh_token': _cachedRefreshToken,
       });
       
       if (response != null && response['success'] == true) {
-        _cachedToken = response['access_token'];
+        // Backend returns 'jwt_token' not 'access_token'
+        _cachedToken = response['jwt_token'] ?? response['access_token'];
         _tokenExpiry = JWTDecoder.getExpiryTime(_cachedToken!);
         
-        // Update refresh token if provided
+        // Update refresh token if provided (token rotation)
         if (response['refresh_token'] != null) {
           _cachedRefreshToken = response['refresh_token'];
+          // Store refresh token in secure storage
+          await _storage.write(key: _keyRefreshToken, value: _cachedRefreshToken!);
         }
         
         await _storeTokensInStorage();
         _scheduleProactiveRefresh();
+        
+        AICOLog.info('Token refreshed successfully',
+          topic: 'auth/token/refresh_success',
+          extra: {'new_expiry': _tokenExpiry?.toIso8601String()});
+        
         return true;
       } else {
         AICOLog.warn('Token refresh failed - invalid response, triggering re-authentication',

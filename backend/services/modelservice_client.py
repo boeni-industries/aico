@@ -223,8 +223,12 @@ class ModelServiceClient:
                 if hasattr(message, 'metadata') and hasattr(message.metadata, 'attributes'):
                     message_correlation_id = message.metadata.attributes.get('correlation_id')
                 
+                print(f"🔍 [RESPONSE_HANDLER] Received response! correlation_id={message_correlation_id}")
+                print(f"🔍 [RESPONSE_HANDLER] Pending requests: {list(self.pending_requests.keys())}")
+                
                 # Find the pending request for this correlation_id
                 if message_correlation_id not in self.pending_requests:
+                    print(f"⚠️ [RESPONSE_HANDLER] Unknown correlation_id: {message_correlation_id}")
                     self.logger.debug(f"Received response for unknown correlation_id: {message_correlation_id}")
                     return
                 

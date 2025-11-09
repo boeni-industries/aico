@@ -312,15 +312,21 @@ async def refresh_token(
 ) -> AuthenticationResponse:
     """Refresh access token using refresh token"""
     try:
-        # Extract refresh token from Authorization header
-        auth_header = request.headers.get("authorization", "")
-        if not auth_header.startswith("Bearer "):
+        # Extract refresh token from request body or Authorization header
+        body = await request.json()
+        refresh_token = body.get('refresh_token')
+        
+        # Fallback to Authorization header if not in body
+        if not refresh_token:
+            auth_header = request.headers.get("authorization", "")
+            if auth_header.startswith("Bearer "):
+                refresh_token = auth_header[7:]  # Remove "Bearer " prefix
+        
+        if not refresh_token:
             return AuthenticationResponse(
                 success=False,
                 error="No refresh token provided"
             )
-        
-        refresh_token = auth_header[7:]  # Remove "Bearer " prefix
         
         # Decode refresh token to verify it's valid and get user info
         try:
