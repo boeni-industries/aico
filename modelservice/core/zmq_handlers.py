@@ -24,7 +24,6 @@ from aico.proto.aico_modelservice_pb2 import (
     SentimentRequest, SentimentResponse, IntentClassificationRequest, IntentClassificationResponse
 )
 from google.protobuf.timestamp_pb2 import Timestamp
-from aico.ai.utils.thinking_parser import ThinkingParser
 
 # Logger will be initialized in class constructor to avoid import-time issues
 
@@ -245,16 +244,17 @@ class ModelserviceZMQHandlers:
                 request_data = {
                     "model": model,
                     "messages": chat_messages,
-                    "stream": True  # Enable streaming
+                    "stream": True,  # Enable streaming
+                    "think": True  # Enable Ollama 0.12+ native thinking mode
                 }
-                self.logger.info(f"[CHAT] Request data prepared: model={model}, messages_count={len(chat_messages)}, streaming=True")
+                self.logger.info(f"[CHAT] Request data prepared: model={model}, messages_count={len(chat_messages)}, streaming=True, thinking=True")
                 
                 try:
                     self.logger.info(f"[CHAT] Making streaming POST request to {ollama_url}/api/chat")
                     
                     # Stream response from Ollama and forward chunks immediately
                     accumulated_content = ""
-                    thinking_parser = ThinkingParser()  # Initialize parser for this request
+                    accumulated_thinking = ""
                     from aico.proto.aico_modelservice_pb2 import CompletionResult, ConversationMessage
                     
                     async with client.stream("POST", f"{ollama_url}/api/chat", json=request_data) as stream_response:
@@ -271,44 +271,65 @@ class ModelserviceZMQHandlers:
                             try:
                                 chunk = json.loads(line)
                                 
-                                # Extract content from chunk
-                                if "message" in chunk and "content" in chunk["message"]:
-                                    chunk_content = chunk["message"]["content"]
-                                    accumulated_content += chunk_content
+                                # Ollama 0.12+ returns thinking in separate field
+                                chunk_thinking = chunk.get("message", {}).get("thinking", "")
+                                chunk_content = chunk.get("message", {}).get("content", "")
+                                
+                                # Handle thinking chunks
+                                if chunk_thinking:
+                                    accumulated_thinking += chunk_thinking
                                     
-                                    # Parse thinking tags from chunk
-                                    parsed_content, content_type = thinking_parser.parse_chunk(chunk_content)
-                                    
-                                    # Publish streaming chunk using proper protobuf message
-                                    if self.message_bus_client and parsed_content and correlation_id:
+                                    # Publish thinking chunk
+                                    if self.message_bus_client and correlation_id:
                                         from aico.proto.aico_modelservice_pb2 import StreamingChunk
                                         from aico.core.topics import AICOTopics
                                         import time
                                         
-                                        # Create proper protobuf streaming chunk with content_type
                                         streaming_chunk = StreamingChunk()
                                         streaming_chunk.request_id = correlation_id
-                                        streaming_chunk.content = parsed_content
-                                        streaming_chunk.accumulated_content = accumulated_content
+                                        streaming_chunk.content = chunk_thinking
+                                        streaming_chunk.accumulated_content = accumulated_thinking
                                         streaming_chunk.done = False
                                         streaming_chunk.model = model
-                                        streaming_chunk.timestamp = int(time.time() * 1000)  # milliseconds
-                                        streaming_chunk.content_type = content_type  # "thinking" or "response"
+                                        streaming_chunk.timestamp = int(time.time() * 1000)
+                                        streaming_chunk.content_type = "thinking"
                                         
-                                        # Publish using proper message bus pattern
                                         await self.message_bus_client.publish(
                                             AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
                                             streaming_chunk,
                                             correlation_id=correlation_id
                                         )
-                                        self.logger.debug(f"[CHAT] Published {content_type} chunk for {correlation_id}")
+                                        self.logger.debug(f"[CHAT] Published thinking chunk for {correlation_id}")
+                                
+                                # Handle response content chunks
+                                if chunk_content:
+                                    accumulated_content += chunk_content
+                                    
+                                    # Publish response chunk
+                                    if self.message_bus_client and correlation_id:
+                                        from aico.proto.aico_modelservice_pb2 import StreamingChunk
+                                        from aico.core.topics import AICOTopics
+                                        import time
+                                        
+                                        streaming_chunk = StreamingChunk()
+                                        streaming_chunk.request_id = correlation_id
+                                        streaming_chunk.content = chunk_content
+                                        streaming_chunk.accumulated_content = accumulated_content
+                                        streaming_chunk.done = False
+                                        streaming_chunk.model = model
+                                        streaming_chunk.timestamp = int(time.time() * 1000)
+                                        streaming_chunk.content_type = "response"
+                                        
+                                        await self.message_bus_client.publish(
+                                            AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
+                                            streaming_chunk,
+                                            correlation_id=correlation_id
+                                        )
+                                        self.logger.debug(f"[CHAT] Published response chunk for {correlation_id}")
                                 
                                 # Check if this is the final chunk
                                 if chunk.get("done", False):
-                                    self.logger.info(f"[CHAT] Streaming complete, total length: {len(accumulated_content)}")
-                                    
-                                    # Extract final thinking and response content
-                                    thinking_content, response_content = thinking_parser.get_final_content()
+                                    self.logger.info(f"[CHAT] Streaming complete, thinking length: {len(accumulated_thinking)}, response length: {len(accumulated_content)}")
                                     
                                     # Publish final completion signal
                                     if self.message_bus_client and correlation_id:

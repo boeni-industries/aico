@@ -411,6 +411,14 @@ class OllamaManager:
             keep_alive = self.ollama_config.get("keep_alive", -1)
             env["OLLAMA_KEEP_ALIVE"] = str(keep_alive)
             
+            # Configure Ollama 0.12+ concurrency settings
+            # Allow multiple models loaded simultaneously (chat + embedding)
+            env["OLLAMA_MAX_LOADED_MODELS"] = str(self.ollama_config.get("max_loaded_models", 2))
+            # Enable parallel request processing per model
+            env["OLLAMA_NUM_PARALLEL"] = str(self.ollama_config.get("num_parallel", 4))
+            # Limit queue depth to fail fast instead of timeout
+            env["OLLAMA_MAX_QUEUE"] = str(self.ollama_config.get("max_queue", 128))
+            
             # Configure Ollama logging
             ollama_log_file = self.logs_dir / "ollama.log"
             env["OLLAMA_LOGS"] = str(self.logs_dir)

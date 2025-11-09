@@ -130,13 +130,10 @@ modelservice:
         name: "huihui_ai/qwen3-abliterated:8b-v2"
         description: "Qwen3 Abliterated - Uncensored foundation model for character consistency"
         auto_pull: true
+        auto_start: true  # Preload on startup for fast first response
         priority: 1
-      embedding:
-        name: "paraphrase-multilingual"  # Referenced by CLI tools and semantic memory
-        description: "Multilingual embedding model for semantic memory (via TransformersManager)"
-        auto_pull: false  # Not using Ollama for embeddings, using transformers instead
-        priority: 1
-        dimensions: 768  # Used for ChromaDB collection creation
+      # Note: Embeddings are handled by TransformersManager (sentence-transformers)
+      # See modelservice.transformers.models.embeddings configuration below
       vision:
         name: "llama3.2-vision:11b"
         description: "Scene understanding and emotional context"

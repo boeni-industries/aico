@@ -363,6 +363,10 @@ export OLLAMA_MAX_QUEUE=128        # Limit queue to 128 (fail fast)
 **Next Steps:**
 1. ✅ **DONE:** Check current Ollama version (0.11.10)
 2. ✅ **DONE:** Update to Ollama 0.12.10 (via `aico ollama update`)
-3. 🔴 **TODO:** Configure Ollama environment variables
-4. 🔴 **TODO:** Restart modelservice to use new Ollama version
-5. 🔴 **TODO:** Start with Phase 1.1 (priority queue - may be simplified with 0.12.x)
+3. ✅ **DONE:** Configure Ollama environment variables in `ollama_manager.py`
+   - `OLLAMA_MAX_LOADED_MODELS=2` (chat + embedding model)
+   - `OLLAMA_NUM_PARALLEL=4` (4 parallel requests per model)
+   - `OLLAMA_MAX_QUEUE=128` (fail fast at 128 queued requests)
+4. 🔴 **TODO:** Restart modelservice to apply changes: `aico gateway restart`
+5. 🔴 **TODO:** Test conversation works with new Ollama version
+6. 🔴 **TODO:** Start Phase 1 implementation tomorrow
