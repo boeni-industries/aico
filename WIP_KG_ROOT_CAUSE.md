@@ -281,5 +281,7 @@ hnswlib = "^0.8.0"  # Fastest HNSW implementation
 
 - ✅ Root cause identified
 - ✅ Documented
-- ⚠️ Entity resolution remains disabled
-- 🔴 Requires architectural fix before re-enabling
+- ✅ Solution implemented (HNSW + LLM batch matching)
+- ✅ Dependency added (`hnswlib==0.8.0`)
+- ⚠️ Entity resolution still disabled in config
+- 🟡 Ready for testing and re-enabling

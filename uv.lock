@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.13"
 
 [[package]]
@@ -11,6 +11,7 @@ dependencies = [
     { name = "chromadb" },
     { name = "cryptography" },
     { name = "grand-cypher" },
+    { name = "hnswlib" },
     { name = "jsonschema" },
     { name = "keyring" },
     { name = "libsql" },
@@ -69,6 +70,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'backend'", specifier = ">=0.116.1" },
     { name = "gliner", marker = "extra == 'modelservice'", specifier = ">=0.2.22" },
     { name = "grand-cypher" },
+    { name = "hnswlib" },
     { name = "httpx", marker = "extra == 'backend'", specifier = ">=0.28.1" },
     { name = "jsonschema" },
     { name = "keyring" },
@@ -705,6 +707,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/13/874c85c7ed519ec101deb654f06703d9e5e68d34416730f64c4755ada36a/hf_xet-1.1.8-cp37-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:25b9d43333bbef39aeae1616789ec329c21401a7fe30969d538791076227b591", size = 3344325, upload-time = "2025-08-18T22:01:02.013Z" },
     { url = "https://files.pythonhosted.org/packages/9e/d3/0aaf279f4f3dea58e99401b92c31c0f752924ba0e6c7d7bb07b1dbd7f35e/hf_xet-1.1.8-cp37-abi3-win_amd64.whl", hash = "sha256:4171f31d87b13da4af1ed86c98cf763292e4720c088b4957cf9d564f92904ca9", size = 2801689, upload-time = "2025-08-18T22:01:04.81Z" },
 ]
+
+[[package]]
+name = "hnswlib"
+version = "0.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cf/7a/1a9b1405f2eb59515f06c3074750b03e0e96edf7fee0f6dd6df81d9c21d7/hnswlib-0.8.0.tar.gz", hash = "sha256:cb6d037eedebb34a7134e7dc78966441dfd04c9cf5ee93911be911ced951c44c", size = 36206, upload-time = "2023-12-03T04:16:17.55Z" }
 
 [[package]]
 name = "httpcore"

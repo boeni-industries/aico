@@ -639,30 +639,15 @@ class MemoryManager(BaseAIProcessor):
                 
                 asyncio.create_task(store_segment_background())
             
-            # Extract knowledge graph in background (non-blocking)
-            # TEMPORARILY DISABLED to fix embedding timeout issues
-            print(f"🕸️ [KG_CHECK] KG extraction DISABLED (causes embedding timeouts)")
-            if False and self._kg_initialized and role == "user":  # DISABLED
-                print(f"🕸️ [KG] ✅ Triggering background extraction for user message (len: {len(content)})")
-                logger.info(f"🕸️ [KG] Triggering background extraction for user message (len: {len(content)})")
-                
-                # Wrap extraction with exception handling to catch silent failures
-                async def safe_extract():
-                    try:
-                        await self._extract_knowledge_graph(user_id, content)
-                    except Exception as e:
-                        print(f"🕸️ [KG] ❌ Background extraction EXCEPTION: {e}")
-                        logger.error(f"🕸️ [KG] Background extraction exception: {e}")
-                        import traceback
-                        print(f"🕸️ [KG] Traceback:\n{traceback.format_exc()}")
-                
-                task = asyncio.create_task(safe_extract())
-                self._kg_background_tasks.add(task)
-                task.add_done_callback(self._kg_background_tasks.discard)
-                print(f"🕸️ [KG] Background task created and added to tracking set")
+            # KG extraction moved to consolidation scheduler (AMS architecture)
+            # Per-message extraction disabled to prevent embedding queue saturation
+            # Messages will be processed in batches during idle periods via ams.kg_consolidation task
+            print(f"🕸️ [KG_CHECK] Checking if KG extraction should run: kg_initialized={self._kg_initialized}, role={role}")
+            if self._kg_initialized and role == "user":
+                print(f"🕸️ [KG] 📝 Message queued for consolidation (will be processed during next idle period)")
+                logger.info(f"🕸️ [KG] Message queued for consolidation scheduler")
             else:
-                print(f"🕸️ [KG] ⚠️  Skipping extraction: kg_initialized={self._kg_initialized}, role={role}")
-                logger.debug(f"🕸️ [KG] Skipping extraction: kg_initialized={self._kg_initialized}, role={role}")
+                print(f"🕸️ [KG] ⚠️  Skipping: kg_initialized={self._kg_initialized}, role={role}")
             
             logger.info(f"✅ Stored {role} message in memory")
             return True
@@ -907,13 +892,29 @@ class MemoryManager(BaseAIProcessor):
                 logger.info("🕸️ [KG] No entities extracted, skipping")
                 return
             
-            # 2. Skip entity resolution and fusion for now (they hang due to modelservice issues)
-            # TODO: Fix entity resolution and fusion to work with background extraction
-            logger.warning(f"🕸️ [KG] Skipping entity resolution and fusion (not yet compatible with background extraction)")
+            # 2. Entity resolution (deduplication) - RE-ENABLED with HNSW (2025-11-10)
+            print(f"🕸️ [KG] Step 2: Entity resolution (HNSW-based deduplication)")
+            try:
+                # Get existing nodes for this user
+                existing_nodes = await self._kg_storage.get_user_nodes(user_id, current_only=True)
+                print(f"🕸️ [KG] Found {len(existing_nodes)} existing nodes for user")
+                
+                # Resolve entities (deduplicate)
+                resolved_graph = await self._kg_resolver.resolve(new_graph, user_id, existing_nodes)
+                print(f"🕸️ [KG] Resolution complete: {len(new_graph.nodes)} → {len(resolved_graph.nodes)} nodes")
+                
+                # Use resolved graph for storage
+                new_graph = resolved_graph
+            except Exception as e:
+                print(f"🕸️ [KG] ⚠️  Entity resolution failed: {e}, proceeding with unresolved graph")
+                logger.warning(f"Entity resolution failed: {e}, proceeding with unresolved graph")
+                import traceback
+                traceback.print_exc()
             
-            # 3. Save directly to storage
-            print(f"🕸️ [KG] Saving graph to storage...")
-            logger.info(f"🕸️ [KG] Saving graph to storage...")
+            # 3. Graph fusion - SKIPPED (not critical for initial testing)
+            print(f"🕸️ [KG] Step 3: Graph fusion (skipped for now)")
+            
+            # 4. Save to storage (libSQL only - no embeddings)
             await self._kg_storage.save_graph(new_graph)
             print(f"🕸️ [KG] ✅ Knowledge graph saved successfully!")
             logger.info(f"🕸️ [KG] ✅ Knowledge graph saved successfully")

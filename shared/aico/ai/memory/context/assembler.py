@@ -139,9 +139,9 @@ class ContextAssembler:
                     logger.warning(f"Behavioral memory context retrieval failed: {e}")
             
             # 4.5 Get knowledge graph context (entities and relationships)
-            # TEMPORARILY DISABLED - KG data is causing identity confusion
+            # Uses libSQL for structured queries (no embeddings needed)
             kg_context = {}
-            if False and self.kg_storage and self.kg_modelservice:  # DISABLED
+            if self.kg_storage and self.kg_modelservice:  # ENABLED
                 try:
                     # Build search query from working memory context (recent conversation)
                     # This finds stored facts relevant to the conversation topic
@@ -149,14 +149,16 @@ class ContextAssembler:
                         item.content for item in working_items[-3:] if item.content
                     ]) if working_items else current_message
                     
-                    print(f"🕸️ [KG_CONTEXT] Searching KG with context: {search_context[:50]}...")
+                    print(f"🕸️ [KG_CONTEXT] Getting recent KG entities from libSQL...")
                     
-                    # Search for relevant nodes using conversation context
-                    kg_nodes = await self.kg_storage.search_nodes(
-                        search_context,
-                        user_id, 
-                        top_k=5
+                    # Get recent nodes from libSQL (no embeddings needed, fast query)
+                    # Moved from semantic search to avoid embedding queue saturation
+                    kg_nodes = await self.kg_storage.get_user_nodes(
+                        user_id,
+                        current_only=True
                     )
+                    # Limit to 5 most recent
+                    kg_nodes = kg_nodes[:5] if kg_nodes else []
                     
                     # Get edges connecting these nodes
                     kg_edges = []
@@ -216,8 +218,7 @@ class ContextAssembler:
                 except Exception as e:
                     logger.warning(f"Knowledge graph context retrieval failed: {e}")
                     print(f"🕸️ [KG_CONTEXT] ❌ Failed to retrieve KG context: {e}")
-                    import traceback
-                    print(f"🕸️ [KG_CONTEXT] Traceback:\n{traceback.format_exc()}")
+                    kg_context = {"entities": [], "relationships": []}
             
             # 5. Score and rank context items
             ranked_items = self.scorer.score_and_rank(all_items, max_items=max_items)

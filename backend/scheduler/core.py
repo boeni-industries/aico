@@ -51,6 +51,7 @@ class TaskRegistry:
         builtin_modules = [
             "backend.scheduler.tasks.maintenance",
             "backend.scheduler.tasks.ams_consolidation",  # AMS Phase 1.5
+            "backend.scheduler.tasks.kg_consolidation",  # KG consolidation
             "backend.scheduler.tasks.lmdb_cleanup"  # LMDB cleanup
         ]
         

@@ -44,6 +44,7 @@ class Node:
     is_current: int = 1
     canonical_id: Optional[str] = None
     aliases: Optional[List[str]] = None
+    embedding: Optional[List[float]] = None  # Cached embedding from resolution
     
     @classmethod
     def create(

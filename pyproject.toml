@@ -29,6 +29,7 @@ dependencies = [
     "chromadb>=1.0.16", # Phase 2 semantic memory - core functionality
     "transformers==4.50.3",
     "grand-cypher", # GQL/Cypher query language support for knowledge graph
+    "hnswlib", # HNSW approximate nearest neighbor search for entity resolution
 ]
 
 [project.optional-dependencies]

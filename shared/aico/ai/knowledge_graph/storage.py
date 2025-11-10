@@ -194,69 +194,77 @@ class PropertyGraphStorage:
     
     async def save_graph(self, graph: PropertyGraph) -> None:
         """
-        Save entire graph (batch operation).
+        Save property graph to both libSQL and ChromaDB.
         
         Args:
             graph: PropertyGraph to save
         """
-        logger.info(f"Saving graph with {len(graph.nodes)} nodes and {len(graph.edges)} edges")
-        
-        # Batch all database writes in single transaction to avoid lock contention
+        # Save to libSQL (structured queries)
         def _sync_save_all():
-            """Save all nodes and edges in single transaction"""
-            print(f"🕸️ [STORAGE_DB] Starting batch transaction for {len(graph.nodes)} nodes, {len(graph.edges)} edges...")
             with self.db:
-                # Insert all nodes
+                # Save nodes
                 for node in graph.nodes:
                     self.db.execute(
                         """
-                        INSERT INTO kg_nodes (
-                            id, user_id, label, properties, confidence, source_text,
-                            created_at, updated_at, valid_from, valid_until, is_current,
-                            canonical_id, aliases_json
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(id) DO UPDATE SET
-                            properties = excluded.properties,
-                            confidence = excluded.confidence,
-                            updated_at = excluded.updated_at,
-                            valid_until = excluded.valid_until,
-                            is_current = excluded.is_current
+                        INSERT OR REPLACE INTO kg_nodes 
+                        (id, user_id, label, properties, confidence, source_text, is_current, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                        node.to_libsql_tuple()
+                        (
+                            node.id, node.user_id, node.label,
+                            json.dumps(node.properties), node.confidence, node.source_text,
+                            1, node.created_at, node.updated_at
+                        )
                     )
                 
-                # Insert all edges
+                # Save edges
                 for edge in graph.edges:
                     self.db.execute(
                         """
-                        INSERT INTO kg_edges (
-                            id, user_id, source_id, target_id, relation_type,
-                            properties, confidence, source_text,
-                            created_at, updated_at, valid_from, valid_until, is_current
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(id) DO UPDATE SET
-                            properties = excluded.properties,
-                            confidence = excluded.confidence,
-                            updated_at = excluded.updated_at,
-                            valid_until = excluded.valid_until,
-                            is_current = excluded.is_current
+                        INSERT OR REPLACE INTO kg_edges 
+                        (id, source_id, target_id, relation_type, properties, confidence, user_id, is_current, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                        edge.to_libsql_tuple()
+                        (
+                            edge.id, edge.source_id, edge.target_id, edge.relation_type,
+                            json.dumps(edge.properties), edge.confidence, edge.user_id,
+                            1, edge.created_at, edge.updated_at
+                        )
                     )
                 
                 self.db.commit()
-            print(f"🕸️ [STORAGE_DB] Batch transaction committed")
         
-        # Execute batch transaction in thread pool
+        print(f"🕸️ [STORAGE_DB] Starting batch transaction for {len(graph.nodes)} nodes, {len(graph.edges)} edges...")
         await asyncio.to_thread(_sync_save_all)
+        print(f"🕸️ [STORAGE_DB] Batch transaction committed")
         
-        # Generate embeddings and save to ChromaDB (in parallel)
-        print(f"🕸️ [STORAGE] Generating embeddings for {len(graph.nodes)} nodes...")
+        # Save to ChromaDB (semantic search) - reuse cached embeddings from resolution
         node_docs = [node.to_chromadb_document() for node in graph.nodes]
-        node_texts = [doc["document"] for doc in node_docs]
         
-        embedding_result = await self.modelservice.generate_embeddings(node_texts)
-        embeddings = embedding_result.get("embeddings", [])
+        # Separate nodes with/without cached embeddings
+        nodes_with_embeddings = [(i, node) for i, node in enumerate(graph.nodes) if node.embedding is not None]
+        nodes_without_embeddings = [(i, node) for i, node in enumerate(graph.nodes) if node.embedding is None]
+        
+        # Initialize embeddings list
+        embeddings = [None] * len(graph.nodes)
+        
+        # Use cached embeddings
+        for i, node in nodes_with_embeddings:
+            embeddings[i] = node.embedding
+        
+        # Generate embeddings only for nodes without cache (fallback)
+        if nodes_without_embeddings:
+            indices_to_generate = [i for i, _ in nodes_without_embeddings]
+            texts_to_generate = [node_docs[i]["document"] for i in indices_to_generate]
+            
+            print(f"🕸️ [STORAGE] Generating embeddings for {len(texts_to_generate)} nodes (no cache)...")
+            embedding_result = await self.modelservice.generate_embeddings(texts_to_generate)
+            generated_embeddings = embedding_result.get("embeddings", [])
+            
+            for idx, embedding in zip(indices_to_generate, generated_embeddings):
+                embeddings[idx] = embedding
+        else:
+            print(f"🕸️ [STORAGE] Using cached embeddings for all {len(graph.nodes)} nodes (0 generated)")
         
         print(f"🕸️ [STORAGE] Saving {len(graph.nodes)} nodes to ChromaDB...")
         
@@ -290,8 +298,6 @@ class PropertyGraphStorage:
                 )
             
             await asyncio.to_thread(_sync_save_edges_to_chroma)
-        
-        logger.info("Graph saved successfully")
     
     async def get_node(self, node_id: str) -> Optional[Node]:
         """
