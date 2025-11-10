@@ -8,6 +8,7 @@ Uses GLiNER for entity extraction and LLM for relation extraction.
 from typing import List, Dict, Any, Optional
 import asyncio
 import json
+import time
 from datetime import datetime
 
 from aico.core.logging import get_logger
@@ -605,8 +606,8 @@ class GLiNEREntityExtractor(ExtractionStrategy):
                 text_stripped = entity_text.strip()
                 word_count = len(text_stripped.split())
                 
-                # 1. Minimum confidence threshold
-                if confidence < 0.25:
+                # 1. Minimum confidence threshold (increased from 0.25 to 0.4 for better quality)
+                if confidence < 0.4:
                     should_keep = False
                     
                 # 2. Filter very short entities (likely pronouns in any language)
@@ -617,11 +618,22 @@ class GLiNEREntityExtractor(ExtractionStrategy):
                 elif word_count == 1 and len(text_stripped) <= 4 and confidence < 0.35:
                     should_keep = False
                     
-                # 4. Filter generic time references without context (works across languages)
+                # 4. Filter generic time references (language-agnostic)
                 elif entity_type in ['TIME', 'DATE'] and word_count == 1:
+                    # Single-word time references without context are usually not meaningful
                     should_keep = False
                     
-                # 5. Filter entities that are just punctuation or numbers
+                # 5. Filter MENTION entities (greetings, filler words - language-agnostic)
+                elif entity_type == 'MENTION' and confidence < 0.5:
+                    # MENTION type entities with low confidence are usually greetings/fillers
+                    should_keep = False
+                    
+                # 6. Filter overly generic THING entities (too vague to be useful)
+                elif entity_type == 'THING' and word_count > 2 and confidence < 0.5:
+                    # Generic multi-word things with low confidence are usually noise
+                    should_keep = False
+                    
+                # 7. Filter entities that are just punctuation or numbers
                 elif text_stripped.replace(' ', '').replace('-', '').isdigit():
                     should_keep = False
                 
@@ -694,6 +706,9 @@ class LLMRelationExtractor(ExtractionStrategy):
         Returns:
             PropertyGraph with extracted relationships (edges and any new nodes)
         """
+        print(f"🔗 [LLM_EXTRACTOR] ========== EXTRACT METHOD CALLED ==========")
+        print(f"🔗 [LLM_EXTRACTOR] Text: '{text}'")
+        print(f"🔗 [LLM_EXTRACTOR] Context entities: {len(context.get('entities', []))}")
         try:
             # Build prompt with existing entities if available
             existing_entities = context.get("entities", [])
@@ -701,6 +716,9 @@ class LLMRelationExtractor(ExtractionStrategy):
             if existing_entities:
                 entity_list = [f"- {e['label']}: {e['name']}" for e in existing_entities]
                 entity_context = f"\n\nKnown entities:\n" + "\n".join(entity_list)
+                print(f"🔗 [LLM_EXTRACTOR] Processing with {len(existing_entities)} known entities")
+            else:
+                print(f"🔗 [LLM_EXTRACTOR] No known entities provided")
             
             prompt = f"""Extract relationships between DIFFERENT entities from the following text.
 
@@ -730,21 +748,44 @@ Return valid JSON only, no explanation."""
             
             logger.debug(f"Sending LLM prompt ({len(prompt)} chars) for relation extraction")
             
-            # Call LLM (Eve - reasoning model)
+            # Call LLM with timeout
+            print(f"🔗 [LLM_EXTRACTOR] Calling LLM with timeout={self.llm_timeout}s...")
+            start_time = time.time()
             response = await asyncio.wait_for(
                 self.modelservice.generate_completion(
                     prompt=prompt,
-                    model="eve",  # Uses default conversation model (qwen3-abliterated)
                     temperature=0.3,  # Lower temp for structured output
                     max_tokens=1024
                 ),
                 timeout=self.llm_timeout
             )
+            end_time = time.time()
+            print(f"🔗 [LLM_EXTRACTOR] LLM response received ({end_time - start_time:.2f}s)")
+            
+            # Debug: Check response structure
+            print(f"🔗 [LLM_EXTRACTOR] Response type: {type(response)}")
+            print(f"🔗 [LLM_EXTRACTOR] Response keys: {response.keys() if isinstance(response, dict) else 'NOT A DICT'}")
+            print(f"🔗 [LLM_EXTRACTOR] Full response: {response}")
+            
+            # Log raw response for debugging
+            raw_response = response.get("text", "")  # Fixed: key is "text", not "response"
+            print(f"🔗 [LLM_EXTRACTOR] Raw response length: {len(raw_response)} chars")
+            if raw_response:
+                print(f"🔗 [LLM_EXTRACTOR] Raw response preview: {raw_response[:200]}...")
+            else:
+                print(f"🔗 [LLM_EXTRACTOR] ⚠️  RAW RESPONSE IS EMPTY!")
             
             # Parse LLM response
-            response_text = response.get("text", "")
-            logger.debug(f"Received LLM response ({len(response_text)} chars)")
-            result = self._parse_llm_response(response_text)
+            result = self._parse_llm_response(raw_response)
+            print(f"🔗 [LLM_EXTRACTOR] Parsed result type: {type(result)}")
+            print(f"🔗 [LLM_EXTRACTOR] Parsed result keys: {result.keys() if isinstance(result, dict) else 'NOT A DICT'}")
+            print(f"🔗 [LLM_EXTRACTOR] Parsed: {len(result.get('relationships', []))} relationships, {len(result.get('new_entities', []))} new entities")
+            
+            if len(result.get('relationships', [])) == 0:
+                print(f"🔗 [LLM_EXTRACTOR] ⚠️  NO RELATIONSHIPS FOUND!")
+                print(f"🔗 [LLM_EXTRACTOR] Full parsed result: {result}")
+            
+            logger.debug(f"Received LLM response ({len(raw_response)} chars)")
             
             graph = PropertyGraph()
             
@@ -797,9 +838,13 @@ Return valid JSON only, no explanation."""
             return graph
             
         except asyncio.TimeoutError:
+            print(f"🔗 [LLM_EXTRACTOR] ❌ TIMEOUT after {self.llm_timeout}s")
             logger.error(f"LLM extraction timed out after {self.llm_timeout}s")
             return PropertyGraph()
         except Exception as e:
+            print(f"🔗 [LLM_EXTRACTOR] ❌ EXCEPTION: {type(e).__name__}: {e}")
+            import traceback
+            print(f"🔗 [LLM_EXTRACTOR] Traceback:\n{traceback.format_exc()}")
             logger.error(f"LLM extraction failed: {e}")
             return PropertyGraph()
     
@@ -807,13 +852,20 @@ Return valid JSON only, no explanation."""
         """Parse LLM JSON response, handling common issues."""
         try:
             # Try to extract JSON from response
+            original_text = text
             if "```json" in text:
                 text = text.split("```json")[1].split("```")[0]
+                print(f"🔗 [PARSER] Extracted JSON from markdown code block")
             elif "```" in text:
                 text = text.split("```")[1].split("```")[0]
+                print(f"🔗 [PARSER] Extracted from generic code block")
             
-            return json.loads(text.strip())
+            parsed = json.loads(text.strip())
+            print(f"🔗 [PARSER] ✅ Successfully parsed JSON")
+            return parsed
         except Exception as e:
+            print(f"🔗 [PARSER] ❌ Failed to parse LLM response: {e}")
+            print(f"🔗 [PARSER] Raw text (first 500 chars): {original_text[:500]}")
             logger.warning(f"Failed to parse LLM response: {e}")
             return {"relationships": [], "new_entities": []}
     
@@ -906,12 +958,17 @@ class MultiPassExtractor:
         Returns:
             PropertyGraph with extracted entities and relationships
         """
+        print(f"\n📚 [MULTIPASS] Starting multi-pass extraction (max_passes={self.max_gleanings + 1})")
         logger.info(f"Starting multi-pass extraction (max_passes={self.max_gleanings + 1})")
+        pipeline_start = time.time()
         
         # Pass 1: Initial extraction
+        pass1_start = time.time()
         graph = await self._initial_extraction(text, user_id)
+        pass1_time = time.time() - pass1_start
         initial_count = len(graph)
         
+        print(f"📚 [MULTIPASS] Pass 1 complete in {pass1_time:.2f}s: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
         logger.info(f"Pass 1 complete: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
         
         # Pass 2+: Gleaning passes
@@ -927,7 +984,11 @@ class MultiPassExtractor:
         
         final_count = len(graph)
         improvement = ((final_count - initial_count) / initial_count * 100) if initial_count > 0 else 0
+        pipeline_time = time.time() - pipeline_start
         
+        print(f"\n📚 [MULTIPASS] ✅ Extraction complete in {pipeline_time:.2f}s")
+        print(f"📚 [MULTIPASS]    Total: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
+        print(f"📚 [MULTIPASS]    Improvement: {improvement:.1f}% over initial pass")
         logger.info(f"Extraction complete: {len(graph.nodes)} nodes, {len(graph.edges)} edges ({improvement:.1f}% improvement)")
         
         return graph
@@ -948,8 +1009,12 @@ class MultiPassExtractor:
             PropertyGraph with initial extraction
         """
         # Step 1: Extract entities using GLiNER (fast)
+        print(f"\n  🔍 [ENTITIES] Starting GLiNER entity extraction...")
+        entity_start = time.time()
         logger.debug("Starting entity extraction phase")
         entity_graph = await self.gliner_extractor.extract(text, user_id, {})
+        entity_time = time.time() - entity_start
+        print(f"  🔍 [ENTITIES] ✅ Complete in {entity_time:.2f}s: {len(entity_graph.nodes)} entities")
         logger.info(f"Entity extraction complete: {len(entity_graph.nodes)} entities")
         
         # Merge entity results
@@ -969,10 +1034,19 @@ class MultiPassExtractor:
         }
         
         # Step 3: Extract relations WITH entity context (only one LLM call needed)
+        print(f"🔗 [RELATIONS] Starting relation extraction with {len(entity_context['entities'])} known entities")
         logger.debug(f"Starting relation extraction with {len(entity_context['entities'])} known entities")
-        relation_graph = await self.llm_extractor.extract(text, user_id, entity_context)
-        logger.info(f"Relation extraction complete: {len(relation_graph.edges)} relationships")
-        graph.merge(relation_graph)
+        
+        try:
+            relation_graph = await self.llm_extractor.extract(text, user_id, entity_context)
+            print(f"🔗 [RELATIONS] Extraction complete: {len(relation_graph.edges)} relationships, {len(relation_graph.nodes)} new nodes")
+            logger.info(f"Relation extraction complete: {len(relation_graph.edges)} relationships")
+            graph.merge(relation_graph)
+        except Exception as e:
+            print(f"🔗 [RELATIONS] ❌ Extraction failed: {e}")
+            logger.error(f"Relation extraction failed: {e}")
+            import traceback
+            traceback.print_exc()
         
         return graph
     

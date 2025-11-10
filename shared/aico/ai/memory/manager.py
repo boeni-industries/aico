@@ -878,49 +878,86 @@ class MemoryManager(BaseAIProcessor):
     
     async def _extract_knowledge_graph(self, user_id: str, text: str) -> None:
         """Background knowledge graph extraction from user message."""
+        import time
+        start_time = time.time()
+        print(f"\n{'='*80}")
         print(f"🕸️ [KG] 🚀 Background extraction task STARTED for user {user_id}")
+        print(f"🕸️ [KG] Text length: {len(text)} chars")
+        print(f"{'='*80}")
         try:
-            print(f"🕸️ [KG] Calling extractor.extract()...")
+            # 1. Extract entities and relationships
+            print(f"\n🕸️ [KG] Step 1: Multi-pass extraction...")
+            extraction_start = time.time()
             logger.info(f"🕸️ [KG] Starting background extraction for user {user_id}")
             
-            # 1. Extract entities and relationships
             new_graph = await self._kg_extractor.extract(text, user_id)
-            print(f"🕸️ [KG] Extraction complete: {len(new_graph.nodes)} nodes, {len(new_graph.edges)} edges")
-            logger.info(f"🕸️ [KG] Extracted {len(new_graph.nodes)} nodes, {len(new_graph.edges)} edges")
+            extraction_time = time.time() - extraction_start
+            
+            print(f"\n🕸️ [KG] ✅ Extraction complete in {extraction_time:.2f}s")
+            print(f"🕸️ [KG]    Nodes: {len(new_graph.nodes)}")
+            print(f"🕸️ [KG]    Edges: {len(new_graph.edges)}")
+            logger.info(f"🕸️ [KG] Extracted {len(new_graph.nodes)} nodes, {len(new_graph.edges)} edges in {extraction_time:.2f}s")
             
             if len(new_graph.nodes) == 0 and len(new_graph.edges) == 0:
                 logger.info("🕸️ [KG] No entities extracted, skipping")
                 return
             
             # 2. Entity resolution (deduplication) - RE-ENABLED with HNSW (2025-11-10)
-            print(f"🕸️ [KG] Step 2: Entity resolution (HNSW-based deduplication)")
+            print(f"\n🕸️ [KG] Step 2: Entity resolution (HNSW-based deduplication)")
+            resolution_start = time.time()
             try:
                 # Get existing nodes for this user
+                db_fetch_start = time.time()
                 existing_nodes = await self._kg_storage.get_user_nodes(user_id, current_only=True)
-                print(f"🕸️ [KG] Found {len(existing_nodes)} existing nodes for user")
+                db_fetch_time = time.time() - db_fetch_start
+                print(f"🕸️ [KG]    Found {len(existing_nodes)} existing nodes in DB ({db_fetch_time:.2f}s)")
                 
                 # Resolve entities (deduplicate)
+                resolve_start = time.time()
                 resolved_graph = await self._kg_resolver.resolve(new_graph, user_id, existing_nodes)
-                print(f"🕸️ [KG] Resolution complete: {len(new_graph.nodes)} → {len(resolved_graph.nodes)} nodes")
+                resolve_time = time.time() - resolve_start
+                
+                duplicates_merged = len(new_graph.nodes) - len(resolved_graph.nodes)
+                print(f"\n🕸️ [KG] ✅ Resolution complete in {resolve_time:.2f}s")
+                print(f"🕸️ [KG]    Before: {len(new_graph.nodes)} nodes")
+                print(f"🕸️ [KG]    After:  {len(resolved_graph.nodes)} nodes")
+                print(f"🕸️ [KG]    Merged: {duplicates_merged} duplicates")
                 
                 # Use resolved graph for storage
                 new_graph = resolved_graph
             except Exception as e:
-                print(f"🕸️ [KG] ⚠️  Entity resolution failed: {e}, proceeding with unresolved graph")
+                resolution_time = time.time() - resolution_start
+                print(f"\n🕸️ [KG] ⚠️  Entity resolution failed after {resolution_time:.2f}s: {e}")
+                print(f"🕸️ [KG]    Proceeding with unresolved graph")
                 logger.warning(f"Entity resolution failed: {e}, proceeding with unresolved graph")
                 import traceback
                 traceback.print_exc()
             
             # 3. Graph fusion - SKIPPED (not critical for initial testing)
-            print(f"🕸️ [KG] Step 3: Graph fusion (skipped for now)")
+            print(f"\n🕸️ [KG] Step 3: Graph fusion (skipped for now)")
             
-            # 4. Save to storage (libSQL only - no embeddings)
+            # 4. Save to storage (libSQL + ChromaDB with embeddings)
+            print(f"\n🕸️ [KG] Step 4: Saving to storage...")
+            storage_start = time.time()
             await self._kg_storage.save_graph(new_graph)
-            print(f"🕸️ [KG] ✅ Knowledge graph saved successfully!")
-            logger.info(f"🕸️ [KG] ✅ Knowledge graph saved successfully")
+            storage_time = time.time() - storage_start
+            
+            total_time = time.time() - start_time
+            print(f"\n🕸️ [KG] ✅ Storage complete in {storage_time:.2f}s")
+            print(f"\n{'='*80}")
+            print(f"🕸️ [KG] ✅ PIPELINE COMPLETE in {total_time:.2f}s")
+            print(f"🕸️ [KG]    Extraction:  {extraction_time:.2f}s ({extraction_time/total_time*100:.1f}%)")
+            print(f"🕸️ [KG]    Resolution: {time.time() - resolution_start:.2f}s ({(time.time() - resolution_start)/total_time*100:.1f}%)")
+            print(f"🕸️ [KG]    Storage:    {storage_time:.2f}s ({storage_time/total_time*100:.1f}%)")
+            print(f"🕸️ [KG]    Final: {len(new_graph.nodes)} nodes, {len(new_graph.edges)} edges")
+            print(f"{'='*80}\n")
+            logger.info(f"🕸️ [KG] ✅ Knowledge graph saved successfully in {total_time:.2f}s")
             
         except Exception as e:
-            print(f"🕸️ [KG] ❌ Background extraction FAILED: {e}")
+            total_time = time.time() - start_time
+            print(f"\n{'='*80}")
+            print(f"🕸️ [KG] ❌ PIPELINE FAILED after {total_time:.2f}s: {e}")
+            print(f"{'='*80}")
             logger.error(f"🕸️ [KG] ❌ Background extraction failed: {e}")
             import traceback
             error_trace = traceback.format_exc()

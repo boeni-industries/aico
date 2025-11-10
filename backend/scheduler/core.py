@@ -211,6 +211,7 @@ class TaskExecutor:
         # Print to console if in foreground mode for immediate visibility
         if os.getenv('AICO_DETACH_MODE') == 'false':
             print(f"[SCHEDULER] Executing task: {task_id}")
+            print(f"[SCHEDULER] 🔍 Step 1: Checking if task is already running...")
         
         self.logger.info(f"Starting execution of task {task_id} (execution_id: {execution_id})")
         
@@ -219,12 +220,18 @@ class TaskExecutor:
             self.logger.warning(f"Task {task_id} is already running, skipping")
             return TaskResult(success=False, message="Task already running", skipped=True)
         
+        if os.getenv('AICO_DETACH_MODE') == 'false':
+            print(f"[SCHEDULER] 🔍 Step 2: Acquiring execution lock...")
+        
         # Acquire execution lock
-        lock_acquired = self.task_store.acquire_lock(task_id, execution_id)
+        lock_acquired = await self.task_store.acquire_lock(task_id, execution_id)
         if not lock_acquired:
             self.logger.warning(f"Could not acquire lock for task {task_id}")
             return TaskResult(success=False, message="Could not acquire execution lock", skipped=True)
 
+        if os.getenv('AICO_DETACH_MODE') == 'false':
+            print(f"[SCHEDULER] 🔍 Step 3: Lock acquired, adding to running tasks...")
+        
         # Add to running tasks *after* acquiring lock
         self.running_tasks[task_id] = asyncio.current_task()
 
@@ -232,11 +239,21 @@ class TaskExecutor:
         task_instance = None
 
         try:
+            if os.getenv('AICO_DETACH_MODE') == 'false':
+                print(f"[SCHEDULER] 🔍 Step 4: Recording execution start...")
+            
             # Record execution start
             self.task_store.record_execution_start(task_id, execution_id)
             
+            if os.getenv('AICO_DETACH_MODE') == 'false':
+                print(f"[SCHEDULER] 🔍 Step 5: Creating task instance...")
+            
             # Create task instance and context
             task_instance = task_class()
+            
+            if os.getenv('AICO_DETACH_MODE') == 'false':
+                print(f"[SCHEDULER] 🔍 Step 6: Creating task context...")
+            
             context = TaskContext(
                 task_id=task_id,
                 config_manager=self.config_manager,
@@ -245,6 +262,9 @@ class TaskExecutor:
                 execution_id=execution_id,
                 service_container=self.container
             )
+            
+            if os.getenv('AICO_DETACH_MODE') == 'false':
+                print(f"[SCHEDULER] 🔍 Step 7: Calling task.execute()...")
             
             # Apply task defaults to context for config resolution
             context.task_defaults = task_instance.get_default_config()
@@ -293,7 +313,7 @@ class TaskExecutor:
                     self.logger.warning(f"Task cleanup failed for {task_id}: {e}")
             
             # Release lock
-            self.task_store.release_lock(task_id, execution_id)
+            await self.task_store.release_lock(task_id, execution_id)
 
             # Remove from running tasks
             try:
@@ -367,6 +387,12 @@ class TaskScheduler(BaseService):
         
         # Verify database tables exist
         self.task_store.verify_tables_exist()
+        
+        # Clean up any stale locks from previous runs (e.g., if backend crashed)
+        self.logger.info("Cleaning up stale task locks from previous runs...")
+        database.execute("DELETE FROM task_locks")
+        database.commit()
+        self.logger.info("Stale task locks cleared")
         
         self.logger.info("Task scheduler initialized")
     

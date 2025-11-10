@@ -199,6 +199,9 @@ class PropertyGraphStorage:
         Args:
             graph: PropertyGraph to save
         """
+        import time
+        storage_start = time.time()
+        
         # Save to libSQL (structured queries)
         def _sync_save_all():
             with self.db:
@@ -219,24 +222,32 @@ class PropertyGraphStorage:
                 
                 # Save edges
                 for edge in graph.edges:
+                    # Debug: Check if source_text exists
+                    if not hasattr(edge, 'source_text') or edge.source_text is None:
+                        print(f"  💾 [STORAGE] ⚠️  Edge {edge.id} missing source_text! Edge: {edge}")
+                        # Set default source_text to avoid constraint violation
+                        edge.source_text = ""
+                    
                     self.db.execute(
                         """
                         INSERT OR REPLACE INTO kg_edges 
-                        (id, source_id, target_id, relation_type, properties, confidence, user_id, is_current, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (id, source_id, target_id, relation_type, properties, confidence, user_id, source_text, is_current, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             edge.id, edge.source_id, edge.target_id, edge.relation_type,
                             json.dumps(edge.properties), edge.confidence, edge.user_id,
-                            1, edge.created_at, edge.updated_at
+                            edge.source_text, 1, edge.created_at, edge.updated_at
                         )
                     )
                 
                 self.db.commit()
         
-        print(f"🕸️ [STORAGE_DB] Starting batch transaction for {len(graph.nodes)} nodes, {len(graph.edges)} edges...")
+        print(f"\n  💾 [STORAGE] Saving to libSQL: {len(graph.nodes)} nodes, {len(graph.edges)} edges...")
+        libsql_start = time.time()
         await asyncio.to_thread(_sync_save_all)
-        print(f"🕸️ [STORAGE_DB] Batch transaction committed")
+        libsql_time = time.time() - libsql_start
+        print(f"  💾 [STORAGE] ✅ libSQL complete in {libsql_time:.2f}s")
         
         # Save to ChromaDB (semantic search) - reuse cached embeddings from resolution
         node_docs = [node.to_chromadb_document() for node in graph.nodes]
@@ -253,21 +264,24 @@ class PropertyGraphStorage:
             embeddings[i] = node.embedding
         
         # Generate embeddings only for nodes without cache (fallback)
+        print(f"\n  💾 [STORAGE] Preparing ChromaDB save: {len(nodes_with_embeddings)} cached, {len(nodes_without_embeddings)} need generation")
+        embedding_start = time.time()
+        
         if nodes_without_embeddings:
             indices_to_generate = [i for i, _ in nodes_without_embeddings]
             texts_to_generate = [node_docs[i]["document"] for i in indices_to_generate]
             
-            print(f"🕸️ [STORAGE] Generating embeddings for {len(texts_to_generate)} nodes (no cache)...")
+            print(f"  💾 [STORAGE] Generating embeddings for {len(texts_to_generate)} nodes...")
             embedding_result = await self.modelservice.generate_embeddings(texts_to_generate)
             generated_embeddings = embedding_result.get("embeddings", [])
             
             for idx, embedding in zip(indices_to_generate, generated_embeddings):
                 embeddings[idx] = embedding
-        else:
-            print(f"🕸️ [STORAGE] Using cached embeddings for all {len(graph.nodes)} nodes (0 generated)")
         
-        print(f"🕸️ [STORAGE] Saving {len(graph.nodes)} nodes to ChromaDB...")
+        embedding_time = time.time() - embedding_start
+        print(f"  💾 [STORAGE] ✅ Embeddings ready in {embedding_time:.2f}s ({len(nodes_with_embeddings)} cached, {len(nodes_without_embeddings)} generated)")
         
+        chroma_nodes_start = time.time()
         def _sync_save_nodes_to_chroma():
             self._node_collection.upsert(
                 ids=[doc["id"] for doc in node_docs],
@@ -277,18 +291,24 @@ class PropertyGraphStorage:
             )
         
         await asyncio.to_thread(_sync_save_nodes_to_chroma)
+        chroma_nodes_time = time.time() - chroma_nodes_start
+        print(f"  💾 [STORAGE] ✅ ChromaDB nodes saved in {chroma_nodes_time:.2f}s")
         
         # Save edges to ChromaDB
         if graph.edges:
-            print(f"🕸️ [STORAGE] Generating embeddings for {len(graph.edges)} edges...")
+            print(f"\n  💾 [STORAGE] Processing {len(graph.edges)} edges...")
+            edge_start = time.time()
+            
             edge_docs = [edge.to_chromadb_document() for edge in graph.edges]
             edge_texts = [doc["document"] for doc in edge_docs]
             
+            edge_embedding_start = time.time()
             edge_embedding_result = await self.modelservice.generate_embeddings(edge_texts)
             edge_embeddings = edge_embedding_result.get("embeddings", [])
+            edge_embedding_time = time.time() - edge_embedding_start
+            print(f"  💾 [STORAGE] ✅ Edge embeddings generated in {edge_embedding_time:.2f}s")
             
-            print(f"🕸️ [STORAGE] Saving {len(graph.edges)} edges to ChromaDB...")
-            
+            chroma_edges_start = time.time()
             def _sync_save_edges_to_chroma():
                 self._edge_collection.upsert(
                     ids=[doc["id"] for doc in edge_docs],
@@ -298,6 +318,16 @@ class PropertyGraphStorage:
                 )
             
             await asyncio.to_thread(_sync_save_edges_to_chroma)
+            chroma_edges_time = time.time() - chroma_edges_start
+            edge_total_time = time.time() - edge_start
+            print(f"  💾 [STORAGE] ✅ ChromaDB edges saved in {chroma_edges_time:.2f}s (total: {edge_total_time:.2f}s)")
+        
+        # Final summary
+        total_storage_time = time.time() - storage_start
+        print(f"\n  💾 [STORAGE] ✅ STORAGE COMPLETE in {total_storage_time:.2f}s")
+        print(f"  💾 [STORAGE]    libSQL:     {libsql_time:.2f}s ({libsql_time/total_storage_time*100:.1f}%)")
+        print(f"  💾 [STORAGE]    ChromaDB:   {total_storage_time - libsql_time:.2f}s ({(total_storage_time - libsql_time)/total_storage_time*100:.1f}%)")
+        print(f"  💾 [STORAGE]    Saved: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
     
     async def get_node(self, node_id: str) -> Optional[Node]:
         """

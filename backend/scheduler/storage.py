@@ -239,45 +239,91 @@ class TaskStore:
             self.logger.error(f"Failed to get execution history for {task_id}: {e}")
             return []
     
-    def acquire_lock(self, task_id: str, execution_id: str, timeout_seconds: int = 3600) -> bool:
+    async def acquire_lock(self, task_id: str, execution_id: str, timeout_seconds: int = 3600) -> bool:
         """Acquire execution lock for a task"""
-        try:
-            now = datetime.now()
-            expires_at = (now + timedelta(seconds=timeout_seconds)).isoformat()
-            
-            # Clean up expired locks first
-            self.db.execute("DELETE FROM task_locks WHERE expires_at < ?", (now.isoformat(),))
-            
-            # Try to acquire lock
-            self.db.execute("""
-                INSERT INTO task_locks (task_id, execution_id, expires_at)
-                VALUES (?, ?, ?)
-            """, (task_id, execution_id, expires_at))
-            
-            self.db.commit()
-            return True
-            
-        except sqlite3.IntegrityError:
-            # Lock already exists
-            return False
-        except Exception as e:
-            self.logger.error(f"Failed to acquire lock for {task_id}: {e}")
-            return False
+        import asyncio
+        import os
+        
+        def _sync_acquire():
+            try:
+                if os.getenv('AICO_DETACH_MODE') == 'false':
+                    print(f"[TASK_STORE] 🔒 Inside _sync_acquire thread for task {task_id}")
+                
+                now = datetime.now()
+                expires_at = (now + timedelta(seconds=timeout_seconds)).isoformat()
+                
+                if os.getenv('AICO_DETACH_MODE') == 'false':
+                    print(f"[TASK_STORE] 🔒 About to clean up expired locks...")
+                
+                # Clean up expired locks first
+                deleted = self.db.execute("DELETE FROM task_locks WHERE expires_at < ?", (now.isoformat(),))
+                
+                if os.getenv('AICO_DETACH_MODE') == 'false':
+                    print(f"[TASK_STORE] 🔒 Deleted {deleted.rowcount if hasattr(deleted, 'rowcount') else 0} expired locks")
+                
+                # Also check if there's an existing lock for this task and log it
+                existing = self.db.execute("SELECT execution_id, expires_at FROM task_locks WHERE task_id = ?", (task_id,)).fetchone()
+                if existing and os.getenv('AICO_DETACH_MODE') == 'false':
+                    print(f"[TASK_STORE] 🔒 ⚠️  Existing lock found: execution_id={existing[0]}, expires_at={existing[1]}")
+                    # If lock exists but hasn't expired, we should fail
+                    if existing[1] >= now.isoformat():
+                        print(f"[TASK_STORE] 🔒 ❌ Lock is still valid, cannot acquire")
+                        return False
+                
+                if os.getenv('AICO_DETACH_MODE') == 'false':
+                    print(f"[TASK_STORE] 🔒 About to insert lock...")
+                
+                # Try to acquire lock
+                self.db.execute("""
+                    INSERT INTO task_locks (task_id, execution_id, expires_at)
+                    VALUES (?, ?, ?)
+                """, (task_id, execution_id, expires_at))
+                
+                if os.getenv('AICO_DETACH_MODE') == 'false':
+                    print(f"[TASK_STORE] 🔒 About to commit...")
+                
+                self.db.commit()
+                
+                if os.getenv('AICO_DETACH_MODE') == 'false':
+                    print(f"[TASK_STORE] 🔒 Lock acquired successfully!")
+                
+                return True
+                
+            except sqlite3.IntegrityError:
+                # Lock already exists
+                if os.getenv('AICO_DETACH_MODE') == 'false':
+                    print(f"[TASK_STORE] 🔒 Lock already exists for {task_id}")
+                return False
+            except Exception as e:
+                if os.getenv('AICO_DETACH_MODE') == 'false':
+                    print(f"[TASK_STORE] 🔒 ❌ Error acquiring lock: {e}")
+                self.logger.error(f"Failed to acquire lock for {task_id}: {e}")
+                return False
+        
+        if os.getenv('AICO_DETACH_MODE') == 'false':
+            print(f"[TASK_STORE] 🔒 Calling asyncio.to_thread for acquire_lock...")
+        
+        return await asyncio.to_thread(_sync_acquire)
     
-    def release_lock(self, task_id: str, execution_id: str) -> bool:
+    async def release_lock(self, task_id: str, execution_id: str) -> bool:
         """Release execution lock for a task"""
-        try:
-            cursor = self.db.execute(
-                "DELETE FROM task_locks WHERE task_id = ? AND execution_id = ?",
-                (task_id, execution_id)
-            )
-            self.db.commit()
-            
-            return cursor.rowcount > 0
-            
-        except Exception as e:
-            self.logger.error(f"Failed to release lock for {task_id}: {e}")
-            return False
+        import asyncio
+        
+        def _sync_release():
+            try:
+                cursor = self.db.execute(
+                    "DELETE FROM task_locks WHERE task_id = ? AND execution_id = ?",
+                    (task_id, execution_id)
+                )
+                self.db.commit()
+                
+                return cursor.rowcount > 0
+                
+            except Exception as e:
+                self.logger.error(f"Failed to release lock for {task_id}: {e}")
+                return False
+        
+        return await asyncio.to_thread(_sync_release)
     
     def cleanup_old_executions(self, retention_days: int = 30):
         """Clean up old execution records"""

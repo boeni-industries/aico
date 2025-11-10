@@ -215,9 +215,17 @@ class EntityResolver:
         if not new_nodes:
             return []
         
+        # Check for intra-batch duplicates even if index is empty
+        intra_batch_candidates = []
+        if len(new_nodes) > 1:
+            print(f"🔍 [ENTITY_RESOLVER] Checking for intra-batch duplicates among {len(new_nodes)} new nodes")
+            intra_batch_candidates = await self._find_intra_batch_duplicates(new_nodes)
+            if intra_batch_candidates:
+                print(f"🔍 [ENTITY_RESOLVER] Found {len(intra_batch_candidates)} intra-batch duplicate candidates")
+        
         if self.next_hnsw_id == 0:
             print(f"🔍 [ENTITY_RESOLVER] HNSW index is empty, no existing nodes to compare against")
-            return []
+            return intra_batch_candidates
         
         try:
             # Generate embeddings for new nodes
@@ -267,8 +275,12 @@ class EntityResolver:
                                 f"(sim={similarity:.3f})"
                             )
             
-            print(f"🔍 [ENTITY_RESOLVER] HNSW search complete: {len(candidates)} candidates above threshold")
-            return candidates
+            print(f"🔍 [ENTITY_RESOLVER] HNSW search complete: {len(candidates)} inter-batch candidates above threshold")
+            
+            # Merge with intra-batch candidates
+            all_candidates = candidates + intra_batch_candidates
+            print(f"🔍 [ENTITY_RESOLVER] Total candidates: {len(all_candidates)} ({len(candidates)} inter-batch + {len(intra_batch_candidates)} intra-batch)")
+            return all_candidates
             
         except Exception as e:
             error_msg = f"CRITICAL: HNSW search failed: {e}"
@@ -277,6 +289,65 @@ class EntityResolver:
             import traceback
             traceback.print_exc()
             raise RuntimeError(error_msg) from e
+    
+    async def _find_intra_batch_duplicates(self, nodes: List[Node]) -> List[Dict[str, Any]]:
+        """
+        Find duplicate candidates within a batch of new nodes.
+        
+        Uses pairwise comparison with embeddings for small batches.
+        
+        Args:
+            nodes: List of new nodes to check for duplicates
+            
+        Returns:
+            List of candidate dictionaries with new_node, existing_node, similarity
+        """
+        if len(nodes) < 2:
+            return []
+        
+        try:
+            # Generate embeddings for all nodes
+            texts = [self._node_to_text(node) for node in nodes]
+            response = await self.modelservice.generate_embeddings(texts=texts)
+            embeddings = np.array(response.get("embeddings", []))
+            
+            if len(embeddings) != len(nodes):
+                logger.warning(f"Embedding count mismatch in intra-batch check: {len(embeddings)} != {len(nodes)}")
+                return []
+            
+            # Pairwise comparison
+            candidates = []
+            for i in range(len(nodes)):
+                for j in range(i + 1, len(nodes)):
+                    node_i = nodes[i]
+                    node_j = nodes[j]
+                    
+                    # Only compare nodes with same label
+                    if node_i.label != node_j.label:
+                        continue
+                    
+                    # Compute cosine similarity
+                    emb_i = embeddings[i]
+                    emb_j = embeddings[j]
+                    similarity = np.dot(emb_i, emb_j) / (np.linalg.norm(emb_i) * np.linalg.norm(emb_j))
+                    
+                    if similarity >= self.similarity_threshold:
+                        # Treat first node as "existing" and second as "new" for consistency
+                        candidates.append({
+                            "new_node": node_j,
+                            "existing_node": node_i,
+                            "similarity": float(similarity)
+                        })
+                        logger.debug(
+                            f"Intra-batch candidate: {node_i.properties.get('name')} <-> "
+                            f"{node_j.properties.get('name')} (sim={similarity:.3f})"
+                        )
+            
+            return candidates
+            
+        except Exception as e:
+            logger.warning(f"Intra-batch duplicate detection failed: {e}")
+            return []
     
     async def _llm_batch_matching(
         self,

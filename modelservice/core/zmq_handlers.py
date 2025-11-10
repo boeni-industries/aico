@@ -365,13 +365,13 @@ class ModelserviceZMQHandlers:
                                     result.done = True
                                     
                                     # Store thinking separately in result
-                                    if thinking_content:
-                                        result.thinking = thinking_content
-                                        self.logger.info(f"[CHAT] Extracted thinking: {len(thinking_content)} chars")
+                                    if accumulated_thinking:
+                                        result.thinking = accumulated_thinking
+                                        self.logger.info(f"[CHAT] Extracted thinking: {len(accumulated_thinking)} chars")
                                     
                                     response_msg = ConversationMessage()
                                     response_msg.role = "assistant"
-                                    response_msg.content = response_content  # Clean response without thinking tags
+                                    response_msg.content = accumulated_content  # Clean response without thinking tags
                                     result.message.CopyFrom(response_msg)
                                     
                                     # Optional timing fields from final chunk

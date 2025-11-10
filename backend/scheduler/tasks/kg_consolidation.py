@@ -5,12 +5,13 @@ Scheduled task for Knowledge Graph extraction from working memory.
 Runs periodically during idle periods to extract entities and relationships
 from unconsolidated messages.
 
-Schedule: Every 5 minutes (configurable via cron)
+Schedule: Daily at 2:00 AM (configurable via cron)
 Architecture: Aligns with AMS design - fast hippocampal capture, slow cortical consolidation
 """
 
 import asyncio
 import json
+import time
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
@@ -37,7 +38,7 @@ class KGConsolidationTask(BaseTask):
     task_id = "ams.kg_consolidation"
     default_config = {
         "enabled": True,
-        "schedule": "*/5 * * * *",  # Every 5 minutes
+        "schedule": "0 2 * * *",  # Daily at 2:00 AM
         "batch_size": 50,  # Max messages to process per run
         "max_age_hours": 24  # Only process messages from last 24h
     }
@@ -181,22 +182,53 @@ class KGConsolidationTask(BaseTask):
             total_edges = 0
             errors = []
             
-            for user_id, messages in users_with_pending.items():
+            for user_idx, (user_id, messages) in enumerate(users_with_pending.items(), 1):
                 try:
-                    print(f"🕸️ [KG_TASK] Processing user {user_id}: {len(messages)} messages")
+                    user_start = time.time()
+                    print(f"\n🕸️ [KG_TASK] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    print(f"🕸️ [KG_TASK] Processing user {user_idx}/{len(users_with_pending)}: {user_id[:8]}...")
+                    print(f"🕸️ [KG_TASK] Messages to process: {len(messages)}")
+                    print(f"🕸️ [KG_TASK] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                     
-                    # Combine messages into single text for batch extraction
-                    combined_text = " ".join([msg.get("content", "") for msg in messages])
-                    
-                    # Extract KG
-                    await memory_manager._extract_knowledge_graph(user_id, combined_text)
+                    # Process messages individually to preserve conversational context
+                    # This maximizes entity extraction quality and relationship detection
+                    processed_count = 0
+                    for msg_idx, msg in enumerate(messages, 1):
+                        try:
+                            msg_content = msg.get("content", "").strip()
+                            if not msg_content:
+                                continue
+                            
+                            msg_start = time.time()
+                            print(f"\n🕸️ [KG_TASK] 📝 Message {msg_idx}/{len(messages)}: {msg_content[:60]}...")
+                            
+                            # Extract KG from individual message
+                            await memory_manager._extract_knowledge_graph(user_id, msg_content)
+                            
+                            msg_time = time.time() - msg_start
+                            processed_count += 1
+                            
+                            # Progress indicator
+                            avg_time = (time.time() - user_start) / processed_count
+                            remaining = len(messages) - processed_count
+                            eta_seconds = avg_time * remaining
+                            print(f"🕸️ [KG_TASK] ⏱️  Message completed in {msg_time:.2f}s | Avg: {avg_time:.2f}s/msg | ETA: {eta_seconds:.0f}s ({remaining} remaining)")
+                            
+                        except Exception as e:
+                            error_msg = f"Failed to process message for user {user_id}: {e}"
+                            print(f"🕸️ [KG_TASK] ⚠️  {error_msg}")
+                            logger.warning(f"🕸️ [KG_TASK] {error_msg}")
+                            # Continue processing other messages
                     
                     # Mark messages as consolidated (get unique conversation IDs)
                     conversation_ids = list(set([msg.get("conversation_id") for msg in messages if msg.get("conversation_id")]))
                     await self._mark_messages_consolidated(memory_manager, user_id, conversation_ids)
                     
-                    total_messages += len(messages)
-                    print(f"🕸️ [KG_TASK] ✅ User {user_id} processed successfully")
+                    total_messages += processed_count
+                    user_time = time.time() - user_start
+                    print(f"\n🕸️ [KG_TASK] ✅ User {user_id[:8]}... completed in {user_time:.2f}s")
+                    print(f"🕸️ [KG_TASK]    Messages: {processed_count}/{len(messages)}")
+                    print(f"🕸️ [KG_TASK]    Avg time: {user_time/processed_count:.2f}s per message")
                     
                 except Exception as e:
                     error_msg = f"Failed to process user {user_id}: {e}"
@@ -206,13 +238,16 @@ class KGConsolidationTask(BaseTask):
             
             # Summary
             duration = (datetime.utcnow() - start_time).total_seconds()
-            print("🕸️ [KG_TASK] ========================================")
-            print(f"🕸️ [KG_TASK] Consolidation complete in {duration:.2f}s")
-            print(f"🕸️ [KG_TASK] Users processed: {len(users_with_pending)}")
-            print(f"🕸️ [KG_TASK] Messages processed: {total_messages}")
+            print("\n🕸️ [KG_TASK] ════════════════════════════════════════════════════════")
+            print(f"🕸️ [KG_TASK] 🎉 CONSOLIDATION COMPLETE")
+            print(f"🕸️ [KG_TASK] ════════════════════════════════════════════════════════")
+            print(f"🕸️ [KG_TASK] ⏱️  Total time:     {duration:.2f}s ({duration/60:.1f} minutes)")
+            print(f"🕸️ [KG_TASK] 👥 Users:          {len(users_with_pending)}")
+            print(f"🕸️ [KG_TASK] 📨 Messages:       {total_messages}")
+            print(f"🕸️ [KG_TASK] ⚡ Avg per message: {duration/total_messages:.2f}s" if total_messages > 0 else "")
             if errors:
-                print(f"🕸️ [KG_TASK] Errors: {len(errors)}")
-            print("🕸️ [KG_TASK] ========================================")
+                print(f"🕸️ [KG_TASK] ⚠️  Errors:         {len(errors)}")
+            print(f"🕸️ [KG_TASK] ════════════════════════════════════════════════════════")
             
             logger.info(f"🕸️ [KG_TASK] Consolidation complete: {len(users_with_pending)} users, {total_messages} messages")
             

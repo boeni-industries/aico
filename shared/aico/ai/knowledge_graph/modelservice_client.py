@@ -406,10 +406,19 @@ class ModelserviceClient:
             completions_response = CompletionsResponse()
             envelope.any_payload.Unpack(completions_response)
             
+            # Debug logging
+            print(f"🔗 [KG_CLIENT] Completions response: success={completions_response.success}")
+            print(f"🔗 [KG_CLIENT] Has result field: {completions_response.HasField('result')}")
+            if completions_response.error:
+                print(f"🔗 [KG_CLIENT] Error: {completions_response.error}")
+            
             # Convert to dict
             content = ""
             if completions_response.success and completions_response.HasField("result"):
                 content = completions_response.result.message.content
+                print(f"🔗 [KG_CLIENT] Extracted content length: {len(content)}")
+            else:
+                print(f"🔗 [KG_CLIENT] ⚠️  No content extracted (success={completions_response.success}, has_result={completions_response.HasField('result')})")
             
             result = {
                 "success": completions_response.success,
