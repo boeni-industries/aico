@@ -223,12 +223,8 @@ class ModelServiceClient:
                 if hasattr(message, 'metadata') and hasattr(message.metadata, 'attributes'):
                     message_correlation_id = message.metadata.attributes.get('correlation_id')
                 
-                print(f"🔍 [RESPONSE_HANDLER] Received response! correlation_id={message_correlation_id}")
-                print(f"🔍 [RESPONSE_HANDLER] Pending requests: {list(self.pending_requests.keys())}")
-                
                 # Find the pending request for this correlation_id
                 if message_correlation_id not in self.pending_requests:
-                    print(f"⚠️ [RESPONSE_HANDLER] Unknown correlation_id: {message_correlation_id}")
                     self.logger.debug(f"Received response for unknown correlation_id: {message_correlation_id}")
                     return
                 
@@ -541,8 +537,7 @@ class ModelServiceClient:
         text_length = len(prompt)
         text_preview = prompt[:30] + "..." if len(prompt) > 30 else prompt
         
-        print(f"🔍 [FULL_TRACE] ModelServiceClient.get_embeddings() STARTED for: '{text_preview}' [{start_time:.6f}]")
-        self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] Starting embedding request for model={model}, text_length={text_length}")
+        self.logger.debug(f"Starting embedding request for model={model}, text_length={text_length}")
         
         request_data = {
             "model": model,
@@ -551,7 +546,6 @@ class ModelServiceClient:
         
         try:
             send_request_start = time.time()
-            print(f"🔍 [FULL_TRACE] About to call _send_request() for embeddings [{send_request_start:.6f}]")
             
             result = await self._send_request(
                 AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
@@ -561,22 +555,22 @@ class ModelServiceClient:
             
             send_request_time = time.time() - send_request_start
             elapsed_time = time.time() - start_time
-            print(f"🔍 [FULL_TRACE] _send_request() for embeddings completed in {send_request_time*1000:.2f}ms [{time.time():.6f}]")
             
             if result.get("success"):
                 embedding_dim = len(result.get("data", {}).get("embedding", []))
-                print(f"🔍 [FULL_TRACE] ModelServiceClient.get_embeddings() SUCCESS in {elapsed_time*1000:.2f}ms (dim: {embedding_dim}) [{time.time():.6f}]")
-                self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] ✅ Success! Got {embedding_dim}-dimensional embedding in {elapsed_time:.2f}s")
+                # Log slow embeddings (>1s)
+                if elapsed_time > 1.0:
+                    self.logger.warning(f"Slow embedding request: {elapsed_time*1000:.0f}ms for {text_length} chars")
+                self.logger.debug(f"Got {embedding_dim}-dimensional embedding in {elapsed_time:.3f}s")
             else:
-                print(f"🔍 [FULL_TRACE] ModelServiceClient.get_embeddings() FAILED in {elapsed_time*1000:.2f}ms: {result.get('error')} [{time.time():.6f}]")
-                self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] ❌ Failed to get embedding: {result.get('error')}")
+                self.logger.error(f"Failed to get embedding: {result.get('error')}")
             
             return result
         except Exception as e:
             import traceback
             elapsed_time = time.time() - start_time
-            self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] ❌ Exception after {elapsed_time:.2f}s: {e}")
-            self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] Traceback: {traceback.format_exc()}")
+            self.logger.error(f"Embedding request exception after {elapsed_time:.2f}s: {e}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
             raise
     
     async def get_embeddings_batch(self, model: str, prompts: List[str]) -> Dict[str, Any]:

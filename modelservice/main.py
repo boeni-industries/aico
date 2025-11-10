@@ -256,9 +256,7 @@ async def main():
         config, ollama_manager, process_manager, _zmq_service = await initialize_modelservice()
         
         # Complete the full ZMQ service initialization (subscribe to all topics)
-        print("🔧 [MAIN] About to call _zmq_service.start()...")
         await _zmq_service.start()
-        print("🔧 [MAIN] _zmq_service.start() completed!")
         
         # NOW mark broker ready - log consumer is fully initialized and ready
         from aico.core.logging import get_logger_factory

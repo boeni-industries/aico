@@ -20,7 +20,7 @@ from .transformers_manager import TransformersManager
 from aico.core.version import get_modelservice_version
 from aico.proto.aico_modelservice_pb2 import (
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
-    EmbeddingsResponse, NerResponse, EntityList, EntityWithConfidence, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus,
+    EmbeddingsRequest, EmbeddingsResponse, NerResponse, EntityList, EntityWithConfidence, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus,
     SentimentRequest, SentimentResponse, IntentClassificationRequest, IntentClassificationResponse
 )
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -635,30 +635,22 @@ class ModelserviceZMQHandlers:
         
         return response
     
-    async def handle_embeddings_request(self, request_payload) -> EmbeddingsResponse:
-        """Handle embeddings requests via Protocol Buffers using TransformersManager."""
-        import time
+    async def handle_embeddings_request(self, request: EmbeddingsRequest) -> EmbeddingsResponse:
+        """Handle embeddings generation request using transformer models."""
         start_time = time.time()
         response = EmbeddingsResponse()
         
-        # DEBUG: Confirm handler is being called
-        self.logger.info(f"🔍 [EMBEDDINGS_HANDLER_DEBUG] ✅ EMBEDDINGS HANDLER CALLED!")
-        self.logger.info(f"🔍 [EMBEDDINGS_HANDLER_DEBUG] Request payload type: {type(request_payload)}")
-        self.logger.info(f"🔍 [EMBEDDINGS_HANDLER_DEBUG] Start time: {start_time}")
-        
         try:
-            model = request_payload.model
-            prompt = request_payload.prompt
+            model = request.model
+            prompt = request.prompt
             text_length = len(prompt) if prompt else 0
-            text_preview = prompt[:50] + "..." if prompt and len(prompt) > 50 else prompt
             
-            self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Starting embedding request for model={model}, text_length={text_length}")
-            self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Text preview: '{text_preview}'")
+            self.logger.debug(f"Embedding request: model={model}, length={text_length}")
             
             if not model or not prompt:
                 response.success = False
                 response.error = "model and prompt are required"
-                self.logger.error(f"🔍 [EMBEDDING_HANDLER_DEBUG] ❌ Missing required parameters: model={model}, prompt_length={text_length}")
+                self.logger.error(f"Missing required parameters: model={model}, prompt_length={text_length}")
                 return response
                 
             # Ensure transformers system is initialized
@@ -679,38 +671,30 @@ class ModelserviceZMQHandlers:
             
             # Generate embedding using transformer model from TransformersManager
             try:
-                # Track model loading time
-                model_load_time = time.time() - start_time
-                self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Model preparation took {model_load_time:.4f}s")
-                
                 # Check if this is a SentenceTransformer model (for paraphrase-multilingual)
                 if hasattr(transformer_model, 'encode'):
                     # This is a SentenceTransformer model - use .encode() method
-                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Using SentenceTransformer.encode() for model {model}")
-                    
-                    # Track encoding time
                     encode_start = time.time()
-                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Starting encoding for text of length {text_length}...")
-                    # Explicitly normalize embeddings for cosine similarity
+                    
                     # Run in thread pool to avoid blocking event loop and match warmup execution context
                     import asyncio
                     embedding = await asyncio.to_thread(transformer_model.encode, prompt, normalize_embeddings=True)
                     encode_time = time.time() - encode_start
-                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] ✅ Encoding completed in {encode_time:.4f}s ({text_length/encode_time:.1f} chars/sec)")
                     
                     # Convert to list if it's a numpy array
                     if hasattr(embedding, 'tolist'):
                         embedding = embedding.tolist()
                     
                     embedding_dim = len(embedding)
-                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Generated {embedding_dim}-dimensional embedding")
-                    
                     response.embedding.extend(embedding)
                     response.success = True
                     
                     total_time = time.time() - start_time
-                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] ✅ Total embedding generation took {total_time:.4f}s")
-                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Performance: model_load={model_load_time:.4f}s, encode={encode_time:.4f}s, total={total_time:.4f}s")
+                    # Log slow embeddings (>100ms)
+                    if total_time > 0.1:
+                        self.logger.debug(f"Embedding generated in {total_time*1000:.0f}ms (encode={encode_time*1000:.0f}ms, dim={embedding_dim})")
+                    else:
+                        self.logger.debug(f"Embedding: {total_time*1000:.0f}ms, dim={embedding_dim}")
                     
                 elif hasattr(transformer_model, 'tokenizer') and hasattr(transformer_model, 'model'):
                     # This is a standard transformer model with tokenizer/model components
