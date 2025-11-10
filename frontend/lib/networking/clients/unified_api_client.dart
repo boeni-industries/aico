@@ -84,6 +84,7 @@ class UnifiedApiClient {
     Map<String, String>? queryParameters,
     T Function(Map<String, dynamic>)? fromJson,
     bool skipTokenRefresh = false,
+    bool skipTokenEntirely = false,
   }) async {
     // Auto-initialize if not done yet
     if (!_isInitialized) {
@@ -98,6 +99,7 @@ class UnifiedApiClient {
         data: data,
         fromJson: fromJson,
         skipTokenRefresh: skipTokenRefresh,
+        skipTokenEntirely: skipTokenEntirely,
       );
     } catch (e) {
       AICOLog.error('API request failed', 
@@ -337,6 +339,7 @@ class UnifiedApiClient {
     Map<String, dynamic>? data,
     T Function(Map<String, dynamic>)? fromJson,
     bool skipTokenRefresh = false,
+    bool skipTokenEntirely = false,
   }) async {
     if (!_isInitialized) {
       await initialize();
@@ -357,7 +360,7 @@ class UnifiedApiClient {
 
     try {
       // Build headers with authentication
-      final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh);
+      final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh, skipTokenEntirely: skipTokenEntirely);
 
       // Prepare encrypted request data
       final requestData = data != null 
@@ -524,10 +527,15 @@ class UnifiedApiClient {
   }
 
   /// Build headers for HTTP requests
-  Future<Map<String, String>> _buildHeaders({bool skipTokenRefresh = false}) async {
+  Future<Map<String, String>> _buildHeaders({bool skipTokenRefresh = false, bool skipTokenEntirely = false}) async {
     final headers = <String, String>{
       'Content-Type': 'application/json',
     };
+
+    // Skip all token operations for authentication/refresh endpoints
+    if (skipTokenEntirely) {
+      return headers;
+    }
 
     if (!skipTokenRefresh) {
       final tokenFresh = await _tokenManager.ensureTokenFreshness();
@@ -574,8 +582,8 @@ class UnifiedApiClient {
       await _performHandshake();
     }
 
-    // Build headers WITHOUT token refresh check (skipTokenRefresh: true)
-    final headers = await _buildHeaders(skipTokenRefresh: true);
+    // Build headers WITHOUT any token operations (skipTokenEntirely: true)
+    final headers = await _buildHeaders(skipTokenEntirely: true);
 
     try {
       // Prepare encrypted request data
