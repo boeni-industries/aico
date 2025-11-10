@@ -195,9 +195,10 @@ class TaskRegistry:
 class TaskExecutor:
     """Executes tasks with resource management and error handling"""
     
-    def __init__(self, config_manager, db_connection):
+    def __init__(self, config_manager, db_connection, container=None):
         self.config_manager = config_manager
         self.db_connection = db_connection
+        self.container = container
         self.logger = get_logger("backend", "scheduler.task_executor")
         self.task_store = TaskStore(db_connection)
         self.running_tasks: Dict[str, asyncio.Task] = {}
@@ -241,7 +242,8 @@ class TaskExecutor:
                 config_manager=self.config_manager,
                 db_connection=self.db_connection,
                 instance_config=task_config.get('config', {}),
-                execution_id=execution_id
+                execution_id=execution_id,
+                service_container=self.container
             )
             
             # Apply task defaults to context for config resolution
@@ -277,7 +279,9 @@ class TaskExecutor:
             result = TaskResult(success=False, error=error_msg)
             await self._record_completion(task_id, execution_id, result, TaskStatus.FAILED, start_time)
             
-            self.logger.error(f"Task {task_id} failed: {e}", exc_info=True)
+            self.logger.error(f"Task {task_id} failed: {e}")
+            import traceback
+            traceback.print_exc()
             return result
             
         finally:
@@ -358,7 +362,7 @@ class TaskScheduler(BaseService):
         
         # Initialize core components
         self.task_registry = TaskRegistry(config_manager, database)
-        self.task_executor = TaskExecutor(config_manager, database)
+        self.task_executor = TaskExecutor(config_manager, database, self.container)
         self.task_store = TaskStore(database)
         
         # Verify database tables exist

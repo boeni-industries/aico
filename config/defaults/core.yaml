@@ -347,10 +347,9 @@ memory:
     max_fact_variants: 3  # Maximum variants per fact (prevents bloat)
     variant_cleanup_days: 90  # Delete low-confidence variants after 90 days
   
-  # Memory Consolidation - Brain-inspired transfer from working to semantic memory
+  # Memory Consolidation - Brain-inspired transfer from working to semantic memory and KG extraction
   consolidation:
     enabled: true
-    schedule: "0 2 * * *"  # Cron: Daily at 2 AM
     user_sharding_cycle_days: 7  # Process 1/7 of users each day (7-day cycle)
     max_concurrent_users: 4  # Maximum parallel consolidation jobs
     max_duration_minutes: 60  # Maximum duration per user
@@ -362,6 +361,12 @@ memory:
       cpu_threshold_percent: 20  # Trigger when CPU < 20%
       idle_duration_seconds: 300  # 5 minutes continuous idle required
       check_interval_seconds: 60  # Check every minute
+    
+    # Knowledge Graph extraction settings
+    kg_extraction:
+      enabled: true
+      batch_size: 50  # Maximum messages to process per run
+      max_age_hours: 24  # Only process messages from last 24 hours
   
   # Behavioral Learning - Skill-based interaction with RLHF (Phase 3 - not yet implemented)
   behavioral:

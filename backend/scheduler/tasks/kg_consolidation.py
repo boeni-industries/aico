@@ -10,6 +10,7 @@ Architecture: Aligns with AMS design - fast hippocampal capture, slow cortical c
 """
 
 import asyncio
+import json
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
@@ -56,10 +57,17 @@ class KGConsolidationTask(BaseTask):
             print("🕸️ [KG_TASK] ========================================")
             logger.info("🕸️ [KG_TASK] Starting KG consolidation task")
             
-            # Load configuration
-            kg_config = context.config_manager.get("core.memory.kg_consolidation", {})
+            # Load configuration from core.memory.consolidation.kg_extraction
+            memory_config = context.config_manager.get("core.memory", {})
+            consolidation_config = memory_config.get("consolidation", {})
+            kg_config = consolidation_config.get("kg_extraction", {})
+            
+            if not kg_config:
+                print("🕸️ [KG_TASK] ⚠️  Configuration 'core.memory.consolidation.kg_extraction' not found, using defaults")
+                logger.warning("🕸️ [KG_TASK] Configuration 'core.memory.consolidation.kg_extraction' not found")
+            
             enabled = context.get_config("enabled", kg_config.get("enabled", True))
-            batch_size = context.get_config("batch_size", 50)
+            batch_size = context.get_config("batch_size", kg_config.get("batch_size", 50))
             
             # Check if KG consolidation is enabled
             if not enabled:
@@ -72,11 +80,42 @@ class KGConsolidationTask(BaseTask):
                     data={"enabled": False}
                 )
             
-            # Get memory manager from backend services
+            # Get memory manager from AI registry (via conversation engine)
             try:
-                print("🕸️ [KG_TASK] Getting memory manager from backend services...")
-                from backend.services import get_memory_manager
-                memory_manager = get_memory_manager(context.config_manager, context.db_connection)
+                print("🕸️ [KG_TASK] Getting memory manager from AI registry...")
+                
+                # Access conversation engine from service container
+                if not hasattr(context, 'service_container') or not context.service_container:
+                    print("🕸️ [KG_TASK] ❌ Service container not available in context")
+                    logger.error("🕸️ [KG_TASK] Service container not available")
+                    return TaskResult(
+                        success=False,
+                        message="Service container not available",
+                        data={"error": "No service container in task context"}
+                    )
+                
+                # Get conversation engine which has access to memory manager
+                conversation_engine = context.service_container.get_service('conversation_engine')
+                if not conversation_engine:
+                    print("🕸️ [KG_TASK] ❌ Conversation engine not found")
+                    logger.error("🕸️ [KG_TASK] Conversation engine not found")
+                    return TaskResult(
+                        success=False,
+                        message="Conversation engine not available",
+                        data={"error": "Conversation engine not in service container"}
+                    )
+                
+                # Get memory manager from AI registry
+                from backend.services.conversation_engine import ai_registry
+                memory_manager = ai_registry.get("memory")
+                if not memory_manager:
+                    print("🕸️ [KG_TASK] ❌ Memory manager not found in AI registry")
+                    logger.error("🕸️ [KG_TASK] Memory manager not found in AI registry")
+                    return TaskResult(
+                        success=False,
+                        message="Memory manager not available",
+                        data={"error": "Memory manager not in AI registry"}
+                    )
                 
                 # Ensure memory manager is initialized
                 if not memory_manager._initialized:
@@ -99,33 +138,24 @@ class KGConsolidationTask(BaseTask):
             except Exception as e:
                 print(f"🕸️ [KG_TASK] ❌ Failed to get memory manager: {e}")
                 logger.error(f"🕸️ [KG_TASK] Failed to get memory manager: {e}")
+                import traceback
+                traceback.print_exc()
                 return TaskResult(
                     success=False,
                     message="Memory manager not available",
                     data={"error": str(e)}
                 )
             
-            # Check modelservice health
-            try:
-                print("🕸️ [KG_TASK] Checking modelservice health...")
-                is_healthy = await memory_manager._kg_modelservice.check_health()
-                if not is_healthy:
-                    print("🕸️ [KG_TASK] ❌ Modelservice not healthy")
-                    logger.error("🕸️ [KG_TASK] Modelservice not healthy")
-                    return TaskResult(
-                        success=False,
-                        message="Modelservice not healthy",
-                        data={"modelservice_healthy": False}
-                    )
-                print("🕸️ [KG_TASK] ✅ Modelservice healthy")
-            except Exception as e:
-                print(f"🕸️ [KG_TASK] ❌ Failed to check modelservice health: {e}")
-                logger.error(f"🕸️ [KG_TASK] Failed to check modelservice health: {e}")
+            # Check if modelservice client is available (health check will happen on first use)
+            if not memory_manager._kg_modelservice:
+                print("🕸️ [KG_TASK] ❌ Modelservice client not initialized")
+                logger.error("🕸️ [KG_TASK] Modelservice client not initialized")
                 return TaskResult(
                     success=False,
-                    message="Modelservice health check failed",
-                    data={"error": str(e)}
+                    message="Modelservice client not initialized",
+                    data={"modelservice_initialized": False}
                 )
+            print("🕸️ [KG_TASK] ✅ Modelservice client available")
             
             # Get users with unconsolidated messages
             print("🕸️ [KG_TASK] Getting users with unconsolidated messages...")
@@ -161,9 +191,9 @@ class KGConsolidationTask(BaseTask):
                     # Extract KG
                     await memory_manager._extract_knowledge_graph(user_id, combined_text)
                     
-                    # Mark messages as consolidated
-                    message_ids = [msg.get("_id") or msg.get("id") for msg in messages]
-                    await self._mark_messages_consolidated(memory_manager, user_id, message_ids)
+                    # Mark messages as consolidated (get unique conversation IDs)
+                    conversation_ids = list(set([msg.get("conversation_id") for msg in messages if msg.get("conversation_id")]))
+                    await self._mark_messages_consolidated(memory_manager, user_id, conversation_ids)
                     
                     total_messages += len(messages)
                     print(f"🕸️ [KG_TASK] ✅ User {user_id} processed successfully")
@@ -220,41 +250,86 @@ class KGConsolidationTask(BaseTask):
         Returns:
             Dict mapping user_id to list of unconsolidated messages
         """
-        # Query working memory for messages without kg_consolidated flag
-        # This is a simplified implementation - in production, you'd want
-        # to track consolidation state more robustly
-        
         users_with_pending = {}
         
-        # Get all users from working memory store
-        # Note: This is a simplified approach - in production, you'd want
-        # a more efficient query
         try:
             # Access working memory store directly
             working_store = memory_manager._working_store
             
-            # Get all conversations (simplified - in production, filter by timestamp)
-            # For now, we'll just return empty dict as we don't have a direct API
-            # to query unconsolidated messages
+            if not working_store:
+                logger.warning("🕸️ [KG_TASK] Working memory store not available")
+                return {}
             
-            # TODO: Implement proper tracking of consolidation state
-            # Options:
-            # 1. Add kg_consolidated flag to working memory messages
-            # 2. Track last consolidation timestamp per user
-            # 3. Use separate consolidation state table
+            # Ensure working store is initialized
+            if not working_store._initialized:
+                print("🕸️ [KG_TASK] Initializing working memory store...")
+                await working_store.initialize()
             
-            logger.info("🕸️ [KG_TASK] Note: Consolidation state tracking not yet implemented")
-            return {}
+            print(f"🕸️ [KG_TASK] Scanning LMDB at: {working_store._db_path}")
+            print(f"🕸️ [KG_TASK] Available databases: {list(working_store.dbs.keys())}")
+            
+            # Get all conversations from working memory
+            # Scan session_memory database for user messages
+            db = working_store.dbs.get("session_memory")
+            if not db:
+                logger.warning("🕸️ [KG_TASK] session_memory database not available")
+                return {}
+            
+            with working_store.env.begin(db=db) as txn:
+                cursor = txn.cursor()
+                message_count = 0
+                total_keys = 0
+                
+                # Iterate through all messages (stored as conversation_id:timestamp keys)
+                for key, value in cursor:
+                    total_keys += 1
+                    try:
+                        # Parse message data (each key is a single message, not a conversation)
+                        msg = json.loads(value.decode('utf-8'))
+                        
+                        # Only process user messages (not assistant responses)
+                        if msg.get('role') != 'user':
+                            continue
+                        
+                        # Check if message has been consolidated
+                        if msg.get('kg_consolidated', False):
+                            continue
+                        
+                        # Get user_id
+                        user_id = msg.get('user_id')
+                        if not user_id:
+                            continue
+                        
+                        # Add to pending messages
+                        if user_id not in users_with_pending:
+                            users_with_pending[user_id] = []
+                        
+                        users_with_pending[user_id].append(msg)
+                        message_count += 1
+                        
+                        # Limit batch size per user
+                        if len(users_with_pending[user_id]) >= batch_size:
+                            break
+                        
+                    except (json.JSONDecodeError, KeyError) as e:
+                        logger.warning(f"🕸️ [KG_TASK] Failed to parse message: {e}")
+                        continue
+                
+                print(f"🕸️ [KG_TASK] Scanned {total_keys} total keys, found {message_count} unconsolidated user messages")
+                logger.info(f"🕸️ [KG_TASK] Found {message_count} unconsolidated messages from {len(users_with_pending)} users")
+                return users_with_pending
             
         except Exception as e:
             logger.error(f"🕸️ [KG_TASK] Failed to get pending messages: {e}")
+            import traceback
+            traceback.print_exc()
             return {}
     
     async def _mark_messages_consolidated(
         self,
         memory_manager,
         user_id: str,
-        message_ids: List[str]
+        conversation_ids: List[str]
     ) -> None:
         """
         Mark messages as consolidated in working memory.
@@ -262,9 +337,53 @@ class KGConsolidationTask(BaseTask):
         Args:
             memory_manager: Memory manager instance
             user_id: User ID
-            message_ids: List of message IDs to mark as consolidated
+            conversation_ids: List of conversation IDs that were processed
         """
-        # TODO: Implement consolidation state tracking
-        # For now, this is a no-op
-        logger.info(f"🕸️ [KG_TASK] Would mark {len(message_ids)} messages as consolidated for user {user_id}")
-        pass
+        try:
+            working_store = memory_manager._working_store
+            
+            if not working_store or not working_store._initialized:
+                logger.warning("🕸️ [KG_TASK] Working memory store not initialized")
+                return
+            
+            db = working_store.dbs.get("session_memory")
+            if not db:
+                logger.warning("🕸️ [KG_TASK] session_memory database not available")
+                return
+            
+            # Update messages in LMDB by scanning for matching conversation_ids
+            updated_count = 0
+            with working_store.env.begin(db=db, write=True) as txn:
+                cursor = txn.cursor()
+                
+                for key, value in cursor:
+                    try:
+                        # Check if this message belongs to one of the processed conversations
+                        key_str = key.decode('utf-8')
+                        conv_id = key_str.split(':')[0] if ':' in key_str else None
+                        
+                        if conv_id not in conversation_ids:
+                            continue
+                        
+                        # Parse and update message
+                        msg = json.loads(value.decode('utf-8'))
+                        
+                        if msg.get('role') == 'user' and msg.get('user_id') == user_id:
+                            if not msg.get('kg_consolidated', False):
+                                msg['kg_consolidated'] = True
+                                msg['kg_consolidated_at'] = datetime.utcnow().isoformat()
+                                
+                                # Write back to LMDB
+                                txn.put(key, json.dumps(msg).encode('utf-8'))
+                                updated_count += 1
+                    
+                    except (json.JSONDecodeError, KeyError, IndexError) as e:
+                        logger.warning(f"🕸️ [KG_TASK] Failed to update message: {e}")
+                        continue
+            
+            logger.info(f"🕸️ [KG_TASK] Marked {updated_count} messages as consolidated for user {user_id}")
+            
+        except Exception as e:
+            logger.error(f"🕸️ [KG_TASK] Failed to mark messages as consolidated: {e}")
+            import traceback
+            traceback.print_exc()
