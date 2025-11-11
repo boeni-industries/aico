@@ -26,6 +26,7 @@ message CompletionsRequest {
   optional int32 max_tokens = 5;
   optional double top_p = 6;
   optional string system = 7;
+  optional bool think = 8;  // Enable/disable thinking mode (Ollama 0.12+)
 }
 
 // Streaming chunk message for real-time completions

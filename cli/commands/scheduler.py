@@ -54,7 +54,9 @@ def scheduler_callback(ctx: typer.Context, help: bool = typer.Option(False, "--h
             ("delete", "Delete a task"),
             ("trigger", "Manually trigger task execution"),
             ("history", "Show task execution history"),
-            ("status", "Show scheduler status")
+            ("status", "Show scheduler status"),
+            ("cleanup", "Clean up old execution history"),
+            ("cancel", "Cancel stale running executions")
         ]
         
         examples = [
@@ -478,17 +480,63 @@ def delete_task(
 def task_history(
     task_id: Optional[str] = typer.Argument(None, help="Optional: Task ID to show history for."),
     execution_id: Optional[str] = typer.Option(None, "--execution-id", help="Show details for a specific execution ID."),
+    status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter by status: running, completed, failed, cancelled, skipped"),
     limit: int = typer.Option(15, "--limit", "-n", help="Number of recent executions to show."),
-    format_output: str = typer.Option("table", "--format", "-f", help="Output format: table, json")
+    format_output: str = typer.Option("table", "--format", "-f", help="Output format: table, json"),
+    help_flag: bool = typer.Option(False, "--help", "-h", help="Show this help message and exit")
 ):
     """Show task execution history or details for a specific execution."""
+    if help_flag:
+        console.print()
+        console.print(Panel(
+            "[bold cyan]Show task execution history or details for a specific execution[/bold cyan]\n\n"
+            "[bold]Usage:[/bold]\n"
+            "  aico scheduler history [TASK_ID] [OPTIONS]\n\n"
+            "[bold]Arguments:[/bold]\n"
+            "  [cyan]TASK_ID[/cyan]  Optional task ID to show history for (e.g., maintenance.health_check)\n\n"
+            "[bold]Options:[/bold]\n"
+            "  [cyan]--execution-id TEXT[/cyan]    Show details for a specific execution ID\n"
+            "  [cyan]--status, -s TEXT[/cyan]      Filter by status: running, completed, failed, cancelled, skipped\n"
+            "  [cyan]--limit, -n INTEGER[/cyan]    Number of recent executions to show [default: 15]\n"
+            "  [cyan]--format, -f TEXT[/cyan]      Output format: table, json [default: table]\n"
+            "  [cyan]--help, -h[/cyan]             Show this help message and exit\n\n"
+            "[bold]Examples:[/bold]\n"
+            "  [dim]# Show recent executions across all tasks[/dim]\n"
+            "  aico scheduler history\n\n"
+            "  [dim]# Show history for specific task[/dim]\n"
+            "  aico scheduler history maintenance.health_check\n\n"
+            "  [dim]# Show only failed executions[/dim]\n"
+            "  aico scheduler history --status failed\n\n"
+            "  [dim]# Show completed executions for specific task[/dim]\n"
+            "  aico scheduler history maintenance.log_cleanup --status completed\n\n"
+            "  [dim]# Show details for specific execution[/dim]\n"
+            "  aico scheduler history --execution-id <execution_id>\n\n"
+            "  [dim]# Show last 25 executions[/dim]\n"
+            "  aico scheduler history --limit 25\n\n"
+            "  [dim]# Output as JSON[/dim]\n"
+            "  aico scheduler history --format json",
+            title="📜 [bold]scheduler history[/bold]",
+            border_style="cyan",
+            padding=(1, 2)
+        ))
+        console.print()
+        raise typer.Exit()
+    
+    # Validate status value if provided
+    if status:
+        valid_statuses = ["running", "completed", "failed", "cancelled", "skipped"]
+        if status.lower() not in valid_statuses:
+            console.print(f"[red]Invalid status '{status}'. Valid values: {', '.join(valid_statuses)}[/red]")
+            raise typer.Exit(1)
+        status = status.lower()
+    
     try:
         if execution_id:
             _show_single_execution(execution_id, format_output)
         elif task_id:
-            _show_task_history(task_id, limit, format_output)
+            _show_task_history(task_id, limit, format_output, status)
         else:
-            _show_recent_history(limit, format_output)
+            _show_recent_history(limit, format_output, status)
     except Exception as e:
         console.print(f"[red]Error getting task history: {e}[/red]")
         raise typer.Exit(1)
@@ -556,7 +604,7 @@ def _show_single_execution(execution_id: str, format_output: str):
             
             console.print()
 
-def _show_task_history(task_id: str, limit: int, format_output: str):
+def _show_task_history(task_id: str, limit: int, format_output: str, status: Optional[str] = None):
     """Show execution history for a specific task."""
     with _get_database_connection() as db:
         cursor = db.execute("SELECT task_id FROM scheduled_tasks WHERE task_id = ?", (task_id,))
@@ -564,40 +612,61 @@ def _show_task_history(task_id: str, limit: int, format_output: str):
             console.print(f"[red]Task not found: {task_id}[/red]")
             raise typer.Exit(1)
         
-        cursor = db.execute("""
+        # Build query with optional status filter
+        query = """
             SELECT execution_id, task_id, status, started_at, completed_at, result, error_message, duration_seconds
             FROM task_executions 
             WHERE task_id = ?
-            ORDER BY started_at DESC
-            LIMIT ?
-        """, (task_id, limit))
+        """
+        params = [task_id]
         
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        
+        query += " ORDER BY started_at DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor = db.execute(query, tuple(params))
         executions = cursor.fetchall()
         
         if not executions:
-            console.print(f"[yellow]No execution history found for task '{task_id}'[/yellow]")
+            status_msg = f" with status '{status}'" if status else ""
+            console.print(f"[yellow]No execution history found for task '{task_id}'{status_msg}[/yellow]")
             return
         
-        title = f"✨ [bold cyan]Execution History: {task_id}[/bold cyan]"
+        status_suffix = f" ({status})" if status else ""
+        title = f"✨ [bold cyan]Execution History: {task_id}{status_suffix}[/bold cyan]"
         _display_history_table(executions, title, format_output)
 
-def _show_recent_history(limit: int, format_output: str):
+def _show_recent_history(limit: int, format_output: str, status: Optional[str] = None):
     """Show the most recent executions across all tasks."""
     with _get_database_connection() as db:
-        cursor = db.execute("""
+        # Build query with optional status filter
+        query = """
             SELECT execution_id, task_id, status, started_at, completed_at, result, error_message, duration_seconds
             FROM task_executions
-            ORDER BY started_at DESC
-            LIMIT ?
-        """, (limit,))
+        """
+        params = []
+        
+        if status:
+            query += " WHERE status = ?"
+            params.append(status)
+        
+        query += " ORDER BY started_at DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor = db.execute(query, tuple(params))
         
         executions = cursor.fetchall()
         
         if not executions:
-            console.print("[yellow]No execution history found.[/yellow]")
+            status_msg = f" with status '{status}'" if status else ""
+            console.print(f"[yellow]No execution history found{status_msg}.[/yellow]")
             return
         
-        title = f"✨ [bold cyan]Recent Task Executions (last {limit})[/bold cyan]"
+        status_suffix = f" - {status}" if status else ""
+        title = f"✨ [bold cyan]Recent Task Executions (last {limit}{status_suffix})[/bold cyan]"
         _display_history_table(executions, title, format_output)
 
 def _display_history_table(executions: List, title: str, format_output: str):
@@ -719,6 +788,209 @@ def scheduler_status():
     
     except Exception as e:
         console.print(f"[red]Error getting scheduler status: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("cleanup")
+@sensitive
+def cleanup_history(
+    retention_days: int = typer.Option(30, "--days", "-d", help="Keep executions from last N days"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be deleted without deleting"),
+    help_flag: bool = typer.Option(False, "--help", "-h", help="Show this help message and exit")
+):
+    """Clean up old execution history records.
+    
+    Examples:
+        aico scheduler cleanup                    # Delete executions older than 30 days
+        aico scheduler cleanup --days 7           # Delete executions older than 7 days
+        aico scheduler cleanup --dry-run          # Preview what would be deleted
+    """
+    if help_flag:
+        console.print()
+        console.print(Panel(
+            "[bold cyan]Clean up old execution history records[/bold cyan]\n\n"
+            "[bold]Usage:[/bold]\n"
+            "  aico scheduler cleanup [OPTIONS]\n\n"
+            "[bold]Options:[/bold]\n"
+            "  [cyan]--days, -d INTEGER[/cyan]  Keep executions from last N days [default: 30]\n"
+            "  [cyan]--dry-run[/cyan]           Show what would be deleted without deleting\n"
+            "  [cyan]--help, -h[/cyan]          Show this help message and exit\n\n"
+            "[bold]Examples:[/bold]\n"
+            "  [dim]# Delete executions older than 30 days[/dim]\n"
+            "  aico scheduler cleanup\n\n"
+            "  [dim]# Delete executions older than 7 days[/dim]\n"
+            "  aico scheduler cleanup --days 7\n\n"
+            "  [dim]# Preview what would be deleted[/dim]\n"
+            "  aico scheduler cleanup --dry-run",
+            title="🧹 [bold]scheduler cleanup[/bold]",
+            border_style="cyan",
+            padding=(1, 2)
+        ))
+        console.print()
+        raise typer.Exit()
+    
+    try:
+        from datetime import datetime, timedelta
+        
+        with _get_database_connection() as db:
+            cutoff_date = (datetime.now() - timedelta(days=retention_days)).isoformat()
+            
+            # Count what would be deleted
+            cursor = db.execute(
+                "SELECT COUNT(*) FROM task_executions WHERE started_at < ?", (cutoff_date,)
+            )
+            count = cursor.fetchone()[0]
+            
+            if count == 0:
+                console.print(f"[yellow]No execution records older than {retention_days} days found[/yellow]")
+                return
+            
+            if dry_run:
+                console.print(f"[yellow]DRY RUN: Would delete {count} execution record(s) older than {retention_days} days[/yellow]")
+                
+                # Show sample of what would be deleted
+                cursor = db.execute("""
+                    SELECT task_id, status, started_at 
+                    FROM task_executions 
+                    WHERE started_at < ?
+                    ORDER BY started_at DESC
+                    LIMIT 10
+                """, (cutoff_date,))
+                
+                sample = cursor.fetchall()
+                if sample:
+                    console.print("\n[dim]Sample of records to be deleted:[/dim]")
+                    for task_id, status, started_at in sample:
+                        console.print(f"  • {task_id} ({status}) - {format_timestamp_local(started_at)}")
+                    if count > 10:
+                        console.print(f"  [dim]... and {count - 10} more[/dim]")
+            else:
+                # Actually delete
+                cursor = db.execute(
+                    "DELETE FROM task_executions WHERE started_at < ?", (cutoff_date,)
+                )
+                db.commit()
+                
+                console.print(f"[green]✓ Deleted {count} execution record(s) older than {retention_days} days[/green]")
+    
+    except Exception as e:
+        console.print(f"[red]Error cleaning up execution history: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command("cancel")
+@sensitive
+def cancel_stale_runs(
+    max_hours: int = typer.Option(24, "--max-hours", "-m", help="Mark runs older than N hours as failed"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be cancelled without cancelling"),
+    help_flag: bool = typer.Option(False, "--help", "-h", help="Show this help message and exit")
+):
+    """Cancel stale running executions.
+    
+    Marks long-running executions as 'failed' if they've been running longer than the specified time.
+    Useful for cleaning up orphaned tasks from crashes or restarts.
+    
+    Examples:
+        aico scheduler cancel                     # Cancel runs older than 24 hours
+        aico scheduler cancel --max-hours 2       # Cancel runs older than 2 hours
+        aico scheduler cancel --dry-run           # Preview what would be cancelled
+    """
+    if help_flag:
+        console.print()
+        console.print(Panel(
+            "[bold cyan]Cancel stale running executions[/bold cyan]\n\n"
+            "Marks long-running executions as 'failed' if they've been running longer than\n"
+            "the specified time. Useful for cleaning up orphaned tasks from crashes or restarts.\n\n"
+            "[bold]Usage:[/bold]\n"
+            "  aico scheduler cancel [OPTIONS]\n\n"
+            "[bold]Options:[/bold]\n"
+            "  [cyan]--max-hours, -m INTEGER[/cyan]  Mark runs older than N hours as failed [default: 24]\n"
+            "  [cyan]--dry-run[/cyan]                Show what would be cancelled without cancelling\n"
+            "  [cyan]--help, -h[/cyan]               Show this help message and exit\n\n"
+            "[bold]Examples:[/bold]\n"
+            "  [dim]# Cancel runs older than 24 hours[/dim]\n"
+            "  aico scheduler cancel\n\n"
+            "  [dim]# Cancel runs older than 2 hours[/dim]\n"
+            "  aico scheduler cancel --max-hours 2\n\n"
+            "  [dim]# Preview what would be cancelled[/dim]\n"
+            "  aico scheduler cancel --dry-run",
+            title="🚫 [bold]scheduler cancel[/bold]",
+            border_style="cyan",
+            padding=(1, 2)
+        ))
+        console.print()
+        raise typer.Exit()
+    
+    try:
+        from datetime import datetime, timedelta
+        
+        with _get_database_connection() as db:
+            cutoff_time = (datetime.now() - timedelta(hours=max_hours)).isoformat()
+            
+            # Find stale running executions
+            cursor = db.execute("""
+                SELECT execution_id, task_id, started_at 
+                FROM task_executions 
+                WHERE status = 'running' AND started_at < ?
+                ORDER BY started_at
+            """, (cutoff_time,))
+            
+            stale_runs = cursor.fetchall()
+            
+            if not stale_runs:
+                console.print(f"[green]No stale running executions found (older than {max_hours} hours)[/green]")
+                return
+            
+            count = len(stale_runs)
+            
+            if dry_run:
+                console.print(f"[yellow]DRY RUN: Would cancel {count} stale running execution(s)[/yellow]\n")
+                
+                table = Table(
+                    title="Stale Running Executions",
+                    border_style="yellow",
+                    box=box.SIMPLE_HEAD
+                )
+                table.add_column("Execution ID", style="cyan")
+                table.add_column("Task ID", style="cyan")
+                table.add_column("Started", style="yellow")
+                table.add_column("Running For", style="red")
+                
+                for exec_id, task_id, started_at in stale_runs:
+                    started_dt = datetime.fromisoformat(started_at.replace('Z', '+00:00'))
+                    running_hours = (datetime.now(started_dt.tzinfo) - started_dt).total_seconds() / 3600
+                    
+                    table.add_row(
+                        exec_id,
+                        task_id,
+                        format_timestamp_local(started_at),
+                        f"{running_hours:.1f}h"
+                    )
+                
+                console.print(table)
+                console.print()
+            else:
+                # Actually cancel them
+                cursor = db.execute("""
+                    UPDATE task_executions 
+                    SET status = 'failed',
+                        error_message = 'Cancelled: stale execution (running > ' || ? || ' hours)',
+                        completed_at = CURRENT_TIMESTAMP,
+                        duration_seconds = (julianday(CURRENT_TIMESTAMP) - julianday(started_at)) * 86400
+                    WHERE status = 'running' AND started_at < ?
+                """, (max_hours, cutoff_time))
+                
+                db.commit()
+                
+                console.print(f"[green]✓ Cancelled {count} stale running execution(s)[/green]")
+                
+                # Show what was cancelled
+                console.print("\n[dim]Cancelled executions:[/dim]")
+                for exec_id, task_id, started_at in stale_runs:
+                    console.print(f"  • {task_id} - started {format_timestamp_local(started_at)}")
+    
+    except Exception as e:
+        console.print(f"[red]Error cancelling stale executions: {e}[/red]")
         raise typer.Exit(1)
 
 

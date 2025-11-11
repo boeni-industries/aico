@@ -145,6 +145,12 @@ modelservice:
       auto_unload_minutes: 30
       max_concurrent_models: 2
       memory_threshold_percent: 85
+    
+    # Ollama 0.12+ parallel processing configuration
+    # These settings enable true parallel request batching
+    num_parallel: 4  # Process up to 4 requests simultaneously per model (batched)
+    max_loaded_models: 2  # Keep 2 models in memory (conversation + embeddings)
+    max_queue: 128  # Queue depth before rejecting requests
   
   # Entity extraction is now handled by GLiNER via the transformers system
   
@@ -315,13 +321,13 @@ memory:
     # Knowledge Graph configuration (Property Graph for structured memory)
     knowledge_graph:
       max_gleanings: 0  # Number of gleaning passes for completeness (0-2 recommended, 0 = single pass, 3x faster)
-      llm_timeout_seconds: 60.0  # Timeout for LLM operations (relation extraction, entity matching)
+      llm_timeout_seconds: 120.0  # Timeout for LLM operations (4 parallel × 20s avg + buffer)
       
       # Entity resolution (deduplication) settings
       entity_resolution:
-        similarity_threshold: 0.85  # Cosine similarity threshold for semantic blocking (0-1, higher = stricter)
+        similarity_threshold: 0.75  # Cosine similarity threshold for semantic blocking (0-1, higher = stricter)
         use_llm_matching: true  # Use LLM (Eve) for entity matching with chain-of-thought reasoning
-        use_llm_merging: false  # Use LLM (Eve) for entity merging with conflict resolution (disabled for 2x speedup)
+        use_llm_merging: true  # Use LLM (Eve) for entity merging with conflict resolution (intelligent property merging)
   
   # Adaptive Memory System (AMS) - Brain-inspired memory consolidation and learning
   # Temporal Intelligence - Preference evolution and time-aware memory
@@ -353,7 +359,7 @@ memory:
       enabled: true
       batch_size: 50  # Maximum messages to process per run
       max_age_hours: 24  # Only process messages from last 24 hours
-      max_concurrent_extractions: 4  # Parallel message processing (10x speedup)
+      max_concurrent_extractions: 4  # Parallel message processing (LLM queues internally)
   
   # Behavioral Learning - Skill-based interaction with RLHF (Phase 3 - not yet implemented)
   behavioral:

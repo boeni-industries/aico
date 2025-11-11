@@ -246,11 +246,14 @@ class ModelserviceZMQHandlers:
             
             # self.logger.info(f"[CHAT] Creating HTTP client for streaming...")
             async with httpx.AsyncClient(timeout=60.0) as client:
+                # Check if thinking is explicitly disabled in request (default: True for conversations)
+                enable_thinking = request_payload.think if hasattr(request_payload, 'think') and request_payload.HasField('think') else True
+                
                 request_data = {
                     "model": model,
                     "messages": chat_messages,
                     "stream": True,  # Enable streaming
-                    "think": True  # Enable Ollama 0.12+ native thinking mode
+                    "think": enable_thinking  # Ollama 0.12+ thinking mode (default: True, can be disabled for KG extraction)
                 }
                 # Commented out to reduce log volume
                 # self.logger.info(f"[CHAT] Request data prepared: model={model}, messages_count={len(chat_messages)}, streaming=True, thinking=True")

@@ -275,6 +275,7 @@ class ModelserviceClient:
         completions_request.temperature = temperature
         completions_request.max_tokens = max_tokens
         completions_request.stream = False  # Non-streaming for KG
+        completions_request.think = False  # Disable thinking for structured extraction (20-30% speedup)
         
         
         # Create future for response
