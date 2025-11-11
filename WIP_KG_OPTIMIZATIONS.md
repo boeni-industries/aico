@@ -8,30 +8,19 @@
 
 ---
 
-## **🚀 NEXT PRIORITIES**
+## **🚀 NEXT OPTIMIZATION OPPORTUNITIES**
 
-### **4. Incremental HNSW Index (Persistent)**
-- **Impact**: 2x speedup on resolution (eliminate re-indexing overhead)
-- **Current Issue**: Each message re-indexes ALL existing nodes in HNSW
-- **Change**: Keep HNSW index persistent across messages within same batch
-- **Quality**: ✅ No loss - same results, just cached
-- **Implementation**: 
-  - Pass HNSW index state between messages in batch
-  - Only add new nodes to existing index
-  - Clear index after batch completes
-- **Code**: `entity_resolution.py:122-123` + `kg_consolidation.py:201`
-
-### **5. Batch Entity Resolution (End of Batch)**
-- **Impact**: 3x speedup (eliminate per-message resolution)
-- **Current Issue**: Each message runs full entity resolution independently
-- **Change**: Accumulate all extracted entities in batch, resolve once at end
-- **Quality**: ⚠️ Slight delay in deduplication within batch (acceptable)
-- **Implementation**:
-  - Extract entities from all messages in parallel
-  - Collect all graphs
-  - Run single resolution pass on combined graph
-  - Save once
-- **Code**: New mode in `kg_consolidation.py` - collect graphs, resolve batch
+### **Potential Further Improvements**
+- Stream LLM responses for faster perceived performance
+- Cache GLiNER entity embeddings (20% speedup on extraction)
+- Batch database writes (reduce I/O overhead)
+- Use faster LLM model for KG extraction (llama3.2:1b vs qwen3:8b)
+- Adaptive batch sizing based on system load
+- Pre-warm LLM model on startup to avoid cold start
+- Optimize JSON parsing with orjson
+- Remove verbose debug logging in hot paths
+- Parallel entity resolution within batch (experimental)
+- Incremental graph updates instead of full re-save
 
 ---
 
@@ -57,18 +46,22 @@
 
 ## **✅ COMPLETED OPTIMIZATIONS**
 
-1. ✅ **Batch Message Processing (Parallel)** - 2.7x speedup
+1. ~~**Batch Message Processing (Parallel)**~~ - ✅ 2.7x speedup
    - Config: `max_concurrent_extractions: 4`
-   - Result: 1791s → 655s
 
-2. ✅ **Disable Multi-Pass Gleaning** - 3x speedup expected
+2. ~~**Disable Multi-Pass Gleaning**~~ - ✅ Included in 4.8x
    - Config: `max_gleanings: 0`
 
-3. ✅ **Disable LLM Merging** - 2x speedup expected
+3. ~~**Disable LLM Merging**~~ - ✅ Included in 4.8x
    - Config: `use_llm_merging: false`
 
-4. ✅ **Reduce LLM Timeout** - Fail-fast
-   - Config: `llm_timeout_seconds: 30.0`
+4. ~~**Incremental HNSW Indexing**~~ - ✅ Included in 4.8x
+   - Shared resolver across batch
+
+5. ~~**Increase LLM Timeout**~~ - ✅ Reliability fix
+   - Config: `llm_timeout_seconds: 60.0`
+
+**Final Result**: 1791s → 372s = **4.8x total speedup** 🚀
 
 ---
 
