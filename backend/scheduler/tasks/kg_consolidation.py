@@ -468,6 +468,7 @@ class KGConsolidationTask(BaseTask):
             # Process each label group separately to avoid false positives
             from aico.ai.knowledge_graph.models import PropertyGraph
             total_superseded_ids = []
+            node_mapping = {}  # Track superseded_id -> canonical_id mappings
             
             for label, nodes in entities_by_label.items():
                 if len(nodes) < 2:
@@ -490,11 +491,16 @@ class KGConsolidationTask(BaseTask):
                 if resolution_result.superseded_node_ids:
                     print(f"🕸️ [KG_TASK] ✅ Found {len(resolution_result.superseded_node_ids)} duplicate {label} entities")
                     total_superseded_ids.extend(resolution_result.superseded_node_ids)
+                    
+                    # Get the node mapping from the resolution result
+                    if resolution_result.node_mapping:
+                        node_mapping.update(resolution_result.node_mapping)
             
             if not total_superseded_ids:
                 return {'duplicates_merged': 0, 'edges_updated': 0}
             
             print(f"🕸️ [KG_TASK] 🔍 Total: {len(total_superseded_ids)} duplicate entities to merge")
+            print(f"🕸️ [KG_TASK] 🔍 Node mapping: {len(node_mapping)} superseded -> canonical mappings")
             
             # Mark superseded nodes as historical and update edges
             edges_updated = 0
@@ -510,15 +516,29 @@ class KGConsolidationTask(BaseTask):
                 )
             
             # Update edges to point to canonical nodes
-            # For simplicity, we'll just mark the nodes as historical
-            # The edges will naturally point to the remaining current nodes
-            # since the LLM merging already consolidated the information
+            print(f"🕸️ [KG_TASK] 🔄 Updating edges to point to canonical nodes...")
+            for superseded_id, canonical_id in node_mapping.items():
+                # Update edges where superseded node is the source
+                result = db.execute(
+                    "UPDATE kg_edges SET source_id = ?, updated_at = datetime('now') WHERE source_id = ? AND user_id = ?",
+                    (canonical_id, superseded_id, user_id)
+                )
+                edges_updated += result.rowcount if hasattr(result, 'rowcount') else 0
+                
+                # Update edges where superseded node is the target
+                result = db.execute(
+                    "UPDATE kg_edges SET target_id = ?, updated_at = datetime('now') WHERE target_id = ? AND user_id = ?",
+                    (canonical_id, superseded_id, user_id)
+                )
+                edges_updated += result.rowcount if hasattr(result, 'rowcount') else 0
+            
+            print(f"🕸️ [KG_TASK] ✅ Updated {edges_updated} edge references")
             
             db.commit()
             
             return {
                 'duplicates_merged': len(total_superseded_ids),
-                'edges_updated': 0  # Edges remain pointing to superseded nodes but are filtered by is_current
+                'edges_updated': edges_updated
             }
             
         except Exception as e:

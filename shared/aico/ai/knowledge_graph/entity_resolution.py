@@ -30,6 +30,7 @@ class ResolutionResult:
     """Result of entity resolution with information about superseded nodes."""
     resolved_graph: PropertyGraph
     superseded_node_ids: Set[str]  # IDs of nodes that were merged (should be marked historical)
+    node_mapping: Dict[str, str] = None  # Map of superseded_id -> canonical_id for edge updates
 
 
 class EntityResolver:
@@ -152,7 +153,7 @@ class EntityResolver:
         
         # Step 4: LLM merging - merge duplicates with conflict resolution
         print(f"🔍 [ENTITY_RESOLVER] Step 4: Merging {len(duplicates)} duplicate pairs")
-        resolved_graph, superseded_ids = await self._merge_duplicates(new_graph, duplicates)
+        resolved_graph, superseded_ids, node_mapping = await self._merge_duplicates(new_graph, duplicates)
         
         print(f"🔍 [ENTITY_RESOLVER] ✅ Resolution complete: {len(new_graph.nodes)} → {len(resolved_graph.nodes)} nodes")
         print(f"🔍 [ENTITY_RESOLVER] Superseded nodes: {len(superseded_ids)} (will be marked historical)")
@@ -161,7 +162,7 @@ class EntityResolver:
         # Add resolved nodes to index for future searches
         await self._add_nodes_to_index(resolved_graph.nodes)
         
-        return ResolutionResult(resolved_graph=resolved_graph, superseded_node_ids=superseded_ids)
+        return ResolutionResult(resolved_graph=resolved_graph, superseded_node_ids=superseded_ids, node_mapping=node_mapping)
     
     async def _index_existing_nodes(self, existing_nodes: List[Node]) -> None:
         """Add existing nodes to HNSW index if not already indexed."""
@@ -538,7 +539,7 @@ Return valid JSON only."""
         self,
         graph: PropertyGraph,
         duplicates: List[Tuple[Node, Node]]
-    ) -> Tuple[PropertyGraph, Set[str]]:
+    ) -> Tuple[PropertyGraph, Set[str], Dict[str, str]]:
         """
         Step 3: Merge duplicate entities with conflict resolution.
         
@@ -547,7 +548,7 @@ Return valid JSON only."""
             duplicates: List of duplicate pairs to merge
             
         Returns:
-            Tuple of (PropertyGraph with duplicates merged, Set of superseded node IDs)
+            Tuple of (PropertyGraph with duplicates merged, Set of superseded node IDs, Dict of superseded_id -> canonical_id)
         """
         # Build merge groups (transitive closure)
         print(f"🔍 [ENTITY_RESOLVER] Building merge groups from {len(duplicates)} duplicate pairs")
@@ -557,6 +558,7 @@ Return valid JSON only."""
         # Merge each group and track superseded nodes
         merged_nodes = {}
         superseded_ids = set()
+        node_mapping = {}  # superseded_id -> canonical_id
         
         for group in merge_groups:
             merged_node = await self._merge_node_group(group)
@@ -566,6 +568,7 @@ Return valid JSON only."""
                 merged_nodes[node.id] = merged_node
                 if node.id != merged_node.id:
                     superseded_ids.add(node.id)
+                    node_mapping[node.id] = merged_node.id  # Track the mapping
         
         # Build new graph with merged nodes
         new_graph = PropertyGraph()
@@ -600,7 +603,7 @@ Return valid JSON only."""
             new_edge.id = edge.id  # Preserve edge ID
             new_graph.add_edge(new_edge)
         
-        return new_graph, superseded_ids
+        return new_graph, superseded_ids, node_mapping
     
     async def _merge_node_group(
         self,
