@@ -30,6 +30,7 @@ def kg_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "
             ("stats", "Show detailed graph statistics."),
             ("test-pipeline", "Test extraction pipeline step-by-step."),
             ("clear", "Clear knowledge graph data (DESTRUCTIVE)."),
+            ("deduplicate", "Remove duplicate entities and mark as historical."),
             ("traverse", "Traverse graph from a node (BFS/DFS)."),
             ("path", "Find shortest path between two nodes."),
             ("insights", "Show graph analytics and insights."),
@@ -47,6 +48,8 @@ def kg_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help", "
             "aico kg stats --user-id user_123",
             "aico kg test-pipeline 'Sarah gave me a piano lesson'",
             "aico kg clear --user-id user_123",
+            "aico kg deduplicate --user-id user_123 --dry-run",
+            "aico kg deduplicate --user-id user_123 --threshold 0.90",
             "aico kg traverse --node-id node_abc --max-depth 3",
             "aico kg path --source node_abc --target node_xyz",
             "aico kg insights --user-id user_123",
@@ -630,6 +633,218 @@ def clear(
             raise typer.Exit(1)
     
     asyncio.run(_clear())
+
+
+@app.command(name="deduplicate", help="Remove duplicate entities and mark as historical.")
+@destructive
+def deduplicate(
+    user_id: str = typer.Option(..., "--user-id", "-u", help="User ID to deduplicate entities for"),
+    threshold: float = typer.Option(0.85, "--threshold", "-t", help="Similarity threshold for duplicates (0.0-1.0)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be deduplicated without making changes"),
+    label: Optional[str] = typer.Option(None, "--label", "-l", help="Only deduplicate specific entity type (PERSON, ORG, etc.)")
+):
+    """
+    Find and remove duplicate entities in the knowledge graph.
+    
+    This command identifies semantically similar entities and marks older duplicates
+    as historical (is_current=0), keeping only the most recent canonical version.
+    
+    WHEN TO USE:
+    - After multiple test runs that created duplicate entities
+    - When you notice the same entity appearing multiple times in 'aico kg ls'
+    - After importing data from multiple sources
+    - As part of regular maintenance to keep the graph clean
+    
+    HOW IT WORKS:
+    1. Loads all current entities for the user
+    2. Uses HNSW + embeddings to find semantically similar pairs
+    3. Confirms duplicates with LLM verification
+    4. Marks older duplicates as historical (is_current=0)
+    5. Updates all edges to point to the canonical (newest) entity
+    
+    SAFETY:
+    - Always run with --dry-run first to preview changes
+    - Original data is preserved with is_current=0 (not deleted)
+    - Can be reversed by updating is_current back to 1 if needed
+    
+    Examples:
+        # Preview duplicates without making changes
+        aico kg deduplicate --user-id user_123 --dry-run
+        
+        # Remove duplicates with default threshold (0.85)
+        aico kg deduplicate --user-id user_123
+        
+        # Use stricter matching (higher threshold = more similar required)
+        aico kg deduplicate --user-id user_123 --threshold 0.90
+        
+        # Only deduplicate people
+        aico kg deduplicate --user-id user_123 --label PERSON
+    """
+    async def _deduplicate():
+        from aico.core.config import ConfigurationManager
+        from aico.core.paths import AICOPaths
+        from aico.ai.knowledge_graph import PropertyGraphStorage
+        from aico.ai.knowledge_graph.entity_resolution import EntityResolver
+        from aico.ai.knowledge_graph.modelservice_client import ModelserviceClient
+        import chromadb
+        from chromadb.config import Settings
+        
+        try:
+            console.print("\n[bold cyan]🔍 Knowledge Graph Deduplication[/bold cyan]\n")
+            
+            if dry_run:
+                console.print("[yellow]DRY RUN MODE - No changes will be made[/yellow]\n")
+            
+            # Initialize
+            db_path = AICOPaths.resolve_database_path("aico.db", "auto")
+            db_connection = _get_database_connection(str(db_path))
+            
+            chromadb_path = AICOPaths.get_semantic_memory_path()
+            chromadb_client = chromadb.PersistentClient(
+                path=str(chromadb_path),
+                settings=Settings(anonymized_telemetry=False, allow_reset=True)
+            )
+            
+            storage = PropertyGraphStorage(db_connection, chromadb_client)
+            modelservice = ModelserviceClient()
+            await modelservice.connect()
+            
+            # Get config
+            config_manager = ConfigurationManager()
+            
+            resolver = EntityResolver(
+                modelservice_client=modelservice,
+                config=config_manager
+            )
+            
+            # Override threshold if specified
+            if threshold != 0.85:
+                resolver.similarity_threshold = threshold
+            
+            # Load current entities
+            console.print(f"[cyan]Loading entities for user {user_id[:8]}...[/cyan]")
+            nodes = await storage.get_user_nodes(user_id=user_id, current_only=True)
+            
+            # Filter by label if specified
+            if label:
+                nodes = [n for n in nodes if n.label == label]
+            
+            if not nodes:
+                console.print("[yellow]No entities found.[/yellow]")
+                return
+            
+            console.print(f"[green]✓[/green] Loaded {len(nodes)} entities")
+            if label:
+                console.print(f"[dim]  Filtered by label: {label}[/dim]")
+            console.print()
+            
+            # Group by label for better matching
+            from collections import defaultdict
+            nodes_by_label = defaultdict(list)
+            for node in nodes:
+                nodes_by_label[node.label].append(node)
+            
+            total_duplicates = 0
+            total_kept = 0
+            total_marked_historical = 0
+            
+            # Process each label group
+            for entity_label, label_nodes in nodes_by_label.items():
+                if len(label_nodes) < 2:
+                    continue
+                
+                console.print(f"[bold]Processing {entity_label}:[/bold] {len(label_nodes)} entities")
+                
+                # Find duplicates using resolver's HNSW search
+                from aico.ai.knowledge_graph.models import PropertyGraph
+                temp_graph = PropertyGraph()
+                for node in label_nodes:
+                    temp_graph.add_node(node)
+                
+                # Use resolver to find candidates
+                console.print(f"  [dim]Searching for duplicates (threshold={threshold})...[/dim]")
+                candidates = await resolver._hnsw_search(label_nodes)
+                
+                if not candidates:
+                    console.print(f"  [green]✓[/green] No duplicates found\n")
+                    continue
+                
+                console.print(f"  [yellow]Found {len(candidates)} candidate pairs[/yellow]")
+                
+                # LLM verification
+                console.print(f"  [dim]Verifying with LLM...[/dim]")
+                duplicates = await resolver._llm_batch_matching(candidates)
+                
+                if not duplicates:
+                    console.print(f"  [green]✓[/green] No confirmed duplicates\n")
+                    continue
+                
+                console.print(f"  [red]Confirmed {len(duplicates)} duplicate pairs[/red]")
+                
+                # Build merge groups (transitive closure)
+                merge_groups = resolver._build_merge_groups(duplicates)
+                console.print(f"  [cyan]Created {len(merge_groups)} merge groups[/cyan]\n")
+                
+                # Process each merge group
+                for group in merge_groups:
+                    # Sort by created_at to keep the newest
+                    sorted_group = sorted(group, key=lambda n: n.created_at, reverse=True)
+                    canonical = sorted_group[0]  # Newest
+                    duplicates_to_mark = sorted_group[1:]  # Older ones
+                    
+                    console.print(f"  [bold cyan]Merge Group:[/bold cyan]")
+                    console.print(f"    [green]KEEP:[/green] {canonical.properties.get('name', 'N/A')} (ID: {canonical.id[:8]}, created: {canonical.created_at[:10]})")
+                    
+                    for dup in duplicates_to_mark:
+                        console.print(f"    [red]MARK HISTORICAL:[/red] {dup.properties.get('name', 'N/A')} (ID: {dup.id[:8]}, created: {dup.created_at[:10]})")
+                        total_marked_historical += 1
+                    
+                    total_kept += 1
+                    total_duplicates += len(duplicates_to_mark)
+                    
+                    if not dry_run:
+                        # Mark duplicates as historical
+                        for dup in duplicates_to_mark:
+                            db_connection.execute(
+                                "UPDATE kg_nodes SET is_current = 0, updated_at = datetime('now') WHERE id = ?",
+                                (dup.id,)
+                            )
+                        
+                        # Update edges to point to canonical node
+                        for dup in duplicates_to_mark:
+                            db_connection.execute(
+                                "UPDATE kg_edges SET source_id = ?, updated_at = datetime('now') WHERE source_id = ?",
+                                (canonical.id, dup.id)
+                            )
+                            db_connection.execute(
+                                "UPDATE kg_edges SET target_id = ?, updated_at = datetime('now') WHERE target_id = ?",
+                                (canonical.id, dup.id)
+                            )
+                        
+                        db_connection.commit()
+                    
+                    console.print()
+            
+            # Summary
+            console.print("[bold cyan]═══════════════════════════════════════[/bold cyan]")
+            console.print("[bold]Summary:[/bold]")
+            console.print(f"  Canonical entities kept: {total_kept}")
+            console.print(f"  Duplicates marked historical: {total_marked_historical}")
+            
+            if dry_run:
+                console.print("\n[yellow]DRY RUN - No changes were made[/yellow]")
+                console.print("[dim]Run without --dry-run to apply changes[/dim]")
+            else:
+                console.print(f"\n[bold green]✓ Complete:[/bold green] Deduplicated {total_marked_historical} entities")
+                console.print("[dim]Historical entities are preserved with is_current=0[/dim]")
+            
+        except Exception as e:
+            console.print(f"\n[red]Error:[/red] {e}")
+            import traceback
+            console.print(f"[red]{traceback.format_exc()}[/red]")
+            raise typer.Exit(1)
+    
+    asyncio.run(_deduplicate())
 
 
 @app.command(name="traverse", help="Traverse graph from a node (BFS/DFS).")

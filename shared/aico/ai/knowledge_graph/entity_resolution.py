@@ -7,19 +7,29 @@ Implements semantic entity resolution using 3-step process:
 3. LLM Merging: Merge duplicate entities with conflict resolution
 """
 
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional, Set
 import asyncio
 import json
 import numpy as np
 from collections import defaultdict
 import hnswlib
+from datetime import datetime, timezone
+from dataclasses import dataclass
 
 from aico.core.logging import get_logger
 from aico.core.config import ConfigurationManager
 
 from .models import Node, Edge, PropertyGraph
+from .modelservice_client import ModelserviceClient
 
 logger = get_logger("shared", "ai.knowledge_graph.entity_resolution")
+
+
+@dataclass
+class ResolutionResult:
+    """Result of entity resolution with information about superseded nodes."""
+    resolved_graph: PropertyGraph
+    superseded_node_ids: Set[str]  # IDs of nodes that were merged (should be marked historical)
 
 
 class EntityResolver:
@@ -86,7 +96,7 @@ class EntityResolver:
         new_graph: PropertyGraph,
         user_id: str,
         existing_nodes: Optional[List[Node]] = None
-    ) -> PropertyGraph:
+    ) -> ResolutionResult:
         """
         Resolve entities in new graph against existing nodes.
         
@@ -96,10 +106,10 @@ class EntityResolver:
             existing_nodes: Existing nodes to check for duplicates
             
         Returns:
-            PropertyGraph with resolved entities (duplicates merged)
+            ResolutionResult with resolved graph and superseded node IDs
         """
         if not new_graph.nodes:
-            return new_graph
+            return ResolutionResult(resolved_graph=new_graph, superseded_node_ids=set())
         
         print(f"\n🔍 [ENTITY_RESOLVER] Starting resolution for {len(new_graph.nodes)} new entities")
         logger.info(f"Resolving {len(new_graph.nodes)} new entities")
@@ -121,7 +131,7 @@ class EntityResolver:
             logger.info("No duplicate candidates found")
             # Add new nodes to index for future searches
             await self._add_nodes_to_index(new_graph.nodes)
-            return new_graph
+            return ResolutionResult(resolved_graph=new_graph, superseded_node_ids=set())
         
         print(f"🔍 [ENTITY_RESOLVER] Found {len(candidates)} candidate pairs (similarity >= {self.similarity_threshold})")
         logger.info(f"Found {len(candidates)} candidate duplicate pairs")
@@ -135,22 +145,23 @@ class EntityResolver:
             logger.info("No confirmed duplicates found")
             # Add new nodes to index for future searches
             await self._add_nodes_to_index(new_graph.nodes)
-            return new_graph
+            return ResolutionResult(resolved_graph=new_graph, superseded_node_ids=set())
         
         print(f"🔍 [ENTITY_RESOLVER] LLM confirmed {len(duplicates)} duplicate pairs")
         logger.info(f"Confirmed {len(duplicates)} duplicate pairs")
         
         # Step 4: LLM merging - merge duplicates with conflict resolution
         print(f"🔍 [ENTITY_RESOLVER] Step 4: Merging {len(duplicates)} duplicate pairs")
-        resolved_graph = await self._merge_duplicates(new_graph, duplicates)
+        resolved_graph, superseded_ids = await self._merge_duplicates(new_graph, duplicates)
         
         print(f"🔍 [ENTITY_RESOLVER] ✅ Resolution complete: {len(new_graph.nodes)} → {len(resolved_graph.nodes)} nodes")
-        logger.info(f"Resolution complete: {len(resolved_graph.nodes)} nodes after merging")
+        print(f"🔍 [ENTITY_RESOLVER] Superseded nodes: {len(superseded_ids)} (will be marked historical)")
+        logger.info(f"Resolution complete: {len(resolved_graph.nodes)} nodes after merging, {len(superseded_ids)} superseded")
         
         # Add resolved nodes to index for future searches
         await self._add_nodes_to_index(resolved_graph.nodes)
         
-        return resolved_graph
+        return ResolutionResult(resolved_graph=resolved_graph, superseded_node_ids=superseded_ids)
     
     async def _index_existing_nodes(self, existing_nodes: List[Node]) -> None:
         """Add existing nodes to HNSW index if not already indexed."""
@@ -483,7 +494,7 @@ Return valid JSON only."""
         self,
         graph: PropertyGraph,
         duplicates: List[Tuple[Node, Node]]
-    ) -> PropertyGraph:
+    ) -> Tuple[PropertyGraph, Set[str]]:
         """
         Step 3: Merge duplicate entities with conflict resolution.
         
@@ -492,19 +503,25 @@ Return valid JSON only."""
             duplicates: List of duplicate pairs to merge
             
         Returns:
-            PropertyGraph with duplicates merged
+            Tuple of (PropertyGraph with duplicates merged, Set of superseded node IDs)
         """
         # Build merge groups (transitive closure)
         print(f"🔍 [ENTITY_RESOLVER] Building merge groups from {len(duplicates)} duplicate pairs")
         merge_groups = self._build_merge_groups(duplicates)
         print(f"🔍 [ENTITY_RESOLVER] Created {len(merge_groups)} merge groups")
         
-        # Merge each group
+        # Merge each group and track superseded nodes
         merged_nodes = {}
+        superseded_ids = set()
+        
         for group in merge_groups:
             merged_node = await self._merge_node_group(group)
+            # The merged node keeps the ID of one of the group members (typically the first/oldest)
+            # All other nodes in the group are superseded
             for node in group:
                 merged_nodes[node.id] = merged_node
+                if node.id != merged_node.id:
+                    superseded_ids.add(node.id)
         
         # Build new graph with merged nodes
         new_graph = PropertyGraph()
@@ -539,7 +556,7 @@ Return valid JSON only."""
             new_edge.id = edge.id  # Preserve edge ID
             new_graph.add_edge(new_edge)
         
-        return new_graph
+        return new_graph, superseded_ids
     
     async def _merge_node_group(
         self,

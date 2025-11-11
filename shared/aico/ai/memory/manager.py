@@ -899,23 +899,27 @@ class MemoryManager(BaseAIProcessor):
             logger.info(f"🕸️ [KG] Extracted {len(new_graph.nodes)} nodes, {len(new_graph.edges)} edges in {extraction_time:.2f}s")
             
             if len(new_graph.nodes) == 0 and len(new_graph.edges) == 0:
-                logger.info("🕸️ [KG] No entities extracted, skipping")
+                logger.info(" [KG]  No entities extracted, skipping")
                 return
             
-            # 2. Entity resolution (deduplication) - RE-ENABLED with HNSW (2025-11-10)
-            print(f"\n🕸️ [KG] Step 2: Entity resolution (HNSW-based deduplication)")
+            # 2. Entity resolution (deduplicate against existing graph)
+            print(f"\n [KG]  Step 2: Entity resolution (HNSW-based deduplication)")
             resolution_start = time.time()
+            superseded_ids = set()  # Track nodes that should be marked historical
             try:
                 # Get existing nodes for this user
                 db_fetch_start = time.time()
                 existing_nodes = await self._kg_storage.get_user_nodes(user_id, current_only=True)
                 db_fetch_time = time.time() - db_fetch_start
-                print(f"🕸️ [KG]    Found {len(existing_nodes)} existing nodes in DB ({db_fetch_time:.2f}s)")
+                print(f" [KG]    Found {len(existing_nodes)} existing nodes in DB ({db_fetch_time:.2f}s)")
                 
                 # Resolve entities (deduplicate)
                 resolve_start = time.time()
-                resolved_graph = await self._kg_resolver.resolve(new_graph, user_id, existing_nodes)
+                resolution_result = await self._kg_resolver.resolve(new_graph, user_id, existing_nodes)
                 resolve_time = time.time() - resolve_start
+                
+                resolved_graph = resolution_result.resolved_graph
+                superseded_ids = resolution_result.superseded_node_ids
                 
                 duplicates_merged = len(new_graph.nodes) - len(resolved_graph.nodes)
                 print(f"\n🕸️ [KG] ✅ Resolution complete in {resolve_time:.2f}s")
@@ -930,6 +934,7 @@ class MemoryManager(BaseAIProcessor):
                 print(f"\n🕸️ [KG] ⚠️  Entity resolution failed after {resolution_time:.2f}s: {e}")
                 print(f"🕸️ [KG]    Proceeding with unresolved graph")
                 logger.warning(f"Entity resolution failed: {e}, proceeding with unresolved graph")
+                superseded_ids = set()  # No superseded nodes if resolution failed
                 import traceback
                 traceback.print_exc()
             
@@ -939,7 +944,7 @@ class MemoryManager(BaseAIProcessor):
             # 4. Save to storage (libSQL + ChromaDB with embeddings)
             print(f"\n🕸️ [KG] Step 4: Saving to storage...")
             storage_start = time.time()
-            await self._kg_storage.save_graph(new_graph)
+            await self._kg_storage.save_graph(new_graph, superseded_node_ids=superseded_ids)
             storage_time = time.time() - storage_start
             
             total_time = time.time() - start_time

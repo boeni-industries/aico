@@ -192,15 +192,33 @@ class PropertyGraphStorage:
             logger.error(f"Failed to save edge {edge.id}: {e}")
             raise
     
-    async def save_graph(self, graph: PropertyGraph) -> None:
+    async def save_graph(self, graph: PropertyGraph, superseded_node_ids: set = None) -> None:
         """
         Save property graph to both libSQL and ChromaDB.
         
         Args:
             graph: PropertyGraph to save
+            superseded_node_ids: Set of node IDs that should be marked as historical (is_current=0)
         """
         import time
         storage_start = time.time()
+        
+        if superseded_node_ids is None:
+            superseded_node_ids = set()
+        
+        # Mark superseded nodes as historical before saving new ones
+        if superseded_node_ids:
+            print(f"\n  💾 [STORAGE] Marking {len(superseded_node_ids)} superseded nodes as historical...")
+            def _mark_historical():
+                with self.db:
+                    for node_id in superseded_node_ids:
+                        self.db.execute(
+                            "UPDATE kg_nodes SET is_current = 0, updated_at = ? WHERE id = ?",
+                            (datetime.now(timezone.utc).isoformat(), node_id)
+                        )
+                    self.db.commit()
+            await asyncio.to_thread(_mark_historical)
+            print(f"  💾 [STORAGE] ✅ Marked {len(superseded_node_ids)} nodes as historical")
         
         # Save to libSQL (structured queries)
         def _sync_save_all():
