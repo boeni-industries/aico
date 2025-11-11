@@ -180,7 +180,7 @@ class LogRepository:
                 INSERT INTO logs (timestamp, level, subsystem, module, message, extra_data)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, [
-                datetime.utcnow().replace(tzinfo=timezone.utc).isoformat(),
+                datetime.utcnow().replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z'),
                 level,
                 subsystem,
                 module,

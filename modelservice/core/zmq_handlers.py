@@ -234,17 +234,17 @@ class ModelserviceZMQHandlers:
                     "role": msg.role,
                     "content": msg.content
                 })
-                self.logger.info(f"[CHAT] Message {i}: role='{msg.role}', content='{msg.content[:200]}{'...' if len(msg.content) > 200 else ''}')")
+                # self.logger.info(f"[CHAT] Message {i}: role='{msg.role}', content='{msg.content[:200]}{'...' if len(msg.content) > 200 else ''}'")  # Commented out to reduce log volume
             
             # Forward to Ollama - check config path
             ollama_config = self.config.get('ollama', {})
-            self.logger.info(f"[CHAT] Ollama config from self.config: {ollama_config}")
-            self.logger.info(f"[CHAT] Full config keys: {list(self.config.keys())}")
+            # self.logger.info(f"[CHAT] Ollama config from self.config: {ollama_config}")  # Commented out to reduce log volume
+            # self.logger.info(f"[CHAT] Full config keys: {list(self.config.keys())}")
             ollama_url = f"http://{ollama_config.get('host', '127.0.0.1')}:{ollama_config.get('port', 11434)}"
-            self.logger.info(f"[CHAT] Forwarding to Ollama at {ollama_url}")
-            self.logger.info(f"[CHAT] Chat messages count: {len(chat_messages)}")
+            # self.logger.info(f"[CHAT] Forwarding to Ollama at {ollama_url}")
+            # self.logger.info(f"[CHAT] Chat messages count: {len(chat_messages)}")
             
-            self.logger.info(f"[CHAT] Creating HTTP client for streaming...")
+            # self.logger.info(f"[CHAT] Creating HTTP client for streaming...")
             async with httpx.AsyncClient(timeout=60.0) as client:
                 request_data = {
                     "model": model,
@@ -252,10 +252,11 @@ class ModelserviceZMQHandlers:
                     "stream": True,  # Enable streaming
                     "think": True  # Enable Ollama 0.12+ native thinking mode
                 }
-                self.logger.info(f"[CHAT] Request data prepared: model={model}, messages_count={len(chat_messages)}, streaming=True, thinking=True")
+                # Commented out to reduce log volume
+                # self.logger.info(f"[CHAT] Request data prepared: model={model}, messages_count={len(chat_messages)}, streaming=True, thinking=True")
                 
                 try:
-                    self.logger.info(f"[CHAT] Making streaming POST request to {ollama_url}/api/chat")
+                    # self.logger.info(f"[CHAT] Making streaming POST request to {ollama_url}/api/chat")
                     
                     # Stream response from Ollama and forward chunks immediately
                     accumulated_content = ""
@@ -304,7 +305,8 @@ class ModelserviceZMQHandlers:
                                             streaming_chunk,
                                             correlation_id=correlation_id
                                         )
-                                        self.logger.debug(f"[CHAT] Published thinking chunk for {correlation_id}")
+                                        # Commented out to reduce log volume
+                                        # self.logger.debug(f"[CHAT] Published thinking chunk for {correlation_id}")
                                 
                                 # Handle response content chunks
                                 if chunk_content:
@@ -330,11 +332,13 @@ class ModelserviceZMQHandlers:
                                             streaming_chunk,
                                             correlation_id=correlation_id
                                         )
-                                        self.logger.debug(f"[CHAT] Published response chunk for {correlation_id}")
+                                        # Commented out to reduce log volume
+                                        # self.logger.debug(f"[CHAT] Published response chunk for {correlation_id}")
                                 
                                 # Check if this is the final chunk
                                 if chunk.get("done", False):
-                                    self.logger.info(f"[CHAT] Streaming complete, thinking length: {len(accumulated_thinking)}, response length: {len(accumulated_content)}")
+                                    # Commented out to reduce log volume
+                                    # self.logger.info(f"[CHAT] Streaming complete, thinking length: {len(accumulated_thinking)}, response length: {len(accumulated_content)}")
                                     
                                     # Publish final completion signal
                                     if self.message_bus_client and correlation_id:

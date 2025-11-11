@@ -251,11 +251,11 @@ class LogConsumerService(BaseService):
         
         def _sync_db_write():
             """Synchronous database write - runs in thread pool"""
-            # Convert protobuf timestamp to ISO8601 string (TEXT column)
+            # Convert protobuf timestamp to ISO8601 string with Z suffix (TEXT column)
             ts_seconds = int(log_entry.timestamp.seconds)
             ts_nanos = int(getattr(log_entry.timestamp, 'nanos', 0))
             ts = ts_seconds + (ts_nanos / 1_000_000_000)
-            timestamp_iso = datetime.utcfromtimestamp(ts).replace(tzinfo=timezone.utc).isoformat()
+            timestamp_iso = datetime.utcfromtimestamp(ts).replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
 
             # Level should be stored as TEXT (e.g., "INFO")
             try:

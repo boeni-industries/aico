@@ -31,22 +31,8 @@ logging:
       
   # Retention and cleanup
   retention:
-    days: 30  # Keep logs for 30 days
+    days: 7  # Keep logs for 7 days (reduced from 30 to manage volume)
     max_size_mb: 500  # Maximum total log storage size
-    
-  # Transport configuration
-  transport:
-    # All subsystems use ZeroMQ message bus for unified logging
-    # Creates topic hierarchy: logs.api_gateway.auth, logs.cli.security, etc.
-    # Enables selective subscription (logs.* = all, logs.api_gateway.* = specific)
-    # Will expand with more topics like "metrics", "events", "alerts" over time
-    zmq_topic: "logs"  # Base topic for all log messages
-  
-    
-  # Bootstrap fallback configuration
-  bootstrap:
-    fallback_console: true  # Enable console output during bootstrap/failures
-    fallback_temp_file: true  # Enable temporary file logging as fallback
 
 # Message Bus Configuration
 message_bus:

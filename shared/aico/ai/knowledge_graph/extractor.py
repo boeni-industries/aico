@@ -175,10 +175,12 @@ async def correct_entity_label_semantic(
         # Only override if similarity is reasonable (> 0.4)
         # Lower threshold for better recall with example-based definitions
         if best_similarity > 0.4:
-            logger.debug(f"Semantic correction: '{entity_text}' {label} → {best_label} (similarity: {best_similarity:.3f})")
+            # Commented out to reduce log volume
+            # logger.debug(f"Semantic correction: '{entity_text}' {label} → {best_label} (similarity: {best_similarity:.3f})")
             return best_label
         
-        logger.debug(f"Semantic correction: '{entity_text}' keeping {label} (best: {best_label} @ {best_similarity:.3f})")
+        # Commented out to reduce log volume
+        # logger.debug(f"Semantic correction: '{entity_text}' keeping {label} (best: {best_label} @ {best_similarity:.3f})")
         return label
         
     except Exception as e:
@@ -225,8 +227,9 @@ async def correct_entity_labels_batch(
     for key in expired_keys:
         del user_cache[key]
     
-    if expired_keys:
-        logger.debug(f"Cleaned {len(expired_keys)} expired entity embeddings from cache")
+    # Commented out to reduce log volume
+    # if expired_keys:
+    #     logger.debug(f"Cleaned {len(expired_keys)} expired entity embeddings from cache")
     
     # Ensure label embeddings are cached
     if not _label_embeddings_cache:
@@ -268,7 +271,8 @@ async def correct_entity_labels_batch(
     # Batch embed uncached entities
     if entities_to_embed:
         texts = [e["text"] for e in entities_to_embed]
-        logger.debug(f"Batch embedding {len(texts)} entities (cache miss)")
+        # Commented out to reduce log volume
+        # logger.debug(f"Batch embedding {len(texts)} entities (cache miss)")
         
         try:
             embedding_result = await modelservice_client.generate_embeddings(texts)
@@ -295,7 +299,8 @@ async def correct_entity_labels_batch(
                     
                     results[entity_text] = best_label if best_similarity > 0.4 else entity["type"]
                     
-                    logger.debug(f"Semantic correction: '{entity_text}' {entity['type']} → {results[entity_text]} (similarity: {best_similarity:.3f})")
+                    # Commented out to reduce log volume
+                    # logger.debug(f"Semantic correction: '{entity_text}' {entity['type']} → {results[entity_text]} (similarity: {best_similarity:.3f})")
         
         except Exception as e:
             logger.error(f"Batch embedding failed: {e}")
