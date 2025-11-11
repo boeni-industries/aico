@@ -501,6 +501,7 @@ def list_edges(
                     e.id,
                     e.relation_type,
                     e.confidence,
+                    e.properties,
                     n1.label as source_label,
                     n1.properties as source_props,
                     n2.label as target_label,
@@ -519,16 +520,19 @@ def list_edges(
                 console.print(f"\n[green]Found {len(results)} relationships:[/green]\n")
                 table = Table(box=box.SIMPLE)
                 table.add_column("Relationship", style="cyan")
+                table.add_column("Properties", style="yellow")
                 table.add_column("Confidence", style="green")
                 
                 for row in results:
-                    source_props = json.loads(row[4])
-                    target_props = json.loads(row[6])
+                    edge_props = json.loads(row[3]) if row[3] else {}
+                    source_props = json.loads(row[5])
+                    target_props = json.loads(row[7])
                     source_name = source_props.get("name", "?")
                     target_name = target_props.get("name", "?")
                     
                     relationship = f"{source_name} [{row[1]}] {target_name}"
-                    table.add_row(relationship, f"{row[2]:.2f}")
+                    props_str = json.dumps(edge_props, ensure_ascii=False) if edge_props else "{}"
+                    table.add_row(relationship, props_str, f"{row[2]:.2f}")
                 
                 console.print(table)
             else:

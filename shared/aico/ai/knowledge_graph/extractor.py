@@ -743,9 +743,18 @@ IMPORTANT RULES:
 - If user mentions wanting to achieve something, create HAS_GOAL relationship
 - If there are no meaningful relationships between different entities, return empty arrays
 
-Return a JSON object with:
-- "relationships": array of {{source, relation_type, target, properties}} where source ≠ target
-- "new_entities": array of any entities not in the known list (include label and name)
+RELATIONSHIP PROPERTIES:
+Include contextual details about each relationship:
+- role, title, position (for work relationships)
+- start_date, end_date, since, until (for temporal context)
+- amount, salary, percentage (for quantitative data)
+
+Example: "Sarah is CTO of TechCorp since 2020" → 
+{{"source": "Sarah", "relation_type": "WORKS_FOR", "target": "TechCorp", "properties": {{"role": "CTO", "start_date": "2020"}}}}
+
+Return JSON with:
+- "relationships": [{{"source": "...", "relation_type": "...", "target": "...", "properties": {{...}}}}]
+- "new_entities": [{{"label": "...", "name": "..."}}]
 
 Text: {text}{entity_context}
 

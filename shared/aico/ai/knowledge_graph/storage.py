@@ -8,6 +8,7 @@ Implements dual-write pattern for consistency.
 from typing import List, Optional, Dict, Any
 import json
 import asyncio
+from datetime import datetime, timezone
 
 from aico.data.libsql.encrypted import EncryptedLibSQLConnection
 from aico.core.logging import get_logger
