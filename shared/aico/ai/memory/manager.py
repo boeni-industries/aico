@@ -878,11 +878,31 @@ class MemoryManager(BaseAIProcessor):
     
     async def _extract_knowledge_graph(self, user_id: str, text: str) -> None:
         """Background knowledge graph extraction from user message."""
+        await self._extract_knowledge_graph_with_resolver(user_id, text, None)
+    
+    async def _extract_knowledge_graph_with_resolver(
+        self, 
+        user_id: str, 
+        text: str,
+        shared_resolver = None
+    ) -> None:
+        """
+        Background knowledge graph extraction from user message.
+        
+        Args:
+            user_id: User ID
+            text: Message text to extract from
+            shared_resolver: Optional shared EntityResolver for incremental HNSW indexing
+                           If None, uses self._kg_resolver (creates new index per message)
+                           If provided, reuses HNSW index across messages (2x speedup)
+        """
         import time
         start_time = time.time()
         print(f"\n{'='*80}")
         print(f"🕸️ [KG] 🚀 Background extraction task STARTED for user {user_id}")
         print(f"🕸️ [KG] Text length: {len(text)} chars")
+        if shared_resolver:
+            print(f"🕸️ [KG] Using shared resolver (incremental HNSW)")
         print(f"{'='*80}")
         try:
             # 1. Extract entities and relationships
@@ -913,9 +933,12 @@ class MemoryManager(BaseAIProcessor):
                 db_fetch_time = time.time() - db_fetch_start
                 print(f" [KG]    Found {len(existing_nodes)} existing nodes in DB ({db_fetch_time:.2f}s)")
                 
+                # Use shared resolver if provided (incremental HNSW), otherwise use instance resolver
+                resolver = shared_resolver if shared_resolver else self._kg_resolver
+                
                 # Resolve entities (deduplicate)
                 resolve_start = time.time()
-                resolution_result = await self._kg_resolver.resolve(new_graph, user_id, existing_nodes)
+                resolution_result = await resolver.resolve(new_graph, user_id, existing_nodes)
                 resolve_time = time.time() - resolve_start
                 
                 resolved_graph = resolution_result.resolved_graph

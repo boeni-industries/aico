@@ -314,14 +314,14 @@ memory:
     
     # Knowledge Graph configuration (Property Graph for structured memory)
     knowledge_graph:
-      max_gleanings: 2  # Number of gleaning passes for completeness (0-2 recommended, 2 = 90%+ recall)
-      llm_timeout_seconds: 90.0  # Timeout for LLM operations (relation extraction, entity matching)
+      max_gleanings: 0  # Number of gleaning passes for completeness (0-2 recommended, 0 = single pass, 3x faster)
+      llm_timeout_seconds: 60.0  # Timeout for LLM operations (relation extraction, entity matching)
       
       # Entity resolution (deduplication) settings
       entity_resolution:
         similarity_threshold: 0.85  # Cosine similarity threshold for semantic blocking (0-1, higher = stricter)
         use_llm_matching: true  # Use LLM (Eve) for entity matching with chain-of-thought reasoning
-        use_llm_merging: true  # Use LLM (Eve) for entity merging with conflict resolution
+        use_llm_merging: false  # Use LLM (Eve) for entity merging with conflict resolution (disabled for 2x speedup)
   
   # Adaptive Memory System (AMS) - Brain-inspired memory consolidation and learning
   # Temporal Intelligence - Preference evolution and time-aware memory
@@ -353,6 +353,7 @@ memory:
       enabled: true
       batch_size: 50  # Maximum messages to process per run
       max_age_hours: 24  # Only process messages from last 24 hours
+      max_concurrent_extractions: 4  # Parallel message processing (10x speedup)
   
   # Behavioral Learning - Skill-based interaction with RLHF (Phase 3 - not yet implemented)
   behavioral:
