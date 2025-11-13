@@ -143,7 +143,7 @@ class MemoryManager(BaseAIProcessor):
         # Memory stores (lazy initialization)
         self._working_store: Optional[WorkingMemoryStore] = None  # Conversation history + context
         self._semantic_store: Optional[SemanticMemoryStore] = None  # Segments + KG
-        self._behavioral_store = None  # Planned: User patterns, skills, and preferences
+        self._behavioral_store = None  # Phase 3: Skill-based interaction learning
         
         # Processing components
         self._context_assembler: Optional[ContextAssembler] = None
@@ -157,11 +157,17 @@ class MemoryManager(BaseAIProcessor):
         self._kg_initialized = False
         self._kg_background_tasks: set = set()  # Track background extraction tasks
         
-        # AMS components (Phase 1.5)
+        # AMS components (Phase 1.5 + Phase 3)
         self._consolidation_scheduler: Optional[ConsolidationScheduler] = None
         self._idle_detector: Optional[IdleDetector] = None
         self._evolution_tracker: Optional[EvolutionTracker] = None
         self._ams_enabled = False
+        
+        # Behavioral learning components (Phase 3)
+        self._skill_store = None
+        self._thompson_sampling = None
+        self._preference_manager = None
+        self._behavioral_enabled = False
         
         # Configuration following AICO patterns
         self._memory_config = self.config.get("core.memory", {})
@@ -389,12 +395,15 @@ class MemoryManager(BaseAIProcessor):
     
     async def _initialize_ams_components(self) -> None:
         """
-        Initialize Adaptive Memory System components (Phase 1.5).
+        Initialize Adaptive Memory System components (Phase 1.5 + Phase 3).
         
         Initializes:
         - ConsolidationScheduler: For memory consolidation orchestration
         - IdleDetector: For system idle period detection
         - EvolutionTracker: For temporal preference tracking
+        - SkillStore: Manages skill library (Phase 3)
+        - ThompsonSamplingSelector: Contextual bandit learning (Phase 3)
+        - PreferenceManager: User preference vectors (Phase 3)
         """
         try:
             print("🧠 [AMS] Initializing Adaptive Memory System components...")
@@ -437,6 +446,55 @@ class MemoryManager(BaseAIProcessor):
             print("🧠 [AMS] ✅✅✅ Adaptive Memory System components initialized successfully!")
             logger.info("🧠 [AMS] ✅ Adaptive Memory System components initialized successfully")
             
+            # Initialize behavioral learning components (Phase 3)
+            behavioral_config = self._memory_config.get("behavioral", {})
+            if behavioral_config.get("enabled", False) and self._db_connection:
+                try:
+                    from .behavioral import SkillStore, ThompsonSamplingSelector, PreferenceManager
+                    
+                    print("🧠 [AMS] Initializing behavioral learning components...")
+                    logger.info("🧠 [AMS] Initializing behavioral learning components...")
+                    
+                    # Skill store
+                    self._skill_store = SkillStore(self._db_connection)
+                    print("🧠 [AMS] ✅ Skill store initialized")
+                    logger.info("🧠 [AMS] Skill store initialized")
+                    
+                    # Initialize base skills if not present
+                    await self._skill_store.initialize_base_skills()
+                    print("🧠 [AMS] ✅ Base skills initialized")
+                    logger.info("🧠 [AMS] Base skills initialized")
+                    
+                    # Thompson Sampling selector
+                    bandit_config = behavioral_config.get("contextual_bandit", {})
+                    self._thompson_sampling = ThompsonSamplingSelector(
+                        db_connection=self._db_connection,
+                        prior_alpha=bandit_config.get("prior_alpha", 1.0),
+                        prior_beta=bandit_config.get("prior_beta", 1.0)
+                    )
+                    print("🧠 [AMS] ✅ Thompson Sampling selector initialized")
+                    logger.info("🧠 [AMS] Thompson Sampling selector initialized")
+                    
+                    # Preference manager
+                    self._preference_manager = PreferenceManager(
+                        db_connection=self._db_connection,
+                        learning_rate=behavioral_config.get("learning_rate", 0.1)
+                    )
+                    print("🧠 [AMS] ✅ Preference manager initialized")
+                    logger.info("🧠 [AMS] Preference manager initialized")
+                    
+                    self._behavioral_enabled = True
+                    print("🧠 [AMS] ✅ Behavioral learning initialized successfully")
+                    logger.info("🧠 [AMS] ✅ Behavioral learning initialized successfully")
+                    
+                except Exception as e:
+                    print(f"🧠 [AMS] ⚠️  Failed to initialize behavioral learning: {e}")
+                    logger.error(f"🧠 [AMS] Failed to initialize behavioral learning: {e}")
+                    self._behavioral_enabled = False
+            else:
+                print("🧠 [AMS] Behavioral learning disabled in configuration")
+                logger.info("🧠 [AMS] Behavioral learning disabled in configuration")
+            
         except Exception as e:
             print(f"🧠 [AMS] ❌❌❌ Failed to initialize AMS components: {e}")
             logger.error(f"🧠 [AMS] ❌ Failed to initialize AMS components: {e}")
@@ -446,6 +504,7 @@ class MemoryManager(BaseAIProcessor):
             logger.error(f"🧠 [AMS] Traceback: {error_trace}")
             # Don't fail overall initialization if AMS fails
             self._ams_enabled = False
+            self._behavioral_enabled = False
     
     async def schedule_consolidation(self, user_id: str) -> bool:
         """

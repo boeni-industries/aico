@@ -568,14 +568,20 @@ class ConversationEngine(BaseService):
     # ============================================================================
     
     async def _generate_llm_response(self, request_id: str, user_context: UserContext, user_message: ConversationMessage, memory_context: Optional[Dict[str, Any]]) -> None:
-        """Generate LLM response with memory context"""
+        """Generate LLM response with memory context and skill selection"""
         from aico.core.topics import AICOTopics
         try:
             # Check if LLM request already sent to prevent duplicates
             if request_id in self.pending_responses and self.pending_responses[request_id].get("llm_request_sent"):
                 return
             
-            # Build system prompt with memory context
+            # Phase 3: Select skill for this interaction
+            selected_skill_id = await self._select_skill(user_context, user_message, memory_context)
+            if selected_skill_id:
+                self.pending_responses[request_id]["selected_skill_id"] = selected_skill_id
+                self.logger.info(f"🎯 [SKILL] Selected skill: {selected_skill_id}")
+            
+            # Build system prompt with memory context and skill template
             print(f"🔍 [MEMORY_DEBUG] memory_context type: {type(memory_context)}")
             print(f"🔍 [MEMORY_DEBUG] memory_context keys: {list(memory_context.keys()) if memory_context else 'None'}")
             if memory_context is None:
@@ -589,7 +595,7 @@ class ConversationEngine(BaseService):
                 print(f"🔍 [MEMORY_DEBUG] recent_context sample: {recent_context[:2] if recent_context else 'empty'}")
                 self.logger.info(f"Context: {len(user_facts)} facts, {len(recent_context)} messages")
             
-            system_prompt = self._build_system_prompt(user_context, memory_context)
+            system_prompt = self._build_system_prompt(user_context, memory_context, selected_skill_id)
             if system_prompt:
                 self.logger.debug(f"System prompt: {len(system_prompt)} chars")
             
@@ -790,6 +796,21 @@ class ConversationEngine(BaseService):
             
             print(f"💬 [CONVERSATION_ENGINE] ✅ Final response delivered for {request_id}")
             
+            # Phase 3: Log trajectory for behavioral learning
+            if request_id in self.pending_responses:
+                pending_data = self.pending_responses[request_id]
+                user_context = pending_data.get("user_context")
+                user_message = pending_data.get("user_message")
+                selected_skill_id = pending_data.get("selected_skill_id")
+                
+                if user_context and user_message:
+                    asyncio.create_task(self._log_trajectory(
+                        user_context,
+                        user_message,
+                        accumulated_content,
+                        selected_skill_id
+                    ))
+            
             # Don't clean up here - let the LLM response handler clean up
             # This prevents race condition where LLM response arrives after cleanup
             
@@ -797,8 +818,8 @@ class ConversationEngine(BaseService):
             print(f"💬 [CONVERSATION_ENGINE] ❌ Error finalizing streaming response: {e}")
             self.logger.error(f"Error finalizing streaming response for {request_id}: {e}")
     
-    def _build_system_prompt(self, user_context: UserContext, memory_context: Optional[Dict[str, Any]]) -> str:
-        """Build system prompt with memory context
+    def _build_system_prompt(self, user_context: UserContext, memory_context: Optional[Dict[str, Any]], skill_id: Optional[str] = None) -> str:
+        """Build system prompt with memory context and optional skill template
         
         NOTE: Character personality is defined in the Modelfile (e.g., Modelfile.eve).
         This method only adds contextual information like memory facts, NOT character definition.
@@ -809,6 +830,19 @@ class ConversationEngine(BaseService):
         # DO NOT define character here - that's in the Modelfile
         # Only add contextual information that helps with the current conversation
         prompt_parts = []
+        
+        # Phase 3: Add skill template if selected
+        if skill_id:
+            try:
+                memory_manager = ai_registry.get("memory")
+                if memory_manager and hasattr(memory_manager, '_skill_store') and memory_manager._skill_store:
+                    import asyncio
+                    skill = asyncio.run(memory_manager._skill_store.get_skill(skill_id))
+                    if skill:
+                        prompt_parts.append(f"Interaction style:\n{skill.procedure_template}")
+                        self.logger.info(f"🎯 [SKILL] Injected skill template: {skill.skill_name}")
+            except Exception as e:
+                self.logger.warning(f"🎯 [SKILL] Failed to inject skill template: {e}")
         
         # Add identity context - CRITICAL for LLM to know who it is and who it's talking to
         identity_parts = []
@@ -1003,14 +1037,123 @@ class ConversationEngine(BaseService):
             self.logger.error(f"Error in timeout handler for {request_id}: {e}")
     
     async def _cleanup_request(self, request_id: str) -> None:
-        """Clean up completed or timed out request"""
+        """Clean up completed request"""
         if request_id in self.pending_responses:
             del self.pending_responses[request_id]
-            print(f"💬 [CONVERSATION_ENGINE] 🧹 Request {request_id} cleaned up")
-            print(f"💬 [CONVERSATION_ENGINE] 📋 Remaining pending requests: {len(self.pending_responses)}")
-        else:
-            print(f"💬 [CONVERSATION_ENGINE] ⚠️ Attempted to clean up non-existent request: {request_id}")
+            self.logger.debug(f"Cleaned up request {request_id}")
     
+    # ============================================================================
+    # PHASE 3: BEHAVIORAL LEARNING INTEGRATION
+    # ============================================================================
+    
+    async def _select_skill(self, user_context: UserContext, user_message: ConversationMessage, memory_context: Optional[Dict[str, Any]]) -> Optional[str]:
+        """
+        Select skill for current interaction using Thompson Sampling.
+        
+        Args:
+            user_context: User context
+            user_message: Current user message
+            memory_context: Memory context
+            
+        Returns:
+            skill_id if selected, None otherwise
+        """
+        try:
+            # Check if behavioral learning is enabled
+            memory_manager = ai_registry.get("memory")
+            if not memory_manager or not hasattr(memory_manager, '_behavioral_enabled') or not memory_manager._behavioral_enabled:
+                return None
+            
+            # Get Thompson Sampling selector
+            if not hasattr(memory_manager, '_thompson_sampling') or not memory_manager._thompson_sampling:
+                return None
+            
+            thompson_sampling = memory_manager._thompson_sampling
+            skill_store = memory_manager._skill_store
+            
+            # Get available skills
+            candidate_skills = await skill_store.list_skills(skill_type=None, limit=100)
+            if not candidate_skills:
+                self.logger.warning("🎯 [SKILL] No skills available for selection")
+                return None
+            
+            # Build context for selection (simplified - could be enhanced with intent detection)
+            context = {
+                "intent": "general",  # Could use NLP to detect intent
+                "sentiment": "neutral",  # Could use emotion analysis
+                "time_of_day": "any"
+            }
+            
+            # Select skill using Thompson Sampling
+            selected_skill_id = await thompson_sampling.select_skill(
+                user_id=user_context.user_id,
+                context=context,
+                candidate_skills=candidate_skills
+            )
+            
+            return selected_skill_id
+            
+        except Exception as e:
+            self.logger.error(f"🎯 [SKILL] Failed to select skill: {e}")
+            return None
+    
+    async def _log_trajectory(self, user_context: UserContext, user_message: ConversationMessage, ai_response: str, selected_skill_id: Optional[str]) -> None:
+        """
+        Log conversation trajectory for behavioral learning.
+        
+        Args:
+            user_context: User context
+            user_message: User message
+            ai_response: AI response text
+            selected_skill_id: ID of skill that was applied
+        """
+        try:
+            # Check if behavioral learning is enabled
+            memory_manager = ai_registry.get("memory")
+            if not memory_manager or not hasattr(memory_manager, '_behavioral_enabled') or not memory_manager._behavioral_enabled:
+                return
+            
+            # Get database connection
+            if not hasattr(memory_manager, '_db_connection') or not memory_manager._db_connection:
+                return
+            
+            db = memory_manager._db_connection
+            
+            # Generate trajectory ID
+            import uuid
+            trajectory_id = str(uuid.uuid4())
+            
+            # Get turn number (count messages in conversation)
+            conversation_id = user_message.message.conversation_id
+            turn_number = db.execute(
+                "SELECT COUNT(*) FROM trajectories WHERE user_id = ? AND conversation_id = ?",
+                (user_context.user_id, conversation_id)
+            ).fetchone()[0] + 1
+            
+            # Insert trajectory
+            db.execute(
+                """INSERT INTO trajectories (
+                    trajectory_id, user_id, conversation_id, turn_number,
+                    user_input, selected_skill_id, ai_response, timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    trajectory_id,
+                    user_context.user_id,
+                    conversation_id,
+                    turn_number,
+                    user_message.message.text,
+                    selected_skill_id,
+                    ai_response,
+                    datetime.utcnow().isoformat()
+                )
+            )
+            db.commit()
+            
+            self.logger.info(f"📝 [TRAJECTORY] Logged turn {turn_number} for conversation {conversation_id}")
+            
+        except Exception as e:
+            self.logger.error(f"📝 [TRAJECTORY] Failed to log trajectory: {e}")
+
     async def health_check(self) -> Dict[str, Any]:
         """Health check for conversation engine"""
         return {
