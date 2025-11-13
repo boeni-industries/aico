@@ -70,3 +70,28 @@ requires_review: true
 ## Feedback Classification Quality Improvements
 
 The current zero-shot embedding-based classification achieves 70-85% accuracy across 50+ languages, which is adequate for trend analysis and Thompson Sampling. However, for ambiguous or low-confidence cases (similarity < 0.25), quality can be improved through a hybrid approach: (1) add confidence scoring to flag uncertain classifications for human review or LLM verification, (2) implement multi-label classification to handle feedback with multiple issues (e.g., both "too verbose" AND "wrong tone"), (3) use an LLM-based classifier for edge cases where embedding similarity is inconclusive, asking the LLM to categorize based on semantic understanding rather than vector similarity, and (4) after collecting 500+ classified examples, fine-tune a lightweight model on actual AICO feedback data for domain-specific accuracy. This hybrid strategy balances automation (fast, multilingual embeddings) with precision (LLM for hard cases) while maintaining the language-agnostic benefits of the current approach.
+
+### Identified Issues (Nov 2025)
+
+**Similarity Threshold Too Low:**
+- Current threshold: 0.2 (very permissive)
+- Observed misclassification: "very friendly reply. good tone" → classified as "wrong_tone" (similarity: 0.422)
+- **Recommendation:** Raise threshold to 0.4-0.5 to reduce false positives
+- **Impact:** Better precision, fewer incorrect category assignments
+- **Trade-off:** Some feedback may remain uncategorized (acceptable for analytics)
+
+**Category Label Improvements:**
+- Current categories are too generic and may have semantic overlap
+- Example: "wrong_tone" has high similarity with positive tone descriptions
+- **Recommendation:** 
+  - Refine category labels to be more semantically distinct
+  - Add explicit negative/positive markers in labels
+  - Consider renaming "wrong_tone" → "inappropriate_tone" or "unprofessional_tone"
+  - Add example phrases to each category definition for better embedding alignment
+
+**Priority:** Medium (doesn't break functionality, Thompson Sampling uses reward not category)
+
+**When to Address:**
+- After collecting 100+ classified feedback samples
+- When category-based analytics become important
+- Before building any category-specific automation

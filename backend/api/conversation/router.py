@@ -231,7 +231,6 @@ async def send_message_with_auto_thread(
                                 if chunk["done"]:
                                     chunk_data["conversation_id"] = conversation_id
                                     chunk_data["message_id"] = message_id  # Add message_id for feedback linking
-                                    print(f"🔍 [API_STREAMING] 📤 Sending final chunk with message_id: {message_id}")
                                     logger.info(f"🔍 [API_STREAMING] 📤 Sending final chunk with message_id: {message_id}")
                                 yield json.dumps(chunk_data) + "\n"
                                 

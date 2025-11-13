@@ -328,7 +328,6 @@ class ConversationNotifier extends _$ConversationNotifier {
       },
       onMessageId: (String backendMessageId) {
         // Update AI message with backend message_id for feedback linking
-        print('📝 [PROVIDER] Updating AI message ID from $aiMessageId to $backendMessageId');
         final updatedMessages = state.messages.map((msg) {
           if (msg.id == aiMessageId) {
             return msg.copyWith(id: backendMessageId);

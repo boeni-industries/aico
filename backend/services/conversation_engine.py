@@ -794,34 +794,21 @@ class ConversationEngine(BaseService):
                 correlation_id=request_id
             )
             
-            print(f"💬 [CONVERSATION_ENGINE] ✅ Final response delivered for {request_id}")
-            
             # Phase 3: Log trajectory for behavioral learning
-            print(f"📝 [TRAJECTORY] Checking if should log trajectory for {request_id}")
-            print(f"📝 [TRAJECTORY] request_id in pending_responses: {request_id in self.pending_responses}")
-            print(f"📝 [TRAJECTORY] pending_responses keys: {list(self.pending_responses.keys())}")
-            
             if request_id in self.pending_responses:
                 pending_data = self.pending_responses[request_id]
-                print(f"📝 [TRAJECTORY] pending_data keys: {pending_data.keys()}")
                 
                 user_context = pending_data.get("user_context")
                 user_message = pending_data.get("user_message")
                 selected_skill_id = pending_data.get("selected_skill_id")
                 
-                print(f"📝 [TRAJECTORY] user_context: {user_context is not None}")
-                print(f"📝 [TRAJECTORY] user_message: {user_message is not None}")
-                print(f"📝 [TRAJECTORY] selected_skill_id: {selected_skill_id}")
-                
                 if user_context and user_message:
-                    print(f"📝 [TRAJECTORY] About to call _log_trajectory...")
                     await self._log_trajectory(
                         user_context,
                         user_message,
                         final_content,  # Fixed: use final_content parameter
                         selected_skill_id
                     )
-                    print(f"📝 [TRAJECTORY] _log_trajectory completed")
             
             # Don't clean up here - let the LLM response handler clean up
             # This prevents race condition where LLM response arrives after cleanup
@@ -848,11 +835,26 @@ class ConversationEngine(BaseService):
             try:
                 memory_manager = ai_registry.get("memory")
                 if memory_manager and hasattr(memory_manager, '_skill_store') and memory_manager._skill_store:
+                    # Synchronously access skill from database (get_skill is async but we're in sync context)
+                    # TODO: Cache skills at initialization to avoid this sync/async mismatch
                     import asyncio
-                    skill = asyncio.run(memory_manager._skill_store.get_skill(skill_id))
-                    if skill:
-                        prompt_parts.append(f"Interaction style:\n{skill.procedure_template}")
-                        self.logger.info(f"🎯 [SKILL] Injected skill template: {skill.skill_name}")
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            # If loop is running, we can't use asyncio.run()
+                            # Skip skill template injection in this case
+                            self.logger.debug(f"🎯 [SKILL] Skipping skill template (event loop running)")
+                        else:
+                            skill = asyncio.run(memory_manager._skill_store.get_skill(skill_id))
+                            if skill:
+                                prompt_parts.append(f"Interaction style:\n{skill.procedure_template}")
+                                self.logger.info(f"🎯 [SKILL] Injected skill template: {skill.skill_name}")
+                    except RuntimeError:
+                        # No event loop, create one
+                        skill = asyncio.run(memory_manager._skill_store.get_skill(skill_id))
+                        if skill:
+                            prompt_parts.append(f"Interaction style:\n{skill.procedure_template}")
+                            self.logger.info(f"🎯 [SKILL] Injected skill template: {skill.skill_name}")
             except Exception as e:
                 self.logger.warning(f"🎯 [SKILL] Failed to inject skill template: {e}")
         
@@ -1120,47 +1122,26 @@ class ConversationEngine(BaseService):
             selected_skill_id: ID of skill that was applied
         """
         try:
-            # Debug: print message object structure
-            print(f"📝 [TRAJECTORY] _log_trajectory called")
-            print(f"📝 [TRAJECTORY] user_message attributes: {dir(user_message)}")
-            print(f"📝 [TRAJECTORY] Checking for message_id in user_message: {hasattr(user_message, 'message_id')}")
-            if hasattr(user_message, 'message_id'):
-                print(f"📝 [TRAJECTORY] user_message.message_id: {user_message.message_id}")
-            
             # Check if behavioral learning is enabled
             memory_manager = ai_registry.get("memory")
             if not memory_manager:
-                print("📝 [TRAJECTORY] ❌ No memory manager found")
                 return
             
             if not hasattr(memory_manager, '_behavioral_enabled'):
-                print("📝 [TRAJECTORY] ❌ Memory manager has no _behavioral_enabled attribute")
                 return
                 
             if not memory_manager._behavioral_enabled:
-                print(f"📝 [TRAJECTORY] ❌ Behavioral learning disabled (_behavioral_enabled={memory_manager._behavioral_enabled})")
                 return
-            
-            print("📝 [TRAJECTORY] ✅ Behavioral learning is enabled")
             
             # Get database connection
-            if not hasattr(memory_manager, '_db_connection'):
-                print("📝 [TRAJECTORY] ❌ Memory manager has no _db_connection attribute")
+            if not hasattr(memory_manager, '_db_connection') or not memory_manager._db_connection:
                 return
-                
-            if not memory_manager._db_connection:
-                print("📝 [TRAJECTORY] ❌ Memory manager _db_connection is None")
-                return
-            
-            print("📝 [TRAJECTORY] ✅ Database connection available")
             
             db = memory_manager._db_connection
-            print(f"📝 [TRAJECTORY] Got database connection: {db}")
             
             # Generate trajectory ID
             import uuid
             trajectory_id = str(uuid.uuid4())
-            print(f"📝 [TRAJECTORY] Generated trajectory_id: {trajectory_id}")
             
             # Get turn number (count messages in conversation)
             conversation_id = user_message.message.conversation_id
@@ -1187,18 +1168,11 @@ class ConversationEngine(BaseService):
                     datetime.utcnow().isoformat()
                 )
             )
-            print(f"📝 [TRAJECTORY] Trajectory INSERT executed")
-            
             db.commit()
-            print(f"📝 [TRAJECTORY] Database COMMIT executed")
             
             self.logger.info(f"📝 [TRAJECTORY] Logged turn {turn_number} for conversation {conversation_id}")
-            print(f"📝 [TRAJECTORY] ✅ Successfully logged trajectory for turn {turn_number}")
             
         except Exception as e:
-            print(f"📝 [TRAJECTORY] ❌ Exception caught: {type(e).__name__}: {e}")
-            import traceback
-            print(f"📝 [TRAJECTORY] Traceback: {traceback.format_exc()}")
             self.logger.error(f"📝 [TRAJECTORY] Failed to log trajectory: {e}")
 
     async def health_check(self) -> Dict[str, Any]:

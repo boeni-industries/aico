@@ -382,7 +382,7 @@ memory:
       enabled: true  # ENABLED - Phase 3 implementation complete
       algorithm: "thompson_sampling"  # Thompson Sampling for exploration/exploitation
       update_interval_hours: 24  # Run batch learning daily at 4 AM
-      min_trajectories: 1  # Minimum trajectories needed for update (lowered for testing)
+      min_trajectories: 10  # Minimum feedback events required before updating skill confidence (prevents updates on insufficient data)
       prior_alpha: 1.0  # Beta distribution prior (successes)
       prior_beta: 1.0  # Beta distribution prior (failures)
     

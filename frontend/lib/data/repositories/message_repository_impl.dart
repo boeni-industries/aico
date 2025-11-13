@@ -137,17 +137,13 @@ class MessageRepositoryImpl implements MessageRepository {
           
           // Extract message_id from final chunk
           if (chunkData['done'] == true) {
-            print('📝 [REPOSITORY] Final chunk received: done=${chunkData['done']}, has_message_id=${chunkData.containsKey('message_id')}');
             if (chunkData.containsKey('message_id')) {
               backendMessageId = chunkData['message_id'] as String?;
-              print('📝 [REPOSITORY] Extracted backend message_id: $backendMessageId');
               
               // Notify caller of backend message_id
               if (backendMessageId != null && onMessageId != null) {
                 onMessageId(backendMessageId!);
               }
-            } else {
-              print('📝 [REPOSITORY] ❌ Final chunk does NOT contain message_id! Keys: ${chunkData.keys}');
             }
           }
 

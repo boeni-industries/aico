@@ -31,7 +31,7 @@ class ThompsonSamplingUpdateTask(BaseTask):
     
     task_id = "ams.thompson_sampling_update"
     default_config = {
-        "enabled": False,  # Disabled until Phase 3 fully integrated
+        "enabled": True,  # ENABLED - Phase 3 implementation complete
         "schedule": "0 4 * * *",  # Daily at 4 AM (after feedback classification)
         "min_trajectories": 10,
         "lookback_days": 7
@@ -72,8 +72,6 @@ class ThompsonSamplingUpdateTask(BaseTask):
             min_trajectories = behavioral_config.get("contextual_bandit", {}).get("min_trajectories", 1)
             lookback_days = context.get_config("lookback_days", 7)
             lookback_date = (datetime.utcnow() - timedelta(days=lookback_days)).isoformat()
-            
-            print(f"🔍 [AMS_TS] Config loaded: min_trajectories={min_trajectories}, lookback_days={lookback_days}")
             
             # Get feedback events from last N days
             # Only process events with valid skill_id (not NULL or empty)
@@ -129,11 +127,9 @@ class ThompsonSamplingUpdateTask(BaseTask):
                 
                 print(f"  [{idx}/{len(user_skill_feedback)}] User: {user_id[:8]}..., Skill: {skill_id or 'None'}")
                 print(f"      Feedback: +{successes} / -{failures}")
-                print(f"      Total feedback: {successes + failures}, Min required: {min_trajectories}")
                 
                 # Skip if not enough data
                 if successes + failures < min_trajectories:
-                    print(f"      ⚠️  Skipping: not enough data ({successes + failures} < {min_trajectories})")
                     continue
                 
                 # Update all context buckets for this user-skill pair
