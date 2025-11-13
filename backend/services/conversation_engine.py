@@ -1120,7 +1120,12 @@ class ConversationEngine(BaseService):
             selected_skill_id: ID of skill that was applied
         """
         try:
-            print(f"📝 [TRAJECTORY] _log_trajectory called for message {user_message.message.id}")
+            # Debug: print message object structure
+            print(f"📝 [TRAJECTORY] _log_trajectory called")
+            print(f"📝 [TRAJECTORY] user_message attributes: {dir(user_message)}")
+            print(f"📝 [TRAJECTORY] Checking for message_id in user_message: {hasattr(user_message, 'message_id')}")
+            if hasattr(user_message, 'message_id'):
+                print(f"📝 [TRAJECTORY] user_message.message_id: {user_message.message_id}")
             
             # Check if behavioral learning is enabled
             memory_manager = ai_registry.get("memory")
@@ -1139,14 +1144,23 @@ class ConversationEngine(BaseService):
             print("📝 [TRAJECTORY] ✅ Behavioral learning is enabled")
             
             # Get database connection
-            if not hasattr(memory_manager, '_db_connection') or not memory_manager._db_connection:
+            if not hasattr(memory_manager, '_db_connection'):
+                print("📝 [TRAJECTORY] ❌ Memory manager has no _db_connection attribute")
+                return
+                
+            if not memory_manager._db_connection:
+                print("📝 [TRAJECTORY] ❌ Memory manager _db_connection is None")
                 return
             
+            print("📝 [TRAJECTORY] ✅ Database connection available")
+            
             db = memory_manager._db_connection
+            print(f"📝 [TRAJECTORY] Got database connection: {db}")
             
             # Generate trajectory ID
             import uuid
             trajectory_id = str(uuid.uuid4())
+            print(f"📝 [TRAJECTORY] Generated trajectory_id: {trajectory_id}")
             
             # Get turn number (count messages in conversation)
             conversation_id = user_message.message.conversation_id
@@ -1169,15 +1183,22 @@ class ConversationEngine(BaseService):
                     user_message.message.text,
                     selected_skill_id,
                     ai_response,
-                    user_message.message.id,  # Add message_id for feedback linking
+                    user_message.message_id,  # Use message_id from ConversationMessage (not message.id)
                     datetime.utcnow().isoformat()
                 )
             )
+            print(f"📝 [TRAJECTORY] Trajectory INSERT executed")
+            
             db.commit()
+            print(f"📝 [TRAJECTORY] Database COMMIT executed")
             
             self.logger.info(f"📝 [TRAJECTORY] Logged turn {turn_number} for conversation {conversation_id}")
+            print(f"📝 [TRAJECTORY] ✅ Successfully logged trajectory for turn {turn_number}")
             
         except Exception as e:
+            print(f"📝 [TRAJECTORY] ❌ Exception caught: {type(e).__name__}: {e}")
+            import traceback
+            print(f"📝 [TRAJECTORY] Traceback: {traceback.format_exc()}")
             self.logger.error(f"📝 [TRAJECTORY] Failed to log trajectory: {e}")
 
     async def health_check(self) -> Dict[str, Any]:
