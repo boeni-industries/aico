@@ -38,7 +38,7 @@ class KGConsolidationTask(BaseTask):
     task_id = "ams.kg_consolidation"
     default_config = {
         "enabled": True,
-        "schedule": "0 2 * * *",  # Daily at 2:00 AM
+        "schedule": "30 2 * * *",  # Daily at 2:30 AM (staggered after memory consolidation)
         "batch_size": 50,  # Max messages to process per run
         "max_age_hours": 24,  # Only process messages from last 24h
         "max_concurrent_extractions": 4  # Parallel message processing (10x speedup)

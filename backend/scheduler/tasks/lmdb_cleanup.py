@@ -27,7 +27,7 @@ class LMDBCleanupTask(BaseTask):
     
     default_config = {
         "enabled": True,
-        "schedule": "0 3 * * *",  # 3 AM daily (after consolidation at 2 AM)
+        "schedule": "30 4 * * *",  # 4:30 AM daily (staggered after Thompson Sampling)
     }
     
     async def execute(self, context: TaskContext) -> TaskResult:

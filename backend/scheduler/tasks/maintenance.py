@@ -21,7 +21,7 @@ class LogCleanupTask(BaseTask):
     task_id = "maintenance.log_cleanup"
     default_config = {
         "enabled": True,
-        "schedule": "0 3 * * *",  # Daily at 3 AM
+        "schedule": "30 3 * * *",  # Daily at 3:30 AM (staggered)
         "retention_days": 7,  # Default to 7 days, but will read from core.yaml logging.retention.days
         "max_size_mb": 500,
         "cleanup_database": True,
@@ -364,7 +364,7 @@ class DatabaseVacuumTask(BaseTask):
     task_id = "maintenance.database_vacuum"
     default_config = {
         "enabled": True,
-        "schedule": "0 2 * * 0",  # Weekly on Sunday at 2 AM
+        "schedule": "0 5 * * 0",  # Weekly on Sunday at 5:00 AM (staggered)
         "analyze_tables": True
     }
     

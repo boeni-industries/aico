@@ -36,7 +36,7 @@ class TrajectoryCleanupTask(BaseTask):
     task_id = "ams.trajectory_cleanup"
     default_config = {
         "enabled": False,  # Disabled until Phase 3 fully integrated
-        "schedule": "0 3 * * 0",  # Weekly on Sunday at 3 AM
+        "schedule": "0 5 * * 0",  # Weekly on Sunday at 5:00 AM (with database vacuum)
         "archive_after_days": 90,
         "delete_after_days": 365
     }
