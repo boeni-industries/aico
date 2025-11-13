@@ -68,18 +68,22 @@ class ThompsonSamplingUpdateTask(BaseTask):
                     data={"enabled": False}
                 )
             
-            # Get configuration
-            min_trajectories = context.get_config("min_trajectories", 10)
+            # Get configuration from behavioral config
+            min_trajectories = behavioral_config.get("contextual_bandit", {}).get("min_trajectories", 1)
             lookback_days = context.get_config("lookback_days", 7)
             lookback_date = (datetime.utcnow() - timedelta(days=lookback_days)).isoformat()
             
+            print(f"🔍 [AMS_TS] Config loaded: min_trajectories={min_trajectories}, lookback_days={lookback_days}")
+            
             # Get feedback events from last N days
-            # Note: skill_id may be NULL if skill tracking isn't implemented yet
+            # Only process events with valid skill_id (not NULL or empty)
             feedback_events = context.db_connection.execute(
                 """SELECT user_id, skill_id, reward, timestamp
                    FROM feedback_events
                    WHERE reward != 0
                    AND timestamp >= ?
+                   AND skill_id IS NOT NULL
+                   AND skill_id != ''
                    ORDER BY user_id, skill_id""",
                 (lookback_date,)
             ).fetchall()
@@ -97,14 +101,12 @@ class ThompsonSamplingUpdateTask(BaseTask):
             logger.info(f" [AMS_TS] Processing {len(feedback_events)} feedback events")
             
             # Group feedback by (user_id, skill_id)
-            # Use 'general' as default skill if skill_id is NULL/empty
             from collections import defaultdict
             user_skill_feedback = defaultdict(lambda: {"successes": 0, "failures": 0})
             
             for user_id, skill_id, reward, timestamp in feedback_events:
-                # Handle NULL/empty skill_id
-                effective_skill_id = skill_id if skill_id else 'general'
-                key = (user_id, effective_skill_id)
+                # skill_id is guaranteed to be non-NULL/non-empty by the query filter
+                key = (user_id, skill_id)
                 if reward > 0:
                     user_skill_feedback[key]["successes"] += 1
                 elif reward < 0:
@@ -127,9 +129,11 @@ class ThompsonSamplingUpdateTask(BaseTask):
                 
                 print(f"  [{idx}/{len(user_skill_feedback)}] User: {user_id[:8]}..., Skill: {skill_id or 'None'}")
                 print(f"      Feedback: +{successes} / -{failures}")
+                print(f"      Total feedback: {successes + failures}, Min required: {min_trajectories}")
                 
                 # Skip if not enough data
                 if successes + failures < min_trajectories:
+                    print(f"      ⚠️  Skipping: not enough data ({successes + failures} < {min_trajectories})")
                     continue
                 
                 # Update all context buckets for this user-skill pair
