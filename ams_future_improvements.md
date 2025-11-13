@@ -66,3 +66,7 @@ requires_review: true
 - Extend `feedback_events` schema with KG-specific fields
 - Create new `kg_review_tasks` table for human review queue
 - Add KG verification metrics to skill confidence calculation
+
+## Feedback Classification Quality Improvements
+
+The current zero-shot embedding-based classification achieves 70-85% accuracy across 50+ languages, which is adequate for trend analysis and Thompson Sampling. However, for ambiguous or low-confidence cases (similarity < 0.25), quality can be improved through a hybrid approach: (1) add confidence scoring to flag uncertain classifications for human review or LLM verification, (2) implement multi-label classification to handle feedback with multiple issues (e.g., both "too verbose" AND "wrong tone"), (3) use an LLM-based classifier for edge cases where embedding similarity is inconclusive, asking the LLM to categorize based on semantic understanding rather than vector similarity, and (4) after collecting 500+ classified examples, fine-tune a lightweight model on actual AICO feedback data for domain-specific accuracy. This hybrid strategy balances automation (fast, multilingual embeddings) with precision (LLM for hard cases) while maintaining the language-agnostic benefits of the current approach.

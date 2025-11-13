@@ -913,5 +913,23 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP TABLE IF EXISTS user_skill_confidence",
             "DROP TABLE IF EXISTS skills",
         ]
+    ),
+    
+    15: SchemaVersion(
+        version=15,
+        name="AMS Phase 3 - Skill Tracking",
+        description="Add message_id to trajectories table for linking feedback to skills",
+        sql_statements=[
+            # Add message_id column to trajectories
+            "ALTER TABLE trajectories ADD COLUMN message_id TEXT",
+            
+            # Create index for message_id lookups
+            "CREATE INDEX IF NOT EXISTS idx_trajectories_message ON trajectories(message_id)",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_trajectories_message",
+            # Note: SQLite doesn't support DROP COLUMN, so we can't easily rollback
+            # In production, would need to recreate table without message_id
+        ]
     )
 })

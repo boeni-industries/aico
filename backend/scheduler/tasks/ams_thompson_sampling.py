@@ -47,13 +47,19 @@ class ThompsonSamplingUpdateTask(BaseTask):
         start_time = datetime.utcnow()
         
         try:
+            print("\n" + "="*60)
+            print("🧠 [AMS_TS] Starting Thompson Sampling update task")
+            print("="*60)
             logger.info("🧠 [AMS_TS] Starting Thompson Sampling update task")
             
             # Check if behavioral learning is enabled
             behavioral_config = context.config_manager.get("core.memory.behavioral", {})
             enabled = behavioral_config.get("enabled", False)
             
+            print(f"🧠 [AMS_TS] Behavioral learning enabled: {enabled}")
+            
             if not enabled:
+                print("⚠️  [AMS_TS] Behavioral learning disabled - skipping task")
                 logger.info("🧠 [AMS_TS] Behavioral learning disabled in configuration")
                 return TaskResult(
                     success=False,
@@ -67,33 +73,38 @@ class ThompsonSamplingUpdateTask(BaseTask):
             lookback_days = context.get_config("lookback_days", 7)
             lookback_date = (datetime.utcnow() - timedelta(days=lookback_days)).isoformat()
             
-            # Get feedback events with skill assignments from last N days
+            # Get feedback events from last N days
+            # Note: skill_id may be NULL if skill tracking isn't implemented yet
             feedback_events = context.db_connection.execute(
                 """SELECT user_id, skill_id, reward, timestamp
                    FROM feedback_events
-                   WHERE skill_id IS NOT NULL 
-                   AND reward != 0
+                   WHERE reward != 0
                    AND timestamp >= ?
                    ORDER BY user_id, skill_id""",
                 (lookback_date,)
             ).fetchall()
             
             if not feedback_events:
-                logger.info("🧠 [AMS_TS] No feedback events to process")
+                print("  [AMS_TS] No feedback events to process")
+                logger.info(" [AMS_TS] No feedback events to process")
                 return TaskResult(
                     success=True,
                     message="No feedback events",
                     data={"updated": 0}
                 )
             
-            logger.info(f"🧠 [AMS_TS] Processing {len(feedback_events)} feedback events")
+            print(f" [AMS_TS] Found {len(feedback_events)} feedback events to process")
+            logger.info(f" [AMS_TS] Processing {len(feedback_events)} feedback events")
             
             # Group feedback by (user_id, skill_id)
+            # Use 'general' as default skill if skill_id is NULL/empty
             from collections import defaultdict
             user_skill_feedback = defaultdict(lambda: {"successes": 0, "failures": 0})
             
             for user_id, skill_id, reward, timestamp in feedback_events:
-                key = (user_id, skill_id)
+                # Handle NULL/empty skill_id
+                effective_skill_id = skill_id if skill_id else 'general'
+                key = (user_id, effective_skill_id)
                 if reward > 0:
                     user_skill_feedback[key]["successes"] += 1
                 elif reward < 0:
@@ -107,9 +118,15 @@ class ThompsonSamplingUpdateTask(BaseTask):
             prior_alpha = behavioral_config.get("contextual_bandit", {}).get("prior_alpha", 1.0)
             prior_beta = behavioral_config.get("contextual_bandit", {}).get("prior_beta", 1.0)
             
-            for (user_id, skill_id), stats in user_skill_feedback.items():
+            print(f"\n [AMS_TS] Updating {len(user_skill_feedback)} user-skill pairs...")
+            print(f"   Prior: α={prior_alpha}, β={prior_beta}")
+            
+            for idx, ((user_id, skill_id), stats) in enumerate(user_skill_feedback.items(), 1):
                 successes = stats["successes"]
                 failures = stats["failures"]
+                
+                print(f"  [{idx}/{len(user_skill_feedback)}] User: {user_id[:8]}..., Skill: {skill_id or 'None'}")
+                print(f"      Feedback: +{successes} / -{failures}")
                 
                 # Skip if not enough data
                 if successes + failures < min_trajectories:
@@ -123,6 +140,8 @@ class ThompsonSamplingUpdateTask(BaseTask):
                 # Calculate new α and β
                 new_alpha = prior_alpha + successes
                 new_beta = prior_beta + failures
+                
+                print(f"      New: α={new_alpha:.2f}, β={new_beta:.2f}")
                 
                 # Upsert into context_skill_stats
                 context.db_connection.execute(
@@ -146,18 +165,20 @@ class ThompsonSamplingUpdateTask(BaseTask):
                 
                 updated_count += 1
                 
-                logger.debug(f"🧠 [AMS_TS] Updated {user_id}/{skill_id}: α={new_alpha:.1f}, β={new_beta:.1f}")
+                logger.debug(f" [AMS_TS] Updated {user_id}/{skill_id}: α={new_alpha:.1f}, β={new_beta:.1f}")
             
             context.db_connection.commit()
             
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            
-            logger.info(f"🧠 [AMS_TS] Update complete: {updated_count} user-skill pairs updated")
+            duration = (datetime.utcnow() - start_time).total_seconds()
+            print(f"\n [AMS_TS] Updated {updated_count} skill confidences in {duration:.2f}s")
+            print(f"   Processed {len(feedback_events)} feedback events")
+            print("="*60 + "\n")
+            logger.info(f" [AMS_TS] Updated {updated_count} skill confidences in {duration:.2f}s")
             
             return TaskResult(
                 success=True,
                 message=f"Updated {updated_count} Thompson Sampling parameters",
-                duration_seconds=execution_time,
+                duration_seconds=duration,
                 data={
                     "feedback_events": len(feedback_events),
                     "user_skill_pairs": len(user_skill_feedback),

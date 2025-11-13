@@ -31,34 +31,21 @@ class FeedbackClassificationTask(BaseTask):
     
     task_id = "ams.feedback_classification"
     default_config = {
-        "enabled": False,  # Disabled until Phase 3 fully integrated
+        "enabled": True,
         "schedule": "0 3 * * *",  # Daily at 3 AM
         "batch_size": 100,
-        "similarity_threshold": 0.6
+        "similarity_threshold": 0.20  # Lower threshold for label-only comparison
     }
     
-    # Feedback category templates for embedding comparison
-    CATEGORY_TEMPLATES = {
-        "too_verbose": [
-            "too long", "too verbose", "too detailed", "too wordy", 
-            "make it shorter", "be more concise", "brevity"
-        ],
-        "too_brief": [
-            "too short", "too brief", "not enough detail", 
-            "more explanation", "elaborate", "expand"
-        ],
-        "wrong_tone": [
-            "too formal", "too casual", "wrong tone", 
-            "be more friendly", "be more professional"
-        ],
-        "not_helpful": [
-            "not helpful", "doesn't answer", "irrelevant", 
-            "didn't help", "not what I asked"
-        ],
-        "incorrect_info": [
-            "incorrect", "wrong", "inaccurate", "false", 
-            "mistake", "error", "not true"
-        ]
+    # Zero-shot classification: Direct label embeddings (language-agnostic)
+    # The multilingual embedding model naturally understands these concepts
+    # across 50+ languages without needing explicit translations
+    CATEGORY_LABELS = {
+        "too_verbose": "the response is too long and contains too much detail",
+        "too_brief": "the response is too short and lacks sufficient detail",
+        "wrong_tone": "the response has an inappropriate communication style or tone",
+        "not_helpful": "the response does not answer the question or help with the request",
+        "incorrect_info": "the response contains factually incorrect or inaccurate information"
     }
     
     async def execute(self, context: TaskContext) -> TaskResult:
@@ -71,13 +58,19 @@ class FeedbackClassificationTask(BaseTask):
         start_time = datetime.utcnow()
         
         try:
+            print("\n" + "="*60)
+            print("🧠 [AMS_FEEDBACK] Starting feedback classification task")
+            print("="*60)
             logger.info("🧠 [AMS_FEEDBACK] Starting feedback classification task")
             
             # Check if behavioral learning is enabled
             behavioral_config = context.config_manager.get("core.memory.behavioral", {})
             enabled = behavioral_config.get("enabled", False)
             
+            print(f"🧠 [AMS_FEEDBACK] Behavioral learning enabled: {enabled}")
+            
             if not enabled:
+                print("⚠️  [AMS_FEEDBACK] Behavioral learning disabled - skipping task")
                 logger.info("🧠 [AMS_FEEDBACK] Behavioral learning disabled in configuration")
                 return TaskResult(
                     success=False,
@@ -92,12 +85,16 @@ class FeedbackClassificationTask(BaseTask):
             unprocessed_feedback = context.db_connection.execute(
                 """SELECT event_id, user_id, free_text 
                    FROM feedback_events 
-                   WHERE processed = FALSE AND free_text IS NOT NULL
+                   WHERE processed = FALSE 
+                   AND free_text IS NOT NULL 
+                   AND free_text != ''
+                   AND (reason IS NULL OR reason = '')
                    LIMIT ?""",
                 (batch_size,)
             ).fetchall()
             
             if not unprocessed_feedback:
+                print("ℹ️  [AMS_FEEDBACK] No unprocessed feedback to classify")
                 logger.info("🧠 [AMS_FEEDBACK] No unprocessed feedback to classify")
                 return TaskResult(
                     success=True,
@@ -105,6 +102,7 @@ class FeedbackClassificationTask(BaseTask):
                     data={"processed": 0}
                 )
             
+            print(f"📊 [AMS_FEEDBACK] Found {len(unprocessed_feedback)} feedback events to process")
             logger.info(f"🧠 [AMS_FEEDBACK] Processing {len(unprocessed_feedback)} feedback events")
             
             # Get modelservice for embeddings
@@ -121,10 +119,14 @@ class FeedbackClassificationTask(BaseTask):
             
             # Process each feedback event
             classified_count = 0
-            similarity_threshold = context.get_config("similarity_threshold", 0.6)
+            similarity_threshold = context.get_config("similarity_threshold", 0.4)  # Lowered from 0.6 for better matching
             
-            for event_id, user_id, free_text in unprocessed_feedback:
+            print(f"   Using similarity threshold: {similarity_threshold}")
+            
+            for idx, (event_id, user_id, free_text) in enumerate(unprocessed_feedback, 1):
                 try:
+                    print(f"  [{idx}/{len(unprocessed_feedback)}] Classifying: {event_id[:8]}... - '{free_text[:50]}...'")
+                    
                     # Classify feedback using embedding similarity
                     categories = await self._classify_feedback(
                         free_text, 
@@ -132,32 +134,47 @@ class FeedbackClassificationTask(BaseTask):
                         similarity_threshold
                     )
                     
-                    # Update feedback event with classifications
-                    import json
-                    context.db_connection.execute(
-                        """UPDATE feedback_events 
-                           SET classified_categories = ?, processed = TRUE
-                           WHERE event_id = ?""",
-                        (json.dumps(categories), event_id)
-                    )
+                    # Debug: show all category scores
+                    print(f"    Category scores: {categories}")
                     
-                    classified_count += 1
-                    
-                    logger.debug(f"🧠 [AMS_FEEDBACK] Classified feedback {event_id}: {categories}")
+                    # Get the top category (highest similarity)
+                    if categories:
+                        top_category = max(categories.items(), key=lambda x: x[1])[0]
+                        
+                        # Update feedback event with top category as reason
+                        context.db_connection.execute(
+                            """UPDATE feedback_events 
+                               SET reason = ?, processed = TRUE
+                               WHERE event_id = ?""",
+                            (top_category, event_id)
+                        )
+                        
+                        classified_count += 1
+                        print(f"    ✅ Classified as: {top_category} (confidence: {categories[top_category]:.2f})")
+                        
+                        logger.debug(f"🧠 [AMS_FEEDBACK] Classified feedback {event_id}: {top_category} from {categories}")
+                    else:
+                        print(f"    ⚠️  No category matched (threshold: {similarity_threshold})")
+                        print(f"    Try lowering the threshold in config or check category templates")
+                        logger.warning(f"🧠 [AMS_FEEDBACK] No category matched for {event_id}")
                     
                 except Exception as e:
-                    logger.error(f"🧠 [AMS_FEEDBACK] Failed to classify {event_id}: {e}")
+                    print(f"    ❌ Error: {type(e).__name__}: {e}")
+                    import traceback
+                    print(f"    Traceback: {traceback.format_exc()}")
+                    logger.error(f"🧠 [AMS_FEEDBACK] Failed to classify {event_id}: {e}", extra={"traceback": traceback.format_exc()})
             
             context.db_connection.commit()
             
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            
-            logger.info(f"🧠 [AMS_FEEDBACK] Classification complete: {classified_count}/{len(unprocessed_feedback)} events")
+            duration = (datetime.utcnow() - start_time).total_seconds()
+            print(f"\n✅ [AMS_FEEDBACK] Classified {classified_count}/{len(unprocessed_feedback)} events in {duration:.2f}s")
+            print("="*60 + "\n")
+            logger.info(f"🧠 [AMS_FEEDBACK] ✅ Classified {classified_count} feedback events in {duration:.2f}s")
             
             return TaskResult(
                 success=True,
                 message=f"Classified {classified_count} feedback events",
-                duration_seconds=execution_time,
+                duration_seconds=duration,
                 data={
                     "total_feedback": len(unprocessed_feedback),
                     "classified": classified_count,
@@ -195,28 +212,51 @@ class FeedbackClassificationTask(BaseTask):
         """
         import numpy as np
         
+        # Get embedding model from config
+        embedding_model = "paraphrase-multilingual"  # Default embedding model
+        
+        print(f"      Getting embedding for: '{feedback_text[:50]}...'")
+        
         # Get embedding for feedback text
-        feedback_embedding = await modelservice.get_embedding(feedback_text)
+        feedback_result = await modelservice.get_embeddings(embedding_model, feedback_text)
         
-        # Calculate similarity to each category
+        # Extract embedding from nested response structure
+        # Response format: {'success': True, 'data': {'embedding': [...]}}
+        if feedback_result.get('success') and feedback_result.get('data'):
+            feedback_embedding = feedback_result['data'].get('embedding', [])
+        else:
+            feedback_embedding = []
+        
+        print(f"      Feedback embedding length: {len(feedback_embedding)}")
+        print(f"      Feedback embedding type: {type(feedback_embedding)}")
+        
+        # Calculate similarity to each category label
         categories = {}
+        all_scores = {}  # Track all scores for debugging
         
-        for category, templates in self.CATEGORY_TEMPLATES.items():
-            # Get embeddings for category templates
-            template_embeddings = []
-            for template in templates:
-                emb = await modelservice.get_embedding(template)
-                template_embeddings.append(emb)
+        for category, label_text in self.CATEGORY_LABELS.items():
+            print(f"      Processing category: {category}")
             
-            # Calculate max similarity to any template
-            max_similarity = 0.0
-            for template_emb in template_embeddings:
-                similarity = self._cosine_similarity(feedback_embedding, template_emb)
-                max_similarity = max(max_similarity, similarity)
+            # Get embedding for category label
+            result = await modelservice.get_embeddings(embedding_model, label_text)
+            # Extract from nested structure: {'success': True, 'data': {'embedding': [...]}}
+            if result.get('success') and result.get('data'):
+                label_embedding = result['data'].get('embedding', [])
+            else:
+                label_embedding = []
+            
+            # Calculate similarity to label
+            similarity = self._cosine_similarity(feedback_embedding, label_embedding)
+            print(f"        Label similarity: {similarity:.3f}")
+            
+            all_scores[category] = round(similarity, 3)
             
             # Only include if above threshold
-            if max_similarity >= threshold:
-                categories[category] = round(max_similarity, 3)
+            if similarity >= threshold:
+                categories[category] = round(similarity, 3)
+        
+        print(f"      All scores (before threshold): {all_scores}")
+        print(f"      Matched categories (>= {threshold}): {categories}")
         
         return categories
     

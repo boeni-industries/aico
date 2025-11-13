@@ -51,13 +51,19 @@ class TrajectoryCleanupTask(BaseTask):
         start_time = datetime.utcnow()
         
         try:
+            print("\n" + "="*60)
+            print("🧠 [AMS_CLEANUP] Starting trajectory cleanup task")
+            print("="*60)
             logger.info("🧠 [AMS_CLEANUP] Starting trajectory cleanup task")
             
             # Check if behavioral learning is enabled
             behavioral_config = context.config_manager.get("core.memory.behavioral", {})
             enabled = behavioral_config.get("enabled", False)
             
+            print(f"🧠 [AMS_CLEANUP] Behavioral learning enabled: {enabled}")
+            
             if not enabled:
+                print("⚠️  [AMS_CLEANUP] Behavioral learning disabled - skipping task")
                 logger.info("🧠 [AMS_CLEANUP] Behavioral learning disabled in configuration")
                 return TaskResult(
                     success=False,
@@ -70,34 +76,37 @@ class TrajectoryCleanupTask(BaseTask):
             archive_after_days = context.get_config("archive_after_days", 90)
             delete_after_days = context.get_config("delete_after_days", 365)
             
-            archive_cutoff = (datetime.utcnow() - timedelta(days=archive_after_days)).isoformat()
-            delete_cutoff = (datetime.utcnow() - timedelta(days=delete_after_days)).isoformat()
+            archive_cutoff = datetime.utcnow() - timedelta(days=archive_after_days)
+            print(f"\n [AMS_CLEANUP] Archiving trajectories older than {archive_cutoff.date()} ({archive_after_days} days)")
+            logger.info(f" [AMS_CLEANUP] Archiving trajectories older than {archive_cutoff.date()} ({archive_after_days} days without feedback)")
             
-            # Step 1: Archive old trajectories without feedback
-            logger.info(f"🧠 [AMS_CLEANUP] Archiving trajectories older than {archive_after_days} days without feedback")
-            
+            print("   Querying trajectories to archive...")
             archive_result = context.db_connection.execute(
                 """UPDATE trajectories 
-                   SET archived = TRUE
-                   WHERE feedback_reward IS NULL 
-                   AND timestamp < ?
+                   SET archived = TRUE 
+                   WHERE timestamp < ? 
+                   AND trajectory_id NOT IN (
+                       SELECT DISTINCT trajectory_id FROM feedback_events WHERE trajectory_id IS NOT NULL
+                   )
                    AND archived = FALSE""",
-                (archive_cutoff,)
+                (archive_cutoff.isoformat(),)
             )
-            
             archived_count = archive_result.rowcount if hasattr(archive_result, 'rowcount') else 0
+            print(f"   Archived {archived_count} trajectories")
             
-            # Step 2: Hard delete very old archived trajectories
-            logger.info(f"🧠 [AMS_CLEANUP] Deleting archived trajectories older than {delete_after_days} days")
+            delete_cutoff = datetime.utcnow() - timedelta(days=delete_after_days)
+            print(f"\n [AMS_CLEANUP] Deleting archived trajectories older than {delete_cutoff.date()} ({delete_after_days} days)")
+            logger.info(f" [AMS_CLEANUP] Deleting archived trajectories older than {delete_cutoff.date()} ({delete_after_days} days)")
             
+            print("   Querying archived trajectories to delete...")
             delete_result = context.db_connection.execute(
-                """DELETE FROM trajectories
-                   WHERE archived = TRUE
-                   AND timestamp < ?""",
-                (delete_cutoff,)
+                """DELETE FROM trajectories 
+                   WHERE timestamp < ? 
+                   AND archived = TRUE""",
+                (delete_cutoff.isoformat(),)
             )
-            
             deleted_count = delete_result.rowcount if hasattr(delete_result, 'rowcount') else 0
+            print(f"   Deleted {deleted_count} archived trajectories")
             
             context.db_connection.commit()
             
@@ -112,15 +121,18 @@ class TrajectoryCleanupTask(BaseTask):
             
             total, archived, with_feedback = stats if stats else (0, 0, 0)
             
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            
-            logger.info(f"🧠 [AMS_CLEANUP] Cleanup complete: archived={archived_count}, deleted={deleted_count}")
-            logger.info(f"🧠 [AMS_CLEANUP] Current state: total={total}, archived={archived}, with_feedback={with_feedback}")
+            duration = (datetime.utcnow() - start_time).total_seconds()
+            print(f"\n [AMS_CLEANUP] Cleanup complete in {duration:.2f}s")
+            print(f"   Archived: {archived_count} trajectories")
+            print(f"   Deleted: {deleted_count} archived trajectories")
+            print("="*60 + "\n")
+            logger.info(f" [AMS_CLEANUP] Cleanup complete: archived={archived_count}, deleted={deleted_count} in {duration:.2f}s")
+            logger.info(f" [AMS_CLEANUP] Current state: total={total}, archived={archived}, with_feedback={with_feedback}")
             
             return TaskResult(
                 success=True,
                 message=f"Archived {archived_count}, deleted {deleted_count} trajectories",
-                duration_seconds=execution_time,
+                duration_seconds=duration,
                 data={
                     "archived": archived_count,
                     "deleted": deleted_count,

@@ -797,19 +797,31 @@ class ConversationEngine(BaseService):
             print(f"💬 [CONVERSATION_ENGINE] ✅ Final response delivered for {request_id}")
             
             # Phase 3: Log trajectory for behavioral learning
+            print(f"📝 [TRAJECTORY] Checking if should log trajectory for {request_id}")
+            print(f"📝 [TRAJECTORY] request_id in pending_responses: {request_id in self.pending_responses}")
+            print(f"📝 [TRAJECTORY] pending_responses keys: {list(self.pending_responses.keys())}")
+            
             if request_id in self.pending_responses:
                 pending_data = self.pending_responses[request_id]
+                print(f"📝 [TRAJECTORY] pending_data keys: {pending_data.keys()}")
+                
                 user_context = pending_data.get("user_context")
                 user_message = pending_data.get("user_message")
                 selected_skill_id = pending_data.get("selected_skill_id")
                 
+                print(f"📝 [TRAJECTORY] user_context: {user_context is not None}")
+                print(f"📝 [TRAJECTORY] user_message: {user_message is not None}")
+                print(f"📝 [TRAJECTORY] selected_skill_id: {selected_skill_id}")
+                
                 if user_context and user_message:
-                    asyncio.create_task(self._log_trajectory(
+                    print(f"📝 [TRAJECTORY] About to call _log_trajectory...")
+                    await self._log_trajectory(
                         user_context,
                         user_message,
-                        accumulated_content,
+                        final_content,  # Fixed: use final_content parameter
                         selected_skill_id
-                    ))
+                    )
+                    print(f"📝 [TRAJECTORY] _log_trajectory completed")
             
             # Don't clean up here - let the LLM response handler clean up
             # This prevents race condition where LLM response arrives after cleanup
@@ -1108,10 +1120,23 @@ class ConversationEngine(BaseService):
             selected_skill_id: ID of skill that was applied
         """
         try:
+            print(f"📝 [TRAJECTORY] _log_trajectory called for message {user_message.message.id}")
+            
             # Check if behavioral learning is enabled
             memory_manager = ai_registry.get("memory")
-            if not memory_manager or not hasattr(memory_manager, '_behavioral_enabled') or not memory_manager._behavioral_enabled:
+            if not memory_manager:
+                print("📝 [TRAJECTORY] ❌ No memory manager found")
                 return
+            
+            if not hasattr(memory_manager, '_behavioral_enabled'):
+                print("📝 [TRAJECTORY] ❌ Memory manager has no _behavioral_enabled attribute")
+                return
+                
+            if not memory_manager._behavioral_enabled:
+                print(f"📝 [TRAJECTORY] ❌ Behavioral learning disabled (_behavioral_enabled={memory_manager._behavioral_enabled})")
+                return
+            
+            print("📝 [TRAJECTORY] ✅ Behavioral learning is enabled")
             
             # Get database connection
             if not hasattr(memory_manager, '_db_connection') or not memory_manager._db_connection:
@@ -1130,12 +1155,12 @@ class ConversationEngine(BaseService):
                 (user_context.user_id, conversation_id)
             ).fetchone()[0] + 1
             
-            # Insert trajectory
+            # Insert trajectory with message_id for feedback linking
             db.execute(
                 """INSERT INTO trajectories (
                     trajectory_id, user_id, conversation_id, turn_number,
-                    user_input, selected_skill_id, ai_response, timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    user_input, selected_skill_id, ai_response, message_id, timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     trajectory_id,
                     user_context.user_id,
@@ -1144,6 +1169,7 @@ class ConversationEngine(BaseService):
                     user_message.message.text,
                     selected_skill_id,
                     ai_response,
+                    user_message.message.id,  # Add message_id for feedback linking
                     datetime.utcnow().isoformat()
                 )
             )

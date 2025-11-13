@@ -52,13 +52,34 @@ async def submit_feedback(
     })
     
     try:
+        # Lookup skill_id from trajectories if not provided
+        skill_id = request.skill_id
+        if not skill_id and request.message_id:
+            logger.info("📊 [FEEDBACK] Looking up skill_id from trajectories", extra={
+                "message_id": request.message_id
+            })
+            trajectory = db.execute(
+                "SELECT selected_skill_id FROM trajectories WHERE message_id = ? LIMIT 1",
+                (request.message_id,)
+            ).fetchone()
+            if trajectory and trajectory[0]:
+                skill_id = trajectory[0]
+                logger.info("📊 [FEEDBACK] Found skill_id from trajectory", extra={
+                    "skill_id": skill_id,
+                    "message_id": request.message_id
+                })
+            else:
+                logger.warning("📊 [FEEDBACK] No trajectory found for message_id", extra={
+                    "message_id": request.message_id
+                })
+        
         # Create feedback event
         event_id = str(uuid.uuid4())
         feedback_event = FeedbackEvent(
             event_id=event_id,
             user_id=user_id,
             message_id=request.message_id,
-            skill_id=request.skill_id,
+            skill_id=skill_id,  # Use looked-up skill_id
             reward=request.reward,
             reason=request.reason,
             free_text=request.free_text,
@@ -96,34 +117,34 @@ async def submit_feedback(
             "table": "feedback_events"
         })
         
-        # Update skill confidence if skill_id provided and reward is not neutral
+        # Update skill confidence if skill_id available and reward is not neutral
         skill_updated = False
         new_confidence = None
         
-        if request.skill_id and request.reward != 0:
+        if skill_id and request.reward != 0:
             logger.info("📊 [FEEDBACK] Updating skill confidence", extra={
-                "skill_id": request.skill_id,
+                "skill_id": skill_id,
                 "reward": request.reward
             })
             skill_store = SkillStore(db)
             new_confidence = await skill_store.update_confidence(
                 user_id=user_id,
-                skill_id=request.skill_id,
+                skill_id=skill_id,
                 reward=request.reward
             )
             skill_updated = True
             
             logger.info("📊 [FEEDBACK] ✅ Skill confidence updated", extra={
                 "user_id": user_id,
-                "skill_id": request.skill_id,
+                "skill_id": skill_id,
                 "reward": request.reward,
                 "new_confidence": new_confidence
             })
         else:
             logger.info("📊 [FEEDBACK] Skipping skill confidence update", extra={
-                "skill_id": request.skill_id,
+                "skill_id": skill_id,
                 "reward": request.reward,
-                "reason": "no_skill_id" if not request.skill_id else "neutral_reward"
+                "reason": "no_skill_id" if not skill_id else "neutral_reward"
             })
         
         logger.info("📊 [FEEDBACK] ✅ Feedback processing complete", extra={
