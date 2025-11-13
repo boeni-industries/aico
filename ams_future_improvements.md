@@ -1,5 +1,88 @@
 # AMS Future Improvements
 
+## Phase 4: Unified Indexing (Not Yet Implemented)
+
+**Status:** Planned for future implementation  
+**Priority:** Medium (nice-to-have optimization)  
+**Estimated Effort:** 2-3 weeks
+
+### Overview
+
+Phase 4 will implement a unified memory indexing system that provides seamless cross-layer retrieval across all memory tiers (L0: raw data, L1: structured memory, L2: parameterized memory). This is an optimization layer that improves retrieval performance but is not required for core functionality.
+
+### Components to Implement
+
+**1. Cross-Layer Indexing (`unified/index.py`)**
+- Unified index structure spanning working, semantic, and behavioral memory
+- Single query interface for all memory types
+- Automatic index maintenance and updates
+- **Benefit:** Faster retrieval, reduced query complexity
+
+**2. Unified Retrieval Interface (`unified/retrieval.py`)**
+- Single API for querying all memory tiers
+- Cross-tier relevance ranking
+- Result merging and deduplication
+- **Benefit:** Simpler application code, better UX
+
+**3. Memory Lifecycle Management (`unified/lifecycle.py`)**
+- Automated memory tier transitions (working → semantic → archive)
+- TTL enforcement across all tiers
+- Memory promotion/demotion based on usage
+- **Benefit:** Automatic memory optimization
+
+### Why It Can Wait
+
+**Current System Works Well:**
+- ✅ Working memory (LMDB) - fast, 24hr TTL
+- ✅ Semantic memory (ChromaDB) - efficient vector search
+- ✅ Behavioral memory (libSQL) - Thompson Sampling working
+- ✅ Memory consolidation - automated transfer working
+
+**Phase 4 is an Optimization:**
+- Current retrieval is already fast (<50ms)
+- Each tier has optimized storage
+- Consolidation handles tier transitions
+- No user-facing issues
+
+**When to Implement:**
+- After 1000+ users (scaling needs)
+- When retrieval latency becomes noticeable
+- When cross-tier queries become common
+- When memory management becomes complex
+
+### Implementation Checklist
+
+**Files to Create:**
+- `shared/aico/ai/memory/unified/index.py` (~250 lines) - Cross-layer index builder
+- `shared/aico/ai/memory/unified/retrieval.py` (~250 lines) - Unified query interface
+- `shared/aico/ai/memory/unified/lifecycle.py` (~200 lines) - Memory tier transitions
+
+**Files to Modify:**
+- `shared/aico/ai/memory/manager.py` - Add unified index initialization
+- `shared/aico/ai/memory/context/assembler.py` - Use unified retrieval API
+
+**Database Changes:**
+- Add `unified_index` table for cross-layer metadata
+- Add indexes for efficient cross-tier queries
+
+**Tasks:**
+1. Design unified index schema (1-2 days)
+2. Implement cross-layer indexing (3-4 days)
+3. Build unified retrieval API (3-4 days)
+4. Add memory lifecycle automation (2-3 days)
+5. Integration testing (2-3 days)
+6. Performance optimization (2-3 days)
+
+**Total Effort:** ~2-3 weeks
+
+### Technical Notes
+
+**Storage Footprint:** ~5-10KB per user (index metadata)  
+**Performance Impact:** Minimal (index updates are incremental)  
+**Complexity:** Medium (requires careful design to avoid over-engineering)
+
+---
+
 ## Knowledge Graph Quality Feedback Loop
 
 ### Automated Analysis

@@ -78,28 +78,21 @@ class MemoryConsolidationTask(BaseTask):
                     data={"enabled": False}
                 )
             
-            # Get memory manager from backend services
-            try:
-                print("🧠 [AMS_TASK] Getting memory manager from backend services...")
-                from backend.services import get_memory_manager
-                memory_manager = get_memory_manager(context.config_manager, context.db_connection)
-                
-                # Ensure memory manager is initialized
-                if not memory_manager._initialized:
-                    print("🧠 [AMS_TASK] Initializing memory manager...")
-                    logger.info("🧠 [AMS_TASK] Initializing memory manager...")
-                    await memory_manager.initialize()
-                
-                print("🧠 [AMS_TASK] ✅ Memory manager ready")
-                
-            except Exception as e:
-                print(f"🧠 [AMS_TASK] ❌ Failed to get memory manager: {e}")
-                logger.error(f"🧠 [AMS_TASK] Failed to get memory manager: {e}")
+            # Get memory manager from AI registry
+            print("🧠 [AMS_TASK] Getting memory manager from AI registry...")
+            from backend.services.conversation_engine import ai_registry
+            memory_manager = ai_registry.get("memory")
+            
+            if not memory_manager:
+                print("🧠 [AMS_TASK] ❌ Memory manager not found in AI registry")
+                logger.error("🧠 [AMS_TASK] Memory manager not found in AI registry")
                 return TaskResult(
                     success=False,
-                    message="Memory manager not available",
-                    error=str(e)
+                    message="Memory manager not available in AI registry",
+                    error="Memory manager not registered"
                 )
+            
+            print("🧠 [AMS_TASK] ✅ Memory manager ready")
             
             # Check if AMS components are enabled
             if not memory_manager._ams_enabled:
@@ -130,7 +123,7 @@ class MemoryConsolidationTask(BaseTask):
             idle_detector = memory_manager._idle_detector
             
             if idle_detector:
-                is_idle = await idle_detector.is_system_idle()
+                is_idle = idle_detector.check_idle()
                 
                 if not is_idle:
                     print("🧠 [AMS_TASK] ⚠️  System not idle, skipping consolidation")
