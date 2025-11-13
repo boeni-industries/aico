@@ -62,11 +62,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   @override
   void initState() {
     super.initState();
-    // Theme management now handled via Riverpod providers
-    
-    // Listen to text changes for typing detection
-    _messageController.addListener(_onTypingChanged);
-    _conversationController.addListener(_onScroll);
+    _messageFocusNode.addListener(_onTypingChanged);
     
     // Initialize animation controllers for immersive effects
     _backgroundAnimationController = AnimationController(
@@ -82,22 +78,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     _glowAnimation = Tween<double>(begin: 0.3, end: 0.7).animate(
       CurvedAnimation(parent: _glowAnimationController, curve: Curves.easeInOut),
     );
-  }
-  
-  void _onScroll() {
-    // Lazy load more messages when scrolling near the top
-    if (_conversationController.hasClients) {
-      final position = _conversationController.position;
-      final conversationState = ref.read(conversationProvider);
-      
-      // If scrolled to within 500px of the top OR at the very top, load more messages
-      // Only load if we haven't shown all messages yet
-      if (position.pixels < 500 && 
-          conversationState.messages.length < conversationState.allMessages.length) {
-        debugPrint('📜 [Scroll] Triggering lazy load at ${position.pixels}px from top');
-        ref.read(conversationProvider.notifier).loadMoreMessages();
-      }
-    }
   }
   
   void _onTypingChanged() {
@@ -199,7 +179,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
       }
       
       if (shouldScroll) {
-        HomeScreenHelpers.scrollToBottom(_conversationController); // Smooth scroll for new messages
+        // Don't auto-scroll if user is actively scrolling up (viewing older messages)
+        // With reverse: true, position 0 is bottom, higher values are scrolling up
+        final isNearBottom = _conversationController.hasClients && 
+            _conversationController.position.pixels < 200;
+        if (isNearBottom || !_conversationController.hasClients) {
+          HomeScreenHelpers.scrollToBottom(_conversationController); // Smooth scroll for new messages
+        }
       }
     });
     
@@ -390,32 +376,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     // Smooth fade transition from welcome to messages
     if (conversationState.messages.isEmpty) {
       return Center(
-        child: AnimatedOpacity(
-          opacity: conversationState.isLoading ? 0.5 : 1.0,
-          duration: const Duration(milliseconds: 400),
-          child: AnimatedBuilder(
-            animation: _glowAnimationController,
-            builder: (context, child) {
-              // Gentle fade-in only (no jitter, no scale)
-              final fadeOpacity = 0.85 + (_glowAnimation.value * 0.15);
-              
-              return Opacity(
-                opacity: fadeOpacity,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 48),
-                  child: Text(
-                    'I\'m here',
-                    style: theme.textTheme.displaySmall?.copyWith(
-                      fontWeight: FontWeight.w200,
-                      letterSpacing: -0.3,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
-                      height: 1.2,
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.0, end: conversationState.isLoading ? 0.5 : 1.0),
+          duration: const Duration(milliseconds: 800),
+          curve: Curves.easeInOut,
+          builder: (context, opacity, child) {
+            return AnimatedBuilder(
+              animation: _glowAnimationController,
+              builder: (context, child) {
+                // Gentle fade-in only (no jitter, no scale)
+                final fadeOpacity = opacity * (0.85 + (_glowAnimation.value * 0.15));
+                
+                return Opacity(
+                  opacity: fadeOpacity,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 48),
+                    child: Text(
+                      'I\'m here',
+                      style: theme.textTheme.displaySmall?.copyWith(
+                        fontWeight: FontWeight.w200,
+                        letterSpacing: -0.3,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                        height: 1.2,
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            );
+          },
         ),
       );
     }
@@ -446,16 +435,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
           child: Scrollbar(
             controller: _conversationController,
             thumbVisibility: true,
-            child: AnimatedOpacity(
-              opacity: conversationState.isLoading ? 0.0 : 1.0,
-              duration: const Duration(milliseconds: 600),
-              curve: Curves.easeOut,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: conversationState.isLoading ? 0.0 : 1.0),
+              duration: const Duration(milliseconds: 1200),
+              curve: Curves.easeInOutCubic,
+              builder: (context, opacity, child) {
+                return Opacity(
+                  opacity: opacity,
+                  child: child,
+                );
+              },
               child: ListView.builder(
                 controller: _conversationController,
+                reverse: true, // Bottom-to-top scroll for chat
                 padding: const EdgeInsets.all(24),
                 itemCount: conversationState.messages.length,
                 itemBuilder: (context, index) {
-                  final message = conversationState.messages[index];
+                  // Reverse index since list is reversed
+                  final reversedIndex = conversationState.messages.length - 1 - index;
+                  final message = conversationState.messages[reversedIndex];
                   // Convert domain Message to presentation ConversationMessage
                   final conversationMessage = ConversationMessage(
                     id: message.id,
@@ -464,13 +462,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
                     timestamp: message.timestamp,
                   );
                   
-                  // Staggered fade-in animation for messages
-                  return AnimatedOpacity(
-                    opacity: 1.0,
-                    duration: Duration(milliseconds: 300 + (index * 50)),
-                    curve: Curves.easeOut,
-                    child: _buildMessageBubble(context, theme, accentColor, conversationMessage),
-                  );
+                  return _buildMessageBubble(context, theme, accentColor, conversationMessage);
                 },
               ),
             ),

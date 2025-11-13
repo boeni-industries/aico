@@ -64,24 +64,25 @@ class HomeScreenHelpers {
   }
 
   /// Scroll to bottom of conversation with smooth, gentle animation
+  /// With reverse: true, "bottom" means position 0
   static void scrollToBottom(ScrollController controller, {bool instant = false}) {
     // Use a delay to ensure content is fully rendered (especially for fade animations)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(Duration(milliseconds: instant ? 700 : 100), () {
-        if (controller.hasClients && controller.position.maxScrollExtent > 0) {
+      Future.delayed(Duration(milliseconds: instant ? 800 : 100), () {
+        if (controller.hasClients) {
           if (instant) {
-            // Jump instantly to absolute bottom for initial load
-            controller.jumpTo(controller.position.maxScrollExtent);
-            // Double-check after a moment to ensure we're at the bottom
-            Future.delayed(const Duration(milliseconds: 100), () {
+            // With reverse: true, position 0 is the bottom (newest messages)
+            controller.jumpTo(0);
+            // Double-check to ensure we're at position 0
+            Future.delayed(const Duration(milliseconds: 200), () {
               if (controller.hasClients) {
-                controller.jumpTo(controller.position.maxScrollExtent);
+                controller.jumpTo(0);
               }
             });
           } else {
-            // Smooth, gentle scroll for new messages
+            // Smooth, gentle scroll to position 0 (bottom) for new messages
             controller.animateTo(
-              controller.position.maxScrollExtent,
+              0,
               duration: const Duration(milliseconds: 800),
               curve: Curves.easeInOutCubic,
             );

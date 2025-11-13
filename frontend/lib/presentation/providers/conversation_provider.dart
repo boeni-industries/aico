@@ -135,15 +135,12 @@ class ConversationNotifier extends _$ConversationNotifier {
   Future<void> _loadConversationFromCache() async {
     try {
       var conversationId = state.currentConversationId;
-      debugPrint('🔍 [Cache Load] Conversation ID: $conversationId');
       
       // If no conversation ID, try to find the most recent one from cache
       if (conversationId == null) {
-        debugPrint('🔎 [Cache Load] No conversation ID, checking for recent conversations...');
         final allMessages = await _messageRepository.getMessages('default');
         
         if (allMessages.isEmpty) {
-          debugPrint('⏭️  [Cache Load] No cached conversations found');
           AICOLog.info('No cached conversations found',
             topic: 'conversation_provider/cache_load_skip');
           
@@ -155,58 +152,33 @@ class ConversationNotifier extends _$ConversationNotifier {
         
         // Use the conversation ID from the most recent message
         conversationId = allMessages.first.conversationId;
-        debugPrint('📌 [Cache Load] Found recent conversation: $conversationId');
       }
 
-      debugPrint('📥 [Cache Load] Fetching messages for conversation: $conversationId');
+      // Fetch messages for conversation
       final allMessages = await _messageRepository.getMessages(
         conversationId,
         onBackgroundSyncComplete: (freshMessages) {
-          debugPrint('🔄 [Background Sync] Received ${freshMessages.length} fresh messages');
-          
-          // CRITICAL: Maintain the current display count, just update the data
-          // If user has loaded more messages via lazy loading, keep showing that many
-          final currentDisplayCount = state.messages.length;
-          final startIndex = freshMessages.length > currentDisplayCount 
-              ? freshMessages.length - currentDisplayCount 
-              : 0;
-          final updatedMessages = freshMessages.sublist(startIndex);
-          
-          debugPrint('🔄 [Background Sync] Maintaining ${updatedMessages.length} displayed messages');
+          // Update with all fresh messages from background sync
           state = state.copyWith(
-            messages: updatedMessages,
-            allMessages: freshMessages, // Update allMessages for lazy loading
+            messages: freshMessages,
+            allMessages: freshMessages,
           );
         },
       );
-      debugPrint('✅ [Cache Load] Loaded ${allMessages.length} messages from cache');
       
-      // Progressive disclosure: Show only the most recent 10 messages initially
-      // User can scroll up to load more (immersive, not overwhelming)
-      final recentMessages = allMessages.length > 10 
-          ? allMessages.sublist(allMessages.length - 10)
-          : allMessages;
-      
-      debugPrint('📊 [Cache Load] Displaying ${recentMessages.length} most recent messages (out of ${allMessages.length} total)');
-      debugPrint('📊 [Cache Load] First message: ${recentMessages.first.content.substring(0, 30)}...');
-      debugPrint('📊 [Cache Load] Last message: ${recentMessages.last.content.substring(0, 30)}...');
-      
+      // Show all messages - let Flutter handle it smoothly
       state = state.copyWith(
-        messages: recentMessages,
-        allMessages: allMessages, // Store all for lazy loading
-        currentConversationId: conversationId,
+        messages: allMessages,
+        allMessages: allMessages,
         isLoading: false,
+        currentConversationId: conversationId,
       );
-      
-      debugPrint('✅ [State Updated] messages.length=${state.messages.length}, allMessages.length=${state.allMessages.length}');
       
       AICOLog.info('Loaded conversation from cache',
         topic: 'conversation_provider/cache_load',
-        extra: {'conversation_id': conversationId, 'message_count': recentMessages.length, 'total_count': allMessages.length});
+        extra: {'conversation_id': conversationId, 'message_count': allMessages.length});
         
     } catch (e, stackTrace) {
-      debugPrint('❌ [Cache Load] ERROR: $e');
-      debugPrint('📚 [Cache Load] Stack trace: $stackTrace');
       AICOLog.error('Failed to load conversation from cache',
         topic: 'conversation_provider/cache_load_error',
         error: e,

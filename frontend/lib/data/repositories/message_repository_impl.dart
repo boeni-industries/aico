@@ -210,9 +210,6 @@ class MessageRepositoryImpl implements MessageRepository {
           final messageId = backendMessageId ?? message.id;
           
           try {
-            debugPrint('💾 [Streaming Cache] Storing pair - User: "${message.content.substring(0, 20)}..." AI: "${accumulatedContent.substring(0, 20)}..."');
-            debugPrint('💾 [Streaming Cache] User userId=${message.userId}, AI userId=aico');
-            
             await _database.insertConversationPair(
               // User message FIRST
               MessagesCompanion.insert(
@@ -241,8 +238,6 @@ class MessageRepositoryImpl implements MessageRepository {
                 needsSync: const Value(false),
               ),
             );
-            
-            debugPrint('✅ [Streaming Cache] Successfully cached conversation pair');
             AICOLog.info('Cached streaming conversation pair',
               topic: 'message_repository/cache_streaming',
               extra: {
@@ -251,7 +246,6 @@ class MessageRepositoryImpl implements MessageRepository {
                 'response_length': accumulatedContent.length,
               });
           } catch (e) {
-            debugPrint('❌ [Streaming Cache] FAILED: $e');
             AICOLog.error('Failed to cache streaming messages',
               topic: 'message_repository/cache_streaming_error',
               error: e);
@@ -289,14 +283,8 @@ class MessageRepositoryImpl implements MessageRepository {
       final cachedMessages = await _database.getConversationMessages(conversationId);
       
       if (cachedMessages.isNotEmpty) {
-        debugPrint('📥 [Cache] Raw DB query returned ${cachedMessages.length} messages for conversation: $conversationId');
-        debugPrint('📥 [Cache] NEWEST message (first): ${cachedMessages.first.timestamp} - "${cachedMessages.first.content.substring(0, 30)}..."');
-        debugPrint('📥 [Cache] OLDEST message (last): ${cachedMessages.last.timestamp} - "${cachedMessages.last.content.substring(0, 30)}..."');
-        
         // 2. Return cached data immediately (reverse since DB returns DESC)
         final messages = cachedMessages.map((dbMsg) {
-          final preview = dbMsg.content.length > 30 ? dbMsg.content.substring(0, 30) : dbMsg.content;
-          debugPrint('💾 [Cache] ${dbMsg.timestamp.toIso8601String()} | userId=${dbMsg.userId} | role=${dbMsg.role} | $preview...');
           return Message(
             id: dbMsg.id,
             content: dbMsg.content,
@@ -307,9 +295,6 @@ class MessageRepositoryImpl implements MessageRepository {
             timestamp: dbMsg.timestamp,
           );
         }).toList().reversed.toList(); // Reverse to get oldest-first for chat UI
-        
-        debugPrint('📊 [Cache] After reverse - First: ${messages.first.timestamp}, Last: ${messages.last.timestamp}');
-        debugPrint('📊 [Cache] Returning ${messages.length} messages (limit: 50)');
         
         // 3. Sync in background (fire and forget)
         _syncMessagesInBackground(conversationId, onComplete: onBackgroundSyncComplete);
@@ -346,12 +331,6 @@ class MessageRepositoryImpl implements MessageRepository {
     if (response != null) {
       final messagesData = response['messages'] as List<dynamic>? ?? [];
       
-      debugPrint('🌐 [Backend] Received ${messagesData.length} messages from backend');
-      if (messagesData.isNotEmpty) {
-        debugPrint('🌐 [Backend] NEWEST message: ${messagesData.first}');
-        debugPrint('🌐 [Backend] OLDEST message: ${messagesData.last}');
-      }
-      
       final messages = messagesData
           .map((json) => MessageModel.fromJson(json as Map<String, dynamic>))
           .map((model) => model.toEntity())
@@ -362,8 +341,6 @@ class MessageRepositoryImpl implements MessageRepository {
       // Note: MessageModel.fromJson already converted userId to 'aico' for assistant messages
       for (final msg in messages) {
         final role = msg.userId == 'aico' ? 'assistant' : 'user';
-        
-        debugPrint('💾 [Backend Cache] ${msg.id.substring(0, 8)}... userId=${msg.userId}, role=$role');
         
         await _database.into(_database.messages).insertOnConflictUpdate(
           MessagesCompanion.insert(
