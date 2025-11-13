@@ -775,20 +775,143 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
         name="AMS Phase 1 - Consolidation State Tracking",
         description="Add consolidation_state table for tracking memory consolidation progress",
         sql_statements=[
-            # Create consolidation_state table
             """CREATE TABLE IF NOT EXISTS consolidation_state (
-                id TEXT PRIMARY KEY,
-                state_json TEXT NOT NULL,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                user_id TEXT NOT NULL,
+                last_consolidation_at TIMESTAMP,
+                messages_consolidated INTEGER DEFAULT 0,
+                memories_created INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'pending',
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id),
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
             )""",
-            
-            # Create index for recent state queries
-            "CREATE INDEX IF NOT EXISTS idx_consolidation_state_updated ON consolidation_state(updated_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_consolidation_status ON consolidation_state(status)",
+            "CREATE INDEX IF NOT EXISTS idx_consolidation_last_run ON consolidation_state(last_consolidation_at)"
         ],
         rollback_statements=[
             # Drop index and table
-            "DROP INDEX IF EXISTS idx_consolidation_state_updated",
+            "DROP INDEX IF EXISTS idx_consolidation_status",
+            "DROP INDEX IF EXISTS idx_consolidation_last_run",
             "DROP TABLE IF EXISTS consolidation_state",
+        ]
+    ),
+    
+    14: SchemaVersion(
+        version=14,
+        name="AMS Phase 3 - Behavioral Learning System",
+        description="Add tables for skill-based interaction learning with RLHF and Thompson Sampling",
+        sql_statements=[
+            # Skills table - user-agnostic templates
+            """CREATE TABLE IF NOT EXISTS skills (
+                skill_id TEXT PRIMARY KEY,
+                skill_name TEXT NOT NULL,
+                skill_type TEXT NOT NULL CHECK(skill_type IN ('base', 'user_created')),
+                trigger_context TEXT NOT NULL,
+                procedure_template TEXT NOT NULL,
+                dimension_vector TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_skills_type ON skills(skill_type)",
+            
+            # User-skill confidence mapping
+            """CREATE TABLE IF NOT EXISTS user_skill_confidence (
+                user_id TEXT NOT NULL,
+                skill_id TEXT NOT NULL,
+                confidence_score REAL DEFAULT 0.5 CHECK(confidence_score BETWEEN 0.0 AND 1.0),
+                usage_count INTEGER DEFAULT 0,
+                positive_count INTEGER DEFAULT 0,
+                negative_count INTEGER DEFAULT 0,
+                last_used_at TIMESTAMP,
+                PRIMARY KEY (user_id, skill_id),
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(skill_id) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_user_skill_confidence ON user_skill_confidence(user_id, confidence_score DESC)",
+            
+            # Feedback events table
+            """CREATE TABLE IF NOT EXISTS feedback_events (
+                event_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                skill_id TEXT,
+                reward INTEGER NOT NULL CHECK(reward IN (-1, 0, 1)),
+                reason TEXT,
+                free_text TEXT,
+                classified_categories TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                processed BOOLEAN DEFAULT FALSE,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(skill_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback_events(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_feedback_skill ON feedback_events(skill_id)",
+            "CREATE INDEX IF NOT EXISTS idx_feedback_processed ON feedback_events(processed)",
+            
+            # Trajectories table with retention policy
+            """CREATE TABLE IF NOT EXISTS trajectories (
+                trajectory_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                turn_number INTEGER NOT NULL,
+                user_input TEXT NOT NULL,
+                selected_skill_id TEXT,
+                ai_response TEXT NOT NULL,
+                feedback_reward INTEGER CHECK(feedback_reward IN (-1, 0, 1)),
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                archived BOOLEAN DEFAULT FALSE,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (selected_skill_id) REFERENCES skills(skill_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_trajectories_user_feedback ON trajectories(user_id, feedback_reward)",
+            "CREATE INDEX IF NOT EXISTS idx_trajectories_timestamp ON trajectories(timestamp)",
+            
+            # Thompson Sampling context-skill statistics
+            """CREATE TABLE IF NOT EXISTS context_skill_stats (
+                user_id TEXT NOT NULL,
+                context_bucket INTEGER NOT NULL CHECK(context_bucket BETWEEN 0 AND 99),
+                skill_id TEXT NOT NULL,
+                alpha REAL DEFAULT 1.0 CHECK(alpha >= 0.0),
+                beta REAL DEFAULT 1.0 CHECK(beta >= 0.0),
+                last_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, context_bucket, skill_id),
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(skill_id) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_context_stats_user_context ON context_skill_stats(user_id, context_bucket)",
+            
+            # Context-aware preference vectors (16 explicit dimensions)
+            """CREATE TABLE IF NOT EXISTS context_preference_vectors (
+                user_id TEXT NOT NULL,
+                context_bucket INTEGER NOT NULL CHECK(context_bucket BETWEEN 0 AND 99),
+                dimensions TEXT NOT NULL,
+                last_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, context_bucket),
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_preference_vectors_user ON context_preference_vectors(user_id)"
+        ],
+        rollback_statements=[
+            # Drop indexes
+            "DROP INDEX IF EXISTS idx_skills_type",
+            "DROP INDEX IF EXISTS idx_user_skill_confidence",
+            "DROP INDEX IF EXISTS idx_feedback_user",
+            "DROP INDEX IF EXISTS idx_feedback_skill",
+            "DROP INDEX IF EXISTS idx_feedback_processed",
+            "DROP INDEX IF EXISTS idx_trajectories_user_feedback",
+            "DROP INDEX IF EXISTS idx_trajectories_timestamp",
+            "DROP INDEX IF EXISTS idx_context_stats_user_context",
+            "DROP INDEX IF EXISTS idx_preference_vectors_user",
+            
+            # Drop tables
+            "DROP TABLE IF EXISTS context_preference_vectors",
+            "DROP TABLE IF EXISTS context_skill_stats",
+            "DROP TABLE IF EXISTS trajectories",
+            "DROP TABLE IF EXISTS feedback_events",
+            "DROP TABLE IF EXISTS user_skill_confidence",
+            "DROP TABLE IF EXISTS skills",
         ]
     )
 })

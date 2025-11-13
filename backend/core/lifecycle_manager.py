@@ -769,6 +769,7 @@ class BackendLifecycleManager:
         from backend.api.conversation.router import router as conversation_router
         from backend.api.memory_album import router as memory_album_router
         from backend.api.kg.router import router as kg_router
+        from backend.api.behavioral.router import router as behavioral_router
         
         # Mount routers with prefixes
         self.app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])

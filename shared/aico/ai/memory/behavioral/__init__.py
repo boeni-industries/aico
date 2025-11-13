@@ -1,5 +1,5 @@
 """
-Behavioral Learning Module (Phase 3 - Planned)
+Behavioral Learning Module (Phase 3)
 
 Implements skill-based interaction learning with RLHF for AICO's Adaptive Memory System.
 Enables the system to learn user preferences and adapt interaction styles through feedback.
@@ -11,12 +11,30 @@ This module provides:
 - Multilingual feedback classification
 - RLHF integration
 - Prompt template management
-
-NOTE: This module is a placeholder for Phase 3 implementation.
-      Components will be implemented after Phase 1.5 consolidation is complete.
 """
 
-# Phase 3 components - not yet implemented
-# These will be imported when the modules are created
+from .models import (
+    Skill,
+    UserSkillConfidence,
+    FeedbackEvent,
+    Trajectory,
+    ContextSkillStats,
+    PreferenceVector
+)
+from .skills import SkillStore
+from .thompson_sampling import ThompsonSamplingSelector
+from .preferences import PreferenceManager
 
-__all__ = []
+__all__ = [
+    # Data models
+    "Skill",
+    "UserSkillConfidence",
+    "FeedbackEvent",
+    "Trajectory",
+    "ContextSkillStats",
+    "PreferenceVector",
+    # Core components
+    "SkillStore",
+    "ThompsonSamplingSelector",
+    "PreferenceManager",
+]
