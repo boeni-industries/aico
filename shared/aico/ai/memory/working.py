@@ -64,7 +64,7 @@ class WorkingMemoryStore:
         self._initialized = False
         self._db_path = get_lmdb_path(self.config)
         self._named_dbs = self.config.get("core.memory.working.named_databases", [])
-        self._ttl_seconds = self.config.get("core.memory.working.ttl_seconds", 86400)  # Updated default to 24 hours
+        self._ttl_seconds = self.config.get("core.memory.working.ttl_seconds", 2592000)  # Default: 30 days (fallback if config missing)
 
     async def initialize(self) -> None:
         """Initialize LMDB environment and open named databases."""

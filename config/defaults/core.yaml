@@ -289,7 +289,7 @@ services:
 memory:
   # Working Memory (LMDB) - Session context and conversation history
   working:
-    ttl_seconds: 86400 # 24 hours TTL for conversation continuity
+    ttl_seconds: 2592000 # 30 days TTL for conversation continuity (was 24h/86400)
     # Named databases (sub-databases) within the LMDB environment
     named_databases:
       - "session_memory"
