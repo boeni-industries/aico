@@ -520,7 +520,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
 
   /// Handle behavioral feedback submission
   Future<void> _handleFeedback(String messageId, bool isPositive) async {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
     final theme = Theme.of(context);
     final accentColor = theme.colorScheme.primary;
     
@@ -531,12 +530,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     );
     
     if (!success) {
-      scaffoldMessenger.showSnackBar(
-        SnackBar(
-          content: const Text('Failed to submit feedback'),
-          backgroundColor: Colors.red.shade600,
-          behavior: SnackBarBehavior.floating,
-        ),
+      // Show elegant glassmorphic toast for errors
+      if (!mounted) return;
+      GlassmorphicToast.show(
+        context,
+        message: 'Failed to submit feedback',
+        icon: Icons.error_outline_rounded,
+        accentColor: Colors.red.shade400,
+        duration: const Duration(seconds: 2),
       );
       return;
     }
@@ -560,14 +561,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
             freeText: freeText,
           );
           
-          // Show success message
-          scaffoldMessenger.showSnackBar(
-            SnackBar(
-              content: const Text('Thank you for your feedback!'),
-              backgroundColor: accentColor,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 2),
-            ),
+          // Show elegant glassmorphic toast for success
+          if (!mounted) return;
+          GlassmorphicToast.show(
+            context,
+            message: 'Thank you for your feedback!',
+            icon: Icons.check_circle_outline_rounded,
+            accentColor: accentColor,
+            duration: const Duration(seconds: 2),
           );
         },
       ),
