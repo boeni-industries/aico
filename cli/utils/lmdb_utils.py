@@ -133,13 +133,16 @@ def dump_lmdb_db(db_name: str, limit: int, config: Optional[ConfigurationManager
     return table
 
 def tail_lmdb_db(db_name: str, limit: int, full: bool = False, config: Optional[ConfigurationManager] = None) -> Table:
-    """Show the last N key-value pairs from a specific named database."""
+    """Show the last N key-value pairs from a specific named database, sorted by timestamp."""
+    import json
+    from datetime import datetime
+    
     db_path = get_lmdb_path(config)
     if not db_path.exists():
         raise FileNotFoundError(f"LMDB database not found at {db_path}")
 
     table = Table(
-        title=f"✨ [bold cyan]Last {limit} entries from '{db_name}' Database[/bold cyan]",
+        title=f"✨ [bold cyan]Last {limit} entries from '{db_name}' Database (by timestamp)[/bold cyan]",
         title_justify="left",
         border_style="bright_blue",
         header_style="bold yellow",
@@ -168,7 +171,7 @@ def tail_lmdb_db(db_name: str, limit: int, full: bool = False, config: Optional[
             env.close()
             raise ValueError(f"Sub-database '{db_name}' is empty")
         
-        # Collect all entries first, then take the last N
+        # Collect all entries with timestamps for sorting
         all_entries = []
         for key, value in cursor:
             try:
@@ -177,16 +180,35 @@ def tail_lmdb_db(db_name: str, limit: int, full: bool = False, config: Optional[
                 key_str = repr(key)
             try:
                 value_str = value.decode('utf-8')
+                # Try to parse JSON to extract timestamp
+                try:
+                    value_json = json.loads(value_str)
+                    timestamp_str = value_json.get('timestamp') or value_json.get('_stored_at', '')
+                    # Parse timestamp for sorting
+                    if timestamp_str:
+                        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', ''))
+                    else:
+                        timestamp = datetime.min
+                except:
+                    # If JSON parsing fails, use key timestamp if available
+                    if ':' in key_str:
+                        try:
+                            timestamp = datetime.fromisoformat(key_str.split(':')[1].replace('Z', ''))
+                        except:
+                            timestamp = datetime.min
+                    else:
+                        timestamp = datetime.min
             except UnicodeDecodeError:
                 value_str = repr(value)
+                timestamp = datetime.min
             
-            # No truncation for better UX - show full content
-            all_entries.append((key_str, value_str))
+            all_entries.append((timestamp, key_str, value_str))
         
-        # Take the last N entries
+        # Sort by timestamp (newest last) and take the last N entries
+        all_entries.sort(key=lambda x: x[0])
         last_entries = all_entries[-limit:] if len(all_entries) > limit else all_entries
         
-        for key_str, value_str in last_entries:
+        for timestamp, key_str, value_str in last_entries:
             table.add_row(key_str, value_str)
     
     env.close()

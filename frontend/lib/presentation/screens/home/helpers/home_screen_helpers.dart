@@ -63,17 +63,29 @@ class HomeScreenHelpers {
     await ref.read(conversationProvider.notifier).sendMessage(trimmedText, stream: true);
   }
 
-  /// Scroll to bottom of conversation
-  static void scrollToBottom(ScrollController controller) {
-    // Use a slight delay to ensure content is fully rendered
+  /// Scroll to bottom of conversation with smooth, gentle animation
+  static void scrollToBottom(ScrollController controller, {bool instant = false}) {
+    // Use a delay to ensure content is fully rendered (especially for fade animations)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 50), () {
-        if (controller.hasClients) {
-          controller.animateTo(
-            controller.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-          );
+      Future.delayed(Duration(milliseconds: instant ? 700 : 100), () {
+        if (controller.hasClients && controller.position.maxScrollExtent > 0) {
+          if (instant) {
+            // Jump instantly to absolute bottom for initial load
+            controller.jumpTo(controller.position.maxScrollExtent);
+            // Double-check after a moment to ensure we're at the bottom
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (controller.hasClients) {
+                controller.jumpTo(controller.position.maxScrollExtent);
+              }
+            });
+          } else {
+            // Smooth, gentle scroll for new messages
+            controller.animateTo(
+              controller.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.easeInOutCubic,
+            );
+          }
         }
       });
     });

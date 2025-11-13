@@ -10,6 +10,7 @@ abstract class MessageRepository {
     String conversationId, {
     int? limit,
     String? beforeMessageId,
+    Function(List<Message>)? onBackgroundSyncComplete,
   });
   
   /// Get message by ID

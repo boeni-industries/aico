@@ -99,7 +99,7 @@ final class BehavioralFeedbackProvider
 }
 
 String _$behavioralFeedbackHash() =>
-    r'fa1c787868f20d9dffd7ede21a7faf26be6b7fc7';
+    r'ee3e5a0a917c44f90d2742f299396cecb653e492';
 
 /// Provider for feedback state management
 

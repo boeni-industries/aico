@@ -45,7 +45,7 @@ final class ConversationNotifierProvider
 }
 
 String _$conversationNotifierHash() =>
-    r'1079d09dd774753e5dd0d1e6a2b14c49ae7eb00a';
+    r'e85ea7f00e11d7d552ef79a96d2f2fe9bf02ac1d';
 
 /// Conversation provider using Riverpod Notifier
 
@@ -67,6 +67,53 @@ abstract class _$ConversationNotifier extends $Notifier<ConversationState> {
     element.handleValue(ref, created);
   }
 }
+
+/// Provider for message database
+
+@ProviderFor(messageDatabase)
+const messageDatabaseProvider = MessageDatabaseProvider._();
+
+/// Provider for message database
+
+final class MessageDatabaseProvider
+    extends
+        $FunctionalProvider<MessageDatabase, MessageDatabase, MessageDatabase>
+    with $Provider<MessageDatabase> {
+  /// Provider for message database
+  const MessageDatabaseProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'messageDatabaseProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$messageDatabaseHash();
+
+  @$internal
+  @override
+  $ProviderElement<MessageDatabase> $createElement($ProviderPointer pointer) =>
+      $ProviderElement(pointer);
+
+  @override
+  MessageDatabase create(Ref ref) {
+    return messageDatabase(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(MessageDatabase value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<MessageDatabase>(value),
+    );
+  }
+}
+
+String _$messageDatabaseHash() => r'7adf716d3d453516717060b0a5259c0f8e60aa1f';
 
 /// Provider for message repository
 
@@ -118,7 +165,7 @@ final class MessageRepositoryProvider
   }
 }
 
-String _$messageRepositoryHash() => r'04b5c34bc1f5d7ec0c12fa79f51e90898a4799cd';
+String _$messageRepositoryHash() => r'7ad658cd9209b3df2b61995a60760c7397aa63c0';
 
 /// Provider for send message use case
 

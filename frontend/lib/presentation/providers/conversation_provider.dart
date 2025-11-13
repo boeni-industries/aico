@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/core/providers/networking_providers.dart';
+import 'package:aico_frontend/data/database/message_database.dart' hide Message;
 import 'package:aico_frontend/data/repositories/message_repository_impl.dart';
 import 'package:aico_frontend/domain/entities/message.dart';
 import 'package:aico_frontend/domain/repositories/message_repository.dart';
@@ -45,7 +47,8 @@ class ThinkingTurn {
 /// State class for conversation management
 /// Following AICO guidelines: Clear separation of data state from UI state
 class ConversationState {
-  final List<Message> messages;
+  final List<Message> messages; // Currently displayed messages
+  final List<Message> allMessages; // All loaded messages for lazy loading
   final bool isLoading;
   final bool isSendingMessage;
   final bool isStreaming;
@@ -58,6 +61,7 @@ class ConversationState {
 
   const ConversationState({
     this.messages = const [],
+    this.allMessages = const [],
     this.isLoading = false,
     this.isSendingMessage = false,
     this.isStreaming = false,
@@ -71,6 +75,7 @@ class ConversationState {
 
   ConversationState copyWith({
     List<Message>? messages,
+    List<Message>? allMessages,
     bool? isLoading,
     bool? isSendingMessage,
     bool? isStreaming,
@@ -83,6 +88,7 @@ class ConversationState {
   }) {
     return ConversationState(
       messages: messages ?? this.messages,
+      allMessages: allMessages ?? this.allMessages,
       isLoading: isLoading ?? this.isLoading,
       isSendingMessage: isSendingMessage ?? this.isSendingMessage,
       isStreaming: isStreaming ?? this.isStreaming,
@@ -121,16 +127,113 @@ class ConversationNotifier extends _$ConversationNotifier {
     final authState = ref.read(authProvider);
     _userId = authState.user?.id ?? 'anonymous';
     
-    _initializeConversation();
-    return const ConversationState();
+    // Schedule cache load after build completes to avoid circular dependency
+    Future.microtask(() => _loadConversationFromCache());
+    return const ConversationState(isLoading: true);
   }
 
-  void _initializeConversation() {
+  Future<void> _loadConversationFromCache() async {
+    try {
+      var conversationId = state.currentConversationId;
+      debugPrint('🔍 [Cache Load] Conversation ID: $conversationId');
+      
+      // If no conversation ID, try to find the most recent one from cache
+      if (conversationId == null) {
+        debugPrint('🔎 [Cache Load] No conversation ID, checking for recent conversations...');
+        final allMessages = await _messageRepository.getMessages('default');
+        
+        if (allMessages.isEmpty) {
+          debugPrint('⏭️  [Cache Load] No cached conversations found');
+          AICOLog.info('No cached conversations found',
+            topic: 'conversation_provider/cache_load_skip');
+          
+          // Small delay to show skeleton loader briefly
+          await Future.delayed(const Duration(milliseconds: 300));
+          state = state.copyWith(isLoading: false);
+          return;
+        }
+        
+        // Use the conversation ID from the most recent message
+        conversationId = allMessages.first.conversationId;
+        debugPrint('📌 [Cache Load] Found recent conversation: $conversationId');
+      }
+
+      debugPrint('📥 [Cache Load] Fetching messages for conversation: $conversationId');
+      final allMessages = await _messageRepository.getMessages(
+        conversationId,
+        onBackgroundSyncComplete: (freshMessages) {
+          debugPrint('🔄 [Background Sync] Received ${freshMessages.length} fresh messages');
+          
+          // CRITICAL: Maintain the current display count, just update the data
+          // If user has loaded more messages via lazy loading, keep showing that many
+          final currentDisplayCount = state.messages.length;
+          final startIndex = freshMessages.length > currentDisplayCount 
+              ? freshMessages.length - currentDisplayCount 
+              : 0;
+          final updatedMessages = freshMessages.sublist(startIndex);
+          
+          debugPrint('🔄 [Background Sync] Maintaining ${updatedMessages.length} displayed messages');
+          state = state.copyWith(
+            messages: updatedMessages,
+            allMessages: freshMessages, // Update allMessages for lazy loading
+          );
+        },
+      );
+      debugPrint('✅ [Cache Load] Loaded ${allMessages.length} messages from cache');
+      
+      // Progressive disclosure: Show only the most recent 10 messages initially
+      // User can scroll up to load more (immersive, not overwhelming)
+      final recentMessages = allMessages.length > 10 
+          ? allMessages.sublist(allMessages.length - 10)
+          : allMessages;
+      
+      debugPrint('📊 [Cache Load] Displaying ${recentMessages.length} most recent messages (out of ${allMessages.length} total)');
+      debugPrint('📊 [Cache Load] First message: ${recentMessages.first.content.substring(0, 30)}...');
+      debugPrint('📊 [Cache Load] Last message: ${recentMessages.last.content.substring(0, 30)}...');
+      
+      state = state.copyWith(
+        messages: recentMessages,
+        allMessages: allMessages, // Store all for lazy loading
+        currentConversationId: conversationId,
+        isLoading: false,
+      );
+      
+      debugPrint('✅ [State Updated] messages.length=${state.messages.length}, allMessages.length=${state.allMessages.length}');
+      
+      AICOLog.info('Loaded conversation from cache',
+        topic: 'conversation_provider/cache_load',
+        extra: {'conversation_id': conversationId, 'message_count': recentMessages.length, 'total_count': allMessages.length});
+        
+    } catch (e, stackTrace) {
+      debugPrint('❌ [Cache Load] ERROR: $e');
+      debugPrint('📚 [Cache Load] Stack trace: $stackTrace');
+      AICOLog.error('Failed to load conversation from cache',
+        topic: 'conversation_provider/cache_load_error',
+        error: e,
+        extra: {'stack_trace': stackTrace.toString()});
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  /// Load more messages (lazy loading when scrolling up)
+  void loadMoreMessages({int additionalCount = 10}) {
+    final currentCount = state.messages.length;
+    final totalCount = state.allMessages.length;
     
-    // Initial state already has null conversation ID - backend will assign one for the first message
-    // No need to mutate state here as it causes circular dependency
+    if (currentCount >= totalCount) {
+      debugPrint('📊 [Lazy Load] All messages already displayed');
+      return; // All messages already shown
+    }
+    
+    // Calculate how many more messages to show (from the beginning)
+    final newCount = (currentCount + additionalCount).clamp(0, totalCount);
+    final startIndex = totalCount - newCount;
+    final expandedMessages = state.allMessages.sublist(startIndex);
+    
+    debugPrint('📊 [Lazy Load] Expanding from $currentCount to ${expandedMessages.length} messages');
+    
+    state = state.copyWith(messages: expandedMessages);
   }
-
 
   /// Send message with optional streaming response
   Future<void> sendMessage(String content, {bool stream = false}) async {
@@ -479,11 +582,18 @@ class ConversationNotifier extends _$ConversationNotifier {
   }
 }
 
+/// Provider for message database
+@riverpod
+MessageDatabase messageDatabase(Ref ref) {
+  return MessageDatabase();
+}
+
 /// Provider for message repository
 @riverpod
 MessageRepository messageRepository(Ref ref) {
   final apiClient = ref.read(unifiedApiClientProvider);
-  return MessageRepositoryImpl(apiClient);
+  final database = ref.read(messageDatabaseProvider);
+  return MessageRepositoryImpl(apiClient, database);
 }
 
 /// Provider for send message use case

@@ -169,11 +169,14 @@ class WorkingMemoryStore:
                         # Update temporal metadata on access
                         self._update_temporal_access(data)
                         history.append(data)
-                        if len(history) >= limit:
-                            break
+                        # Don't break early - collect ALL messages for this conversation
 
-            # LMDB iterates in lexicographical order, so we need to sort by timestamp
+            # CRITICAL: Sort by timestamp FIRST, then limit
+            # LMDB iterates in lexicographical key order, not timestamp order
             history.sort(key=lambda x: x.get("_stored_at"), reverse=True)
+            
+            # Now take the most recent N messages after sorting
+            history = history[:limit]
             
             logger.info(f"🔍 [WORKING_MEMORY] ✅ Retrieved {len(history)} messages from conversation history")
             return history

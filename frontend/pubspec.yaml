@@ -50,6 +50,10 @@ dependencies:
   crypto: ^3.0.3
   file_picker: ^8.1.6
   
+  # Database - Drift with SQLCipher encryption
+  drift: ^2.29.0
+  sqlcipher_flutter_libs: ^0.6.8
+  
   # HTTP client
   http: ^1.2.2
   dio: ^5.4.0
@@ -95,6 +99,7 @@ dev_dependencies:
   json_serializable: ^6.7.1
   riverpod_generator: ^3.0.3
   riverpod_lint: ^3.0.3
+  drift_dev: ^2.29.0  # Code generation for Drift
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

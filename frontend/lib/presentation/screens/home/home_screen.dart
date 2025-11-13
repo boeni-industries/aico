@@ -66,6 +66,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     
     // Listen to text changes for typing detection
     _messageController.addListener(_onTypingChanged);
+    _conversationController.addListener(_onScroll);
     
     // Initialize animation controllers for immersive effects
     _backgroundAnimationController = AnimationController(
@@ -81,6 +82,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     _glowAnimation = Tween<double>(begin: 0.3, end: 0.7).animate(
       CurvedAnimation(parent: _glowAnimationController, curve: Curves.easeInOut),
     );
+  }
+  
+  void _onScroll() {
+    // Lazy load more messages when scrolling near the top
+    if (_conversationController.hasClients) {
+      final position = _conversationController.position;
+      final conversationState = ref.read(conversationProvider);
+      
+      // If scrolled to within 500px of the top OR at the very top, load more messages
+      // Only load if we haven't shown all messages yet
+      if (position.pixels < 500 && 
+          conversationState.messages.length < conversationState.allMessages.length) {
+        debugPrint('📜 [Scroll] Triggering lazy load at ${position.pixels}px from top');
+        ref.read(conversationProvider.notifier).loadMoreMessages();
+      }
+    }
   }
   
   void _onTypingChanged() {
@@ -149,9 +166,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     // Listen for conversation changes to auto-scroll
     ref.listen<ConversationState>(conversationProvider, (previous, next) {
       // Auto-scroll when new messages are added OR when content/thinking changes (streaming)
+      bool shouldScroll = false;
+      
       if (previous != null) {
-        bool shouldScroll = false;
-        
         // New message added
         if (next.messages.length > previous.messages.length) {
           shouldScroll = true;
@@ -173,10 +190,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
         if (next.isStreaming && next.streamingThinking != previous.streamingThinking) {
           shouldScroll = true;
         }
-        
-        if (shouldScroll) {
-          HomeScreenHelpers.scrollToBottom(_conversationController);
+      } else {
+        // Initial load from cache - scroll to bottom instantly if messages exist
+        if (next.messages.isNotEmpty && !next.isLoading) {
+          HomeScreenHelpers.scrollToBottom(_conversationController, instant: true);
+          return; // Don't use shouldScroll for initial load
         }
+      }
+      
+      if (shouldScroll) {
+        HomeScreenHelpers.scrollToBottom(_conversationController); // Smooth scroll for new messages
       }
     });
     
@@ -316,26 +339,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
     final isDark = theme.brightness == Brightness.dark;
     final hasMessages = conversationState.messages.isNotEmpty;
     
-    if (conversationState.isLoading) {
-      return Center(
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: GlassTheme.ambientGlow(
-              color: accentColor,
-              intensity: 0.3,
-              blur: 30,
-            ),
-          ),
-          child: CircularProgressIndicator(
-            color: accentColor,
-            strokeWidth: 3,
-          ),
-        ),
-      );
-    }
-
+    // Removed skeleton loader - just show greeting or messages
+    
     if (conversationState.error != null) {
       return Center(
         child: Container(
@@ -382,30 +387,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
       );
     }
 
+    // Smooth fade transition from welcome to messages
     if (conversationState.messages.isEmpty) {
       return Center(
-        child: AnimatedBuilder(
-          animation: _glowAnimationController,
-          builder: (context, child) {
-            // Gentle fade-in only (no jitter, no scale)
-            final fadeOpacity = 0.85 + (_glowAnimation.value * 0.15);
-            
-            return Opacity(
-              opacity: fadeOpacity,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 48),
-                child: Text(
-                  'I\'m here',
-                  style: theme.textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.w200,
-                    letterSpacing: -0.3,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
-                    height: 1.2,
+        child: AnimatedOpacity(
+          opacity: conversationState.isLoading ? 0.5 : 1.0,
+          duration: const Duration(milliseconds: 400),
+          child: AnimatedBuilder(
+            animation: _glowAnimationController,
+            builder: (context, child) {
+              // Gentle fade-in only (no jitter, no scale)
+              final fadeOpacity = 0.85 + (_glowAnimation.value * 0.15);
+              
+              return Opacity(
+                opacity: fadeOpacity,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 48),
+                  child: Text(
+                    'I\'m here',
+                    style: theme.textTheme.displaySmall?.copyWith(
+                      fontWeight: FontWeight.w200,
+                      letterSpacing: -0.3,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                      height: 1.2,
+                    ),
                   ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
       );
     }
@@ -436,21 +446,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
           child: Scrollbar(
             controller: _conversationController,
             thumbVisibility: true,
-            child: ListView.builder(
-              controller: _conversationController,
-              padding: const EdgeInsets.all(24),
-              itemCount: conversationState.messages.length,
-              itemBuilder: (context, index) {
-                final message = conversationState.messages[index];
-                // Convert domain Message to presentation ConversationMessage
-                final conversationMessage = ConversationMessage(
-                  id: message.id,
-                  isFromAico: message.userId == 'aico',
-                  message: message.content,
-                  timestamp: message.timestamp,
-                );
-                return _buildMessageBubble(context, theme, accentColor, conversationMessage);
-              },
+            child: AnimatedOpacity(
+              opacity: conversationState.isLoading ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.easeOut,
+              child: ListView.builder(
+                controller: _conversationController,
+                padding: const EdgeInsets.all(24),
+                itemCount: conversationState.messages.length,
+                itemBuilder: (context, index) {
+                  final message = conversationState.messages[index];
+                  // Convert domain Message to presentation ConversationMessage
+                  final conversationMessage = ConversationMessage(
+                    id: message.id,
+                    isFromAico: message.userId == 'aico',
+                    message: message.content,
+                    timestamp: message.timestamp,
+                  );
+                  
+                  // Staggered fade-in animation for messages
+                  return AnimatedOpacity(
+                    opacity: 1.0,
+                    duration: Duration(milliseconds: 300 + (index * 50)),
+                    curve: Curves.easeOut,
+                    child: _buildMessageBubble(context, theme, accentColor, conversationMessage),
+                  );
+                },
+              ),
             ),
           ),
         ),
