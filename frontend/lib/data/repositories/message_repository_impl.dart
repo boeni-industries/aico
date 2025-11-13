@@ -102,6 +102,7 @@ class MessageRepositoryImpl implements MessageRepository {
     Function(String finalResponse, {String? thinking}) onComplete,
     Function(String error) onError, {
     Function(String conversationId)? onConversationId,
+    Function(String messageId)? onMessageId,  // Callback to pass backend message_id
   }) async {
     try {
       String? backendConversationId;
@@ -118,6 +119,7 @@ class MessageRepositoryImpl implements MessageRepository {
 
       String accumulatedContent = '';
       String accumulatedThinking = '';
+      String? backendMessageId;
 
       await _apiClient.requestStream(
         'POST',
@@ -132,6 +134,22 @@ class MessageRepositoryImpl implements MessageRepository {
         onChunk: (Map<String, dynamic> chunkData) {
           final chunk = chunkData['content'] as String? ?? '';
           final contentType = chunkData['content_type'] as String? ?? 'response';
+          
+          // Extract message_id from final chunk
+          if (chunkData['done'] == true) {
+            print('📝 [REPOSITORY] Final chunk received: done=${chunkData['done']}, has_message_id=${chunkData.containsKey('message_id')}');
+            if (chunkData.containsKey('message_id')) {
+              backendMessageId = chunkData['message_id'] as String?;
+              print('📝 [REPOSITORY] Extracted backend message_id: $backendMessageId');
+              
+              // Notify caller of backend message_id
+              if (backendMessageId != null && onMessageId != null) {
+                onMessageId(backendMessageId!);
+              }
+            } else {
+              print('📝 [REPOSITORY] ❌ Final chunk does NOT contain message_id! Keys: ${chunkData.keys}');
+            }
+          }
 
           if (contentType == 'thinking') {
             accumulatedThinking += chunk;
@@ -144,6 +162,11 @@ class MessageRepositoryImpl implements MessageRepository {
         onComplete: () {
           if (backendConversationId != null && onConversationId != null) {
             onConversationId(backendConversationId!);
+          }
+          
+          // Update message ID if backend provided one
+          if (backendMessageId != null) {
+            message = message.copyWith(id: backendMessageId!);
           }
 
           onComplete(accumulatedContent, thinking: accumulatedThinking.isNotEmpty ? accumulatedThinking : null);

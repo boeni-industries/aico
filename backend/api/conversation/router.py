@@ -227,9 +227,12 @@ async def send_message_with_auto_thread(
                                     "done": chunk["done"],
                                     "content_type": chunk.get("content_type", "response")  # Include content_type for frontend routing
                                 }
-                                # Include conversation_id in the final chunk
+                                # Include conversation_id and message_id in the final chunk
                                 if chunk["done"]:
                                     chunk_data["conversation_id"] = conversation_id
+                                    chunk_data["message_id"] = message_id  # Add message_id for feedback linking
+                                    print(f"🔍 [API_STREAMING] 📤 Sending final chunk with message_id: {message_id}")
+                                    logger.info(f"🔍 [API_STREAMING] 📤 Sending final chunk with message_id: {message_id}")
                                 yield json.dumps(chunk_data) + "\n"
                                 
                         except asyncio.TimeoutError:
@@ -420,10 +423,13 @@ async def my_conversation_websocket(websocket: WebSocket):
             try:
                 # TODO: Filter by user_id instead of conversation_id once WebSocket auth is implemented
                 if hasattr(message, 'message') and hasattr(message.message, 'text'):
+                    # Use message_id from backend if available, otherwise generate one
+                    msg_id = getattr(message, 'message_id', None) or str(uuid.uuid4())
+                    
                     # Create structured WebSocket response
                     ai_response = WebSocketAIResponse(
                         conversation_id=f"user_conversation_{connection_id}",
-                        message_id=str(uuid.uuid4()),
+                        message_id=msg_id,  # Use actual message_id from backend
                         message=message.message.text,
                         confidence=getattr(message, 'confidence', None),
                         processing_time_ms=getattr(message, 'processing_time_ms', None)

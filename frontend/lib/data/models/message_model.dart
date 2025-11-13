@@ -16,7 +16,7 @@ class MessageModel extends Message {
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
     return MessageModel(
-      id: json['id'] as String,
+      id: json['message_id'] as String? ?? json['id'] as String, // Use message_id from backend, fallback to id
       content: json['content'] as String,
       userId: json['user_id'] as String,
       conversationId: json['conversation_id'] as String,
