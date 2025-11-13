@@ -22,6 +22,7 @@ class InteractiveMessageBubble extends StatefulWidget {
   final Color accentColor;
   final String? messageId;
   final String? conversationId;
+  final Function(bool isPositive)? onFeedback;
 
   const InteractiveMessageBubble({
     super.key,
@@ -32,6 +33,7 @@ class InteractiveMessageBubble extends StatefulWidget {
     required this.accentColor,
     this.messageId,
     this.conversationId,
+    this.onFeedback,
   });
 
   @override
@@ -151,6 +153,7 @@ class _InteractiveMessageBubbleState extends State<InteractiveMessageBubble> {
                     accentColor: widget.accentColor,
                     messageId: widget.messageId,
                     conversationId: widget.conversationId,
+                    onFeedback: widget.onFeedback,
                     onDismiss: () {
                       setState(() {
                         _showActionBar = false;

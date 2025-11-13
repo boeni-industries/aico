@@ -34,6 +34,9 @@ class MessageActionBar extends ConsumerStatefulWidget {
   
   /// Conversation ID for remembering
   final String? conversationId;
+  
+  /// Callback when feedback is submitted (thumbs up/down)
+  final Function(bool isPositive)? onFeedback;
 
   const MessageActionBar({
     super.key,
@@ -43,6 +46,7 @@ class MessageActionBar extends ConsumerStatefulWidget {
     this.onDismiss,
     this.messageId,
     this.conversationId,
+    this.onFeedback,
   });
 
   @override
@@ -57,6 +61,9 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
 
   // Track which action was just executed for visual feedback
   String? _executedAction;
+  
+  // Track feedback state (null = no feedback, true = thumbs up, false = thumbs down)
+  bool? _feedbackGiven;
 
   @override
   void initState() {
@@ -104,6 +111,32 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
     });
 
     // Reset after animation completes
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (mounted) {
+        setState(() {
+          _executedAction = null;
+        });
+      }
+    });
+  }
+  
+  /// Handle feedback (thumbs up/down)
+  Future<void> _handleFeedback(bool isPositive) async {
+    if (widget.messageId == null) return;
+
+    // Haptic feedback
+    HapticFeedback.lightImpact();
+
+    // Update feedback state
+    setState(() {
+      _feedbackGiven = isPositive;
+      _executedAction = isPositive ? 'thumbs_up' : 'thumbs_down';
+    });
+
+    // Call callback to open detailed feedback dialog
+    widget.onFeedback?.call(isPositive);
+
+    // Reset executed action after animation
     Future.delayed(const Duration(milliseconds: 700), () {
       if (mounted) {
         setState(() {
@@ -226,12 +259,46 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
                   
                   // AICO-specific actions
                   if (widget.isFromAico) ...[
-                    // Regenerate Response
+                    // Divider
+                    Container(
+                      width: 1,
+                      height: 24,
+                      margin: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.white.withValues(alpha: 0.0),
+                            Colors.white.withValues(alpha: isDark ? 0.2 : 0.3),
+                            Colors.white.withValues(alpha: 0.0),
+                          ],
+                        ),
+                      ),
+                    ),
+                    
+                    // Thumbs Up
                     _buildActionButton(
-                      icon: Icons.refresh_rounded,
-                      tooltip: 'Regenerate response',
-                      onTap: () {}, // TODO: Implement
-                      isEnabled: false,
+                      icon: _executedAction == 'thumbs_up' 
+                          ? Icons.check_rounded 
+                          : (_feedbackGiven == true ? Icons.thumb_up : Icons.thumb_up_outlined),
+                      tooltip: 'Helpful response',
+                      onTap: () => _handleFeedback(true),
+                      isExecuted: _executedAction == 'thumbs_up',
+                      isEnabled: widget.messageId != null && widget.onFeedback != null,
+                      isActive: _feedbackGiven == true,
+                    ),
+                    
+                    // Thumbs Down
+                    _buildActionButton(
+                      icon: _executedAction == 'thumbs_down'
+                          ? Icons.check_rounded
+                          : (_feedbackGiven == false ? Icons.thumb_down : Icons.thumb_down_outlined),
+                      tooltip: 'Needs improvement',
+                      onTap: () => _handleFeedback(false),
+                      isExecuted: _executedAction == 'thumbs_down',
+                      isEnabled: widget.messageId != null && widget.onFeedback != null,
+                      isActive: _feedbackGiven == false,
                     ),
                   ],
                 ],
@@ -248,6 +315,7 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
     required VoidCallback onTap,
     bool isExecuted = false,
     bool isEnabled = true,
+    bool isActive = false,
   }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -258,6 +326,9 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
       iconColor = theme.colorScheme.onSurface.withValues(alpha: 0.3);
     } else if (isExecuted) {
       // Bright success state - accent color
+      iconColor = widget.accentColor;
+    } else if (isActive) {
+      // Active feedback state - full accent color
       iconColor = widget.accentColor;
     } else {
       // Normal state - accent color (consistent with toolbar)
@@ -283,7 +354,7 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
             alignment: Alignment.center,
             // Prominent background highlight
             decoration: BoxDecoration(
-              color: isExecuted
+              color: (isExecuted || isActive)
                   ? widget.accentColor.withValues(alpha: 0.35) // Much more visible
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(8),

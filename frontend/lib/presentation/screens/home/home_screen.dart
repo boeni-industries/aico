@@ -17,8 +17,10 @@ import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:aico_frontend/presentation/widgets/chat/interactive_message_bubble.dart';
+import 'package:aico_frontend/presentation/widgets/chat/feedback_dialog.dart';
 import 'package:aico_frontend/presentation/widgets/common/glassmorphic_toast.dart';
 import 'package:aico_frontend/presentation/widgets/conversation/share_conversation_modal.dart';
+import 'package:aico_frontend/presentation/providers/behavioral_feedback_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -499,6 +501,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
       accentColor: accentColor,
       messageId: message.id,
       conversationId: conversationState.currentConversationId,
+      onFeedback: message.isFromAico && message.id != null
+          ? (isPositive) => _handleFeedback(message.id!, isPositive)
+          : null,
     );
   }
 
@@ -510,6 +515,62 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
       controller: _messageController,
       focusNode: _messageFocusNode,
       sendButtonKey: _sendButtonKey,
+    );
+  }
+
+  /// Handle behavioral feedback submission
+  Future<void> _handleFeedback(String messageId, bool isPositive) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final theme = Theme.of(context);
+    final accentColor = theme.colorScheme.primary;
+    
+    // Submit immediate feedback (thumbs only)
+    final success = await ref.read(behavioralFeedbackProvider.notifier).submitFeedback(
+      messageId: messageId,
+      isPositive: isPositive,
+    );
+    
+    if (!success) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: const Text('Failed to submit feedback'),
+          backgroundColor: Colors.red.shade600,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    
+    // Show detailed feedback dialog
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierColor: Colors.transparent, // Dialog has its own backdrop
+      builder: (context) => FeedbackDialog(
+        isPositive: isPositive,
+        messageId: messageId,
+        accentColor: accentColor,
+        onSubmit: (reason, freeText) async {
+          // Submit detailed feedback
+          await ref.read(behavioralFeedbackProvider.notifier).submitFeedback(
+            messageId: messageId,
+            isPositive: isPositive,
+            reason: reason,
+            freeText: freeText,
+          );
+          
+          // Show success message
+          scaffoldMessenger.showSnackBar(
+            SnackBar(
+              content: const Text('Thank you for your feedback!'),
+              backgroundColor: accentColor,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        },
+      ),
     );
   }
 

@@ -59,7 +59,7 @@ final class MemoryAlbumRepositoryProvider
 }
 
 String _$memoryAlbumRepositoryHash() =>
-    r'cc3f64e7a79db06462a9835b05f693cb2b37c2ab';
+    r'6bc849512c544343495e9163cfac60330c677225';
 
 /// Notifier for managing memories
 
@@ -98,7 +98,7 @@ final class MemoryAlbumNotifierProvider
 }
 
 String _$memoryAlbumNotifierHash() =>
-    r'8347bb4218a857c58843d7f70753f673fb63e12b';
+    r'8a75e928f95e262d4667359b1028375ca79fef9e';
 
 /// Notifier for managing memories
 

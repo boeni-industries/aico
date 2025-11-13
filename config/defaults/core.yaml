@@ -361,9 +361,9 @@ memory:
       max_age_hours: 24  # Only process messages from last 24 hours
       max_concurrent_extractions: 4  # Parallel message processing (LLM queues internally)
   
-  # Behavioral Learning - Skill-based interaction with RLHF (Phase 3 - not yet implemented)
+  # Behavioral Learning - Skill-based interaction with RLHF (Phase 3)
   behavioral:
-    enabled: false  # Disabled until Phase 3 implementation
+    enabled: true  # ENABLED - Phase 3 implementation complete
     learning_rate: 0.1  # How quickly confidence scores adjust to feedback
     exploration_rate: 0.1  # Probability of trying lower-confidence skills
     max_skills_per_user: 100  # Maximum learned skills per user
@@ -379,7 +379,7 @@ memory:
     
     # Contextual bandit learning (Thompson Sampling)
     contextual_bandit:
-      enabled: false  # Disabled until Phase 3
+      enabled: true  # ENABLED - Phase 3 implementation complete
       algorithm: "thompson_sampling"  # Thompson Sampling for exploration/exploitation
       update_interval_hours: 24  # Run batch learning daily at 4 AM
       min_trajectories: 10  # Minimum trajectories needed for update
@@ -388,7 +388,7 @@ memory:
     
     # Trajectory logging for learning
     trajectory_logging:
-      enabled: false  # Disabled until Phase 3
+      enabled: true  # ENABLED - Phase 3 implementation complete
       retention_days: 90  # Archive after 90 days
       hard_delete_days: 365  # Delete after 1 year
       keep_feedback_indefinitely: true  # Never delete trajectories with feedback
