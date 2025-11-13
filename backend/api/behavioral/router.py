@@ -18,7 +18,7 @@ from .schemas import FeedbackRequest, FeedbackResponse
 
 logger = get_logger("backend", "api.behavioral")
 
-router = APIRouter(prefix="/api/v1/behavioral", tags=["behavioral"])
+router = APIRouter()
 
 
 @router.post("/feedback", response_model=FeedbackResponse)
@@ -40,7 +40,16 @@ async def submit_feedback(
     Returns:
         FeedbackResponse with status and updated confidence
     """
-    user_id = current_user["uuid"]
+    user_id = current_user["user_uuid"]
+    
+    logger.info("📊 [FEEDBACK] Received feedback submission", extra={
+        "user_id": user_id,
+        "message_id": request.message_id,
+        "skill_id": request.skill_id,
+        "reward": request.reward,
+        "has_reason": request.reason is not None,
+        "has_free_text": request.free_text is not None
+    })
     
     try:
         # Create feedback event
@@ -56,6 +65,11 @@ async def submit_feedback(
             timestamp=datetime.utcnow(),
             processed=False
         )
+        
+        logger.info("📊 [FEEDBACK] Created feedback event", extra={
+            "event_id": event_id,
+            "user_id": user_id
+        })
         
         # Store feedback event
         db.execute(
@@ -77,11 +91,20 @@ async def submit_feedback(
         )
         db.commit()
         
+        logger.info("📊 [FEEDBACK] Feedback event stored in database", extra={
+            "event_id": event_id,
+            "table": "feedback_events"
+        })
+        
         # Update skill confidence if skill_id provided and reward is not neutral
         skill_updated = False
         new_confidence = None
         
         if request.skill_id and request.reward != 0:
+            logger.info("📊 [FEEDBACK] Updating skill confidence", extra={
+                "skill_id": request.skill_id,
+                "reward": request.reward
+            })
             skill_store = SkillStore(db)
             new_confidence = await skill_store.update_confidence(
                 user_id=user_id,
@@ -90,27 +113,41 @@ async def submit_feedback(
             )
             skill_updated = True
             
-            logger.info("Skill confidence updated from feedback", extra={
+            logger.info("📊 [FEEDBACK] ✅ Skill confidence updated", extra={
                 "user_id": user_id,
                 "skill_id": request.skill_id,
                 "reward": request.reward,
                 "new_confidence": new_confidence
             })
+        else:
+            logger.info("📊 [FEEDBACK] Skipping skill confidence update", extra={
+                "skill_id": request.skill_id,
+                "reward": request.reward,
+                "reason": "no_skill_id" if not request.skill_id else "neutral_reward"
+            })
         
-        logger.info("Feedback event stored", extra={
+        logger.info("📊 [FEEDBACK] ✅ Feedback processing complete", extra={
             "event_id": event_id,
             "user_id": user_id,
             "message_id": request.message_id,
             "reward": request.reward,
-            "skill_updated": skill_updated
+            "skill_updated": skill_updated,
+            "new_confidence": new_confidence
         })
         
-        return FeedbackResponse(
+        response = FeedbackResponse(
             status="success",
             skill_updated=skill_updated,
             new_confidence=new_confidence,
             event_id=event_id
         )
+        
+        logger.info("📊 [FEEDBACK] Returning response", extra={
+            "status": response.status,
+            "event_id": response.event_id
+        })
+        
+        return response
         
     except Exception as e:
         logger.error(f"Failed to process feedback: {e}", extra={

@@ -28,7 +28,7 @@ class BehavioralRemoteDataSource {
     try {
       final response = await _apiClient.request<Map<String, dynamic>>(
         'POST',
-        '/api/v1/behavioral/feedback',
+        '/behavioral/feedback',
         data: {
           'message_id': messageId,
           'reward': reward,

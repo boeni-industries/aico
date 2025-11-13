@@ -793,6 +793,9 @@ class BackendLifecycleManager:
         self.app.include_router(kg_router, prefix="/api/v1/kg", tags=["knowledge-graph"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/kg", "tags": ["knowledge-graph"]})
         
+        self.app.include_router(behavioral_router, prefix="/api/v1/behavioral", tags=["behavioral"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/behavioral", "tags": ["behavioral"]})
+        
     
     def _display_routes(self) -> None:
         """Display available API route groups"""

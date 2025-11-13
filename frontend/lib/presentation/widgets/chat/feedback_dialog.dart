@@ -57,9 +57,17 @@ class _FeedbackDialogState extends State<FeedbackDialog>
   bool _isSubmitting = false;
 
   // Quick tags based on sentiment
-  List<String> get _quickTags => widget.isPositive
-      ? ['Perfect!', 'Very helpful', 'Clear explanation', 'Just right']
-      : ['Too long', 'Too brief', 'Wrong tone', 'Not helpful', 'Confusing'];
+  // Quick tag options - only for negative feedback (backend schema)
+  // Backend expects: too_verbose, too_brief, wrong_tone, not_helpful, incorrect_info
+  List<Map<String, String>> get _quickTags => widget.isPositive
+      ? [] // No predefined tags for positive feedback - use free text
+      : [
+          {'label': 'Too verbose', 'value': 'too_verbose'},
+          {'label': 'Too brief', 'value': 'too_brief'},
+          {'label': 'Wrong tone', 'value': 'wrong_tone'},
+          {'label': 'Not helpful', 'value': 'not_helpful'},
+          {'label': 'Incorrect info', 'value': 'incorrect_info'},
+        ];
 
   @override
   void initState() {
@@ -176,10 +184,11 @@ class _FeedbackDialogState extends State<FeedbackDialog>
                           ],
                         ),
                         padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+                        child: SingleChildScrollView(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                             // Header
                             _buildHeader(theme, isDark),
                             
@@ -198,6 +207,7 @@ class _FeedbackDialogState extends State<FeedbackDialog>
                             // Actions
                             _buildActions(theme, isDark),
                           ],
+                        ),
                         ),
                       ),
                     ),
@@ -296,8 +306,10 @@ class _FeedbackDialogState extends State<FeedbackDialog>
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: _quickTags.map((tag) {
-            final isSelected = _selectedTag == tag;
+          children: _quickTags.map((tagMap) {
+            final tagValue = tagMap['value']!;
+            final tagLabel = tagMap['label']!;
+            final isSelected = _selectedTag == tagValue;
             return Material(
               color: Colors.transparent,
               borderRadius: BorderRadius.circular(20),
@@ -305,7 +317,7 @@ class _FeedbackDialogState extends State<FeedbackDialog>
                 onTap: () {
                   HapticFeedback.lightImpact();
                   setState(() {
-                    _selectedTag = isSelected ? null : tag;
+                    _selectedTag = isSelected ? null : tagValue;
                   });
                 },
                 borderRadius: BorderRadius.circular(20),
@@ -330,7 +342,7 @@ class _FeedbackDialogState extends State<FeedbackDialog>
                     ),
                   ),
                   child: Text(
-                    tag,
+                    tagLabel,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: isSelected
                           ? widget.accentColor
@@ -373,12 +385,14 @@ class _FeedbackDialogState extends State<FeedbackDialog>
               width: 1.0,
             ),
           ),
-          child: TextField(
-            controller: _textController,
-            focusNode: _textFocusNode,
-            maxLines: 3,
-            maxLength: 500,
-            decoration: InputDecoration(
+          child: Material(
+            color: Colors.transparent,
+            child: TextField(
+              controller: _textController,
+              focusNode: _textFocusNode,
+              maxLines: 3,
+              maxLength: 500,
+              decoration: InputDecoration(
               hintText: 'Any additional thoughts...',
               hintStyle: TextStyle(
                 color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
@@ -391,6 +405,7 @@ class _FeedbackDialogState extends State<FeedbackDialog>
             ),
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurface,
+            ),
             ),
           ),
         ),

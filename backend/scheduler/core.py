@@ -52,7 +52,10 @@ class TaskRegistry:
             "backend.scheduler.tasks.maintenance",
             "backend.scheduler.tasks.ams_consolidation",  # AMS Phase 1.5
             "backend.scheduler.tasks.kg_consolidation",  # KG consolidation
-            "backend.scheduler.tasks.lmdb_cleanup"  # LMDB cleanup
+            "backend.scheduler.tasks.lmdb_cleanup",  # LMDB cleanup
+            "backend.scheduler.tasks.ams_feedback_classification",  # AMS Phase 3
+            "backend.scheduler.tasks.ams_thompson_sampling",  # AMS Phase 3
+            "backend.scheduler.tasks.ams_trajectory_cleanup"  # AMS Phase 3
         ]
         
         for module_name in builtin_modules:
