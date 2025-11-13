@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Dict, Any
 
 from aico.core.logging import get_logger
-from backend.auth.dependencies import get_current_user
-from backend.dependencies import get_database
+from backend.api.conversation.dependencies import get_current_user
+from backend.core.lifecycle_manager import get_database
 from aico.ai.memory.behavioral import SkillStore, FeedbackEvent
 
 from .schemas import FeedbackRequest, FeedbackResponse

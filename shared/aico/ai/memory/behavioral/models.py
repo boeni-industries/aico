@@ -5,7 +5,7 @@ Pydantic models for skill-based interaction learning with RLHF.
 """
 
 from pydantic import BaseModel, Field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 
 
@@ -19,7 +19,7 @@ class Skill(BaseModel):
     skill_id: str
     skill_name: str
     skill_type: str = Field(..., pattern="^(base|user_created)$")
-    trigger_context: Dict[str, any]  # JSON: {intent: [...], time_of_day: ...}
+    trigger_context: Dict[str, Any]  # JSON: {intent: [...], time_of_day: ...}
     procedure_template: str  # Prompt template to inject
     dimension_vector: List[float] = Field(..., min_length=16, max_length=16)  # 16 explicit dimensions
     created_at: datetime = Field(default_factory=datetime.utcnow)
