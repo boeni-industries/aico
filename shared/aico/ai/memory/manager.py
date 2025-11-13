@@ -672,7 +672,10 @@ class MemoryManager(BaseAIProcessor):
         try:
             # Store in working memory (LMDB) - short-term conversation state
             if self._working_store:
+                import uuid
+                message_id = str(uuid.uuid4())
                 message_data = {
+                    "message_id": message_id,  # Unique message identifier
                     "user_id": user_id,  # CRITICAL: Add user_id for proper retrieval
                     "conversation_id": conversation_id,
                     "content": content,

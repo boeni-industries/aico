@@ -319,6 +319,7 @@ async def send_message_with_auto_thread(
 async def get_my_messages(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=100, description="Messages per page"),
+    conversation_id: Optional[str] = Query(None, description="Filter by conversation ID"),
     since: Optional[datetime] = Query(None, description="Show messages after this timestamp"),
     current_user = Depends(get_current_user)
 ):
@@ -326,20 +327,72 @@ async def get_my_messages(
     Get my message history (user-scoped)
     
     Returns paginated message history for the authenticated user.
-    Semantic memory provides context continuity without explicit thread management.
+    Messages are retrieved from working memory (LMDB) with 24-hour retention.
     """
     try:
         user_id = current_user['user_uuid']
         
-        # TODO: Retrieve user's messages from semantic memory system
-        # This would query the working memory and semantic memory stores
-        # for messages belonging to this user, with time-based pagination
+        # Get memory manager from AI registry
+        from aico.ai import ai_registry
+        memory_manager = ai_registry.get("memory")
+        
+        if not memory_manager:
+            logger.warning("Memory manager not available")
+            return MessageHistoryResponse(
+                success=True,
+                messages=[],
+                conversation_id=conversation_id or f"user_{user_id}",
+                total_count=0,
+                page=page,
+                page_size=page_size
+            )
+        
+        # Retrieve messages from working memory
+        if conversation_id:
+            # Get messages for specific conversation
+            raw_messages = await memory_manager._working_store.retrieve_conversation_history(
+                conversation_id=conversation_id,
+                limit=page_size * page  # Get all messages up to current page
+            )
+        else:
+            # Get all messages for user across conversations
+            raw_messages = await memory_manager._working_store.retrieve_user_history(
+                user_id=user_id,
+                limit=page_size * page
+            )
+        
+        # Filter by timestamp if specified
+        if since:
+            raw_messages = [
+                msg for msg in raw_messages
+                if datetime.fromisoformat(msg.get('timestamp', '').replace('Z', '')) >= since
+            ]
+        
+        # Apply pagination
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated_messages = raw_messages[start_idx:end_idx]
+        
+        # Format messages for frontend
+        formatted_messages = []
+        for msg in paginated_messages:
+            formatted_messages.append({
+                "id": msg.get("message_id", f"{msg.get('conversation_id')}_{msg.get('timestamp')}"),
+                "conversation_id": msg.get("conversation_id"),
+                "user_id": msg.get("user_id"),
+                "content": msg.get("content", ""),
+                "role": msg.get("role", "user"),
+                "timestamp": msg.get("timestamp"),
+                "message_type": msg.get("message_type", "text")
+            })
+        
+        logger.info(f"Retrieved {len(formatted_messages)} messages for user {user_id} (page {page})")
         
         return MessageHistoryResponse(
             success=True,
-            messages=[],
-            conversation_id=f"user_{user_id}",  # User-scoped identifier
-            total_count=0,
+            messages=formatted_messages,
+            conversation_id=conversation_id or f"user_{user_id}",
+            total_count=len(raw_messages),
             page=page,
             page_size=page_size
         )
@@ -349,6 +402,8 @@ async def get_my_messages(
             "user_id": current_user.get('user_uuid', 'unknown'),
             "error": str(e)
         })
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
             detail="Failed to retrieve message history"

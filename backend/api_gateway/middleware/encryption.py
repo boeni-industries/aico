@@ -134,9 +134,26 @@ class EncryptionMiddleware:
                     if "client_id" in request_data:
                         client_id = request_data["client_id"]
                         channel = self.channels.get(client_id)
-                        self.logger.debug(f"Found client_id in request: {client_id}")
+                        self.logger.debug(f"Found client_id in request body: {client_id}")
                 except:
                     pass
+            
+            # For GET requests, check query parameters and headers for client_id
+            if not channel and request.method == "GET":
+                # Try X-Client-ID header
+                header_client_id = request.headers.get("x-client-id")
+                if header_client_id:
+                    client_id = header_client_id
+                    channel = self.channels.get(client_id)
+                    self.logger.debug(f"Found client_id in X-Client-ID header: {client_id}")
+                
+                # Try query parameter
+                if not channel:
+                    query_client_id = request.query_params.get("client_id")
+                    if query_client_id:
+                        client_id = query_client_id
+                        channel = self.channels.get(client_id)
+                        self.logger.debug(f"Found client_id in query params: {client_id}")
             
             # Fallback to generated client_id if not found in request
             if not channel:
@@ -378,15 +395,10 @@ class EncryptionMiddleware:
         """Check if request should skip encryption"""
         path = request.url.path
         
-        # Always skip encryption for these public endpoints
+        # Public endpoints that don't require encryption
         public_endpoints = [
-            "/docs",
-            "/redoc", 
-            "/openapi.json",
-            "/api/v1/health",         # Public gateway health check
-            "/api/v1/health/",        # Public gateway health check (with trailing slash)
-            "/api/v1/health/detailed", # Detailed health check
-            "/api/v1/health/detailed/", # Detailed health check (with trailing slash)
+            "/api/v1/health",         # Health check endpoint
+            "/api/v1/health/",        # Health check endpoint (with trailing slash)
             "/api/v1/handshake",      # Encryption session establishment
             "/api/v1/handshake/"      # Encryption session establishment (with trailing slash)
         ]
