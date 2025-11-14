@@ -1,5 +1,5 @@
 shared: 0.8.0
-cli: 1.0.0
+cli: 1.1.0
 backend: 1.0.0
 frontend: 1.0.0
 studio: 0.0.1
