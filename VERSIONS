@@ -1,6 +1,6 @@
 shared: 0.7.0
 cli: 1.0.0
 backend: 1.0.0
-frontend: 0.3.0
+frontend: 0.4.0
 studio: 0.0.1
 modelservice: 1.0.0
