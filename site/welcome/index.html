@@ -548,6 +548,29 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/state-streaming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    State Streaming
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1725,6 +1748,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../concepts/memory/ams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Adaptive Memory
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../concepts/memory/hybrid-search/" class="md-nav__link">
         
   
@@ -1817,29 +1863,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../concepts/memory/memory_roadmap/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    Roadmap
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../concepts/memory/semantic_knowledge_graph_memory/" class="md-nav__link">
         
   
@@ -1863,7 +1886,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../concepts/memory/RESEARCH_SUMMARY/" class="md-nav__link">
+      <a href="../concepts/memory/kg_research_summary/" class="md-nav__link">
         
   
   
@@ -2959,6 +2982,29 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/developer/gql-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    GQL Reference
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3894,77 +3940,106 @@
 </ul>
 <h2 id="key-capabilities">🚀 Key Capabilities<a class="headerlink" href="#key-capabilities" title="Permanent link">&para;</a></h2>
 <p>AICO is engineered to deliver a truly companionable, proactive, and privacy-first AI experience. Its capabilities span conversation, memory, emotion, agency, embodiment, privacy, extensibility, and system administration.</p>
-<h3 id="social-relationship-intelligence">👥 <strong>Social Relationship Intelligence</strong><a class="headerlink" href="#social-relationship-intelligence" title="Permanent link">&para;</a></h3>
+<h3 id="social-relationship-intelligence-production">👥 <strong>Social Relationship Intelligence</strong> ✅ <em>Production</em><a class="headerlink" href="#social-relationship-intelligence-production" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Hybrid Vector-Graph Architecture</strong>: Modern relationship modeling using vector embeddings and graph neural networks</li>
-<li><strong>Dynamic Learning</strong>: Relationships learned from interactions rather than predefined categories</li>
-<li><strong>Multi-dimensional Understanding</strong>: Authority, intimacy, care responsibility, and interaction patterns</li>
-<li><strong>Natural Recognition</strong>: Voice biometrics, behavioral patterns, and conversation style analysis</li>
-<li><strong>Adaptive Context</strong>: "Hi Sarah, how was your piano lesson?" with relationship-appropriate responses</li>
-<li><strong>Privacy Boundaries</strong>: Personal conversations compartmentalized per relationship context</li>
-<li><strong>Zero Technical Barriers</strong>: Natural interaction without passwords or authentication friction</li>
+<li><strong>Property Graph Storage</strong>: NetworkX + DuckDB with 204 nodes, 27 edges, 552 indexed properties</li>
+<li><strong>Multi-Pass Entity Extraction</strong>: GLiNER zero-shot recognition + LLM relationship extraction</li>
+<li><strong>Entity Resolution</strong>: 3-step deduplication (semantic blocking → LLM matching → merging)</li>
+<li><strong>Temporal Reasoning</strong>: Bi-temporal tracking (valid_from, valid_until, is_current)</li>
+<li><strong>Graph Analytics</strong>: PageRank importance, Louvain community detection, betweenness centrality</li>
+<li><strong>GQL/Cypher Queries</strong>: Full graph query language via GrandCypher</li>
+<li><strong>Graph Fusion</strong>: Conflict resolution and canonical ID management</li>
+<li><strong>HNSW Search</strong>: Approximate nearest neighbor for fast entity similarity</li>
 </ul>
-<h3 id="conversation-memory">🗣️ <strong>Conversation &amp; Memory</strong><a class="headerlink" href="#conversation-memory" title="Permanent link">&para;</a></h3>
+<p><em>Planned:</em> Dynamic relationship learning, voice biometrics, natural family recognition</p>
+<h3 id="conversation-memory-production">🗣️ <strong>Conversation &amp; Memory</strong> ✅ <em>Production</em><a class="headerlink" href="#conversation-memory-production" title="Permanent link">&para;</a></h3>
+<p><strong>Three-Tier Architecture</strong> with brain-inspired complementary learning:
+- <strong>Working Memory (LMDB)</strong>: 24-hour TTL, sub-millisecond access, conversation-scoped
+- <strong>Semantic Memory (ChromaDB)</strong>: Hybrid Search V3 with semantic + BM25 + IDF filtering + RRF fusion
+- <strong>Knowledge Graph (DuckDB)</strong>: Property graph with temporal reasoning and multi-hop queries
+- <strong>Adaptive Memory System (AMS)</strong>: Memory consolidation, Thompson Sampling, RLHF behavioral learning
+- <strong>Memory Album</strong>: User-curated conversation and message-level memories with emotional tone
+- <strong>Real-time Streaming</strong>: WebSocket-based token streaming for responsive conversations
+- <strong>Local LLM</strong>: Qwen3 Abliterated 8B via Ollama with automatic model management
+- <strong>Context Assembly</strong>: Multi-factor scoring (recency, relevance, relationship) across all memory tiers</p>
+<p><em>Planned:</em> Voice conversations, proactive conversation starters</p>
+<h3 id="custom-character-personalities-production">🎭 <strong>Custom Character Personalities</strong> ✅ <em>Production</em><a class="headerlink" href="#custom-character-personalities-production" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Real-time text and voice conversations with context awareness</li>
-<li>Multi-turn dialogue management with natural interruption handling and resumption</li>
-<li>Episodic, semantic, and procedural memory systems that remember your interactions</li>
-<li>Vector-based semantic search for intelligent memory retrieval (ChromaDB)</li>
-<li>Continual learning that adapts to your communication style and preferences</li>
-<li>Local LLM integration (Ollama) with privacy-first inference</li>
-<li>Personality and emotion context injected into LLM prompts</li>
+<li><strong>Eve Character</strong>: Warm, curious, contemplative companion with genuine thoughts and feelings</li>
+<li><strong>Ollama Modelfiles</strong>: Define custom AI personalities with distinct traits and communication styles</li>
+<li><strong>Character Parameters</strong>: Fine-tune temperature, context window, sampling for consistency</li>
+<li><strong>Thinking Process</strong>: Ollama 0.12+ native thinking API for internal reasoning</li>
+<li><strong>Memory Integration</strong>: Characters naturally reference past conversations via memory system</li>
+<li><strong>Create Your Own</strong>: Define professional assistants, creative collaborators, philosophical thinkers, or supportive friends</li>
 </ul>
-<h3 id="emotional-intelligence">😊 <strong>Emotional Intelligence</strong><a class="headerlink" href="#emotional-intelligence" title="Permanent link">&para;</a></h3>
+<h3 id="emotional-intelligence-in-development">😊 <strong>Emotional Intelligence</strong> 🚧 <em>In Development</em><a class="headerlink" href="#emotional-intelligence-in-development" title="Permanent link">&para;</a></h3>
+<p><strong>Production:</strong>
+- <strong>Text Sentiment</strong>: BERT Multilingual sentiment classification
+- <strong>Emotion Analysis</strong>: RoBERTa 6-emotion classification (joy, sadness, anger, fear, surprise, disgust)
+- <strong>Intent Classification</strong>: XLM-RoBERTa multilingual intent understanding
+- <strong>Memory Album Integration</strong>: Automatic emotional tone detection</p>
+<p><strong>Planned:</strong>
+- Advanced emotion simulation (AppraisalCloudPCT with 4-stage appraisal)
+- Multi-modal emotion recognition (facial, voice)
+- Personality simulation with evolving traits (Big Five, HEXACO)
+- Crisis detection and empathetic response generation</p>
+<h3 id="autonomous-agency-task-automation-production">🤖 <strong>Autonomous Agency &amp; Task Automation</strong> ✅ <em>Production</em><a class="headerlink" href="#autonomous-agency-task-automation-production" title="Permanent link">&para;</a></h3>
+<p><strong>Production:</strong>
+- <strong>Task Scheduler</strong>: Cron-based scheduler with resource awareness and adaptive execution
+- <strong>Built-in Tasks</strong>: Log cleanup, key rotation, health checks, database vacuum
+- <strong>AMS Tasks</strong>: Memory consolidation, feedback classification, Thompson sampling, trajectory cleanup
+- <strong>KG Tasks</strong>: Graph consolidation, entity resolution, relationship inference
+- <strong>Resource Monitoring</strong>: CPU/memory tracking for intelligent task execution</p>
+<p><strong>Planned:</strong>
+- Goal generation and hierarchical planning (MCTS)
+- Curiosity-driven learning (RND, ICM)
+- Proactive engagement and conversation starters
+- Meta-cognition and self-assessment
+- Background learning during idle periods</p>
+<h3 id="frontend-user-experience-production">🎭 <strong>Frontend &amp; User Experience</strong> ✅ <em>Production</em><a class="headerlink" href="#frontend-user-experience-production" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Multi-modal emotion recognition (facial, voice, text analysis)</li>
-<li>Advanced emotion simulation using AppraisalCloudPCT (Component Process Model)</li>
-<li>4-stage appraisal process: Relevance → Implication → Coping → Normative</li>
-<li>Mood tracking and empathetic response generation with emotional memory</li>
-<li>Personality simulation with evolving traits, values, and behavioral consistency</li>
-<li>Crisis detection and appropriate support mechanisms</li>
-<li>Emotional memory integration for consistent personality expression</li>
-<li>Gradual emotional transitions and contextual appropriateness</li>
+<li><strong>Flutter 3.27+</strong>: Cross-platform UI (macOS, iOS, Android, Linux, Windows)</li>
+<li><strong>Glassmorphic Design</strong>: Premium UI with backdrop blur, noise textures, organic curves</li>
+<li><strong>Riverpod 3.0</strong>: Modern state management with compile-safe code generation</li>
+<li><strong>Drift + SQLCipher</strong>: Encrypted local message cache with &lt;200ms load times</li>
+<li><strong>Message Actions</strong>: Hover-based toolbar (Copy, Remember, Regenerate, Feedback)</li>
+<li><strong>Real-time Streaming</strong>: WebSocket support for streaming AI responses</li>
+<li><strong>Offline-First</strong>: Cache-first loading with background sync</li>
 </ul>
-<h3 id="autonomous-agency">🤖 <strong>Autonomous Agency</strong><a class="headerlink" href="#autonomous-agency" title="Permanent link">&para;</a></h3>
+<p><strong>Planned:</strong>
+- 3D Avatar System (Three.js + Ready Player Me + TalkingHead.js)
+- Voice interaction (speech-to-text and text-to-speech)
+- Multi-device roaming with P2P encrypted sync
+- AR/VR integration and spatial computing</p>
+<h3 id="privacy-security-production">🔒 <strong>Privacy &amp; Security</strong> ✅ <em>Production</em><a class="headerlink" href="#privacy-security-production" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Multi-faceted self-directed behavior and initiative</li>
-<li>Goal generation: self-formulated objectives and hierarchical planning (MCTS)</li>
-<li>Curiosity-driven learning (RND, ICM) and intrinsic motivation</li>
-<li>Interest development and autonomous preference formation</li>
-<li>Planning &amp; reasoning: multi-step strategic thinking and adaptation</li>
-<li>Meta-cognition: self-awareness of learning progress and capabilities</li>
-<li>Proactive engagement: reminders, suggestions, conversation starters, and contextual follow-ups</li>
-<li>Background learning and skill development, even when not actively conversing</li>
+<li><strong>SQLCipher Encryption</strong>: AES-256-GCM for all databases (libSQL + Drift)</li>
+<li><strong>CurveZMQ</strong>: 100% encrypted message bus with mandatory mutual authentication</li>
+<li><strong>Argon2id</strong>: Memory-hard KDF for master key derivation</li>
+<li><strong>PBKDF2</strong>: Database encryption key derivation (100k iterations)</li>
+<li><strong>NaCl/libsodium</strong>: Modern cryptography for frontend (Ed25519, X25519)</li>
+<li><strong>JWT Authentication</strong>: HS256 tokens with 24-hour expiry and refresh</li>
+<li><strong>Platform Keychain</strong>: OS-native secure storage (Keychain, Credential Manager)</li>
+<li><strong>Audit Logging</strong>: Encrypted log persistence with 7-day retention</li>
+<li><strong>Local-First</strong>: All data and processing remain on-device</li>
 </ul>
-<h3 id="embodiment-presence">🎭 <strong>Embodiment &amp; Presence</strong><a class="headerlink" href="#embodiment-presence" title="Permanent link">&para;</a></h3>
+<p><em>Planned:</em> Federated learning, granular consent management</p>
+<h3 id="extensibility-administration-production">🔌 <strong>Extensibility &amp; Administration</strong> ✅ <em>Production</em><a class="headerlink" href="#extensibility-administration-production" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Visual avatar (Three.js + Ready Player Me + TalkingHead.js), real-time lip-sync, facial expressions</li>
-<li>Voice synthesis and emotion-driven audio</li>
-<li>Gestures, spatial awareness, and AR/VR integration</li>
-<li>Multi-device roaming: federated, encrypted P2P sync for seamless continuity</li>
-<li>Cross-platform presence (desktop, mobile, AR/VR, IoT)</li>
-<li>Smart device and IoT integration</li>
-<li>Synchronized presence and attention management across devices</li>
+<li><strong>CLI v1.1.0</strong>: 15 command groups with 100+ subcommands for complete system administration</li>
+<li>Security, database, gateway, ollama, knowledge graph, scheduler, logs, config, bus, chroma, lmdb, dev, version, modelservice</li>
+<li><strong>Plugin System</strong>: Message bus, log consumer, validation, security, rate limiting, encryption</li>
+<li><strong>API Gateway</strong>: FastAPI with REST + WebSocket on port 8771, 12+ endpoint groups</li>
+<li><strong>Task Scheduler</strong>: Extensible task system with built-in and custom tasks</li>
+<li><strong>Developer Tools</strong>: Schema management, protobuf generation, testing utilities</li>
+<li><strong>Hot Reload</strong>: Configuration changes without service restart</li>
+<li><strong>Health Monitoring</strong>: Comprehensive system health and performance tracking</li>
 </ul>
-<h3 id="privacy-security">🔒 <strong>Privacy &amp; Security</strong><a class="headerlink" href="#privacy-security" title="Permanent link">&para;</a></h3>
-<ul>
-<li>Local-first, encrypted data storage (libSQL with SQLCipher, transparent AES-256-GCM file encryption)</li>
-<li>End-to-end encryption, granular consent management, and permission controls</li>
-<li>Homomorphic encryption for privacy-preserving cloud computations (optional, post-MVP)</li>
-<li>Transparent audit logging and zero-knowledge authentication</li>
-<li>Secure key management, device pairing, and roaming support</li>
-<li>No admin/user data leaves the device unless explicitly exported by a privileged operator</li>
-</ul>
-<h3 id="extensibility-admin">🔌 <strong>Extensibility &amp; Admin</strong><a class="headerlink" href="#extensibility-admin" title="Permanent link">&para;</a></h3>
-<ul>
-<li>Hot-loading, sandboxed plugin system for skills, integrations, and extensions</li>
-<li>Plugin marketplace and developer SDK</li>
-<li>Unified API gateway (REST, WebSocket, gRPC)</li>
-<li><strong>Admin UI:</strong> React-based, manifest-driven dashboard for all backend/admin modules</li>
-<li><strong>CLI:</strong> Python Typer-based, cross-platform, universal executable for advanced admin, scripting, and diagnostics</li>
-<li>Instrumentation: system health, logging, compliance, monitoring, and audit modules</li>
-<li>Backup/restore, update management, and developer tools for safe extensibility</li>
-</ul>
+<p><strong>Planned:</strong>
+- Plugin marketplace and community extensions
+- React-based Admin UI (Studio)
+- External integrations (calendar, email, smart home)
+- Automated update system with rollback</p>
 <h3 id="community-collaboration">🤝 <strong>Community &amp; Collaboration</strong><a class="headerlink" href="#community-collaboration" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Privacy-Preserving Collective Learning</strong>: Improve AICO's emotional intelligence through federated learning and anonymized data sharing (opt-in only)</li>
@@ -3985,24 +4060,38 @@
 <h3 id="development-stages"><strong>Development Stages</strong><a class="headerlink" href="#development-stages" title="Permanent link">&para;</a></h3>
 <ol>
 <li>
-<p><strong>🛠️ Foundation I</strong> <em>(Current)</em> - Essential infrastructure for MVP</p>
+<p><strong>🛠️ Foundation I</strong> ✅ <em>(Complete)</em> - Essential infrastructure</p>
 <ul>
-<li>ZeroMQ message bus, FastAPI backend, basic security framework</li>
-<li>Task scheduler, encrypted data storage, WebSocket communication</li>
+<li>✅ CurveZMQ encrypted message bus with Protocol Buffers</li>
+<li>✅ FastAPI backend with plugin architecture</li>
+<li>✅ Task scheduler with resource awareness</li>
+<li>✅ Encrypted data storage (SQLCipher for all databases)</li>
+<li>✅ WebSocket streaming communication</li>
+<li>✅ CLI v1.1.0 with 100+ commands</li>
 </ul>
 </li>
 <li>
-<p><strong>🤝 Companion</strong> <em>(Next)</em> - MVP with basic companionship</p>
+<p><strong>🤝 Companion</strong> 🚧 <em>(In Progress)</em> - MVP with basic companionship</p>
 <ul>
-<li>Text conversation, voice interaction, basic avatar, memory system</li>
-<li>Local LLM integration, personality engine, emotion recognition</li>
+<li>✅ Text conversation with streaming responses</li>
+<li>✅ Three-tier memory system (working, semantic, knowledge graph)</li>
+<li>✅ Local LLM integration (Qwen3 Abliterated via Ollama)</li>
+<li>✅ Custom character personalities (Eve + Modelfile system)</li>
+<li>✅ Knowledge graph with 204 nodes, 27 edges</li>
+<li>✅ Memory Album for user-curated memories</li>
+<li>🚧 Voice interaction (planned)</li>
+<li>🚧 3D avatar (ready for integration)</li>
 </ul>
 </li>
 <li>
-<p><strong>🛠️ Foundation II</strong> - Advanced infrastructure for production</p>
+<p><strong>🛠️ Foundation II</strong> 🚧 <em>(Partially Complete)</em> - Advanced infrastructure</p>
 <ul>
-<li>Plugin system, advanced resource management, update system</li>
-<li>CI/CD pipeline, monitoring, production deployment</li>
+<li>✅ Plugin system (message bus, log consumer, security)</li>
+<li>✅ Advanced resource management (CPU/memory monitoring)</li>
+<li>✅ Production deployment patterns</li>
+<li>🚧 Update system with rollback</li>
+<li>🚧 CI/CD pipeline</li>
+<li>🚧 Advanced monitoring and alerting</li>
 </ul>
 </li>
 <li>
@@ -4073,11 +4162,12 @@
 <li>
 <p><strong>Key Technologies:</strong></p>
 </li>
-<li><strong>Backend:</strong> Python, FastAPI, ZeroMQ, Protocol Buffers, libSQL, DuckDB, ChromaDB, LMDB</li>
-<li><strong>Frontend:</strong> Flutter (UI), WebView (Three.js/Ready Player Me/TalkingHead.js for avatar)</li>
-<li><strong>Modelservice:</strong> REST API gateway for LLM inference (Ollama integration)</li>
-<li><strong>Admin Tools:</strong> React-based Admin UI, Python CLI (Typer, Rich)</li>
-<li><strong>Security:</strong> End-to-end encryption, consent management, audit logging</li>
+<li><strong>Backend:</strong> Python 3.13, FastAPI 0.116+, ZeroMQ 27.0+ (CurveZMQ), Protocol Buffers 6.32, libSQL 0.1.8 (SQLCipher), DuckDB 1.3.2+, ChromaDB 1.0.16+, LMDB</li>
+<li><strong>Frontend:</strong> Flutter 3.27+, Dart 3.8+, Riverpod 3.0, Drift 2.29 (SQLCipher), Dio 5.4, Protocol Buffers 5.0</li>
+<li><strong>Modelservice:</strong> ZeroMQ service with Ollama, GLiNER (entity extraction), sentence-transformers (embeddings), BERT/RoBERTa (sentiment/emotion)</li>
+<li><strong>AI Models:</strong> Qwen3 Abliterated 8B (conversation), Llama 3.2 Vision 11B (optional), Llama 3.2 1B (optional)</li>
+<li><strong>CLI:</strong> Typer 0.12, Rich 13.7, PyInstaller (v1.1.0, production-ready)</li>
+<li><strong>Security:</strong> CurveZMQ encryption, Argon2id, PBKDF2, NaCl/libsodium, JWT (HS256), SQLCipher (AES-256-GCM)</li>
 </ul>
 <h2 id="learn-more">Learn More<a class="headerlink" href="#learn-more" title="Permanent link">&para;</a></h2>
 <ul>

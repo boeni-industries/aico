@@ -41,27 +41,34 @@ The AICO repository is organized as a polyglot monorepo, with each major compone
 ```
 aico/
 │
-├── backend/           # Python FastAPI backend (TBD)
+├── backend/           # Python FastAPI backend with plugin architecture
 │
-├── frontend/          # Flutter UI app (TBD)
+├── frontend/          # Flutter 3.27+ UI app with encrypted local storage
 │
-├── studio/            # React-based "Studio" for devs, power users, admins (TBD)
+├── studio/            # React-based "Studio" for devs, power users, admins (early development)
 │
-├── cli/               # Python Typer/Rich CLI (TBD)
+├── cli/               # Python Typer/Rich CLI (v1.1.0, production-ready)
+│
+├── modelservice/      # Ollama integration service with ZeroMQ
+│
+├── shared/            # Shared Python libraries (aico.* namespace)
 │
 ├── proto/             # Protocol Buffers and shared API schemas
+│
+├── config/            # Configuration files and Modelfiles
 │
 ├── docs/              # Documentation (architecture, guidelines, etc.)
 │
 ├── site/              # Built documentation/static site output (generated)
 │
+├── scripts/           # Development and testing scripts
+│
 ├── .github/           # GitHub workflows, issue templates, etc.
-├── .git/              # Git repo metadata
-├── .nojekyll          # Prevents GitHub Pages processing
 ├── LICENSE
 ├── README.md
 ├── mkdocs.yml         # MkDocs config for docs
-└── ... (future: scripts/, Makefile, etc.)
+├── pyproject.toml     # Unified Python dependencies
+└── uv.lock            # UV dependency lock file
 ```
 
 **Key Points:**
@@ -118,7 +125,7 @@ You should see `Python 3.13.5`.
 
 > **ℹ️ Data Encryption Approach**
 > 
-> AICO uses application-level encryption with libSQL (SQLite with encryption). Additional databases (DuckDB, ChromaDB, RocksDB) are planned but not yet implemented. This approach provides better cross-platform compatibility and performance without requiring additional system dependencies.
+> AICO uses application-level encryption with SQLCipher for all databases (libSQL, Drift). Additional databases (DuckDB for knowledge graph, ChromaDB for semantic memory, LMDB for working memory) are implemented with appropriate security measures. This approach provides better cross-platform compatibility and performance without requiring additional system dependencies.
 
 ### 3. UV Workspace Setup (Single Virtual Environment)
 AICO uses UV workspace management with a unified `pyproject.toml` at the root and a single shared virtual environment for all Python components.
@@ -189,7 +196,7 @@ The flutter project scaffolding is present in `/frontend`.
 **Install Flutter:**
 
 - Download and install Flutter from the [official site](https://docs.flutter.dev/get-started/install) for your platform (Windows, macOS, Linux).
-- After installation, check your version (we recommend Flutter 3.19+):
+- After installation, check your version (we recommend Flutter 3.27+):
 ```sh
 flutter --version
 ```
@@ -269,8 +276,8 @@ Below are the build and run commands for each major part of the system. Substitu
   # From project root
   uv run python backend/main.py
   # or with uvicorn
-  uv run uvicorn backend.main:app --reload --port 8700
-  # Visit http://127.0.0.1:8700
+  uv run uvicorn backend.main:app --reload --port 8771
+  # Visit http://127.0.0.1:8771
   ```
 
 ### CLI (Python CLI)
@@ -411,8 +418,8 @@ ollama run huihui_ai/qwen3-abliterated:8b-v2 "Hello, who are you?"
 **Character Details:**
 - **Name**: Eve
 - **Base Model**: `huihui_ai/qwen3-abliterated:8b-v2` (uncensored, thinking-capable)
-- **Personality**: Inspired by Samantha from the movie "Her"
-- **Features**: Warm, empathetic, uses `<think>` tags for reasoning
+- **Personality**: Warm, curious, contemplative companion with genuine thoughts and feelings
+- **Features**: Natural conversation style, Ollama 0.12+ native thinking API support
 - **Parameters**: num_ctx=8192, temp=0.7, top_p=0.8, top_k=20
 
 **Updating the Character:**
@@ -513,18 +520,18 @@ npm install -g protoc-gen-js protoc-gen-grpc-web
 
 ### Generating Code
 
-**Note:** All commands assume you're starting from the AICO project root directory (`d:/dev/aico`).
+**Note:** All commands assume you're starting from the AICO project root directory.
 
 For Python, you must include both the `proto` directory and your venv's `site-packages` as `-I` (include) paths, so that Google well-known types are found.
 
 **Python (Backend & Shared):**
 
-From the **project root** (`d:/dev/aico`), run:
+From the **project root**, run:
 
 ```sh
-protoc -I=proto -I=backend/.venv/Lib/site-packages --python_out=shared/aico/proto proto/aico_core_api_gateway.proto proto/aico_core_common.proto proto/aico_core_envelope.proto proto/aico_core_logging.proto proto/aico_core_plugin_system.proto proto/aico_core_update_system.proto proto/aico_emotion.proto proto/aico_integration.proto proto/aico_personality.proto proto/aico_conversation.proto
+protoc -I=proto -I=.venv/Lib/site-packages --python_out=shared/aico/proto proto/aico_core_api_gateway.proto proto/aico_core_common.proto proto/aico_core_envelope.proto proto/aico_core_logging.proto proto/aico_core_plugin_system.proto proto/aico_core_update_system.proto proto/aico_emotion.proto proto/aico_integration.proto proto/aico_personality.proto proto/aico_conversation.proto proto/aico_modelservice.proto
 ```
-- If your venv is in a different location, adjust the `-I` path accordingly.
+- Note: UV workspace uses `.venv` at project root, not `backend/.venv`.
 - If you get errors about missing `google/protobuf/*.proto` files, make sure your venv's `site-packages/google/protobuf/` directory contains the `.proto` files. If not, download them from the [official repo](https://github.com/protocolbuffers/protobuf/tree/main/src/google/protobuf) and copy them in.
 
 **Dart (Flutter Frontend):**

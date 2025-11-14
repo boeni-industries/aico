@@ -72,16 +72,17 @@ All message formats are explicitly versioned to enable:
 The Core Message Bus implements a **hybrid broker pattern** with the backend service acting as the central message coordinator:
 
 **Internal Communication (Backend Modules):**
-- **Protocol**: ZeroMQ with Protocol Buffers
-- **Transport**: `inproc://` for same-process modules, `ipc://` for cross-process
-- **Pattern**: Pub/Sub with topic hierarchy
-- **Host**: Backend service runs central ZeroMQ broker on `tcp://localhost:5555`
+- **Protocol**: ZeroMQ with Protocol Buffers 6.32
+- **Transport**: TCP for all communication (inproc/ipc not used)
+- **Pattern**: Pub/Sub with topic hierarchy and wildcard pattern matching
+- **Broker**: Backend service runs central ZeroMQ broker on ports 5555 (frontend) and 5556 (backend)
+- **Encryption**: Mandatory CurveZMQ with no plaintext fallback
 
 **External Communication (Subsystems):**
-- **Frontend (Flutter)**: WebSocket for real-time updates, REST API for commands
-- **CLI (Python)**: ZeroMQ IPC with localhost REST fallback
-- **Studio (React)**: REST API for admin operations, WebSocket for monitoring
-- **Transport**: All external clients connect to backend's API Gateway
+- **Frontend (Flutter)**: REST API (Dio client) + WebSocket for streaming, Protocol Buffers 5.0 (wire-compatible)
+- **CLI (Python)**: Direct ZeroMQ with CurveZMQ encryption, REST API fallback
+- **Studio (React)**: REST API for admin operations (early development)
+- **Transport**: All external clients connect to backend's API Gateway on port 8771
 
 ### Message Bus Technology
 
@@ -122,7 +123,8 @@ Protocol Buffers provide:
 - **Binary serialization:** Compact, fast encoding/decoding
 - **Strong typing:** Compile-time validation and code generation
 - **Versioning:** Backward compatibility through schema evolution
-- **Cross-language:** Python, Dart, and other language bindings
+- **Cross-language:** Python (6.32), Dart (5.0) - wire-compatible
+- **Production Status:** All core messages use protobuf (logs, events, modelservice requests)
 
 ### Message Validation
 
@@ -218,24 +220,32 @@ ZeroMQ uses simple prefix matching (no wildcards):
   - `agency/decision/response` - Decision outcomes
 
 - **conversation/** - Conversation and dialogue related messages
+  - `conversation/user/input/v1` - User input messages
+  - `conversation/ai/response/v1` - AI response messages
   - `conversation/context/current` - Current conversation context
   - `conversation/history/add` - Historical conversation data
-  - `conversation/intent/detected` - Detected user intents
 
 - **memory/** - Memory and learning related messages
   - `memory/store/request` - Memory storage requests
   - `memory/retrieve/request` - Memory retrieval requests
   - `memory/consolidation/start` - Memory consolidation triggers
+  - `memory/semantic/query` - Semantic memory queries
+  - `memory/working/update` - Working memory updates
 
 - **user/** - User-related messages
   - `user/interaction/history` - User interaction patterns
   - `user/feedback/explicit` - Explicit user feedback
   - `user/state/update` - Inferred user state changes
 
-- **llm/** - Large Language Model related messages
-  - `llm/conversation/events` - Conversation events from LLM
-  - `llm/prompt/conditioning/request` - Requests for prompt conditioning
-  - `llm/prompt/conditioning/response` - Prompt conditioning parameters
+- **modelservice/** - Model service related messages
+  - `modelservice/completions/request/v1` - LLM completion requests
+  - `modelservice/completions/response/v1` - LLM completion responses
+  - `modelservice/embeddings/request/v1` - Embedding generation requests
+  - `modelservice/embeddings/response/v1` - Embedding responses
+  - `modelservice/ner/request/v1` - Named entity recognition requests
+  - `modelservice/ner/response/v1` - NER responses
+  - `modelservice/sentiment/request/v1` - Sentiment analysis requests
+  - `modelservice/sentiment/response/v1` - Sentiment analysis responses
 
 - **ui/** - User Interface related messages
   - `ui/state/update` - UI state changes (theme, navigation, connection status)
@@ -251,7 +261,10 @@ ZeroMQ uses simple prefix matching (no wildcards):
   - `system/health` - System health checks
 
 - **logs/** - Logging and audit messages
-  - `logs/entry` - Individual log entries
+  - `logs/backend/main` - Backend main process logs
+  - `logs/backend/api_gateway` - API Gateway logs
+  - `logs/cli/*` - All CLI command logs
+  - `logs/modelservice/*` - Modelservice logs
   - `logs/*` - All log topics (wildcard subscription)
 
 ### Cross-Cutting Concerns
@@ -517,14 +530,16 @@ await broker.start()
 ```
 
 #### Authorized Clients
-The broker maintains a fixed list of authorized clients:
-- `message_bus_client_api_gateway`
-- `message_bus_client_log_consumer`
-- `message_bus_client_scheduler`
-- `message_bus_client_cli`
-- `message_bus_client_modelservice`
-- `message_bus_client_system_host`
-- `message_bus_client_backend_modules`
+The broker maintains a fixed list of authorized clients (derived from master key):
+- `message_bus_client_api_gateway` - API Gateway service
+- `message_bus_client_log_consumer` - Log persistence service
+- `message_bus_client_scheduler` - Task scheduler service
+- `message_bus_client_cli` - CLI commands
+- `message_bus_client_modelservice` - Model inference service
+- `message_bus_client_system_host` - System host process
+- `message_bus_client_backend_modules` - Backend module communication
+
+**Production Status:** All clients successfully authenticate and communicate with CurveZMQ encryption.
 
 ### Client Configuration
 

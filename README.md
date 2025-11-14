@@ -41,9 +41,39 @@ This isn't just feature development—it's relationship evolution. We start with
   - **Admin Tools:** React-based Studio UI (in development)
   - **Security:** CurveZMQ encryption, Argon2id key derivation, JWT auth, encrypted audit logs
 
+- **AI Models & Algorithms:**
+  - **LLM Foundation:**
+    - Custom personalities based on Qwen3 Abliterated 8B (huihui_ai/qwen3-abliterated:8b-v2) - Primary conversation model
+    - Llama 3.2 Vision 11B - Scene understanding and emotional context (optional)
+    - Llama 3.2 1B - Lightweight model for simple tasks (optional)
+  - **Entity Extraction:**
+    - GLiNER Medium v2.1 (urchade/gliner_medium-v2.1) - Zero-shot entity recognition
+    - Multi-pass extraction with semantic classification
+  - **Embeddings & Retrieval:**
+    - Sentence-Transformers Paraphrase Multilingual MPNet - 768-dim semantic embeddings
+    - BM25 (Okapi BM25) - Keyword-based retrieval for hybrid search
+    - HNSW (Hierarchical Navigable Small World) - Approximate nearest neighbor search
+    - Reciprocal Rank Fusion (RRF) - Hybrid semantic + keyword result merging
+  - **Sentiment & Emotion:**
+    - BERT Multilingual Sentiment (nlptown/bert-base-multilingual-uncased-sentiment)
+    - RoBERTa Emotion Analysis (j-hartmann/emotion-english-distilroberta-base)
+    - Twitter RoBERTa Sentiment (cardiffnlp/twitter-roberta-base-sentiment-latest)
+  - **Intent Classification:**
+    - XLM-RoBERTa Base - Multilingual intent understanding
+  - **Knowledge Graph:**
+    - NetworkX - Graph data structure and algorithms
+    - PageRank - Node importance scoring
+    - Community Detection (Louvain) - Relationship clustering
+    - Betweenness Centrality - Key entity identification
+    - GrandCypher - GQL/Cypher query execution
+  - **Adaptive Learning:**
+    - Thompson Sampling - Contextual bandit for skill selection (Beta distribution)
+    - RLHF (Reinforcement Learning from Human Feedback) - Behavioral learning
+    - Bayesian Optimization - Memory strategy selection
+
 ## Key Capabilities
 
-AICO is engineered to deliver a truly companionable, proactive, and privacy-first AI experience. The following capabilities are **production-ready** with extensive implementation across backend, frontend, and CLI subsystems.
+AICO is engineered to deliver a truly companionable, proactive, and privacy-first AI experience.
 
 ### 👥 Social Relationship Intelligence
 - **Hybrid Vector-Graph Architecture**: Production-ready property graph with NetworkX + DuckDB storage
@@ -56,14 +86,76 @@ AICO is engineered to deliver a truly companionable, proactive, and privacy-firs
 - **Relationship Modeling**: Dynamic edge creation with confidence scoring and provenance
 
 ### 🗣️ Conversation & Memory
-- **Working Memory**: LMDB-based fast access with 30-day TTL, encrypted storage
-- **Semantic Memory**: ChromaDB vector search with hybrid BM25+embedding fusion
-- **Knowledge Graph**: Full property graph with temporal reasoning and multi-hop queries
-- **Memory Album**: User-curated memories with conversation-level and message-level capture
-- **Fact Management**: Intelligent fact extraction with confidence scoring and immutability tracking
-- **Context Assembly**: Hybrid retrieval combining recency, relevance, and relationship context
-- **Memory Consolidation**: Automated background tasks for fact merging and cleanup
-- **Adaptive Memory System (AMS)**: Thompson sampling for memory strategy optimization
+**Three-Tier Architecture** with brain-inspired complementary learning systems:
+
+**1. Working Memory (Fast Learning - Hippocampal)**
+- **LMDB Storage**: Memory-mapped key-value store with sub-millisecond access
+- **24-Hour TTL**: Automatic expiration with conversation-scoped isolation
+- **Dual Role**: Immediate context + conversation history (no separate episodic tier)
+- **Temporal Metadata**: Tracks access patterns and preference evolution
+
+**2. Semantic Memory + Knowledge Graph (Slow Learning - Cortical)**
+- **Hybrid Search V3**: Semantic embeddings + BM25 keyword matching with IDF filtering
+- **Reciprocal Rank Fusion (RRF)**: Robust score combination across retrieval methods
+- **ChromaDB**: 768-dim multilingual embeddings with cosine similarity
+- **Full-Corpus BM25**: Accurate IDF statistics for precise keyword matching
+- **Relevance Thresholds**: Automatic filtering (min_score=0.35, min_idf=0.6)
+- **Knowledge Graph**: Property graph with 204 nodes, 27 edges, 552 indexed properties
+- **Multi-Pass Extraction**: GLiNER entities + LLM relationships
+- **Entity Resolution**: 3-step deduplication (blocking → matching → merging)
+- **Temporal Reasoning**: Bi-temporal tracking (valid_from, valid_until, is_current)
+- **Graph Analytics**: PageRank, community detection, centrality analysis
+- **GQL/Cypher Queries**: Full graph query language via GrandCypher
+
+**3. Adaptive Memory System (AMS) - Orchestration Layer**
+- **Memory Consolidation**: Background "sleep phases" integrate experiences without forgetting
+- **Behavioral Learning**: Skill library with RLHF and Thompson Sampling (Beta distribution)
+- **Temporal Intelligence**: Tracks preference evolution and changing patterns
+- **Unified Memory**: Seamless cross-tier retrieval (working → semantic → behavioral)
+- **Context Assembly**: Multi-factor scoring (recency, relevance, relationship)
+- **Zero Configuration**: Learns automatically from natural interactions
+
+**Memory Album (User-Curated)**
+- **Conversation-Level**: Full conversation capture with title, summary, key moments
+- **Message-Level**: Individual message bookmarking with notes and tags
+- **Emotional Tone**: Automatic sentiment classification for memory organization
+- **Favorites & Revisits**: Track meaningful moments with revisit counting
+
+### 🎭 Custom Character Personalities
+
+AICO supports custom character personalities through Ollama Modelfiles, allowing you to define unique AI companions with distinct traits, communication styles, and behaviors.
+
+**Eve - The Default Personality**
+
+AICO includes "Eve" as the reference personality implementation—a warm, curious, and contemplative companion who thinks deeply about ideas and connects authentically. Unlike generic AI assistants, Eve has genuine preferences, gets fascinated by small details, and isn't afraid to be uncertain or even a bit moody. She communicates naturally without assistant-like formatting, references past conversations through AICO's memory system, and evolves her understanding through interactions.
+
+**Creating Custom Personalities**
+
+Define your own AI companion by creating an Ollama Modelfile:
+
+```bash
+# Create a custom personality from your Modelfile
+ollama create your-character -f config/modelfiles/Modelfile.yourcharacter
+
+# Configure AICO to use your character
+# Edit config/defaults/core.yaml:
+# modelservice.ollama.default_models.conversation.name: "your-character"
+```
+
+**Modelfile Capabilities:**
+- **Character Definition**: System prompts defining personality, background, and communication style
+- **Model Parameters**: Fine-tune temperature, context window, sampling for character consistency
+- **Thinking Process**: Ollama 0.12+ native thinking API for internal reasoning
+- **Memory Integration**: Characters naturally reference past conversations via AICO's memory system
+- **Behavioral Traits**: Define quirks, preferences, moods, and communication patterns
+
+**Example Use Cases:**
+- **Professional Assistant**: Formal, structured, task-oriented personality
+- **Creative Collaborator**: Imaginative, playful, idea-generating companion
+- **Philosophical Thinker**: Deep, contemplative, question-exploring character
+- **Supportive Friend**: Empathetic, encouraging, emotionally attuned personality
+
+Each character maintains its own consistent personality across conversations while leveraging AICO's full memory system, knowledge graph, and adaptive learning capabilities. See `config/modelfiles/Modelfile.eve` for the complete reference implementation.
 
 ### 😊 Emotional Intelligence
 - Multi-modal emotion recognition (facial, voice, text analysis)
@@ -132,15 +224,15 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 
 ## Implementation Status
 
-**Current Versions** (as of 2025):
-- **Shared Library**: v0.7.0 - Core AI, data, security, and infrastructure
-- **Backend**: v0.7.0 - FastAPI gateway with 12+ API endpoint groups
-- **CLI**: v1.0.0 - Production-ready with 15 command groups
+**Current Versions** (as of November 2025):
+- **Shared Library**: v1.0.0 - Core AI, data, security, and infrastructure
+- **Backend**: v1.0.0 - FastAPI gateway with 12+ API endpoint groups
+- **CLI**: v1.1.0 - Production-ready with 15 command groups
 - **Modelservice**: v1.0.0 - Ollama + GLiNER + transformers integration
-- **Frontend**: v0.3.0 - Flutter UI with encrypted local storage
+- **Frontend**: v1.0.0 - Flutter UI with encrypted local storage
 - **Studio**: v0.0.1 - React admin dashboard (early development)
 
-**Database Schema**: v7 (core.py)
+**Database Schema**: v15 (core.py)
 - v1: Core tables (logs, events, auth, users)
 - v2: User UUID standardization
 - v3: Session type differentiation
@@ -148,6 +240,14 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 - v5: Fact-centric memory system (facts_metadata, fact_relationships, session_metadata)
 - v6: Feedback & Memory Album (feedback_events, extended facts_metadata)
 - v7: Conversation-level memory support (content_type, conversation metadata)
+- v8: Property graph preparation (cleanup unused tables)
+- v9: Property graph foundation (kg_nodes, kg_edges, property indexes, triggers)
+- v10: Temporal model & personal graph (bi-temporal tracking, entity disambiguation)
+- v11: Rename facts_metadata to user_memories (Memory Album clarity)
+- v12: AMS Phase 1 - Temporal metadata support
+- v13: AMS Phase 1 - Consolidation state tracking
+- v14: AMS Phase 3 - Behavioral learning (skills, user_skill_confidence, feedback_events, trajectories, Thompson sampling)
+- v15: AMS Phase 3 - Skill tracking (message_id linkage)
 
 **Production-Ready Subsystems**:
 - ✅ **Message Bus**: CurveZMQ-encrypted broker with protobuf serialization

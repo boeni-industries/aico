@@ -1,31 +1,6 @@
 # AICO Feedback System Overview
 
-**Version:** 1.0  
-**Date:** October 24, 2025  
-**Status:** Design Specification
-
----
-
-## Executive Summary
-
 AICO's feedback system moves beyond traditional thumbs-up/down patterns to create a **relationship-first feedback architecture** that feels natural and non-intrusive. The system integrates ambient behavioral signals, contextual actions, and meaningful reflection while maintaining AICO's core principles of emotional presence, privacy-first design, and progressive disclosure.
-
-**Document Relationship:**
-This document defines the **backend architecture** for feedback and memory systems. See also:
-- **[memory-album-design.md](memory-album-design.md)** - Client-side UI/UX for Memory Album (how users interact with memories)
-- **[/docs/concepts/data/data-layer.md](../data/data-layer.md)** - Storage layer details (LibSQL, ChromaDB, LMDB)
-- **[/docs/architecture/architecture-overview.md](../../architecture/architecture-overview.md)** - System architecture
-
-**Scope:**
-- ✅ Feedback system architecture (3-tier: ambient, contextual, explicit)
-- ✅ Storage schemas (SQL tables, JSON payloads)
-- ✅ "Remember This" backend implementation
-- ❌ UI/UX design (see memory-album-design.md)
-- ❌ Frontend implementation (see memory-album-design.md)
-
-**Core Philosophy:** Feedback should feel like natural relationship dynamics—not AI training. Users provide feedback through authentic interaction patterns, not forced rating systems.
-
----
 
 ## 1. Research Foundation
 
