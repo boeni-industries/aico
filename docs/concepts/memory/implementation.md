@@ -4,8 +4,6 @@
 
 This document outlines the conceptual approach to implementing AICO's memory system. Rather than providing detailed code implementations, it focuses on the core concepts, design patterns, and architectural decisions that guide the development process.
 
-> **Note**: For detailed implementation roadmap and timelines, see [Memory Roadmap](memory_roadmap.md).
-
 ## Core Implementation Concepts
 
 ### Working Memory Design Pattern

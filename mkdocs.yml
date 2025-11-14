@@ -170,6 +170,7 @@ nav:
       - Configuration Management: architecture/configuration-management.md
       - Message Bus: architecture/message-bus.md
       - Technology Stack: architecture/tech-stack.md
+      - State Streaming: architecture/state-streaming.md
   - Subsystems:
       - Backend:
           - API Gateway: subsystems/backend/api-gateway.md
@@ -208,13 +209,13 @@ nav:
       - Memory:
           - Overview: concepts/memory/overview.md
           - Architecture: concepts/memory/architecture.md
+          - Adaptive Memory: concepts/memory/ams.md
           - Hybrid Search: concepts/memory/hybrid-search.md
           - Context Management: concepts/memory/context-management.md
           - Thread Resolution: concepts/memory/thread-resolution.md
           - Implementation: concepts/memory/implementation.md
-          - Roadmap: concepts/memory/memory_roadmap.md
           - Knowledge Graph: concepts/memory/semantic_knowledge_graph_memory.md
-          - Research Summary: concepts/memory/RESEARCH_SUMMARY.md
+          - Research Summary: concepts/memory/kg_research_summary.md
       - Emotion:
           - Architecture: concepts/emotion/emotion-sim-architecture.md
           - Messaging: concepts/emotion/emotion-sim-msg.md
@@ -252,6 +253,7 @@ nav:
           - UUID Standards: guides/developer/uuid-standards.md
           - UV Cheatsheet: guides/developer/uv-cheatsheet.md
           - Backend Patterns: guides/developer/backend-patterns.md
+          - GQL Reference: guides/developer/gql-reference.md
       - Admin:
           - Admin Guide: guides/admin/admin-guide.md
   - Security:
