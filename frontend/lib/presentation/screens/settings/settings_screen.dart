@@ -1,32 +1,58 @@
+import 'package:aico_frontend/presentation/providers/settings_provider.dart';
+import 'package:aico_frontend/presentation/widgets/common/glassmorphic_switch.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Settings screen placeholder.
-class SettingsScreen extends StatelessWidget {
+/// Settings screen with thinking display toggle
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final settings = ref.watch(settingsProvider);
     
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.settings,
-            size: 64,
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        Text(
+          'Settings',
+          style: theme.textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w600,
           ),
-          const SizedBox(height: 24),
-          Text(
-            'Not Implemented Yet',
-            style: theme.textTheme.headlineMedium?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-              fontWeight: FontWeight.w500,
-            ),
+        ),
+        const SizedBox(height: 24),
+        
+        // AI Behavior Section
+        Text(
+          'AI Behavior',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 12),
+        
+        ListTile(
+          title: const Text('Show Inner Monologue'),
+          subtitle: const Text('Display AI thinking process in right drawer'),
+          trailing: GlassmorphicSwitch(
+            value: settings.showThinking,
+            onChanged: (value) {
+              ref.read(settingsProvider.notifier).updateShowThinking(value);
+            },
+          ),
+        ),
+        
+        const Divider(height: 32),
+        
+        // Placeholder for future settings
+        Text(
+          'More settings coming soon...',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+          ),
+        ),
+      ],
     );
   }
 }

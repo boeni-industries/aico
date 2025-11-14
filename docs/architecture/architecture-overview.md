@@ -9,90 +9,134 @@ title: Architecture Overview
 AICO is an open-source experiment to build an **emotionally present, visually embodied, and proactive AI companion**—intended to act as a family member, confidante and sidekick, not just an assistant. Unlike productivity-oriented conversationbots, AICO naturally recognizes and builds individual relationships with family members through multi-modal identification, creating authentic bonds without technical barriers while maintaining a consistent core personality.
 
 **Core Principles:**
-- **Natural Family Recognition:** Multi-modal identification without technical authentication barriers.
-- **Embodiment:** Visual/audio presence and non-verbal communication are core MVP requirements.
-- **Autonomous Agency:** AICO initiates, acts, and pursues its own goals and curiosities.
-- **Personality & Emotion:** Consistent, evolving personality and sophisticated emotion simulation.
-- **Local-First Privacy:** All data and processing are local by default, with user-controlled federated sync.
+- **Local-First Privacy:** All data and processing are local by default, with encrypted storage and secure communication.
 - **Modular, Extensible System:** System → Module → Component hierarchy, message-driven, plugin-ready.
-- **Real-Time Emotional Awareness:** Multi-modal emotion recognition, simulation, and expression.
+- **Production-Ready Foundation:** Focus on reliable, tested infrastructure before advanced features.
+- **Brain-Inspired Memory:** Complementary learning systems (fast hippocampal + slow cortical) for genuine relationship evolution.
+- **Knowledge Graph Intelligence:** Property graph with temporal reasoning for relationship modeling.
+- **Adaptive Learning:** Thompson Sampling and RLHF for behavioral optimization.
+- **Zero Configuration:** Systems learn automatically from natural interactions.
+
+**Planned Principles:**
+- **Natural Family Recognition:** Multi-modal identification (architecture defined, implementation planned).
+- **Embodiment:** Visual/audio presence with 3D avatars (ready for integration).
+- **Autonomous Agency:** Proactive behavior and goal generation (architecture defined, implementation planned).
+- **Personality & Emotion:** Sophisticated simulation (architecture defined, implementation planned).
 
 ## System Features
 
 AICO's features are organized into logical modules for development and deployment:
 
 ### 👥 Social Relationship Intelligence
-- **Hybrid Vector-Graph Architecture**: Modern relationship modeling using vector embeddings and graph neural networks
-- **Dynamic Learning**: Relationships learned from interactions rather than predefined categories
-- **Multi-dimensional Understanding**: Authority, intimacy, care responsibility, and interaction patterns
-- **Natural Recognition**: Voice biometrics, behavioral patterns, and conversation style analysis
-- **Adaptive Context**: "Hi Sarah, how was your piano lesson?" with relationship-appropriate responses
-- **Privacy Boundaries**: Personal conversations compartmentalized per relationship context
-- **Zero Technical Barriers**: Natural interaction without passwords or authentication friction
+**Production Implementation:**
+- **Property Graph Storage**: NetworkX + DuckDB with 204 nodes, 27 edges, 552 indexed properties
+- **Multi-Pass Entity Extraction**: GLiNER zero-shot recognition + LLM relationship extraction
+- **Entity Resolution**: 3-step deduplication (semantic blocking → LLM matching → merging)
+- **Temporal Reasoning**: Bi-temporal tracking (valid_from, valid_until, is_current)
+- **Graph Analytics**: PageRank importance, Louvain community detection, betweenness centrality
+- **GQL/Cypher Queries**: Full graph query language via GrandCypher
+- **Graph Fusion**: Conflict resolution and canonical ID management
+- **HNSW Search**: Approximate nearest neighbor for fast entity similarity
 
-### 🗣️ Conversation & Interaction
-- **Chat Interface**: Real-time text-based conversation
-- **Voice Interaction**: Speech-to-text and text-to-speech processing
-- **Context Management**: Conversation thread management and context switching
-- **Autonomous Agency**: Multi-faceted self-directed behavior including:
-  - **Goal Generation**: Self-formulated objectives and sub-goals
-  - **Curiosity-Driven Learning**: Intrinsic motivation to explore and learn
-  - **Interest Development**: Autonomous preference formation and pursuit
-  - **Planning & Reasoning**: Multi-step strategic thinking and adaptation
-  - **Meta-Cognition**: Self-awareness of learning progress and capabilities
-- **Multi-turn Dialogue**: Complex conversation flow management
-- **Interruption Handling**: Natural conversation interruption and resumption
+**Planned Features:**
+- Dynamic relationship learning from interactions
+- Voice biometrics and behavioral pattern analysis
+- Natural family member recognition
 
-### 🧠 Intelligence & Memory
-- **Personality Simulation**: Multi-dimensional trait-based personality modeling with:
-  - **Trait Vector System**: Management of personality traits (Big Five, HEXACO)
-  - **Value System**: Ethical principles and preference management
-  - **Expression Mapper**: Translation of traits to behavioral parameters
-  - **Consistency Validator**: Ensuring behavioral coherence over time
-  - **Personality Evolution**: Gradual adaptation based on interactions
-- **Episodic Memory**: Personal experience and interaction history
-- **Semantic Memory**: Knowledge base and learned concepts
-- **Vector Storage**: ChromaDB-powered embedding storage and similarity search
-- **Memory Consolidation**: Long-term memory formation and optimization
-- **Context Retrieval**: Relevant memory recall based on current situation
+### 🗣️ Conversation & Memory
+**Production Implementation:**
+- **Three-Tier Memory Architecture**: Working (LMDB) + Semantic (ChromaDB) + Adaptive (AMS)
+- **Hybrid Search V3**: Semantic embeddings + BM25 keyword + IDF filtering + RRF fusion
+- **Working Memory**: 24-hour TTL, sub-millisecond access, conversation-scoped
+- **Knowledge Graph**: Full property graph with temporal reasoning and multi-hop queries
+- **Memory Album**: User-curated memories (conversation + message level) with emotional tone
+- **Memory Consolidation**: Background "sleep phases" integrate experiences without forgetting
+- **Behavioral Learning**: Skill library with RLHF and Thompson Sampling
+- **Context Assembly**: Multi-factor scoring (recency, relevance, relationship)
+- **Chat Interface**: Real-time text conversation with streaming responses
+- **Multi-turn Dialogue**: Complex conversation flow with context preservation
 
-### 😊 Emotion & Awareness
-- **Facial Recognition**: Computer vision-based face recognition
-- **Visual Emotion Detection**: Computer vision-based emotion recognition
-- **Voice Analysis**: Audio-based emotion and sentiment recognition
-- **Text Sentiment**: Natural language emotion understanding
-- **Behavioral Patterns**: User habit and preference learning
-- **Mood Tracking**: Long-term emotional state monitoring
-- **Empathetic Responses**: Emotion-appropriate reaction generation
+**Planned Features:**
+- Voice interaction (speech-to-text and text-to-speech)
+- Autonomous agency (goal generation, curiosity-driven learning)
+- Proactive engagement and conversation starters
 
-### 🎭 Embodiment & Presence
+### 🤖 Task Automation & Scheduling
+**Production Implementation:**
+- **Cron-Based Scheduler**: Production-ready task scheduler with resource awareness
+- **Built-in Maintenance Tasks**: Log cleanup, key rotation, health checks, database vacuum
+- **AMS Tasks**: Consolidation, feedback classification, Thompson sampling, trajectory cleanup
+- **KG Tasks**: Graph consolidation, entity resolution, relationship inference
+- **Resource Monitoring**: CPU/memory tracking for adaptive execution
+- **Task History**: Complete execution tracking with success/failure logging
+- **Database Schema v4**: scheduled_tasks, task_executions, task_locks tables
 
-AICO's embodiment system enables multi-modal presence—visual, vocal, and spatial—across physical and digital environments.
+**Planned Features:**
+- Personality simulation (trait-based modeling with Big Five/HEXACO)
+- Emotion simulation (AppraisalCloudPCT with 4-stage appraisal)
+- Meta-cognition and self-assessment
 
-- **Avatar System:** 3D avatars (Ready Player Me) with real-time animation (Three.js, TalkingHead.js)
-- **Rendering Pipeline:** Cross-platform 3D graphics (WebGL), integrated in Flutter via WebView
-- **Voice & Audio:** Local speech-to-text (Whisper.cpp), text-to-speech (Coqui/Piper)
-- **Gesture & Eye Tracking:** Computer vision-based interaction
-- **Spatial Intelligence:** Environmental mapping, object recognition, spatial memory
-- **Device Integration:** IoT control, multi-device presence, context handoff
-- **Deployment Patterns:** Coupled (frontend/backend on same device) and Detached (frontend on lightweight device, backend remote)
+### 😊 Sentiment & Emotion Analysis
+**Production Implementation:**
+- **Text Sentiment**: BERT Multilingual sentiment classification
+- **Emotion Analysis**: RoBERTa 6-emotion classification (joy, sadness, anger, fear, surprise, disgust)
+- **Intent Classification**: XLM-RoBERTa multilingual intent understanding
+- **Memory Album Integration**: Automatic emotional tone detection for memory organization
+
+**Planned Features:**
+- Facial emotion recognition (computer vision)
+- Voice emotion analysis (audio-based)
+- Mood tracking and empathetic response generation
+- Advanced emotion simulation (AppraisalCloudPCT)
+
+### 🎭 Frontend & User Experience
+**Production Implementation:**
+- **Flutter 3.27+**: Cross-platform UI (macOS, iOS, Android, Linux, Windows)
+- **Glassmorphic Design**: Premium UI with backdrop blur, noise textures, organic curves
+- **Riverpod 3.0**: Modern state management with compile-safe code generation
+- **Drift + SQLCipher**: Encrypted local message cache with <200ms load times
+- **Message Actions**: Hover-based toolbar (Copy, Remember, Regenerate, Feedback)
+- **Connection Management**: Resilient API service with exponential backoff
+- **Real-time Streaming**: WebSocket support for streaming AI responses
+- **Offline-First**: Cache-first loading with background sync
+- **Dio HTTP Client**: Feature-rich client with interceptors and retry logic
+
+**Planned Features:**
+- 3D Avatar System (Three.js + Ready Player Me + TalkingHead.js)
+- Voice interaction (speech-to-text and text-to-speech)
+- Gesture and eye tracking
+- Multi-device roaming with P2P encrypted sync
 
 ### 🔒 Privacy & Security
-- **Local Processing**: Edge-first computation and storage
-- **Data Encryption**: End-to-end encryption for all personal data
-- **Consent Management**: Granular privacy control and permissions
-- **Audit Logging**: Transparent data usage tracking
-- **Homomorphic Encryption**: Privacy-preserving cloud computations
-- **Zero-knowledge Authentication**: Secure access without data exposure
+**Production Implementation:**
+- **SQLCipher Encryption**: AES-256-GCM for all databases (libSQL + Drift)
+- **CurveZMQ**: 100% encrypted message bus with mandatory mutual authentication
+- **Argon2id**: Memory-hard KDF for master key derivation
+- **PBKDF2**: Database encryption key derivation (100k iterations)
+- **NaCl/libsodium**: Modern cryptography for frontend (Ed25519, X25519)
+- **JWT Authentication**: HS256 tokens with 24-hour expiry and refresh
+- **Platform Keychain**: OS-native secure storage (Keychain, Credential Manager)
+- **Audit Logging**: Encrypted log persistence with 7-day retention
+- **Database Resilience**: FULL synchronous mode for crash-safe operations
 
-### 🔌 Extensibility & Integration
-- **Plugin System**: Community-developed extensions and skills
-- **API Gateway**: Unified interface for all system components
-- **External Integrations**: Calendar, email, smart home connectivity
-- **Custom Skills**: User-defined behaviors and responses
-- **Developer Tools**: SDKs and documentation for extensions
-- **Marketplace**: Plugin discovery and distribution platform
-- **Automated Updates**: Self-updating system with user control
+**Planned Features:**
+- Consent management and granular privacy controls
+- Federated learning for privacy-preserving model improvements
+
+### 🔌 Extensibility & Administration
+**Production Implementation:**
+- **Plugin System**: Message bus, log consumer, validation, security, rate limiting, encryption
+- **API Gateway**: FastAPI with REST + WebSocket, 12+ endpoint groups
+- **CLI v1.1.0**: 15 command groups with 100+ subcommands for complete system administration
+- **Task Scheduler**: Extensible task system with built-in and custom tasks
+- **Developer Tools**: Schema management, protobuf generation, testing utilities
+- **Hot Reload**: Configuration changes without service restart
+- **Health Monitoring**: Comprehensive system health and performance tracking
+
+**Planned Features:**
+- Plugin marketplace and community extensions
+- External integrations (calendar, email, smart home)
+- Automated update system with rollback
 
 ## Design Principles
 
@@ -106,14 +150,22 @@ AICO's embodiment system enables multi-modal presence—visual, vocal, and spati
 
 ## Architectural Decisions
 
-- **Hybrid Flutter + WebView UI** - Native app performance with web-based avatar
-- **AppraisalCloudPCT for Emotion** - Component Process Model for sophisticated emotions
-- **TraitEmergence for Personality** - Multi-dimensional trait-based modeling
+**Implemented:**
+- **CurveZMQ Message Bus** - 100% encrypted pub/sub with mandatory mutual authentication
+- **Protocol Buffers 6.32** - High-performance binary serialization for backend (5.0 for Flutter)
+- **Topic-Based Pub/Sub** - Hierarchical topics with wildcard pattern matching
+- **Three-Tier Memory** - Working (LMDB) + Semantic (ChromaDB) + Adaptive (AMS)
+- **Hybrid Search V3** - Semantic + BM25 + IDF filtering + RRF fusion
+- **Property Graph** - NetworkX + DuckDB for knowledge graph with temporal reasoning
+- **Thompson Sampling** - Contextual bandit for skill selection and behavioral learning
+- **Qwen3 Abliterated 8B** - Uncensored foundation model for character consistency
+- **Plugin Architecture** - Modular backend with lifecycle management
+- **Encrypted Storage** - SQLCipher (AES-256-GCM) for all databases
+
+**Planned:**
+- **AppraisalCloudPCT** - Component Process Model for emotion simulation
 - **Multi-Faceted Agency** - Goal generation, curiosity, planning, meta-cognition
-- **Topic-Based Pub/Sub** - Standardized message formats with versioned schemas
-- **Protocol Buffers Message Format** - High-performance binary serialization with strong typing
-- **Plugin Manager as Gateway** - Mediated access for third-party extensions
-- **Homomorphic Encryption** - Privacy-preserving cloud computations when needed
+- **3D Avatar System** - Three.js + Ready Player Me + TalkingHead.js
 - **Sandboxed Plugin Execution** - Isolated environments with permission controls
 - **Atomic Updates** - Reliable system updates with rollback capabilities
 
@@ -197,7 +249,7 @@ AICO System
 │   ├── Module: Memory System
 │   │   ├── Component: Episodic Memory
 │   │   ├── Component: Semantic Memory
-│   │   ├── Component: Procedural Memory
+│   │   ├── Component: Behavioral Learning
 │   │   └── Component: Memory Consolidation
 │   └── Module: Learning System
 │       ├── Component: Continual Learning
@@ -622,7 +674,7 @@ The Update System manages automatic updates for both frontend and backend compon
 #### Memory System
 - **Episodic Memory:** Stores personal experiences and interaction history.
 - **Semantic Memory:** Maintains knowledge base and learned concepts.
-- **Procedural Memory:** Stores learned skills and behavioral patterns.
+- **Behavioral Learning:** Stores learned skills and behavioral patterns.
 - **Memory Consolidation:** Long-term memory formation and optimization.
 
 #### Data & Storage Layer

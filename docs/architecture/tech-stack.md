@@ -10,33 +10,75 @@ This document centralizes all technology decisions for the AICO system. It provi
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **Flutter** | Cross-platform UI framework | Single codebase for desktop/mobile, high performance, rich widget library |
-| **WebView** | 3D avatar rendering | Embeds web-based avatar technologies within Flutter |
-| **Three.js** | 3D graphics library | Industry standard for web-based 3D rendering |
-| **Ready Player Me** | Avatar creation | Customizable avatars with built-in animation support |
-| **TalkingHead.js** | Lip-sync and expressions | Real-time lip-sync and facial expression capabilities |
-| **JavaScript Bridge** | Flutter-WebView communication | Bidirectional communication between Flutter and web avatar |
+| **Flutter 3.27+** | Cross-platform UI framework | Single codebase for macOS/iOS/Android/Linux/Windows, high performance, rich widget library |
+| **Dart 3.8+** | Programming language | Modern, type-safe language with null safety and async/await |
+| **Riverpod 3.0** | State management | Modern, compile-safe state management with code generation |
+| **Drift 2.29** | Local database | Type-safe SQL with SQLCipher encryption support |
+| **Dio 5.4** | HTTP client | Feature-rich HTTP client with interceptors and retry logic |
+| **Go Router 16.2** | Navigation | Declarative routing with deep linking support |
+| **Flutter Secure Storage** | Secure key storage | Platform-native secure storage (Keychain/Credential Manager) |
+| **Sodium/libsodium** | Cryptography | NaCl-based encryption for frontend security |
+| **WebView** | 3D avatar rendering (planned) | Embeds web-based avatar technologies within Flutter |
+| **Three.js** | 3D graphics library (planned) | Industry standard for web-based 3D rendering |
+| **Ready Player Me** | Avatar creation (planned) | Customizable avatars with built-in animation support |
+| **TalkingHead.js** | Lip-sync and expressions (planned) | Real-time lip-sync and facial expression capabilities |
 
 ## AI/ML Layer
 
+### Foundation Models
+
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **Llama.cpp** | Local LLM inference | Efficient quantized models, cross-platform support |
-| **Ollama** | LLM management | Simplified model management and API |
-| **Mistral** | Base LLM architecture | Strong performance in quantized form |
-| **LangChain/LangGraph** | Agent orchestration | Graph-based workflow for complex agent behaviors |
-| **CrewAI/Autogen** | Multi-agent coordination | Enables collaborative agent behaviors |
-| **RND** | Curiosity algorithm | Random Network Distillation for intrinsic motivation |
-| **ICM** | Curiosity algorithm | Intrinsic Curiosity Module for prediction-based rewards |
-| **HER** | Goal-conditioned learning | Hindsight Experience Replay for learning from failures |
-| **GCPO** | Goal-conditioned learning | Goal-Conditioned Policy Optimization for on-policy learning |
-| **MCTS** | Planning system | Monte Carlo Tree Search for decision making |
-| **Behavior Trees** | Action modeling | Goal-oriented behavior modeling and execution |
-| **AppraisalCloudPCT** | Emotion simulation | Component Process Model for sophisticated emotion generation |
-| **ONNX Runtime** | Model inference | Cross-platform inference optimization |
-| **OpenVINO** | Edge inference | Intel optimization for edge devices |
-| **Whisper.cpp** | Speech-to-text | Efficient local speech recognition |
-| **Coqui/Piper** | Text-to-speech | Local high-quality voice synthesis |
+| **Ollama** | LLM management | Simplified model management, API, and lifecycle control |
+| **Qwen3 Abliterated 8B** | Primary conversation model | Uncensored foundation model for character consistency |
+| **Llama 3.2 Vision 11B** | Vision understanding (optional) | Scene understanding and emotional context from images |
+| **Llama 3.2 1B** | Lightweight tasks (optional) | Ultra-fast model for simple operations |
+
+### Entity Extraction & NLP
+
+| Technology | Purpose | Justification |
+|------------|---------|---------------|
+| **GLiNER Medium v2.1** | Entity extraction | Zero-shot entity recognition without fine-tuning |
+| **Transformers 4.50.3** | Model framework | Hugging Face transformers for NLP tasks |
+| **PyTorch** | Deep learning backend | Required by transformers for model inference |
+| **BERT Multilingual** | Sentiment analysis | Multilingual sentiment classification |
+| **RoBERTa** | Emotion analysis | English emotion classification (6 emotions) |
+| **XLM-RoBERTa Base** | Intent classification | Multilingual intent understanding |
+
+### Embeddings & Search
+
+| Technology | Purpose | Justification |
+|------------|---------|---------------|
+| **Sentence-Transformers** | Semantic embeddings | 768-dim multilingual embeddings for semantic search |
+| **BM25 (Okapi)** | Keyword search | Statistical keyword matching with IDF weighting |
+| **HNSW** | Approximate nearest neighbor | Fast similarity search for entity resolution |
+| **Reciprocal Rank Fusion** | Score combination | Robust fusion of semantic and keyword scores |
+
+### Knowledge Graph
+
+| Technology | Purpose | Justification |
+|------------|---------|---------------|
+| **NetworkX** | Graph data structure | Python graph library for property graphs |
+| **GrandCypher** | Graph query language | GQL/Cypher query execution on NetworkX graphs |
+| **PageRank** | Importance scoring | Node importance calculation for entity ranking |
+| **Louvain Algorithm** | Community detection | Relationship clustering and group identification |
+| **Betweenness Centrality** | Key entity identification | Identifies critical nodes in relationship networks |
+
+### Adaptive Learning
+
+| Technology | Purpose | Justification |
+|------------|---------|---------------|
+| **Thompson Sampling** | Skill selection | Contextual bandit with Beta distribution for exploration/exploitation |
+| **RLHF** | Behavioral learning | Reinforcement learning from human feedback |
+| **Bayesian Optimization** | Memory strategy selection | Optimal strategy selection for memory operations |
+
+### Planned/Future
+
+| Technology | Purpose | Status |
+|------------|---------|--------|
+| **AppraisalCloudPCT** | Emotion simulation | Architecture defined, implementation planned |
+| **MCTS** | Planning system | Architecture defined, implementation planned |
+| **Behavior Trees** | Action modeling | Architecture defined, implementation planned |
 
 ## Data & Storage Layer
 
@@ -44,37 +86,43 @@ AICO employs a specialized multi-database architecture optimized for local-first
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **libSQL** | Primary storage | Modern SQLite fork with encryption, improved concurrency, and vector extensions |
-| **DuckDB** | Analytical engine | Columnar storage for efficient OLAP workloads and complex analytics |
-| **ChromaDB** | Vector database | Embedded vector storage with document metadata and similarity search |
-| **LMDB** | Key-value store (optional) | High-performance, memory-mapped key-value store for session data |
-| **Sentence Transformers** | Embedding generation | Efficient text embedding models for semantic understanding |
-| **P2P Sync Protocol** | Federated device sync | Custom protocol for secure device-to-device synchronization |
+| **libSQL 0.1.8** | Primary relational storage | SQLite fork with SQLCipher encryption (AES-256), schema v15 with 15 migrations |
+| **LMDB** | Working memory (24hr TTL) | Memory-mapped key-value store for conversation history, sub-millisecond access |
+| **ChromaDB 1.0.16+** | Vector database | Embedded vector storage for semantic memory with cosine similarity |
+| **DuckDB 1.3.2+** | Knowledge graph storage | Columnar storage for property graph nodes and edges |
+| **SQLCipher** | Database encryption | AES-256-GCM encryption for all structured data at rest |
+| **Drift (Flutter)** | Frontend database | Type-safe SQL with SQLCipher encryption for local message cache |
+| **P2P Sync Protocol** | Federated device sync (planned) | Custom protocol for secure device-to-device synchronization |
 
 ## Communication Layer
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **ZeroMQ** | Internal message bus | Lightweight, embedded pub/sub messaging for all core modules |
-| **FastAPI** | API framework | Modern, fast Python web framework powering the service gateway |
+| **ZeroMQ 27.0+** | Internal message bus | Lightweight, embedded pub/sub messaging for all core modules |
+| **CurveZMQ** | Message bus encryption | 100% encrypted ZMQ with mandatory mutual authentication |
+| **FastAPI 0.116+** | API framework | Modern, fast Python web framework powering the service gateway |
+| **Uvicorn 0.35+** | ASGI server | High-performance async server for FastAPI |
 | **REST API** | UI/adapter protocol | Standard HTTP API for commands, queries, and configuration |
-| **WebSocket API** | UI/adapter protocol | Real-time, bidirectional communication for events and notifications |
-| **Protocol Buffers** | Message format | High-performance binary serialization with strong typing and cross-platform support |
-| **protoc** | Code generation | Automatic code generation for multiple languages (Python, Dart) |
+| **WebSocket API** | UI/adapter protocol | Real-time, bidirectional communication for streaming responses |
+| **Protocol Buffers 6.32** | Message format | High-performance binary serialization with strong typing (backend) |
+| **Protocol Buffers 5.0** | Message format | Wire-compatible protobuf for Flutter frontend |
+| **protoc** | Code generation | Automatic code generation for Python and Dart |
 
 ## Security & Privacy Layer
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **SQLCipher/libSQL** | Database-level encryption | Native database encryption with AES-256-GCM for all structured data |
-| **AES-256-GCM** | Authenticated encryption | Industry standard encryption with integrity verification |
-| **Argon2id** | Key derivation | Industry-leading memory-hard KDF, winner of Password Hashing Competition |
-| **Python-Cryptography** | Cryptographic library | Comprehensive, well-maintained cryptographic primitives with Argon2id support |
-| **Platform Key Storage** | Secure key management | OS-native secure storage (Keychain, Credential Manager, Secret Service) |
-| **Homomorphic Encryption** | Privacy-preserving computation | Compute on encrypted data |
-| **Differential Privacy** | Statistical privacy | Privacy-preserving analytics |
-| **Zero-Knowledge Proofs** | Authentication | Verify without revealing data |
-| **Secure Multi-party Computation** | Collaborative learning | Learn without sharing raw data |
+| **SQLCipher** | Database encryption | AES-256-GCM encryption for libSQL and Drift databases |
+| **CurveZMQ** | Transport encryption | Elliptic curve encryption for all ZMQ message bus traffic |
+| **Argon2id** | Key derivation | Memory-hard KDF for master key derivation from password |
+| **PBKDF2** | Key derivation | Additional KDF for database encryption keys (100k iterations) |
+| **NaCl/libsodium** | Frontend cryptography | Modern cryptographic library for Flutter (Ed25519, X25519) |
+| **PyNaCl** | Backend cryptography | Python bindings for NaCl cryptographic operations |
+| **Python-Cryptography** | Cryptographic primitives | Comprehensive library with Argon2id, AES, and key management |
+| **Keyring** | Platform key storage | OS-native secure storage (Keychain, Credential Manager, Secret Service) |
+| **Flutter Secure Storage** | Mobile key storage | Platform-native secure storage for Flutter apps |
+| **JWT (HS256)** | Authentication tokens | Stateless authentication with 24-hour expiry |
+| **BCrypt** | Password hashing | Secure password hashing for user authentication |
 
 ## Deployment & Distribution Layer
 
@@ -102,58 +150,81 @@ AICO employs a specialized multi-database architecture optimized for local-first
 
 | Technology      | Purpose           | Justification |
 |-----------------|-------------------|---------------|
-| **Typer**       | CLI framework     | Modern, maintainable, autocompleting command trees |
-| **Rich**        | Output formatting  | Beautiful, readable, Unicode-rich CLI output |
+| **Typer 0.12** | CLI framework     | Modern, maintainable, autocompleting command trees with 15 command groups |
+| **Rich 13.7** | Output formatting  | Beautiful, readable, Unicode-rich CLI output with tables and progress bars |
 | **PyInstaller** | Packaging         | Creates single-file, dependency-free, cross-platform executables |
-| **Platformdirs**| Config management  | Cross-platform config/cache path handling |
+| **Platformdirs 4.0** | Config management  | Cross-platform config/cache path handling |
 | **ZeroMQ (pyzmq)** | Message bus integration | Direct backend communication for admin/automation |
-| **Requests/httpx** | API communication | Fast, reliable backend service integration |
+| **Requests 2.31** | API communication | HTTP client for REST API integration |
+| **Cron-Descriptor** | Cron parsing | Human-readable cron schedule descriptions |
 
-- CLI is cross-platform (Windows, macOS, Linux) and offers a top-tier, professional UX.
-- Executable is universal, not dependent on Python/.venv on the target system.
-- CLI reuses backend modules for DRY and maintainable architecture.
+**CLI Features:**
+- **15 Command Groups**: security, database, gateway, ollama, kg, scheduler, logs, config, bus, chroma, lmdb, dev, version, modelservice
+- **100+ Subcommands**: Comprehensive admin tooling for all AICO subsystems
+- **Cross-platform**: Windows, macOS, Linux with consistent UX
+- **Production-ready**: v1.1.0 with extensive real-world testing
 
 ## Monitoring & Instrumentation Layer
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **OpenTelemetry** | Telemetry standard | Unified API for metrics, logs, and traces with minimal overhead |
-| **Structlog** | Structured logging | Python library for consistent, structured log output |
-| **libSQL** | Log & telemetry storage | Reuses existing database with time-series optimized tables |
-| **Pydantic** | Schema validation | Efficient validation of telemetry and audit records |
-| **Grafana** | Visualization (dev only) | Optional local dashboard for development and debugging |
-| **Loki** | Log aggregation (dev only) | Lightweight log aggregation for development environments |
+| **Custom Logging System** | Unified logging | AICO-specific logging with subsystem/module hierarchy |
+| **ZMQ Log Transport** | Log delivery | Protobuf-based log message delivery via message bus |
+| **Log Consumer Service** | Log persistence | Background service for encrypted log storage |
+| **libSQL** | Log storage | Encrypted database with 7-day retention policy |
+| **Pydantic 2.11+** | Schema validation | Type-safe validation of API requests and responses |
+| **Fallback Logging** | Reliability | Direct database writes during broker startup |
 
 ## Module-Specific Technologies
 
-### Personality Simulation
+### Task Scheduler
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **Personality System** | Personality architecture | Big Five and HEXACO trait-based personality modeling |
-| **Big Five & HEXACO** | Trait models | Comprehensive personality representation |
+| **Cron Parser** | Schedule parsing | High-performance cron expression parsing with caching |
+| **Asyncio** | Task execution | Python async/await for concurrent task execution |
+| **Resource Monitoring** | CPU/Memory tracking | Adaptive execution based on system resources |
+| **Database Schema v4** | Task persistence | scheduled_tasks, task_executions, task_locks tables |
 
-### Emotion Simulation
+**Built-in Tasks:**
+- **Maintenance**: Log cleanup, key rotation, health checks, database vacuum
+- **AMS Tasks**: Consolidation, feedback classification, Thompson sampling, trajectory cleanup
+- **KG Tasks**: Graph consolidation, entity resolution, relationship inference
 
-| Technology | Purpose | Justification |
-|------------|---------|---------------|
-| **AppraisalCloudPCT** | Emotion architecture | Advanced Component Process Model variant |
-| **4-Stage Appraisal** | Emotion generation | Cognitive appraisal process (Relevance → Implication → Coping → Normative) |
-
-### Autonomous Agency
-
-| Technology | Purpose | Justification |
-|------------|---------|---------------|
-| **MCTS** | Decision making | Monte Carlo Tree Search for planning |
-| **Behavior Trees** | Action execution | Structured behavior representation |
-| **RND/ICM** | Curiosity algorithms | Intrinsic motivation for exploration |
-| **HER/GCPO** | Goal learning | Goal-conditioned reinforcement learning |
-
-### Avatar System
+### Memory Album
 
 | Technology | Purpose | Justification |
 |------------|---------|---------------|
-| **Three.js** | 3D rendering | Web-based 3D graphics |
-| **Ready Player Me** | Avatar models | Customizable 3D avatars |
-| **TalkingHead.js** | Facial animation | Real-time lip-sync and expressions |
-| **WebView** | Integration | Embedding web technologies in Flutter |
+| **Database Schema v6-7** | Memory storage | user_memories table with conversation-level support |
+| **Feedback Events** | User interaction tracking | feedback_events table for memory curation |
+| **Sentiment Classification** | Emotional tone | Automatic emotion detection for memory organization |
+
+### Personality Simulation (Planned)
+
+| Technology | Purpose | Status |
+|------------|---------|--------|
+| **Personality System** | Personality architecture | Architecture defined, implementation planned |
+| **Big Five & HEXACO** | Trait models | Research complete, implementation planned |
+
+### Emotion Simulation (Planned)
+
+| Technology | Purpose | Status |
+|------------|---------|--------|
+| **AppraisalCloudPCT** | Emotion architecture | Architecture defined, implementation planned |
+| **4-Stage Appraisal** | Emotion generation | Research complete, implementation planned |
+
+### Autonomous Agency (Planned)
+
+| Technology | Purpose | Status |
+|------------|---------|--------|
+| **MCTS** | Decision making | Architecture defined, implementation planned |
+| **Behavior Trees** | Action execution | Architecture defined, implementation planned |
+
+### Avatar System (Planned)
+
+| Technology | Purpose | Status |
+|------------|---------|--------|
+| **Three.js** | 3D rendering | Ready for integration |
+| **Ready Player Me** | Avatar models | Ready for integration |
+| **TalkingHead.js** | Facial animation | Ready for integration |
+| **WebView** | Integration | Flutter WebView ready |

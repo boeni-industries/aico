@@ -55,12 +55,14 @@ class TaskContext:
                  config_manager,
                  db_connection,
                  instance_config: Optional[Dict[str, Any]] = None,
-                 execution_id: Optional[str] = None):
+                 execution_id: Optional[str] = None,
+                 service_container = None):
         self.task_id = task_id
         self.config_manager = config_manager
         self.db_connection = db_connection
         self.instance_config = instance_config or {}
         self.execution_id = execution_id
+        self.service_container = service_container
         self.logger = get_logger("backend", "scheduler.task_context")
     
     def get_config(self, key: str, default: Any = None) -> Any:

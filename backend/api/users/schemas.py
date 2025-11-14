@@ -90,7 +90,8 @@ class AuthenticationResponse(BaseModel):
     """Response schema for authentication attempts"""
     success: bool = Field(..., description="Whether authentication succeeded")
     user: Optional[UserResponse] = Field(None, description="User data if authentication successful")
-    jwt_token: Optional[str] = Field(None, description="JWT token if authentication successful")
+    jwt_token: Optional[str] = Field(None, description="JWT access token if authentication successful")
+    refresh_token: Optional[str] = Field(None, description="JWT refresh token if authentication successful")
     error: Optional[str] = Field(None, description="Error message if authentication failed")
     last_login: Optional[str] = Field(None, description="Last login timestamp")
 

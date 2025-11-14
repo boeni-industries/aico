@@ -49,7 +49,13 @@ class TaskRegistry:
     async def _load_builtin_tasks(self):
         """Load built-in maintenance tasks"""
         builtin_modules = [
-            "backend.scheduler.tasks.maintenance"
+            "backend.scheduler.tasks.maintenance",
+            "backend.scheduler.tasks.ams_consolidation",  # AMS Phase 1.5
+            "backend.scheduler.tasks.kg_consolidation",  # KG consolidation
+            "backend.scheduler.tasks.lmdb_cleanup",  # LMDB cleanup
+            "backend.scheduler.tasks.ams_feedback_classification",  # AMS Phase 3
+            "backend.scheduler.tasks.ams_thompson_sampling",  # AMS Phase 3
+            "backend.scheduler.tasks.ams_trajectory_cleanup"  # AMS Phase 3
         ]
         
         for module_name in builtin_modules:
@@ -66,6 +72,7 @@ class TaskRegistry:
                         
                         self.tasks[obj.task_id] = obj
                         task_count += 1
+                        print(f"📋 [SCHEDULER] Registered built-in task: {obj.task_id}")
                         self.logger.debug(f"Registered built-in task: {obj.task_id}")
                 
                 self.logger.info(f"Loaded {task_count} tasks from {module_name}")
@@ -191,9 +198,10 @@ class TaskRegistry:
 class TaskExecutor:
     """Executes tasks with resource management and error handling"""
     
-    def __init__(self, config_manager, db_connection):
+    def __init__(self, config_manager, db_connection, container=None):
         self.config_manager = config_manager
         self.db_connection = db_connection
+        self.container = container
         self.logger = get_logger("backend", "scheduler.task_executor")
         self.task_store = TaskStore(db_connection)
         self.running_tasks: Dict[str, asyncio.Task] = {}
@@ -206,6 +214,7 @@ class TaskExecutor:
         # Print to console if in foreground mode for immediate visibility
         if os.getenv('AICO_DETACH_MODE') == 'false':
             print(f"[SCHEDULER] Executing task: {task_id}")
+            print(f"[SCHEDULER] 🔍 Step 1: Checking if task is already running...")
         
         self.logger.info(f"Starting execution of task {task_id} (execution_id: {execution_id})")
         
@@ -214,12 +223,18 @@ class TaskExecutor:
             self.logger.warning(f"Task {task_id} is already running, skipping")
             return TaskResult(success=False, message="Task already running", skipped=True)
         
+        if os.getenv('AICO_DETACH_MODE') == 'false':
+            print(f"[SCHEDULER] 🔍 Step 2: Acquiring execution lock...")
+        
         # Acquire execution lock
-        lock_acquired = self.task_store.acquire_lock(task_id, execution_id)
+        lock_acquired = await self.task_store.acquire_lock(task_id, execution_id)
         if not lock_acquired:
             self.logger.warning(f"Could not acquire lock for task {task_id}")
             return TaskResult(success=False, message="Could not acquire execution lock", skipped=True)
 
+        if os.getenv('AICO_DETACH_MODE') == 'false':
+            print(f"[SCHEDULER] 🔍 Step 3: Lock acquired, adding to running tasks...")
+        
         # Add to running tasks *after* acquiring lock
         self.running_tasks[task_id] = asyncio.current_task()
 
@@ -227,18 +242,32 @@ class TaskExecutor:
         task_instance = None
 
         try:
+            if os.getenv('AICO_DETACH_MODE') == 'false':
+                print(f"[SCHEDULER] 🔍 Step 4: Recording execution start...")
+            
             # Record execution start
             self.task_store.record_execution_start(task_id, execution_id)
             
+            if os.getenv('AICO_DETACH_MODE') == 'false':
+                print(f"[SCHEDULER] 🔍 Step 5: Creating task instance...")
+            
             # Create task instance and context
             task_instance = task_class()
+            
+            if os.getenv('AICO_DETACH_MODE') == 'false':
+                print(f"[SCHEDULER] 🔍 Step 6: Creating task context...")
+            
             context = TaskContext(
                 task_id=task_id,
                 config_manager=self.config_manager,
                 db_connection=self.db_connection,
                 instance_config=task_config.get('config', {}),
-                execution_id=execution_id
+                execution_id=execution_id,
+                service_container=self.container
             )
+            
+            if os.getenv('AICO_DETACH_MODE') == 'false':
+                print(f"[SCHEDULER] 🔍 Step 7: Calling task.execute()...")
             
             # Apply task defaults to context for config resolution
             context.task_defaults = task_instance.get_default_config()
@@ -273,7 +302,9 @@ class TaskExecutor:
             result = TaskResult(success=False, error=error_msg)
             await self._record_completion(task_id, execution_id, result, TaskStatus.FAILED, start_time)
             
-            self.logger.error(f"Task {task_id} failed: {e}", exc_info=True)
+            self.logger.error(f"Task {task_id} failed: {e}")
+            import traceback
+            traceback.print_exc()
             return result
             
         finally:
@@ -285,7 +316,7 @@ class TaskExecutor:
                     self.logger.warning(f"Task cleanup failed for {task_id}: {e}")
             
             # Release lock
-            self.task_store.release_lock(task_id, execution_id)
+            await self.task_store.release_lock(task_id, execution_id)
 
             # Remove from running tasks
             try:
@@ -354,11 +385,17 @@ class TaskScheduler(BaseService):
         
         # Initialize core components
         self.task_registry = TaskRegistry(config_manager, database)
-        self.task_executor = TaskExecutor(config_manager, database)
+        self.task_executor = TaskExecutor(config_manager, database, self.container)
         self.task_store = TaskStore(database)
         
         # Verify database tables exist
         self.task_store.verify_tables_exist()
+        
+        # Clean up any stale locks from previous runs (e.g., if backend crashed)
+        self.logger.info("Cleaning up stale task locks from previous runs...")
+        database.execute("DELETE FROM task_locks")
+        database.commit()
+        self.logger.info("Stale task locks cleared")
         
         self.logger.info("Task scheduler initialized")
     

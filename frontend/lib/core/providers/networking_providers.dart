@@ -3,11 +3,10 @@ import 'package:aico_frontend/core/services/encryption_service.dart';
 import 'package:aico_frontend/networking/clients/unified_api_client.dart';
 import 'package:aico_frontend/networking/clients/websocket_client.dart';
 import 'package:aico_frontend/networking/services/connection_manager.dart';
+import 'package:aico_frontend/networking/services/resilient_api_service.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:aico_frontend/networking/services/user_service.dart';
-import 'package:aico_frontend/networking/services/websocket_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:aico_frontend/networking/services/resilient_api_service.dart';
 
 /// Encryption service provider for networking - singleton
 final networkingEncryptionServiceProvider = Provider<EncryptionService>((ref) {
@@ -66,11 +65,6 @@ final unifiedApiClientProvider = Provider<UnifiedApiClient>((ref) {
   });
   
   return client;
-});
-
-/// WebSocket manager provider
-final webSocketManagerProvider = Provider<WebSocketManager>((ref) {
-  return WebSocketManager();
 });
 
 /// API service provider

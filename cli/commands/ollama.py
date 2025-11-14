@@ -31,6 +31,7 @@ else:
 sys.path.insert(0, str(shared_path))
 
 from aico.core.config import ConfigurationManager
+from aico.core.paths import AICOPaths
 from ..utils.formatting import format_error, format_success
 from ..utils.help_formatter import format_subcommand_help
 
@@ -57,7 +58,7 @@ def _get_ollama_config() -> Dict[str, Any]:
     try:
         config_manager = ConfigurationManager()
         config_manager.initialize(lightweight=True)
-        return config_manager.get("modelservice.ollama", {})
+        return config_manager.get("core.modelservice.ollama", {})
     except Exception:
         return {}
 
@@ -115,7 +116,9 @@ def ollama_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             description="Ollama model management and operations",
             subcommands=[
                 ("status", "Show Ollama status and available models"),
+                ("generate", "Generate AI character model from Modelfile"),
                 ("install", "Install Ollama binary (manual process)"),
+                ("update", "Update Ollama binary to latest version"),
                 ("serve", "Start Ollama server daemon"),
                 ("shutdown", "Stop Ollama server daemon"),
                 ("run", "Run a model interactively"),
@@ -125,10 +128,12 @@ def ollama_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             ],
             examples=[
                 "aico ollama status",
+                "aico ollama update",
+                "aico ollama generate eve",
                 "aico ollama serve",
                 "aico ollama run llama3.2:3b",
-                "aico ollama show hermes3:8b",
-                "aico ollama models pull hermes3:8b",
+                "aico ollama show huihui_ai/qwen3-abliterated:8b-v2",
+                "aico ollama models pull huihui_ai/qwen3-abliterated:8b-v2",
                 "aico ollama models list"
             ]
         )
@@ -277,9 +282,275 @@ async def _show_running_models_async(show_title: bool = True):
                 models_table.add_row(name, size, param_size, family, status, modified)
             
             console.print(models_table)
+            
+            # Add note about size display
+            console.print("\n[dim]Note: Size shows effective model size. Custom models (e.g., 'eve') share layers with base models,[/dim]")
+            console.print("[dim]      so actual disk usage is much lower than the sum of all sizes.[/dim]")
     
     except Exception:
         pass  # Silently fail if models can't be retrieved
+
+
+@app.command("generate")
+def generate(
+    character_name: Optional[str] = typer.Argument(None, help="Name of the character to generate (e.g., 'eve')"),
+    force: bool = typer.Option(False, "--force", "-f", help="Regenerate character if it already exists")
+):
+    """Generate a character model from a Modelfile.
+    
+    This command creates a custom Ollama model with character-specific instructions.
+    """
+    from aico.core.paths import AICOPaths
+    
+    console.print(f"\n✨ [bold cyan]Generating Character Model: {character_name}[/bold cyan]")
+    
+    # Get modelfiles directory from user config
+    try:
+        from datetime import datetime, timezone
+        import shutil
+        
+        # Project directory (source of truth for defaults)
+        project_root = Path(__file__).parent.parent.parent
+        project_modelfiles_dir = project_root / "config" / "modelfiles"
+        
+        # User config directory (Application Support - for customization)
+        user_modelfiles_dir = AICOPaths.get_config_directory() / "modelfiles"
+        
+        # Ensure user modelfiles directory exists
+        user_modelfiles_dir.mkdir(parents=True, exist_ok=True)
+        
+        if not project_modelfiles_dir.exists():
+            console.print(format_error(f"Project Modelfiles directory not found: {project_modelfiles_dir}"))
+            console.print("[yellow]This should not happen in a development environment.[/yellow]")
+            return
+        
+        # If no character name provided, list available characters
+        if character_name is None:
+            console.print("[bold cyan]Available Characters[/bold cyan]")
+            
+            # Get all Modelfiles from user directory
+            modelfiles = sorted(user_modelfiles_dir.glob("Modelfile.*"))
+            
+            # Create table for characters
+            table = Table(
+                border_style="bright_blue",
+                header_style="bold yellow",
+                show_lines=False,
+                box=box.SIMPLE_HEAD,
+                padding=(0, 1)
+            )
+            
+            table.add_column("Character", style="bold white", justify="left")
+            table.add_column("Modelfile", style="dim", justify="left")
+            
+            for modelfile in modelfiles:
+                # Extract character name by removing "Modelfile." prefix from filename
+                char_name = modelfile.name.replace("Modelfile.", "")
+                table.add_row(char_name, str(modelfile.name))
+            
+            console.print(table)
+            console.print("\n[dim]Usage: aico ollama generate <character>[/dim]")
+            console.print("[dim]Example: aico ollama generate eve[/dim]")
+            console.print()
+            return
+        
+        # Paths for both project and user modelfiles
+        project_modelfile = project_modelfiles_dir / f"Modelfile.{character_name}"
+        user_modelfile = user_modelfiles_dir / f"Modelfile.{character_name}"
+        
+        # Sync logic: Ensure user has latest from project (unless customized)
+        if force:
+            # --force means: always use project version, no questions asked
+            if user_modelfile.exists():
+                console.print("[dim]Overwriting local Modelfile with project version (--force)[/dim]")
+            shutil.copy(project_modelfile, user_modelfile)
+        elif not user_modelfile.exists():
+            # First time - copy from project
+            console.print("[dim]Copying Modelfile from project to local config[/dim]")
+            shutil.copy(project_modelfile, user_modelfile)
+        else:
+            # Both exist - check timestamps (UTC to avoid timezone issues)
+            project_mtime = datetime.fromtimestamp(project_modelfile.stat().st_mtime, tz=timezone.utc)
+            user_mtime = datetime.fromtimestamp(user_modelfile.stat().st_mtime, tz=timezone.utc)
+            
+            if user_mtime > project_mtime:
+                # User's local version is newer (likely customized)
+                console.print("[yellow]⚠ Warning: Your local Modelfile is newer than the project version[/yellow]")
+                console.print(f"   Local:   {user_mtime.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                console.print(f"   Project: {project_mtime.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                console.print("\n[bold]This will replace your local Modelfile with the project version.[/bold]")
+                console.print("[dim]Any customizations you made will be lost.[/dim]")
+                
+                if not typer.confirm("\nAre you sure you want to continue?", default=False):
+                    console.print("[yellow]Cancelled. Using your local Modelfile.[/yellow]")
+                else:
+                    shutil.copy(project_modelfile, user_modelfile)
+                    console.print("[green]✓[/green] Updated local Modelfile from project")
+            elif project_mtime > user_mtime:
+                # Project is newer - auto-update
+                console.print("[dim]Updating local Modelfile from project (newer version available)[/dim]")
+                shutil.copy(project_modelfile, user_modelfile)
+        
+        # Use the user modelfile (which is now synced)
+        modelfile_path = user_modelfile
+    except Exception as e:
+        console.print(format_error(f"Failed to access Modelfile directory: {str(e)}"))
+        return
+    
+    # Check if Modelfile exists
+    if not modelfile_path.exists():
+        console.print(format_error(
+            f"Modelfile not found: {modelfile_path}\n"
+            f"Expected location: config/modelfiles/Modelfile.{character_name}\n"
+            f"Available characters: {', '.join([f.stem.replace('Modelfile.', '') for f in modelfiles_dir.glob('Modelfile.*')])}"
+        ))
+        return
+    
+    console.print(f"[dim]Reading Modelfile from: {modelfile_path}[/dim]")
+    
+    # Read and validate Modelfile
+    try:
+        modelfile_content = modelfile_path.read_text(encoding='utf-8')
+        
+        # Basic validation
+        if not modelfile_content.strip():
+            console.print(format_error("Modelfile is empty"))
+            return
+        
+        if "FROM" not in modelfile_content:
+            console.print(format_error("Modelfile missing required FROM instruction"))
+            return
+        
+        console.print("[dim]Modelfile validated successfully[/dim]")
+        
+    except Exception as e:
+        console.print(format_error(f"Failed to read Modelfile: {str(e)}"))
+        return
+    
+    # Extract base model from Modelfile for display
+    base_model = None
+    for line in modelfile_content.split('\n'):
+        if line.strip().startswith('FROM '):
+            base_model = line.strip().replace('FROM ', '')
+            break
+    
+    # Generate character model using Ollama CLI (more reliable than API)
+    # Advantage: Ollama CLI will start the server if needed
+    console.print(f"[dim]Generating character model '{character_name}' in Ollama...[/dim]")
+    
+    import subprocess
+    
+    # Get the Ollama binary path from our platform-specific bin directory
+    ollama_bin = AICOPaths.get_data_directory() / "bin" / "ollama"
+    
+    if not ollama_bin.exists():
+        console.print(format_error(
+            f"Ollama binary not found at: {ollama_bin}\n"
+            "Please ensure Ollama is installed in the AICO bin directory."
+        ))
+        return
+    
+    try:
+        # Use ollama CLI to create the model from the Modelfile
+        # Show a spinner while it runs (can take a while if downloading base model)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Creating model (this may take a few minutes if downloading base model)...", total=None)
+            
+            # Build command with --force flag if specified
+            cmd = [str(ollama_bin), "create", character_name, "-f", str(modelfile_path)]
+            if force:
+                # Remove existing model first to ensure clean regeneration
+                try:
+                    subprocess.run(
+                        [str(ollama_bin), "rm", character_name],
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    console.print(f"[dim]Removed existing '{character_name}' model[/dim]")
+                except:
+                    pass  # Model might not exist, that's fine
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+        
+        process = result
+        
+        if process.returncode == 0:
+            console.print(format_success(
+                f"Character model '{character_name}' generated successfully!\n"
+                f"Test it with: ollama run {character_name}"
+            ))
+            
+            # Show model info
+            console.print(f"\n[bold cyan]Model Details:[/bold cyan]")
+            console.print(f"[dim]Name: {character_name}[/dim]")
+            console.print(f"[dim]Modelfile: {modelfile_path}[/dim]")
+            if base_model:
+                console.print(f"[dim]Base Model: {base_model}[/dim]")
+            
+            # Update configuration to use the new character model
+            console.print(f"\n[bold cyan]Updating Configuration:[/bold cyan]")
+            try:
+                config_manager = ConfigurationManager()
+                config_manager.initialize()
+                
+                # Update the conversation model name (note: modelservice is under 'core' in config)
+                config_manager.set("core.modelservice.ollama.default_models.conversation.name", character_name, persist=True)
+                console.print(f"[green]✓[/green] Updated config: core.modelservice.ollama.default_models.conversation.name = {character_name}")
+                
+                # Update description if we have base model info
+                if base_model:
+                    description = f"{character_name.title()} character based on {base_model}"
+                    config_manager.set("core.modelservice.ollama.default_models.conversation.description", description, persist=True)
+                    console.print(f"[green]✓[/green] Updated config: core.modelservice.ollama.default_models.conversation.description")
+                
+                # Verify runtime.yaml was created
+                runtime_file = config_manager.user_config_dir / "runtime.yaml"
+                if runtime_file.exists():
+                    console.print(f"[green]✓[/green] Runtime config saved to: {runtime_file}")
+                else:
+                    console.print(f"[yellow]⚠[/yellow] Runtime config file not created at: {runtime_file}")
+                
+            except Exception as e:
+                console.print(f"[yellow]⚠[/yellow] Could not update config automatically: {e}")
+                console.print(f"[dim]You can manually update core.yaml to use model '{character_name}'[/dim]")
+            
+            # Prompt to restart backend
+            console.print(f"\n[bold yellow]⚠ Important:[/bold yellow]")
+            console.print(f"[yellow]Backend needs to be restarted to use the new character model.[/yellow]")
+            console.print(f"\n[bold cyan]Next steps:[/bold cyan]")
+            console.print(f"  1. Restart backend: [bold]aico gateway restart[/bold]")
+            console.print(f"  2. Test the character: Send a message in the UI")
+            console.print(f"\n[dim]The new '{character_name}' model will be used for all conversations.[/dim]")
+        else:
+            console.print(format_error(f"Failed to create model. Exit code: {process.returncode}"))
+    
+    except subprocess.TimeoutExpired:
+        console.print(format_error(
+            "Character model generation timed out.\n"
+            "This may happen if the base model needs to be downloaded.\n"
+            "Check Ollama logs for progress."
+        ))
+    
+    except FileNotFoundError:
+        console.print(format_error(
+            "Ollama CLI not found.\n"
+            "Please install Ollama from: https://ollama.com/download"
+        ))
+    
+    except Exception as e:
+        console.print(format_error(f"Failed to create model: {str(e)}"))
+    
+    console.print()
 
 
 @app.command("install")
@@ -290,6 +561,225 @@ def install(force: bool = typer.Option(False, "--force", help="Force reinstall e
     console.print("[yellow]Note: This command requires manual Ollama installation.[/yellow]")
     console.print("[dim]Please visit https://ollama.com/download to install Ollama for your platform.[/dim]")
     console.print("[dim]After installation, use 'aico ollama status' to verify.[/dim]")
+    console.print()
+
+
+@app.command("update")
+def update(
+    force: bool = typer.Option(False, "--force", "-f", help="Force update even if already on latest version"),
+    check_only: bool = typer.Option(False, "--check", "-c", help="Only check for updates without installing")
+):
+    """Update Ollama binary to the latest version."""
+    asyncio.run(_update_async(force, check_only))
+
+
+async def _update_async(force: bool, check_only: bool):
+    """Async implementation of update command."""
+    console.print("\n✨ [bold cyan]Ollama Update[/bold cyan]")
+    
+    try:
+        # Import OllamaManager
+        import subprocess
+        import os
+        from pathlib import Path
+        
+        # Get Ollama binary path
+        ollama_bin = AICOPaths.get_data_directory() / "bin" / "ollama"
+        
+        # Get current version
+        current_version = "unknown"
+        if ollama_bin.exists():
+            try:
+                result = subprocess.run(
+                    [str(ollama_bin), "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    # Extract version from output like "ollama version is 0.11.10"
+                    output = result.stdout.strip()
+                    if "version is" in output:
+                        current_version = output.split("version is")[-1].strip()
+                    else:
+                        current_version = output
+            except Exception:
+                pass
+        
+        console.print(f"[dim]Current version: {current_version}[/dim]")
+        
+        # Get latest version from GitHub
+        console.print("[dim]Checking for latest version...[/dim]")
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get("https://api.github.com/repos/ollama/ollama/releases/latest")
+                if response.status_code == 200:
+                    release_data = response.json()
+                    latest_version = release_data.get("tag_name", "unknown").lstrip("v")
+                else:
+                    console.print(format_error("Failed to fetch latest version from GitHub"))
+                    return
+        except Exception as e:
+            console.print(format_error(f"Failed to check for updates: {str(e)}"))
+            return
+        
+        console.print(f"[dim]Latest version:  {latest_version}[/dim]\n")
+        
+        # Compare versions
+        if current_version == latest_version and not force:
+            console.print(format_success(f"Already on latest version: {latest_version}"))
+            console.print()
+            return
+        
+        if check_only:
+            if current_version != latest_version:
+                console.print(f"[yellow]Update available: {current_version} → {latest_version}[/yellow]")
+                console.print(f"[dim]Run 'aico ollama update' to install[/dim]")
+            console.print()
+            return
+        
+        # Perform update
+        console.print(f"[bold cyan]Updating from {current_version} to {latest_version}...[/bold cyan]\n")
+        
+        # Download and install directly
+        bin_dir = AICOPaths.get_data_directory() / "bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Determine platform-specific download URL
+        import platform as plat
+        system = plat.system()
+        
+        if system == "Darwin":
+            asset_name = "ollama-darwin.tgz"
+        elif system == "Linux":
+            asset_name = "ollama-linux-amd64"
+        elif system == "Windows":
+            asset_name = "ollama-windows-amd64.zip"
+        else:
+            console.print(format_error(f"Unsupported platform: {system}"))
+            return
+        
+        # Find download URL from release assets
+        download_url = None
+        for asset in release_data.get("assets", []):
+            if asset.get("name") == asset_name:
+                download_url = asset.get("browser_download_url")
+                break
+        
+        if not download_url:
+            console.print(format_error(f"Could not find download for {asset_name}"))
+            return
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Downloading Ollama...", total=None)
+            
+            try:
+                # Download file
+                import tempfile
+                temp_file = Path(tempfile.mktemp(suffix=f"_{asset_name}"))
+                
+                async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
+                    async with client.stream("GET", download_url) as response:
+                        response.raise_for_status()
+                        with open(temp_file, "wb") as f:
+                            async for chunk in response.aiter_bytes(chunk_size=8192):
+                                f.write(chunk)
+                
+                progress.update(task, description="Installing Ollama...")
+                
+                # Extract and install
+                if asset_name.endswith(".tgz"):
+                    # macOS tar.gz
+                    import tarfile
+                    import shutil
+                    import tempfile
+                    
+                    # Extract to temp directory first
+                    temp_extract_dir = Path(tempfile.mkdtemp())
+                    try:
+                        with tarfile.open(temp_file, 'r:gz') as tar:
+                            tar.extractall(temp_extract_dir)
+                        
+                        # Find the ollama binary in extracted files
+                        ollama_binary = None
+                        for root, dirs, files in os.walk(temp_extract_dir):
+                            if 'ollama' in files:
+                                ollama_binary = Path(root) / 'ollama'
+                                break
+                        
+                        if not ollama_binary:
+                            raise FileNotFoundError("Could not find ollama binary in archive")
+                        
+                        # Remove old binary if exists
+                        if ollama_bin.exists():
+                            ollama_bin.unlink()
+                        
+                        # Copy to final location
+                        shutil.copy2(str(ollama_binary), str(ollama_bin))
+                    finally:
+                        # Clean up temp extract directory
+                        shutil.rmtree(temp_extract_dir, ignore_errors=True)
+                elif asset_name.endswith(".zip"):
+                    # Windows zip
+                    import zipfile
+                    with zipfile.ZipFile(temp_file, 'r') as zip_ref:
+                        zip_ref.extract("ollama.exe", bin_dir)
+                else:
+                    # Linux binary
+                    import shutil
+                    ollama_bin.unlink(missing_ok=True)
+                    shutil.move(str(temp_file), str(ollama_bin))
+                
+                # Make executable
+                ollama_bin.chmod(0o755)
+                
+                # Clean up
+                temp_file.unlink(missing_ok=True)
+                
+                progress.update(task, description="Installation complete")
+                success = True
+                
+            except Exception as e:
+                progress.update(task, description="Installation failed")
+                console.print(format_error(f"Download/installation error: {str(e)}"))
+                success = False
+        
+        if success:
+            # Verify new version
+            new_version = "unknown"
+            try:
+                result = subprocess.run(
+                    [str(ollama_bin), "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    output = result.stdout.strip()
+                    if "version is" in output:
+                        new_version = output.split("version is")[-1].strip()
+                    else:
+                        new_version = output
+            except Exception:
+                pass
+            
+            console.print(format_success(f"Ollama updated successfully to version {new_version}"))
+            console.print(f"\n[bold cyan]Next Steps:[/bold cyan]")
+            console.print(f"  1. Restart Ollama if running: [bold]pkill ollama && ollama serve[/bold]")
+            console.print(f"  2. Verify update: [bold]aico ollama status[/bold]")
+            console.print(f"\n[dim]Note: If modelservice is running, restart it to use the new version:[/dim]")
+            console.print(f"[dim]      aico gateway restart[/dim]")
+        else:
+            console.print(format_error("Failed to update Ollama"))
+            console.print("[dim]Check logs for details or try manual installation from https://ollama.com/download[/dim]")
+    
+    except Exception as e:
+        console.print(format_error(f"Update failed: {str(e)}"))
+    
     console.print()
 
 
@@ -332,7 +822,7 @@ def models_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help
             ],
             examples=[
                 "aico ollama models list",
-                "aico ollama models pull hermes3:8b",
+                "aico ollama models pull huihui_ai/qwen3-abliterated:8b-v2",
                 "aico ollama models pull llama3.2-vision:11b",
                 "aico ollama models remove old-model:latest"
             ]

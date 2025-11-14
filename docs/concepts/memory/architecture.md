@@ -26,99 +26,63 @@ AICO's memory system implements a sophisticated four-tier architecture designed 
 | Embedding Throughput | 1 req/60s | 5 batch/0.5s | **600x faster** |
 | Failure Recovery | Manual restart | 15s automatic | **Fully automated** |
 
-## Four-Tier Memory Architecture
+## Memory Architecture: Three Tiers
 
 ### 1. Working Memory
 
 **Purpose**: Real-time conversation state and immediate context management
 
 **Implementation**:
-- **Storage**: LMDB (Lightning Memory-Mapped Database) for high-performance, memory-mapped key-value operations.
-- **Scope**: Current session, active threads, immediate context
-- **Lifecycle**: Ephemeral with periodic persistence to libSQL
-- **Performance**: Sub-millisecond access, in-memory caching
+- **Storage**: LMDB (Lightning Memory-Mapped Database) for high-performance key-value operations
+- **Scope**: Recent conversation history, scoped by conversation_id
+- **Lifecycle**: TTL-based expiration (24 hours default)
+- **Performance**: Sub-millisecond access, memory-mapped files
+- **Dual Role**: Serves both immediate context AND conversation history (no separate episodic tier needed)
 
 **Data Structures**:
 ```python
-@dataclass
-class WorkingMemoryContext:
-    thread_id: str
-    user_id: str
-    active_context: List[Message]
-    emotional_state: EmotionalContext
-    personality_parameters: PersonalityState
-    conversation_objectives: List[str]
-    last_updated: datetime
-    token_count: int
+# Messages stored with key pattern: {conversation_id}:{timestamp}
+# Retrieved by conversation_id prefix scan
+{
+    "conversation_id": "user123_1699123456",
+    "user_id": "user123",
+    "role": "user" | "assistant",
+    "content": "message text",
+    "timestamp": "2025-11-05T15:30:00Z"
+}
 ```
 
 **Responsibilities**:
-- Maintain current conversation state
-- Manage token-optimized context windows
-- Track real-time emotional and personality state
-- Coordinate immediate conversation objectives
+- Store all conversation messages per conversation_id
+- Provide fast retrieval for context assembly
+- Automatic expiration of old messages (24hr TTL)
+- Cross-conversation message queries for semantic memory
+- Serve as conversation history store (replaces traditional "episodic memory")
 
-### 2. Episodic Memory
+### 2. Semantic Memory + Knowledge Graph (V3 Hybrid Search)
 
-**Purpose**: Conversation-specific events with rich temporal and emotional metadata
-
-**Implementation**:
-- **Storage**: libSQL with encryption for persistent conversation history
-- **Scope**: Complete conversation threads with full context
-- **Lifecycle**: Permanent with configurable archival policies
-- **Performance**: Indexed queries, batch operations
-
-**Database Schema**:
-```sql
-CREATE TABLE conversation_episodes (
-    id TEXT PRIMARY KEY,
-    thread_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    message_type TEXT NOT NULL, -- 'user', 'assistant', 'system'
-    content TEXT ENCRYPTED,
-    timestamp DATETIME NOT NULL,
-    emotional_context JSON,
-    personality_snapshot JSON,
-    topic_tags TEXT[], -- extracted topics
-    turn_number INTEGER,
-    thread_phase TEXT, -- 'opening', 'development', 'resolution'
-    FOREIGN KEY (thread_id) REFERENCES conversation_threads(id)
-);
-
-CREATE TABLE conversation_threads (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    created_at DATETIME NOT NULL,
-    last_activity DATETIME NOT NULL,
-    status TEXT NOT NULL, -- 'active', 'dormant', 'archived'
-    topic_summary TEXT,
-    message_count INTEGER DEFAULT 0,
-    emotional_arc JSON, -- emotional progression
-    relationship_context JSON
-);
-```
-
-**Responsibilities**:
-- Store complete conversation history
-- Maintain temporal sequence and turn tracking
-- Preserve emotional context and personality snapshots
-- Enable conversation replay and analysis
-
-### 3. Semantic Memory (V3 Hybrid Search Architecture)
-
-**Purpose**: Knowledge base with hybrid search (semantic + BM25) for accurate retrieval
+**Purpose**: Long-term knowledge storage with semantic search and graph relationships
 
 **V3 Implementation**:
-- **Storage**: ChromaDB for vector operations, libSQL for structured data
+
+**A. Conversation Segments (ChromaDB)**
+- **Storage**: ChromaDB with cosine similarity
 - **Search**: Hybrid search combining semantic similarity with BM25 keyword matching
 - **Fusion**: Reciprocal Rank Fusion (RRF) for robust score combination
-- **Filtering**: IDF-based term filtering + semantic relevance thresholds
-- **Processing**: SemanticRequestQueue with circuit breaker and rate limiting
-- **Concurrency**: Multi-threading optimization for CPU-intensive operations
-- **Embeddings**: Ollama-managed multilingual models via modelservice abstraction
-- **Scope**: Cross-conversation knowledge, user facts, preferences
-- **Lifecycle**: Accumulated knowledge with confidence scoring
-- **Performance**: Batch processing (600x improvement), controlled concurrency, full-corpus BM25
+- **Filtering**: IDF-based term filtering (min_idf=0.6) + semantic relevance thresholds (min_score=0.35)
+- **Embeddings**: `paraphrase-multilingual` (768-dim) via Ollama modelservice
+- **Scope**: Conversation chunks scoped by conversation_id and user_id
+- **Performance**: Full-corpus BM25 for accurate IDF statistics
+
+**B. Knowledge Graph (ChromaDB + libSQL)**
+- **Storage**: Hybrid ChromaDB (vectors) + libSQL (relational queries)
+- **Extraction**: Multi-pass with GLiNER (entities) + LLM (relationships)
+- **Entity Resolution**: 3-step process (semantic blocking → LLM matching → LLM merging)
+- **Graph Fusion**: Conflict resolution, temporal updates, canonical IDs
+- **Schema**: kg_nodes, kg_edges, kg_node_properties, kg_edge_properties (with triggers)
+- **Production Status**: 204 nodes, 27 edges, 552 indexed properties
+- **Scope**: Cross-conversation knowledge accumulation
+- **Integration**: Tightly coupled with semantic memory for fact extraction and retrieval
 
 **Hybrid Search Pipeline**:
 ```python
@@ -265,41 +229,47 @@ class EmbeddingService:
 - **Circuit Recovery**: 15-30 seconds automatic recovery
 - **Thread Utilization**: Scales with available CPU cores
 
-### 4. Procedural Memory
+### 3. Behavioral Learning (Planned)
 
-**Purpose**: Learned interaction patterns and successful strategies
+**Purpose**: Learn user interaction patterns, preferences, and behavioral adaptation
 
-**Implementation**:
-- **Storage**: libSQL with structured pattern storage
-- **Scope**: Behavioral patterns, interaction strategies, timing preferences
-- **Lifecycle**: Continuously updated based on interaction success
-- **Performance**: Pattern matching, statistical analysis
+**Planned Implementation**:
+- **Storage**: libSQL for fast pattern queries (no embeddings needed)
+- **Scope**: User-level behavioral patterns across all conversations
+- **Learning**: Continuous observation and pattern extraction
+- **Adaptation**: Real-time response style and content adjustment
 
 **Pattern Types**:
 ```python
+# Interaction patterns to learn
+- Response length preferences (by time of day, topic, context)
+- Topic interests and avoidances
+- Communication style preferences (formal/casual, brief/detailed)
+- Engagement signals (follow-up questions, topic changes)
+- Successful conversation patterns
+- Time-of-day behavioral patterns
+```
+
+**Data Structures**:
+```python
 @dataclass
-class InteractionPattern:
+class UserPattern:
     pattern_id: str
     user_id: str
-    pattern_type: str  # 'conversation_timing', 'topic_preference', 'response_style'
+    pattern_type: str  # 'response_length', 'topic_preference', 'time_of_day'
     pattern_data: Dict[str, Any]
-    success_rate: float
-    sample_size: int
-    confidence_interval: Tuple[float, float]
-    last_updated: datetime
-    
-    # Example patterns:
-    # - Preferred conversation length
-    # - Topic switching tolerance
-    # - Response formality level
-    # - Proactive engagement timing
+    confidence: float  # Based on observation frequency
+    observation_count: int
+    last_observed: datetime
+    created_at: datetime
 ```
 
 **Responsibilities**:
-- Learn and store successful interaction strategies
-- Adapt conversation style to user preferences
-- Optimize timing for proactive engagement
-- Maintain behavioral consistency across sessions
+- Track user interaction patterns and preferences
+- Learn optimal response styles and timing
+- Enable adaptive personalization
+- Provide conversation quality metrics
+- Support proactive engagement strategies
 
 ## Model Management Architecture
 
@@ -373,10 +343,9 @@ class AICOMemoryManager:
     
     def __init__(self, config: MemoryConfig):
         # Storage backends
-        self.working_memory = LMDBStore(config.working_memory_path)
-        self.episodic_store = EncryptedLibSQL(config.episodic_db_path)  # LMDB conversation_history
-        self.semantic_store = ChromaDBStore(config.semantic_db_path)
-        self.procedural_store = LibSQLStore(config.procedural_db_path)
+        self.working_memory = LMDBStore(config.working_memory_path)  # Conversation history + context
+        self.semantic_store = ChromaDBStore(config.semantic_db_path)  # Segments + KG
+        self.procedural_store = LibSQLStore(config.procedural_db_path)  # User patterns (planned)
         
         # Unified model service integration
         self.model_service = ModelServiceIntegration(config)
@@ -388,39 +357,39 @@ class AICOMemoryManager:
         
     async def assemble_context(self, user_id: str, message: str) -> ConversationContext:
         """Coordinate memory retrieval across all tiers with unified model service."""
-        # 1. Get working memory (immediate context)
-        working_ctx = await self.working_memory.get_active_context(user_id)
+        # 1. Get working memory (conversation history + immediate context)
+        working_ctx = await self.working_memory.get_conversation_context(user_id)
         
         # 2. Generate embeddings for semantic search via modelservice
         message_embeddings = await self.model_service.generate_embeddings([message])
         message_embedding = message_embeddings[0]
         
-        # 3. Retrieve relevant episodic memories (from LMDB conversation_history)
-        episodic_memories = await self.working_memory.query_similar_episodes(
-            message, user_id, limit=5
+        # 3. Get semantic knowledge using hybrid search (segments + KG)
+        semantic_results = await self.semantic_store.query_hybrid(
+            message, message_embedding, user_id, threshold=0.4
         )
         
-        # 4. Get semantic knowledge using vector similarity
-        semantic_facts = await self.semantic_store.query_relevant_facts(
-            message_embedding, user_id, threshold=0.7
+        # 4. Get knowledge graph facts
+        kg_facts = await self.semantic_store.query_knowledge_graph(
+            user_id, entities=semantic_results.entities
         )
         
-        # 5. Apply procedural patterns
+        # 5. Apply procedural patterns (when implemented)
         interaction_patterns = await self.procedural_store.get_user_patterns(user_id)
         
         # 6. Assemble and optimize context
         return self.context_assembler.build_context(
-            working_ctx, episodic_memories, semantic_facts, interaction_patterns
+            working_ctx, semantic_results, kg_facts, interaction_patterns
         )
 ```
 
 ### Cross-Tier Communication
 
 **Memory Update Pipeline**:
-1. **Real-time Updates**: Working memory receives immediate conversation state
-2. **Episodic Recording**: Each conversation turn persisted to episodic memory
-3. **Semantic Extraction**: Background process extracts facts from episodes
-4. **Pattern Learning**: Procedural memory updated based on interaction outcomes
+1. **Real-time Updates**: Working memory receives and stores all conversation messages
+2. **Semantic Extraction**: Background process extracts segments and KG facts from conversations
+3. **Pattern Learning**: Procedural memory updated based on interaction outcomes (planned)
+4. **Memory Consolidation**: Periodic cleanup and optimization of stored data
 
 **Consistency Management**:
 - **Conflict Detection**: Identify contradictory information across memory tiers
@@ -432,10 +401,10 @@ class AICOMemoryManager:
 ### Resource Usage
 
 **Memory Footprint**:
-- Working Memory: 50-100MB (configurable context window)
-- Vector Embeddings: 200-500MB (depends on conversation history)
+- Working Memory (LMDB): 50-100MB (conversation history + context)
+- Semantic Memory (ChromaDB): 200-500MB (segments + KG embeddings)
 - Database Connections: 20-50MB
-- Total: ~500MB typical usage
+- Total: ~300-650MB typical usage
 
 **CPU Usage**:
 - Context Assembly: 10-50ms per message
@@ -444,10 +413,10 @@ class AICOMemoryManager:
 - Background Processing: 5-10% CPU during idle
 
 **Storage Requirements**:
-- Episodic Memory: ~1MB per 1000 conversation turns
-- Semantic Memory: ~10MB per 10,000 facts
-- Vector Embeddings: ~500MB per 100,000 messages
-- Procedural Patterns: ~1MB per user
+- Working Memory: ~1MB per 1000 conversation turns (24hr TTL)
+- Semantic Segments: ~500MB per 100,000 segments (with embeddings)
+- Knowledge Graph: ~10MB per 1000 nodes + edges
+- Procedural Patterns: ~1MB per user (planned)
 
 ### Optimization Strategies
 
@@ -546,12 +515,17 @@ The memory system is implemented as a shared AI module at `shared/aico/ai/memory
 shared/aico/ai/memory/
 ├── __init__.py          # Module exports and public interface
 ├── manager.py           # MemoryManager - central coordinator extending BaseAIProcessor
-├── working.py           # WorkingMemoryStore - RocksDB session context
-├── episodic.py          # EpisodicMemoryStore - encrypted libSQL conversations
-├── semantic.py          # SemanticMemoryStore - ChromaDB knowledge base
-├── procedural.py        # ProceduralMemoryStore - libSQL user patterns
-├── context.py           # ContextAssembler - cross-tier context assembly
-└── consolidation.py     # MemoryConsolidator - background processing
+├── working.py           # WorkingMemoryStore - LMDB conversation history + context
+├── semantic.py          # SemanticMemoryStore - ChromaDB segments with hybrid search
+├── procedural.py        # ProceduralMemoryStore - libSQL user patterns (planned)
+├── context/             # Context assembly module
+│   ├── assembler.py     # ContextAssembler - cross-tier coordination
+│   ├── retrievers.py    # Memory tier retrievers
+│   ├── scorers.py       # Relevance scoring
+│   └── graph_ranking.py # KG-based context ranking
+├── fusion.py            # Hybrid search fusion (RRF, weighted)
+├── bm25.py              # BM25 keyword ranking
+└── memory_album.py      # Memory consolidation and browsing (planned)
 ```
 
 ### Architecture Integration Patterns

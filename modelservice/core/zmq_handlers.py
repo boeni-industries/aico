@@ -20,7 +20,7 @@ from .transformers_manager import TransformersManager
 from aico.core.version import get_modelservice_version
 from aico.proto.aico_modelservice_pb2 import (
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
-    EmbeddingsResponse, NerResponse, EntityList, EntityWithConfidence, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus,
+    EmbeddingsRequest, EmbeddingsResponse, NerResponse, EntityList, EntityWithConfidence, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus,
     SentimentRequest, SentimentResponse, IntentClassificationRequest, IntentClassificationResponse
 )
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -115,10 +115,15 @@ class ModelserviceZMQHandlers:
     
     async def initialize_transformers_system(self):
         """Initialize the Transformers system asynchronously using TransformersManager."""
+        print(f"🔍 [INIT_CHECK] initialize_transformers_system() called - transformers_initialized={self.transformers_initialized}")
+        
         if self.transformers_initialized:
+            self.logger.info("✅ Transformers system already initialized - skipping")
+            print("✅ Transformers system already initialized - using preloaded models")
             return
         
         try:
+            print(f"🔍 [INIT_START] Starting NEW Transformers initialization - transformers_initialized={self.transformers_initialized}")
             self.logger.info("Starting Transformers system initialization...")
             
             # Lazy initialization of TransformersManager
@@ -229,30 +234,36 @@ class ModelserviceZMQHandlers:
                     "role": msg.role,
                     "content": msg.content
                 })
-                self.logger.info(f"[CHAT] Message {i}: role='{msg.role}', content='{msg.content[:200]}{'...' if len(msg.content) > 200 else ''}')")
+                # self.logger.info(f"[CHAT] Message {i}: role='{msg.role}', content='{msg.content[:200]}{'...' if len(msg.content) > 200 else ''}'")  # Commented out to reduce log volume
             
             # Forward to Ollama - check config path
             ollama_config = self.config.get('ollama', {})
-            self.logger.info(f"[CHAT] Ollama config from self.config: {ollama_config}")
-            self.logger.info(f"[CHAT] Full config keys: {list(self.config.keys())}")
+            # self.logger.info(f"[CHAT] Ollama config from self.config: {ollama_config}")  # Commented out to reduce log volume
+            # self.logger.info(f"[CHAT] Full config keys: {list(self.config.keys())}")
             ollama_url = f"http://{ollama_config.get('host', '127.0.0.1')}:{ollama_config.get('port', 11434)}"
-            self.logger.info(f"[CHAT] Forwarding to Ollama at {ollama_url}")
-            self.logger.info(f"[CHAT] Chat messages count: {len(chat_messages)}")
+            # self.logger.info(f"[CHAT] Forwarding to Ollama at {ollama_url}")
+            # self.logger.info(f"[CHAT] Chat messages count: {len(chat_messages)}")
             
-            self.logger.info(f"[CHAT] Creating HTTP client for streaming...")
+            # self.logger.info(f"[CHAT] Creating HTTP client for streaming...")
             async with httpx.AsyncClient(timeout=60.0) as client:
+                # Check if thinking is explicitly disabled in request (default: True for conversations)
+                enable_thinking = request_payload.think if hasattr(request_payload, 'think') and request_payload.HasField('think') else True
+                
                 request_data = {
                     "model": model,
                     "messages": chat_messages,
-                    "stream": True  # Enable streaming
+                    "stream": True,  # Enable streaming
+                    "think": enable_thinking  # Ollama 0.12+ thinking mode (default: True, can be disabled for KG extraction)
                 }
-                self.logger.info(f"[CHAT] Request data prepared: model={model}, messages_count={len(chat_messages)}, streaming=True")
+                # Commented out to reduce log volume
+                # self.logger.info(f"[CHAT] Request data prepared: model={model}, messages_count={len(chat_messages)}, streaming=True, thinking=True")
                 
                 try:
-                    self.logger.info(f"[CHAT] Making streaming POST request to {ollama_url}/api/chat")
+                    # self.logger.info(f"[CHAT] Making streaming POST request to {ollama_url}/api/chat")
                     
                     # Stream response from Ollama and forward chunks immediately
                     accumulated_content = ""
+                    accumulated_thinking = ""
                     from aico.proto.aico_modelservice_pb2 import CompletionResult, ConversationMessage
                     
                     async with client.stream("POST", f"{ollama_url}/api/chat", json=request_data) as stream_response:
@@ -269,37 +280,68 @@ class ModelserviceZMQHandlers:
                             try:
                                 chunk = json.loads(line)
                                 
-                                # Extract content from chunk
-                                if "message" in chunk and "content" in chunk["message"]:
-                                    chunk_content = chunk["message"]["content"]
-                                    accumulated_content += chunk_content
+                                # Ollama 0.12+ returns thinking in separate field
+                                chunk_thinking = chunk.get("message", {}).get("thinking", "")
+                                chunk_content = chunk.get("message", {}).get("content", "")
+                                
+                                # Handle thinking chunks
+                                if chunk_thinking:
+                                    accumulated_thinking += chunk_thinking
                                     
-                                    # Publish streaming chunk using proper protobuf message
-                                    if self.message_bus_client and chunk_content and correlation_id:
+                                    # Publish thinking chunk
+                                    if self.message_bus_client and correlation_id:
                                         from aico.proto.aico_modelservice_pb2 import StreamingChunk
                                         from aico.core.topics import AICOTopics
                                         import time
                                         
-                                        # Create proper protobuf streaming chunk
+                                        streaming_chunk = StreamingChunk()
+                                        streaming_chunk.request_id = correlation_id
+                                        streaming_chunk.content = chunk_thinking
+                                        streaming_chunk.accumulated_content = accumulated_thinking
+                                        streaming_chunk.done = False
+                                        streaming_chunk.model = model
+                                        streaming_chunk.timestamp = int(time.time() * 1000)
+                                        streaming_chunk.content_type = "thinking"
+                                        
+                                        await self.message_bus_client.publish(
+                                            AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
+                                            streaming_chunk,
+                                            correlation_id=correlation_id
+                                        )
+                                        # Commented out to reduce log volume
+                                        # self.logger.debug(f"[CHAT] Published thinking chunk for {correlation_id}")
+                                
+                                # Handle response content chunks
+                                if chunk_content:
+                                    accumulated_content += chunk_content
+                                    
+                                    # Publish response chunk
+                                    if self.message_bus_client and correlation_id:
+                                        from aico.proto.aico_modelservice_pb2 import StreamingChunk
+                                        from aico.core.topics import AICOTopics
+                                        import time
+                                        
                                         streaming_chunk = StreamingChunk()
                                         streaming_chunk.request_id = correlation_id
                                         streaming_chunk.content = chunk_content
                                         streaming_chunk.accumulated_content = accumulated_content
                                         streaming_chunk.done = False
                                         streaming_chunk.model = model
-                                        streaming_chunk.timestamp = int(time.time() * 1000)  # milliseconds
+                                        streaming_chunk.timestamp = int(time.time() * 1000)
+                                        streaming_chunk.content_type = "response"
                                         
-                                        # Publish using proper message bus pattern
                                         await self.message_bus_client.publish(
                                             AICOTopics.MODELSERVICE_COMPLETIONS_STREAM,
                                             streaming_chunk,
                                             correlation_id=correlation_id
                                         )
-                                        self.logger.debug(f"[CHAT] Published streaming chunk for {correlation_id}")
+                                        # Commented out to reduce log volume
+                                        # self.logger.debug(f"[CHAT] Published response chunk for {correlation_id}")
                                 
                                 # Check if this is the final chunk
                                 if chunk.get("done", False):
-                                    self.logger.info(f"[CHAT] Streaming complete, total length: {len(accumulated_content)}")
+                                    # Commented out to reduce log volume
+                                    # self.logger.info(f"[CHAT] Streaming complete, thinking length: {len(accumulated_thinking)}, response length: {len(accumulated_content)}")
                                     
                                     # Publish final completion signal
                                     if self.message_bus_client and correlation_id:
@@ -315,6 +357,7 @@ class ModelserviceZMQHandlers:
                                         final_chunk.done = True
                                         final_chunk.model = model
                                         final_chunk.timestamp = int(time.time() * 1000)
+                                        final_chunk.content_type = "response"  # Final chunk is always response type
                                         
                                         # Publish final chunk
                                         await self.message_bus_client.publish(
@@ -328,9 +371,14 @@ class ModelserviceZMQHandlers:
                                     result.model = model
                                     result.done = True
                                     
+                                    # Store thinking separately in result
+                                    if accumulated_thinking:
+                                        result.thinking = accumulated_thinking
+                                        self.logger.info(f"[CHAT] Extracted thinking: {len(accumulated_thinking)} chars")
+                                    
                                     response_msg = ConversationMessage()
                                     response_msg.role = "assistant"
-                                    response_msg.content = accumulated_content
+                                    response_msg.content = accumulated_content  # Clean response without thinking tags
                                     result.message.CopyFrom(response_msg)
                                     
                                     # Optional timing fields from final chunk
@@ -594,30 +642,22 @@ class ModelserviceZMQHandlers:
         
         return response
     
-    async def handle_embeddings_request(self, request_payload) -> EmbeddingsResponse:
-        """Handle embeddings requests via Protocol Buffers using TransformersManager."""
-        import time
+    async def handle_embeddings_request(self, request: EmbeddingsRequest) -> EmbeddingsResponse:
+        """Handle embeddings generation request using transformer models."""
         start_time = time.time()
         response = EmbeddingsResponse()
         
-        # DEBUG: Confirm handler is being called
-        self.logger.info(f"🔍 [EMBEDDINGS_HANDLER_DEBUG] ✅ EMBEDDINGS HANDLER CALLED!")
-        self.logger.info(f"🔍 [EMBEDDINGS_HANDLER_DEBUG] Request payload type: {type(request_payload)}")
-        self.logger.info(f"🔍 [EMBEDDINGS_HANDLER_DEBUG] Start time: {start_time}")
-        
         try:
-            model = request_payload.model
-            prompt = request_payload.prompt
+            model = request.model
+            prompt = request.prompt
             text_length = len(prompt) if prompt else 0
-            text_preview = prompt[:50] + "..." if prompt and len(prompt) > 50 else prompt
             
-            self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Starting embedding request for model={model}, text_length={text_length}")
-            self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Text preview: '{text_preview}'")
+            self.logger.debug(f"Embedding request: model={model}, length={text_length}")
             
             if not model or not prompt:
                 response.success = False
                 response.error = "model and prompt are required"
-                self.logger.error(f"🔍 [EMBEDDING_HANDLER_DEBUG] ❌ Missing required parameters: model={model}, prompt_length={text_length}")
+                self.logger.error(f"Missing required parameters: model={model}, prompt_length={text_length}")
                 return response
                 
             # Ensure transformers system is initialized
@@ -638,36 +678,30 @@ class ModelserviceZMQHandlers:
             
             # Generate embedding using transformer model from TransformersManager
             try:
-                # Track model loading time
-                model_load_time = time.time() - start_time
-                self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Model preparation took {model_load_time:.4f}s")
-                
                 # Check if this is a SentenceTransformer model (for paraphrase-multilingual)
                 if hasattr(transformer_model, 'encode'):
                     # This is a SentenceTransformer model - use .encode() method
-                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Using SentenceTransformer.encode() for model {model}")
-                    
-                    # Track encoding time
                     encode_start = time.time()
-                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Starting encoding for text of length {text_length}...")
-                    # Explicitly normalize embeddings for cosine similarity
-                    embedding = transformer_model.encode(prompt, normalize_embeddings=True)
+                    
+                    # Run in thread pool to avoid blocking event loop and match warmup execution context
+                    import asyncio
+                    embedding = await asyncio.to_thread(transformer_model.encode, prompt, normalize_embeddings=True)
                     encode_time = time.time() - encode_start
-                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] ✅ Encoding completed in {encode_time:.4f}s ({text_length/encode_time:.1f} chars/sec)")
                     
                     # Convert to list if it's a numpy array
                     if hasattr(embedding, 'tolist'):
                         embedding = embedding.tolist()
                     
                     embedding_dim = len(embedding)
-                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Generated {embedding_dim}-dimensional embedding")
-                    
                     response.embedding.extend(embedding)
                     response.success = True
                     
                     total_time = time.time() - start_time
-                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] ✅ Total embedding generation took {total_time:.4f}s")
-                    self.logger.debug(f"🔍 [EMBEDDING_HANDLER_DEBUG] Performance: model_load={model_load_time:.4f}s, encode={encode_time:.4f}s, total={total_time:.4f}s")
+                    # Log slow embeddings (>100ms)
+                    if total_time > 0.1:
+                        self.logger.debug(f"Embedding generated in {total_time*1000:.0f}ms (encode={encode_time*1000:.0f}ms, dim={embedding_dim})")
+                    else:
+                        self.logger.debug(f"Embedding: {total_time*1000:.0f}ms, dim={embedding_dim}")
                     
                 elif hasattr(transformer_model, 'tokenizer') and hasattr(transformer_model, 'model'):
                     # This is a standard transformer model with tokenizer/model components
@@ -755,38 +789,42 @@ class ModelserviceZMQHandlers:
                 response.error = "GLiNER model not available"
                 return response
             
-            # V5: Balanced entity types (12 types) - optimized from testing
-            # Core standard types + proven conversational types
-            entity_types = [
-                # Core standard (5) - industry baseline
-                "Person", "Organization", "Location", "Date", "Time",
-                
-                # Conversational context (4) - proven effective in testing
-                "Event", "Activity", "Emotion", "Relationship",
-                
-                # User preferences/goals (3) - important for memory personalization
-                "Preference", "Skill", "Goal"
-            ]
+            # Use entity types from request if provided, otherwise use defaults
+            if request_payload.entity_types:
+                entity_types = list(request_payload.entity_types)
+                print(f"🔍 [NER_DEEP_ANALYSIS] Using {len(entity_types)} entity types from request")
+            else:
+                # V5: Balanced entity types (12 types) - optimized from testing
+                entity_types = [
+                    # Core standard (5) - industry baseline
+                    "Person", "Organization", "Location", "Date", "Time",
+                    
+                    # Conversational context (4) - proven effective in testing
+                    "Event", "Activity", "Emotion", "Relationship",
+                    
+                    # User preferences/goals (3) - important for memory personalization
+                    "Preference", "Skill", "Goal"
+                ]
+                print(f"🔍 [NER_DEEP_ANALYSIS] Using default {len(entity_types)} entity types")
             
-            # V6: Balanced threshold - not too high to miss real names
-            # 0.6 was too aggressive and filtered out legitimate names like "michael"
+            # Use threshold from request if provided, otherwise default to 0.5
+            threshold = request_payload.threshold if request_payload.HasField('threshold') else 0.5
+            
             inference_start = time.time()
             print(f"🔍 [NER_DEEP_ANALYSIS] Starting GLiNER inference [{inference_start:.6f}]")
             raw_entities = gliner_model.predict_entities(
                 text,
                 labels=entity_types,
-                threshold=0.5,  # Back to 0.5 - will filter in post-processing instead
-                flat_ner=True,  # Use flat NER for better entity boundaries
+                threshold=threshold,
+                flat_ner=False,  # Allow nested entities to capture complex phrases like "website redesign project"
                 multi_label=False  # Avoid overlapping entity classifications
             )
             inference_end = time.time()
             inference_duration = inference_end - inference_start
             print(f"🔍 [NER_DEEP_ANALYSIS] GLiNER inference COMPLETED in {inference_duration*1000:.2f}ms [{inference_end:.6f}]")
             
-            # DEBUG: Log ALL raw entities before filtering
-            self.logger.info(f"🔍 [GLINER_DEBUG] Raw GLiNER extracted {len(raw_entities)} entities from text: '{text}'")
-            for i, entity in enumerate(raw_entities):
-                self.logger.info(f"🔍 [GLINER_RAW_{i}] text='{entity.get('text', '')}', label='{entity.get('label', '')}', confidence={entity.get('score', 0.0):.3f}")
+            # Log entity count for monitoring
+            self.logger.debug(f"GLiNER extracted {len(raw_entities)} raw entities")
             
             # Group entities by type with intelligent filtering - PRESERVE CONFIDENCE SCORES
             entities = {}
@@ -803,11 +841,9 @@ class ModelserviceZMQHandlers:
                 # INTELLIGENT FILTERING: Use GLiNER confidence and linguistic rules
                 confidence = entity.get("score", 0.0)
                 
-                # V7: Clean confidence-only filtering - no language-specific patterns
-                # Let GLiNER's confidence scores do the work, as designed
-                if confidence < 0.5:
-                    self.logger.info(f"🔍 [GLINER_FILTER] REJECTED: Low confidence - '{entity_text}' (confidence: {confidence:.3f} < 0.5)")
-                    continue
+                # Respect the threshold parameter - don't add additional filtering
+                # The threshold was already applied by GLiNER during extraction
+                # Additional filtering here defeats the purpose of the configurable threshold
                 
                 # Clean possessive forms intelligently
                 if entity_text.lower().endswith(("'s", "'s")):

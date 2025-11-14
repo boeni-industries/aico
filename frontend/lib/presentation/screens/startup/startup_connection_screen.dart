@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui';
+
+import 'package:aico_frontend/presentation/providers/startup_connection_provider.dart';
+import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/startup_connection_provider.dart';
 
 class StartupConnectionScreen extends ConsumerStatefulWidget {
   final VoidCallback? onConnected;
@@ -454,38 +455,25 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
       children: [
         // Close button - equal width, aligned with content above
         Expanded(
-          child: Container(
+          child: SizedBox(
             height: 48, // Design principle: proper button height
-            child: OutlinedButton.icon(
+            child: AnimatedButton(
               onPressed: _handleClose,
-              icon: const Icon(Icons.close, size: 16),
-              label: const Text(
-                'Close',
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              style: OutlinedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF6B7280),
-                side: const BorderSide(
-                  color: Color(0xFFD1D5DB),
-                  width: 1,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16), // Design principle: rounded
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              ),
+              icon: Icons.close,
+              size: 48,
+              borderRadius: 24,
+              backgroundColor: Theme.of(context).brightness == Brightness.dark
+                  ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
+                  : Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+              foregroundColor: Theme.of(context).colorScheme.primary,
+              tooltip: 'Close',
             ),
           ),
         ),
         const SizedBox(width: 12),
         // Retry button - equal width, aligned with content above
         Expanded(
-          child: Container(
+          child: SizedBox(
             height: 48,
             child: FilledButton.icon(
               onPressed: state.canRetry ? _handleRetry : null,

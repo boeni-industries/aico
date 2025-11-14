@@ -31,22 +31,8 @@ logging:
       
   # Retention and cleanup
   retention:
-    days: 30  # Keep logs for 30 days
+    days: 7  # Keep logs for 7 days (reduced from 30 to manage volume)
     max_size_mb: 500  # Maximum total log storage size
-    
-  # Transport configuration
-  transport:
-    # All subsystems use ZeroMQ message bus for unified logging
-    # Creates topic hierarchy: logs.api_gateway.auth, logs.cli.security, etc.
-    # Enables selective subscription (logs.* = all, logs.api_gateway.* = specific)
-    # Will expand with more topics like "metrics", "events", "alerts" over time
-    zmq_topic: "logs"  # Base topic for all log messages
-  
-    
-  # Bootstrap fallback configuration
-  bootstrap:
-    fallback_console: true  # Enable console output during bootstrap/failures
-    fallback_temp_file: true  # Enable temporary file logging as fallback
 
 # Message Bus Configuration
 message_bus:
@@ -127,16 +113,13 @@ modelservice:
     # Default models by capability role
     default_models:
       conversation:
-        name: "hermes3:8b"
-        description: "Nous Hermes 3 - Primary foundation model for character consistency"
+        name: "huihui_ai/qwen3-abliterated:8b-v2"
+        description: "Qwen3 Abliterated - Uncensored foundation model for character consistency"
         auto_pull: true
+        auto_start: true  # Preload on startup for fast first response
         priority: 1
-      embedding:
-        name: "paraphrase-multilingual"  # Referenced by CLI tools and semantic memory
-        description: "Multilingual embedding model for semantic memory (via TransformersManager)"
-        auto_pull: false  # Not using Ollama for embeddings, using transformers instead
-        priority: 1
-        dimensions: 768  # Used for ChromaDB collection creation
+      # Note: Embeddings are handled by TransformersManager (sentence-transformers)
+      # See modelservice.transformers.models.embeddings configuration below
       vision:
         name: "llama3.2-vision:11b"
         description: "Scene understanding and emotional context"
@@ -162,6 +145,12 @@ modelservice:
       auto_unload_minutes: 30
       max_concurrent_models: 2
       memory_threshold_percent: 85
+    
+    # Ollama 0.12+ parallel processing configuration
+    # These settings enable true parallel request batching
+    num_parallel: 4  # Process up to 4 requests simultaneously per model (batched)
+    max_loaded_models: 2  # Keep 2 models in memory (conversation + embeddings)
+    max_queue: 128  # Queue depth before rejecting requests
   
   # Entity extraction is now handled by GLiNER via the transformers system
   
@@ -300,7 +289,7 @@ services:
 memory:
   # Working Memory (LMDB) - Session context and conversation history
   working:
-    ttl_seconds: 86400 # 24 hours TTL for conversation continuity
+    ttl_seconds: 2592000 # 30 days TTL for conversation continuity (was 24h/86400)
     # Named databases (sub-databases) within the LMDB environment
     named_databases:
       - "session_memory"
@@ -328,5 +317,80 @@ memory:
     # Weighted fusion (legacy, used if fusion_method="weighted")
     semantic_weight: 0.7  # Weight for semantic similarity (0-1)
     bm25_weight: 0.3  # Weight for BM25 keyword matching (0-1)
+    
+    # Knowledge Graph configuration (Property Graph for structured memory)
+    knowledge_graph:
+      max_gleanings: 0  # Number of gleaning passes for completeness (0-2 recommended, 0 = single pass, 3x faster)
+      llm_timeout_seconds: 120.0  # Timeout for LLM operations (4 parallel × 20s avg + buffer)
+      
+      # Entity resolution (deduplication) settings
+      entity_resolution:
+        similarity_threshold: 0.75  # Cosine similarity threshold for semantic blocking (0-1, higher = stricter)
+        use_llm_matching: true  # Use LLM (Eve) for entity matching with chain-of-thought reasoning
+        use_llm_merging: true  # Use LLM (Eve) for entity merging with conflict resolution (intelligent property merging)
+  
+  # Adaptive Memory System (AMS) - Brain-inspired memory consolidation and learning
+  # Temporal Intelligence - Preference evolution and time-aware memory
+  temporal:
+    enabled: true
+    metadata_retention_days: 365  # Keep temporal metadata for 1 year
+    evolution_tracking: true  # Track preference evolution over time
+    confidence_decay_rate: 0.001  # Confidence decay per day without access (0.1% per day)
+    max_fact_variants: 3  # Maximum variants per fact (prevents bloat)
+    variant_cleanup_days: 90  # Delete low-confidence variants after 90 days
+  
+  # Memory Consolidation - Brain-inspired transfer from working to semantic memory and KG extraction
+  consolidation:
+    enabled: true
+    user_sharding_cycle_days: 7  # Process 1/7 of users each day (7-day cycle)
+    max_concurrent_users: 4  # Maximum parallel consolidation jobs
+    max_duration_minutes: 60  # Maximum duration per user
+    replay_batch_size: 100  # Experiences per replay batch
+    priority_alpha: 0.6  # Priority sampling weight (0.0 = uniform, 1.0 = greedy)
+    
+    # Idle detection for consolidation
+    idle_detection:
+      cpu_threshold_percent: 20  # Trigger when CPU < 20%
+      idle_duration_seconds: 300  # 5 minutes continuous idle required
+      check_interval_seconds: 60  # Check every minute
+    
+    # Knowledge Graph extraction settings
+    kg_extraction:
+      enabled: true
+      batch_size: 50  # Maximum messages to process per run
+      max_age_hours: 24  # Only process messages from last 24 hours
+      max_concurrent_extractions: 4  # Parallel message processing (LLM queues internally)
+  
+  # Behavioral Learning - Skill-based interaction with RLHF (Phase 3)
+  behavioral:
+    enabled: true  # ENABLED - Phase 3 implementation complete
+    learning_rate: 0.1  # How quickly confidence scores adjust to feedback
+    exploration_rate: 0.1  # Probability of trying lower-confidence skills
+    max_skills_per_user: 100  # Maximum learned skills per user
+    skill_selection_timeout_ms: 10  # Max time for skill selection
+    min_confidence_threshold: 0.3  # Don't use skills below this confidence
+    preference_vector_dim: 16  # Number of explicit style dimensions
+    num_context_buckets: 100  # Context bucketing for contextual learning
+    
+    # Feedback classification (multilingual, uses embeddings)
+    feedback_classifier:
+      similarity_threshold: 0.6  # Minimum cosine similarity for category match
+      embedding_model: "paraphrase-multilingual-mpnet-base-v2"  # Reuse existing model
+    
+    # Contextual bandit learning (Thompson Sampling)
+    contextual_bandit:
+      enabled: true  # ENABLED - Phase 3 implementation complete
+      algorithm: "thompson_sampling"  # Thompson Sampling for exploration/exploitation
+      update_interval_hours: 24  # Run batch learning daily at 4 AM
+      min_trajectories: 10  # Minimum feedback events required before updating skill confidence (prevents updates on insufficient data)
+      prior_alpha: 1.0  # Beta distribution prior (successes)
+      prior_beta: 1.0  # Beta distribution prior (failures)
+    
+    # Trajectory logging for learning
+    trajectory_logging:
+      enabled: true  # ENABLED - Phase 3 implementation complete
+      retention_days: 90  # Archive after 90 days
+      hard_delete_days: 365  # Delete after 1 year
+      keep_feedback_indefinitely: true  # Never delete trajectories with feedback
 
 # AI Processing Configuration

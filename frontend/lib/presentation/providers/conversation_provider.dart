@@ -1,56 +1,102 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/core/providers/networking_providers.dart';
+import 'package:aico_frontend/data/database/message_database.dart' hide Message;
 import 'package:aico_frontend/data/repositories/message_repository_impl.dart';
 import 'package:aico_frontend/domain/entities/message.dart';
 import 'package:aico_frontend/domain/repositories/message_repository.dart';
 import 'package:aico_frontend/domain/usecases/send_message_usecase.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:uuid/uuid.dart';
 
+part 'conversation_provider.g.dart';
+
+/// Represents a single thinking turn/step in the conversation
+/// This is a data model, not UI state
+class ThinkingTurn {
+  final String content;
+  final DateTime timestamp;
+  final String messageId; // Which message this thinking belongs to
+  final bool isComplete;
+
+  const ThinkingTurn({
+    required this.content,
+    required this.timestamp,
+    required this.messageId,
+    this.isComplete = true,
+  });
+
+  ThinkingTurn copyWith({
+    String? content,
+    DateTime? timestamp,
+    String? messageId,
+    bool? isComplete,
+  }) {
+    return ThinkingTurn(
+      content: content ?? this.content,
+      timestamp: timestamp ?? this.timestamp,
+      messageId: messageId ?? this.messageId,
+      isComplete: isComplete ?? this.isComplete,
+    );
+  }
+}
+
 /// State class for conversation management
+/// Following AICO guidelines: Clear separation of data state from UI state
 class ConversationState {
-  final List<Message> messages;
+  final List<Message> messages; // Currently displayed messages
+  final List<Message> allMessages; // All loaded messages for lazy loading
   final bool isLoading;
   final bool isSendingMessage;
   final bool isStreaming;
   final String? streamingContent;
   final String? streamingMessageId;
+  final String? streamingThinking; // Current thinking being streamed
+  final List<ThinkingTurn> thinkingHistory; // Complete history of thinking turns
   final String? error;
   final String? currentConversationId;
 
   const ConversationState({
     this.messages = const [],
+    this.allMessages = const [],
     this.isLoading = false,
     this.isSendingMessage = false,
     this.isStreaming = false,
     this.streamingContent,
     this.streamingMessageId,
+    this.streamingThinking,
+    this.thinkingHistory = const [],
     this.error,
     this.currentConversationId,
   });
 
   ConversationState copyWith({
     List<Message>? messages,
+    List<Message>? allMessages,
     bool? isLoading,
     bool? isSendingMessage,
     bool? isStreaming,
-    String? streamingContent,
-    String? streamingMessageId,
-    String? error,
+    Object? streamingContent = _undefined,
+    Object? streamingMessageId = _undefined,
+    Object? streamingThinking = _undefined,
+    List<ThinkingTurn>? thinkingHistory,
+    Object? error = _undefined,
     String? currentConversationId,
   }) {
     return ConversationState(
       messages: messages ?? this.messages,
+      allMessages: allMessages ?? this.allMessages,
       isLoading: isLoading ?? this.isLoading,
       isSendingMessage: isSendingMessage ?? this.isSendingMessage,
       isStreaming: isStreaming ?? this.isStreaming,
-      streamingContent: streamingContent ?? this.streamingContent,
-      streamingMessageId: streamingMessageId ?? this.streamingMessageId,
-      error: error ?? this.error,
+      streamingContent: streamingContent == _undefined ? this.streamingContent : streamingContent as String?,
+      streamingMessageId: streamingMessageId == _undefined ? this.streamingMessageId : streamingMessageId as String?,
+      streamingThinking: streamingThinking == _undefined ? this.streamingThinking : streamingThinking as String?,
+      thinkingHistory: thinkingHistory ?? this.thinkingHistory,
+      error: error == _undefined ? this.error : error as String?,
       currentConversationId: currentConversationId ?? this.currentConversationId,
     );
   }
@@ -60,31 +106,106 @@ class ConversationState {
   }
 }
 
-/// Conversation provider using Riverpod StateNotifier
-class ConversationNotifier extends StateNotifier<ConversationState> {
-  final MessageRepository _messageRepository;
-  final SendMessageUseCase _sendMessageUseCase;
-  final String _userId;
+// Sentinel value to distinguish between "not provided" and "provided as null"
+const _undefined = Object();
+
+/// Conversation provider using Riverpod Notifier
+@riverpod
+class ConversationNotifier extends _$ConversationNotifier {
+  late final MessageRepository _messageRepository;
+  late final SendMessageUseCase _sendMessageUseCase;
+  late final String _userId;
   static const _uuid = Uuid();
 
-  ConversationNotifier(
-    this._messageRepository,
-    this._sendMessageUseCase,
-    this._userId,
-  ) : super(const ConversationState()) {
-    _initializeConversation();
-  }
-
-
-  void _initializeConversation() {
-    AICOLog.info('Initializing conversation provider', 
-      topic: 'conversation_provider/init',
-      extra: {'user_id': _userId});
+  @override
+  ConversationState build() {
+    // Initialize dependencies from ref
+    _messageRepository = ref.read(messageRepositoryProvider);
+    _sendMessageUseCase = ref.read(sendMessageUseCaseProvider);
     
-    // Start with null conversation ID - backend will assign one for the first message
-    state = state.copyWith(currentConversationId: null);
+    // Get current user ID from auth provider
+    final authState = ref.read(authProvider);
+    _userId = authState.user?.id ?? 'anonymous';
+    
+    // Schedule cache load after build completes to avoid circular dependency
+    Future.microtask(() => _loadConversationFromCache());
+    return const ConversationState(isLoading: true);
   }
 
+  Future<void> _loadConversationFromCache() async {
+    try {
+      var conversationId = state.currentConversationId;
+      
+      // If no conversation ID, try to find the most recent one from cache
+      if (conversationId == null) {
+        final allMessages = await _messageRepository.getMessages('default');
+        
+        if (allMessages.isEmpty) {
+          AICOLog.info('No cached conversations found',
+            topic: 'conversation_provider/cache_load_skip');
+          
+          // Small delay to show skeleton loader briefly
+          await Future.delayed(const Duration(milliseconds: 300));
+          state = state.copyWith(isLoading: false);
+          return;
+        }
+        
+        // Use the conversation ID from the most recent message
+        conversationId = allMessages.first.conversationId;
+      }
+
+      // Fetch messages for conversation
+      final allMessages = await _messageRepository.getMessages(
+        conversationId,
+        onBackgroundSyncComplete: (freshMessages) {
+          // Update with all fresh messages from background sync
+          state = state.copyWith(
+            messages: freshMessages,
+            allMessages: freshMessages,
+          );
+        },
+      );
+      
+      // Show all messages - let Flutter handle it smoothly
+      state = state.copyWith(
+        messages: allMessages,
+        allMessages: allMessages,
+        isLoading: false,
+        currentConversationId: conversationId,
+      );
+      
+      AICOLog.info('Loaded conversation from cache',
+        topic: 'conversation_provider/cache_load',
+        extra: {'conversation_id': conversationId, 'message_count': allMessages.length});
+        
+    } catch (e, stackTrace) {
+      AICOLog.error('Failed to load conversation from cache',
+        topic: 'conversation_provider/cache_load_error',
+        error: e,
+        extra: {'stack_trace': stackTrace.toString()});
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  /// Load more messages (lazy loading when scrolling up)
+  void loadMoreMessages({int additionalCount = 10}) {
+    final currentCount = state.messages.length;
+    final totalCount = state.allMessages.length;
+    
+    if (currentCount >= totalCount) {
+      debugPrint('📊 [Lazy Load] All messages already displayed');
+      return; // All messages already shown
+    }
+    
+    // Calculate how many more messages to show (from the beginning)
+    final newCount = (currentCount + additionalCount).clamp(0, totalCount);
+    final startIndex = totalCount - newCount;
+    final expandedMessages = state.allMessages.sublist(startIndex);
+    
+    debugPrint('📊 [Lazy Load] Expanding from $currentCount to ${expandedMessages.length} messages');
+    
+    state = state.copyWith(messages: expandedMessages);
+  }
 
   /// Send message with optional streaming response
   Future<void> sendMessage(String content, {bool stream = false}) async {
@@ -114,14 +235,6 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
       isSendingMessage: true,
       error: null,
     );
-
-    AICOLog.info('Sending message', 
-      topic: 'conversation_provider/send_message',
-      extra: {
-        'message_id': messageId,
-        'conversation_id': state.currentConversationId,
-        'streaming': stream,
-      });
 
     try {
       if (stream) {
@@ -171,12 +284,14 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
     );
 
     // Add AI message placeholder and start streaming
+    // CRITICAL: Reset both streamingContent AND streamingThinking for new turn
     state = state.copyWith(
       messages: [...state.messages, aiMessage],
       isSendingMessage: false,
       isStreaming: true,
       streamingMessageId: aiMessageId,
       streamingContent: '',
+      streamingThinking: '', // Reset thinking for new conversation turn
     );
 
     // Update user message to sent
@@ -194,48 +309,67 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
     
     await repo.sendMessageStreaming(
       userMessage,
-      (String chunk) {
-        // Update streaming content with new chunk
-        final currentContent = state.streamingContent ?? '';
-        final newContent = currentContent + chunk;
-        
-        state = state.copyWith(streamingContent: newContent);
-        
-        // Update the AI message in the list
-        final updatedMessages = state.messages.map((msg) {
-          if (msg.id == aiMessageId) {
-            return msg.copyWith(content: newContent);
-          }
-          return msg;
-        }).toList();
-        
-        state = state.copyWith(messages: updatedMessages);
+      (String chunk, {String? contentType}) {
+        // Route chunks by content_type: "thinking" or "response"
+        if (contentType == 'thinking') {
+          // Update thinking content (displayed in right drawer)
+          final currentThinking = state.streamingThinking ?? '';
+          final newThinking = currentThinking + chunk;
+          state = state.copyWith(streamingThinking: newThinking);
+        } else {
+          // Update response content (displayed in chat bubble)
+          final currentContent = state.streamingContent ?? '';
+          final newContent = currentContent + chunk;
+          
+          state = state.copyWith(streamingContent: newContent);
+          
+          // Update the AI message in the list
+          final updatedMessages = state.messages.map((msg) {
+            if (msg.id == aiMessageId) {
+              return msg.copyWith(content: newContent);
+            }
+            return msg;
+          }).toList();
+          
+          state = state.copyWith(messages: updatedMessages);
+        }
       },
-      (String finalResponse) {
-        // Finalize the AI message
+      (String finalResponse, {String? thinking}) {
+        // Finalize the AI message with thinking
         final updatedMessages = state.messages.map((msg) {
           if (msg.id == aiMessageId) {
             return msg.copyWith(
               content: finalResponse,
+              thinking: thinking, // Store thinking in message
               status: MessageStatus.sent,
             );
           }
           return msg;
         }).toList();
         
+        // Finalize thinking turn and add to history
+        // Following AICO guidelines: Single source of truth for data state
+        List<ThinkingTurn> updatedHistory = state.thinkingHistory;
+        if (state.streamingThinking != null && state.streamingThinking!.trim().isNotEmpty) {
+          updatedHistory = [
+            ...state.thinkingHistory,
+            ThinkingTurn(
+              content: state.streamingThinking!.trim(),
+              timestamp: DateTime.now(),
+              messageId: aiMessageId,
+              isComplete: true,
+            ),
+          ];
+        }
+        
         state = state.copyWith(
           messages: updatedMessages,
           isStreaming: false,
           streamingContent: null,
           streamingMessageId: null,
+          streamingThinking: null, // Clear streaming thinking
+          thinkingHistory: updatedHistory, // Update history
         );
-        
-        AICOLog.info('Streaming completed successfully', 
-          topic: 'conversation_provider/streaming_complete',
-          extra: {
-            'ai_message_id': aiMessageId,
-            'final_length': finalResponse.length,
-          });
       },
       (String error) {
         // Handle streaming error
@@ -254,6 +388,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
           isStreaming: false,
           streamingContent: null,
           streamingMessageId: null,
+          streamingThinking: null, // Clear thinking on error
           error: 'Streaming failed: $error',
         );
         
@@ -261,6 +396,20 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
           topic: 'conversation_provider/streaming_error',
           error: error,
           extra: {'ai_message_id': aiMessageId});
+      },
+      onConversationId: (String conversationId) {
+        // Update conversation ID from backend
+        state = state.copyWith(currentConversationId: conversationId);
+      },
+      onMessageId: (String backendMessageId) {
+        // Update AI message with backend message_id for feedback linking
+        final updatedMessages = state.messages.map((msg) {
+          if (msg.id == aiMessageId) {
+            return msg.copyWith(id: backendMessageId);
+          }
+          return msg;
+        }).toList();
+        state = state.copyWith(messages: updatedMessages);
       },
     );
   }
@@ -310,10 +459,6 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
       final aiResponseContent = userMessage.metadata?['ai_response'] as String?;
       
       if (aiResponseContent != null && aiResponseContent.isNotEmpty) {
-        // Debug: Print the backend timestamp to see what we're actually getting
-        final backendTimestamp = userMessage.metadata?['backend_timestamp'] as String?;
-        debugPrint('Backend timestamp debug: $backendTimestamp, Current time: ${DateTime.now().toIso8601String()}');
-        
         // For now, use current time to eliminate the 2-hour offset
         final aiTimestamp = DateTime.now();
         
@@ -330,14 +475,6 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
         state = state.copyWith(
           messages: [...state.messages, aiMessage],
         );
-
-        AICOLog.info('AI response added from backend', 
-          topic: 'conversation_provider/ai_response',
-          extra: {
-            'ai_message_id': aiMessage.id,
-            'conversation_id': aiMessage.conversationId,
-            'content_length': aiResponseContent.length,
-          });
       } else {
         AICOLog.warn('No AI response received from backend', 
           topic: 'conversation_provider/ai_response_missing',
@@ -361,10 +498,6 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
     
     state = state.copyWith(isLoading: true, error: null);
 
-    AICOLog.info('Loading conversation messages', 
-      topic: 'conversation_provider/load_messages',
-      extra: {'conversation_id': targetConversationId});
-
     try {
       final messages = await _messageRepository.getMessages(targetConversationId);
       
@@ -373,14 +506,6 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
         isLoading: false,
         currentConversationId: targetConversationId,
       );
-
-      AICOLog.info('Messages loaded successfully', 
-        topic: 'conversation_provider/load_success',
-        extra: {
-          'conversation_id': targetConversationId,
-          'message_count': messages.length,
-        });
-
     } catch (e) {
       AICOLog.error('Failed to load messages', 
         topic: 'conversation_provider/load_error',
@@ -396,9 +521,6 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
 
   /// Clear current conversation
   void clearConversation() {
-    AICOLog.info('Clearing conversation', 
-      topic: 'conversation_provider/clear');
-    
     state = const ConversationState(currentConversationId: null);
   }
 
@@ -424,11 +546,7 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
       return;
     }
 
-    AICOLog.info('Retrying failed message', 
-      topic: 'conversation_provider/retry',
-      extra: {'message_id': messageId});
-
-    // Remove the failed message and resend
+    // Remove failed message and resend
     final updatedMessages = state.messages.where((msg) => msg.id != messageId).toList();
     state = state.copyWith(messages: updatedMessages);
 
@@ -436,30 +554,23 @@ class ConversationNotifier extends StateNotifier<ConversationState> {
   }
 }
 
-/// Provider for conversation state management
-final conversationProvider = StateNotifierProvider<ConversationNotifier, ConversationState>((ref) {
-  final messageRepository = ref.read(messageRepositoryProvider);
-  final sendMessageUseCase = ref.read(sendMessageUseCaseProvider);
-  
-  // Get current user ID from auth provider
-  final authState = ref.read(authProvider);
-  final userId = authState.user?.id ?? 'anonymous';
-
-  return ConversationNotifier(
-    messageRepository,
-    sendMessageUseCase,
-    userId,
-  );
-});
+/// Provider for message database
+@riverpod
+MessageDatabase messageDatabase(Ref ref) {
+  return MessageDatabase();
+}
 
 /// Provider for message repository
-final messageRepositoryProvider = Provider<MessageRepository>((ref) {
+@riverpod
+MessageRepository messageRepository(Ref ref) {
   final apiClient = ref.read(unifiedApiClientProvider);
-  return MessageRepositoryImpl(apiClient);
-});
+  final database = ref.read(messageDatabaseProvider);
+  return MessageRepositoryImpl(apiClient, database);
+}
 
 /// Provider for send message use case
-final sendMessageUseCaseProvider = Provider<SendMessageUseCase>((ref) {
+@riverpod
+SendMessageUseCase sendMessageUseCase(Ref ref) {
   final messageRepository = ref.read(messageRepositoryProvider);
   return SendMessageUseCase(messageRepository);
-});
+}

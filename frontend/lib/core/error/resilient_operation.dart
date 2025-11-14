@@ -41,17 +41,37 @@ class ResilientOperation<T> {
         });
 
       final T result;
+      final int attemptsCount;
+      final Duration totalRetryDelay;
       
       if (retryManager != null) {
         // Execute with retry logic
-        result = await retryManager!.execute(
+        final retryResult = await retryManager!.execute(
           operation,
           operationName: name,
           metadata: metadata,
         );
+        result = retryResult.value;
+        attemptsCount = retryResult.attempts;
+        totalRetryDelay = retryResult.totalRetryDelay;
+        
+        // Log retry information if retries occurred
+        if (retryResult.hadRetries) {
+          AICOLog.info('Resilient operation succeeded after retries: $name',
+            topic: 'resilient_operation/success_with_retries',
+            extra: {
+              'operation': name,
+              'total_attempts': attemptsCount,
+              'retry_delay_ms': totalRetryDelay.inMilliseconds,
+              'errors_encountered': retryResult.errors.length,
+              'metadata': metadata,
+            });
+        }
       } else {
-        // Execute directly
+        // Execute directly without retry
         result = await operation();
+        attemptsCount = 1;
+        totalRetryDelay = Duration.zero;
       }
 
       final duration = DateTime.now().difference(startTime);
@@ -61,13 +81,16 @@ class ResilientOperation<T> {
         extra: {
           'operation': name,
           'duration_ms': duration.inMilliseconds,
+          'attempts': attemptsCount,
+          'had_retries': attemptsCount > 1,
+          'retry_delay_ms': totalRetryDelay.inMilliseconds,
           'metadata': metadata,
         });
 
       return ResilientResult.success(
         value: result,
         duration: duration,
-        attemptsCount: 1, // TODO: Get actual attempt count from retry manager
+        attemptsCount: attemptsCount,
       );
 
     } catch (error) {
@@ -102,7 +125,7 @@ class ResilientOperation<T> {
             AICOLog.info('Fallback operation succeeded for: $name',
               topic: 'resilient_operation/fallback_success');
           } else {
-            fallbackResult = fallbackValue!;
+            fallbackResult = fallbackValue as T;
             AICOLog.info('Using fallback value for: $name',
               topic: 'resilient_operation/fallback_value');
           }

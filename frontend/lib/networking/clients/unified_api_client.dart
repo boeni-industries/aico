@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
-
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/core/services/encryption_service.dart';
 import 'package:aico_frontend/networking/services/connection_manager.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 /// Unified API client that handles both encrypted and unencrypted requests
 /// Uses Dio exclusively for all HTTP operations
@@ -85,6 +84,7 @@ class UnifiedApiClient {
     Map<String, String>? queryParameters,
     T Function(Map<String, dynamic>)? fromJson,
     bool skipTokenRefresh = false,
+    bool skipTokenEntirely = false,
   }) async {
     // Auto-initialize if not done yet
     if (!_isInitialized) {
@@ -99,6 +99,7 @@ class UnifiedApiClient {
         data: data,
         fromJson: fromJson,
         skipTokenRefresh: skipTokenRefresh,
+        skipTokenEntirely: skipTokenEntirely,
       );
     } catch (e) {
       AICOLog.error('API request failed', 
@@ -127,6 +128,12 @@ class UnifiedApiClient {
     );
   }
 
+  Future<T?> patch<T>(String endpoint, {Map<String, dynamic>? data}) async {
+    return _connectionManager.executeWithRetry(() => 
+      _makeEncryptedRequest<T>('PATCH', endpoint, data: data)
+    );
+  }
+
   Future<T?> delete<T>(String endpoint) async {
     return _connectionManager.executeWithRetry(() => 
       _makeEncryptedRequest<T>('DELETE', endpoint)
@@ -139,14 +146,13 @@ class UnifiedApiClient {
     String endpoint, {
     Map<String, dynamic>? data,
     Map<String, String>? queryParameters,
-    required Function(String chunk) onChunk,
+    required Function(Map<String, dynamic> chunkData) onChunk,
     required Function() onComplete,
     required Function(String error) onError,
+    Function(Map<String, List<String>> headers)? onHeaders,
     bool skipTokenRefresh = false,
+    bool skipSessionValidation = false,
   }) async {
-    AICOLog.info('🚀 STARTING STREAMING REQUEST', 
-      topic: 'network/streaming/start',
-      extra: {'method': method, 'endpoint': endpoint});
     
     // Auto-initialize if not done yet
     if (!_isInitialized) {
@@ -157,9 +163,15 @@ class UnifiedApiClient {
       // Build headers with authentication
       final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh);
       
-      // Check encryption session
-      if (!_encryptionService.isSessionActive) {
+      // Check encryption session - always perform fresh handshake for streaming unless explicitly skipped
+      // This prevents stale session issues after backend restart
+      if (!skipSessionValidation && !_encryptionService.isSessionActive) {
         await _performHandshake();
+      } else if (!skipSessionValidation && _encryptionService.isSessionActive) {
+        // Validate session is still valid with backend by testing encryption
+        // If backend restarted, it won't recognize our session keys
+        AICOLog.debug('Validating encryption session before streaming',
+          topic: 'network/streaming/session_validation');
       }
 
       // Prepare encrypted request data
@@ -168,9 +180,6 @@ class UnifiedApiClient {
           : _encryptionService.createEncryptedRequest({});
 
       // Make streaming request using Dio
-      AICOLog.info('📡 Making Dio streaming request', 
-        topic: 'network/streaming/dio_request',
-        extra: {'endpoint': endpoint, 'method': method});
       
       final response = await _dio!.request<ResponseBody>(
         endpoint,
@@ -179,92 +188,88 @@ class UnifiedApiClient {
         options: Options(
           method: method,
           headers: headers,
-          responseType: ResponseType.stream, // This enables streaming
+          responseType: ResponseType.stream, // Enable streaming response
         ),
       );
 
-      AICOLog.info('📡 Dio response received', 
-        topic: 'network/streaming/dio_response',
-        extra: {'status_code': response.statusCode, 'has_data': response.data != null});
-
+      // Extract and pass headers if callback provided
+      if (onHeaders != null && response.headers.map.isNotEmpty) {
+        onHeaders(response.headers.map);
+      }
+      
+      // Handle 401 Unauthorized - reset encryption session and retry once
+      if (response.statusCode == 401 && !skipTokenRefresh) {
+        AICOLog.warn('401 Unauthorized in streaming - resetting encryption session and retrying',
+          topic: 'network/streaming/unauthorized',
+          extra: {'endpoint': endpoint, 'method': method});
+        
+        // Reset encryption session and retry once
+        _encryptionService.resetSession();
+        return await requestStream(
+          method,
+          endpoint,
+          data: data,
+          queryParameters: queryParameters,
+          onChunk: onChunk,
+          onComplete: onComplete,
+          onError: onError,
+          onHeaders: onHeaders,
+          skipTokenRefresh: true, // Prevent infinite retry loop
+        );
+      }
+      
       if (response.statusCode == 200 && response.data != null) {
         // Handle streaming response
-        AICOLog.info('🔄 Starting stream processing', 
-          topic: 'network/streaming/stream_start');
         
         final stream = response.data!.stream;
         String buffer = '';
         
         await for (final chunkBytes in stream) {
           final chunk = utf8.decode(chunkBytes);
-          AICOLog.info('📦 Raw chunk received', 
-            topic: 'network/streaming/raw_chunk',
-            extra: {'chunk_length': chunk.length, 'chunk_preview': chunk.length > 50 ? '${chunk.substring(0, 50)}...' : chunk});
           
           buffer += chunk;
           
-          AICOLog.info('📋 Buffer updated', 
-            topic: 'network/streaming/buffer_update',
-            extra: {
-              'buffer_length': buffer.length, 
-              'newline_count': '\n'.allMatches(buffer).length,
-              'buffer_preview': buffer.length > 100 ? '${buffer.substring(0, 100)}...' : buffer
-            });
+          // Process complete JSON objects (split on newlines)
+          final lines = buffer.split('\n');
           
-          // Process complete JSON objects (split on }{ since backend sends concatenated JSON without newlines)
-          final lines = <String>[];
-          String remaining = buffer;
-          
-          // Split concatenated JSON objects like: {"a":1}{"b":2}{"c":3}
-          while (remaining.contains('}{')) {
-            final splitIndex = remaining.indexOf('}{');
-            lines.add(remaining.substring(0, splitIndex + 1)); // Include the closing }
-            remaining = '{${remaining.substring(splitIndex + 2)}'; // Include the opening { for next object
+          // Keep the last line in buffer if it doesn't end with newline
+          if (!buffer.endsWith('\n')) {
+            buffer = lines.removeLast();
+          } else {
+            buffer = '';
           }
-          
-          buffer = remaining; // Keep incomplete JSON in buffer
-          
-          AICOLog.info('📝 Lines split', 
-            topic: 'network/streaming/lines_split',
-            extra: {'lines_count': lines.length, 'remaining_buffer_length': buffer.length});
           
           for (final line in lines) {
             if (line.trim().isNotEmpty) {
-              AICOLog.info('🔍 Processing line', 
-                topic: 'network/streaming/line_process',
-                extra: {'line_length': line.length, 'line_preview': line.length > 100 ? '${line.substring(0, 100)}...' : line});
               try {
                 final jsonData = jsonDecode(line);
-                AICOLog.info('✅ JSON parsed successfully', 
-                  topic: 'network/streaming/json_parsed',
-                  extra: {'has_encrypted': jsonData.containsKey('encrypted')});
                 
                 // ALL streaming responses MUST be encrypted per AICO security requirements
                 if (jsonData.containsKey('encrypted') && jsonData['encrypted'] == true) {
-                  AICOLog.info('Decrypting streaming chunk', 
-                    topic: 'network/streaming/decrypt',
-                    extra: {'payload_length': jsonData['payload']?.toString().length ?? 0});
-                  
-                  final decryptedData = _encryptionService.decryptPayload(jsonData['payload']);
-                  
-                  AICOLog.info('Decrypted streaming chunk', 
-                    topic: 'network/streaming/decrypted',
-                    extra: {
-                      'type': decryptedData['type'],
-                      'content_length': decryptedData['content']?.toString().length ?? 0,
-                      'content_preview': decryptedData['content']?.toString().substring(0, 
-                        (decryptedData['content']?.toString().length ?? 0) > 20 ? 20 : (decryptedData['content']?.toString().length ?? 0)) ?? ''
-                    });
-                  
-                  if (decryptedData['type'] == 'chunk') {
-                    final content = decryptedData['content'] ?? '';
-                    AICOLog.info('Passing chunk to onChunk', 
-                      topic: 'network/streaming/chunk_pass',
-                      extra: {'content': content});
-                    onChunk(content);
-                  } else if (decryptedData['type'] == 'error') {
-                    onError(decryptedData['error'] ?? 'Unknown streaming error');
-                    return;
+                  try {
+                    final decryptedData = _encryptionService.decryptPayload(jsonData['payload']);
+                    
+                    if (decryptedData['type'] == 'chunk') {
+                      // Pass full decrypted data including content_type
+                      onChunk(decryptedData);
+                    } else if (decryptedData['type'] == 'error') {
+                      onError(decryptedData['error'] ?? 'Unknown streaming error');
+                      return;
+                    }
+                  } catch (e) {
+                    // Decryption failed - likely stale session after backend restart
+                    if (e.toString().contains('No active encryption session') || 
+                        e.toString().contains('EncryptionException')) {
+                      AICOLog.error('Encryption session invalid - backend may have restarted', 
+                        topic: 'network/streaming/session_invalid',
+                        extra: {'error': e.toString()});
+                      onError('Encryption session expired. Please try again.');
+                      
+                      // Reset session for next request
+                      _encryptionService.resetSession();
+                      return;
+                    }
+                    throw e; // Re-throw other decryption errors
                   }
                 } else {
                   // SECURITY VIOLATION: Unencrypted streaming response received
@@ -288,9 +293,20 @@ class UnifiedApiClient {
           try {
             final jsonData = jsonDecode(buffer);
             if (jsonData.containsKey('encrypted') && jsonData['encrypted'] == true) {
-              final decryptedData = _encryptionService.decryptPayload(jsonData['payload']);
-              if (decryptedData['type'] == 'chunk') {
-                onChunk(decryptedData['content'] ?? '');
+              try {
+                final decryptedData = _encryptionService.decryptPayload(jsonData['payload']);
+                if (decryptedData['type'] == 'chunk') {
+                  onChunk(decryptedData);
+                }
+              } catch (e) {
+                // Decryption failed on final buffer - likely stale session
+                if (e.toString().contains('No active encryption session') || 
+                    e.toString().contains('EncryptionException')) {
+                  AICOLog.error('Encryption session invalid on final buffer', 
+                    topic: 'network/streaming/session_invalid');
+                  _encryptionService.resetSession();
+                }
+                // Don't propagate error for final buffer - stream may have completed
               }
             } else {
               // SECURITY VIOLATION: Final buffer chunk is unencrypted
@@ -323,6 +339,7 @@ class UnifiedApiClient {
     Map<String, dynamic>? data,
     T Function(Map<String, dynamic>)? fromJson,
     bool skipTokenRefresh = false,
+    bool skipTokenEntirely = false,
   }) async {
     if (!_isInitialized) {
       await initialize();
@@ -343,7 +360,7 @@ class UnifiedApiClient {
 
     try {
       // Build headers with authentication
-      final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh);
+      final headers = await _buildHeaders(skipTokenRefresh: skipTokenRefresh, skipTokenEntirely: skipTokenEntirely);
 
       // Prepare encrypted request data
       final requestData = data != null 
@@ -510,10 +527,15 @@ class UnifiedApiClient {
   }
 
   /// Build headers for HTTP requests
-  Future<Map<String, String>> _buildHeaders({bool skipTokenRefresh = false}) async {
+  Future<Map<String, String>> _buildHeaders({bool skipTokenRefresh = false, bool skipTokenEntirely = false}) async {
     final headers = <String, String>{
       'Content-Type': 'application/json',
     };
+
+    // Skip all token operations for authentication/refresh endpoints
+    if (skipTokenEntirely) {
+      return headers;
+    }
 
     if (!skipTokenRefresh) {
       final tokenFresh = await _tokenManager.ensureTokenFreshness();
@@ -560,8 +582,8 @@ class UnifiedApiClient {
       await _performHandshake();
     }
 
-    // Build headers WITHOUT token refresh check (skipTokenRefresh: true)
-    final headers = await _buildHeaders(skipTokenRefresh: true);
+    // Build headers WITHOUT any token operations (skipTokenEntirely: true)
+    final headers = await _buildHeaders(skipTokenEntirely: true);
 
     try {
       // Prepare encrypted request data

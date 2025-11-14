@@ -20,6 +20,7 @@ def lmdb_callback(ctx: typer.Context, help: bool = typer.Option(False, "--help",
             ("count", "Count the number of entries in a specific sub-database."),
             ("dump", "View the first N key-value pairs from a sub-database."),
             ("tail", "View the last N key-value pairs from a sub-database."),
+            ("cleanup", "Delete expired entries from working memory."),
             ("clear", "Clear all data from the LMDB database.")
         ]
         
@@ -161,6 +162,35 @@ def tail(
         raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]Error reading sub-database: {e}[/red]")
+        raise typer.Exit(1)
+
+@app.command(name="cleanup", help="Delete expired entries from working memory.")
+def cleanup():
+    """Delete expired entries from working memory."""
+    import asyncio
+    from aico.core.config import ConfigurationManager
+    from aico.ai.memory.working import WorkingMemoryStore
+    
+    async def run_cleanup():
+        console.print("🧹 Cleaning up expired entries from working memory...")
+        
+        config = ConfigurationManager()
+        config.initialize()
+        
+        store = WorkingMemoryStore(config)
+        await store.initialize()
+        
+        deleted = await store.cleanup_expired()
+        
+        await store.cleanup()
+        
+        return deleted
+    
+    try:
+        deleted_count = asyncio.run(run_cleanup())
+        console.print(f"✅ [green]Deleted {deleted_count} expired entries[/green]")
+    except Exception as e:
+        console.print(f"[red]Cleanup failed: {e}[/red]")
         raise typer.Exit(1)
 
 @app.command(name="clear", help="Clear all data from the LMDB database.")

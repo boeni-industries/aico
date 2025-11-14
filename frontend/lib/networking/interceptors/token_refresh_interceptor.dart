@@ -1,5 +1,5 @@
-import 'package:aico_frontend/networking/repositories/user_repository.dart';
 import 'package:aico_frontend/networking/services/token_manager.dart';
+import 'package:aico_frontend/networking/services/user_service.dart';
 import 'package:dio/dio.dart';
 
 /// Interceptor that automatically refreshes tokens when they expire

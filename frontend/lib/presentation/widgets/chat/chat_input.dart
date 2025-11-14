@@ -1,3 +1,4 @@
+import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
 import 'package:flutter/material.dart';
 
 class ChatInput extends StatefulWidget {
@@ -20,6 +21,8 @@ class ChatInput extends StatefulWidget {
 
 class _ChatInputState extends State<ChatInput> {
   bool _hasText = false;
+  final GlobalKey _sendButtonKey = GlobalKey();
+  final GlobalKey _voiceButtonKey = GlobalKey();
 
   @override
   void initState() {
@@ -45,6 +48,20 @@ class _ChatInputState extends State<ChatInput> {
   void _handleSend() {
     if (_hasText && widget.onSend != null) {
       widget.onSend!();
+      // Show success animation after send
+      Future.delayed(const Duration(milliseconds: 100), () {
+        final state = _sendButtonKey.currentState;
+        if (state != null && state.mounted) {
+          // Access showSuccess through dynamic call since state type is private
+          (state as dynamic).showSuccess();
+        }
+      });
+    }
+  }
+  
+  void _handleVoice() {
+    if (widget.onVoicePressed != null) {
+      widget.onVoicePressed!();
     }
   }
 
@@ -65,14 +82,16 @@ class _ChatInputState extends State<ChatInput> {
       ),
       child: Row(
         children: [
-          // Voice input button
-          IconButton(
-            onPressed: widget.isEnabled ? widget.onVoicePressed : null,
-            icon: const Icon(Icons.mic),
-            style: IconButton.styleFrom(
-              backgroundColor: theme.colorScheme.primaryContainer,
-              foregroundColor: theme.colorScheme.onPrimaryContainer,
-            ),
+          // Voice input button with micro-interactions
+          AnimatedButton(
+            key: _voiceButtonKey,
+            onPressed: widget.isEnabled ? _handleVoice : null,
+            icon: Icons.mic,
+            isEnabled: widget.isEnabled,
+            size: 48,
+            backgroundColor: theme.colorScheme.primaryContainer,
+            foregroundColor: theme.colorScheme.onPrimaryContainer,
+            tooltip: 'Voice input',
           ),
           const SizedBox(width: 8),
           // Text input field
@@ -99,18 +118,21 @@ class _ChatInputState extends State<ChatInput> {
             ),
           ),
           const SizedBox(width: 8),
-          // Send button
-          IconButton(
+          // Send button with micro-interactions and success animation
+          AnimatedButton(
+            key: _sendButtonKey,
             onPressed: (_hasText && widget.isEnabled) ? _handleSend : null,
-            icon: const Icon(Icons.send),
-            style: IconButton.styleFrom(
-              backgroundColor: _hasText 
+            icon: Icons.send,
+            successIcon: Icons.check,
+            isEnabled: _hasText && widget.isEnabled,
+            size: 48,
+            backgroundColor: _hasText 
                 ? theme.colorScheme.primary 
                 : theme.colorScheme.surfaceContainerHighest,
-              foregroundColor: _hasText 
+            foregroundColor: _hasText 
                 ? theme.colorScheme.onPrimary 
                 : theme.colorScheme.onSurfaceVariant,
-            ),
+            tooltip: 'Send message',
           ),
         ],
       ),

@@ -47,6 +47,13 @@ class ModelServiceClient:
             
         self.logger = get_logger("backend", "services.modelservice_client")
         self.bus_client: Optional[MessageBusClient] = None
+        
+        # Track pending requests by correlation_id to route responses correctly
+        # Format: {correlation_id: (response_event, response_data_dict, request_topic, response_topic)}
+        self.pending_requests: Dict[str, tuple] = {}
+        
+        # Track which topics we've already subscribed to (subscribe once per topic)
+        self.subscribed_topics: set = set()
     
     async def check_modelservice_health(self) -> bool:
         """Check if the modelservice is running and responding.
@@ -100,22 +107,23 @@ class ModelServiceClient:
         is_embedding_request = "embeddings" in request_topic
         is_chat_request = "chat" in request_topic
         
-        if is_embedding_request:
-            self.logger.debug(f"🔍 [ZMQ_DEBUG] Starting {request_topic} request")
-            text = data.get("prompt", "")
-            text_length = len(text) if text else 0
-            text_preview = text[:50] + "..." if text and len(text) > 50 else text
-            self.logger.debug(f"🔍 [ZMQ_DEBUG] Text length: {text_length}, preview: '{text_preview}'")
-        elif is_chat_request:
-            self.logger.debug(f"💬 [CHAT_DEBUG] Starting {request_topic} request")
-            messages = data.get("messages", [])
-            message_count = len(messages)
-            model = data.get("model", "unknown")
-            self.logger.debug(f"💬 [CHAT_DEBUG] Model: {model}, Messages: {message_count}")
-            if messages:
-                last_msg = messages[-1]
-                last_msg_content = last_msg.get("content", "")[:50] + "..." if len(last_msg.get("content", "")) > 50 else last_msg.get("content", "")
-                self.logger.debug(f"💬 [CHAT_DEBUG] Last message: role='{last_msg.get('role', 'unknown')}', content='{last_msg_content}'")
+        # Commented out to reduce log volume (300k+ logs/day)
+        # if is_embedding_request:
+        #     self.logger.debug(f"🔍 [ZMQ_DEBUG] Starting {request_topic} request")
+        #     text = data.get("prompt", "")
+        #     text_length = len(text) if text else 0
+        #     text_preview = text[:50] + "..." if text and len(text) > 50 else text
+        #     self.logger.debug(f"🔍 [ZMQ_DEBUG] Text length: {text_length}, preview: '{text_preview}'")
+        # elif is_chat_request:
+        #     self.logger.debug(f"💬 [CHAT_DEBUG] Starting {request_topic} request")
+        #     messages = data.get("messages", [])
+        #     message_count = len(messages)
+        #     model = data.get("model", "unknown")
+        #     self.logger.debug(f"💬 [CHAT_DEBUG] Model: {model}, Messages: {message_count}")
+        #     if messages:
+        #         last_msg = messages[-1]
+        #         last_msg_content = last_msg.get("content", "")[:50] + "..." if len(last_msg.get("content", "")) > 50 else last_msg.get("content", "")
+        #         self.logger.debug(f"💬 [CHAT_DEBUG] Last message: role='{last_msg.get('role', 'unknown')}', content='{last_msg_content}'")
         
         
         # Connection setup timing
@@ -123,18 +131,20 @@ class ModelServiceClient:
         # Reduced connection debug noise
         await self._ensure_connection()
         connection_time = time.time() - connection_start
-        # Only log slow connections
-        if is_embedding_request and connection_time > 0.1:
-            print(f"⏱️ [MODELSERVICE_TIMING] SLOW connection: {connection_time:.4f}s")
-            self.logger.debug(f"🔍 [ZMQ_DEBUG] Connection setup took {connection_time:.4f}s")
-            self.logger.debug(f"💬 [CHAT_DEBUG] Connection setup took {connection_time:.4f}s")
+        # Commented out to reduce log volume
+        # # Only log slow connections
+        # if is_embedding_request and connection_time > 0.1:
+        #     print(f"⏱️ [MODELSERVICE_TIMING] SLOW connection: {connection_time:.4f}s")
+        #     self.logger.debug(f"🔍 [ZMQ_DEBUG] Connection setup took {connection_time:.4f}s")
+        #     self.logger.debug(f"💬 [CHAT_DEBUG] Connection setup took {connection_time:.4f}s")
         
         # Generate correlation ID for request/response matching
         correlation_id = str(uuid.uuid4())
-        if is_embedding_request:
-            self.logger.debug(f"🔍 [ZMQ_DEBUG] Using correlation_id: {correlation_id}")
-        elif is_chat_request:
-            self.logger.debug(f"💬 [CHAT_DEBUG] Using correlation_id: {correlation_id}")
+        # Commented out to reduce log volume
+        # if is_embedding_request:
+        #     self.logger.debug(f"🔍 [ZMQ_DEBUG] Using correlation_id: {correlation_id}")
+        # elif is_chat_request:
+        #     self.logger.debug(f"💬 [CHAT_DEBUG] Using correlation_id: {correlation_id}")
         
         # Create proper protobuf message based on request type
         from aico.proto.aico_modelservice_pb2 import CompletionsRequest, HealthRequest, ModelsRequest, StatusRequest, EmbeddingsRequest, NerRequest, IntentClassificationRequest, SentimentRequest
@@ -202,26 +212,30 @@ class ModelServiceClient:
             # Fallback to HealthRequest for unknown types
             request_proto = HealthRequest()
         
-        # Set up response handler
+        # Register this request in pending_requests for routing
         response_received = asyncio.Event()
         response_data = {}
+        self.pending_requests[correlation_id] = (response_received, response_data, request_topic, response_topic)
         
-        async def handle_response(message):
+        # Shared response handler that routes by correlation_id
+        async def shared_response_handler(message):
             nonlocal response_data
             try:
-                # Check correlation ID match
+                # Extract correlation ID from message
                 message_correlation_id = None
                 if hasattr(message, 'metadata') and hasattr(message.metadata, 'attributes'):
                     message_correlation_id = message.metadata.attributes.get('correlation_id')
                 
-                self.logger.debug(f"Received response with correlation_id: {message_correlation_id}, expected: {correlation_id}")
-                
-                # Only process if correlation IDs match
-                if message_correlation_id != correlation_id:
-                    self.logger.debug(f"Correlation ID mismatch, ignoring response")
+                # Find the pending request for this correlation_id
+                if message_correlation_id not in self.pending_requests:
+                    # Commented out to reduce log volume
+                    # self.logger.debug(f"Received response for unknown correlation_id: {message_correlation_id}")
                     return
                 
-                self.logger.debug(f"Processing response for correlation_id: {correlation_id}")
+                # Get the event and data dict for this specific request
+                req_event, req_data, req_topic, resp_topic = self.pending_requests[message_correlation_id]
+                # Commented out to reduce log volume
+                # self.logger.debug(f"Routing response to correlation_id: {message_correlation_id}")
                 
                 if hasattr(message, 'any_payload'):
                     # Handle embeddings responses
@@ -229,15 +243,17 @@ class ModelServiceClient:
                         from aico.proto.aico_modelservice_pb2 import EmbeddingsResponse
                         embeddings_response = EmbeddingsResponse()
                         if message.any_payload.Unpack(embeddings_response):
-                            self.logger.debug(f"Successfully unpacked EmbeddingsResponse: success={embeddings_response.success}")
-                            response_data = {
+                            # Commented out to reduce log volume
+                            # self.logger.debug(f"Successfully unpacked EmbeddingsResponse: success={embeddings_response.success}")
+                            req_data.update({
                                 'success': embeddings_response.success,
                                 'error': embeddings_response.error if embeddings_response.HasField('error') else None
-                            }
+                            })
                             if embeddings_response.success and embeddings_response.embedding:
-                                response_data['data'] = {'embedding': list(embeddings_response.embedding)}
-                                self.logger.debug(f"Extracted embedding with {len(embeddings_response.embedding)} dimensions")
-                            response_received.set()
+                                req_data['data'] = {'embedding': list(embeddings_response.embedding)}
+                                # Commented out to reduce log volume
+                                # self.logger.debug(f"Extracted embedding with {len(embeddings_response.embedding)} dimensions")
+                            req_event.set()
                         else:
                             self.logger.error("Failed to unpack EmbeddingsResponse")
                             response_data = {'success': False, 'error': 'Failed to unpack response'}
@@ -247,7 +263,8 @@ class ModelServiceClient:
                         from aico.proto.aico_modelservice_pb2 import NerResponse
                         ner_response = NerResponse()
                         if message.any_payload.Unpack(ner_response):
-                            self.logger.debug(f"Successfully unpacked NerResponse: success={ner_response.success}")
+                            # Commented out to reduce log volume
+                            # self.logger.debug(f"Successfully unpacked NerResponse: success={ner_response.success}")
                             response_data = {
                                 'success': ner_response.success,
                                 'error': ner_response.error if ner_response.HasField('error') else None
@@ -364,18 +381,28 @@ class ModelServiceClient:
                 response_data = {'success': False, 'error': str(e)}
                 response_received.set()
         
-        # Subscribe to response topic
+        # Subscribe to response topic (only once per topic)
         subscription_start = time.time()
-        # Reduced subscription debug noise
-        await self.bus_client.subscribe(response_topic, handle_response)
-        subscription_time = time.time() - subscription_start
+        subscription_time = 0
         
-        # Only log slow subscriptions
-        if is_embedding_request and subscription_time > 0.01:
-            print(f"⏱️ [MODELSERVICE_TIMING] SLOW subscription: {subscription_time:.4f}s")
-            self.logger.debug(f"🔍 [ZMQ_DEBUG] Subscribed to {response_topic} in {subscription_time:.4f}s")
-        elif is_chat_request:
-            self.logger.debug(f"💬 [CHAT_DEBUG] Subscribed to {response_topic} in {subscription_time:.4f}s")
+        if response_topic not in self.subscribed_topics:
+            # First time subscribing to this topic - use shared handler
+            await self.bus_client.subscribe(response_topic, shared_response_handler)
+            self.subscribed_topics.add(response_topic)
+            subscription_time = time.time() - subscription_start
+            
+            # Only log slow subscriptions
+            if is_embedding_request and subscription_time > 0.01:
+                print(f"⏱️ [MODELSERVICE_TIMING] SLOW subscription: {subscription_time:.4f}s")
+                self.logger.debug(f"🔍 [ZMQ_DEBUG] Subscribed to {response_topic} in {subscription_time:.4f}s")
+            elif is_chat_request:
+                self.logger.debug(f"💬 [CHAT_DEBUG] Subscribed to {response_topic} in {subscription_time:.4f}s")
+        else:
+            # Already subscribed - reuse existing subscription
+            if is_embedding_request:
+                self.logger.debug(f"🔍 [ZMQ_DEBUG] Reusing existing subscription to {response_topic}")
+            elif is_chat_request:
+                self.logger.debug(f"💬 [CHAT_DEBUG] Reusing existing subscription to {response_topic}")
         
         try:
             # Send request with correlation ID
@@ -447,6 +474,15 @@ class ModelServiceClient:
             
             self.logger.error(error_msg, extra={"topic": AICOTopics.LOGS_ENTRY})
             return {"success": False, "error": error_msg}
+        
+        finally:
+            # Clean up pending request
+            if correlation_id in self.pending_requests:
+                del self.pending_requests[correlation_id]
+                if is_embedding_request:
+                    self.logger.debug(f"🔍 [ZMQ_DEBUG] Cleaned up pending request {correlation_id}")
+                elif is_chat_request:
+                    self.logger.debug(f"💬 [CHAT_DEBUG] Cleaned up pending request {correlation_id}")
     
     async def get_health(self) -> Dict[str, Any]:
         """Get modelservice health status."""
@@ -509,8 +545,7 @@ class ModelServiceClient:
         text_length = len(prompt)
         text_preview = prompt[:30] + "..." if len(prompt) > 30 else prompt
         
-        print(f"🔍 [FULL_TRACE] ModelServiceClient.get_embeddings() STARTED for: '{text_preview}' [{start_time:.6f}]")
-        self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] Starting embedding request for model={model}, text_length={text_length}")
+        self.logger.debug(f"Starting embedding request for model={model}, text_length={text_length}")
         
         request_data = {
             "model": model,
@@ -519,7 +554,6 @@ class ModelServiceClient:
         
         try:
             send_request_start = time.time()
-            print(f"🔍 [FULL_TRACE] About to call _send_request() for embeddings [{send_request_start:.6f}]")
             
             result = await self._send_request(
                 AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
@@ -529,22 +563,22 @@ class ModelServiceClient:
             
             send_request_time = time.time() - send_request_start
             elapsed_time = time.time() - start_time
-            print(f"🔍 [FULL_TRACE] _send_request() for embeddings completed in {send_request_time*1000:.2f}ms [{time.time():.6f}]")
             
             if result.get("success"):
                 embedding_dim = len(result.get("data", {}).get("embedding", []))
-                print(f"🔍 [FULL_TRACE] ModelServiceClient.get_embeddings() SUCCESS in {elapsed_time*1000:.2f}ms (dim: {embedding_dim}) [{time.time():.6f}]")
-                self.logger.debug(f"🔍 [EMBEDDING_CLIENT_DEBUG] ✅ Success! Got {embedding_dim}-dimensional embedding in {elapsed_time:.2f}s")
+                # Log slow embeddings (>1s)
+                if elapsed_time > 1.0:
+                    self.logger.warning(f"Slow embedding request: {elapsed_time*1000:.0f}ms for {text_length} chars")
+                self.logger.debug(f"Got {embedding_dim}-dimensional embedding in {elapsed_time:.3f}s")
             else:
-                print(f"🔍 [FULL_TRACE] ModelServiceClient.get_embeddings() FAILED in {elapsed_time*1000:.2f}ms: {result.get('error')} [{time.time():.6f}]")
-                self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] ❌ Failed to get embedding: {result.get('error')}")
+                self.logger.error(f"Failed to get embedding: {result.get('error')}")
             
             return result
         except Exception as e:
             import traceback
             elapsed_time = time.time() - start_time
-            self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] ❌ Exception after {elapsed_time:.2f}s: {e}")
-            self.logger.error(f"🔍 [EMBEDDING_CLIENT_DEBUG] Traceback: {traceback.format_exc()}")
+            self.logger.error(f"Embedding request exception after {elapsed_time:.2f}s: {e}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
             raise
     
     async def get_embeddings_batch(self, model: str, prompts: List[str]) -> Dict[str, Any]:

@@ -128,7 +128,7 @@ class AuthenticationManager:
     
     def generate_jwt_token(self, user_uuid: str, username: str = None, roles: List[str] = None, 
                           permissions: Set[str] = None, device_uuid: str = None, expires_minutes: int = None) -> str:
-        """Generate JWT token for user with session backing (zero-effort security)"""
+        """Generate JWT access token for user with session backing (zero-effort security)"""
         import time
         from datetime import datetime, timedelta
         
@@ -144,7 +144,8 @@ class AuthenticationManager:
             "permissions": list(permissions or set()),
             "iat": current_time,
             "exp": exp_time,
-            "iss": "aico-api-gateway"
+            "iss": "aico-api-gateway",
+            "type": "access"  # Mark as access token
         }
         
         token = jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
@@ -176,10 +177,45 @@ class AuthenticationManager:
                 # Don't fail token generation if session creation fails
                 pass
         
-        self.logger.info("JWT token generated", extra={
+        self.logger.info("JWT access token generated", extra={
             "module": "api_gateway",
             "function": "generate_jwt_token",
             "topic": "auth.jwt.token_generated",
+            "user_uuid": user_uuid,
+            "expires": datetime.fromtimestamp(exp_time).isoformat()
+        })
+        
+        return token
+    
+    def generate_refresh_token(self, user_uuid: str, username: str = None, roles: List[str] = None,
+                               permissions: Set[str] = None, device_uuid: str = None) -> str:
+        """Generate JWT refresh token (long-lived, used only for token refresh)"""
+        import time
+        from datetime import datetime
+        
+        # Refresh tokens last 7 days
+        refresh_expiry_minutes = 7 * 24 * 60
+        current_time = int(time.time())
+        exp_time = current_time + (refresh_expiry_minutes * 60)
+        
+        payload = {
+            "sub": user_uuid,
+            "user_uuid": user_uuid,
+            "username": username or user_uuid,
+            "roles": roles or ["user"],
+            "permissions": list(permissions or set()),
+            "iat": current_time,
+            "exp": exp_time,
+            "iss": "aico-api-gateway",
+            "type": "refresh"  # Mark as refresh token
+        }
+        
+        token = jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
+        
+        self.logger.info("JWT refresh token generated", extra={
+            "module": "api_gateway",
+            "function": "generate_refresh_token",
+            "topic": "auth.jwt.refresh_token_generated",
             "user_uuid": user_uuid,
             "expires": datetime.fromtimestamp(exp_time).isoformat()
         })

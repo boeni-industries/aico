@@ -67,6 +67,7 @@ sealed class ApiResult<T> {
 final class ApiSuccess<T> extends ApiResult<T> {
   const ApiSuccess(this.data);
   
+  @override
   final T data;
   
   @override
@@ -87,6 +88,7 @@ final class ApiSuccess<T> extends ApiResult<T> {
 final class ApiFailure<T> extends ApiResult<T> {
   const ApiFailure(this.error);
   
+  @override
   final ApiException error;
   
   @override

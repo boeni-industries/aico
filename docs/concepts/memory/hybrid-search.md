@@ -1,21 +1,16 @@
 # Hybrid Search: Semantic + BM25 with IDF Filtering
 
-**Status:** Implemented (V3)  
-**Module:** `shared/aico/ai/memory/` (semantic.py, bm25.py, fusion.py)  
-**Configuration:** `config/defaults/core.yaml` → `core.memory.semantic`
-
----
-
 ## Overview
 
 AICO's semantic memory implements a **hybrid search system** that combines semantic similarity (vector embeddings) with keyword matching (BM25) to provide accurate, relevant search results. This approach addresses the limitations of pure semantic search while maintaining the benefits of meaning-based retrieval.
 
 **Key Features:**
-- ✅ **Full corpus BM25 calculation** - Proper IDF statistics on all documents
-- ✅ **IDF-based term filtering** - Removes overly common words from queries
-- ✅ **Semantic relevance threshold** - Filters out irrelevant results
-- ✅ **Reciprocal Rank Fusion (RRF)** - Robust score combination
-- ✅ **Configurable thresholds** - Tunable for different use cases
+
+- **Full corpus BM25 calculation** - Proper IDF statistics on all documents
+- **IDF-based term filtering** - Removes overly common words from queries
+- **Semantic relevance threshold** - Filters out irrelevant results
+- **Reciprocal Rank Fusion (RRF)** - Robust score combination
+- **Configurable thresholds** - Tunable for different use cases
 
 ---
 

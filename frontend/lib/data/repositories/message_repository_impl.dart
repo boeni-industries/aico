@@ -1,15 +1,19 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/data/models/message_model.dart';
 import 'package:aico_frontend/domain/entities/message.dart';
 import 'package:aico_frontend/domain/repositories/message_repository.dart';
 import 'package:aico_frontend/networking/clients/unified_api_client.dart';
+import 'package:aico_frontend/data/database/message_database.dart' hide Message;
+import 'package:drift/drift.dart';
 
-/// Implementation of MessageRepository that communicates with AICO backend
+/// Implementation of MessageRepository with local persistence
 class MessageRepositoryImpl implements MessageRepository {
   final UnifiedApiClient _apiClient;
+  final MessageDatabase _database;
 
-  const MessageRepositoryImpl(this._apiClient);
+  const MessageRepositoryImpl(this._apiClient, this._database);
 
   @override
   Future<Message> sendMessage(Message message, {bool stream = false}) async {
@@ -18,86 +22,90 @@ class MessageRepositoryImpl implements MessageRepository {
       throw UnimplementedError('Use sendMessageStreaming() for streaming');
     }
     try {
-      AICOLog.info('Sending message to backend', 
-        topic: 'message_repository/send',
-        extra: {
-          'message_id': message.id,
-          'content_length': message.content.length,
-          'conversation_id': message.conversationId,
-        });
-
-      // Convert domain entity to data model for API
-      final messageModel = MessageModel.fromEntity(message);
-      
-      // Prepare request payload for backend /conversation/messages endpoint
-      // Using UnifiedMessageRequest format matching backend schema
-      final requestData = {
-        'message': messageModel.content,
-        'message_type': 'text', // Use literal string instead of enum
-        'conversation_id': messageModel.conversationId, // Top-level field for thread continuity
-        'context': {
-          'frontend_client': 'flutter',
-        },
-        'metadata': messageModel.metadata ?? {},
-      };
-
-      // Send POST request to backend using UnifiedApiClient
-      // This should never block UI - any auth issues will be handled asynchronously
       final response = await _apiClient.request<Map<String, dynamic>>(
         'POST',
         '/conversation/messages',
-        data: requestData,
+        data: {
+          'message': message.content,
+          'message_type': 'text',
+          'conversation_id': message.conversationId,
+          'context': {
+            'frontend_client': 'flutter',
+          },
+          'metadata': message.metadata ?? {},
+        },
       );
 
       if (response != null) {
-        // Backend returns UnifiedMessageResponse with fields:
-        // success, message_id, conversation_id, conversation_action, status, timestamp, ai_response
+        final serverMessageId = response['message_id'] as String;
+        final conversationId = response['conversation_id'] as String;
+        final aiResponse = response['ai_response'] as String?;
         
-        // Create a message entity from the backend response
+        // Store both messages atomically in local database
+        if (aiResponse != null && aiResponse.isNotEmpty) {
+          final timestamp = DateTime.parse(response['timestamp'] as String);
+          
+          await _database.insertConversationPair(
+            MessagesCompanion.insert(
+              id: serverMessageId,
+              conversationId: conversationId,
+              userId: message.userId,
+              content: message.content,
+              role: 'user',
+              timestamp: timestamp,
+              messageType: const Value('text'),
+              status: const Value('sent'),
+              syncedAt: Value(DateTime.now()),
+              needsSync: const Value(false),
+            ),
+            MessagesCompanion.insert(
+              id: '${serverMessageId}_ai',
+              conversationId: conversationId,
+              userId: 'aico',
+              content: aiResponse,
+              role: 'assistant',
+              timestamp: DateTime.now(),
+              messageType: const Value('text'),
+              status: const Value('received'),
+              syncedAt: Value(DateTime.now()),
+              needsSync: const Value(false),
+            ),
+          );
+        }
+        
         final sentMessage = Message(
-          id: response['message_id'] as String,
-          content: message.content, // Use original message content
+          id: serverMessageId,
+          content: message.content,
           userId: message.userId,
-          conversationId: response['conversation_id'] as String,
+          conversationId: conversationId,
           type: message.type,
-          status: MessageStatus.sent, // Message was successfully sent
-          timestamp: message.timestamp, // Keep original frontend timestamp
+          status: MessageStatus.sent,
+          timestamp: message.timestamp,
           metadata: {
             'conversation_action': response['conversation_action'] as String,
             'conversation_reasoning': response['conversation_reasoning'] as String,
             'backend_status': response['status'] as String,
-            'ai_response': response['ai_response'] as String?, // Store AI response for later use
-            'backend_timestamp': response['timestamp'] as String, // Store backend timestamp separately
+            'ai_response': aiResponse,
+            'backend_timestamp': response['timestamp'] as String,
           },
         );
-        
-        AICOLog.info('Message sent successfully', 
-          topic: 'message_repository/send_success',
-          extra: {
-            'message_id': sentMessage.id,
-            'conversation_id': sentMessage.conversationId,
-            'conversation_action': response['conversation_action'],
-            'has_ai_response': response.containsKey('ai_response') && response['ai_response'] != null,
-          });
 
         return sentMessage;
       } else {
-        // Handle null response gracefully - backend may be unavailable
-        AICOLog.warn('Message send failed: backend unavailable', 
+        AICOLog.warn('Message send failed: backend unavailable',
           topic: 'message_repository/send_backend_unavailable',
           extra: {
             'message_id': message.id,
             'conversation_id': message.conversationId,
           });
-        
-        // Return message with failed status instead of throwing
+
         return Message(
           id: message.id,
           content: message.content,
           userId: message.userId,
           conversationId: message.conversationId,
           type: message.type,
-          status: MessageStatus.failed, // Mark as failed
+          status: MessageStatus.failed,
           timestamp: message.timestamp,
           metadata: {
             'error': 'Backend unavailable',
@@ -106,12 +114,11 @@ class MessageRepositoryImpl implements MessageRepository {
         );
       }
     } catch (e) {
-      AICOLog.error('Failed to send message', 
+      AICOLog.error('Failed to send message',
         topic: 'message_repository/send_error',
         error: e,
         extra: {'message_id': message.id});
-      
-      // Return failed message instead of rethrowing
+
       return Message(
         id: message.id,
         content: message.content,
@@ -130,24 +137,20 @@ class MessageRepositoryImpl implements MessageRepository {
 
   /// Send message with streaming response
   Future<void> sendMessageStreaming(
-    Message message, 
-    Function(String chunk) onChunk,
-    Function(String finalResponse) onComplete,
-    Function(String error) onError,
-  ) async {
+    Message message,
+    Function(String chunk, {String? contentType}) onChunk,
+    Function(String finalResponse, {String? thinking}) onComplete,
+    Function(String error) onError, {
+    Function(String conversationId)? onConversationId,
+    Function(String messageId)? onMessageId,  // Callback to pass backend message_id
+  }) async {
     try {
-      AICOLog.info('Starting streaming message send', 
-        topic: 'message_repository/send_streaming',
-        extra: {
-          'content_length': message.content.length,
-          'conversation_id': message.conversationId,
-        });
+      String? backendConversationId;
 
-      // Prepare request payload - same as regular sendMessage
       final requestData = {
         'message': message.content,
         'message_type': 'text',
-        'conversation_id': message.conversationId, // Top-level field for thread continuity
+        'conversation_id': message.conversationId,
         'context': {
           'frontend_client': 'flutter',
         },
@@ -155,37 +158,111 @@ class MessageRepositoryImpl implements MessageRepository {
       };
 
       String accumulatedContent = '';
+      String accumulatedThinking = '';
+      String? backendMessageId;
 
-      // Use the new streaming method from UnifiedApiClient
       await _apiClient.requestStream(
         'POST',
         '/conversation/messages',
         data: requestData,
         queryParameters: {'stream': 'true'},
-        onChunk: (String chunk) {
-          accumulatedContent += chunk;
-          onChunk(chunk);
+        onHeaders: (Map<String, List<String>> headers) {
+          if (headers.containsKey('x-conversation-id')) {
+            backendConversationId = headers['x-conversation-id']!.first;
+          }
         },
-        onComplete: () {
-          onComplete(accumulatedContent);
-          AICOLog.info('Streaming completed successfully', 
-            topic: 'message_repository/streaming_complete',
-            extra: {
-              'message_id': message.id,
-              'total_length': accumulatedContent.length,
-            });
+        onChunk: (Map<String, dynamic> chunkData) {
+          final chunk = chunkData['content'] as String? ?? '';
+          final contentType = chunkData['content_type'] as String? ?? 'response';
+          
+          // Extract message_id from final chunk
+          if (chunkData['done'] == true) {
+            if (chunkData.containsKey('message_id')) {
+              backendMessageId = chunkData['message_id'] as String?;
+              
+              // Notify caller of backend message_id
+              if (backendMessageId != null && onMessageId != null) {
+                onMessageId(backendMessageId!);
+              }
+            }
+          }
+
+          if (contentType == 'thinking') {
+            accumulatedThinking += chunk;
+          } else {
+            accumulatedContent += chunk;
+          }
+
+          onChunk(chunk, contentType: contentType);
+        },
+        onComplete: () async {
+          if (backendConversationId != null && onConversationId != null) {
+            onConversationId(backendConversationId!);
+          }
+          
+          // Update message ID if backend provided one
+          if (backendMessageId != null) {
+            message = message.copyWith(id: backendMessageId!);
+          }
+
+          // Cache both user message and AI response
+          final conversationId = backendConversationId ?? message.conversationId;
+          final messageId = backendMessageId ?? message.id;
+          
+          try {
+            await _database.insertConversationPair(
+              // User message FIRST
+              MessagesCompanion.insert(
+                id: messageId,
+                conversationId: conversationId,
+                userId: message.userId, // User's UUID
+                content: message.content, // User's message
+                role: 'user',
+                timestamp: message.timestamp,
+                messageType: const Value('text'),
+                status: const Value('sent'),
+                syncedAt: Value(DateTime.now()),
+                needsSync: const Value(false),
+              ),
+              // AI response SECOND
+              MessagesCompanion.insert(
+                id: '${messageId}_ai',
+                conversationId: conversationId,
+                userId: 'aico', // AI userId
+                content: accumulatedContent, // AI response
+                role: 'assistant',
+                timestamp: DateTime.now(),
+                messageType: const Value('text'),
+                status: const Value('received'),
+                syncedAt: Value(DateTime.now()),
+                needsSync: const Value(false),
+              ),
+            );
+            AICOLog.info('Cached streaming conversation pair',
+              topic: 'message_repository/cache_streaming',
+              extra: {
+                'conversation_id': conversationId,
+                'message_id': messageId,
+                'response_length': accumulatedContent.length,
+              });
+          } catch (e) {
+            AICOLog.error('Failed to cache streaming messages',
+              topic: 'message_repository/cache_streaming_error',
+              error: e);
+          }
+
+          onComplete(accumulatedContent, thinking: accumulatedThinking.isNotEmpty ? accumulatedThinking : null);
         },
         onError: (String error) {
-          AICOLog.error('Streaming failed', 
+          AICOLog.error('Streaming failed',
             topic: 'message_repository/streaming_error',
             error: error,
             extra: {'message_id': message.id});
           onError(error);
         },
       );
-      
     } catch (e) {
-      AICOLog.error('Streaming request failed', 
+      AICOLog.error('Streaming request failed',
         topic: 'message_repository/streaming_http_error',
         error: e,
         extra: {'message_id': message.id});
@@ -193,59 +270,112 @@ class MessageRepositoryImpl implements MessageRepository {
     }
   }
 
-  /// Get messages for a conversation
+  /// Get messages for a conversation (cache-first pattern)
   @override
-  Future<List<Message>> getMessages(String conversationId, {int? limit, String? beforeMessageId}) async {
+  Future<List<Message>> getMessages(
+    String conversationId, {
+    int? limit,
+    String? beforeMessageId,
+    Function(List<Message>)? onBackgroundSyncComplete,
+  }) async {
     try {
-      AICOLog.info('Fetching messages from backend', 
-        topic: 'message_repository/get_messages',
-        extra: {
-          'conversation_id': conversationId,
-          'limit': limit,
-          'before_message_id': beforeMessageId,
-        });
-
-      final queryParams = <String, String>{
-        'page': '1',
-        if (limit != null) 'page_size': limit.toString(),
-        if (beforeMessageId != null) 'before': beforeMessageId,
-      };
-
-      // Use user-scoped endpoint - backend handles conversation filtering via auth
-      final response = await _apiClient.request<Map<String, dynamic>>(
-        'GET',
-        '/conversation/messages',
-        queryParameters: queryParams,
-      );
-
-      if (response != null) {
-        final messagesData = response['messages'] as List<dynamic>? ?? [];
+      // 1. Load from local cache first (instant)
+      final cachedMessages = await _database.getConversationMessages(conversationId);
+      
+      if (cachedMessages.isNotEmpty) {
+        // 2. Return cached data immediately (reverse since DB returns DESC)
+        final messages = cachedMessages.map((dbMsg) {
+          return Message(
+            id: dbMsg.id,
+            content: dbMsg.content,
+            userId: dbMsg.userId,
+            conversationId: dbMsg.conversationId,
+            type: MessageType.text,
+            status: MessageStatus.sent,
+            timestamp: dbMsg.timestamp,
+          );
+        }).toList().reversed.toList(); // Reverse to get oldest-first for chat UI
         
-        final messages = messagesData
-            .map((json) => MessageModel.fromJson(json as Map<String, dynamic>))
-            .map((model) => model.toEntity())
-            .toList();
-
-        AICOLog.info('Messages fetched successfully', 
-          topic: 'message_repository/get_messages_success',
-          extra: {
-            'conversation_id': conversationId,
-            'message_count': messages.length,
-          });
-
+        // 3. Sync in background (fire and forget)
+        _syncMessagesInBackground(conversationId, onComplete: onBackgroundSyncComplete);
+        
         return messages;
-      } else {
-        throw Exception('Failed to fetch messages: null response');
       }
+      
+      // 4. Cache empty - fetch from backend
+      return await _fetchMessagesFromBackend(conversationId, limit: limit, beforeMessageId: beforeMessageId);
+      
     } catch (e) {
-      AICOLog.error('Failed to fetch messages', 
+      AICOLog.error('Failed to get messages', 
         topic: 'message_repository/get_messages_error',
         error: e,
         extra: {'conversation_id': conversationId});
       
-      // Return empty list on error
       return [];
     }
+  }
+
+  Future<List<Message>> _fetchMessagesFromBackend(String conversationId, {int? limit, String? beforeMessageId}) async {
+    final queryParams = <String, String>{
+      'page': '1',
+      if (limit != null) 'page_size': limit.toString(),
+      if (beforeMessageId != null) 'before': beforeMessageId,
+    };
+
+    final response = await _apiClient.request<Map<String, dynamic>>(
+      'GET',
+      '/conversation/messages',
+      queryParameters: queryParams,
+    );
+
+    if (response != null) {
+      final messagesData = response['messages'] as List<dynamic>? ?? [];
+      
+      final messages = messagesData
+          .map((json) => MessageModel.fromJson(json as Map<String, dynamic>))
+          .map((model) => model.toEntity())
+          .toList()
+          .reversed.toList(); // Backend returns DESC, reverse to ASC for chat UI
+
+      // Store in cache for next time
+      // Note: MessageModel.fromJson already converted userId to 'aico' for assistant messages
+      for (final msg in messages) {
+        final role = msg.userId == 'aico' ? 'assistant' : 'user';
+        
+        await _database.into(_database.messages).insertOnConflictUpdate(
+          MessagesCompanion.insert(
+            id: msg.id,
+            conversationId: msg.conversationId,
+            userId: msg.userId,
+            content: msg.content,
+            role: role,
+            timestamp: msg.timestamp,
+            syncedAt: Value(DateTime.now()),
+          ),
+        );
+      }
+
+      return messages;
+    } else {
+      throw Exception('Failed to fetch messages: null response');
+    }
+  }
+
+  void _syncMessagesInBackground(String conversationId, {Function(List<Message>)? onComplete}) {
+    _fetchMessagesFromBackend(conversationId).then((messages) {
+      AICOLog.info('Background sync completed', 
+        topic: 'message_repository/background_sync',
+        extra: {'conversation_id': conversationId, 'count': messages.length});
+      
+      // Notify caller with fresh messages
+      if (onComplete != null) {
+        onComplete(messages);
+      }
+    }).catchError((e) {
+      AICOLog.warn('Background sync failed', 
+        topic: 'message_repository/background_sync_error',
+        error: e);
+    });
   }
 
   @override

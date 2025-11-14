@@ -6,7 +6,9 @@ import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/networking/services/connection_manager.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'startup_connection_provider.g.dart';
 
 enum StartupConnectionPhase {
   initializing,
@@ -57,30 +59,32 @@ class StartupConnectionState {
                           phase == StartupConnectionPhase.retryMode;
 }
 
-class StartupConnectionNotifier extends StateNotifier<StartupConnectionState> {
-  final ConnectionManager _connectionManager;
+@riverpod
+class StartupConnectionNotifier extends _$StartupConnectionNotifier {
+  late final ConnectionManager _connectionManager;
   Timer? _retryTimer;
   Timer? _phaseTimer;
 
-  StartupConnectionNotifier(this._connectionManager) 
-      : super(const StartupConnectionState()) {
-    _initializeConnection();
+  @override
+  StartupConnectionState build() {
+    _connectionManager = ref.watch(connectionManagerProvider);
+    
+    // Schedule initialization after build completes
+    Future.microtask(() => _initializeConnection());
+    
+    return const StartupConnectionState(
+      phase: StartupConnectionPhase.initializing,
+      message: 'Initializing connection...',
+    );
   }
 
   void _initializeConnection() {
     debugPrint('StartupConnection: Initializing connection flow');
     AICOLog.info('Starting startup connection flow', topic: 'startup/connection/init');
-    
-    state = state.copyWith(
-      phase: StartupConnectionPhase.initializing,
-      message: 'Initializing connection...',
-    );
 
     // Start the connection attempt after brief initialization
     _phaseTimer = Timer(const Duration(milliseconds: 800), () {
-      if (mounted) {
-        _attemptConnection();
-      }
+      _attemptConnection();
     });
   }
 
@@ -200,16 +204,14 @@ class StartupConnectionNotifier extends StateNotifier<StartupConnectionState> {
     // Show retry state for guaranteed duration (amber ring)
     final retryDelay = _calculateRetryDelay(nextAttempt - 2);
     debugPrint('StartupConnection: Retry delay: ${retryDelay.inSeconds}s');
-    
-    _phaseTimer = Timer(retryDelay, () {
-      if (mounted && state.phase == StartupConnectionPhase.retryMode) {
+    _retryTimer = Timer(retryDelay, () {
+      if (state.phase == StartupConnectionPhase.retryMode) {
         _attemptConnection();
       }
     });
   }
 
   /// Calculate retry delays using ConnectionManager's exponential backoff pattern
-  /// but with startup-optimized base values for better UX
   Duration _calculateRetryDelay(int attempt) {
     // Use ConnectionManager's pattern but with startup-friendly base delay
     const baseDelayMs = 3000; // 3 second base for startup UX
@@ -262,16 +264,4 @@ class StartupConnectionNotifier extends StateNotifier<StartupConnectionState> {
     _phaseTimer?.cancel();
     _phaseTimer = null;
   }
-
-  @override
-  void dispose() {
-    _cancelRetryTimer();
-    super.dispose();
-  }
 }
-
-// Provider for startup connection management
-final startupConnectionProvider = StateNotifierProvider<StartupConnectionNotifier, StartupConnectionState>((ref) {
-  final connectionManager = ref.watch(connectionManagerProvider);
-  return StartupConnectionNotifier(connectionManager);
-});

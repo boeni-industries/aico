@@ -47,6 +47,7 @@ import json
 from aico.core.config import ConfigurationManager
 from aico.core.logging import get_logger
 from aico.data.lmdb import get_lmdb_path, initialize_lmdb_env
+from aico.ai.memory.temporal import TemporalMetadata
 
 logger = get_logger("shared", "ai.memory.working")
 
@@ -63,7 +64,7 @@ class WorkingMemoryStore:
         self._initialized = False
         self._db_path = get_lmdb_path(self.config)
         self._named_dbs = self.config.get("core.memory.working.named_databases", [])
-        self._ttl_seconds = self.config.get("core.memory.working.ttl_seconds", 86400)  # Updated default to 24 hours
+        self._ttl_seconds = self.config.get("core.memory.working.ttl_seconds", 2592000)  # Default: 30 days (fallback if config missing)
 
     async def initialize(self) -> None:
         """Initialize LMDB environment and open named databases."""
@@ -110,10 +111,21 @@ class WorkingMemoryStore:
                 else:
                     serializable_message[msg_key] = msg_value
             
+            # Create temporal metadata for this message
+            temporal_meta = TemporalMetadata(
+                created_at=timestamp,
+                last_updated=timestamp,
+                last_accessed=timestamp,
+                access_count=0,
+                confidence=1.0,
+                version=1
+            )
+            
             storage_data = {
                 **serializable_message,
                 "_stored_at": timestamp.isoformat() + "Z",
-                "_expires_at": (timestamp + timedelta(seconds=self._ttl_seconds)).isoformat() + "Z"
+                "_expires_at": (timestamp + timedelta(seconds=self._ttl_seconds)).isoformat() + "Z",
+                "temporal_metadata": temporal_meta.to_dict()
             }
 
             with self.env.begin(write=True, db=db) as txn:
@@ -154,12 +166,17 @@ class WorkingMemoryStore:
                             # Optional: could delete expired entries here in a separate write txn
                             continue
 
+                        # Update temporal metadata on access
+                        self._update_temporal_access(data)
                         history.append(data)
-                        if len(history) >= limit:
-                            break
+                        # Don't break early - collect ALL messages for this conversation
 
-            # LMDB iterates in lexicographical order, so we need to sort by timestamp
+            # CRITICAL: Sort by timestamp FIRST, then limit
+            # LMDB iterates in lexicographical key order, not timestamp order
             history.sort(key=lambda x: x.get("_stored_at"), reverse=True)
+            
+            # Now take the most recent N messages after sorting
+            history = history[:limit]
             
             logger.info(f"🔍 [WORKING_MEMORY] ✅ Retrieved {len(history)} messages from conversation history")
             return history
@@ -258,6 +275,59 @@ class WorkingMemoryStore:
             logger.error(f"Failed to get recent user messages: {e}")
             return []
 
+    async def cleanup_expired(self) -> int:
+        """
+        Delete expired entries from LMDB.
+        
+        Returns:
+            Number of entries deleted
+        """
+        if not self._initialized:
+            await self.initialize()
+        
+        deleted_count = 0
+        
+        try:
+            # Collect expired keys first (can't delete while iterating)
+            expired_keys = []
+            total_checked = 0
+            
+            session_db = self.dbs.get("session_memory")
+            if session_db is None:
+                logger.warning("session_memory database not found")
+                return 0
+            
+            with self.env.begin(db=session_db) as txn:
+                cursor = txn.cursor()
+                for key, value in cursor:
+                    total_checked += 1
+                    try:
+                        data = json.loads(value.decode('utf-8'))
+                        if self._is_expired(data):
+                            expired_keys.append(key)
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        # Invalid data, mark for deletion
+                        expired_keys.append(key)
+            
+            logger.info(f"Checked {total_checked} entries, found {len(expired_keys)} expired")
+            
+            # Delete expired entries in a write transaction
+            if expired_keys:
+                with self.env.begin(db=session_db, write=True) as txn:
+                    for key in expired_keys:
+                        txn.delete(key)
+                        deleted_count += 1
+                
+                logger.info(f"Cleaned up {deleted_count} expired entries from working memory")
+            else:
+                logger.debug("No expired entries to clean up")
+            
+            return deleted_count
+            
+        except Exception as e:
+            logger.error(f"Failed to cleanup expired entries: {e}")
+            return 0
+    
     async def cleanup(self) -> None:
         """Close the LMDB environment."""
         if self.env:
@@ -286,3 +356,14 @@ class WorkingMemoryStore:
             return is_expired
         except (ValueError, TypeError):
             return True
+    
+    def _update_temporal_access(self, data: Dict[str, Any]) -> None:
+        """Update temporal metadata to record access."""
+        temporal_meta_dict = data.get("temporal_metadata")
+        if temporal_meta_dict:
+            try:
+                temporal_meta = TemporalMetadata.from_dict(temporal_meta_dict)
+                temporal_meta.record_access()
+                data["temporal_metadata"] = temporal_meta.to_dict()
+            except Exception as e:
+                logger.debug(f"Failed to update temporal metadata: {e}")

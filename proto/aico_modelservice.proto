@@ -26,6 +26,7 @@ message CompletionsRequest {
   optional int32 max_tokens = 5;
   optional double top_p = 6;
   optional string system = 7;
+  optional bool think = 8;  // Enable/disable thinking mode (Ollama 0.12+)
 }
 
 // Streaming chunk message for real-time completions
@@ -36,6 +37,7 @@ message StreamingChunk {
   bool done = 4;                   // True if this is the final chunk
   string model = 5;                // Model that generated this chunk
   optional int64 timestamp = 6;    // Chunk timestamp
+  string content_type = 7;         // "thinking" or "response" - indicates which part of output
 }
 
 // Available models request
@@ -58,6 +60,7 @@ message EmbeddingsRequest {
 message NerRequest {
   string text = 1;
   repeated string entity_types = 2;  // Optional: filter by specific entity types
+  optional float threshold = 3;  // Optional: confidence threshold (default: 0.5)
 }
 
 // Intent classification request
@@ -247,6 +250,7 @@ message CompletionResult {
   optional int64 prompt_eval_duration = 8;
   optional int64 eval_count = 9;
   optional int64 eval_duration = 10;
+  optional string thinking = 11;  // Extracted thinking content from <think> tags
 }
 
 // Model information

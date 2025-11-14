@@ -1,7 +1,36 @@
 import 'dart:async';
 import 'dart:math';
-import 'package:aico_frontend/core/logging/aico_log.dart';
+
 import 'package:aico_frontend/core/error/circuit_breaker.dart';
+import 'package:aico_frontend/core/logging/aico_log.dart';
+
+/// Result of a retry operation containing the value and metadata
+class RetryResult<T> {
+  /// The successful result value
+  final T value;
+  
+  /// Total number of attempts made (including the successful one)
+  final int attempts;
+  
+  /// Total time spent in retry delays (not including operation execution time)
+  final Duration totalRetryDelay;
+  
+  /// List of errors encountered during failed attempts (excluding the successful attempt)
+  final List<dynamic> errors;
+
+  RetryResult({
+    required this.value,
+    required this.attempts,
+    this.totalRetryDelay = Duration.zero,
+    this.errors = const [],
+  });
+  
+  /// Whether this operation required retries
+  bool get hadRetries => attempts > 1;
+  
+  /// Whether this operation succeeded on first attempt
+  bool get succeededImmediately => attempts == 1;
+}
 
 /// Advanced retry manager with exponential backoff, jitter, and circuit breaker integration
 class RetryManager {
@@ -26,13 +55,16 @@ class RetryManager {
   });
 
   /// Execute operation with retry logic
-  Future<T> execute<T>(
+  /// Returns a [RetryResult] containing the value and retry metadata
+  Future<RetryResult<T>> execute<T>(
     Future<T> Function() operation, {
     String? operationName,
     Map<String, dynamic>? metadata,
   }) async {
     final opName = operationName ?? 'operation';
     var attempt = 0;
+    var totalRetryDelay = Duration.zero;
+    final errors = <dynamic>[];
     dynamic lastError;
 
     while (attempt <= maxRetries) {
@@ -55,25 +87,42 @@ class RetryManager {
           result = await operation();
         }
 
-        // Success - log and return
+        // Success - log and return with metadata
+        final totalAttempts = attempt + 1;
+        
         if (attempt > 0) {
-          AICOLog.info('$opName succeeded after ${attempt + 1} attempts',
+          AICOLog.info('$opName succeeded after $totalAttempts attempts',
             topic: 'retry_manager/success_after_retry',
             extra: {
               'manager': name,
-              'total_attempts': attempt + 1,
+              'total_attempts': totalAttempts,
+              'total_retry_delay_ms': totalRetryDelay.inMilliseconds,
+              'operation': opName,
+              'errors_encountered': errors.length,
+            });
+        } else {
+          AICOLog.debug('$opName succeeded on first attempt',
+            topic: 'retry_manager/immediate_success',
+            extra: {
+              'manager': name,
               'operation': opName,
             });
         }
 
-        return result;
+        return RetryResult(
+          value: result,
+          attempts: totalAttempts,
+          totalRetryDelay: totalRetryDelay,
+          errors: List.unmodifiable(errors),
+        );
       } catch (e) {
         lastError = e;
+        errors.add(e);
         attempt++;
 
         // Check if we should retry this error
         if (!_shouldRetry(e) || attempt > maxRetries) {
-          AICOLog.error('$opName failed after ${attempt} attempts',
+          AICOLog.error('$opName failed after $attempt attempts',
             topic: 'retry_manager/final_failure',
             error: e,
             extra: {
@@ -88,6 +137,7 @@ class RetryManager {
 
         // Calculate delay for next attempt
         final delay = _calculateDelay(attempt - 1);
+        totalRetryDelay += delay;
         
         AICOLog.warn('$opName failed, retrying in ${delay.inMilliseconds}ms',
           topic: 'retry_manager/retry_scheduled',
@@ -97,7 +147,9 @@ class RetryManager {
             'attempt': attempt,
             'next_attempt': attempt + 1,
             'delay_ms': delay.inMilliseconds,
+            'total_retry_delay_ms': totalRetryDelay.inMilliseconds,
             'operation': opName,
+            'error_type': e.runtimeType.toString(),
           });
 
         await Future.delayed(delay);

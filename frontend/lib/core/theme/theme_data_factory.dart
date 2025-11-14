@@ -18,23 +18,20 @@ class AicoThemeDataFactory {
       secondary: Color(0xFF8DD6B8), // Mint
       onSecondary: Colors.black,
       
-      // Surface colors - Pure white for cards/panels
-      surface: Color(0xFFFFFFFF), // Pure white
+      // Surface elevation system (following Material Design 3 + NN/G research)
+      surface: Color(0xFFFFFFFF), // Pure white for cards/panels
+      surfaceContainerHighest: Color(0xFFECEDF1), // Elevated elements (hover, active)
       onSurface: Color(0xFF1A1C1E),
-      
-      // Background - Soft white-neutral from design principles
-      background: Color(0xFFF5F6FA), // Soft white-neutral background
-      onBackground: Color(0xFF1A1C1E),
       
       // Error states
       error: Color(0xFFED7867), // Coral
       onError: Colors.white,
       
-      // Outline colors
-      outline: Color(0xFFE0E3E7),
+      // Outline colors - adaptive dividers
+      outline: Color(0x1F000000), // Black at 12% opacity for subtle dividers
       outlineVariant: Color(0xFFE0E3E7),
       
-      // Shadow
+      // Shadow - from design principles
       shadow: Color.fromRGBO(36, 52, 85, 0.09),
     );
 
@@ -53,24 +50,24 @@ class AicoThemeDataFactory {
       secondary: Color(0xFF8DD6B8), // Mint
       onSecondary: Colors.black,
       
-      // Surface colors
+      // Surface elevation system (Material Design 3: lighter = higher elevation)
       surface: Color(0xFF21242E), // Dark surface from design principles
+      surfaceContainerHighest: Color(0xFF2F3241), // Elevated elements (lighter = closer to viewer)
       onSurface: Color(0xFFE6E1E5),
       
-      // Background - Dark background from design principles
-      background: Color(0xFF181A21), // Dark background from design principles
-      onBackground: Color(0xFFE6E1E5),
+      // Surface tint for elevation overlays (Material Design 3)
+      surfaceTint: Color(0xFFB9A7E6), // Primary color for tint overlays
       
       // Error states
       error: Color(0xFFED7867), // Coral
       onError: Colors.black,
       
-      // Outline colors
-      outline: Color(0xFF49454F),
-      outlineVariant: Color(0xFF49454F),
+      // Outline colors - subtle borders for depth (NOT shadows)
+      outline: Color(0x1FFFFFFF), // White at 12% for subtle separation
+      outlineVariant: Color(0x33FFFFFF), // White at 20% for visible borders
       
-      // Shadow
-      shadow: Color.fromRGBO(0, 0, 0, 0.33),
+      // Shadow - NOT used in dark mode (research: shadows don't work in dark)
+      shadow: Colors.transparent
     );
 
     return _createBaseTheme(colorScheme);
@@ -92,7 +89,7 @@ class AicoThemeDataFactory {
       onSurface: Colors.black,
       surfaceContainerHighest: Color(0xFFF5F5F5),
       onSurfaceVariant: Colors.black,
-      outline: Colors.black,
+      outline: Colors.black, // Solid black dividers for high contrast
       outlineVariant: Color(0xFF757575),
       shadow: Colors.black,
       scrim: Colors.black,
@@ -121,7 +118,7 @@ class AicoThemeDataFactory {
       onSurface: Colors.white,
       surfaceContainerHighest: Color(0xFF1A1A1A),
       onSurfaceVariant: Colors.white,
-      outline: Colors.white,
+      outline: Colors.white, // Solid white dividers for high contrast
       outlineVariant: Color(0xFF9E9E9E),
       shadow: Colors.black,
       scrim: Colors.black,
@@ -173,8 +170,18 @@ class AicoThemeDataFactory {
       navigationBarTheme: _createNavigationBarTheme(colorScheme),
       floatingActionButtonTheme: _createFABTheme(colorScheme),
       
-      // Set scaffold background color to match design principles
-      scaffoldBackgroundColor: colorScheme.background,
+      // Set scaffold background color (base layer - darkest in dark mode)
+      scaffoldBackgroundColor: colorScheme.brightness == Brightness.light
+          ? const Color(0xFFF5F6FA) // AICO design principles: soft white-neutral
+          : const Color(0xFF181A21), // AICO design principles: darkest base (elevation 0)
+      
+      // Divider theme for consistent divider appearance
+      dividerColor: colorScheme.outline,
+      dividerTheme: DividerThemeData(
+        color: colorScheme.outline,
+        thickness: 1,
+        space: 1,
+      ),
       
       // Shape themes
       

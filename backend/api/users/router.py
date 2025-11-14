@@ -7,6 +7,7 @@ REST API endpoints for user CRUD operations and authentication.
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, status, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import jwt
 from aico.core.logging import get_logger
 from aico.data.user import UserService
 from .schemas import (
@@ -266,7 +267,7 @@ async def authenticate_user(
         user_permissions = authz_service.get_user_permissions(user.uuid)
         logger.info(f"User roles: {user_roles}, permissions: {user_permissions}")
         
-        # Generate JWT token with proper roles and permissions
+        # Generate JWT access token with proper roles and permissions
         jwt_token = auth_manager.generate_jwt_token(
             user_uuid=user.uuid,
             username=user.full_name,
@@ -275,11 +276,20 @@ async def authenticate_user(
             device_uuid="web-client"  # Default device for web authentication
         )
         
+        # Generate refresh token for token renewal
+        refresh_token = auth_manager.generate_refresh_token(
+            user_uuid=user.uuid,
+            username=user.full_name,
+            roles=user_roles,
+            permissions=user_permissions,
+            device_uuid="web-client"
+        )
         
         response = AuthenticationResponse(
             success=True,
             user=_user_to_response(user),
             jwt_token=jwt_token,
+            refresh_token=refresh_token,
             last_login=result.get("last_login")
         )
         logger.info(f"Authentication success response: {response.dict()}")
@@ -293,6 +303,80 @@ async def authenticate_user(
         )
         logger.info(f"Authentication failure response: {response.dict()}")
         return response
+
+
+@router.post("/refresh", response_model=AuthenticationResponse)
+async def refresh_token(
+    request: Request,
+    auth_manager = Depends(get_auth_manager)
+) -> AuthenticationResponse:
+    """Refresh access token using refresh token"""
+    try:
+        # Extract refresh token from request body or Authorization header
+        body = await request.json()
+        refresh_token = body.get('refresh_token')
+        
+        # Fallback to Authorization header if not in body
+        if not refresh_token:
+            auth_header = request.headers.get("authorization", "")
+            if auth_header.startswith("Bearer "):
+                refresh_token = auth_header[7:]  # Remove "Bearer " prefix
+        
+        if not refresh_token:
+            return AuthenticationResponse(
+                success=False,
+                error="No refresh token provided"
+            )
+        
+        # Decode refresh token to verify it's valid and get user info
+        try:
+            payload = jwt.decode(
+                refresh_token,
+                auth_manager.jwt_secret,
+                algorithms=[auth_manager.jwt_algorithm],
+                options={"verify_aud": False}
+            )
+            
+            # Verify this is actually a refresh token
+            if payload.get("type") != "refresh":
+                return AuthenticationResponse(
+                    success=False,
+                    error="Invalid token type - refresh token required"
+                )
+            
+            # Generate new access token
+            new_access_token = auth_manager.generate_jwt_token(
+                user_uuid=payload["user_uuid"],
+                username=payload.get("username"),
+                roles=payload.get("roles", ["user"]),
+                permissions=set(payload.get("permissions", [])),
+                device_uuid="web-client"
+            )
+            
+            # Return new access token (keep same refresh token)
+            return AuthenticationResponse(
+                success=True,
+                jwt_token=new_access_token,
+                refresh_token=refresh_token  # Return same refresh token
+            )
+            
+        except jwt.ExpiredSignatureError:
+            return AuthenticationResponse(
+                success=False,
+                error="Refresh token expired - please login again"
+            )
+        except jwt.InvalidTokenError as e:
+            return AuthenticationResponse(
+                success=False,
+                error=f"Invalid refresh token: {str(e)}"
+            )
+            
+    except Exception as e:
+        logger.error(f"Token refresh failed: {e}")
+        return AuthenticationResponse(
+            success=False,
+            error="Token refresh system error"
+        )
 
 
 @router.post("/{user_uuid}/pin", status_code=status.HTTP_204_NO_CONTENT)

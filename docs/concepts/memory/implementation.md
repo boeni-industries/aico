@@ -4,8 +4,6 @@
 
 This document outlines the conceptual approach to implementing AICO's memory system. Rather than providing detailed code implementations, it focuses on the core concepts, design patterns, and architectural decisions that guide the development process.
 
-> **Note**: For detailed implementation roadmap and timelines, see [Memory Roadmap](memory_roadmap.md).
-
 ## Core Implementation Concepts
 
 ### Working Memory Design Pattern
@@ -57,7 +55,7 @@ shared/aico/ai/memory/
 - **Working Memory**: LMDB for high-performance ephemeral storage
 - **Episodic Memory**: Encrypted libSQL for conversation history persistence  
 - **Semantic Memory**: ChromaDB for vector similarity search and knowledge storage
-- **Procedural Memory**: Encrypted libSQL for user patterns and behavioral data
+- **Behavioral Learning**: Encrypted libSQL for user patterns and behavioral data
 
 **Integration Patterns:**
 The memory system integrates with AICO's architecture through established patterns:

@@ -45,6 +45,8 @@ class UserContext:
     """Per-user conversation context"""
     user_id: str
     username: str
+    full_name: Optional[str] = None  # User's full name from database
+    nickname: Optional[str] = None  # User's nickname from database
     relationship_type: str = "user"  # user, family_member, admin, etc.
     preferences: Dict[str, Any] = field(default_factory=dict)
     conversation_style: str = "friendly"
@@ -104,6 +106,26 @@ class ConversationEngine(BaseService):
         self.max_context_messages = engine_config.get("max_context_messages", 10)
         self.response_timeout = engine_config.get("response_timeout_seconds", 15.0)
         self.default_response_mode = ResponseMode(engine_config.get("default_response_mode", "text_only"))
+        
+        # Load conversation model name from configuration
+        # NO FALLBACK - fail loudly if model configuration is missing or invalid
+        modelservice_config = self.container.config.get("core.modelservice.ollama")
+        if not modelservice_config:
+            raise ValueError("CRITICAL: Missing core.modelservice.ollama configuration")
+        
+        default_models = modelservice_config.get("default_models")
+        if not default_models:
+            raise ValueError("CRITICAL: Missing core.modelservice.ollama.default_models configuration")
+        
+        conversation_model_config = default_models.get("conversation")
+        if not conversation_model_config:
+            raise ValueError("CRITICAL: Missing core.modelservice.ollama.default_models.conversation configuration")
+        
+        self.model_name = conversation_model_config.get("name")
+        if not self.model_name:
+            raise ValueError("CRITICAL: Missing core.modelservice.ollama.default_models.conversation.name - model name must be explicitly configured")
+        
+        self.logger.info(f"Conversation engine using model: {self.model_name}")
         
 
     def get_active_features(self) -> List[str]:
@@ -226,13 +248,10 @@ class ConversationEngine(BaseService):
             print(f"💬 [CONVERSATION_ENGINE] ✅ Unpacked ConversationMessage successfully")
             
             # Extract user information from the message
-            user_id = conv_message.source  # This should be the authenticated user ID
+            # Use user_id field (actual user UUID), not source (which is just "conversation_api")
+            user_id = conv_message.user_id if conv_message.user_id else conv_message.source
             conversation_id = conv_message.message.conversation_id
             print(f"💬 [CONVERSATION_ENGINE] 📋 User ID: {user_id}, Conversation ID: {conversation_id}")
-            
-            # Use the actual user_id field if available
-            if hasattr(conv_message, 'user_id') and conv_message.user_id:
-                user_id = conv_message.user_id
             
             self.logger.info(f"[DEBUG] ConversationEngine: Received user input.", extra={
                 "conversation_id": conversation_id,
@@ -241,7 +260,7 @@ class ConversationEngine(BaseService):
             })
             
             # Get user context (simplified)
-            user_context = self._get_or_create_user_context(user_id)
+            user_context = await self._get_or_create_user_context(user_id)
             
             
             # Generate response using semantic memory approach
@@ -257,22 +276,58 @@ class ConversationEngine(BaseService):
     # USER & THREAD MANAGEMENT
     # ============================================================================
     
-    def _get_or_create_user_context(self, user_id: str) -> UserContext:
+    async def _get_or_create_user_context(self, user_id: str) -> UserContext:
         """Get or create user context for authenticated user"""
+        print(f"🔍 [USER_CONTEXT] _get_or_create_user_context called for user_id: {user_id}")
         if user_id not in self.user_contexts:
-            # TODO: Load user preferences from database
-            self.user_contexts[user_id] = UserContext(
-                user_id=user_id,
-                username=f"User_{user_id[:8]}",  # Placeholder
-                relationship_type="user",
-                conversation_style="friendly",
-                last_seen=datetime.utcnow()
-            )
+            print(f"🔍 [USER_CONTEXT] User not in cache, loading from database...")
+            # Load user data from database
+            user_profile = None
+            try:
+                # Access user_service directly from service container (not via dependency injection)
+                if hasattr(self, 'container') and self.container:
+                    user_service = self.container.get_service("user_service")
+                    print(f"🔍 [USER_CONTEXT] Got user_service from container: {user_service}")
+                    if user_service:
+                        print(f"🔍 [USER_CONTEXT] Calling user_service.get_user({user_id})...")
+                        user_profile = await user_service.get_user(user_id)
+                        print(f"🔍 [USER_CONTEXT] Got user_profile: {user_profile}")
+                else:
+                    print(f"🔍 [USER_CONTEXT] ⚠️  No service_container available")
+            except Exception as e:
+                print(f"🔍 [USER_CONTEXT] ❌ Exception loading user profile: {e}")
+                import traceback
+                print(f"🔍 [USER_CONTEXT] Traceback: {traceback.format_exc()}")
+                self.logger.warning(f"Failed to load user profile from database: {e}")
             
-            self.logger.info(f"Created new user context", extra={
-                "user_id": user_id,
-                "username": self.user_contexts[user_id].username
-            })
+            # Create context with database data or fallback to placeholder
+            if user_profile:
+                self.user_contexts[user_id] = UserContext(
+                    user_id=user_id,
+                    username=user_profile.nickname or user_profile.full_name or f"User_{user_id[:8]}",
+                    full_name=user_profile.full_name,
+                    nickname=user_profile.nickname,
+                    relationship_type="user",
+                    conversation_style="friendly",
+                    last_seen=datetime.utcnow()
+                )
+                self.logger.info(f"Loaded user context from database", extra={
+                    "user_id": user_id,
+                    "full_name": user_profile.full_name,
+                    "nickname": user_profile.nickname
+                })
+            else:
+                # Fallback to placeholder if database load fails
+                self.user_contexts[user_id] = UserContext(
+                    user_id=user_id,
+                    username=f"User_{user_id[:8]}",
+                    relationship_type="user",
+                    conversation_style="friendly",
+                    last_seen=datetime.utcnow()
+                )
+                self.logger.warning(f"Created placeholder user context (database load failed)", extra={
+                    "user_id": user_id
+                })
         else:
             # Update last seen
             self.user_contexts[user_id].last_seen = datetime.utcnow()
@@ -308,22 +363,32 @@ class ConversationEngine(BaseService):
             # Determine what components we need
             components_needed = []
             print(f"💬 [CONVERSATION_ENGINE] 🔧 Checking enabled features...")
+            print(f"💬 [CONVERSATION_ENGINE] 🧠 Memory integration enabled: {self.enable_memory_integration}")
             
-            # FIXED: Get working memory immediately, process semantic memory in background
+            # Get memory context if enabled
+            memory_context = None
             if self.enable_memory_integration:
-                self.logger.info(f"[DEBUG] ConversationEngine: Memory integration enabled, getting immediate working memory context for request {request_id}")
-                
-                # Get immediate working memory context (fast, <1ms)
-                working_context = await self._get_immediate_working_context(request_id, user_context, user_message)
-                
-                # Background storage handled by memory manager - no need for separate background task
-                
-                # Generate LLM response with working memory context
-                await self._generate_llm_response(request_id, user_context, user_message, working_context)
+                print(f"💬 [CONVERSATION_ENGINE] 🧠 Calling _get_memory_context()...")
+                try:
+                    memory_context = await self._get_memory_context(request_id, user_context, user_message)
+                    if memory_context is None:
+                        print(f"💬 [CONVERSATION_ENGINE] ❌ _get_memory_context() returned None!")
+                        self.logger.error(f"🚨 [CONTEXT_TRACE] _get_memory_context() returned None - context will NOT be passed to LLM!")
+                    else:
+                        print(f"💬 [CONVERSATION_ENGINE] ✅ Got memory context!")
+                        self.logger.info(f"🧠 [CONTEXT_TRACE] ✅ Got memory_context from _get_memory_context()")
+                except Exception as e:
+                    print(f"💬 [CONVERSATION_ENGINE] ❌ EXCEPTION in _get_memory_context(): {e}")
+                    self.logger.error(f"🚨 [CONTEXT_TRACE] EXCEPTION calling _get_memory_context(): {e}")
+                    import traceback
+                    self.logger.error(f"🚨 [CONTEXT_TRACE] Traceback:\n{traceback.format_exc()}")
+                    memory_context = None
             else:
-                self.logger.info(f"[DEBUG] ConversationEngine: Memory integration disabled, generating LLM response directly")
-                # If memory is disabled, generate LLM response immediately
-                await self._generate_llm_response(request_id, user_context, user_message, {})
+                print(f"💬 [CONVERSATION_ENGINE] ⚠️  Memory integration DISABLED")
+                self.logger.warning(f"🚨 [CONTEXT_TRACE] Memory integration DISABLED - no context will be retrieved")
+            
+            # Generate LLM response with memory context
+            await self._generate_llm_response(request_id, user_context, user_message, memory_context)
             
             self.pending_responses[request_id]["components_needed"] = components_needed
             print(f"💬 [CONVERSATION_ENGINE] 📝 Components needed: {components_needed}")
@@ -346,60 +411,68 @@ class ConversationEngine(BaseService):
     # Emotion and personality integration removed - focusing on semantic memory approach
     
     
-    async def _get_immediate_working_context(self, request_id: str, user_context: UserContext, message: ConversationMessage) -> Dict[str, Any]:
-        """Get immediate context using proper memory manager API (working + semantic)"""
+    async def _get_memory_context(self, request_id: str, user_context: UserContext, message: ConversationMessage) -> Optional[Dict[str, Any]]:
+        """Get memory context (working + semantic) - returns None if unavailable"""
         try:
+            self.logger.info(f"🧠 [CONTEXT_TRACE] Starting context retrieval for request {request_id}")
+            
             memory_manager = ai_registry.get("memory")
             if not memory_manager:
-                self.logger.warning(f"🔍 [IMMEDIATE_CONTEXT] Memory manager not available for {request_id}")
-                return {"memory": {"memory_context": {"user_facts": [], "recent_context": []}}, "metadata": {}}
+                self.logger.warning(f"🧠 [CONTEXT_TRACE] ❌ Memory manager NOT registered in ai_registry")
+                return None
+            
+            self.logger.info(f"🧠 [CONTEXT_TRACE] ✅ Memory manager found")
             
             user_id = user_context.user_id
             conversation_id = message.message.conversation_id
             message_text = message.message.text
             
-            self.logger.info(f"🔍 [IMMEDIATE_CONTEXT] Getting full context (working + semantic) for {request_id}")
+            self.logger.info(f"🧠 [CONTEXT_TRACE] Calling memory_manager.assemble_context(user_id={user_id}, conversation_id={conversation_id})")
             
-            # Use proper memory manager API that combines working + semantic memory
-            context_result = await memory_manager.assemble_context(
+            # Get context from memory manager
+            context = await memory_manager.assemble_context(
                 user_id=user_id,
                 current_message=message_text,
                 conversation_id=conversation_id
             )
             
-            # Store user message in memory for future context
+            # Log what we got back
+            if context:
+                memory_data = context.get("memory_context", {})
+                user_facts = memory_data.get("user_facts", [])
+                recent_context = memory_data.get("recent_context", [])
+                metadata = context.get("metadata", {})
+                
+                self.logger.info(f"🧠 [CONTEXT_TRACE] ✅ Context retrieved:")
+                self.logger.info(f"🧠 [CONTEXT_TRACE]   - user_facts: {len(user_facts)} items")
+                self.logger.info(f"🧠 [CONTEXT_TRACE]   - recent_context: {len(recent_context)} messages")
+                self.logger.info(f"🧠 [CONTEXT_TRACE]   - total_items: {metadata.get('total_items', 0)}")
+                self.logger.info(f"🧠 [CONTEXT_TRACE]   - assembly_time: {metadata.get('assembly_time_ms', 0):.2f}ms")
+                
+                if user_facts:
+                    self.logger.info(f"🧠 [CONTEXT_TRACE] Sample user_facts: {user_facts[0].get('content', 'N/A')[:100]}...")
+                if recent_context:
+                    self.logger.info(f"🧠 [CONTEXT_TRACE] Sample recent_context: {recent_context[0].get('content', 'N/A')[:100]}...")
+            else:
+                self.logger.warning(f"🧠 [CONTEXT_TRACE] ⚠️  Context is None or empty")
+            
+            # Store user message for future context
+            print(f"💬 [CONVERSATION_ENGINE] 💾 Storing user message (len: {len(message_text)})...")
             try:
                 await memory_manager.store_message(user_id, conversation_id, message_text, "user")
-                self.logger.info(f"🔍 [MEMORY_STORAGE] ✅ User message stored for {request_id}")
+                print(f"💬 [CONVERSATION_ENGINE] ✅ User message stored successfully!")
+                self.logger.debug(f"🧠 [CONTEXT_TRACE] User message stored for future context")
             except Exception as e:
-                self.logger.warning(f"🔍 [MEMORY_STORAGE] ⚠️ Failed to store user message: {e}")
+                print(f"💬 [CONVERSATION_ENGINE] ❌ Failed to store user message: {e}")
+                self.logger.warning(f"Failed to store user message: {e}")
             
-            # Extract memory_context from the result
-            memory_context = context_result.get("memory_context", {})
-            user_facts = memory_context.get("user_facts", [])
-            recent_context = memory_context.get("recent_context", [])
-            
-            # Format for conversation engine (match expected structure)
-            formatted_context = {
-                "memory": {
-                    "memory_context": {
-                        "user_facts": user_facts,
-                        "recent_context": recent_context
-                    }
-                },
-                "metadata": {
-                    "facts_count": len(user_facts),
-                    "context_messages": len(recent_context),
-                    "context_type": "working_and_semantic"
-                }
-            }
-            
-            self.logger.info(f"🔍 [IMMEDIATE_CONTEXT] ✅ Retrieved {len(recent_context)} messages, {len(user_facts)} facts for {request_id}")
-            return formatted_context
+            return context
                 
         except Exception as e:
-            self.logger.error(f"🔍 [IMMEDIATE_CONTEXT] ❌ Failed to get context for {request_id}: {e}")
-            return {"memory": {"memory_context": {"user_facts": [], "recent_context": []}}, "metadata": {}}
+            self.logger.error(f"🧠 [CONTEXT_TRACE] ❌ EXCEPTION in _get_memory_context: {e}")
+            import traceback
+            self.logger.error(f"🧠 [CONTEXT_TRACE] Traceback: {traceback.format_exc()}")
+            return None
 
     async def _process_memory_background(self, request_id: str, user_context: UserContext, message: ConversationMessage):
         """Store user message in background for future context (storage only)"""
@@ -494,165 +567,113 @@ class ConversationEngine(BaseService):
     # LLM INTEGRATION & RESPONSE DELIVERY
     # ============================================================================
     
-    async def _generate_llm_response(self, request_id: str, user_context: UserContext, user_message: ConversationMessage, context: Dict[str, Any]) -> None:
-        """Generate LLM response with integrated context"""
+    async def _generate_llm_response(self, request_id: str, user_context: UserContext, user_message: ConversationMessage, memory_context: Optional[Dict[str, Any]]) -> None:
+        """Generate LLM response with memory context and skill selection"""
         from aico.core.topics import AICOTopics
         try:
             # Check if LLM request already sent to prevent duplicates
             if request_id in self.pending_responses and self.pending_responses[request_id].get("llm_request_sent"):
-                print(f"💬 [CONVERSATION_ENGINE] ⚠️ LLM request already sent for {request_id}, skipping duplicate")
-                print(f"💬 [CONVERSATION_ENGINE] 🔍 Duplicate call stack info - this should help identify the source")
-                import traceback
-                print(f"💬 [CONVERSATION_ENGINE] 📋 Call stack: {traceback.format_stack()[-3:-1]}")
                 return
             
-            import time
-            llm_start_time = time.time()
-            print(f"💬 [CONVERSATION_ENGINE] 🧠 GENERATING LLM RESPONSE for {request_id} at {llm_start_time} [{llm_start_time:.6f}]")
+            # Phase 3: Select skill for this interaction
+            selected_skill_id = await self._select_skill(user_context, user_message, memory_context)
+            if selected_skill_id:
+                self.pending_responses[request_id]["selected_skill_id"] = selected_skill_id
+                self.logger.info(f"🎯 [SKILL] Selected skill: {selected_skill_id}")
             
-            # Include memory data in context if available
-            if request_id in self.pending_responses and "memory_data" in self.pending_responses[request_id]:
-                memory_data = self.pending_responses[request_id]["memory_data"]
-                print(f"💬 [CONVERSATION_ENGINE] 📚 Using memory data from pending responses")
-                self.logger.info(f"[MEMORY_DEBUG] Found memory_data for request {request_id}: type={type(memory_data)}, keys={list(memory_data.keys()) if isinstance(memory_data, dict) else 'NOT_DICT'}")
-                if memory_data:
-                    context["memory"] = memory_data
-                    self.logger.info(f"[MEMORY_DEBUG] Added memory data to LLM context for request {request_id}")
-                else:
-                    self.logger.warning(f"[MEMORY_DEBUG] Memory data exists but is empty for request {request_id}")
+            # Build system prompt with memory context and skill template
+            print(f"🔍 [MEMORY_DEBUG] memory_context type: {type(memory_context)}")
+            print(f"🔍 [MEMORY_DEBUG] memory_context keys: {list(memory_context.keys()) if memory_context else 'None'}")
+            if memory_context is None:
+                self.logger.warning(f"No memory context provided for request {request_id}")
             else:
-                self.logger.warning(f"[MEMORY_DEBUG] No memory data found for request {request_id}. Pending responses keys: {list(self.pending_responses.get(request_id, {}).keys()) if request_id in self.pending_responses else 'REQUEST_NOT_FOUND'}")
+                memory_data = memory_context.get("memory_context", {})
+                print(f"🔍 [MEMORY_DEBUG] memory_data keys: {list(memory_data.keys())}")
+                user_facts = memory_data.get("user_facts", [])
+                recent_context = memory_data.get("recent_context", [])
+                print(f"🔍 [MEMORY_DEBUG] recent_context length: {len(recent_context)}")
+                print(f"🔍 [MEMORY_DEBUG] recent_context sample: {recent_context[:2] if recent_context else 'empty'}")
+                self.logger.info(f"Context: {len(user_facts)} facts, {len(recent_context)} messages")
             
-            # Build conversation history for LLM
+            system_prompt = self._build_system_prompt(user_context, memory_context, selected_skill_id)
+            if system_prompt:
+                self.logger.debug(f"System prompt: {len(system_prompt)} chars")
+            
+            # Build messages for LLM
+            # IMPORTANT: Only add system message if we have contextual information to provide
+            # The Modelfile's SYSTEM instruction should be the primary character definition
             messages = []
+            if system_prompt and system_prompt.strip():
+                messages.append(ModelConversationMessage(role="system", content=system_prompt))
             
-            # System prompt with context
-            system_prompt = self._build_system_prompt(user_context, context)
-            messages.append(ModelConversationMessage(role="system", content=system_prompt))
-            
-            # CRITICAL FIX: PROPER SEPARATION - Context in system prompt, current input isolated
-            current_content = user_message.message.text.strip()
-            
-            # Simple context integration - no XML processing
-            if "memory" in context and context["memory"]:
-                memory_context = context["memory"].get("memory_context", {})
+            # Add conversation history as actual messages (not just in system prompt)
+            history_message_count = 0
+            if memory_context:
+                memory_data = memory_context.get("memory_context", {})
+                recent_context = memory_data.get("recent_context", [])
                 
-                # Debug: Log what we're receiving
-                self.logger.info(f"🔍 [LLM_DEBUG] Memory context keys: {list(context['memory'].keys())}")
-                self.logger.info(f"🔍 [LLM_DEBUG] Memory_context keys: {list(memory_context.keys())}")
+                # CRITICAL: recent_context is in REVERSE chronological order (newest first)
+                # We need to reverse it to get chronological order (oldest first) for LLM
+                # Take last 5 messages and reverse them
+                history_messages = list(reversed(recent_context[-5:]))
                 
-                # Simple fact integration
-                user_facts = memory_context.get("user_facts", [])
-                recent_context = memory_context.get("recent_context", [])
+                self.logger.info(f"🧠 [CONTEXT_TRACE] Processing {len(history_messages)} history messages for LLM")
+                for msg in history_messages:
+                    role = msg.get('role', 'user')
+                    content = msg.get('content', '').strip()
+                    if content:
+                        messages.append(ModelConversationMessage(role=role, content=content))
+                        history_message_count += 1
+                        self.logger.info(f"🧠 [CONTEXT_TRACE] ✅ Added {role} message to LLM: {content[:80]}...")
                 
-                self.logger.info(f"🔍 [LLM_DEBUG] Retrieved: {len(user_facts)} user_facts, {len(recent_context)} recent_context")
-                
-                if user_facts or recent_context:
-                    facts_text = "\n".join([f"- {fact.get('content', '')}" for fact in user_facts[-5:]])
-                    recent_text = "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in recent_context[-3:]])
-                    
-                    enhanced_system_prompt = f"""{system_prompt}
-
-User Facts:
-{facts_text}
-
-Recent Context:
-{recent_text}
-
-Respond naturally using relevant context."""
-                    messages[0] = ModelConversationMessage(role="system", content=enhanced_system_prompt)
+                # CRITICAL VALIDATION: Warn if no conversation history was added
+                if history_message_count == 0 and len(recent_context) > 0:
+                    self.logger.error(f"🚨 [CONTEXT_ERROR] recent_context has {len(recent_context)} items but ZERO messages added to LLM!")
+                    self.logger.error(f"🚨 [CONTEXT_ERROR] Sample item keys: {list(recent_context[0].keys()) if recent_context else 'N/A'}")
                 else:
-                    messages[0] = ModelConversationMessage(role="system", content=system_prompt)
+                    self.logger.info(f"🧠 [CONTEXT_TRACE] ✅ Added {history_message_count} history messages to LLM context")
             else:
-                messages[0] = ModelConversationMessage(role="system", content=system_prompt)
+                self.logger.warning(f"🧠 [CONTEXT_TRACE] ⚠️  No memory_context provided - LLM has no conversation history")
             
-            # MODERN BEST PRACTICE: Clean, isolated current user input
+            # Add current user message
+            current_content = user_message.message.text.strip()
             if current_content:
-                # Clean and validate user input
-                clean_current_content = current_content.strip()
-                if len(clean_current_content) > 2000:  # Prevent token overflow
-                    clean_current_content = clean_current_content[:2000] + "..."
-                    self.logger.warning(f"[CURRENT_MESSAGE] Truncated long user input to 2000 chars")
-                
-                messages.append(ModelConversationMessage(role="user", content=clean_current_content))
-                self.logger.info(f"[CURRENT_MESSAGE] Added clean isolated current input: '{clean_current_content[:50]}...'")
-            else:
-                self.logger.error("[CURRENT_MESSAGE] No current user content found!")
-                
-            # NO message limit needed - we only have system + current user message
+                messages.append(ModelConversationMessage(role="user", content=current_content))
+                self.logger.debug(f"🔍 [PROMPT_DEBUG] Added current user message: {current_content[:50]}...")
             
-            # Log final messages being sent to LLM
-            self.logger.info(f"[DEBUG] Sending {len(messages)} messages to LLM:")
-            for i, msg in enumerate(messages):
-                self.logger.info(f"[DEBUG] Message {i}: role={msg.role}, content='{msg.content[:100]}...'")
-            
-            print(f"💬 [CONVERSATION_ENGINE] 🎯 Creating completions request...")
-            
-            # CRITICAL FIX: ServiceContainer doesn't have config_manager - use hardcoded model
-            conversation_model = "hermes3:8b"
-            print(f"💬 [CONVERSATION_ENGINE] 🤖 Using model: {conversation_model} (fixed - no config_manager)")
-            
-            print(f"💬 [CONVERSATION_ENGINE] 🔨 Creating CompletionsRequest object...")
-            
-            # Create completions request with streaming enabled
+            # Create and publish LLM request
+            # CRITICAL: Do NOT override Modelfile parameters (temperature, max_tokens, etc.)
+            # The Modelfile defines character-specific settings that should be respected
             completions_request = CompletionsRequest(
-                model=conversation_model,
+                model=self.model_name,
                 messages=messages,
-                stream=True,  # Enable streaming
-                temperature=0.3,
-                max_tokens=150
+                stream=True
             )
             
-            print(f"💬 [CONVERSATION_ENGINE] ✅ CompletionsRequest created successfully")
-            
-            # Publish to modelservice with correlation ID for proper response matching
-            self.logger.info(f"💬 [CONVERSATION_ENGINE] Sending chat request to modelservice with correlation_id: {request_id}")
-            self.logger.info(f"💬 [CONVERSATION_ENGINE] Model: {conversation_model}, Messages: {len(completions_request.messages)}")
-            self.logger.info(f"💬 [CONVERSATION_ENGINE] Topic: {AICOTopics.MODELSERVICE_CHAT_REQUEST}")
-            
-            print(f"💬 [CONVERSATION_ENGINE] 📡 PUBLISHING LLM REQUEST to {AICOTopics.MODELSERVICE_CHAT_REQUEST}")
-            print(f"💬 [CONVERSATION_ENGINE] 🆔 Correlation ID: {request_id}")
-            print(f"💬 [CONVERSATION_ENGINE] 📝 Messages count: {len(completions_request.messages)}")
-            
-            publish_start = time.time()
             await self.bus_client.publish(
                 AICOTopics.MODELSERVICE_CHAT_REQUEST,
                 completions_request,
                 correlation_id=request_id
             )
-            publish_end = time.time()
-            publish_duration = publish_end - publish_start
             
-            print(f"💬 [CONVERSATION_ENGINE] ✅ Chat request published to modelservice in {publish_duration:.3f}s")
-            self.logger.info(f"💬 [CONVERSATION_ENGINE] ✅ Chat request published to modelservice")
-            
-            # Mark LLM request sent
+            # Mark request sent and start streaming handler
             self.pending_responses[request_id]["llm_request_sent"] = True
-            
-            # Subscribe to streaming chunks from modelservice using proper topic
-            print(f"💬 [CONVERSATION_ENGINE] 📡 Subscribing to streaming chunks: {AICOTopics.MODELSERVICE_COMPLETIONS_STREAM}")
-            
-            # Start streaming handler as background task
             asyncio.create_task(self._handle_streaming_response(request_id, AICOTopics.MODELSERVICE_COMPLETIONS_STREAM))
             
-            llm_end_time = time.time()
-            llm_total_duration = llm_end_time - llm_start_time
-            print(f"💬 [CONVERSATION_ENGINE] 🏁 LLM request generation completed for {request_id} in {llm_total_duration:.2f}s")
-            
         except Exception as e:
-            print(f"💬 [CONVERSATION_ENGINE] ❌ EXCEPTION in _generate_llm_response: {e}")
             self.logger.error(f"Error generating LLM response: {e}")
             await self._cleanup_request(request_id)
     
     async def _handle_streaming_response(self, request_id: str, stream_topic: str) -> None:
         """Handle streaming chunks from modelservice and forward to API layer"""
         try:
-            print(f"💬 [CONVERSATION_ENGINE] 🔄 Starting streaming handler for {request_id}")
+            self.logger.debug(f"Starting streaming handler for {request_id}")
             accumulated_content = ""
+            accumulated_thinking = ""
             
             # Subscribe to streaming chunks with callback
             async def handle_chunk(envelope):
-                nonlocal accumulated_content
+                nonlocal accumulated_content, accumulated_thinking
                 try:
                     # Extract StreamingChunk from protobuf envelope
                     from aico.proto.aico_modelservice_pb2 import StreamingChunk
@@ -663,25 +684,29 @@ Respond naturally using relevant context."""
                     if streaming_chunk.request_id != request_id:
                         return False  # Not for us, continue listening
                     
-                    print(f"💬 [CONVERSATION_ENGINE] 📦 Received streaming chunk for {request_id}")
-                    
-                    # Extract chunk content from protobuf
+                    # Extract chunk content and type from protobuf
                     chunk_content = streaming_chunk.content
                     accumulated_content = streaming_chunk.accumulated_content
+                    content_type = streaming_chunk.content_type  # "thinking" or "response"
                     is_done = streaming_chunk.done
+                    
+                    # Track thinking separately
+                    if content_type == "thinking":
+                        accumulated_thinking += chunk_content
                     
                     # Publish streaming chunk directly to API layer via message bus
                     if request_id in self.pending_responses:
                         from aico.proto.aico_conversation_pb2 import StreamingResponse
                         import time
                         
-                        # Create proper protobuf streaming response
+                        # Create proper protobuf streaming response with content_type
                         streaming_response = StreamingResponse()
                         streaming_response.request_id = request_id
                         streaming_response.content = chunk_content
                         streaming_response.accumulated_content = accumulated_content
                         streaming_response.done = is_done
                         streaming_response.timestamp = int(time.time() * 1000)  # milliseconds
+                        streaming_response.content_type = content_type  # Forward content_type to frontend
                         
                         # Publish directly to API streaming topic
                         await self.bus_client.publish(
@@ -689,30 +714,25 @@ Respond naturally using relevant context."""
                             streaming_response,
                             correlation_id=request_id
                         )
-                        print(f"💬 [CONVERSATION_ENGINE] 📡 Published chunk to API: content='{chunk_content}', done={is_done}")
-                    
-                    print(f"💬 [CONVERSATION_ENGINE] 📝 Accumulated content length: {len(accumulated_content)}")
                     
                     # If this is the final chunk, handle completion
                     if is_done:
-                        print(f"💬 [CONVERSATION_ENGINE] ✅ Streaming complete for {request_id}")
-                        await self._finalize_streaming_response(request_id, accumulated_content)
+                        self.logger.info(f"Streaming complete: {len(accumulated_content)} chars, thinking: {len(accumulated_thinking)} chars")
+                        await self._finalize_streaming_response(request_id, accumulated_content, accumulated_thinking)
                         return True  # Signal to stop subscription
                     return False
                     
                 except Exception as e:
-                    print(f"💬 [CONVERSATION_ENGINE] ❌ Error processing streaming chunk: {e}")
+                    self.logger.error(f"Error processing streaming chunk: {e}")
                     return False
             
             # Subscribe with proper callback
             await self.bus_client.subscribe(stream_topic, handle_chunk)
                     
         except Exception as e:
-            print(f"💬 [CONVERSATION_ENGINE] ❌ Error in streaming handler: {e}")
-            # Remove exc_info parameter - not supported by AICOLogger
             self.logger.error(f"Streaming handler error for {request_id}: {e}")
     
-    async def _finalize_streaming_response(self, request_id: str, final_content: str) -> None:
+    async def _finalize_streaming_response(self, request_id: str, final_content: str, thinking_content: str = "") -> None:
         """Finalize streaming response and deliver to user (semantic memory approach)"""
         try:
             print(f"💬 [CONVERSATION_ENGINE] 🏁 Finalizing streaming response for {request_id}")
@@ -730,6 +750,7 @@ Respond naturally using relevant context."""
             
             # NOTE: AI response storage happens in streaming handler (line ~895)
             # to avoid duplicate storage
+            # Store thinking in message metadata if present
             
             # Create final response message for API layer
             ai_message = Message()
@@ -737,6 +758,9 @@ Respond naturally using relevant context."""
             ai_message.type = Message.MessageType.SYSTEM_RESPONSE
             ai_message.text = final_content
             ai_message.turn_number = 1  # Simple turn tracking
+            
+            # NOTE: Thinking is already delivered via streaming chunks with content_type="thinking"
+            # No need to store it in the final message - frontend handles it during streaming
             
             # Create ConversationMessage for API layer (with message_id)
             from aico.proto.aico_conversation_pb2 import ConversationMessage
@@ -770,7 +794,21 @@ Respond naturally using relevant context."""
                 correlation_id=request_id
             )
             
-            print(f"💬 [CONVERSATION_ENGINE] ✅ Final response delivered for {request_id}")
+            # Phase 3: Log trajectory for behavioral learning
+            if request_id in self.pending_responses:
+                pending_data = self.pending_responses[request_id]
+                
+                user_context = pending_data.get("user_context")
+                user_message = pending_data.get("user_message")
+                selected_skill_id = pending_data.get("selected_skill_id")
+                
+                if user_context and user_message:
+                    await self._log_trajectory(
+                        user_context,
+                        user_message,
+                        final_content,  # Fixed: use final_content parameter
+                        selected_skill_id
+                    )
             
             # Don't clean up here - let the LLM response handler clean up
             # This prevents race condition where LLM response arrives after cleanup
@@ -779,37 +817,127 @@ Respond naturally using relevant context."""
             print(f"💬 [CONVERSATION_ENGINE] ❌ Error finalizing streaming response: {e}")
             self.logger.error(f"Error finalizing streaming response for {request_id}: {e}")
     
-    def _build_system_prompt(self, user_context: UserContext, context: Dict[str, Any]) -> str:
-        """Build clean, focused system prompt for optimal LLM performance"""
-        user = user_context
+    def _build_system_prompt(self, user_context: UserContext, memory_context: Optional[Dict[str, Any]], skill_id: Optional[str] = None) -> str:
+        """Build system prompt with memory context and optional skill template
         
-        # Core identity and behavior - clean and direct
-        prompt_parts = [
-            "You are AICO, an AI companion.",
-            "Respond directly to the user's current message.",
-            "Be helpful, concise, and natural."
-        ]
+        NOTE: Character personality is defined in the Modelfile (e.g., Modelfile.eve).
+        This method only adds contextual information like memory facts, NOT character definition.
         
-        # User context - minimal and relevant
-        if user.username and not user.username.startswith("User_"):
-            prompt_parts.append(f"User: {user.username}")
+        Returns empty string if there's no contextual information to add, allowing the
+        Modelfile's SYSTEM instruction to be the sole system prompt.
+        """
+        # DO NOT define character here - that's in the Modelfile
+        # Only add contextual information that helps with the current conversation
+        prompt_parts = []
         
-        # Conversation style hint - only if not default
-        if user.conversation_style and user.conversation_style != "friendly":
-            prompt_parts.append(f"Style: {user.conversation_style}")
+        # Phase 3: Add skill template if selected
+        if skill_id:
+            try:
+                memory_manager = ai_registry.get("memory")
+                if memory_manager and hasattr(memory_manager, '_skill_store') and memory_manager._skill_store:
+                    # Synchronously access skill from database (get_skill is async but we're in sync context)
+                    # TODO: Cache skills at initialization to avoid this sync/async mismatch
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            # If loop is running, we can't use asyncio.run()
+                            # Skip skill template injection in this case
+                            self.logger.debug(f"🎯 [SKILL] Skipping skill template (event loop running)")
+                        else:
+                            skill = asyncio.run(memory_manager._skill_store.get_skill(skill_id))
+                            if skill:
+                                prompt_parts.append(f"Interaction style:\n{skill.procedure_template}")
+                                self.logger.info(f"🎯 [SKILL] Injected skill template: {skill.skill_name}")
+                    except RuntimeError:
+                        # No event loop, create one
+                        skill = asyncio.run(memory_manager._skill_store.get_skill(skill_id))
+                        if skill:
+                            prompt_parts.append(f"Interaction style:\n{skill.procedure_template}")
+                            self.logger.info(f"🎯 [SKILL] Injected skill template: {skill.skill_name}")
+            except Exception as e:
+                self.logger.warning(f"🎯 [SKILL] Failed to inject skill template: {e}")
         
-        # Memory context - removed restrictive limitations
-        if "memory" in context and context["memory"]:
-            memory_data = context["memory"]
+        # Add identity context - CRITICAL for LLM to know who it is and who it's talking to
+        identity_parts = []
+        
+        # CRITICAL: Tell the LLM its character name (e.g., "Eve" from model "eve:latest")
+        # This prevents the LLM from defaulting to its base model name (e.g., "Qwen")
+        if self.model_name:
+            # Extract character name from model (e.g., "eve" from "eve:latest")
+            character_name = self.model_name.split(':')[0].capitalize()
+            identity_parts.append(f"Your name is {character_name}.")
+        
+        # Get user's first name from database
+        if user_context and hasattr(user_context, 'full_name') and user_context.full_name:
+            try:
+                user_first_name = user_context.full_name.split()[0]
+                # Make this VERY explicit so the LLM doesn't ignore it
+                identity_parts.append(f"The person you are talking to is named {user_first_name}. This is their actual name from your memory system. When they ask if you remember their name, you should tell them their name is {user_first_name}.")
+            except (IndexError, AttributeError):
+                # If full_name is empty or malformed, skip user name
+                pass
+        
+        if identity_parts:
+            prompt_parts.append("\n".join(identity_parts))
+        
+        # Add memory context if available
+        if memory_context:
+            memory_data = memory_context.get("memory_context", {})
+            user_facts = memory_data.get("user_facts", [])
+            recent_context = memory_data.get("recent_context", [])
+            kg_data = memory_context.get("knowledge_graph", {})
             
-            # Add context summary if available (removed length restriction)
-            context_summary = memory_data.get("context_summary", "")
-            if context_summary:
-                # Clean up the summary to avoid redundant info
-                if "conversation messages" not in context_summary.lower():
-                    prompt_parts.append(f"Context: {context_summary}")
+            self.logger.debug(f"Building system prompt: {len(user_facts)} facts, {len(recent_context)} messages")
+            
+            # Add knowledge graph context (relationships only)
+            print(f"🔍 [PROMPT_DEBUG] kg_data type: {type(kg_data)}, content: {kg_data}")
+            if kg_data:
+                entities = kg_data.get("entities", [])
+                relationships = kg_data.get("relationships", [])
+                print(f"🔍 [PROMPT_DEBUG] Found {len(entities)} entities, {len(relationships)} relationships")
+                
+                # Add relationships as facts (entities are filtered at extraction time)
+                if relationships:
+                    kg_parts = []
+                    rel_lines = []
+                    for r in relationships:
+                        # Use actual entity text, not type names
+                        source = r.get('source', '')
+                        target = r.get('target', '')
+                        relation = r.get('relation', '')
+                        rel_lines.append(f"- {source} {relation} {target}")
+                    
+                    if rel_lines:
+                        kg_parts.append(f"Known facts:\n" + "\n".join(rel_lines))
+                        prompt_parts.append("\n".join(kg_parts))
+                        self.logger.debug(f"Added {len(relationships)} KG relationships to system prompt")
+            
+            # Add user facts if available (conversation history goes in messages array, not system prompt)
+            if user_facts:
+                facts_text = "\n".join([f"- {fact.get('content', '')}" for fact in user_facts[-5:]])
+                prompt_parts.append(f"Additional facts:\n{facts_text}")
+                self.logger.debug(f"Added {len(user_facts)} user facts to system prompt")
+            else:
+                # NOTE: Empty system prompt is OK - conversation history is in messages array (Ollama standard)
+                self.logger.debug(f"No user facts - system prompt empty (history in messages array)")
+        else:
+            self.logger.warning(f"⚠️ [PROMPT_BUILD] NO memory_context provided")
         
-        return "\n".join(prompt_parts)
+        # Only return a prompt if we have contextual information to add
+        # Otherwise return empty string to let Modelfile's SYSTEM be the only system instruction
+        prompt = "\n\n".join(prompt_parts) if prompt_parts else ""
+        
+        if prompt:
+            self.logger.debug(f"🔍 [PROMPT_DEBUG] Final system prompt:\n{prompt}")
+            print(f"🔍 [PROMPT_DEBUG] ===== FINAL SYSTEM PROMPT =====")
+            print(prompt)
+            print(f"🔍 [PROMPT_DEBUG] ===== END SYSTEM PROMPT =====")
+        else:
+            self.logger.debug(f"🔍 [PROMPT_DEBUG] No system prompt - using Modelfile's SYSTEM instruction only")
+            print(f"🔍 [PROMPT_DEBUG] ⚠️ NO SYSTEM PROMPT - using Modelfile only")
+        
+        return prompt
     
     async def _handle_llm_response(self, response) -> None:
         """Handle LLM completion response and deliver final response"""
@@ -923,14 +1051,130 @@ Respond naturally using relevant context."""
             self.logger.error(f"Error in timeout handler for {request_id}: {e}")
     
     async def _cleanup_request(self, request_id: str) -> None:
-        """Clean up completed or timed out request"""
+        """Clean up completed request"""
         if request_id in self.pending_responses:
             del self.pending_responses[request_id]
-            print(f"💬 [CONVERSATION_ENGINE] 🧹 Request {request_id} cleaned up")
-            print(f"💬 [CONVERSATION_ENGINE] 📋 Remaining pending requests: {len(self.pending_responses)}")
-        else:
-            print(f"💬 [CONVERSATION_ENGINE] ⚠️ Attempted to clean up non-existent request: {request_id}")
+            self.logger.debug(f"Cleaned up request {request_id}")
     
+    # ============================================================================
+    # PHASE 3: BEHAVIORAL LEARNING INTEGRATION
+    # ============================================================================
+    
+    async def _select_skill(self, user_context: UserContext, user_message: ConversationMessage, memory_context: Optional[Dict[str, Any]]) -> Optional[str]:
+        """
+        Select skill for current interaction using Thompson Sampling.
+        
+        Args:
+            user_context: User context
+            user_message: Current user message
+            memory_context: Memory context
+            
+        Returns:
+            skill_id if selected, None otherwise
+        """
+        try:
+            # Check if behavioral learning is enabled
+            memory_manager = ai_registry.get("memory")
+            if not memory_manager or not hasattr(memory_manager, '_behavioral_enabled') or not memory_manager._behavioral_enabled:
+                return None
+            
+            # Get Thompson Sampling selector
+            if not hasattr(memory_manager, '_thompson_sampling') or not memory_manager._thompson_sampling:
+                return None
+            
+            thompson_sampling = memory_manager._thompson_sampling
+            skill_store = memory_manager._skill_store
+            
+            # Get available skills
+            candidate_skills = await skill_store.list_skills(skill_type=None, limit=100)
+            if not candidate_skills:
+                self.logger.warning("🎯 [SKILL] No skills available for selection")
+                return None
+            
+            # Build context for selection (simplified - could be enhanced with intent detection)
+            context = {
+                "intent": "general",  # Could use NLP to detect intent
+                "sentiment": "neutral",  # Could use emotion analysis
+                "time_of_day": "any"
+            }
+            
+            # Select skill using Thompson Sampling
+            selected_skill_id = await thompson_sampling.select_skill(
+                user_id=user_context.user_id,
+                context=context,
+                candidate_skills=candidate_skills
+            )
+            
+            return selected_skill_id
+            
+        except Exception as e:
+            self.logger.error(f"🎯 [SKILL] Failed to select skill: {e}")
+            return None
+    
+    async def _log_trajectory(self, user_context: UserContext, user_message: ConversationMessage, ai_response: str, selected_skill_id: Optional[str]) -> None:
+        """
+        Log conversation trajectory for behavioral learning.
+        
+        Args:
+            user_context: User context
+            user_message: User message
+            ai_response: AI response text
+            selected_skill_id: ID of skill that was applied
+        """
+        try:
+            # Check if behavioral learning is enabled
+            memory_manager = ai_registry.get("memory")
+            if not memory_manager:
+                return
+            
+            if not hasattr(memory_manager, '_behavioral_enabled'):
+                return
+                
+            if not memory_manager._behavioral_enabled:
+                return
+            
+            # Get database connection
+            if not hasattr(memory_manager, '_db_connection') or not memory_manager._db_connection:
+                return
+            
+            db = memory_manager._db_connection
+            
+            # Generate trajectory ID
+            import uuid
+            trajectory_id = str(uuid.uuid4())
+            
+            # Get turn number (count messages in conversation)
+            conversation_id = user_message.message.conversation_id
+            turn_number = db.execute(
+                "SELECT COUNT(*) FROM trajectories WHERE user_id = ? AND conversation_id = ?",
+                (user_context.user_id, conversation_id)
+            ).fetchone()[0] + 1
+            
+            # Insert trajectory with message_id for feedback linking
+            db.execute(
+                """INSERT INTO trajectories (
+                    trajectory_id, user_id, conversation_id, turn_number,
+                    user_input, selected_skill_id, ai_response, message_id, timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    trajectory_id,
+                    user_context.user_id,
+                    conversation_id,
+                    turn_number,
+                    user_message.message.text,
+                    selected_skill_id,
+                    ai_response,
+                    user_message.message_id,  # Use message_id from ConversationMessage (not message.id)
+                    datetime.utcnow().isoformat()
+                )
+            )
+            db.commit()
+            
+            self.logger.info(f"📝 [TRAJECTORY] Logged turn {turn_number} for conversation {conversation_id}")
+            
+        except Exception as e:
+            self.logger.error(f"📝 [TRAJECTORY] Failed to log trajectory: {e}")
+
     async def health_check(self) -> Dict[str, Any]:
         """Health check for conversation engine"""
         return {

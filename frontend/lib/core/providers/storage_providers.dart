@@ -32,15 +32,14 @@ final storageServiceProvider = FutureProvider<StorageService>((ref) async {
   return StorageService(secureStorage, sharedPrefs);
 });
 
-/// Simple encryption service implementation
+/// Simple encryption service for local storage
+/// Note: FlutterSecureStorage already provides OS-level encryption
+/// (iOS Keychain, Android EncryptedSharedPreferences)
+/// Network encryption is handled by core/services/encryption_service.dart
 class EncryptionService {
   final FlutterSecureStorage _secureStorage;
   
   EncryptionService(this._secureStorage);
-  
-  // TODO: Implement proper encryption when needed
-  String encrypt(String data) => data;
-  String decrypt(String data) => data;
   
   Future<String?> getSecureString(String key) async {
     return await _secureStorage.read(key: key);

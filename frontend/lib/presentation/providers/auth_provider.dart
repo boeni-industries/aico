@@ -1,12 +1,11 @@
-import 'dart:async';
 import 'package:aico_frontend/core/logging/aico_log.dart';
-import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/domain/entities/user.dart';
 import 'package:aico_frontend/domain/providers/domain_providers.dart';
 import 'package:aico_frontend/domain/usecases/auth_usecases.dart';
-import 'package:aico_frontend/networking/services/token_manager.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'auth_provider.g.dart';
 
 // Auth state
 class AuthState {
@@ -38,23 +37,24 @@ class AuthState {
 }
 
 // Auth notifier
-class AuthNotifier extends StateNotifier<AuthState> {
-  final LoginUseCase _loginUseCase;
-  final AutoLoginUseCase _autoLoginUseCase;
-  final LogoutUseCase _logoutUseCase;
-  final CheckAuthStatusUseCase _checkAuthStatusUseCase;
-  late final TokenManager _tokenManager;
+@riverpod
+class AuthNotifier extends _$AuthNotifier {
+  late final LoginUseCase _loginUseCase;
+  late final AutoLoginUseCase _autoLoginUseCase;
+  late final LogoutUseCase _logoutUseCase;
+  late final CheckAuthStatusUseCase _checkAuthStatusUseCase;
   
   bool _isAutoLoginInProgress = false;
 
-  AuthNotifier(
-    this._loginUseCase,
-    this._autoLoginUseCase,
-    this._logoutUseCase,
-    this._checkAuthStatusUseCase,
-    this._tokenManager,
-  ) : super(const AuthState()) {
-    _setupReAuthenticationListener();
+  @override
+  AuthState build() {
+    // Initialize dependencies from ref
+    _loginUseCase = ref.read(loginUseCaseProvider);
+    _autoLoginUseCase = ref.read(autoLoginUseCaseProvider);
+    _logoutUseCase = ref.read(logoutUseCaseProvider);
+    _checkAuthStatusUseCase = ref.read(checkAuthStatusUseCaseProvider);
+    
+    return const AuthState();
   }
 
   Future<void> login(String userUuid, String pin, {bool rememberMe = false}) async {
@@ -81,7 +81,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
 
     _isAutoLoginInProgress = true;
-    
     try {
       // Check if we have stored credentials first (fast local check)
       final hasCredentials = await _checkAuthStatusUseCase.execute();
@@ -210,37 +209,4 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(error: null);
   }
 
-  /// Listen for token expiration events and trigger re-authentication
-  void _setupReAuthenticationListener() {
-    _tokenManager.reAuthenticationStream.listen((event) {
-      if (state.isAuthenticated && !_isAutoLoginInProgress) {
-        AICOLog.info('Token expiration detected, attempting re-authentication',
-          topic: 'auth/token/expiration_detected',
-          extra: {'reason': event.reason});
-        
-        // Schedule re-authentication with delay to prevent blocking UI thread
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (state.isAuthenticated && !_isAutoLoginInProgress) {
-            attemptAutoLogin();
-          }
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
 }
-
-// Auth provider
-final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  return AuthNotifier(
-    ref.read(loginUseCaseProvider),
-    ref.read(autoLoginUseCaseProvider),
-    ref.read(logoutUseCaseProvider),
-    ref.read(checkAuthStatusUseCaseProvider),
-    ref.read(tokenManagerProvider),
-  );
-});

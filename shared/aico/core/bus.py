@@ -154,10 +154,12 @@ class MessageBusClient:
             # Publisher socket for sending messages
             self.publisher = self.context.socket(zmq.PUB)
             self.publisher.setsockopt(zmq.LINGER, 0)  # Don't wait on close
+            self.publisher.setsockopt(zmq.SNDHWM, 10000)  # Send High Water Mark - prevent message drops
             
             # Subscriber socket for receiving messages
             self.subscriber = self.context.socket(zmq.SUB)
             self.subscriber.setsockopt(zmq.LINGER, 0)  # Don't wait on close
+            self.subscriber.setsockopt(zmq.RCVHWM, 10000)  # Receive High Water Mark - prevent message drops
             
             # Configure CurveZMQ encryption if enabled
             if self.encryption_enabled:
@@ -502,9 +504,11 @@ class MessageBusBroker:
             # Create broker sockets
             self.frontend = self.context.socket(zmq.XSUB)
             self.frontend.setsockopt(zmq.LINGER, 0)
+            self.frontend.setsockopt(zmq.RCVHWM, 10000)  # Prevent message drops from publishers
             
             self.backend = self.context.socket(zmq.XPUB)
             self.backend.setsockopt(zmq.LINGER, 0)
+            self.backend.setsockopt(zmq.SNDHWM, 10000)  # Prevent message drops to subscribers
             
             # Configure CurveZMQ encryption if enabled
             if self.encryption_enabled:
@@ -676,19 +680,34 @@ class MessageBusBroker:
                     for sock, event in socks:
                         if sock == self.frontend and event == zmq.POLLIN:
                             # Forward from frontend (publishers) to backend (subscribers)
-                            #print(f"[BROKER PROXY] Receiving message from frontend (publisher)")
+                            import time
+                            recv_start = time.time()
                             message = await self.frontend.recv_multipart()
-                            #print(f"[BROKER PROXY] Forwarding message to backend (subscribers): {len(message)} parts")
+                            recv_time = time.time() - recv_start
+                            
+                            send_start = time.time()
                             await self.backend.send_multipart(message)
-                            #print(f"[BROKER PROXY] Forwarded message from publisher to subscribers")
+                            send_time = time.time() - send_start
+                            
+                            total_time = time.time() - recv_start
+                            if total_time > 0.01:  # Log if > 10ms
+                                print(f"⏱️ [BROKER] Message forwarding: recv={recv_time*1000:.2f}ms, send={send_time*1000:.2f}ms, total={total_time*1000:.2f}ms", flush=True)
                             
                         elif sock == self.backend and event == zmq.POLLIN:
                             # Forward from backend (subscribers) to frontend (publishers)
-                            #print(f"[BROKER PROXY] Receiving subscription from backend (subscriber)")
+                            # This handles BOTH subscription messages AND response messages from subscribers
+                            import time
+                            recv_start = time.time()
                             message = await self.backend.recv_multipart()
-                            #print(f"[BROKER PROXY] Forwarding subscription to frontend (publishers): {len(message)} parts")
+                            recv_time = time.time() - recv_start
+                            
+                            send_start = time.time()
                             await self.frontend.send_multipart(message)
-                            #print(f"[BROKER PROXY] Forwarded subscription from subscriber to publishers")
+                            send_time = time.time() - send_start
+                            
+                            total_time = time.time() - recv_start
+                            if total_time > 0.01:  # Log if > 10ms
+                                print(f"⏱️ [BROKER_REVERSE] Message forwarding (sub→pub): recv={recv_time*1000:.2f}ms, send={send_time*1000:.2f}ms, total={total_time*1000:.2f}ms", flush=True)
                             
                 except Exception as e:
                     if self.running:

@@ -202,7 +202,7 @@ async def test_modelservice_completions() -> bool:
         correlation_id = str(uuid.uuid4())
         from aico.proto.aico_modelservice_pb2 import CompletionsRequest, ConversationMessage
         completions_request = CompletionsRequest()
-        completions_request.model = "hermes3:8b"
+        completions_request.model = "huihui_ai/qwen3-abliterated:8b-v2"
         
         # Create conversation message
         message = ConversationMessage()

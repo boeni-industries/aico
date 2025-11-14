@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.3.0
+version: 1.0.0
 
 environment:
   sdk: ^3.8.1
@@ -39,8 +39,8 @@ dependencies:
   equatable: ^2.0.5
   
   # Dependency injection - Modern Riverpod approach
-  flutter_riverpod: ^2.5.1
-  riverpod_annotation: ^2.3.5
+  flutter_riverpod: ^3.0.3
+  riverpod_annotation: ^3.0.3
   
   # Storage and paths
   path_provider: ^2.1.4
@@ -48,20 +48,28 @@ dependencies:
   flutter_secure_storage: ^9.2.2
   shared_preferences: ^2.2.2
   crypto: ^3.0.3
+  file_picker: ^8.1.6
+  
+  # Database - Drift with SQLCipher encryption
+  drift: ^2.29.0
+  sqlcipher_flutter_libs: ^0.6.8
   
   # HTTP client
   http: ^1.2.2
   dio: ^5.4.0
-  retrofit: ^4.1.0
   
   # WebSocket
   web_socket_channel: ^3.0.3
   
   # Network connectivity
-  connectivity_plus: ^6.0.5
+  connectivity_plus: ^7.0.0
   
   # JSON serialization
   json_annotation: ^4.8.1
+  
+  # Protocol Buffers (Dart max 5.0.0, backend 6.32.0 - wire format compatible)
+  protobuf: ^5.0.0
+  fixnum: ^1.1.0
   
   # JWT handling
   dart_jsonwebtoken: ^3.2.0
@@ -88,10 +96,10 @@ dev_dependencies:
   
   # Code generation
   build_runner: ^2.4.7
-  retrofit_generator: ^9.7.0
   json_serializable: ^6.7.1
-  riverpod_generator: ^2.4.0
-  riverpod_lint: ^2.3.10
+  riverpod_generator: ^3.0.3
+  riverpod_lint: ^3.0.3
+  drift_dev: ^2.29.0  # Code generation for Drift
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -114,6 +122,7 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/images/aico.png
+    - assets/images/noise_tile.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

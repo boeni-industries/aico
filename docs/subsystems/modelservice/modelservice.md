@@ -14,10 +14,15 @@
 
 ## Features ✅
 
-- **Text Generation**: LLM completions via ZMQ message topics
+- **Text Generation**: LLM completions via ZMQ message topics with streaming support
+- **Embeddings**: Sentence-transformers for semantic embeddings (768-dim)
+- **Entity Extraction**: GLiNER Medium v2.1 for zero-shot NER
+- **Sentiment Analysis**: BERT Multilingual, RoBERTa emotion classification
+- **Intent Classification**: XLM-RoBERTa for multilingual intent understanding
 - **Model Management**: List, pull, and remove Ollama models
 - **Health Monitoring**: Service and Ollama status checks
 - **Ollama Integration**: Complete lifecycle management with auto-installation
+- **Streaming Responses**: Real-time token streaming via WebSocket integration
 
 ## OllamaManager ✅
 
@@ -43,10 +48,22 @@
 ```bash
 OLLAMA_MODELS=/path/to/aico/models
 OLLAMA_HOST=127.0.0.1:11434
-OLLAMA_KEEP_ALIVE=-1  # Keep models loaded
+OLLAMA_NUM_PARALLEL=4        # Concurrent requests (Ollama 0.12+)
+OLLAMA_MAX_LOADED_MODELS=2   # Max models in memory
+OLLAMA_MAX_QUEUE=128         # Max queued requests
 ```
 
 **Port**: 11434 (from core.yaml configuration)
+
+**Resource Management** (core.yaml):
+```yaml
+modelservice:
+  ollama:
+    resources:
+      auto_unload_minutes: 30
+      max_concurrent_models: 2
+      memory_threshold_percent: 85
+```
 
 ### Model Storage ✅
 
@@ -81,10 +98,22 @@ Local-first design with zero external dependencies. No Docker required for simpl
 
 ## ZMQ Message Topics ✅
 
-**Completions**: `modelservice/completions/request`
-**Models**: `modelservice/models/request`
-**Health**: `modelservice/health/request`
-**Status**: `modelservice/status/request`
+**Completions**:
+- Request: `modelservice/completions/request/v1`
+- Response: `modelservice/completions/response/v1`
+- Streaming: `modelservice/completions/stream/v1`
+
+**Embeddings**:
+- Request: `modelservice/embeddings/request/v1`
+- Response: `modelservice/embeddings/response/v1`
+
+**NER (Named Entity Recognition)**:
+- Request: `modelservice/ner/request/v1`
+- Response: `modelservice/ner/response/v1`
+
+**Sentiment Analysis**:
+- Request: `modelservice/sentiment/request/v1`
+- Response: `modelservice/sentiment/response/v1`
 
 **Ollama Management**:
 - `ollama/status/request`
@@ -92,7 +121,7 @@ Local-first design with zero external dependencies. No Docker required for simpl
 - `ollama/models/pull/request`
 - `ollama/models/remove/request`
 
-**Message Format**: Protocol Buffer serialization with correlation IDs
+**Message Format**: Protocol Buffer serialization with correlation IDs and versioned topics
 
 ## CLI Integration ✅
 
@@ -110,9 +139,18 @@ aico ollama logs           # View Ollama logs
 aico modelservice start     # Start modelservice with Ollama
 aico modelservice stop      # Stop modelservice
 aico modelservice status    # Service health check
+aico modelservice test      # Test completions and embeddings
 ```
 
 **Communication**: CLI uses ZMQ message bus for modelservice operations
+
+### Character Model Generation
+```bash
+aico ollama generate eve    # Create Eve character from Modelfile
+aico ollama generate eve --force  # Regenerate after Modelfile changes
+```
+
+**Modelfiles**: Custom character personalities defined in `config/modelfiles/`
 
 ## Integration Pattern ✅
 
@@ -131,9 +169,26 @@ aico modelservice status    # Service health check
 
 ## Current Status ✅
 
-**Production Ready**: ZMQ-based service with complete Ollama integration
-**Default Models**: `hermes3:8b` for conversation, vision models available
+**Production Ready**: ZMQ-based service with complete Ollama integration and transformers support
+
+**Default Models**:
+- **Conversation**: `huihui_ai/qwen3-abliterated:8b-v2` (primary, auto-pull, priority 1)
+- **Vision**: `llama3.2-vision:11b` (optional, priority 2)
+- **Lightweight**: `llama3.2:1b` (optional, priority 4)
+
+**Transformers Models**:
+- **Entity Extraction**: GLiNER Medium v2.1 (urchade/gliner_medium-v2.1)
+- **Embeddings**: Sentence-Transformers Paraphrase Multilingual MPNet
+- **Sentiment**: BERT Multilingual, RoBERTa Emotion, Twitter RoBERTa
+- **Intent**: XLM-RoBERTa Base
+
+**Ollama 0.12+ Features**:
+- **Parallel Processing**: 4 concurrent requests per model
+- **Max Loaded Models**: 2 models simultaneously
+- **Max Queue**: 128 requests
+- **Auto-unload**: Models unload after 30 minutes of inactivity
+
 **Auto-Management**: Binary installation, model pulling, and lifecycle management
-**Integration**: Full message bus integration with backend conversation system
+**Integration**: Full message bus integration with backend conversation system and streaming support
 
 **Future**: Additional model runners and inference types via same ZMQ pattern

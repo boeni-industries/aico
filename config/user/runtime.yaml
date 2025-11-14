@@ -1,5 +1,0 @@
-logging:
-  levels:
-    default: INFO
-security:
-  keyring_service_name: AICO_Test

@@ -2,6 +2,7 @@ import 'package:aico_frontend/data/datasources/local/auth_local_datasource.dart'
 import 'package:aico_frontend/data/datasources/remote/auth_remote_datasource.dart';
 import 'package:aico_frontend/domain/entities/user.dart';
 import 'package:aico_frontend/domain/repositories/auth_repository.dart';
+import 'package:aico_frontend/networking/services/jwt_decoder.dart';
 import 'package:flutter/foundation.dart';
 
 /// Clean implementation of AuthRepository using modern data sources
@@ -18,6 +19,12 @@ class AuthRepositoryImpl implements AuthRepository {
     
     if (authModel == null) {
       throw Exception('Authentication failed: Backend unavailable or invalid credentials');
+    }
+    
+    // Store refresh token if provided
+    if (authModel.refreshToken != null) {
+      await _localDataSource.storeRefreshToken(authModel.refreshToken!);
+      debugPrint('AuthRepository: Stored refresh token');
     }
     
     // Convert to domain entity
@@ -37,29 +44,45 @@ class AuthRepositoryImpl implements AuthRepository {
         return null;
       }
 
-      // Check if we have a valid token - if so, use it directly
-      if (credentials.containsKey('token')) {
-        debugPrint('AuthRepository: Valid token found, using direct authentication');
-        try {
-          // Create auth result from stored token without network call
-          final authResult = AuthResult(
-            user: User(
-              id: credentials['userUuid']!,
-              username: credentials['userUuid']!, // Use UUID as username for now
-              email: '${credentials['userUuid']!}@aico.local', // Placeholder email
-              role: UserRole.user,
-              createdAt: DateTime.now(),
-            ),
-            token: credentials['token']!,
+      // First, try to use existing valid token for instant auto-login
+      final token = await _localDataSource.getToken();
+      if (token != null && !JWTDecoder.isExpired(token)) {
+        debugPrint('AuthRepository: Using valid token for instant auto-login');
+        
+        // Decode JWT to extract user info (no network call!)
+        final userUuid = JWTDecoder.getUserUuid(token);
+        final username = JWTDecoder.getUsername(token);
+        final roles = JWTDecoder.getRoles(token);
+        
+        if (userUuid != null && username != null) {
+          // Determine user role from JWT roles
+          final role = roles.contains('admin') ? UserRole.admin
+                     : roles.contains('superadmin') ? UserRole.superAdmin
+                     : UserRole.user;
+          
+          // Create user from token data
+          final user = User(
+            id: userUuid,
+            username: username,
+            email: '$userUuid@aico.local',
+            role: role,
+            createdAt: DateTime.now(),
           );
-          return authResult;
-        } catch (e) {
-          debugPrint('AuthRepository: Failed to create auth result from token: $e');
-          // Fall through to re-authentication
+          
+          debugPrint('AuthRepository: Token-based auto-login successful for user: $username (role: ${role.name})');
+          
+          // Load refresh token if available
+          final refreshToken = await _localDataSource.getRefreshToken();
+          
+          return AuthResult(
+            user: user,
+            token: token,
+            refreshToken: refreshToken,
+          );
         }
       }
 
-      // No valid token - need to re-authenticate with stored credentials
+      // Token invalid/expired - fall back to re-authentication
       debugPrint('AuthRepository: No valid token, re-authenticating with stored credentials');
       final authModel = await _remoteDataSource.authenticate(
         credentials['userUuid']!,
@@ -77,6 +100,12 @@ class AuthRepositoryImpl implements AuthRepository {
       // Store the new token from the authentication response
       debugPrint('AuthRepository: Re-authentication successful, storing new token');
       await _localDataSource.storeToken(authResult.token);
+      
+      // Store refresh token if provided
+      if (authResult.refreshToken != null) {
+        await _localDataSource.storeRefreshToken(authResult.refreshToken!);
+        debugPrint('AuthRepository: Stored refresh token from re-authentication');
+      }
       
       return authResult;
     } catch (e) {
@@ -101,12 +130,33 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<bool> refreshToken() async {
     try {
-      final token = await _localDataSource.getToken();
-      if (token == null) return false;
+      // Get refresh token (not access token)
+      final refreshToken = await _localDataSource.getRefreshToken();
+      if (refreshToken == null) {
+        debugPrint('AuthRepository: No refresh token available');
+        return false;
+      }
 
-      final success = await _remoteDataSource.refreshToken(token);
-      return success;
+      // Call backend refresh endpoint with refresh token
+      final authModel = await _remoteDataSource.refreshToken(refreshToken);
+      if (authModel == null) {
+        debugPrint('AuthRepository: Token refresh failed');
+        return false;
+      }
+
+      // Store new access token
+      await _localDataSource.storeToken(authModel.token);
+      debugPrint('AuthRepository: New access token stored after refresh');
+      
+      // Store new refresh token if provided (token rotation)
+      if (authModel.refreshToken != null) {
+        await _localDataSource.storeRefreshToken(authModel.refreshToken!);
+        debugPrint('AuthRepository: New refresh token stored (token rotation)');
+      }
+
+      return true;
     } catch (e) {
+      debugPrint('AuthRepository: Token refresh error: $e');
       return false;
     }
   }

@@ -8,7 +8,7 @@ and database optimization.
 import asyncio
 import os
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 
 from aico.core.logging import get_logger
@@ -21,8 +21,8 @@ class LogCleanupTask(BaseTask):
     task_id = "maintenance.log_cleanup"
     default_config = {
         "enabled": True,
-        "schedule": "0 3 * * *",  # Daily at 3 AM
-        "retention_days": 30,
+        "schedule": "30 3 * * *",  # Daily at 3:30 AM (staggered)
+        "retention_days": 7,  # Default to 7 days, but will read from core.yaml logging.retention.days
         "max_size_mb": 500,
         "cleanup_database": True,
         "cleanup_files": True
@@ -31,8 +31,11 @@ class LogCleanupTask(BaseTask):
     async def execute(self, context: TaskContext) -> TaskResult:
         """Execute log cleanup task"""
         try:
-            retention_days = context.get_config("retention_days", 30)
-            max_size_mb = context.get_config("max_size_mb", 500)
+            # Read retention settings from core.yaml logging configuration
+            core_config = context.config_manager.get("core", {})
+            logging_retention = core_config.get("logging", {}).get("retention", {})
+            retention_days = logging_retention.get("days", context.get_config("retention_days", 7))
+            max_size_mb = logging_retention.get("max_size_mb", context.get_config("max_size_mb", 500))
             cleanup_database = context.get_config("cleanup_database", True)
             cleanup_files = context.get_config("cleanup_files", True)
             
@@ -71,16 +74,36 @@ class LogCleanupTask(BaseTask):
     def _cleanup_database_logs(self, context: TaskContext, retention_days: int) -> int:
         """Clean up old log entries from database"""
         try:
-            cutoff_date = (datetime.now() - timedelta(days=retention_days)).isoformat()
+            # Format to match database timestamp format: ISO 8601 UTC with Z suffix
+            cutoff_date = (datetime.utcnow() - timedelta(days=retention_days)).replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
             
+            # Count logs to be deleted first
+            count_cursor = context.db_connection.execute(
+                "SELECT COUNT(*) FROM logs WHERE timestamp < ?", (cutoff_date,)
+            )
+            count_to_delete = count_cursor.fetchone()[0]
+            self.logger.info(f"Found {count_to_delete} logs older than {cutoff_date} to delete")
+            
+            if count_to_delete == 0:
+                return 0
+            
+            # Delete the logs
             cursor = context.db_connection.execute(
                 "DELETE FROM logs WHERE timestamp < ?", (cutoff_date,)
             )
             context.db_connection.commit()
             
-            deleted_count = cursor.rowcount
+            # Verify deletion
+            verify_cursor = context.db_connection.execute(
+                "SELECT COUNT(*) FROM logs WHERE timestamp < ?", (cutoff_date,)
+            )
+            remaining = verify_cursor.fetchone()[0]
+            deleted_count = count_to_delete - remaining
+            
             if deleted_count > 0:
                 self.logger.info(f"Deleted {deleted_count} old log entries from database")
+            else:
+                self.logger.warning(f"DELETE executed but {remaining} logs still remain (expected 0)")
             
             return deleted_count
             
@@ -341,7 +364,7 @@ class DatabaseVacuumTask(BaseTask):
     task_id = "maintenance.database_vacuum"
     default_config = {
         "enabled": True,
-        "schedule": "0 2 * * 0",  # Weekly on Sunday at 2 AM
+        "schedule": "0 5 * * 0",  # Weekly on Sunday at 5:00 AM (staggered)
         "analyze_tables": True
     }
     

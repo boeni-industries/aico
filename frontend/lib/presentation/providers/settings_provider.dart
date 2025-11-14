@@ -1,19 +1,23 @@
 import 'package:aico_frontend/core/providers.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+part 'settings_provider.g.dart';
 
 /// Settings state model
 class SettingsState {
   final ThemeMode themeMode;
   final bool highContrastEnabled;
   final bool notificationsEnabled;
+  final bool showThinking; // Show AI thinking in right drawer
   final String language;
 
   const SettingsState({
     this.themeMode = ThemeMode.system,
     this.highContrastEnabled = false,
     this.notificationsEnabled = true,
+    this.showThinking = true, // Default to showing thinking
     this.language = 'en',
   });
 
@@ -21,12 +25,14 @@ class SettingsState {
     ThemeMode? themeMode,
     bool? highContrastEnabled,
     bool? notificationsEnabled,
+    bool? showThinking,
     String? language,
   }) {
     return SettingsState(
       themeMode: themeMode ?? this.themeMode,
       highContrastEnabled: highContrastEnabled ?? this.highContrastEnabled,
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
+      showThinking: showThinking ?? this.showThinking,
       language: language ?? this.language,
     );
   }
@@ -43,12 +49,16 @@ class SettingsState {
   }
 }
 
-/// Settings provider using StateNotifier
-class SettingsNotifier extends StateNotifier<SettingsState> {
-  final SharedPreferences _prefs;
+/// Settings provider using Notifier
+@riverpod
+class SettingsNotifier extends _$SettingsNotifier {
+  late final SharedPreferences _prefs;
 
-  SettingsNotifier(this._prefs) : super(const SettingsState()) {
+  @override
+  SettingsState build() {
+    _prefs = ref.watch(sharedPreferencesProvider);
     _loadSettings();
+    return const SettingsState();
   }
 
   void _loadSettings() {
@@ -56,12 +66,14 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     final themeMode = _stringToThemeMode(themeString);
     final highContrast = _prefs.getBool('high_contrast') ?? false;
     final notifications = _prefs.getBool('notifications') ?? true;
+    final showThinking = _prefs.getBool('show_thinking') ?? true;
     final language = _prefs.getString('language') ?? 'en';
 
     state = SettingsState(
       themeMode: themeMode,
       highContrastEnabled: highContrast,
       notificationsEnabled: notifications,
+      showThinking: showThinking,
       language: language,
     );
   }
@@ -91,6 +103,11 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   Future<void> updateLanguage(String language) async {
     await _prefs.setString('language', language);
     state = state.copyWith(language: language);
+  }
+
+  Future<void> updateShowThinking(bool enabled) async {
+    await _prefs.setBool('show_thinking', enabled);
+    state = state.copyWith(showThinking: enabled);
   }
 
   Future<void> resetTheme() async {
@@ -126,18 +143,20 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   }
 }
 
-/// Settings provider
-final settingsProvider = StateNotifierProvider<SettingsNotifier, SettingsState>((ref) {
-  final prefs = ref.watch(sharedPreferencesProvider);
-  return SettingsNotifier(prefs);
-});
-
 /// Theme mode provider (convenience)
-final themeModeProvider = Provider<ThemeMode>((ref) {
+@riverpod
+ThemeMode themeMode(Ref ref) {
   return ref.watch(settingsProvider).themeMode;
-});
+}
 
 /// High contrast provider (convenience)
-final highContrastProvider = Provider<bool>((ref) {
+@riverpod
+bool highContrast(Ref ref) {
   return ref.watch(settingsProvider).highContrastEnabled;
-});
+}
+
+/// Show thinking provider (convenience)
+@riverpod
+bool showThinking(Ref ref) {
+  return ref.watch(settingsProvider).showThinking;
+}

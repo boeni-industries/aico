@@ -2,7 +2,9 @@
 
 ## Overview
 
-AICO's multimodal capabilities enable visual understanding to enhance the companion AI experience through image analysis, document processing, and visual context awareness. The multimodal system operates as a separate inference service that provides structured visual context to the primary Nous Hermes 3 foundation model, maintaining AICO's privacy-first, modular architecture.
+AICO's multimodal capabilities enable visual understanding to enhance the companion AI experience through image analysis, document processing, and visual context awareness. The multimodal system operates as a separate inference service that provides structured visual context to the primary Qwen3 Abliterated 8B foundation model, maintaining AICO's privacy-first, modular architecture.
+
+**Implementation Status**: 🚧 **Planned** - Architecture defined, integration patterns established, ready for implementation.
 
 ## Primary Recommendation: Dual Model Strategy
 
@@ -277,25 +279,37 @@ self.bus.publish("avatar.context.visual", avatar_context)
 - **Differential Privacy**: Optional noise injection for sensitive visual data
 - **User Control**: Granular control over visual data processing and storage
 
-## Deployment Strategy
+## Implementation Status
 
-### **Phase 1: Foundation (Weeks 1-2)**
+### **Current Status: Architecture Defined, Not Yet Implemented**
+
+**✅ Architecture Complete:**
+- Message bus integration patterns defined
+- Dual-model strategy (Llama 3.2 Vision + Qwen2.5-VL) specified
+- Processing pipeline designed
+- Privacy and security architecture established
+
+**🚧 Planned Implementation:**
+
+### **Phase 1: Foundation (Planned)**
 1. **Llama 3.2 Vision 11B Deployment**: Primary multimodal service setup
 2. **Basic Integration**: Connect with message bus and Conversation Engine
 3. **Image Analysis Pipeline**: Core image understanding and captioning
 4. **Emotion Detection**: Basic visual emotion recognition
 
-### **Phase 2: Enhanced Capabilities (Weeks 3-4)**
+### **Phase 2: Enhanced Capabilities (Planned)**
 1. **Qwen2.5-VL 7B Integration**: Specialized document and precision tasks
 2. **Advanced Emotion Recognition**: Facial expression and micro-expression analysis
 3. **Social Context Analysis**: Group dynamics and relationship indicators
 4. **Avatar Integration**: Visual context for avatar behavior adaptation
 
-### **Phase 3: Advanced Features (Weeks 5-6)**
+### **Phase 3: Advanced Features (Planned)**
 1. **Video Understanding**: Temporal analysis and event detection
 2. **Document Intelligence**: Advanced OCR and form processing
 3. **Environmental Awareness**: Scene mood and context understanding
 4. **Multi-hop Visual Reasoning**: Complex visual relationship understanding
+
+**Note**: Llama 3.2 Vision 11B is configured in `core.yaml` as an optional model (auto_pull: false, priority: 2) but not yet integrated into the processing pipeline.
 
 ## Model Selection Matrix
 

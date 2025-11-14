@@ -1,47 +1,49 @@
 import 'package:aico_frontend/core/theme/aico_theme_manager.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'theme_provider.g.dart';
 
 /// Theme manager provider
-final themeManagerProvider = Provider<AicoThemeManager>((ref) {
+@riverpod
+AicoThemeManager themeManager(Ref ref) {
   return AicoThemeManager();
-});
+}
 
 /// Current theme data provider
-final currentThemeProvider = Provider<ThemeData>((ref) {
+@riverpod
+ThemeData currentTheme(Ref ref) {
   final themeManager = ref.watch(themeManagerProvider);
   return themeManager.getCurrentTheme();
-});
+}
 
 /// Light theme provider
-final lightThemeProvider = Provider<ThemeData>((ref) {
+@riverpod
+ThemeData lightTheme(Ref ref) {
   final themeManager = ref.watch(themeManagerProvider);
   return themeManager.generateLightTheme();
-});
+}
 
 /// Dark theme provider
-final darkThemeProvider = Provider<ThemeData>((ref) {
+@riverpod
+ThemeData darkTheme(Ref ref) {
   final themeManager = ref.watch(themeManagerProvider);
   return themeManager.generateDarkTheme();
-});
+}
 
 /// High contrast light theme provider
-final highContrastLightThemeProvider = Provider<ThemeData>((ref) {
+@riverpod
+ThemeData highContrastLightTheme(Ref ref) {
   final themeManager = ref.watch(themeManagerProvider);
   return themeManager.generateHighContrastLightTheme();
-});
+}
 
 /// High contrast dark theme provider
-final highContrastDarkThemeProvider = Provider<ThemeData>((ref) {
+@riverpod
+ThemeData highContrastDarkTheme(Ref ref) {
   final themeManager = ref.watch(themeManagerProvider);
   return themeManager.generateHighContrastDarkTheme();
-});
-
-/// Theme controller provider for managing theme changes
-final themeControllerProvider = StateNotifierProvider<ThemeController, ThemeState>((ref) {
-  final themeManager = ref.read(themeManagerProvider);
-  return ThemeController(themeManager);
-});
+}
 
 /// Theme state
 class ThemeState {
@@ -69,16 +71,19 @@ class ThemeState {
 }
 
 /// Theme controller for managing theme operations
-class ThemeController extends StateNotifier<ThemeState> {
-  final AicoThemeManager _themeManager;
+@riverpod
+class ThemeController extends _$ThemeController {
+  late final AicoThemeManager _themeManager;
 
-  ThemeController(this._themeManager) 
-    : super(ThemeState(
-        themeMode: ThemeMode.system,
-        isHighContrast: false,
-        currentBrightness: Brightness.light,
-      )) {
+  @override
+  ThemeState build() {
+    _themeManager = ref.read(themeManagerProvider);
     _initializeTheme();
+    return ThemeState(
+      themeMode: ThemeMode.system,
+      isHighContrast: false,
+      currentBrightness: Brightness.light,
+    );
   }
 
   void _initializeTheme() {

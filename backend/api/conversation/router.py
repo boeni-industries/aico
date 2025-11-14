@@ -128,7 +128,10 @@ async def send_message_with_auto_thread(
                 # Check if this response is for our specific message
                 logger.debug(f"[API_GATEWAY] Response message_id: {conversation_message.message_id}, Expected: {message_id}")
                 if conversation_message.message_id == message_id:
-                    ai_response = conversation_message.message.text
+                    # Strip thinking tags from response (non-streaming path)
+                    import re
+                    raw_response = conversation_message.message.text
+                    ai_response = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL).strip()
                     logger.info(f"[API_GATEWAY] ✅ AI response extracted for message_id {message_id}: '{ai_response[:100]}...'")
                     response_received.set()
                 else:
@@ -146,6 +149,7 @@ async def send_message_with_auto_thread(
         if stream_enabled:
             logger.info(f"🔍 [API_STREAMING] ✅ Taking streaming path for request {message_id}")
             print(f"🚨 [CONSOLE] About to create StreamingResponse for {message_id}")
+            
             # Return streaming response using event-driven approach
             async def stream_generator():
                 logger.info(f"🔍 [API_STREAMING] 🚀 Stream generator started for {message_id}")
@@ -182,7 +186,8 @@ async def send_message_with_auto_thread(
                             await chunk_queue.put({
                                 "content": streaming_chunk.content,
                                 "accumulated": streaming_chunk.accumulated_content,
-                                "done": streaming_chunk.done
+                                "done": streaming_chunk.done,
+                                "content_type": streaming_chunk.content_type  # Forward content_type from backend
                             })
                             
                             # If this is the final chunk, signal completion
@@ -214,13 +219,20 @@ async def send_message_with_auto_thread(
                                 logger.info(f"🔍 [API_STREAMING] ❌ Yielding error chunk")
                                 yield json.dumps(chunk) + "\n"
                             else:
-                                logger.info(f"🔍 [API_STREAMING] ✅ Yielding content chunk: '{chunk['content']}'")
-                                yield json.dumps({
+                                logger.info(f"🔍 [API_STREAMING] ✅ Yielding content chunk: '{chunk['content']}' (type: {chunk.get('content_type', 'response')})")
+                                chunk_data = {
                                     "type": "chunk",
                                     "content": chunk["content"],
                                     "accumulated": chunk["accumulated"],
-                                    "done": chunk["done"]
-                                }) + "\n"
+                                    "done": chunk["done"],
+                                    "content_type": chunk.get("content_type", "response")  # Include content_type for frontend routing
+                                }
+                                # Include conversation_id and message_id in the final chunk
+                                if chunk["done"]:
+                                    chunk_data["conversation_id"] = conversation_id
+                                    chunk_data["message_id"] = message_id  # Add message_id for feedback linking
+                                    logger.info(f"🔍 [API_STREAMING] 📤 Sending final chunk with message_id: {message_id}")
+                                yield json.dumps(chunk_data) + "\n"
                                 
                         except asyncio.TimeoutError:
                             # No chunk received, check overall timeout
@@ -250,9 +262,9 @@ async def send_message_with_auto_thread(
             
             print(f"🚨 [CONSOLE] Creating StreamingResponse object for {message_id}")
             try:
-                return StreamingResponse(
+                response = StreamingResponse(
                     stream_generator(),
-                    media_type="text/plain",
+                    media_type="application/x-ndjson",
                     headers={
                         "Cache-Control": "no-cache",
                         "Connection": "keep-alive",
@@ -260,6 +272,7 @@ async def send_message_with_auto_thread(
                         "X-Conversation-ID": conversation_id,
                     }
                 )
+                return response
             except Exception as e:
                 print(f"🚨 [CONSOLE] ERROR creating StreamingResponse: {e}")
                 raise
@@ -306,6 +319,7 @@ async def send_message_with_auto_thread(
 async def get_my_messages(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=100, description="Messages per page"),
+    conversation_id: Optional[str] = Query(None, description="Filter by conversation ID"),
     since: Optional[datetime] = Query(None, description="Show messages after this timestamp"),
     current_user = Depends(get_current_user)
 ):
@@ -313,20 +327,72 @@ async def get_my_messages(
     Get my message history (user-scoped)
     
     Returns paginated message history for the authenticated user.
-    Semantic memory provides context continuity without explicit thread management.
+    Messages are retrieved from working memory (LMDB) with 24-hour retention.
     """
     try:
         user_id = current_user['user_uuid']
         
-        # TODO: Retrieve user's messages from semantic memory system
-        # This would query the working memory and semantic memory stores
-        # for messages belonging to this user, with time-based pagination
+        # Get memory manager from AI registry
+        from aico.ai import ai_registry
+        memory_manager = ai_registry.get("memory")
+        
+        if not memory_manager:
+            logger.warning("Memory manager not available")
+            return MessageHistoryResponse(
+                success=True,
+                messages=[],
+                conversation_id=conversation_id or f"user_{user_id}",
+                total_count=0,
+                page=page,
+                page_size=page_size
+            )
+        
+        # Retrieve messages from working memory
+        if conversation_id:
+            # Get messages for specific conversation
+            raw_messages = await memory_manager._working_store.retrieve_conversation_history(
+                conversation_id=conversation_id,
+                limit=page_size * page  # Get all messages up to current page
+            )
+        else:
+            # Get all messages for user across conversations
+            raw_messages = await memory_manager._working_store.retrieve_user_history(
+                user_id=user_id,
+                limit=page_size * page
+            )
+        
+        # Filter by timestamp if specified
+        if since:
+            raw_messages = [
+                msg for msg in raw_messages
+                if datetime.fromisoformat(msg.get('timestamp', '').replace('Z', '')) >= since
+            ]
+        
+        # Apply pagination
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated_messages = raw_messages[start_idx:end_idx]
+        
+        # Format messages for frontend
+        formatted_messages = []
+        for msg in paginated_messages:
+            formatted_messages.append({
+                "id": msg.get("message_id", f"{msg.get('conversation_id')}_{msg.get('timestamp')}"),
+                "conversation_id": msg.get("conversation_id"),
+                "user_id": msg.get("user_id"),
+                "content": msg.get("content", ""),
+                "role": msg.get("role", "user"),
+                "timestamp": msg.get("timestamp"),
+                "message_type": msg.get("message_type", "text")
+            })
+        
+        logger.info(f"Retrieved {len(formatted_messages)} messages for user {user_id} (page {page})")
         
         return MessageHistoryResponse(
             success=True,
-            messages=[],
-            conversation_id=f"user_{user_id}",  # User-scoped identifier
-            total_count=0,
+            messages=formatted_messages,
+            conversation_id=conversation_id or f"user_{user_id}",
+            total_count=len(raw_messages),
             page=page,
             page_size=page_size
         )
@@ -336,6 +402,8 @@ async def get_my_messages(
             "user_id": current_user.get('user_uuid', 'unknown'),
             "error": str(e)
         })
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
             detail="Failed to retrieve message history"
@@ -409,10 +477,13 @@ async def my_conversation_websocket(websocket: WebSocket):
             try:
                 # TODO: Filter by user_id instead of conversation_id once WebSocket auth is implemented
                 if hasattr(message, 'message') and hasattr(message.message, 'text'):
+                    # Use message_id from backend if available, otherwise generate one
+                    msg_id = getattr(message, 'message_id', None) or str(uuid.uuid4())
+                    
                     # Create structured WebSocket response
                     ai_response = WebSocketAIResponse(
                         conversation_id=f"user_conversation_{connection_id}",
-                        message_id=str(uuid.uuid4()),
+                        message_id=msg_id,  # Use actual message_id from backend
                         message=message.message.text,
                         confidence=getattr(message, 'confidence', None),
                         processing_time_ms=getattr(message, 'processing_time_ms', None)

@@ -39,69 +39,110 @@ Each stage builds deeper companionship rather than just adding features.
 
 AICO is engineered to deliver a truly companionable, proactive, and privacy-first AI experience. Its capabilities span conversation, memory, emotion, agency, embodiment, privacy, extensibility, and system administration.
 
-### 👥 **Social Relationship Intelligence**
-- **Hybrid Vector-Graph Architecture**: Modern relationship modeling using vector embeddings and graph neural networks
-- **Dynamic Learning**: Relationships learned from interactions rather than predefined categories
-- **Multi-dimensional Understanding**: Authority, intimacy, care responsibility, and interaction patterns
-- **Natural Recognition**: Voice biometrics, behavioral patterns, and conversation style analysis
-- **Adaptive Context**: "Hi Sarah, how was your piano lesson?" with relationship-appropriate responses
-- **Privacy Boundaries**: Personal conversations compartmentalized per relationship context
-- **Zero Technical Barriers**: Natural interaction without passwords or authentication friction
+### 👥 **Social Relationship Intelligence** ✅ *Production*
+- **Property Graph Storage**: NetworkX + DuckDB with 204 nodes, 27 edges, 552 indexed properties
+- **Multi-Pass Entity Extraction**: GLiNER zero-shot recognition + LLM relationship extraction
+- **Entity Resolution**: 3-step deduplication (semantic blocking → LLM matching → merging)
+- **Temporal Reasoning**: Bi-temporal tracking (valid_from, valid_until, is_current)
+- **Graph Analytics**: PageRank importance, Louvain community detection, betweenness centrality
+- **GQL/Cypher Queries**: Full graph query language via GrandCypher
+- **Graph Fusion**: Conflict resolution and canonical ID management
+- **HNSW Search**: Approximate nearest neighbor for fast entity similarity
 
-### 🗣️ **Conversation & Memory**
-- Real-time text and voice conversations with context awareness
-- Multi-turn dialogue management with natural interruption handling and resumption
-- Episodic, semantic, and procedural memory systems that remember your interactions
-- Vector-based semantic search for intelligent memory retrieval (ChromaDB)
-- Continual learning that adapts to your communication style and preferences
-- Local LLM integration (Ollama) with privacy-first inference
-- Personality and emotion context injected into LLM prompts
+*Planned:* Dynamic relationship learning, voice biometrics, natural family recognition
 
-### 😊 **Emotional Intelligence**
-- Multi-modal emotion recognition (facial, voice, text analysis)
-- Advanced emotion simulation using AppraisalCloudPCT (Component Process Model)
-- 4-stage appraisal process: Relevance → Implication → Coping → Normative
-- Mood tracking and empathetic response generation with emotional memory
-- Personality simulation with evolving traits, values, and behavioral consistency
-- Crisis detection and appropriate support mechanisms
-- Emotional memory integration for consistent personality expression
-- Gradual emotional transitions and contextual appropriateness
+### 🗣️ **Conversation & Memory** ✅ *Production*
+**Three-Tier Architecture** with brain-inspired complementary learning:
+- **Working Memory (LMDB)**: 24-hour TTL, sub-millisecond access, conversation-scoped
+- **Semantic Memory (ChromaDB)**: Hybrid Search V3 with semantic + BM25 + IDF filtering + RRF fusion
+- **Knowledge Graph (DuckDB)**: Property graph with temporal reasoning and multi-hop queries
+- **Adaptive Memory System (AMS)**: Memory consolidation, Thompson Sampling, RLHF behavioral learning
+- **Memory Album**: User-curated conversation and message-level memories with emotional tone
+- **Real-time Streaming**: WebSocket-based token streaming for responsive conversations
+- **Local LLM**: Qwen3 Abliterated 8B via Ollama with automatic model management
+- **Context Assembly**: Multi-factor scoring (recency, relevance, relationship) across all memory tiers
 
-### 🤖 **Autonomous Agency**
-- Multi-faceted self-directed behavior and initiative
-- Goal generation: self-formulated objectives and hierarchical planning (MCTS)
-- Curiosity-driven learning (RND, ICM) and intrinsic motivation
-- Interest development and autonomous preference formation
-- Planning & reasoning: multi-step strategic thinking and adaptation
-- Meta-cognition: self-awareness of learning progress and capabilities
-- Proactive engagement: reminders, suggestions, conversation starters, and contextual follow-ups
-- Background learning and skill development, even when not actively conversing
+*Planned:* Voice conversations, proactive conversation starters
 
-### 🎭 **Embodiment & Presence**
-- Visual avatar (Three.js + Ready Player Me + TalkingHead.js), real-time lip-sync, facial expressions
-- Voice synthesis and emotion-driven audio
-- Gestures, spatial awareness, and AR/VR integration
-- Multi-device roaming: federated, encrypted P2P sync for seamless continuity
-- Cross-platform presence (desktop, mobile, AR/VR, IoT)
-- Smart device and IoT integration
-- Synchronized presence and attention management across devices
+### 🎭 **Custom Character Personalities** ✅ *Production*
+- **Eve Character**: Warm, curious, contemplative companion with genuine thoughts and feelings
+- **Ollama Modelfiles**: Define custom AI personalities with distinct traits and communication styles
+- **Character Parameters**: Fine-tune temperature, context window, sampling for consistency
+- **Thinking Process**: Ollama 0.12+ native thinking API for internal reasoning
+- **Memory Integration**: Characters naturally reference past conversations via memory system
+- **Create Your Own**: Define professional assistants, creative collaborators, philosophical thinkers, or supportive friends
 
-### 🔒 **Privacy & Security**
-- Local-first, encrypted data storage (libSQL with SQLCipher, transparent AES-256-GCM file encryption)
-- End-to-end encryption, granular consent management, and permission controls
-- Homomorphic encryption for privacy-preserving cloud computations (optional, post-MVP)
-- Transparent audit logging and zero-knowledge authentication
-- Secure key management, device pairing, and roaming support
-- No admin/user data leaves the device unless explicitly exported by a privileged operator
+### 😊 **Emotional Intelligence** 🚧 *In Development*
+**Production:**
+- **Text Sentiment**: BERT Multilingual sentiment classification
+- **Emotion Analysis**: RoBERTa 6-emotion classification (joy, sadness, anger, fear, surprise, disgust)
+- **Intent Classification**: XLM-RoBERTa multilingual intent understanding
+- **Memory Album Integration**: Automatic emotional tone detection
 
-### 🔌 **Extensibility & Admin**
-- Hot-loading, sandboxed plugin system for skills, integrations, and extensions
-- Plugin marketplace and developer SDK
-- Unified API gateway (REST, WebSocket, gRPC)
-- **Admin UI:** React-based, manifest-driven dashboard for all backend/admin modules
-- **CLI:** Python Typer-based, cross-platform, universal executable for advanced admin, scripting, and diagnostics
-- Instrumentation: system health, logging, compliance, monitoring, and audit modules
-- Backup/restore, update management, and developer tools for safe extensibility
+**Planned:**
+- Advanced emotion simulation (AppraisalCloudPCT with 4-stage appraisal)
+- Multi-modal emotion recognition (facial, voice)
+- Personality simulation with evolving traits (Big Five, HEXACO)
+- Crisis detection and empathetic response generation
+
+### 🤖 **Autonomous Agency & Task Automation** ✅ *Production*
+**Production:**
+- **Task Scheduler**: Cron-based scheduler with resource awareness and adaptive execution
+- **Built-in Tasks**: Log cleanup, key rotation, health checks, database vacuum
+- **AMS Tasks**: Memory consolidation, feedback classification, Thompson sampling, trajectory cleanup
+- **KG Tasks**: Graph consolidation, entity resolution, relationship inference
+- **Resource Monitoring**: CPU/memory tracking for intelligent task execution
+
+**Planned:**
+- Goal generation and hierarchical planning (MCTS)
+- Curiosity-driven learning (RND, ICM)
+- Proactive engagement and conversation starters
+- Meta-cognition and self-assessment
+- Background learning during idle periods
+
+### 🎭 **Frontend & User Experience** ✅ *Production*
+- **Flutter 3.27+**: Cross-platform UI (macOS, iOS, Android, Linux, Windows)
+- **Glassmorphic Design**: Premium UI with backdrop blur, noise textures, organic curves
+- **Riverpod 3.0**: Modern state management with compile-safe code generation
+- **Drift + SQLCipher**: Encrypted local message cache with <200ms load times
+- **Message Actions**: Hover-based toolbar (Copy, Remember, Regenerate, Feedback)
+- **Real-time Streaming**: WebSocket support for streaming AI responses
+- **Offline-First**: Cache-first loading with background sync
+
+**Planned:**
+- 3D Avatar System (Three.js + Ready Player Me + TalkingHead.js)
+- Voice interaction (speech-to-text and text-to-speech)
+- Multi-device roaming with P2P encrypted sync
+- AR/VR integration and spatial computing
+
+### 🔒 **Privacy & Security** ✅ *Production*
+- **SQLCipher Encryption**: AES-256-GCM for all databases (libSQL + Drift)
+- **CurveZMQ**: 100% encrypted message bus with mandatory mutual authentication
+- **Argon2id**: Memory-hard KDF for master key derivation
+- **PBKDF2**: Database encryption key derivation (100k iterations)
+- **NaCl/libsodium**: Modern cryptography for frontend (Ed25519, X25519)
+- **JWT Authentication**: HS256 tokens with 24-hour expiry and refresh
+- **Platform Keychain**: OS-native secure storage (Keychain, Credential Manager)
+- **Audit Logging**: Encrypted log persistence with 7-day retention
+- **Local-First**: All data and processing remain on-device
+
+*Planned:* Federated learning, granular consent management
+
+### 🔌 **Extensibility & Administration** ✅ *Production*
+- **CLI v1.1.0**: 15 command groups with 100+ subcommands for complete system administration
+  - Security, database, gateway, ollama, knowledge graph, scheduler, logs, config, bus, chroma, lmdb, dev, version, modelservice
+- **Plugin System**: Message bus, log consumer, validation, security, rate limiting, encryption
+- **API Gateway**: FastAPI with REST + WebSocket on port 8771, 12+ endpoint groups
+- **Task Scheduler**: Extensible task system with built-in and custom tasks
+- **Developer Tools**: Schema management, protobuf generation, testing utilities
+- **Hot Reload**: Configuration changes without service restart
+- **Health Monitoring**: Comprehensive system health and performance tracking
+
+**Planned:**
+- Plugin marketplace and community extensions
+- React-based Admin UI (Studio)
+- External integrations (calendar, email, smart home)
+- Automated update system with rollback
 
 ### 🤝 **Community & Collaboration**
 - **Privacy-Preserving Collective Learning**: Improve AICO's emotional intelligence through federated learning and anonymized data sharing (opt-in only)
@@ -123,17 +164,31 @@ AICO represents a new paradigm in AI companionship—prioritizing emotional conn
 
 ### **Development Stages**
 
-1. **🛠️ Foundation I** *(Current)* - Essential infrastructure for MVP
-    - ZeroMQ message bus, FastAPI backend, basic security framework
-    - Task scheduler, encrypted data storage, WebSocket communication
+1. **🛠️ Foundation I** ✅ *(Complete)* - Essential infrastructure
+    - ✅ CurveZMQ encrypted message bus with Protocol Buffers
+    - ✅ FastAPI backend with plugin architecture
+    - ✅ Task scheduler with resource awareness
+    - ✅ Encrypted data storage (SQLCipher for all databases)
+    - ✅ WebSocket streaming communication
+    - ✅ CLI v1.1.0 with 100+ commands
 
-2. **🤝 Companion** *(Next)* - MVP with basic companionship
-    - Text conversation, voice interaction, basic avatar, memory system
-    - Local LLM integration, personality engine, emotion recognition
+2. **🤝 Companion** 🚧 *(In Progress)* - MVP with basic companionship
+    - ✅ Text conversation with streaming responses
+    - ✅ Three-tier memory system (working, semantic, knowledge graph)
+    - ✅ Local LLM integration (Qwen3 Abliterated via Ollama)
+    - ✅ Custom character personalities (Eve + Modelfile system)
+    - ✅ Knowledge graph with 204 nodes, 27 edges
+    - ✅ Memory Album for user-curated memories
+    - 🚧 Voice interaction (planned)
+    - 🚧 3D avatar (ready for integration)
 
-3. **🛠️ Foundation II** - Advanced infrastructure for production
-    - Plugin system, advanced resource management, update system
-    - CI/CD pipeline, monitoring, production deployment
+3. **🛠️ Foundation II** 🚧 *(Partially Complete)* - Advanced infrastructure
+    - ✅ Plugin system (message bus, log consumer, security)
+    - ✅ Advanced resource management (CPU/memory monitoring)
+    - ✅ Production deployment patterns
+    - 🚧 Update system with rollback
+    - 🚧 CI/CD pipeline
+    - 🚧 Advanced monitoring and alerting
 
 4. **💭 Confidante** - Deep emotional intelligence
     - Advanced emotion simulation, crisis support, empathy modeling
@@ -186,11 +241,12 @@ AICO is an open experiment—all code and progress are public. Whether you want 
   - **Component**: Individual functional units (e.g., Trait Vector, Appraisal Engine)
 
 - **Key Technologies:**
-  - **Backend:** Python, FastAPI, ZeroMQ, Protocol Buffers, libSQL, DuckDB, ChromaDB, LMDB
-  - **Frontend:** Flutter (UI), WebView (Three.js/Ready Player Me/TalkingHead.js for avatar)
-  - **Modelservice:** REST API gateway for LLM inference (Ollama integration)
-  - **Admin Tools:** React-based Admin UI, Python CLI (Typer, Rich)
-  - **Security:** End-to-end encryption, consent management, audit logging
+  - **Backend:** Python 3.13, FastAPI 0.116+, ZeroMQ 27.0+ (CurveZMQ), Protocol Buffers 6.32, libSQL 0.1.8 (SQLCipher), DuckDB 1.3.2+, ChromaDB 1.0.16+, LMDB
+  - **Frontend:** Flutter 3.27+, Dart 3.8+, Riverpod 3.0, Drift 2.29 (SQLCipher), Dio 5.4, Protocol Buffers 5.0
+  - **Modelservice:** ZeroMQ service with Ollama, GLiNER (entity extraction), sentence-transformers (embeddings), BERT/RoBERTa (sentiment/emotion)
+  - **AI Models:** Qwen3 Abliterated 8B (conversation), Llama 3.2 Vision 11B (optional), Llama 3.2 1B (optional)
+  - **CLI:** Typer 0.12, Rich 13.7, PyInstaller (v1.1.0, production-ready)
+  - **Security:** CurveZMQ encryption, Argon2id, PBKDF2, NaCl/libsodium, JWT (HS256), SQLCipher (AES-256-GCM)
 
 ## Learn More
 - Docs: [docs/](https://boeni-industries.github.io/aico/welcome/) (WIP)

@@ -4,11 +4,13 @@ import 'package:aico_frontend/domain/entities/user.dart';
 class AuthResult {
   final User user;
   final String token;
+  final String? refreshToken;
   final DateTime? lastLogin;
 
   const AuthResult({
     required this.user,
     required this.token,
+    this.refreshToken,
     this.lastLogin,
   });
 }

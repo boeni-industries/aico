@@ -5,6 +5,7 @@ import 'package:aico_frontend/presentation/screens/home/home_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_search_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
+import 'package:aico_frontend/presentation/screens/test/thinking_bubble_test_screen.dart';
 import 'package:aico_frontend/presentation/widgets/navigation/main_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -65,6 +66,13 @@ class AppRouter {
               ),
             ],
           ),
+          
+          // Test screen for thinking bubble
+          GoRoute(
+            path: '/test/thinking-bubble',
+            name: 'test-thinking-bubble',
+            builder: (context, state) => const ThinkingBubbleTestScreen(),
+          ),
         ],
       ),
     ],
@@ -102,13 +110,8 @@ class AppRouter {
 
     // Navigation guards and redirects
     redirect: (context, state) {
-      // Add authentication checks here if needed
-      // For admin routes, could check permissions
-      if (state.matchedLocation.startsWith('/admin')) {
-        // TODO: Add admin authentication check
-        // if (!isAdminAuthenticated) return '/settings';
-      }
-      
+      // Note: Admin route protection is implemented at screen level
+      // See AdminScreen and LogsScreen for role-based access control
       return null; // No redirect needed
     },
   );

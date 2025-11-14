@@ -18,8 +18,8 @@ PREREQUISITES:
     2. AICO modelservice running with Ollama
        Command: `aico modelservice start` or `uv run modelservice/main.py`
     
-    3. Ollama running with a model (e.g., hermes3:8b)
-       Commands: `ollama serve` then `ollama pull hermes3:8b`
+    3. Ollama running with a model (e.g., huihui_ai/qwen3-abliterated:8b-v2)
+       Commands: `ollama serve` then `ollama pull huihui_ai/qwen3-abliterated:8b-v2`
 
 USAGE:
     python howto_completions_zmq.py
@@ -104,7 +104,7 @@ async def send_completion_request(prompt: str) -> str:
         # Create completion request
         correlation_id = str(uuid.uuid4())
         request = CompletionsRequest()
-        request.model = "hermes3:8b"  # Use your preferred model
+        request.model = "huihui_ai/qwen3-abliterated:8b-v2"  # Use your preferred model
         
         # Add the user message
         message = ConversationMessage()

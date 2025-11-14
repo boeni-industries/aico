@@ -11,13 +11,20 @@ class MessageModel extends Message {
     required super.status,
     required super.timestamp,
     super.metadata,
+    super.thinking,
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
+    // Backend sends 'role' field ('user' or 'assistant')
+    // For AI messages (role=assistant), use 'aico' as userId for proper UI formatting
+    final role = json['role'] as String? ?? 'user';
+    final backendUserId = json['user_id'] as String;
+    final actualUserId = role == 'assistant' ? 'aico' : backendUserId;
+    
     return MessageModel(
-      id: json['id'] as String,
+      id: json['message_id'] as String? ?? json['id'] as String, // Use message_id from backend, fallback to id
       content: json['content'] as String,
-      userId: json['user_id'] as String,
+      userId: actualUserId, // Use 'aico' for assistant messages, actual user_id for user messages
       conversationId: json['conversation_id'] as String,
       type: MessageType.values.firstWhere(
         (e) => e.name == json['type'],
@@ -29,6 +36,7 @@ class MessageModel extends Message {
       ),
       timestamp: DateTime.parse(json['timestamp'] as String),
       metadata: json['metadata'] as Map<String, dynamic>?,
+      thinking: json['thinking'] as String?,
     );
   }
 
@@ -42,6 +50,7 @@ class MessageModel extends Message {
       'status': status.name,
       'timestamp': timestamp.toIso8601String(),
       'metadata': metadata,
+      if (thinking != null) 'thinking': thinking,
     };
   }
 
@@ -55,6 +64,7 @@ class MessageModel extends Message {
       status: message.status,
       timestamp: message.timestamp,
       metadata: message.metadata,
+      thinking: message.thinking,
     );
   }
 
@@ -68,6 +78,7 @@ class MessageModel extends Message {
       status: status,
       timestamp: timestamp,
       metadata: metadata,
+      thinking: thinking,
     );
   }
 }

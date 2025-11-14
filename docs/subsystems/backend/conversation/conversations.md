@@ -221,7 +221,7 @@ The conversation system integrates with AICO's comprehensive memory system to ma
 **Memory Types**:
 - **Episodic Memory**: Specific conversation events, shared experiences, emotional moments
 - **Semantic Memory**: Learned facts about users, preferences, relationship dynamics
-- **Procedural Memory**: Communication patterns, successful interaction strategies
+- **Behavioral Learning**: Communication patterns, successful interaction strategies
 
 **Memory Formation Process**:
 1. **Automatic Extraction**: Identify significant conversation moments during processing

@@ -37,7 +37,8 @@ from aico.core.config import ConfigurationManager
 # Remove shared logging dependency - use CLI-specific logging
 # from aico.core.logging import initialize_cli_logging, get_logger
 
-# Import schemas to ensure they're registered
+# Import schema module to satisfy import chain, but we'll reload it in commands
+# to pick up any schema changes made after this module was first imported
 import aico.data.schemas.core
 
 # Import shared utilities using the same pattern as other CLI modules
@@ -157,7 +158,7 @@ app = typer.Typer(
     invoke_without_command=True,
     context_settings={"help_option_names": []}
 )
-console = Console()
+console = Console()  # Use default console
 
 
 def _get_database_connection(db_path: str, force_fresh: bool = False) -> EncryptedLibSQLConnection:
@@ -191,6 +192,12 @@ def _get_database_connection(db_path: str, force_fresh: bool = False) -> Encrypt
         
         # Need password - use typer.prompt instead of getpass to avoid hanging
         password = typer.prompt("Enter master password", hide_input=True)
+        
+        # CRITICAL: Reject empty passwords immediately
+        if not password or not password.strip():
+            console.print("[red]Error: Password cannot be empty[/red]")
+            raise typer.Exit(1)
+        
         master_key = key_manager.authenticate(password, interactive=False, force_fresh=force_fresh)
         db_key = key_manager.derive_database_key(master_key, "libsql", str(db_path))
         
@@ -207,6 +214,10 @@ def _format_table_value(value, column_name: str, utc: bool = False, truncate: bo
         return ""
 
     str_value = str(value)
+    
+    # Don't format JSON columns
+    if str_value.startswith('{') or str_value.startswith('['):
+        return str_value
 
     # Detect timestamp columns by name and format
     timestamp_indicators = ['timestamp', 'created_at', 'updated_at', 'date', 'time']
@@ -266,6 +277,11 @@ def init(
         password = typer.prompt("Create master password", hide_input=True)
         confirm_password = typer.prompt("Confirm master password", hide_input=True)
         
+        # CRITICAL: Reject empty passwords immediately
+        if not password or not password.strip():
+            console.print("❌ [red]Password cannot be empty[/red]")
+            raise typer.Exit(1)
+        
         if password != confirm_password:
             console.print("❌ [red]Passwords do not match[/red]")
             raise typer.Exit(1)
@@ -301,9 +317,123 @@ def init(
             
             # Apply any missing schemas
             console.print("📋 Checking for missing database schemas...")
-            # Import core schema to ensure registration
+            
+            # CRITICAL: Force complete schema reload to pick up new versions
+            # Step 1: Clear the registry cache
+            console.print("🔄 Clearing schema registry cache...")
+            SchemaRegistry.clear_registry()
+            
+            # Step 2: Remove schema module from sys.modules to force fresh import
+            import sys
+            schema_modules_to_clear = [
+                key for key in list(sys.modules.keys()) 
+                if key.startswith('aico.data.schemas')
+            ]
+            console.print(f"🔄 Removing {len(schema_modules_to_clear)} schema modules from cache...")
+            for module_name in schema_modules_to_clear:
+                del sys.modules[module_name]
+            
+            # Step 3: Fresh import - this will re-run decorators and re-register schemas
+            console.print("🔄 Re-importing schema definitions...")
             import aico.data.schemas.core
-            applied_schemas = SchemaRegistry.apply_core_schemas(conn)
+            
+            # Debug: Check what versions are registered
+            core_schemas = SchemaRegistry.get_core_schemas()
+            if core_schemas:
+                schema = core_schemas[0]
+                versions = sorted(schema.definitions.keys())
+                console.print(f"📋 Registered schema versions: {versions}")
+                
+                # Check current DB version
+                from aico.data.libsql.schema import SchemaManager
+                manager = SchemaManager(conn, schema.definitions)
+                current_version = manager.get_current_version()
+                latest_version = max(versions)
+                console.print(f"📊 Current DB version: {current_version}, Latest: {latest_version}")
+            
+            # Step 4: Apply schemas (now with fresh definitions)
+            console.print("🔄 Applying schema migrations...")
+            
+            # Manual migration with detailed logging
+            from aico.data.libsql.schema import SchemaManager
+            core_schemas = SchemaRegistry.get_core_schemas()
+            
+            if core_schemas:
+                schema = core_schemas[0]
+                manager = SchemaManager(conn, schema.definitions)
+                current_version = manager.get_current_version() or 0
+                latest_version = max(schema.definitions.keys())
+                
+                console.print(f"🔍 Attempting migration from v{current_version} to v{latest_version}...")
+                
+                # Try each version individually to see which one fails
+                for version in range(current_version + 1, latest_version + 1):
+                    console.print(f"  ▶️  Applying version {version}...")
+                    
+                    # Check if version exists in definitions
+                    if version not in schema.definitions:
+                        console.print(f"    ❌ Version {version} not found in schema definitions!")
+                        continue
+                    
+                    try:
+                        success = manager.apply_schema_version(version)
+                        if success:
+                            console.print(f"    ✅ Version {version} applied successfully")
+                        else:
+                            console.print(f"    ❌ Version {version} failed (returned False)")
+                            
+                            # Special case: Version 11 renames facts_metadata to user_memories
+                            # If user_memories already exists, the migration was already applied manually
+                            if version == 11:
+                                # Check if user_memories table exists
+                                result = conn.execute(
+                                    "SELECT name FROM sqlite_master WHERE type='table' AND name='user_memories'"
+                                ).fetchone()
+                                
+                                if result:
+                                    console.print(f"    ⚠️  Table 'user_memories' already exists - migration was applied manually")
+                                    console.print(f"    🔧 Recording version {version} in migration history...")
+                                    
+                                    # Manually record the migration
+                                    import json
+                                    from datetime import datetime
+                                    schema_v = schema.definitions[version]
+                                    rollback_sql = json.dumps(schema_v.rollback_statements) if schema_v.rollback_statements else None
+                                    
+                                    conn.execute("""
+                                        INSERT INTO _aico_migration_history 
+                                        (version, name, description, rollback_sql, checksum)
+                                        VALUES (?, ?, ?, ?, ?)
+                                    """, (
+                                        version,
+                                        schema_v.name,
+                                        schema_v.description,
+                                        rollback_sql,
+                                        "manual_fix"
+                                    ))
+                                    
+                                    conn.execute("""
+                                        UPDATE _aico_schema_metadata 
+                                        SET value = ?, updated_at = CURRENT_TIMESTAMP 
+                                        WHERE key = 'schema_version'
+                                    """, (str(version),))
+                                    
+                                    conn.commit()
+                                    console.print(f"    ✅ Version {version} recorded in migration history")
+                                    continue
+                            
+                            break
+                    except Exception as e:
+                        console.print(f"    ❌ Version {version} raised exception: {e}")
+                        import traceback
+                        console.print(f"    Traceback: {traceback.format_exc()}")
+                        break
+                
+                final_version = manager.get_current_version()
+                console.print(f"📊 Final DB version: {final_version}")
+            
+            applied_schemas = []  # We did manual migration above
+            console.print(f"📋 Migration complete")
             
             if applied_schemas:
                 console.print("✅ [green]Database updated successfully![/green]")
@@ -330,8 +460,24 @@ def init(
             
             # Apply core schemas using schema registry
             console.print("📋 Applying core database schemas...")
-            # Import core schema to ensure registration
+            
+            # CRITICAL: Force complete schema reload to pick up new versions
+            # Step 1: Clear the registry cache
+            SchemaRegistry.clear_registry()
+            
+            # Step 2: Remove schema module from sys.modules to force fresh import
+            import sys
+            schema_modules_to_clear = [
+                key for key in list(sys.modules.keys()) 
+                if key.startswith('aico.data.schemas')
+            ]
+            for module_name in schema_modules_to_clear:
+                del sys.modules[module_name]
+            
+            # Step 3: Fresh import - this will re-run decorators and re-register schemas
             import aico.data.schemas.core
+            
+            # Step 4: Apply schemas (now with fresh definitions)
             applied_schemas = SchemaRegistry.apply_core_schemas(conn)
             
             console.print("✅ [green]Database created successfully![/green]")
@@ -1121,7 +1267,7 @@ def tail(
 @destructive("allows arbitrary SQL execution including DROP, DELETE, UPDATE")
 def exec(
     query: str = typer.Argument(..., help="SQL query to execute"),
-    format: str = typer.Option("table", "--format", help="Output format: table, json"),
+    format: str = typer.Option("table", "--format", help="Output format: table, json, raw"),
     utc: bool = typer.Option(False, "--utc", help="Display timestamps in UTC instead of local time")
 ):
     """Execute raw SQL query"""
@@ -1160,63 +1306,51 @@ def exec(
             
             data = [dict(zip(columns, row)) for row in result]
             console.print(json.dumps(data, indent=2, default=str))
+        elif format == "raw":
+            # Raw output - just print values without formatting
+            for row in result:
+                for val in row:
+                    print(val if val is not None else "")
         else:
-            # Table format
+            # Table format - use plain print to avoid Rich truncation
             if result and len(result[0]) > 0:
-                # Create table with dynamic columns
-                table = Table(
-                    title="✨ [bold cyan]Query Results[/bold cyan]",
-                    title_justify="left",
-                    border_style="bright_blue",
-                    header_style="bold yellow",
-                    box=box.SIMPLE_HEAD,
-                    padding=(0, 1),
-                    expand=True  # Allow table to expand to full width
-                )
-                
-                # Get proper column names from query description
+                # Get column names
                 try:
-                    # For simple queries, try to get column names from cursor description
                     cursor = conn.execute(query)
                     if hasattr(cursor, 'description') and cursor.description:
                         columns = [desc[0] for desc in cursor.description]
                     else:
-                        # Fallback: try to parse column names from query
-                        if "COUNT(*)" in query.upper():
-                            columns = ["count"]
-                        elif "SELECT *" in query.upper():
-                            # Get table name and use PRAGMA table_info
-                            import re
-                            table_match = re.search(r'FROM\s+(\w+)', query, re.IGNORECASE)
-                            if table_match:
-                                table_name = table_match.group(1)
-                                table_info = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-                                columns = [col[1] for col in table_info]
-                            else:
-                                columns = [f"col_{i+1}" for i in range(len(result[0]))]
-                        else:
-                            columns = [f"col_{i+1}" for i in range(len(result[0]))]
+                        columns = [f"col_{i+1}" for i in range(len(result[0]))]
                 except Exception:
-                    # Final fallback
                     columns = [f"col_{i+1}" for i in range(len(result[0]))]
                 
-                for col in columns:
-                    col_header = col + get_timezone_suffix(utc) if col.lower() in ['timestamp', 'created_at', 'updated_at', 'date'] else col
-                    # Enable wrapping for potentially long content
-                    table.add_column(col_header, style="white", overflow="fold", no_wrap=False)
+                # Print header
+                print()
+                print("✨ Query Results")
+                print()
                 
-                # Add rows
+                # Print column headers
+                print("  ".join(columns))
+                print("─" * 100)
+                
+                # Print rows
                 for row in result:
-                    row_data = []
+                    row_values = []
                     for i, val in enumerate(row):
-                        # Do not truncate values for exec command
                         formatted_value = _format_table_value(val, columns[i], utc, truncate=False)
-                        row_data.append(formatted_value)
-                    table.add_row(*row_data)
+                        row_values.append(str(formatted_value))
+                    
+                    # Print each row - one value per line if multiple columns
+                    if len(row_values) == 1:
+                        print(row_values[0])
+                    else:
+                        for j, (col, val) in enumerate(zip(columns, row_values)):
+                            print(f"{col}: {val}")
+                        print()  # Blank line between rows
                 
-                console.print()
-                console.print(table)
-                console.print()
+                print()
+                print(f"({len(result)} row{'s' if len(result) != 1 else ''})")
+                print()
             else:
                 console.print("[yellow]Query executed successfully (no results)[/yellow]")
         
