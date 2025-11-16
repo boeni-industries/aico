@@ -43,6 +43,13 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> {
       await _viewer!.loadGltf('assets/avatar/models/avatar.glb');
       debugPrint('[AvatarViewer] Model loaded');
       
+      // TODO: Add idle animation/pose
+      // Ready Player Me models are in T-pose by default
+      // Options for Phase 2:
+      // 1. Use morph targets for subtle breathing/blinking
+      // 2. Load a GLB with embedded idle animation
+      // 3. Apply procedural animations via bone manipulation
+      
       // Get camera and position it for upper third shot (head, neck, shoulders)
       // Model scale: waist at Y=1.0, head at ~Y=1.6, feet at ~Y=0.4
       final camera = await _viewer!.getActiveCamera();
@@ -53,23 +60,51 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> {
       );
       debugPrint('[AvatarViewer] Camera positioned for portrait framing');
       
-      // Add lights
+      // Professional 3-point lighting setup
+      
+      // 1. Key Light - main light from front-right, slightly above
       await _viewer!.addDirectLight(
         DirectLight(
           type: LightType.DIRECTIONAL,
-          color: 0xFFFFFFFF,
-          intensity: 100000,
-          direction: Vector3(-0.5, -1.0, -0.5).normalized(),
+          color: 0xFFFFFFFF, // Pure white
+          intensity: 150000, // Strong key light
+          direction: Vector3(-0.6, -0.8, -1.0).normalized(), // Front-right, slightly down
           position: Vector3(0, 0, 0),
           castShadows: false,
         ),
       );
+      
+      // 2. Fill Light - softer light from front-left to reduce shadows
+      await _viewer!.addDirectLight(
+        DirectLight(
+          type: LightType.DIRECTIONAL,
+          color: 0xFFEEDDCC, // Warm fill light
+          intensity: 50000, // Softer than key
+          direction: Vector3(0.8, -0.3, -1.0).normalized(), // Front-left, gentle
+          position: Vector3(0, 0, 0),
+          castShadows: false,
+        ),
+      );
+      
+      // 3. Rim/Back Light - from behind to create edge definition
+      await _viewer!.addDirectLight(
+        DirectLight(
+          type: LightType.DIRECTIONAL,
+          color: 0xFFCCDDFF, // Cool rim light (slight blue)
+          intensity: 80000, // Medium intensity
+          direction: Vector3(0.3, -0.5, 1.0).normalized(), // From behind-right
+          position: Vector3(0, 0, 0),
+          castShadows: false,
+        ),
+      );
+      
+      // 4. Ambient fill from below to soften under-chin shadows
       await _viewer!.addDirectLight(
         DirectLight(
           type: LightType.DIRECTIONAL,
           color: 0xFFFFFFFF,
-          intensity: 30000,
-          direction: Vector3(1.0, 0.0, -0.5).normalized(),
+          intensity: 20000, // Very subtle
+          direction: Vector3(0, 1.0, -0.2).normalized(), // From below
           position: Vector3(0, 0, 0),
           castShadows: false,
         ),
