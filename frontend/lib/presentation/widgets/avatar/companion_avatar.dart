@@ -2,6 +2,7 @@ import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/networking/services/connection_manager.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
+import 'package:aico_frontend/presentation/widgets/avatar/avatar_viewer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -491,21 +492,8 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              // Avatar image
-                              Image.asset(
-                                'assets/images/aico.png',
-                                width: 125,
-                                height: 125,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) {
-                                  // Fallback to icon if image fails to load
-                                  return Icon(
-                                    Icons.person_2,
-                                    size: 62,
-                                    color: ringColor,
-                                  );
-                                },
-                              ),
+                              // 3D Avatar
+                              const AvatarViewer(),
                               // Subtle mood-colored radial gradient overlay
                               // Creates seamless transition from rings to avatar
                               Container(

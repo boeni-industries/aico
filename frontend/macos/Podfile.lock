@@ -14,7 +14,7 @@ PODS:
   - shared_preferences_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
-  - "sodium_libs (3.4.6+2)":
+  - "sodium_libs (3.4.6+4)":
     - Flutter
     - FlutterMacOS
   - SQLCipher (4.10.0):
@@ -25,6 +25,8 @@ PODS:
   - sqlcipher_flutter_libs (0.0.1):
     - FlutterMacOS
     - SQLCipher (~> 4.10.0)
+  - thermion_flutter (0.0.1):
+    - FlutterMacOS
   - window_manager (0.5.0):
     - FlutterMacOS
 
@@ -38,6 +40,7 @@ DEPENDENCIES:
   - shared_preferences_foundation (from `Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin`)
   - sodium_libs (from `Flutter/ephemeral/.symlinks/plugins/sodium_libs/darwin`)
   - sqlcipher_flutter_libs (from `Flutter/ephemeral/.symlinks/plugins/sqlcipher_flutter_libs/macos`)
+  - thermion_flutter (from `Flutter/ephemeral/.symlinks/plugins/thermion_flutter/macos`)
   - window_manager (from `Flutter/ephemeral/.symlinks/plugins/window_manager/macos`)
 
 SPEC REPOS:
@@ -63,6 +66,8 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/sodium_libs/darwin
   sqlcipher_flutter_libs:
     :path: Flutter/ephemeral/.symlinks/plugins/sqlcipher_flutter_libs/macos
+  thermion_flutter:
+    :path: Flutter/ephemeral/.symlinks/plugins/thermion_flutter/macos
   window_manager:
     :path: Flutter/ephemeral/.symlinks/plugins/window_manager/macos
 
@@ -71,14 +76,15 @@ SPEC CHECKSUMS:
   file_picker: e716a70a9fe5fd9e09ebc922d7541464289443af
   flutter_secure_storage_macos: c2754d3483d20bb207bb9e5a14f1b8e771abcdb9
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
-  path_provider_foundation: 2b6b4c569c0fb62ec74538f866245ac84301af46
+  path_provider_foundation: 0b743cbb62d8e47eab856f09262bb8c1ddcfe6ba
   screen_retriever_macos: 776e0fa5d42c6163d2bf772d22478df4b302b161
-  shared_preferences_foundation: fcdcbc04712aee1108ac7fda236f363274528f78
-  sodium_libs: f5367f93a8477e7f88292da90f005891c21dcbe2
+  shared_preferences_foundation: 5086985c1d43c5ba4d5e69a4e8083a389e2909e6
+  sodium_libs: 1f7bf838268f3e93d861748eac0380c8bdfcc937
   SQLCipher: eb79c64049cb002b4e9fcb30edb7979bf4706dfc
   sqlcipher_flutter_libs: b2e241f8261d6fbda9bca91e9a14f64e47413a64
+  thermion_flutter: debb51a861788780ce40e11e4400c2e5a8681fdf
   window_manager: e25faf20d88283a0d46e7b1a759d07261ca27575
 
-PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
+PODFILE CHECKSUM: 89c84cf5c2351c1e554c6dea18d31a879fc3a19e
 
 COCOAPODS: 1.16.2

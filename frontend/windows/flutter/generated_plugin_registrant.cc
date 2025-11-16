@@ -11,6 +11,7 @@
 #include <screen_retriever_windows/screen_retriever_windows_plugin_c_api.h>
 #include <sodium_libs/sodium_libs_plugin_c_api.h>
 #include <sqlcipher_flutter_libs/sqlite3_flutter_libs_plugin.h>
+#include <thermion_flutter/thermion_flutter_plugin_c_api.h>
 #include <window_manager/window_manager_plugin.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
@@ -24,6 +25,8 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("SodiumLibsPluginCApi"));
   Sqlite3FlutterLibsPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("Sqlite3FlutterLibsPlugin"));
+  ThermionFlutterPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("ThermionFlutterPluginCApi"));
   WindowManagerPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("WindowManagerPlugin"));
 }
