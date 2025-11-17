@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
 
-import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
 import 'package:aico_frontend/presentation/providers/layout_provider.dart';
 import 'package:aico_frontend/presentation/providers/memory_album_provider.dart';
@@ -160,21 +159,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final avatarState = ref.watch(avatarRingStateProvider);
     final accentColor = const Color(0xFFB8A1EA);
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth > 800;
     
-    // Get avatar mood color for atmospheric effect
-    final avatarMoodColor = HomeScreenHelpers.getAvatarMoodColor(
-      avatarState.mode,
-      theme.brightness == Brightness.dark,
-    );
-    
     return Scaffold(
       body: HomeBackground(
         animationController: _backgroundAnimationController,
-        moodColor: avatarMoodColor,
         child: Row(
           children: [
             // Left drawer for navigation

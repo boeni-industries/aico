@@ -1,20 +1,18 @@
 import 'package:flutter/material.dart';
 
-/// Environmental background with radial gradient and avatar mood glow
+/// Environmental background with neutral radial gradient
 /// 
 /// Provides the immersive atmospheric layer for the home screen with:
-/// - Rich depth gradient (purple-blue tones for glassmorphism)
-/// - Localized avatar mood glow (subtle atmospheric hint)
+/// - Neutral depth gradient (blue-grey tones for glassmorphism)
 /// - Animated transitions via external controller
+/// - Avatar ring shows state colors directly (no background glow needed)
 class HomeBackground extends StatelessWidget {
   final AnimationController animationController;
-  final Color moodColor;
   final Widget child;
 
   const HomeBackground({
     super.key,
     required this.animationController,
-    required this.moodColor,
     required this.child,
   });
 
@@ -33,55 +31,23 @@ class HomeBackground extends StatelessWidget {
               radius: 1.2,
               colors: isDark
                   ? const [
-                      // Rich center - purple-blue for depth
-                      Color(0xFF2D3B5C),
-                      // Mid-range - blue-grey transition
+                      // Neutral dark gradient - no purple tint
                       Color(0xFF1F2A3E),
-                      // Outer - deep blue-grey
+                      Color(0xFF1A2332),
                       Color(0xFF151D2A),
-                      // Edges - darkest
                       Color(0xFF0F1419),
                     ]
                   : const [
-                      // Light mode: soft purple-blue pastels
-                      Color(0xFFF0F0FF),
-                      Color(0xFFE8ECFA),
-                      Color(0xFFDDE2F0),
+                      // Neutral light gradient - no purple tint
+                      Color(0xFFF5F6FA),
+                      Color(0xFFECEDF1),
+                      Color(0xFFE3E5EA),
                       Color(0xFFD5DAE8),
                     ],
               stops: const [0.0, 0.35, 0.7, 1.0],
             ),
           ),
-          child: Stack(
-            children: [
-              // Localized avatar mood glow - subtle atmospheric hint
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 350,
-                child: IgnorePointer(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        center: const Alignment(0, -0.25),
-                        radius: 0.5,
-                        colors: [
-                          moodColor.withValues(alpha: 0.08),
-                          moodColor.withValues(alpha: 0.04),
-                          moodColor.withValues(alpha: 0.015),
-                          Colors.transparent,
-                        ],
-                        stops: const [0.0, 0.35, 0.65, 1.0],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // Main content
-              child,
-            ],
-          ),
+          child: child,
         );
       },
     );

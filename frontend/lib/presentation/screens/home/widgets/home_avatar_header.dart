@@ -24,14 +24,32 @@ class HomeAvatarHeader extends ConsumerStatefulWidget {
 
 class _HomeAvatarHeaderState extends ConsumerState<HomeAvatarHeader> {
   Color _getAvatarMoodColor(AvatarMode mode, bool isDark) {
+    // Match the ring colors from companion_avatar.dart
+    const emerald = Color(0xFF10B981);
+    const purple = Color(0xFFB8A1EA);
+    const sapphire = Color(0xFF3B82F6);
+    const coral = Color(0xFFED7867);
+    const amber = Color(0xFFF59E0B);
+    const violet = Color(0xFF8B5CF6);
+    
     switch (mode) {
       case AvatarMode.thinking:
-        return widget.accentColor;
       case AvatarMode.speaking:
-        return widget.accentColor.withValues(alpha: 0.8);
+        return purple;
+      case AvatarMode.processing:
+        return violet;
+      case AvatarMode.listening:
+        return sapphire;
+      case AvatarMode.success:
+        return emerald;
+      case AvatarMode.error:
+        return coral;
+      case AvatarMode.attention:
+        return amber;
+      case AvatarMode.connecting:
+        return sapphire;
       case AvatarMode.idle:
-      default:
-        return widget.accentColor.withValues(alpha: 0.5);
+        return emerald; // Green for idle, matching the ring
     }
   }
 
