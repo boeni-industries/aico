@@ -18,22 +18,24 @@ function init() {
     
     // Create camera
     camera = new THREE.PerspectiveCamera(
-        35, // FOV
+        42, // Wider FOV to fit full body including feet
         window.innerWidth / window.innerHeight,
         0.1,
         1000
     );
-    camera.position.set(0, 1.45, 1.3); // Raised from 1.35 to 1.45 to show full head
-    camera.lookAt(0, 1.45, 0); // Adjusted lookAt to match
+    camera.position.set(0, 0.85, 2.6); // Lower and further back to show feet
+    camera.lookAt(0, 0.85, 0); // Look at lower torso for better vertical balance
     
-    // Create renderer
+    // Create renderer with proper transparency settings
     renderer = new THREE.WebGLRenderer({ 
         antialias: true,
         alpha: true,
+        premultipliedAlpha: false, // Critical for true transparency
         powerPreference: 'high-performance'
     });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x000000, 0); // Fully transparent background
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
@@ -164,8 +166,7 @@ async function loadAnimations() {
             playAnimation('idle');
         }
         
-        // Set initial background color for idle state
-        updateBackgroundColor('idle');
+        // Background aura is now handled in Flutter layer
         
         console.log('[AICO Avatar] Animations ready');
         
@@ -227,40 +228,10 @@ function onWindowResize() {
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// Update background gradient based on state color
+// Background aura is now handled in Flutter layer
+// This function is kept for compatibility but does nothing
 function updateBackgroundColor(stateColor) {
-    console.log(`[AICO Avatar] 🎨 updateBackgroundColor called with: "${stateColor}"`);
-    
-    // Parse the state color (e.g., 'green', 'purple', 'blue', 'amber', 'red')
-    const colorMap = {
-        'idle': { r: 45, g: 120, b: 100 },      // Teal/green
-        'thinking': { r: 120, g: 80, b: 160 },  // Purple
-        'listening': { r: 60, g: 100, b: 180 }, // Blue
-        'speaking': { r: 60, g: 100, b: 180 },  // Blue
-        'connecting': { r: 60, g: 100, b: 180 },// Blue
-        'error': { r: 180, g: 60, b: 60 },      // Red
-        'attention': { r: 200, g: 140, b: 60 }, // Amber
-        'success': { r: 80, g: 180, b: 100 },   // Green
-        'processing': { r: 120, g: 80, b: 160 },// Purple
-    };
-    
-    const color = colorMap[stateColor] || colorMap['idle'];
-    console.log(`[AICO Avatar] 🎨 Mapped color:`, color);
-    
-    // Create depth: smooth multi-stop radial gradient with bold state color
-    // Maximum saturation (80-120% with boosted values) for strong visual impact
-    const gradient = `radial-gradient(circle at center, 
-        rgba(${Math.floor(color.r * 0.8)}, ${Math.floor(color.g * 0.8)}, ${Math.floor(color.b * 0.8)}, 0.3) 0%,
-        rgba(${Math.floor(color.r * 0.9)}, ${Math.floor(color.g * 0.9)}, ${Math.floor(color.b * 0.9)}, 0.4) 25%,
-        rgba(${color.r}, ${color.g}, ${color.b}, 0.5) 45%,
-        rgba(${Math.min(255, Math.floor(color.r * 1.1))}, ${Math.min(255, Math.floor(color.g * 1.1))}, ${Math.min(255, Math.floor(color.b * 1.1))}, 0.65) 65%,
-        rgba(${Math.min(255, Math.floor(color.r * 1.15))}, ${Math.min(255, Math.floor(color.g * 1.15))}, ${Math.min(255, Math.floor(color.b * 1.15))}, 0.75) 80%,
-        rgba(${Math.min(255, Math.floor(color.r * 1.2))}, ${Math.min(255, Math.floor(color.g * 1.2))}, ${Math.min(255, Math.floor(color.b * 1.2))}, 0.85) 100%)`;
-    
-    console.log(`[AICO Avatar] 🎨 Setting gradient:`, gradient);
-    document.body.style.background = gradient;
-    
-    console.log(`[AICO Avatar] ✅ Background updated for state: ${stateColor}`);
+    console.log(`[AICO Avatar] 🎨 updateBackgroundColor called (no-op - aura in Flutter): "${stateColor}"`);
 }
 
 // Expose functions to Flutter

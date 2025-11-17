@@ -396,112 +396,57 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
               final ringColor = _colorTransitionController.isAnimating 
                   ? (_ringColorAnimation.value ?? _targetRingColor)
                   : _getRingColor(avatarState.mode);
-              final ringOpacity = _shouldPulse(avatarState.mode) ? _pulseAnimation.value : 0.8;
               
-              // Pulse expansion with smooth transition
-              final pulseMultiplier = _expansionTransitionController.isAnimating
-                  ? _expansionAnimation.value
-                  : _currentExpansion;
-              
-              return SizedBox(
-                width: 240, // Increased to allow glow to extend
-                height: 240,
-                child: Stack(
-                  clipBehavior: Clip.none, // Allow glow to extend beyond bounds
-                  alignment: Alignment.center,
-                  children: [
-                    // Outer breathing ring with glow
-                    Container(
-                      width: 148 + (_pulseAnimation.value * 26 * pulseMultiplier),
-                      height: 148 + (_pulseAnimation.value * 26 * pulseMultiplier),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.transparent,
-                        border: Border.all(
-                          color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? ringOpacity * 0.75 : ringOpacity * 0.95),
-                          width: 3.0,
-                        ),
-                        boxShadow: [
-                          // Dark contrast shadow behind ring for definition
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.4 : 0.15),
-                            blurRadius: 8,
-                            spreadRadius: -2,
-                          ),
-                          // Minimal glow - very tight to the ring
-                          BoxShadow(
-                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.25 : 0.20),
-                            blurRadius: 12,
-                            spreadRadius: 2,
-                          ),
-                          BoxShadow(
-                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.12 : 0.08),
-                            blurRadius: 20,
-                            spreadRadius: 4,
-                          ),
-                        ],
-                      ),
-                    ),
-                      // Inner breathing ring with subtle glow
-                      Container(
-                        width: 135 + (_pulseAnimation.value * 16 * pulseMultiplier),
-                        height: 135 + (_pulseAnimation.value * 16 * pulseMultiplier),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.transparent,
-                          border: Border.all(
-                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? ringOpacity * 0.65 : ringOpacity * 0.8),
-                            width: 1.8,
-                          ),
-                          boxShadow: [
-                            // Dark contrast shadow for definition
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.3 : 0.1),
-                              blurRadius: 6,
-                              spreadRadius: -1,
+              // Full-body avatar with seamless background integration
+              // Background aura is rendered as a layer behind the avatar for depth
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  // Use available space, maintain aspect ratio ~9:16 for portrait
+                  final maxHeight = constraints.maxHeight;
+                  final maxWidth = constraints.maxWidth;
+                  final aspectRatio = 9 / 16;
+                  
+                  double width, height;
+                  if (maxWidth / maxHeight > aspectRatio) {
+                    // Height constrained
+                    height = maxHeight;
+                    width = height * aspectRatio;
+                  } else {
+                    // Width constrained
+                    width = maxWidth;
+                    height = width / aspectRatio;
+                  }
+                  
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Subtle radial glow behind avatar (state-driven color)
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: const Alignment(0, -0.1), // Centered on upper body
+                              radius: 0.6,
+                              colors: [
+                                ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.20 : 0.15), // Stronger center
+                                ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.12 : 0.08), // Mid fade
+                                ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.05 : 0.03), // Outer fade
+                                Colors.transparent,
+                              ],
+                              stops: const [0.0, 0.4, 0.7, 1.0],
                             ),
-                            // Subtle inner glow for depth
-                            BoxShadow(
-                              color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.15 : 0.12),
-                              blurRadius: 10,
-                              spreadRadius: 0,
-                            ),
-                          ],
+                          ),
                         ),
                       ),
-                      // Clean avatar circle with mood-colored gradient overlay
+                      // Avatar viewer - responsive size, transparent background
                       SizedBox(
-                        width: 125,
-                        height: 125,
-                        child: ClipOval(
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              // 3D Avatar
-                              const AvatarViewer(),
-                              // Subtle mood-colored radial gradient overlay
-                              // Creates seamless transition from rings to avatar
-                              Container(
-                                decoration: BoxDecoration(
-                                  gradient: RadialGradient(
-                                    center: Alignment.center,
-                                    radius: 0.8,
-                                    colors: [
-                                      Colors.transparent, // Clear center - avatar fully visible
-                                      Colors.transparent, // Keep center clear
-                                      ringColor.withValues(alpha: 0.08), // Very subtle at mid-range
-                                      ringColor.withValues(alpha: 0.18), // Gentle glow at edges
-                                    ],
-                                    stops: const [0.0, 0.4, 0.7, 1.0],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                        width: width,
+                        height: height,
+                        child: const AvatarViewer(),
                       ),
                     ],
-                  ),
+                  );
+                },
               );
             },
           ),

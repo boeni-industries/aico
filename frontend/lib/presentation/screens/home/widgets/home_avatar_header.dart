@@ -1,6 +1,5 @@
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
-import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,41 +22,10 @@ class HomeAvatarHeader extends ConsumerStatefulWidget {
 }
 
 class _HomeAvatarHeaderState extends ConsumerState<HomeAvatarHeader> {
-  Color _getAvatarMoodColor(AvatarMode mode, bool isDark) {
-    // Match the ring colors from companion_avatar.dart
-    const emerald = Color(0xFF10B981);
-    const purple = Color(0xFFB8A1EA);
-    const sapphire = Color(0xFF3B82F6);
-    const coral = Color(0xFFED7867);
-    const amber = Color(0xFFF59E0B);
-    const violet = Color(0xFF8B5CF6);
-    
-    switch (mode) {
-      case AvatarMode.thinking:
-      case AvatarMode.speaking:
-        return purple;
-      case AvatarMode.processing:
-        return violet;
-      case AvatarMode.listening:
-        return sapphire;
-      case AvatarMode.success:
-        return emerald;
-      case AvatarMode.error:
-        return coral;
-      case AvatarMode.attention:
-        return amber;
-      case AvatarMode.connecting:
-        return sapphire;
-      case AvatarMode.idle:
-        return emerald; // Green for idle, matching the ring
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final conversationState = ref.watch(conversationProvider);
     final avatarState = ref.watch(avatarRingStateProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isThinking = conversationState.isSendingMessage || conversationState.isStreaming;
 
     // Sync avatar mode with thinking state
@@ -71,31 +39,13 @@ class _HomeAvatarHeaderState extends ConsumerState<HomeAvatarHeader> {
       });
     }
 
-    final avatarMoodColor = _getAvatarMoodColor(avatarState.mode, isDark);
-
     return AnimatedBuilder(
       animation: widget.glowController,
       builder: (context, child) {
-        return Center(
-          child: SizedBox(
-            width: 280, // Fixed size: avatar (240px) + padding + glow space
-            height: 280,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              child: Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: GlassTheme.pulsingGlow(
-                    color: avatarMoodColor,
-                    animationValue: widget.glowAnimation.value,
-                    baseIntensity: 0.2,
-                    pulseIntensity: 0.5,
-                  ),
-                ),
-                child: const CompanionAvatar(),
-              ),
-            ),
-          ),
+        // Use full available height, pushed up to minimize headspace
+        return const Align(
+          alignment: Alignment(0, -0.3), // Pushed up to reduce wasted top space
+          child: CompanionAvatar(), // Full-body with seamless aura
         );
       },
     );

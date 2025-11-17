@@ -40,20 +40,28 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> {
     });
     
     return InAppWebView(
-      initialSettings: InAppWebViewSettings(
-        isInspectable: kDebugMode,
-        mediaPlaybackRequiresUserGesture: false,
-        allowsInlineMediaPlayback: true,
-        transparentBackground: true,
-        disableContextMenu: true,
-        supportZoom: false,
-      ),
+        initialSettings: InAppWebViewSettings(
+          isInspectable: kDebugMode,
+          mediaPlaybackRequiresUserGesture: false,
+          allowsInlineMediaPlayback: true,
+          transparentBackground: true,
+          disableContextMenu: true,
+          supportZoom: false,
+          cacheEnabled: false, // Disable cache to always load fresh content
+          underPageBackgroundColor: Colors.transparent,
+        ),
       initialUrlRequest: URLRequest(
-        url: WebUri('http://localhost:8779/viewer.html'),
+        url: WebUri('http://localhost:8779/viewer.html?v=${DateTime.now().millisecondsSinceEpoch}'),
       ),
-      onWebViewCreated: (controller) {
+      onWebViewCreated: (controller) async {
         _webViewController = controller;
         debugPrint('[AvatarViewer] WebView created');
+        
+        // Force transparent background via JavaScript injection
+        await controller.evaluateJavascript(source: '''
+          document.documentElement.style.backgroundColor = 'transparent';
+          document.body.style.backgroundColor = 'transparent';
+        ''');
         
         // Add JavaScript handler for scene ready callback
         controller.addJavaScriptHandler(
@@ -71,8 +79,21 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> {
       onLoadStart: (controller, url) {
         debugPrint('[AvatarViewer] Loading: $url');
       },
-      onLoadStop: (controller, url) {
+      onLoadStop: (controller, url) async {
         debugPrint('[AvatarViewer] Loaded: $url');
+        
+        // Immediately inject CSS to force transparent background
+        await controller.evaluateJavascript(source: '''
+          (function() {
+            document.documentElement.style.backgroundColor = 'transparent';
+            document.body.style.backgroundColor = 'transparent';
+            
+            // Also set via CSS to ensure it sticks
+            var style = document.createElement('style');
+            style.textContent = 'html, body { background: transparent !important; }';
+            document.head.appendChild(style);
+          })();
+        ''');
       },
       onConsoleMessage: (controller, consoleMessage) {
         debugPrint('[AvatarViewer] JS Console: ${consoleMessage.message}');
@@ -110,12 +131,8 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> {
       source: "window.playAnimation('$animationName')",
     );
     
-    debugPrint('[AvatarViewer] 🎨 Updating background color for state: ${state.mode.name}');
-    
-    // Update background color to match state
-    _webViewController!.evaluateJavascript(
-      source: "window.updateBackgroundColor('${state.mode.name}')",
-    );
+    // Background aura is now handled in Flutter (CompanionAvatar)
+    // No need to update WebView background - keep it transparent
     
     debugPrint('[AvatarViewer] ✅ State update complete');
   }
