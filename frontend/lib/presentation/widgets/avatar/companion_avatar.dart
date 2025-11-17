@@ -428,31 +428,16 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                             blurRadius: 8,
                             spreadRadius: -2,
                           ),
-                          // Multi-layer glow for smooth gradient (reduces banding)
+                          // Minimal glow - very tight to the ring
                           BoxShadow(
-                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.4 : 0.3),
-                            blurRadius: 50,
-                            spreadRadius: 15,
+                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.25 : 0.20),
+                            blurRadius: 12,
+                            spreadRadius: 2,
                           ),
                           BoxShadow(
-                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.3 : 0.22),
-                            blurRadius: 70,
-                            spreadRadius: 22,
-                          ),
-                          BoxShadow(
-                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.22 : 0.16),
-                            blurRadius: 90,
-                            spreadRadius: 28,
-                          ),
-                          BoxShadow(
-                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.15 : 0.11),
-                            blurRadius: 110,
-                            spreadRadius: 35,
-                          ),
-                          BoxShadow(
-                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.08 : 0.06),
-                            blurRadius: 130,
-                            spreadRadius: 42,
+                            color: ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.12 : 0.08),
+                            blurRadius: 20,
+                            spreadRadius: 4,
                           ),
                         ],
                       ),

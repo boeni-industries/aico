@@ -139,9 +139,10 @@ class GlassTheme {
     required double animationValue, // 0.0 to 1.0
     double baseIntensity = 0.3,
     double pulseIntensity = 0.6,
+    double blur = glowBlurMedium,
   }) {
     final intensity = baseIntensity + (pulseIntensity - baseIntensity) * animationValue;
-    return ambientGlow(color: color, intensity: intensity);
+    return ambientGlow(color: color, intensity: intensity, blur: blur);
   }
   
   /// Wraps a widget with backdrop blur filter

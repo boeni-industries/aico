@@ -76,19 +76,25 @@ class _HomeAvatarHeaderState extends ConsumerState<HomeAvatarHeader> {
     return AnimatedBuilder(
       animation: widget.glowController,
       builder: (context, child) {
-        return Container(
-          padding: const EdgeInsets.all(16),
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              boxShadow: GlassTheme.pulsingGlow(
-                color: avatarMoodColor,
-                animationValue: widget.glowAnimation.value,
-                baseIntensity: 0.2,
-                pulseIntensity: 0.5,
+        return Center(
+          child: SizedBox(
+            width: 280, // Fixed size: avatar (240px) + padding + glow space
+            height: 280,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: GlassTheme.pulsingGlow(
+                    color: avatarMoodColor,
+                    animationValue: widget.glowAnimation.value,
+                    baseIntensity: 0.2,
+                    pulseIntensity: 0.5,
+                  ),
+                ),
+                child: const CompanionAvatar(),
               ),
             ),
-            child: const CompanionAvatar(),
           ),
         );
       },
