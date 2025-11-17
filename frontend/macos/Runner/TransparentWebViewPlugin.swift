@@ -6,7 +6,11 @@ import WebKit
 /// 
 /// This plugin provides a method to set the drawsBackground property to false,
 /// which is required for true transparency on macOS WKWebView.
+/// 
+/// Also automatically observes the view hierarchy to immediately set transparency
+/// when WKWebViews are added, preventing white flashes during rebuilds.
 public class TransparentWebViewPlugin: NSObject, FlutterPlugin {
+    private var hierarchyObserver: NSKeyValueObservation?
     
     public static func register(with registrar: FlutterPluginRegistrar) {
         print("[TransparentWebViewPlugin] Registering plugin...")
@@ -16,7 +20,27 @@ public class TransparentWebViewPlugin: NSObject, FlutterPlugin {
         )
         let instance = TransparentWebViewPlugin()
         registrar.addMethodCallDelegate(instance, channel: channel)
+        
+        // Start observing view hierarchy for new WKWebViews
+        instance.startObservingViewHierarchy()
+        
         print("[TransparentWebViewPlugin] Plugin registered successfully")
+    }
+    
+    /// Start observing the view hierarchy for new WKWebViews
+    private func startObservingViewHierarchy() {
+        // Poll for new WKWebViews every 100ms
+        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.checkForNewWebViews()
+        }
+        print("[TransparentWebViewPlugin] Started observing view hierarchy")
+    }
+    
+    /// Check for new WKWebViews and make them transparent immediately
+    private func checkForNewWebViews() {
+        guard let window = NSApplication.shared.windows.first else { return }
+        var count = 0
+        findAndSetTransparent(in: window.contentView, count: &count)
     }
     
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -50,15 +74,16 @@ public class TransparentWebViewPlugin: NSObject, FlutterPlugin {
     }
     
     /// Recursively searches for WKWebView instances and sets them to transparent
+    /// Continuously enforces transparency to prevent resets during navigation
     private func findAndSetTransparent(in view: NSView?, count: inout Int) {
         guard let view = view else { return }
         
         // Check if this view is a WKWebView
         if let webView = view as? WKWebView {
-            // Set transparent background
+            // Always enforce transparent background (don't track, just keep setting it)
+            // This prevents any resets during navigation/rebuilds
             webView.setValue(false, forKey: "drawsBackground")
             count += 1
-            print("[TransparentWebViewPlugin] Set WKWebView to transparent")
         }
         
         // Recursively check subviews

@@ -248,16 +248,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   }
 
   Widget _buildMainContent(BuildContext context, ThemeData theme, Color accentColor) {
-    switch (_navigationController.currentPage) {
-      case NavigationPage.home:
-        return _buildHomeContent(context, theme, accentColor);
-      case NavigationPage.memory:
-        return const MemoryScreen();
-      case NavigationPage.admin:
-        return const AdminScreen();
-      case NavigationPage.settings:
-        return const SettingsScreen();
-    }
+    // Use IndexedStack to keep all pages in memory, preventing WebView destruction
+    // This eliminates white flashes when navigating back to home
+    final currentIndex = _navigationController.currentPage.index;
+    
+    return IndexedStack(
+      index: currentIndex,
+      children: [
+        _buildHomeContent(context, theme, accentColor), // NavigationPage.home (index 0)
+        const MemoryScreen(), // NavigationPage.memory (index 1)
+        const AdminScreen(), // NavigationPage.admin (index 2)
+        const SettingsScreen(), // NavigationPage.settings (index 3)
+      ],
+    );
   }
 
   Widget _buildHomeContent(BuildContext context, ThemeData theme, Color accentColor) {
