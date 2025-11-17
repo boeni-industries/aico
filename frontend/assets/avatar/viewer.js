@@ -23,8 +23,8 @@ function init() {
         0.1,
         1000
     );
-    camera.position.set(0, 1.35, 1.3);
-    camera.lookAt(0, 1.35, 0);
+    camera.position.set(0, 1.45, 1.3); // Raised from 1.35 to 1.45 to show full head
+    camera.lookAt(0, 1.45, 0); // Adjusted lookAt to match
     
     // Create renderer
     renderer = new THREE.WebGLRenderer({ 
