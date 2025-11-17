@@ -9,9 +9,7 @@ let eyeMeshes = []; // Store meshes with eye morph targets
 
 // Initialize the scene
 function init() {
-    console.log('[AICO Avatar] Initializing Three.js scene...');
-    console.log('[AICO Avatar] Current URL:', window.location.href);
-    console.log('[AICO Avatar] Base URL:', window.location.origin);
+    console.log('[AICO Avatar] Initializing...');
     
     // Create scene
     scene = new THREE.Scene();
@@ -88,8 +86,6 @@ function setupLighting() {
     // Ambient light for overall scene illumination
     const ambientLight = new THREE.AmbientLight(0x404040, 0.8);
     scene.add(ambientLight);
-    
-    console.log('[AICO Avatar] 3-point lighting setup complete');
 }
 
 // Load avatar model
@@ -101,53 +97,33 @@ async function loadAvatar() {
         
         // Load main avatar
         const avatarGltf = await loader.loadAsync('./models/avatar.glb');
-        console.log('[AICO Avatar] Avatar GLTF loaded:', avatarGltf);
         avatar = avatarGltf.scene;
         
         // Position avatar
         avatar.position.set(0, 0, 0);
         avatar.scale.set(1, 1, 1);
         
-        // Enable shadows and inspect morph targets
-        let morphTargetsFound = false;
+        // Enable shadows and collect eye meshes for gaze control
         avatar.traverse((node) => {
             if (node.isMesh) {
                 node.castShadow = true;
                 node.receiveShadow = true;
                 
-                // Check for morph targets
+                // Store meshes with eye-related morph targets for gaze control
                 if (node.morphTargetInfluences && node.morphTargetInfluences.length > 0) {
-                    morphTargetsFound = true;
-                    console.log('[AICO Avatar] 🎭 MORPH TARGETS FOUND on mesh:', node.name);
-                    console.log('[AICO Avatar] Number of morph targets:', node.morphTargetInfluences.length);
-                    console.log('[AICO Avatar] Morph target dictionary:', node.morphTargetDictionary);
-                    
-                    // List all available morph targets
                     if (node.morphTargetDictionary) {
                         const morphNames = Object.keys(node.morphTargetDictionary);
-                        console.log('[AICO Avatar] Available morph targets:', morphNames);
-                        
-                        // Check for eye-related morph targets
-                        const eyeMorphs = morphNames.filter(name => 
+                        const hasEyeMorphs = morphNames.some(name => 
                             name.toLowerCase().includes('eye') || 
                             name.toLowerCase().includes('look')
                         );
-                        if (eyeMorphs.length > 0) {
-                            console.log('[AICO Avatar] 👁️ Eye-related morph targets:', eyeMorphs);
-                            // Store this mesh for eye gaze control
+                        if (hasEyeMorphs) {
                             eyeMeshes.push(node);
                         }
                     }
                 }
             }
         });
-        
-        console.log('[AICO Avatar] Stored', eyeMeshes.length, 'meshes for eye gaze control');
-        
-        if (!morphTargetsFound) {
-            console.warn('[AICO Avatar] ⚠️ NO MORPH TARGETS FOUND - Avatar downloaded without facial controls');
-            console.warn('[AICO Avatar] To enable morph targets, re-download avatar with: ?morphTargets=ARKit');
-        }
         
         scene.add(avatar);
         console.log('[AICO Avatar] Avatar model loaded');
