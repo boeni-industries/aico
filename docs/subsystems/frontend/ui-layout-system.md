@@ -538,6 +538,51 @@ enum ConversationModality {
 - Individual mood indicators
 - Coordinated animations
 
+## Implementation
+
+### Architecture (Completed)
+
+**Layout Provider** (`/lib/presentation/providers/layout_provider.dart`)
+- `ConversationModality` enum (voice/text/hybrid)
+- `LayoutState` with computed properties for sizing/alignment
+- `Layout` notifier for state management
+
+**Responsive Breakpoints** (`/lib/core/responsive/breakpoints.dart`)
+- Platform detection (mobile portrait/landscape, tablet, desktop)
+- `shouldUseVerticalLayout()` decision logic
+- Context extensions for convenience
+
+**Modal-Aware Layout** (`/lib/presentation/widgets/layouts/modal_aware_layout.dart`)
+- Automatic horizontal/vertical switching
+- Minimized chat indicator for voice mode
+
+**Animated Avatar Container** (`/lib/presentation/widgets/avatar/animated_avatar_container.dart`)
+- Smooth 800ms transitions for size, position, scale
+
+### Home Screen Integration (Ready)
+
+The refactored `home_screen.dart` provides a clean foundation for modal-aware layout integration:
+
+```dart
+// In _buildHomeContent(), replace conversation card with:
+ModalAwareLayout(
+  avatar: AnimatedAvatarContainer(
+    child: HomeAvatarHeader(...),
+  ),
+  messages: HomeConversationArea(...),
+  input: HomeInputArea(...),
+  sidebar: _buildLeftDrawer(), // Optional
+)
+```
+
+**Next Steps:**
+1. Replace static conversation card with `ModalAwareLayout`
+2. Connect `TypingController` to layout state
+3. Add voice/text toggle to `HomeInputArea`
+4. Test transitions on all platforms
+
+See `home-screen-refactoring.md` for component details.
+
 ## Conclusion
 
 AICO's UI layout system prioritizes avatar presence while adapting to user interaction preferences. By implementing **modal-aware layouts** that respond to voice vs. text modalities, we create an interface that feels natural regardless of how the user chooses to communicate.
