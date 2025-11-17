@@ -931,5 +931,47 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             # Note: SQLite doesn't support DROP COLUMN, so we can't easily rollback
             # In production, would need to recreate table without message_id
         ]
+    ),
+    
+    16: SchemaVersion(
+        version=16,
+        name="Reconcile Feedback Events Schema Conflict",
+        description="Rename AMS feedback_events to ams_feedback_events and restore Memory Album feedback_events table",
+        sql_statements=[
+            # Rename AMS feedback_events table to avoid conflict
+            "ALTER TABLE feedback_events RENAME TO ams_feedback_events",
+            
+            # Recreate Memory Album feedback_events table (v6 schema)
+            """CREATE TABLE IF NOT EXISTS feedback_events (
+                id TEXT PRIMARY KEY,
+                user_uuid TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                message_id TEXT,
+                event_type TEXT NOT NULL,
+                event_category TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                is_sensitive INTEGER DEFAULT 0,
+                federated_at INTEGER,
+                FOREIGN KEY (user_uuid) REFERENCES users(uuid) ON DELETE CASCADE
+            )""",
+            
+            # Recreate Memory Album indexes
+            "CREATE INDEX IF NOT EXISTS idx_feedback_user_time ON feedback_events(user_uuid, timestamp DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_feedback_conversation ON feedback_events(conversation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_feedback_type ON feedback_events(event_type, event_category)",
+            "CREATE INDEX IF NOT EXISTS idx_feedback_message ON feedback_events(message_id) WHERE message_id IS NOT NULL",
+        ],
+        rollback_statements=[
+            # Drop Memory Album feedback_events
+            "DROP INDEX IF EXISTS idx_feedback_message",
+            "DROP INDEX IF EXISTS idx_feedback_type",
+            "DROP INDEX IF EXISTS idx_feedback_conversation",
+            "DROP INDEX IF EXISTS idx_feedback_user_time",
+            "DROP TABLE IF EXISTS feedback_events",
+            
+            # Restore AMS feedback_events
+            "ALTER TABLE ams_feedback_events RENAME TO feedback_events",
+        ]
     )
 })
