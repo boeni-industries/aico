@@ -86,19 +86,38 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> {
   /// Apply avatar state from AvatarRingStateProvider
   /// 
   /// Maps emotional states and conversation modes to animations.
-  /// Triggers animation changes in Three.js via JavaScript bridge.
+  /// Triggers animation changes and background color in Three.js via JavaScript bridge.
   void _applyAvatarState(AvatarRingState state) {
-    if (_webViewController == null || !_isReady) return;
+    debugPrint('[AvatarViewer] 🎭 State change received: mode=${state.mode.name}, intensity=${state.intensity}');
+    
+    if (_webViewController == null) {
+      debugPrint('[AvatarViewer] ⚠️ WebViewController is null, skipping state update');
+      return;
+    }
+    
+    if (!_isReady) {
+      debugPrint('[AvatarViewer] ⚠️ Scene not ready, skipping state update');
+      return;
+    }
     
     // Map avatar mode to animation name
     final animationName = state.mode == AvatarMode.speaking ? 'talking' : 'idle';
+    
+    debugPrint('[AvatarViewer] 🎬 Triggering animation: $animationName');
     
     // Trigger animation in Three.js
     _webViewController!.evaluateJavascript(
       source: "window.playAnimation('$animationName')",
     );
     
-    debugPrint('[AvatarViewer] Playing animation: $animationName (mode: ${state.mode.name})');
+    debugPrint('[AvatarViewer] 🎨 Updating background color for state: ${state.mode.name}');
+    
+    // Update background color to match state
+    _webViewController!.evaluateJavascript(
+      source: "window.updateBackgroundColor('${state.mode.name}')",
+    );
+    
+    debugPrint('[AvatarViewer] ✅ State update complete');
   }
   
   @override

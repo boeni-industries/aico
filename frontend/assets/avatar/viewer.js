@@ -14,7 +14,7 @@ function init() {
     
     // Create scene
     scene = new THREE.Scene();
-    scene.background = null; // Transparent background
+    scene.background = null; // Transparent background - let body gradient show through
     
     // Create camera
     camera = new THREE.PerspectiveCamera(
@@ -78,8 +78,8 @@ function setupLighting() {
     scene.add(fillLight);
     
     // Rim/Back Light (from behind to create edge definition)
-    const rimLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    rimLight.position.set(0, 2, -2);
+    const rimLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    rimLight.position.set(0, 2, -2); // Behind and above
     scene.add(rimLight);
     
     // Ambient light for overall scene illumination
@@ -164,6 +164,9 @@ async function loadAnimations() {
             playAnimation('idle');
         }
         
+        // Set initial background color for idle state
+        updateBackgroundColor('idle');
+        
         console.log('[AICO Avatar] Animations ready');
         
     } catch (error) {
@@ -181,13 +184,19 @@ function playAnimation(name) {
     const clip = animations[name];
     const action = mixer.clipAction(clip);
     
-    // Crossfade from current animation
-    if (currentAction && currentAction !== action) {
-        currentAction.fadeOut(0.3);
+    // If already playing this animation, don't restart it
+    if (currentAction === action && action.isRunning()) {
+        console.log(`[AICO Avatar] Animation "${name}" already playing, skipping restart`);
+        return;
     }
     
-    action.reset();
-    action.fadeIn(0.3);
+    // Crossfade from current animation
+    if (currentAction && currentAction !== action) {
+        currentAction.fadeOut(0.5); // Longer crossfade for smoother transition
+    }
+    
+    // Don't reset - continue from current position if switching back
+    action.fadeIn(0.5);
     action.setLoop(THREE.LoopRepeat);
     action.play();
     
@@ -218,8 +227,45 @@ function onWindowResize() {
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
+// Update background gradient based on state color
+function updateBackgroundColor(stateColor) {
+    console.log(`[AICO Avatar] 🎨 updateBackgroundColor called with: "${stateColor}"`);
+    
+    // Parse the state color (e.g., 'green', 'purple', 'blue', 'amber', 'red')
+    const colorMap = {
+        'idle': { r: 45, g: 120, b: 100 },      // Teal/green
+        'thinking': { r: 120, g: 80, b: 160 },  // Purple
+        'listening': { r: 60, g: 100, b: 180 }, // Blue
+        'speaking': { r: 60, g: 100, b: 180 },  // Blue
+        'connecting': { r: 60, g: 100, b: 180 },// Blue
+        'error': { r: 180, g: 60, b: 60 },      // Red
+        'attention': { r: 200, g: 140, b: 60 }, // Amber
+        'success': { r: 80, g: 180, b: 100 },   // Green
+        'processing': { r: 120, g: 80, b: 160 },// Purple
+    };
+    
+    const color = colorMap[stateColor] || colorMap['idle'];
+    console.log(`[AICO Avatar] 🎨 Mapped color:`, color);
+    
+    // Create depth: smooth multi-stop radial gradient with bold state color
+    // Maximum saturation (80-120% with boosted values) for strong visual impact
+    const gradient = `radial-gradient(circle at center, 
+        rgba(${Math.floor(color.r * 0.8)}, ${Math.floor(color.g * 0.8)}, ${Math.floor(color.b * 0.8)}, 0.3) 0%,
+        rgba(${Math.floor(color.r * 0.9)}, ${Math.floor(color.g * 0.9)}, ${Math.floor(color.b * 0.9)}, 0.4) 25%,
+        rgba(${color.r}, ${color.g}, ${color.b}, 0.5) 45%,
+        rgba(${Math.min(255, Math.floor(color.r * 1.1))}, ${Math.min(255, Math.floor(color.g * 1.1))}, ${Math.min(255, Math.floor(color.b * 1.1))}, 0.65) 65%,
+        rgba(${Math.min(255, Math.floor(color.r * 1.15))}, ${Math.min(255, Math.floor(color.g * 1.15))}, ${Math.min(255, Math.floor(color.b * 1.15))}, 0.75) 80%,
+        rgba(${Math.min(255, Math.floor(color.r * 1.2))}, ${Math.min(255, Math.floor(color.g * 1.2))}, ${Math.min(255, Math.floor(color.b * 1.2))}, 0.85) 100%)`;
+    
+    console.log(`[AICO Avatar] 🎨 Setting gradient:`, gradient);
+    document.body.style.background = gradient;
+    
+    console.log(`[AICO Avatar] ✅ Background updated for state: ${stateColor}`);
+}
+
 // Expose functions to Flutter
 window.playAnimation = playAnimation;
+window.updateBackgroundColor = updateBackgroundColor;
 
 // Initialize on load
 init();

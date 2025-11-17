@@ -62,7 +62,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   @override
   void initState() {
     super.initState();
-    _messageFocusNode.addListener(_onTypingChanged);
+    _messageController.addListener(_onTypingChanged);
     
     // Initialize animation controllers for immersive effects
     _backgroundAnimationController = AnimationController(
