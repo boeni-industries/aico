@@ -450,10 +450,13 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                         ),
                       ),
                       // Avatar viewer - responsive size, transparent background
-                      SizedBox(
-                        width: width,
-                        height: height,
-                        child: const AvatarViewer(),
+                      // Use RepaintBoundary to isolate repaints
+                      RepaintBoundary(
+                        child: SizedBox(
+                          width: width,
+                          height: height,
+                          child: AvatarViewer(),
+                        ),
                       ),
                     ],
                   );

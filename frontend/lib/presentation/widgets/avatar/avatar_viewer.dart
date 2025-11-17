@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+/// Global key for AvatarViewer to preserve state across rebuilds
+final GlobalKey _avatarViewerKey = GlobalKey(debugLabel: 'AvatarViewer');
+
 /// WebView-based 3D avatar viewer using Three.js rendering.
 /// 
 /// Displays AICO's 3D avatar with real-time animations driven by emotional
@@ -13,15 +16,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// Uses Three.js WebGL rendering with InAppLocalhostServer for ES6 module support.
 /// Separate animation files (idle.glb, talking.glb) are loaded dynamically.
 class AvatarViewer extends ConsumerStatefulWidget {
-  const AvatarViewer({super.key});
+  AvatarViewer({Key? key}) : super(key: key ?? _avatarViewerKey);
 
   @override
   ConsumerState<AvatarViewer> createState() => _AvatarViewerState();
 }
 
-class _AvatarViewerState extends ConsumerState<AvatarViewer> {
+class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepAliveClientMixin {
   InAppWebViewController? _webViewController;
   bool _isReady = false;
+  
+  @override
+  bool get wantKeepAlive => true; // Keep WebView alive across rebuilds
   
   @override
   void initState() {
@@ -32,6 +38,8 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> {
   
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    
     // Listen to avatar state changes and trigger animations
     ref.listen(avatarRingStateProvider, (previous, next) {
       if (_isReady && _webViewController != null) {
