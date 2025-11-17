@@ -69,8 +69,8 @@ AICO's avatar is not a static 3D model—it's a **living visual presence** that:
 │  └──────────────┘      └──────────────┘      └──────────────┘  │
 │         │                      │                      │          │
 │         │                      │                      │          │
-│    Appraisal              Blend Shapes           Thermion       │
-│    Cloud PCT              Bone Rigging            Filament      │
+│    Appraisal              Blend Shapes           Three.js       │
+│    Cloud PCT              Bone Rigging            WebGL         │
 │    Mood State             Procedural Anim         PBR Shading   │
 │                                                                   │
 │  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐  │
@@ -88,15 +88,16 @@ AICO's avatar is not a static 3D model—it's a **living visual presence** that:
 
 ### Technology Stack
 
-#### Core Rendering (Native Flutter)
+#### Core Rendering (WebView + Three.js)
 
-**Thermion + Filament PBR Engine**
-- Native 3D rendering using Google's Filament engine
-- True cross-platform support (iOS, Android, macOS, Windows, Web/WASM)
-- Hardware-accelerated GPU rendering with Vulkan/OpenGL
+**InAppWebView + Three.js Rendering**
+- WebGL-based 3D rendering using Three.js (industry standard)
+- Built-in localhost server for ES6 module support
+- True cross-platform support (iOS, Android, macOS, Windows, Web)
+- Hardware-accelerated GPU rendering via WebGL
 - PBR (Physically Based Rendering) for photorealistic materials
 - Real-time lighting and shadow systems
-- Native performance without WebView overhead
+- Separate animation file loading (no embedding required)
 
 **Ready Player Me Integration**
 - High-quality, customizable avatar models
@@ -107,20 +108,29 @@ AICO's avatar is not a static 3D model—it's a **living visual presence** that:
 - Direct GLB/glTF loading without conversion
 
 **Animation System**
-- Skinning and morph target animations (blend shapes)
-- Real-time bone manipulation for procedural animation
+- Three.js AnimationMixer for skeletal animations
+- Separate GLB animation files (idle.glb, talking.glb, etc.)
+- Runtime animation retargeting to avatar skeleton
+- Morph target animations (blend shapes) for facial expressions
 - Phoneme-to-viseme mapping for lip-sync
-- Gesture and touch input support
-- Native Dart API for animation control
+- Smooth animation crossfading and blending
 
 #### Flutter Integration
 
-**Direct State Management**
+**JavaScript Bridge Communication**
 - Avatar state synced with `AvatarRingStateProvider` via Riverpod
-- Emotion states from `AppraisalCloudPCT` system drive blend shapes
+- Flutter → JavaScript: Animation triggers via `evaluateJavascript()`
+- JavaScript → Flutter: Event callbacks via `addJavaScriptHandler()`
+- Emotion states from `AppraisalCloudPCT` system drive animations
 - Voice output triggers TTS-synchronized lip-sync
-- Native Flutter gesture detection and interaction
-- No JavaScript bridge overhead
+- Bidirectional communication for real-time control
+
+**InAppLocalhostServer**
+- Built-in HTTP server serves assets from `assets/avatar/`
+- Enables ES6 module imports for modern Three.js
+- Runs on `http://localhost:8080` by default
+- Zero external dependencies (fully local-first)
+- Automatic lifecycle management
 
 ### Animation System
 
@@ -501,11 +511,13 @@ The avatar's ambient activities are driven by AICO's autonomous agency:
 ### Phase 1: Foundation (MVP Integration)
 **Goal**: Replace static 2D avatar with basic 3D presence
 
-- [ ] **Thermion Integration**: Add thermion_flutter package and configure native assets
-- [ ] **GLB Model Loading**: Load Ready Player Me avatar model via Thermion
+- [ ] **WebView Integration**: Add flutter_inappwebview package and InAppLocalhostServer
+- [ ] **Three.js Setup**: Configure Three.js with ES6 modules and GLTFLoader
+- [ ] **GLB Model Loading**: Load Ready Player Me avatar model via Three.js
 - [ ] **Basic Rendering**: Display avatar with PBR lighting and materials
-- [ ] **Basic Animation**: Idle breathing and blinking via morph targets
-- [ ] **State Synchronization**: Connect to `AvatarRingStateProvider`
+- [ ] **Animation Loading**: Load separate animation files (idle.glb, talking.glb)
+- [ ] **Basic Animation**: Play idle animation with AnimationMixer
+- [ ] **State Synchronization**: Connect to `AvatarRingStateProvider` via JavaScript bridge
 - [ ] **Performance Baseline**: Establish 60 FPS on desktop, 30 FPS on mobile
 
 **Success Criteria**: Avatar visible, breathing, and responding to basic connection states

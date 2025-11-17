@@ -86,8 +86,8 @@ dependencies:
   sodium: ^3.4.6
   sodium_libs: ^3.4.6+1
   
-  # 3D Avatar rendering - Native Filament PBR engine
-  thermion_flutter: ^0.3.4
+  # 3D Avatar rendering - WebView + Three.js
+  flutter_inappwebview: ^6.1.5
 
   stack_trace: any
   uuid: any
@@ -126,7 +126,12 @@ flutter:
   assets:
     - assets/images/aico.png
     - assets/images/noise_tile.png
-    - assets/avatar/models/avatar.glb
+    - assets/avatar/
+    - assets/avatar/libs/
+    - assets/avatar/libs/addons/loaders/
+    - assets/avatar/libs/addons/utils/
+    - assets/avatar/models/
+    - assets/avatar/animations/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -24,11 +24,13 @@
 - [ ] **Multimodal Input**: Seamless switching between text and voice
 
 ### Basic Avatar 🚧 *Ready for Integration*
-- [x] **Architecture Defined**: Three.js + Ready Player Me + TalkingHead.js pattern
-- [x] **WebView Support**: Flutter WebView tested and ready
-- [ ] **Active Integration**: Not yet connected to live conversations
-- [ ] **Idle Animation**: Basic breathing/blinking idle state
-- [ ] **Speaking Animation**: Lip-sync during AICO responses
+- [x] **Architecture Defined**: InAppWebView + Three.js + Ready Player Me pattern
+- [x] **InAppLocalhostServer**: Built-in HTTP server for ES6 modules
+- [x] **Animation System**: Separate GLB files with AnimationMixer
+- [ ] **Active Integration**: Connect to live conversations via JavaScript bridge
+- [ ] **Idle Animation**: Play idle.glb animation on load
+- [ ] **Speaking Animation**: Switch to talking.glb during AICO responses
+- [ ] **Lip-sync**: TalkingHead.js integration (Phase 2)
 - [ ] **Basic Emotions**: Happy, neutral, thinking expressions
 - [ ] **Avatar Controls**: Mute/unmute, avatar on/off toggle
 
@@ -159,7 +161,8 @@
 
 **Planned:**
 - 🚧 **Voice**: Whisper.cpp (STT) + Coqui/Piper (TTS) integration
-- 🚧 **Avatar**: Three.js + Ready Player Me + TalkingHead.js in WebView
+- 🚧 **Avatar**: InAppWebView + Three.js + Ready Player Me (active integration)
+- 🚧 **Lip-sync**: TalkingHead.js integration (Phase 2)
 - 🚧 **Emotion Simulation**: AppraisalCloudPCT implementation
 - 🚧 **Formal Personality**: Big Five/HEXACO trait system
 

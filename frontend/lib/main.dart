@@ -10,11 +10,41 @@ import 'package:aico_frontend/presentation/widgets/auth/auth_gate.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
+// Avatar localhost server
+final InAppLocalhostServer avatarServer = InAppLocalhostServer(
+  documentRoot: 'assets/avatar',
+  port: 8779,
+);
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Start avatar localhost server for WebView
+  if (!kIsWeb) {
+    try {
+      await avatarServer.start();
+      debugPrint('[AICO] Avatar localhost server started on port 8779');
+      AICOLog.info('Avatar localhost server started', 
+        topic: 'app/startup/avatar_server', 
+        extra: {'port': 8779});
+    } catch (e) {
+      debugPrint('[AICO] Failed to start avatar server: $e');
+      AICOLog.error('Failed to start avatar localhost server', 
+        topic: 'app/startup/avatar_server', 
+        error: e);
+    }
+  }
+  
+  // Enable WebView debugging in debug mode
+  if (!kIsWeb && kDebugMode) {
+    if (Platform.isAndroid) {
+      await InAppWebViewController.setWebContentsDebuggingEnabled(true);
+    }
+  }
   
   // Initialize window manager only for desktop platforms
   // Use try-catch to handle platforms where window_manager might not be available

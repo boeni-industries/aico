@@ -18,9 +18,9 @@ This document centralizes all technology decisions for the AICO system. It provi
 | **Go Router 16.2** | Navigation | Declarative routing with deep linking support |
 | **Flutter Secure Storage** | Secure key storage | Platform-native secure storage (Keychain/Credential Manager) |
 | **Sodium/libsodium** | Cryptography | NaCl-based encryption for frontend security |
-| **WebView** | 3D avatar rendering (planned) | Embeds web-based avatar technologies within Flutter |
-| **Three.js** | 3D graphics library (planned) | Industry standard for web-based 3D rendering |
-| **Ready Player Me** | Avatar creation (planned) | Customizable avatars with built-in animation support |
+| **flutter_inappwebview** | WebView with localhost server | Embeds web-based avatar with ES6 module support |
+| **Three.js** | 3D graphics library | Industry standard for WebGL-based 3D rendering |
+| **Ready Player Me** | Avatar creation | Customizable avatars with built-in animation support |
 | **TalkingHead.js** | Lip-sync and expressions (planned) | Real-time lip-sync and facial expression capabilities |
 
 ## AI/ML Layer
@@ -224,7 +224,7 @@ AICO employs a specialized multi-database architecture optimized for local-first
 
 | Technology | Purpose | Status |
 |------------|---------|--------|
-| **Three.js** | 3D rendering | Ready for integration |
-| **Ready Player Me** | Avatar models | Ready for integration |
-| **TalkingHead.js** | Facial animation | Ready for integration |
-| **WebView** | Integration | Flutter WebView ready |
+| **flutter_inappwebview** | WebView + localhost server | ✅ Ready |
+| **Three.js** | WebGL 3D rendering | ✅ Ready |
+| **Ready Player Me** | Avatar models | ✅ Ready |
+| **TalkingHead.js** | Facial animation | 🚧 Phase 2 |
