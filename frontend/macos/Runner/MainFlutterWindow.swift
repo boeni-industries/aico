@@ -9,6 +9,9 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    
+    // Register our custom transparent WebView plugin
+    TransparentWebViewPlugin.register(with: flutterViewController.registrar(forPlugin: "TransparentWebViewPlugin"))
 
     super.awakeFromNib()
   }

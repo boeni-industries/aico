@@ -1,9 +1,9 @@
+import 'package:aico_frontend/core/platform/transparent_webview_channel.dart';
+import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-
-import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// WebView-based 3D avatar viewer using Three.js rendering.
 /// 
@@ -94,6 +94,15 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> {
             document.head.appendChild(style);
           })();
         ''');
+        
+        // Set native WebView to transparent (macOS only)
+        // Try multiple times with delays to catch WebView at different stages
+        for (int i = 0; i < 5; i++) {
+          await Future.delayed(Duration(milliseconds: 100 * (i + 1)));
+          final success = await TransparentWebViewChannel.setTransparentBackground();
+          debugPrint('[AvatarViewer] Transparent attempt ${i + 1}: $success');
+          if (success) break;
+        }
       },
       onConsoleMessage: (controller, consoleMessage) {
         debugPrint('[AvatarViewer] JS Console: ${consoleMessage.message}');
