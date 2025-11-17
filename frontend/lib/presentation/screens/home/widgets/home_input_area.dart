@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
+import 'package:aico_frontend/presentation/providers/layout_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
 import 'package:flutter/material.dart';
@@ -32,7 +33,9 @@ class HomeInputArea extends ConsumerWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final conversationState = ref.watch(conversationProvider);
+    final layoutState = ref.watch(layoutProvider);
     final isActive = conversationState.isSendingMessage || conversationState.isStreaming;
+    final isVoiceMode = layoutState.modality == ConversationModality.voice;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 12),
@@ -101,9 +104,9 @@ class HomeInputArea extends ConsumerWidget {
                 AnimatedButton(
                   key: voiceButtonKey,
                   onPressed: onVoice,
-                  icon: Icons.mic_rounded,
+                  icon: isVoiceMode ? Icons.keyboard_rounded : Icons.mic_rounded,
                   size: 48,
-                  foregroundColor: accentColor,
+                  foregroundColor: isVoiceMode ? accentColor : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   isEnabled: !isActive,
                 ),
                 const SizedBox(width: 8),

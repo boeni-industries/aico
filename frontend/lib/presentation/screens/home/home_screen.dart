@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
+import 'package:aico_frontend/presentation/providers/layout_provider.dart';
 import 'package:aico_frontend/presentation/providers/memory_album_provider.dart';
 import 'package:aico_frontend/presentation/screens/admin/admin_screen.dart';
 import 'package:aico_frontend/presentation/screens/home/controllers/home_drawer_controller.dart' as home_drawer;
@@ -14,12 +15,13 @@ import 'package:aico_frontend/presentation/screens/home/helpers/home_screen_help
 import 'package:aico_frontend/presentation/screens/home/widgets/home_avatar_header.dart';
 import 'package:aico_frontend/presentation/screens/home/widgets/home_background.dart';
 import 'package:aico_frontend/presentation/screens/home/widgets/home_conversation_area.dart';
+import 'package:aico_frontend/presentation/widgets/avatar/animated_avatar_container.dart';
+import 'package:aico_frontend/presentation/widgets/layouts/modal_aware_layout.dart';
 import 'package:aico_frontend/presentation/screens/home/widgets/home_input_area.dart';
 import 'package:aico_frontend/presentation/screens/home/widgets/home_left_drawer.dart';
 import 'package:aico_frontend/presentation/screens/home/widgets/home_right_drawer.dart';
 import 'package:aico_frontend/presentation/screens/memory/memory_screen.dart';
 import 'package:aico_frontend/presentation/screens/settings/settings_screen.dart';
-import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:aico_frontend/presentation/widgets/common/glassmorphic_toast.dart';
 import 'package:aico_frontend/presentation/widgets/conversation/share_conversation_modal.dart';
 import 'package:flutter/material.dart';
@@ -96,6 +98,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   void _setupConversationListener() {
     ref.listenManual<ConversationState>(conversationProvider, (previous, next) {
       bool shouldScroll = false;
+      
+      // Update layout thinking state
+      final isThinking = next.isSendingMessage || next.isStreaming;
+      ref.read(layoutProvider.notifier).setThinking(isThinking);
+      
+      // Update message presence
+      ref.read(layoutProvider.notifier).setHasMessages(next.messages.isNotEmpty);
       
       if (previous != null) {
         // New message added
@@ -261,91 +270,48 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   }
 
   Widget _buildHomeContent(BuildContext context, ThemeData theme, Color accentColor) {
-    final isDark = theme.brightness == Brightness.dark;
-    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-      child: Column(
-        children: [
-          // Avatar header
-          HomeAvatarHeader(
+      child: ModalAwareLayout(
+        avatar: AnimatedAvatarContainer(
+          child: HomeAvatarHeader(
             accentColor: accentColor,
             glowController: _glowAnimationController,
             glowAnimation: _glowAnimation,
           ),
-          
-          const SizedBox(height: 16),
-          
-          // Conversation card
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(
-                  sigmaX: GlassTheme.blurHeavy,
-                  sigmaY: GlassTheme.blurHeavy,
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.04)
-                        : Colors.white.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(GlassTheme.radiusXLarge),
-                    border: Border.all(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.1)
-                          : Colors.white.withValues(alpha: 0.4),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
-                        blurRadius: 40,
-                        offset: const Offset(0, 20),
-                        spreadRadius: -10,
-                      ),
-                      if (isDark)
-                        BoxShadow(
-                          color: accentColor.withValues(alpha: 0.1),
-                          blurRadius: 60,
-                          spreadRadius: -5,
-                        ),
-                    ],
-                  ),
-                  child: HomeConversationArea(
-                    scrollController: _conversationController,
-                    accentColor: accentColor,
-                    glowController: _glowAnimationController,
-                    glowAnimation: _glowAnimation,
-                    onFeedback: _handleFeedback,
-                    onCopy: _handleCopyToClipboard,
-                    onSave: _handleSaveToFile,
-                    onRemember: _handleRememberConversation,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Input area
-          HomeInputArea(
-            controller: _messageController,
-            focusNode: _messageFocusNode,
-            accentColor: accentColor,
-            onSend: () => _sendMessage(_messageController.text),
-            onVoice: () {}, // TODO: Implement voice input
-            sendButtonKey: _sendButtonKey,
-            voiceButtonKey: _voiceButtonKey,
-          ),
-        ],
+        ),
+        messages: HomeConversationArea(
+          scrollController: _conversationController,
+          accentColor: accentColor,
+          glowController: _glowAnimationController,
+          glowAnimation: _glowAnimation,
+          onFeedback: _handleFeedback,
+          onCopy: _handleCopyToClipboard,
+          onSave: _handleSaveToFile,
+          onRemember: _handleRememberConversation,
+        ),
+        input: HomeInputArea(
+          controller: _messageController,
+          focusNode: _messageFocusNode,
+          accentColor: accentColor,
+          onSend: () => _sendMessage(_messageController.text),
+          onVoice: () => ref.read(layoutProvider.notifier).toggleVoiceText(),
+          sendButtonKey: _sendButtonKey,
+          voiceButtonKey: _voiceButtonKey,
+        ),
+        onShowChat: () => ref.read(layoutProvider.notifier).switchModality(ConversationModality.text),
       ),
     );
   }
 
   // Message handling
   void _sendMessage(String text) async {
+    // Switch to text mode when sending first message
+    final conversationState = ref.read(conversationProvider);
+    if (conversationState.messages.isEmpty) {
+      ref.read(layoutProvider.notifier).switchModality(ConversationModality.text);
+    }
+    
     await HomeScreenHelpers.sendMessage(
       ref: ref,
       text: text,

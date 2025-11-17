@@ -17,6 +17,7 @@ class ModalAwareLayout extends ConsumerWidget {
   final Widget messages;
   final Widget input;
   final Widget? sidebar;
+  final VoidCallback? onShowChat;
 
   const ModalAwareLayout({
     super.key,
@@ -24,6 +25,7 @@ class ModalAwareLayout extends ConsumerWidget {
     required this.messages,
     required this.input,
     this.sidebar,
+    this.onShowChat,
   });
 
   @override
@@ -37,6 +39,7 @@ class ModalAwareLayout extends ConsumerWidget {
             messages: messages,
             input: input,
             layoutState: layoutState,
+            onShowChat: onShowChat,
           )
         : _HorizontalLayout(
             avatar: avatar,
@@ -44,6 +47,7 @@ class ModalAwareLayout extends ConsumerWidget {
             input: input,
             sidebar: sidebar,
             layoutState: layoutState,
+            onShowChat: onShowChat,
           );
   }
 }
@@ -56,6 +60,7 @@ class _HorizontalLayout extends StatelessWidget {
   final Widget input;
   final Widget? sidebar;
   final LayoutState layoutState;
+  final VoidCallback? onShowChat;
 
   const _HorizontalLayout({
     required this.avatar,
@@ -63,6 +68,7 @@ class _HorizontalLayout extends StatelessWidget {
     required this.input,
     this.sidebar,
     required this.layoutState,
+    this.onShowChat,
   });
 
   @override
@@ -70,42 +76,57 @@ class _HorizontalLayout extends StatelessWidget {
     final avatarWidthPercent = layoutState.getAvatarWidthPercent(false);
     final messageWidthPercent = layoutState.getMessageWidthPercent(false);
     final isChatVisible = layoutState.isChatVisible;
+    final hasMessages = layoutState.hasMessages;
 
-    return Row(
+    return Stack(
       children: [
-        // Sidebar (desktop only)
-        if (sidebar != null && context.isDesktop) sidebar!,
+        Row(
+          children: [
+            // Sidebar (desktop only)
+            if (sidebar != null && context.isDesktop) sidebar!,
 
-        // Avatar container
-        Expanded(
-          flex: (avatarWidthPercent * 100).round(),
-          child: avatar,
-        ),
-
-        // Messages container (hidden in voice mode)
-        if (isChatVisible)
-          Expanded(
-            flex: (messageWidthPercent * 100).round(),
-            child: Column(
-              children: [
-                // Messages area
-                Expanded(child: messages),
-                
-                // Input field
-                Padding(
-                  padding: EdgeInsets.all(context.horizontalPadding),
-                  child: input,
-                ),
-              ],
+            // Avatar container
+            Expanded(
+              flex: (avatarWidthPercent * 100).round(),
+              child: avatar,
             ),
-          ),
 
-        // Voice mode: minimized chat indicator
+            // Messages and input container (text/hybrid mode)
+            if (isChatVisible)
+              Expanded(
+                flex: (messageWidthPercent * 100).round(),
+                child: Column(
+                  children: [
+                    // Messages area
+                    Expanded(child: messages),
+                    
+                    // Input field
+                    Padding(
+                      padding: EdgeInsets.all(context.horizontalPadding),
+                      child: input,
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        
+        // Voice mode or initial state: input at bottom center
         if (!isChatVisible)
           Positioned(
+            left: 40,
+            right: 40,
             bottom: 20,
-            right: 20,
-            child: _MinimizedChatIndicator(),
+            child: input,
+          ),
+
+        // Voice mode with messages: show minimized chat indicator
+        // Initial state: don't show indicator (user sees "I'm here" message)
+        if (!isChatVisible && hasMessages)
+          Positioned(
+            bottom: 140, // Above input field (input is ~80px + 20px margin)
+            right: 40,
+            child: _MinimizedChatIndicator(onTap: onShowChat),
           ),
       ],
     );
@@ -119,18 +140,21 @@ class _VerticalLayout extends StatelessWidget {
   final Widget messages;
   final Widget input;
   final LayoutState layoutState;
+  final VoidCallback? onShowChat;
 
   const _VerticalLayout({
     required this.avatar,
     required this.messages,
     required this.input,
     required this.layoutState,
+    this.onShowChat,
   });
 
   @override
   Widget build(BuildContext context) {
     final avatarHeightPercent = layoutState.getAvatarHeightPercent(true);
     final isChatVisible = layoutState.isChatVisible;
+    final hasMessages = layoutState.hasMessages;
 
     return Column(
       children: [
@@ -140,79 +164,127 @@ class _VerticalLayout extends StatelessWidget {
           child: avatar,
         ),
 
-        // Messages and input (bottom)
+        // Messages (bottom) - only in text/hybrid mode
         if (isChatVisible)
+          Expanded(child: messages),
+
+        // Voice mode with messages: minimized chat indicator
+        // Initial state: empty space (user sees "I'm here" in avatar area)
+        if (!isChatVisible && hasMessages)
           Expanded(
-            child: Column(
-              children: [
-                // Messages area
-                Expanded(child: messages),
-                
-                // Input field
-                Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: context.horizontalPadding,
-                    vertical: 16,
-                  ),
-                  child: input,
-                ),
-              ],
+            child: Center(
+              child: _MinimizedChatIndicator(onTap: onShowChat),
             ),
           ),
-
-        // Voice mode: minimized chat indicator
-        if (!isChatVisible)
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: _MinimizedChatIndicator(),
+        
+        // Initial state: spacer
+        if (!isChatVisible && !hasMessages)
+          const Expanded(child: SizedBox.shrink()),
+        
+        // Input field (always visible)
+        Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: context.horizontalPadding,
+            vertical: 16,
           ),
+          child: input,
+        ),
       ],
     );
   }
 }
 
 /// Minimized chat indicator for voice mode
-/// Shows a small button to slide up chat UI
-class _MinimizedChatIndicator extends StatelessWidget {
-  const _MinimizedChatIndicator();
+/// Shows a glassmorphic button to expand chat UI
+class _MinimizedChatIndicator extends StatefulWidget {
+  final VoidCallback? onTap;
+  
+  const _MinimizedChatIndicator({this.onTap});
+
+  @override
+  State<_MinimizedChatIndicator> createState() => _MinimizedChatIndicatorState();
+}
+
+class _MinimizedChatIndicatorState extends State<_MinimizedChatIndicator> {
+  bool _isHovered = false;
+  bool _isPressed = false;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.1),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.chat_bubble_outline,
-            size: 18,
-            color: Colors.white.withOpacity(0.7),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Show chat',
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final accentColor = const Color(0xFFB8A1EA);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        onTapDown: (_) => setState(() => _isPressed = true),
+        onTapUp: (_) => setState(() => _isPressed = false),
+        onTapCancel: () => setState(() => _isPressed = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          decoration: BoxDecoration(
+            // Glassmorphic background
+            color: isDark
+                ? Colors.white.withValues(alpha: _isPressed ? 0.12 : _isHovered ? 0.10 : 0.06)
+                : Colors.white.withValues(alpha: _isPressed ? 0.85 : _isHovered ? 0.75 : 0.65),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: _isHovered ? 0.20 : 0.12)
+                  : Colors.white.withValues(alpha: _isHovered ? 0.50 : 0.35),
+              width: 1.5,
             ),
+            boxShadow: [
+              // Main floating shadow
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.12),
+                blurRadius: _isHovered ? 32 : 24,
+                offset: Offset(0, _isPressed ? 8 : 12),
+                spreadRadius: -6,
+              ),
+              // Accent glow on hover
+              if (_isHovered)
+                BoxShadow(
+                  color: accentColor.withValues(alpha: 0.25),
+                  blurRadius: 40,
+                  spreadRadius: -8,
+                ),
+            ],
           ),
-        ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.chat_bubble_outline_rounded,
+                size: 20,
+                color: _isHovered
+                    ? accentColor
+                    : (isDark
+                        ? Colors.white.withValues(alpha: 0.75)
+                        : Colors.black.withValues(alpha: 0.70)),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Show chat',
+                style: TextStyle(
+                  color: _isHovered
+                      ? accentColor
+                      : (isDark
+                          ? Colors.white.withValues(alpha: 0.75)
+                          : Colors.black.withValues(alpha: 0.70)),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

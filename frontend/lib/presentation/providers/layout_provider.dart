@@ -24,7 +24,7 @@ class LayoutState {
   final String moodColor;
 
   const LayoutState({
-    this.modality = ConversationModality.text,
+    this.modality = ConversationModality.voice, // Start in voice mode (centered avatar)
     this.isThinking = false,
     this.hasMessages = false,
     this.moodColor = 'idle',
