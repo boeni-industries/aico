@@ -261,8 +261,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with TickerProviderStat
   }
 
   Widget _buildHomeContent(BuildContext context, ThemeData theme, Color accentColor) {
+    final layoutState = ref.watch(layoutProvider);
+    final isVoiceMode = layoutState.modality == ConversationModality.voice;
+    
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+      padding: EdgeInsets.only(
+        left: 40,
+        right: 40,
+        top: isVoiceMode ? 0 : 20, // No top padding in voice mode
+        bottom: isVoiceMode ? 0 : 20, // No bottom padding in voice mode
+      ),
       child: ModalAwareLayout(
         avatar: AnimatedAvatarContainer(
           child: HomeAvatarHeader(

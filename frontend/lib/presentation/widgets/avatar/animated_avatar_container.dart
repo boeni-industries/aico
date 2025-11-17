@@ -60,11 +60,9 @@ class AvatarWebViewContainer extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // No clipping - allow glow to extend beyond avatar bounds
     return RepaintBoundary(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(0), // No clipping for full avatar
-        child: webView,
-      ),
+      child: webView,
     );
   }
 }

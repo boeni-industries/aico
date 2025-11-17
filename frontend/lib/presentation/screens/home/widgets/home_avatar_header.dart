@@ -1,5 +1,6 @@
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
+import 'package:aico_frontend/presentation/providers/layout_provider.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/companion_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,6 +27,7 @@ class _HomeAvatarHeaderState extends ConsumerState<HomeAvatarHeader> {
   Widget build(BuildContext context) {
     final conversationState = ref.watch(conversationProvider);
     final avatarState = ref.watch(avatarRingStateProvider);
+    final layoutState = ref.watch(layoutProvider);
     final isThinking = conversationState.isSendingMessage || conversationState.isStreaming;
 
     // Sync avatar mode with thinking state
@@ -42,10 +44,15 @@ class _HomeAvatarHeaderState extends ConsumerState<HomeAvatarHeader> {
     return AnimatedBuilder(
       animation: widget.glowController,
       builder: (context, child) {
-        // Use full available height, pushed up to minimize headspace
-        return const Align(
-          alignment: Alignment(0, -0.3), // Pushed up to reduce wasted top space
-          child: CompanionAvatar(), // Full-body with seamless aura
+        // In text mode: center alignment
+        // In voice mode: top-center to maximize viewport (from top to input area)
+        final alignment = layoutState.modality == ConversationModality.text
+            ? Alignment.center // Center for text mode
+            : Alignment.topCenter; // Top-aligned in voice mode for maximum viewport
+        
+        return Align(
+          alignment: alignment,
+          child: const CompanionAvatar(), // Full-body with seamless aura
         );
       },
     );

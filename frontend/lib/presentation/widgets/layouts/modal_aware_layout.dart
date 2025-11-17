@@ -74,27 +74,27 @@ class _HorizontalLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final avatarWidthPercent = layoutState.getAvatarWidthPercent(false);
-    final messageWidthPercent = layoutState.getMessageWidthPercent(false);
     final isChatVisible = layoutState.isChatVisible;
     final hasMessages = layoutState.hasMessages;
 
     return Stack(
       children: [
-        Row(
-          children: [
-            // Sidebar (desktop only)
-            if (sidebar != null && context.isDesktop) sidebar!,
+        // In text mode, use overlapping layout for more chat space
+        if (isChatVisible)
+          Row(
+            children: [
+              // Sidebar (desktop only)
+              if (sidebar != null && context.isDesktop) sidebar!,
 
-            // Avatar container
-            Expanded(
-              flex: (avatarWidthPercent * 100).round(),
-              child: avatar,
-            ),
-
-            // Messages and input container (text/hybrid mode)
-            if (isChatVisible)
+              // Avatar container - 45% of remaining space
               Expanded(
-                flex: (messageWidthPercent * 100).round(),
+                flex: 45,
+                child: avatar,
+              ),
+
+              // Messages and input container - 65% overlaps avatar by 10%
+              Expanded(
+                flex: 65,
                 child: Column(
                   children: [
                     // Messages area
@@ -108,10 +108,24 @@ class _HorizontalLayout extends StatelessWidget {
                   ],
                 ),
               ),
-          ],
-        ),
+            ],
+          )
+        else
+          // Voice mode - avatar takes full width
+          Row(
+            children: [
+              // Sidebar (desktop only)
+              if (sidebar != null && context.isDesktop) sidebar!,
+
+              // Avatar container - full width in voice mode
+              Expanded(
+                flex: (avatarWidthPercent * 100).round(),
+                child: avatar,
+              ),
+            ],
+          ),
         
-        // Voice mode or initial state: input at bottom center
+        // Voice mode or initial state: input at bottom center (floats on top of avatar)
         if (!isChatVisible)
           Positioned(
             left: 40,

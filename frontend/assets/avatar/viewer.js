@@ -5,6 +5,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 let scene, camera, renderer, mixer, clock;
 let avatar, currentAction;
 let animations = {};
+let eyeMeshes = []; // Store meshes with eye morph targets
 
 // Initialize the scene
 function init() {
@@ -18,13 +19,13 @@ function init() {
     
     // Create camera
     camera = new THREE.PerspectiveCamera(
-        42, // Wider FOV to fit full body including feet
+        42, // Original FOV - maintain subject size
         window.innerWidth / window.innerHeight,
         0.1,
         1000
     );
-    camera.position.set(0, 0.85, 2.6); // Lower and further back to show feet
-    camera.lookAt(0, 0.85, 0); // Look at lower torso for better vertical balance
+    camera.position.set(0, 1.6, 3.1); // Eye level (1.6m), further back (2.7m) for full body with clearance
+    camera.lookAt(0, 0.85, 0); // Look at torso to center full body in frame
     
     // Create renderer with proper transparency settings
     renderer = new THREE.WebGLRenderer({ 
@@ -107,13 +108,46 @@ async function loadAvatar() {
         avatar.position.set(0, 0, 0);
         avatar.scale.set(1, 1, 1);
         
-        // Enable shadows
+        // Enable shadows and inspect morph targets
+        let morphTargetsFound = false;
         avatar.traverse((node) => {
             if (node.isMesh) {
                 node.castShadow = true;
                 node.receiveShadow = true;
+                
+                // Check for morph targets
+                if (node.morphTargetInfluences && node.morphTargetInfluences.length > 0) {
+                    morphTargetsFound = true;
+                    console.log('[AICO Avatar] 🎭 MORPH TARGETS FOUND on mesh:', node.name);
+                    console.log('[AICO Avatar] Number of morph targets:', node.morphTargetInfluences.length);
+                    console.log('[AICO Avatar] Morph target dictionary:', node.morphTargetDictionary);
+                    
+                    // List all available morph targets
+                    if (node.morphTargetDictionary) {
+                        const morphNames = Object.keys(node.morphTargetDictionary);
+                        console.log('[AICO Avatar] Available morph targets:', morphNames);
+                        
+                        // Check for eye-related morph targets
+                        const eyeMorphs = morphNames.filter(name => 
+                            name.toLowerCase().includes('eye') || 
+                            name.toLowerCase().includes('look')
+                        );
+                        if (eyeMorphs.length > 0) {
+                            console.log('[AICO Avatar] 👁️ Eye-related morph targets:', eyeMorphs);
+                            // Store this mesh for eye gaze control
+                            eyeMeshes.push(node);
+                        }
+                    }
+                }
             }
         });
+        
+        console.log('[AICO Avatar] Stored', eyeMeshes.length, 'meshes for eye gaze control');
+        
+        if (!morphTargetsFound) {
+            console.warn('[AICO Avatar] ⚠️ NO MORPH TARGETS FOUND - Avatar downloaded without facial controls');
+            console.warn('[AICO Avatar] To enable morph targets, re-download avatar with: ?morphTargets=ARKit');
+        }
         
         scene.add(avatar);
         console.log('[AICO Avatar] Avatar model loaded');
@@ -161,6 +195,19 @@ async function loadAnimations() {
         // Setup animation mixer
         mixer = new THREE.AnimationMixer(avatar);
         
+        // Disable morph target tracks in all animations to allow manual control
+        Object.keys(animations).forEach(animName => {
+            const clip = animations[animName];
+            // Remove morph target tracks (they override our manual eye gaze)
+            clip.tracks = clip.tracks.filter(track => {
+                const isMorphTrack = track.name.includes('.morphTargetInfluences');
+                if (isMorphTrack) {
+                    console.log(`[AICO Avatar] Removed morph track from ${animName}:`, track.name);
+                }
+                return !isMorphTrack;
+            });
+        });
+        
         // Play idle animation by default
         if (animations.idle) {
             playAnimation('idle');
@@ -206,6 +253,35 @@ function playAnimation(name) {
     console.log(`[AICO Avatar] Playing animation: ${name}`);
 }
 
+// Apply eye gaze to look at camera
+function applyEyeGaze() {
+    if (eyeMeshes.length === 0) return;
+    
+    // Subtle downward gaze for natural eye contact (camera at eye level)
+    const lookDownAmount = 0.3; // 30% influence for natural, warm eye contact
+    
+    eyeMeshes.forEach(mesh => {
+        const dict = mesh.morphTargetDictionary;
+        const influences = mesh.morphTargetInfluences;
+        
+        // Apply EXTREME downward gaze to both eyes
+        if (dict['eyeLookDownLeft'] !== undefined) {
+            influences[dict['eyeLookDownLeft']] = lookDownAmount;
+        }
+        if (dict['eyeLookDownRight'] !== undefined) {
+            influences[dict['eyeLookDownRight']] = lookDownAmount;
+        }
+        
+        // Reset upward gaze (in case idle animation has it)
+        if (dict['eyeLookUpLeft'] !== undefined) {
+            influences[dict['eyeLookUpLeft']] = 0;
+        }
+        if (dict['eyeLookUpRight'] !== undefined) {
+            influences[dict['eyeLookUpRight']] = 0;
+        }
+    });
+}
+
 // Animation loop
 function animate() {
     requestAnimationFrame(animate);
@@ -216,6 +292,9 @@ function animate() {
     if (mixer) {
         mixer.update(delta);
     }
+    
+    // Apply eye gaze after animation updates
+    applyEyeGaze();
     
     // Render scene
     renderer.render(scene, camera);

@@ -38,7 +38,7 @@ class LayoutState {
         case ConversationModality.voice:
           return 0.7; // 70% height, centered
         case ConversationModality.text:
-          return 0.4; // 40% height, top
+          return 0.6; // 60% height, top (increased from 40%)
         case ConversationModality.hybrid:
           return 0.3; // 30% height, top
       }
@@ -46,9 +46,9 @@ class LayoutState {
       // Desktop/tablet/landscape: horizontal layouts
       switch (modality) {
         case ConversationModality.voice:
-          return 0.75; // 75% height, centered
+          return 1.0; // Full height - extends from top to input area
         case ConversationModality.text:
-          return 1.0; // Full height, left side
+          return 1.0; // Full height - same as voice mode for maximum presence
         case ConversationModality.hybrid:
           return 1.0; // Full height, left side
       }
@@ -66,7 +66,7 @@ class LayoutState {
         case ConversationModality.voice:
           return 1.0; // Full width, centered
         case ConversationModality.text:
-          return 0.3; // 30% width, left
+          return 0.45; // 45% width, left - larger for better presence
         case ConversationModality.hybrid:
           return 0.4; // 40% width, left
       }
@@ -88,7 +88,7 @@ class LayoutState {
       // Desktop/tablet/landscape
       switch (modality) {
         case ConversationModality.voice:
-          return Alignment.center;
+          return Alignment.topCenter; // Top-aligned to maximize viewport
         case ConversationModality.text:
         case ConversationModality.hybrid:
           return Alignment.centerLeft;
@@ -105,7 +105,7 @@ class LayoutState {
         case ConversationModality.voice:
           return 0.0; // Hidden/minimized
         case ConversationModality.text:
-          return 0.7; // 70% width
+          return 0.55; // 55% width - balanced with 45% avatar
         case ConversationModality.hybrid:
           return 0.6; // 60% width
       }

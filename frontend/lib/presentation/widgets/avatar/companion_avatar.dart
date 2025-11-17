@@ -407,33 +407,44 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
                   final aspectRatio = 9 / 16;
                   
                   double width, height;
-                  if (maxWidth / maxHeight > aspectRatio) {
-                    // Height constrained
-                    height = maxHeight;
-                    width = height * aspectRatio;
-                  } else {
-                    // Width constrained
+                  
+                  // Always try to maximize height first (fills vertical space)
+                  height = maxHeight;
+                  width = height * aspectRatio;
+                  
+                  // If width exceeds available space, constrain by width instead
+                  if (width > maxWidth) {
                     width = maxWidth;
                     height = width / aspectRatio;
                   }
                   
+                  // Determine if we're width-constrained (voice mode) for alignment
+                  final bool isWidthConstrained = width >= maxWidth * 0.99;
+                  
+                  // Allow glow to overflow by using clipBehavior: Clip.none
+                  // In voice mode (width constrained), top-align to eliminate gap
                   return Stack(
-                    alignment: Alignment.center,
+                    clipBehavior: Clip.none, // Allow glow to extend beyond bounds
+                    alignment: isWidthConstrained ? Alignment.topCenter : Alignment.center,
                     children: [
-                      // Subtle radial glow behind avatar (state-driven color)
-                      Positioned.fill(
+                      // Radial glow behind avatar - extends beyond avatar bounds
+                      Positioned(
+                        left: -maxWidth * 0.2, // Extend glow beyond left
+                        right: -maxWidth * 0.2, // Extend glow beyond right
+                        top: -maxHeight * 0.1, // Extend glow beyond top
+                        bottom: -maxHeight * 0.1, // Extend glow beyond bottom
                         child: Container(
                           decoration: BoxDecoration(
                             gradient: RadialGradient(
                               center: const Alignment(0, -0.1), // Centered on upper body
-                              radius: 0.6,
+                              radius: 0.5, // Tighter radius since we extended the container
                               colors: [
-                                ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.20 : 0.15), // Stronger center
-                                ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.12 : 0.08), // Mid fade
-                                ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.05 : 0.03), // Outer fade
+                                ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.35 : 0.28), // Stronger center
+                                ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.22 : 0.16), // Mid fade
+                                ringColor.withValues(alpha: theme.brightness == Brightness.dark ? 0.12 : 0.08), // Outer fade
                                 Colors.transparent,
                               ],
-                              stops: const [0.0, 0.4, 0.7, 1.0],
+                              stops: const [0.0, 0.35, 0.65, 1.0],
                             ),
                           ),
                         ),
