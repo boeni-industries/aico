@@ -20,7 +20,7 @@ For system-wide integration and believability, see [`emotion-integration.md`](./
   - Valence, arousal, and dominance.
   - Stress, fatigue, and crisis indicators.
   - Interaction intent related to emotion (e.g., venting, celebrating, seeking advice).
-- Publish these results as message bus events such as `user.emotion.detected` and `voice.analysis`.
+- Publish these results as message bus events (topics TBD in Phase 2 implementation).
 - Provide stable REST endpoints (via the backend) for diagnostic and tooling purposes.
 
 ## Modelservice Integration
@@ -33,11 +33,11 @@ For system-wide integration and believability, see [`emotion-integration.md`](./
 ## Message Bus Topics
 
 - Input (from other systems):
-  - `conversation.message` – current user/assistant messages.
-  - `conversation.context` – broader context and relationship phase.
+  - `CONVERSATION_USER_INPUT` – current user messages from conversation engine.
+  - Conversation context from memory/AMS systems.
 - Output (produced by detection):
-  - `user.emotion.detected` – primary detection result.
-  - `voice.analysis` – prosodic/emotional indicators from voice (future).
+  - User emotion signals published to message bus for consumption by EmotionEngine and other components.
+  - Voice analysis signals (future multimodal).
 
 Detailed JSON examples for these messages are defined in [`emotion-messages.md`](./emotion-messages.md).
 

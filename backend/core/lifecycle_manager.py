@@ -262,6 +262,18 @@ class BackendLifecycleManager:
             priority=25
         )
         
+        # Emotion engine factory
+        def create_emotion_engine(container: ServiceContainer):
+            from backend.services.emotion_engine import EmotionEngine
+            return EmotionEngine("emotion_engine", container)
+        
+        self.container.register_service(
+            "emotion_engine",
+            create_emotion_engine,
+            dependencies=["zmq_context"],
+            priority=30  # Start after message_bus (20), before conversation_engine (35)
+        )
+        
         # Conversation engine factory
         def create_conversation_engine(container: ServiceContainer, zmq_context=None):
             from backend.services.conversation_engine import ConversationEngine
@@ -270,8 +282,8 @@ class BackendLifecycleManager:
         self.container.register_service(
             "conversation_engine",
             create_conversation_engine,
-            dependencies=["zmq_context"],  # Ensure ZMQ is ready before conversation engine
-            priority=35  # Start after message_bus (20) and core plugins (25-30)
+            dependencies=["zmq_context", "emotion_engine"],  # Ensure emotion engine is ready
+            priority=35  # Start after message_bus (20) and emotion_engine (30)
         )
         
         self.logger.debug("Core services registered")

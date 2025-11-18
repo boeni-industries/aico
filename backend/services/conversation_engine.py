@@ -881,6 +881,78 @@ class ConversationEngine(BaseService):
         if identity_parts:
             prompt_parts.append("\n".join(identity_parts))
         
+        # Add emotional conditioning if available (Phase 1 emotion system)
+        if self.enable_emotion_integration:
+            try:
+                emotion_engine = self.container.get_service("emotion_engine")
+                if emotion_engine:
+                    # Get current emotional state (compact projection)
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            # Skip in this case - emotion will still be published to bus
+                            pass
+                        else:
+                            emotional_state = asyncio.run(emotion_engine.get_current_state())
+                            if emotional_state:
+                                style = emotional_state.get("style", {})
+                                label = emotional_state.get("label", {})
+                                
+                                # Build concise emotional guidance
+                                emotion_guidance = []
+                                emotion_guidance.append(f"Current emotional tone: {label.get('primary', 'calm')}")
+                                
+                                # Add style hints
+                                warmth = style.get("warmth", 0.6)
+                                energy = style.get("energy", 0.5)
+                                directness = style.get("directness", 0.5)
+                                
+                                if warmth > 0.7:
+                                    emotion_guidance.append("Respond with warmth and care.")
+                                if energy > 0.6:
+                                    emotion_guidance.append("Show engaged, active energy.")
+                                elif energy < 0.4:
+                                    emotion_guidance.append("Maintain a calm, gentle presence.")
+                                if directness > 0.7:
+                                    emotion_guidance.append("Be direct and clear.")
+                                elif directness < 0.4:
+                                    emotion_guidance.append("Be gentle and indirect.")
+                                
+                                if emotion_guidance:
+                                    prompt_parts.append("\n".join(emotion_guidance))
+                                    self.logger.debug(f"🎭 Added emotional conditioning: {label.get('primary', 'calm')}")
+                    except RuntimeError:
+                        # No event loop
+                        emotional_state = asyncio.run(emotion_engine.get_current_state())
+                        if emotional_state:
+                            style = emotional_state.get("style", {})
+                            label = emotional_state.get("label", {})
+                            
+                            emotion_guidance = []
+                            emotion_guidance.append(f"Current emotional tone: {label.get('primary', 'calm')}")
+                            
+                            warmth = style.get("warmth", 0.6)
+                            energy = style.get("energy", 0.5)
+                            directness = style.get("directness", 0.5)
+                            
+                            if warmth > 0.7:
+                                emotion_guidance.append("Respond with warmth and care.")
+                            if energy > 0.6:
+                                emotion_guidance.append("Show engaged, active energy.")
+                            elif energy < 0.4:
+                                emotion_guidance.append("Maintain a calm, gentle presence.")
+                            if directness > 0.7:
+                                emotion_guidance.append("Be direct and clear.")
+                            elif directness < 0.4:
+                                emotion_guidance.append("Be gentle and indirect.")
+                            
+                            if emotion_guidance:
+                                prompt_parts.append("\n".join(emotion_guidance))
+                                self.logger.debug(f"🎭 Added emotional conditioning: {label.get('primary', 'calm')}")
+            except Exception as e:
+                self.logger.warning(f"🎭 Failed to add emotional conditioning: {e}")
+        
         # Add memory context if available
         if memory_context:
             memory_data = memory_context.get("memory_context", {})

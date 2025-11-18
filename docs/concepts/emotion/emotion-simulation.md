@@ -49,12 +49,13 @@ AppraisalCloudPCT is based on Klaus Scherer's Component Process Model (CPM), the
 AICO's emotion capabilities are deliberately split into two tightly coordinated layers that work together to create believable companionship:
 
 - **User Emotion Detection ("what you feel")**
-  - Dedicated recognition components infer the user's current emotional state from text (and in future, voice/vision) and publish it as structured signals (e.g., `user.emotion.detected`).
+  - Dedicated recognition components infer the user's current emotional state from text (and in future, voice/vision) and publish it as structured signals via message bus.
   - These signals capture *your* affect: primary/secondary emotions, valence/arousal, stress indicators, and high-level intent (e.g., "venting", "celebrating").
   - The detected user emotion is a core input into appraisal: it helps AICO decide how important a situation is, what kind of support is appropriate, and whether crisis protocols should engage.
 
 - **AICO's Simulated Emotion ("what AICO feels")**
-  - The AppraisalCloudPCT/CPM pipeline maintains AICO's own internal emotional state, derived from conversation events, user emotion, relationship history, and personality.
+  - Implemented in `/backend/services/emotion_engine.py` using AppraisalCloudPCT/CPM.
+  - Maintains AICO's own internal emotional state, derived from conversation events, user emotion, relationship history, and personality.
   - This internal state includes mood, appraisal results, motivational tendencies, and expression profiles that drive how AICO speaks, writes, and (later) moves.
   - AICO's simulated emotions are *not* just a mirror of the user's state—they reflect AICO's personality, values, and evolving relationship with you.
 
