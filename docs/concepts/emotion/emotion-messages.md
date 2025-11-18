@@ -417,6 +417,105 @@ Emotional experience data for storage and learning.
 - `experience.aico_response.*`: AICO's emotional response and approach
 - `experience.outcome_tracking.*`: Tracking data for learning and improvement
 
+## Frontend Emotional Projection
+
+To support mood coloring, emotional presence, and simple history visualizations on the client, `emotion.state.current` is also projected into a **compact, modality-agnostic state** that frontends can consume directly.
+
+### Compact Current Emotional State
+
+Example payload:
+
+```json
+{
+  "timestamp": "2025-11-18T21:24:00Z",
+
+  "mood": {
+    "valence": 0.35,
+    "arousal": 0.55
+  },
+
+  "label": {
+    "primary": "warm_concern",
+    "secondary": ["supportive", "focused"],
+    "intensity": 0.6
+  },
+
+  "style": {
+    "warmth": 0.8,
+    "energy": 0.5,
+    "directness": 0.6,
+    "formality": 0.3,
+    "engagement": 0.7
+  },
+
+  "relationship": {
+    "closeness": 0.7,
+    "care_focus": 0.9
+  }
+}
+```
+
+#### Field Semantics
+
+- **`mood.valence`**: -1.0 (very negative) .. 1.0 (very positive)
+- **`mood.arousal`**: 0.0 (very calm) .. 1.0 (very activated)
+- **`label.intensity`**: 0.0..1.0 overall emotional intensity
+- **`style.warmth`**: 0.0 = cold/detached, 1.0 = very warm
+- **`style.energy`**: 0.0 = very low energy, 1.0 = very high energy
+- **`style.directness`**: 0.0 = very indirect, 1.0 = very direct
+- **`style.formality`**: 0.0 = very casual, 1.0 = very formal
+- **`style.engagement`**: 0.0 = distant/disengaged, 1.0 = highly engaged
+- **`relationship.closeness`**: 0.0 = just met, 1.0 = very established relationship
+- **`relationship.care_focus`**: 0.0 = neutral/transactional, 1.0 = highly care-oriented
+
+This compact state is derived from the full CPM-based `emotion.state.current` but is stable and UX-oriented.
+
+### Label Enum for `label.primary`
+
+`label.primary` MUST be one of a documented, small set of canonical labels so that clients can reliably map them to colors, icons, and behaviors.
+
+Initial enum (subject to extension, but changes should be rare and documented):
+
+- `neutral`
+- `calm`
+- `curious`
+- `playful`
+- `warm_concern`
+- `protective`
+- `focused`
+- `encouraging`
+- `reassuring`
+- `apologetic`
+- `tired`
+- `reflective`
+
+Frontends should treat unknown values defensively (e.g., fall back to `neutral` styling), but the goal is to keep this enum stable and curated.
+
+### History Projection
+
+For mood arcs and session timelines, the backend can expose a history of compact states. Example response:
+
+```json
+{
+  "items": [
+    {
+      "timestamp": "2025-11-18T21:00:00Z",
+      "mood": { "valence": 0.10, "arousal": 0.40 },
+      "label": { "primary": "calm", "intensity": 0.4 },
+      "style": { "warmth": 0.7, "energy": 0.4 }
+    },
+    {
+      "timestamp": "2025-11-18T21:20:00Z",
+      "mood": { "valence": 0.35, "arousal": 0.55 },
+      "label": { "primary": "warm_concern", "intensity": 0.6 },
+      "style": { "warmth": 0.8, "energy": 0.5 }
+    }
+  ]
+}
+```
+
+History entries are intentionally lightweight and omit `relationship` fields by default to keep payloads small and timelines efficient. Clients can use this to render sparkline-style mood arcs and session summaries.
+
 ## Message Bus Topics Summary
 
 ### Input Topics (Subscriptions)

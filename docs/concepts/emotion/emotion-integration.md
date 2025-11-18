@@ -74,7 +74,7 @@ The **goal** of this dual system is **believability**: AICO should both understa
 ## Integration with Frontend & Embodiment
 
 - **Current Emotional State (`emotion.state.current`)**
-  - Backend exposes AICO's current emotional state (or a compact projection of it) to the frontend via REST and/or WebSocket.
+  - Backend exposes AICO's current emotional state as a **compact projection** (see `Frontend Emotional Projection` in [`emotion-messages.md`](./emotion-messages.md)) via REST and/or WebSocket.
   - The frontend can use this to:
     - Apply **subtle mood theming** (background gradients, accent colors).
     - Show the **strongest active emotion** as a small, unobtrusive indicator.
