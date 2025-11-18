@@ -294,6 +294,20 @@ The modular architecture ensures seamless integration with other AICO components
 
 For implementation details, technical specifications, and architectural diagrams, see the companion architecture documentation.
 
+## 2025 Design Notes
+
+To align this component with 2025 best practices and the broader AICO architecture (conversation engine, memory system, knowledge graph, AMS, and embodiment), implementation should follow these principles:
+
+- **CPM as controller, not parallel generator**: AppraisalCloudPCT produces a compact emotional state that conditions the LLM (tone, style, decoding parameters) while the Conversation Engine remains the central place where responses are generated.
+- **LLM-as-appraiser**: The modelservice can provide advisory appraisal signals (relevance, goal impact, coping, normativity) from conversation + memory context, which are combined with deterministic rules and user/relationship data rather than used as the sole source of truth.
+- **Tight coupling with memory and AMS**: Emotional labels and trajectories are stored alongside working, semantic, and graph memories, and AMS can use emotional outcomes as feedback when choosing strategies, skills, and what to surface or consolidate.
+- **Relationship affect profiles in the KG**: Long-term emotional patterns, preferred support styles, and typical stressors are represented as properties on user/relationship nodes in the knowledge graph so emotional behavior reflects relationship history, not just the last few turns.
+- **Modality-agnostic expression API**: The primary output of regulation is a small, device-independent expression profile (e.g., energy, warmth, engagement, focus) that downstream systems map into text, voice, and avatar parameters, keeping embodiment pluggable.
+- **Safety and ethics gates with observability**: Between appraisal and expression, dedicated safety filters can dampen or override emotional strategies based on crisis indicators and user preferences, while emitting structured events/metrics that integrate with AICO's existing security, logging, and evaluation tooling.
+- **Evaluation aligned with memory benchmarks**: Emotion behavior is validated using scenario-driven tests (context appropriateness, crisis handling, longitudinal consistency) integrated into the existing evaluation framework rather than ad-hoc, isolated metrics.
+
+These notes are normative for implementation: any concrete emotion subsystem should be checked against them to ensure it remains consistent with AICO's local-first, memory-centric, and relationship-focused design.
+
 ## References
 
 ### Component Process Model Foundation

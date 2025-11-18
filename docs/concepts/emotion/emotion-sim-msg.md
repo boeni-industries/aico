@@ -444,6 +444,15 @@ Emotional experience data for storage and learning.
 - `learning/coordination` - Learning feedback and coordination
 - `llm/prompt/conditioning/response` - Emotional conditioning parameters for LLM prompts
 
+## 2025 Messaging Considerations
+
+To keep the messaging layer aligned with AICO's broader architecture and current best practices:
+
+- **Compact, modality-agnostic payloads**: Outputs such as `emotion.state.current`, `emotion.expression.voice`, `emotion.expression.avatar`, and `emotion.expression.text` should favor small, abstract parameters (e.g., warmth, energy, engagement, focus) that downstream systems translate into concrete behavior.
+- **Emotion–memory linkage**: Messages like `emotion.memory.store` should include identifiers (conversation_id, message_id, user_id) and concise emotional summaries so the memory system and AMS can correlate emotional strategies with outcomes.
+- **Appraisal assistance from LLMs**: When `llm/prompt/conditioning/request` / `response` are used, the Emotion Simulation module treats LLM-derived appraisal information as advisory input, combined with rule-based appraisal and stored user/relationship context.
+- **Safety and evaluation hooks**: Crisis-related and regulation-related fields should be designed so that safety filters and evaluation tools can reconstruct why a particular emotional strategy was chosen and how it performed over time.
+
 ## Implementation Notes
 
 ### Data Types

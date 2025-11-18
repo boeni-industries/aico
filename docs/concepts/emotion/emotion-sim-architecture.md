@@ -321,7 +321,17 @@ The Emotion Simulation module consists of four core components that work togethe
 │ System          │    │                 │    │ Engine          │
 │ System          │    │                 │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-```
+
+## 2025 Integration Notes
+
+The architecture for Emotion Simulation is implemented with the following integration constraints in mind:
+
+- **Conversation Engine integration**: `emotion.expression.text` is treated as conditioning input to the Conversation Engine and LLM (tone, approach, style parameters), keeping the LLM as the central generator while CPM acts as a controller.
+- **Modelservice as appraiser**: Where appropriate, the Emotion Simulation module can request appraisal-related signals (e.g., relevance, goal impact) from the modelservice, but these are combined with deterministic rules and memory context rather than used as the sole source of truth.
+- **Memory and AMS coupling**: `emotion.memory.store` experiences are persisted using the existing working/semantic/KG infrastructure, and AMS can use emotional outcomes as feedback when choosing strategies and skills.
+- **Knowledge Graph linkage**: Emotion-related patterns (preferred support strategies, typical stressors) are stored as properties on KG nodes, allowing downstream tasks to query relationship-level affective information.
+- **Modality-agnostic expression API**: The internal representation of emotional output is a compact, modality-independent profile that is translated into voice/avatar/text parameters by downstream systems, keeping embodiment flexible.
+- **Safety and evaluation hooks**: Regulation components expose hooks for safety filters (crisis handling, boundary enforcement) and emit metrics/events that can be consumed by the existing monitoring and evaluation tooling.
 
 ## Configuration
 
