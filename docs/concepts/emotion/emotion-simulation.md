@@ -4,6 +4,9 @@
 
 The Emotion Simulation component generates sophisticated emotional states using **AppraisalCloudPCT** (Component Process Model with cloud enhancement), creating believable emotional responses that enhance AICO's companion experience. This system processes contextual inputs through cognitive appraisal mechanisms, generating multi-dimensional emotional states that coordinate expression across voice, avatar, and text modalities.
 
+For user emotion detection, see [`emotion-detection.md`](./emotion-detection.md).
+For system-wide integration and believability, see [`emotion-integration.md`](./emotion-integration.md).
+
 ## Rationale
 
 ### Why AppraisalCloudPCT?
@@ -40,6 +43,26 @@ AppraisalCloudPCT is based on Klaus Scherer's Component Process Model (CPM), the
 - "Is this consistent with my values?"
 - Evaluates moral/social appropriateness
 - **For AICO**: Does this align with my personality and relationship norms?
+
+## Dual Emotion System: User & AICO
+
+AICO's emotion capabilities are deliberately split into two tightly coordinated layers that work together to create believable companionship:
+
+- **User Emotion Detection ("what you feel")**
+  - Dedicated recognition components infer the user's current emotional state from text (and in future, voice/vision) and publish it as structured signals (e.g., `user.emotion.detected`).
+  - These signals capture *your* affect: primary/secondary emotions, valence/arousal, stress indicators, and high-level intent (e.g., "venting", "celebrating").
+  - The detected user emotion is a core input into appraisal: it helps AICO decide how important a situation is, what kind of support is appropriate, and whether crisis protocols should engage.
+
+- **AICO's Simulated Emotion ("what AICO feels")**
+  - The AppraisalCloudPCT/CPM pipeline maintains AICO's own internal emotional state, derived from conversation events, user emotion, relationship history, and personality.
+  - This internal state includes mood, appraisal results, motivational tendencies, and expression profiles that drive how AICO speaks, writes, and (later) moves.
+  - AICO's simulated emotions are *not* just a mirror of the user's state—they reflect AICO's personality, values, and evolving relationship with you.
+
+### How They Interact and Tie into the System
+
+- **Appraisal as the bridge**: User emotion feeds into the appraisal checks (relevance, implication, coping, normative), which in turn update AICO's own emotional state, ensuring AICO both understands and reacts from a believable internal perspective.
+- **Memory integration**: Both user emotion and AICO's simulated emotion are stored alongside working and semantic memories (and in the knowledge graph), allowing AICO to remember emotionally significant moments and refine future responses.
+- **Companion believability**: The dual system is designed so that AICO is not just emotion-reactive but *emotionally present*—able to recognize how you feel while maintaining her own coherent, evolving emotional life across conversations.
 
 ## Architecture
 
@@ -190,7 +213,7 @@ Multimodal Input → Appraisal Engine → Affect Derivation → Emotion Regulati
 
 **Expression Coordination**: Emotional components are mapped to coordinated expression across voice synthesis, avatar animation, and text generation.
 
-For detailed technical architecture and implementation specifics, see the emotion simulation architecture documentation.
+For detailed technical architecture and implementation specifics, see [`emotion-simulation-architecture.md`](./emotion-simulation-architecture.md).
 
 ## Component Integration
 
@@ -198,130 +221,18 @@ For detailed technical architecture and implementation specifics, see the emotio
 
 The emotion simulation system receives inputs from multiple AICO components:
 
-**From Emotion Recognition Module**:
-- Detected user emotional states with confidence levels
-- Facial expression indicators and micro-expressions
-- Voice tone and prosodic characteristics
-- Gesture and posture information
-
-**From Context Manager**:
-- Current conversation topic and interaction phase
-- Recent conversation history and patterns
-- Session duration and interaction frequency
-- Temporal context (time of day, situational factors)
-
-**From Personality Engine**:
-- Current personality trait values and behavioral tendencies
-- Companion interaction style preferences
-- Emotional expression boundaries and constraints
-- Character consistency requirements
-
-**From Memory System**:
-- Similar past situations and their successful emotional responses
-- Relationship history and established trust levels
-- User preferences for emotional support and interaction styles
-- Long-term emotional patterns and learned behaviors
+- Detected user emotional states (from Emotion Detection).
+- Conversation context and relationship state.
+- Personality state and preferences.
+- Memory-derived hints and patterns.
 
 ### Output Destinations
 
-The generated emotional states coordinate expression across multiple modalities:
-
-**To Voice & Audio System**:
-- **Physiological Component** influences prosodic parameters (pitch, rhythm, volume, breathing patterns)
-- **Motor Component** affects vocal expression patterns and speech articulation
-- **Subjective Component** determines emotional tone and vocal warmth
-- **Motivational Component** shapes speech urgency and conversational direction
-
-**To Avatar System**:
-- **Motor Component** drives facial expressions, micro-expressions, and gesture patterns
-- **Physiological Component** controls posture tension, eye behavior, and breathing visualization
-- **Motivational Component** influences approach/avoidance body language and spatial positioning
-- **Subjective Component** ensures overall expression authenticity and emotional presence
-
-**To Conversation Engine (LLM Context)**:
-- **Cognitive Component** provides appraisal context for LLM prompt injection
-- **Motivational Component** influences response directness and conversational approach
-- **Subjective Component** shapes writing tone, word choice, and emotional vocabulary
-- **Motor Component** affects punctuation patterns and response structure energy
-
-**To Memory System (Experience Storage)**:
-- Situational context and user emotional state information
-- AICO's emotional response and interaction approach taken
-- Expression style and coordination across modalities
-- Learning value assessment for future similar situations
-
-### Cloud Enhancement (Optional)
-
-For users who opt-in, cloud enhancement provides:
-- **Collective Learning**: Improved emotional strategies from anonymized interaction patterns
-- **Pattern Recognition**: Enhanced understanding of successful emotional approaches
-- **Model Updates**: Continuous improvement of emotional intelligence capabilities
-- **Privacy Preservation**: All cloud learning uses anonymized, encrypted data with user control
+- Voice & Audio System (prosody and emotional coloring).
+- Avatar System (facial expressions, body language, gaze).
+- ConversationEngine/LLM (text tone and approach).
+- Memory/AMS (emotional experiences and outcomes).
 
 ## Success Metrics
 
-The effectiveness of AICO's emotion simulation is measured across several key dimensions:
-
-### Emotional Intelligence
-- **Contextual Appropriateness**: Emotional responses that match conversation context and user emotional state
-- **Relationship Awareness**: Emotions appropriate for current relationship phase and established boundaries
-- **Crisis Response**: Effective emotional regulation and support during user emotional crises
-- **Appraisal Accuracy**: Correct situational evaluation leading to helpful emotional responses
-
-### Companion Authenticity
-- **Believability**: User perception of emotional response authenticity and naturalness
-- **Personality Consistency**: Emotional expressions aligned with established character traits
-- **Emotional Coherence**: Consistent emotional patterns across conversation sessions
-- **Natural Dynamics**: Emotional transitions that feel human-like rather than algorithmic
-
-### User Relationship Development
-- **Emotional Resonance**: Appropriate emotional mirroring and complementary responses
-- **Trust Building**: Increased user willingness to share personal and emotional content
-- **Long-Term Engagement**: Sustained positive emotional connection over extended periods
-- **Companion Satisfaction**: User perception of AICO as emotionally supportive and understanding
-
-### Privacy and Ethics
-- **Data Minimization**: Minimal data collection while maintaining emotional intelligence quality
-- **User Control**: Effective user control over emotional data and cloud enhancement features
-- **Ethical Compliance**: Consistent adherence to social appropriateness and companion boundaries
-- **Privacy Preservation**: Successful protection of emotional data in all processing modes
-
-## Conclusion
-
-AICO's Emotion Simulation represents a sophisticated approach to AI companion emotional intelligence, built on the AppraisalCloudPCT model to provide contextually appropriate, relationship-aware, and ethically constrained emotional responses. By integrating cognitive appraisal theory with personality-driven expression and optional collective learning, the system aims to create authentic emotional connections while maintaining user privacy and control.
-
-The modular architecture ensures seamless integration with other AICO components while preserving the local-first processing philosophy. Success will be measured through user relationship development, emotional authenticity, and ethical compliance rather than purely technical metrics.
-
-For implementation details, technical specifications, and architectural diagrams, see the companion architecture documentation.
-
-## 2025 Design Notes
-
-To align this component with 2025 best practices and the broader AICO architecture (conversation engine, memory system, knowledge graph, AMS, and embodiment), implementation should follow these principles:
-
-- **CPM as controller, not parallel generator**: AppraisalCloudPCT produces a compact emotional state that conditions the LLM (tone, style, decoding parameters) while the Conversation Engine remains the central place where responses are generated.
-- **LLM-as-appraiser**: The modelservice can provide advisory appraisal signals (relevance, goal impact, coping, normativity) from conversation + memory context, which are combined with deterministic rules and user/relationship data rather than used as the sole source of truth.
-- **Tight coupling with memory and AMS**: Emotional labels and trajectories are stored alongside working, semantic, and graph memories, and AMS can use emotional outcomes as feedback when choosing strategies, skills, and what to surface or consolidate.
-- **Relationship affect profiles in the KG**: Long-term emotional patterns, preferred support styles, and typical stressors are represented as properties on user/relationship nodes in the knowledge graph so emotional behavior reflects relationship history, not just the last few turns.
-- **Modality-agnostic expression API**: The primary output of regulation is a small, device-independent expression profile (e.g., energy, warmth, engagement, focus) that downstream systems map into text, voice, and avatar parameters, keeping embodiment pluggable.
-- **Safety and ethics gates with observability**: Between appraisal and expression, dedicated safety filters can dampen or override emotional strategies based on crisis indicators and user preferences, while emitting structured events/metrics that integrate with AICO's existing security, logging, and evaluation tooling.
-- **Evaluation aligned with memory benchmarks**: Emotion behavior is validated using scenario-driven tests (context appropriateness, crisis handling, longitudinal consistency) integrated into the existing evaluation framework rather than ad-hoc, isolated metrics.
-
-These notes are normative for implementation: any concrete emotion subsystem should be checked against them to ensure it remains consistent with AICO's local-first, memory-centric, and relationship-focused design.
-
-## References
-
-### Component Process Model Foundation
-- Scherer, K. R. (2009). The dynamic architecture of emotion: Evidence for the component process model. *Cognition and emotion*, 23(7), 1307-1351.
-- Moors, A., et al. (2013). Appraisal theories of emotion: State of the art and future development. *Emotion Review*, 5(2), 119-124.
-
-### AppraisalCloudPCT Implementation
-- Yan, T., et al. (2023). AppraisalCloudPCT: A computational model of emotions for socially interactive robots for autistic rehabilitation. *Frontiers in Robotics and AI*, 10, 1084174.
-
-### Affective Computing and AI Companions
-- Picard, R. W. (1997). *Affective Computing*. MIT Press.
-- Bickmore, T. W., & Picard, R. W. (2005). Establishing and maintaining long-term human-computer relationships. *ACM Transactions on Computer-Human Interaction*, 12(2), 293-327.
-- McMahan, B., et al. (2017). Communication-efficient learning of deep networks from decentralized data. *Proceedings of the 20th International Conference on Artificial Intelligence and Statistics*, 1273-1282.
-
----
-
-*This AppraisalCloudPCT-based component transforms AICO into a sophisticated emotional companion with human-like appraisal processes, relationship awareness, and ethical constraints, while maintaining privacy through local-first processing with optional cloud enhancement.*
+See [`emotion-integration.md`](./emotion-integration.md) for system-level metrics related to believability, emotional intelligence, and long-term relationship development.

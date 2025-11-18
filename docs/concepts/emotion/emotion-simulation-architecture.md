@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the technical architecture for AICO's Emotion Simulation module, focusing on its integration with the message bus system and data exchange formats. For conceptual information about the emotion model, see [`/docs/concepts/emotion/emotion-sim.md`](./emotion-sim.md).
+This document describes the technical architecture for AICO's Emotion Simulation module, focusing on its integration with the message bus system and data exchange formats. For conceptual information about the emotion model, see [`emotion-simulation.md`](./emotion-simulation.md). For a big-picture view of how detection and simulation integrate across the system to create a believable emotional companion, see [`emotion-integration.md`](./emotion-integration.md).
 
 ## Bus Integration Architecture
 
@@ -31,11 +31,28 @@ The Emotion Simulation module participates in the following message bus topics:
 
 ## Message Schemas
 
-Detailed message format specifications are documented in [`emotion_sim_msg.md`](./emotion-sim-msg.md). These include illustrative JSON structures for all input and output message types used by the Emotion Simulation module.
+Detailed message format specifications are documented in [`emotion-messages.md`](./emotion-messages.md). These include illustrative JSON structures for all input and output message types used by the Emotion Simulation module.
 
 **Key Message Types:**
 - **Input**: `user.emotion.detected`, `conversation.message`, `conversation.context`, `personality.state`
 - **Output**: `emotion.state.current`, `emotion.expression.voice`, `emotion.expression.avatar`, `emotion.expression.text`
+
+## Dual Emotion System in the Architecture
+
+The architecture distinguishes clearly between **user emotion detection** and **AICO's simulated emotional state**, while wiring both into the same message-driven backbone:
+
+- **User Emotion Detection (Input Layer)**
+  - Emotion recognition components publish user-focused events such as `user.emotion.detected` and `voice.analysis`, which describe the user's affect (primary/secondary labels, valence/arousal, stress indicators).
+  - These messages are treated as upstream inputs into the Emotion Simulation pipeline and are also available to other components (e.g., AMS, crisis detection) via standardized topics.
+
+- **AICO Simulated Emotion (Internal State Layer)**
+  - The Emotion Simulation module consumes user emotion, conversation context, personality state, and memory hints to produce AICO's internal `EmotionalState`.
+  - This state is published as `emotion.state.current` and used to generate downstream expression messages (`emotion.expression.text`, `emotion.expression.voice`, `emotion.expression.avatar`) and experience records (`emotion.memory.store`).
+
+- **Integration with Memory and Frontend**
+  - `emotion.memory.store` encapsulates both user emotion and AICO's simulated emotional response for each significant interaction so that the memory system (working, semantic, KG, AMS) can learn which emotional strategies are effective over time.
+  - Frontend and embodiment clients can subscribe to or fetch `emotion.state.current` (or its REST/WebSocket equivalents) to drive mood colors, strongest-emotion indicators, and simple mood-history visualizations, ensuring that UI, avatar, and text share a coherent emotional state.
+
 ## Processing Pipeline
 
 ### 1. Input Aggregation
