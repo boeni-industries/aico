@@ -376,18 +376,8 @@ class MessageBusClient:
         while self.running:
             try:
                 # Receive message with topic
-                import time
-                recv_start = time.time()
                 topic, message_data = await self.subscriber.recv_multipart()
-                recv_time = time.time() - recv_start
                 topic = topic.decode('utf-8')
-
-                # Targeted debug: see if EmotionEngine client actually receives
-                # sentiment response topics from modelservice, and what patterns
-                # it is currently subscribed to
-                if self.client_id == "emotion_processor" and topic.startswith("modelservice/sentiment/response/v1"):
-                    print(f"📡 [BUS/emotion_processor] Received topic='{topic}' (recv_multipart took {recv_time:.3f}s)")
-                    print(f"📡 [BUS/emotion_processor] Current subscriptions={list(self.subscriptions.keys())}")
                 
                 # Skip security warnings for infrastructure components to prevent feedback loops
                 if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:
@@ -697,44 +687,21 @@ class MessageBusBroker:
                         # No messages - this is normal, continue polling
                         continue
                     
-                    #   print(f"[BROKER PROXY] Poll returned {len(socks)} socket(s) with events")
-                    
                     for sock, event in socks:
                         if sock == self.frontend and event == zmq.POLLIN:
                             # Forward from frontend (publishers) to backend (subscribers)
-                            import time
-                            recv_start = time.time()
                             message = await self.frontend.recv_multipart()
-                            recv_time = time.time() - recv_start
-                            
-                            send_start = time.time()
                             await self.backend.send_multipart(message)
-                            send_time = time.time() - send_start
-                            
-                            total_time = time.time() - recv_start
-                            if total_time > 0.01:  # Log if > 10ms
-                                print(f"⏱️ [BROKER] Message forwarding: recv={recv_time*1000:.2f}ms, send={send_time*1000:.2f}ms, total={total_time*1000:.2f}ms", flush=True)
                             
                         elif sock == self.backend and event == zmq.POLLIN:
                             # Forward from backend (subscribers) to frontend (publishers)
                             # This handles BOTH subscription messages AND response messages from subscribers
-                            import time
-                            recv_start = time.time()
                             message = await self.backend.recv_multipart()
-                            recv_time = time.time() - recv_start
-                            
-                            send_start = time.time()
                             await self.frontend.send_multipart(message)
-                            send_time = time.time() - send_start
-                            
-                            total_time = time.time() - recv_start
-                            if total_time > 0.01:  # Log if > 10ms
-                                print(f"⏱️ [BROKER_REVERSE] Message forwarding (sub→pub): recv={recv_time*1000:.2f}ms, send={send_time*1000:.2f}ms, total={total_time*1000:.2f}ms", flush=True)
                             
                 except Exception as e:
                     if self.running:
-                        self.logger.error(f"Error in proxy loop iteration: {e}")
-                        await asyncio.sleep(0.1)
+                        self.logger.error(f"Error in proxy loop: {e}")
             
             #print(f"[BROKER PROXY] Proxy loop exiting")
             self.logger.info("Broker Proxy loop exiting")

@@ -178,6 +178,10 @@ Coordinates multi-modal emotional expression using CPM 5-component mapping:
 - **Automatic Regulation**: Built-in emotion regulation for extreme user emotional states
 - **Emergency Protocols**: Specialized emotional responses for crisis situations
 - **Rapid Adaptation**: Fast emotional state changes when user needs immediate support
+- **Threat Response Override**: Acute threats (job loss, existential concerns) trigger amygdala-like override:
+  - 25% arousal amplification for high-stakes threats (configurable)
+  - Inertia reduced to 30% to allow threat response to dominate emotional state
+  - Based on LeDoux (1996) amygdala research and modern threat appraisal studies
 - **Recovery Mechanisms**: Gradual return to normal emotional patterns after crisis resolution
 
 ### 4. Ethical and Social Appropriateness
