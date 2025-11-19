@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 // Avatar localhost server
 final InAppLocalhostServer avatarServer = InAppLocalhostServer(
@@ -62,6 +63,12 @@ void main() async {
       );
       
       windowManager.waitUntilReadyToShow(windowOptions, () async {
+        // Get version from pubspec.yaml
+        final packageInfo = await PackageInfo.fromPlatform();
+        final version = packageInfo.version;
+        
+        // Set window title with version
+        await windowManager.setTitle('AICO v$version');
         await windowManager.show();
         await windowManager.focus();
       });
@@ -101,9 +108,12 @@ class AicoApp extends ConsumerStatefulWidget {
 }
 
 class _AicoAppState extends ConsumerState<AicoApp> {
+  String _appTitle = 'AICO';
+  
   @override
   void initState() {
     super.initState();
+    _loadVersion();
     
     // Initialize the logger provider to trigger initialization
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -120,6 +130,20 @@ class _AicoAppState extends ConsumerState<AicoApp> {
       ref.read(authProvider.notifier).checkAuthStatus();
     });
   }
+  
+  Future<void> _loadVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      setState(() {
+        _appTitle = 'AICO v${packageInfo.version}';
+      });
+    } catch (e) {
+      debugPrint('Failed to load version: $e');
+      AICOLog.warn('Failed to load package version', 
+        topic: 'app/lifecycle/version', 
+        error: e);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -132,7 +156,7 @@ class _AicoAppState extends ConsumerState<AicoApp> {
         : themeManager.generateDarkTheme();
     
     return MaterialApp(
-      title: 'AICO',
+      title: _appTitle,
       debugShowCheckedModeBanner: false,
       theme: darkTheme,  // Force dark mode
       darkTheme: darkTheme,

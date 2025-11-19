@@ -64,6 +64,9 @@ dependencies:
   # Network connectivity
   connectivity_plus: ^7.0.0
   
+  # Package info for version
+  package_info_plus: ^8.1.2
+  
   # JSON serialization
   json_annotation: ^4.8.1
   
