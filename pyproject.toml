@@ -4,9 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aico"
-version = "0.5.0"
-description = "AICO Monorepo - Unified CLI, Backend, and Shared Libraries"
+version = "1.0.0"
+description = "AICO - AI Companion Project (Unified Product Version)"
 requires-python = ">=3.13"
+license = {text = "MIT"}
 
 # Core dependencies from the 'shared' module
 dependencies = [

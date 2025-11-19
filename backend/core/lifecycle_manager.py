@@ -540,9 +540,12 @@ class BackendLifecycleManager:
                 # (actual shutdown called from main())
                 pass
         
+        # Import version function
+        from aico.core.version import get_backend_version
+        
         app = FastAPI(
             title="AICO Backend API",
-            version="0.5.0",
+            version=get_backend_version(),
             description="AICO Backend REST API with clean architecture",
             lifespan=app_lifespan
         )

@@ -105,3 +105,8 @@ def get_studio_version() -> str:
 def get_modelservice_version() -> str:
     """Get the modelservice version."""
     return get_version('modelservice')
+
+
+def get_aico_version() -> str:
+    """Get the AICO product version (unified version for the entire project)."""
+    return get_version('aico')
