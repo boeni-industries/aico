@@ -785,6 +785,7 @@ class BackendLifecycleManager:
         from backend.api.memory_album import router as memory_album_router
         from backend.api.kg.router import router as kg_router
         from backend.api.behavioral.router import router as behavioral_router
+        from backend.api.emotion.router import router as emotion_router
         
         # Mount routers with prefixes
         self.app.include_router(echo_router, prefix="/api/v1/echo", tags=["echo"])
@@ -810,6 +811,9 @@ class BackendLifecycleManager:
         
         self.app.include_router(behavioral_router, prefix="/api/v1/behavioral", tags=["behavioral"])
         self.logger.info("Router mounted", extra={"prefix": "/api/v1/behavioral", "tags": ["behavioral"]})
+        
+        self.app.include_router(emotion_router, prefix="/api/v1/emotion", tags=["emotion"])
+        self.logger.info("Router mounted", extra={"prefix": "/api/v1/emotion", "tags": ["emotion"]})
         
     
     def _display_routes(self) -> None:

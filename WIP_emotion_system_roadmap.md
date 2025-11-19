@@ -37,11 +37,13 @@ Both systems integrate with ConversationEngine, memory/AMS/KG, and embodiment.
 - [x] Event-driven architecture (no scheduled jobs - per CPM research).
 - [x] Wire conversation turn events via `CONVERSATION_USER_INPUT`.
 - [x] Generate compact emotional state per turn.
-- [x] Publish to `EMOTION_STATE_CURRENT`, `LLM_PROMPT_CONDITIONING_RESPONSE`.
+- [x] Publish to `EMOTION_STATE_CURRENT` (protobuf messages).
 - [x] ConversationEngine integration for LLM conditioning.
 - [x] Emotional state history for mood arcs.
 - [x] Service registration in lifecycle manager.
-- [ ] REST endpoints: `GET /api/v1/emotion/current`, `GET /api/v1/emotion/history`.
+- [x] **Database persistence** (schema v17) - state survives restarts.
+- [x] REST endpoints: `GET /api/v1/emotion/current`, `GET /api/v1/emotion/history` (JWT auth).
+- [x] **CLI commands**: `aico emotion status|history|reset|export|stats`.
 - [ ] Evaluation hooks for response impact analysis.
 
 ### Emotion Detection (User Emotion Recognition)

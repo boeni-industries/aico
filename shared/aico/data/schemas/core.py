@@ -973,5 +973,58 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             # Restore AMS feedback_events
             "ALTER TABLE ams_feedback_events RENAME TO feedback_events",
         ]
+    ),
+    
+    17: SchemaVersion(
+        version=17,
+        name="Emotion Simulation State Persistence",
+        description="Add tables for persisting AICO's emotional state and history across restarts",
+        sql_statements=[
+            # Emotion state table - current emotional state
+            """CREATE TABLE IF NOT EXISTS emotion_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                user_id TEXT NOT NULL DEFAULT 'system',
+                timestamp TEXT NOT NULL,
+                subjective_feeling TEXT NOT NULL,
+                mood_valence REAL NOT NULL,
+                mood_arousal REAL NOT NULL,
+                intensity REAL NOT NULL,
+                warmth REAL NOT NULL,
+                directness REAL NOT NULL,
+                formality REAL NOT NULL,
+                engagement REAL NOT NULL,
+                closeness REAL NOT NULL,
+                care_focus REAL NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )""",
+            
+            # Emotion history table - mood arc over time
+            """CREATE TABLE IF NOT EXISTS emotion_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL DEFAULT 'system',
+                timestamp TEXT NOT NULL,
+                feeling TEXT NOT NULL,
+                valence REAL NOT NULL,
+                arousal REAL NOT NULL,
+                intensity REAL NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )""",
+            
+            # Indexes for efficient queries
+            "CREATE INDEX IF NOT EXISTS idx_emotion_history_user_time ON emotion_history(user_id, timestamp DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_emotion_history_feeling ON emotion_history(feeling)",
+            
+            # Insert default neutral state
+            """INSERT OR IGNORE INTO emotion_state (id, user_id, timestamp, subjective_feeling, 
+                mood_valence, mood_arousal, intensity, warmth, directness, formality, 
+                engagement, closeness, care_focus)
+            VALUES (1, 'system', datetime('now'), 'neutral', 0.0, 0.5, 0.5, 0.6, 0.5, 0.3, 0.6, 0.5, 0.7)""",
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_emotion_history_feeling",
+            "DROP INDEX IF EXISTS idx_emotion_history_user_time",
+            "DROP TABLE IF EXISTS emotion_history",
+            "DROP TABLE IF EXISTS emotion_state",
+        ]
     )
 })

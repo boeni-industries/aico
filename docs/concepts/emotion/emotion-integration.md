@@ -42,11 +42,14 @@ The **goal** of this dual system is **believability**: AICO should both understa
 1. User sends message → `CONVERSATION_USER_INPUT` published
 2. EmotionEngine receives event, performs 4-stage appraisal
 3. Generates CPM emotional state, publishes to `EMOTION_STATE_CURRENT`
-4. ConversationEngine retrieves state, adds to LLM system prompt
-5. LLM generates response conditioned by emotional tone
-6. Emotional state stored in memory for learning (Phase 2+)
+4. **Persists state to database** - current state + history for continuity across restarts
+5. ConversationEngine retrieves state, adds to LLM system prompt
+6. LLM generates response conditioned by emotional tone
+7. Emotional state stored in memory for learning (Phase 2+)
 
 **No scheduled jobs required** - emotions are event-driven, updating only on conversation turns per CPM research.
+
+**State Persistence** - Emotional state and history are persisted to encrypted database (schema v17) to maintain emotional continuity across system restarts. On startup, EmotionEngine loads the last known state, ensuring AICO "remembers" how she felt.
 
 ## Integration with Agency & Autonomy
 
@@ -106,7 +109,8 @@ The **goal** of this dual system is **believability**: AICO should both understa
 
 - **Current Emotional State**
   - EmotionEngine publishes to `EMOTION_STATE_CURRENT` topic with compact projection format.
-  - Backend will expose REST endpoints (Phase 1 pending): `GET /api/v1/emotion/current`, `GET /api/v1/emotion/history`.
+  - Backend exposes REST endpoints: `GET /api/v1/emotion/current`, `GET /api/v1/emotion/history` (JWT authentication required).
+  - State persists across restarts via encrypted database (schema v17).
   - Frontend can use this to:
     - Apply **subtle mood theming** (background gradients, accent colors).
     - Show the **strongest active emotion** as a small, unobtrusive indicator.
@@ -125,10 +129,20 @@ The **goal** of this dual system is **believability**: AICO should both understa
 
 ## Integration with CLI and Developer Tooling
 
-- CLI commands can:
+- **CLI Commands** (`aico emotion`):
+  - `aico emotion status` - Show current emotional state and recent transitions
+  - `aico emotion history` - View emotional state history and mood arcs
+  - `aico emotion reset` - Reset to neutral baseline state
+  - `aico emotion export` - Export emotional state data for analysis
   - Inspect recent `emotion.state.current` values and histories for debugging.
   - Test sentiment/emotion endpoints and appraisal pipelines in isolation.
   - Provide simple diagnostics for crisis detection and regulation behavior.
+
+- **Database Persistence**:
+  - Emotional state stored in `emotion_state` table (single row, current state)
+  - History stored in `emotion_history` table (time-series data for mood arcs)
+  - Managed via schema version 17 in core database
+  - Accessible via `aico db` commands for backup/restore
 
 - Developer tools and logs should focus on **structure, not raw text**:
   - Log high-level emotional labels and transitions, not sensitive conversational content.
