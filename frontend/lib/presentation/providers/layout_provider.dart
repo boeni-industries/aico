@@ -1,3 +1,4 @@
+import 'package:aico_frontend/core/providers.dart';
 import 'package:flutter/material.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -155,15 +156,35 @@ class LayoutState {
 /// Notifier class for layout state management
 @riverpod
 class Layout extends _$Layout {
+  static const String _keyConversationModality = 'conversation_modality';
+  
   @override
   LayoutState build() {
-    return const LayoutState();
+    // Load persisted modality from SharedPreferences
+    final prefs = ref.watch(sharedPreferencesProvider);
+    final savedModality = prefs.getString(_keyConversationModality);
+    
+    final modality = savedModality != null
+        ? ConversationModality.values.firstWhere(
+            (e) => e.name == savedModality,
+            orElse: () => ConversationModality.voice,
+          )
+        : ConversationModality.voice;
+    
+    debugPrint('[LayoutProvider] Loaded modality from preferences: $savedModality -> $modality');
+    
+    return LayoutState(modality: modality);
   }
 
-  /// Switch conversation modality with smooth transition
+  /// Switch conversation modality with smooth transition and persistence
   void switchModality(ConversationModality newModality) {
     if (state.modality != newModality) {
       state = state.copyWith(modality: newModality);
+      
+      // Persist the new modality
+      final prefs = ref.read(sharedPreferencesProvider);
+      prefs.setString(_keyConversationModality, newModality.name);
+      debugPrint('[LayoutProvider] Saved modality to preferences: ${newModality.name}');
     }
   }
 

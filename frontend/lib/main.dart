@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:aico_frontend/core/logging/aico_log.dart';
 import 'package:aico_frontend/core/logging/providers/logging_providers.dart';
 import 'package:aico_frontend/core/providers.dart';
+import 'package:aico_frontend/core/services/window_state_service.dart';
 import 'package:aico_frontend/core/topics/aico_topics.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/theme_provider.dart';
@@ -47,43 +48,13 @@ void main() async {
     }
   }
   
-  // Initialize window manager only for desktop platforms
-  // Use try-catch to handle platforms where window_manager might not be available
-  try {
-    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-      await windowManager.ensureInitialized();
-      
-      WindowOptions windowOptions = const WindowOptions(
-        size: Size(1200, 800),
-        minimumSize: Size(800, 600),
-        center: true,
-        backgroundColor: Colors.transparent,
-        skipTaskbar: false,
-        titleBarStyle: TitleBarStyle.normal,
-      );
-      
-      windowManager.waitUntilReadyToShow(windowOptions, () async {
-        // Get version from pubspec.yaml
-        final packageInfo = await PackageInfo.fromPlatform();
-        final version = packageInfo.version;
-        
-        // Set window title with version
-        await windowManager.setTitle('AICO v$version');
-        await windowManager.show();
-        await windowManager.focus();
-      });
-    }
-  } catch (e) {
-    // Window manager not available on this platform, continue without it
-    debugPrint('Window manager not available: $e');
-    AICOLog.warn('Window manager not available on platform', 
-      topic: 'app/startup/window_manager', 
-      error: e,
-      extra: {'platform': Platform.operatingSystem});
-  }
-  
   // Initialize SharedPreferences for Riverpod
   final sharedPreferences = await SharedPreferences.getInstance();
+  
+  // Initialize window state service for desktop platforms
+  // This handles window manager initialization, state restoration, and version title
+  final windowStateService = WindowStateService(sharedPreferences);
+  await windowStateService.initialize();
   
   debugPrint('[app:${AICOTopics.appStartup}] AICO Flutter application starting');
   AICOLog.info('AICO Flutter application starting', 
