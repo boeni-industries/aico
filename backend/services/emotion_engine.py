@@ -143,15 +143,15 @@ class EmotionEngine(BaseService):
         # Message bus client
         self.bus_client: Optional[MessageBusClient] = None
         
-        # Emotional state tracking
-        self.current_state: Optional[EmotionalState] = None
-        self.state_history: List[Dict[str, Any]] = []  # Compact states for mood arc
-        self.max_history_size = 100
-        
         # Configuration
         emotion_config = self.container.config.get("core.emotion", {})
         self.appraisal_sensitivity = emotion_config.get("appraisal_sensitivity", 0.7)
         self.regulation_strength = emotion_config.get("regulation_strength", 0.8)
+        self.max_history_size = emotion_config.get("max_history_size", 100)
+        
+        # Emotional state tracking
+        self.current_state: Optional[EmotionalState] = None
+        self.state_history: List[Dict[str, Any]] = []  # Compact states for mood arc
         
         # Feature flags
         self.enable_user_emotion_detection = emotion_config.get("enable_user_emotion_detection", False)
@@ -252,7 +252,12 @@ class EmotionEngine(BaseService):
             )
             
             # Update current state
+            previous_feeling = self.current_state.subjective_feeling if self.current_state else None
             self.current_state = emotional_state
+            
+            # Log state transition if significant change
+            if previous_feeling and previous_feeling != emotional_state.subjective_feeling:
+                self.logger.info(f"🎭 Emotional state transition: {previous_feeling.value} → {emotional_state.subjective_feeling.value}")
             
             # Publish emotional state
             await self._publish_emotional_state(emotional_state)
@@ -285,15 +290,19 @@ class EmotionEngine(BaseService):
         
         # Stage 1: Relevance Assessment
         relevance = self._assess_relevance(message_text, user_emotion)
+        self.logger.debug(f"🎭 Appraisal Stage 1 - Relevance: {relevance:.2f}")
         
         # Stage 2: Goal Impact Analysis
         goal_impact = self._analyze_goal_impact(message_text, relevance)
+        self.logger.debug(f"🎭 Appraisal Stage 2 - Goal Impact: {goal_impact}")
         
         # Stage 3: Coping Assessment
         coping_capability = self._determine_coping_capability(message_text, goal_impact)
+        self.logger.debug(f"🎭 Appraisal Stage 3 - Coping: {coping_capability}")
         
         # Stage 4: Social Appropriateness Check
         social_appropriateness = self._apply_social_regulation(goal_impact, coping_capability)
+        self.logger.debug(f"🎭 Appraisal Stage 4 - Social Regulation: {social_appropriateness}")
         
         # Create appraisal result
         appraisal = AppraisalResult(
@@ -307,6 +316,8 @@ class EmotionEngine(BaseService):
         
         # Generate CPM emotional state from appraisal
         emotional_state = self._generate_cpm_emotional_state(appraisal)
+        
+        self.logger.debug(f"🎭 Generated CPM state: {emotional_state.subjective_feeling.value} (valence={emotional_state.mood_valence:.2f}, arousal={emotional_state.mood_arousal:.2f})")
         
         return emotional_state
     
@@ -485,7 +496,9 @@ class EmotionEngine(BaseService):
         
         # Trim history if too large
         if len(self.state_history) > self.max_history_size:
+            trimmed_count = len(self.state_history) - self.max_history_size
             self.state_history = self.state_history[-self.max_history_size:]
+            self.logger.debug(f"🎭 Trimmed {trimmed_count} old states from history (max={self.max_history_size})")
     
     async def get_current_state(self) -> Optional[Dict[str, Any]]:
         """Get current emotional state (compact projection)"""

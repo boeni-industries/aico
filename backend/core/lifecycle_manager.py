@@ -263,7 +263,7 @@ class BackendLifecycleManager:
         )
         
         # Emotion engine factory
-        def create_emotion_engine(container: ServiceContainer):
+        def create_emotion_engine(container: ServiceContainer, zmq_context=None):
             from backend.services.emotion_engine import EmotionEngine
             return EmotionEngine("emotion_engine", container)
         
@@ -275,7 +275,7 @@ class BackendLifecycleManager:
         )
         
         # Conversation engine factory
-        def create_conversation_engine(container: ServiceContainer, zmq_context=None):
+        def create_conversation_engine(container: ServiceContainer, zmq_context=None, emotion_engine=None):
             from backend.services.conversation_engine import ConversationEngine
             return ConversationEngine("conversation_engine", container)
         
@@ -372,13 +372,13 @@ class BackendLifecycleManager:
         # Register AI plugin classes
         from backend.services.embodiment_engine import EmbodimentPlugin
         from backend.services.agency_engine import AgencyPlugin
-        from backend.services.emotion_engine import EmotionPlugin
         from backend.services.personality_engine import PersonalityPlugin
         
         registry.register_plugin_class("embodiment", EmbodimentPlugin)
         registry.register_plugin_class("agency", AgencyPlugin)
-        registry.register_plugin_class("emotion", EmotionPlugin)
         registry.register_plugin_class("personality", PersonalityPlugin)
+        
+        # Note: EmotionEngine is registered as a service (lines 266-275), not a plugin
         
         self.logger.debug("Plugin classes registered")
     

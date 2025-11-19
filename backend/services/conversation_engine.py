@@ -204,11 +204,13 @@ class ConversationEngine(BaseService):
         )
         
         # Optional component subscriptions
-        if self.enable_emotion_integration:
-            await self.bus_client.subscribe(
-                AICOTopics.EMOTION_ANALYSIS_RESPONSE,
-                self._handle_emotion_response
-            )
+        # Note: Emotion integration uses direct service access (emotion_engine.get_current_state())
+        # User emotion detection (Phase 2+) will subscribe to AI_EMOTION_ANALYSIS_RESPONSE
+        # if self.enable_emotion_integration:
+        #     await self.bus_client.subscribe(
+        #         AICOTopics.AI_EMOTION_ANALYSIS_RESPONSE,
+        #         self._handle_emotion_response
+        #     )
         
         if self.enable_personality_integration:
             await self.bus_client.subscribe(
