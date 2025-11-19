@@ -337,6 +337,8 @@ class EmotionSimulationTester:
     
     def send_message(self, message: str) -> Dict[str, Any]:
         """Send a message and get response"""
+        console.print(f"[dim]📤 Sending message: {message[:50]}...[/dim]")
+        
         payload = {
             "message": message,
             "user_uuid": self.user_uuid
@@ -351,15 +353,29 @@ class EmotionSimulationTester:
             # Store conversation_id for subsequent turns
             if not self.conversation_id and "conversation_id" in response_data:
                 self.conversation_id = response_data["conversation_id"]
+                console.print(f"[dim]💬 Conversation ID: {self.conversation_id}[/dim]")
+            
+            # Show AI response preview
+            ai_response = response_data.get("response", response_data.get("ai_response", ""))
+            if ai_response:
+                preview = ai_response[:100] + "..." if len(ai_response) > 100 else ai_response
+                console.print(f"[dim]🤖 AI: {preview}[/dim]")
+            
             return response_data
         else:
             raise Exception("Message failed: No response")
     
     def get_emotion_state(self) -> Dict[str, Any]:
         """Get current emotional state"""
+        console.print(f"[dim]🎭 Fetching emotion state...[/dim]")
         response_data = self.send_encrypted_request("/api/v1/emotion/current", {}, method="GET")
         
         if response_data:
+            # Show emotion state
+            feeling = response_data.get("feeling", "unknown")
+            valence = response_data.get("valence", 0)
+            arousal = response_data.get("arousal", 0)
+            console.print(f"[dim]💭 Emotion: {feeling} (v={valence:.2f}, a={arousal:.2f})[/dim]")
             return response_data
         else:
             raise Exception("Emotion state fetch failed: No response")

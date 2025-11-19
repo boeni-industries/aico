@@ -17,6 +17,7 @@ Design Principles:
 
 import asyncio
 import time
+import uuid
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
@@ -158,6 +159,9 @@ class EmotionEngine(BaseService):
         self.current_state: Optional[EmotionalState] = None
         self.state_history: List[Dict[str, Any]] = []  # Compact states for mood arc
         
+        # Sentiment request tracking (correlation_id -> context for completing processing)
+        self.pending_sentiment_requests: Dict[str, Dict[str, Any]] = {}
+        
         # Feature flags
         self.enable_user_emotion_detection = emotion_config.get("enable_user_emotion_detection", False)
         self.enable_llm_conditioning = emotion_config.get("enable_llm_conditioning", True)
@@ -168,28 +172,34 @@ class EmotionEngine(BaseService):
         """Initialize service resources"""
         # Load persisted state from database, or create neutral baseline
         await self._load_persisted_state()
+        print(f"🎭 [EMOTION_ENGINE] Initialized with state: {self.current_state.subjective_feeling.value}")
         self.logger.info(f"Emotion processor initialized with state: {self.current_state.subjective_feeling.value}")
     
     async def start(self) -> None:
         """Start the emotion processor service"""
         try:
+            print("🎭 [EMOTION_ENGINE] 🚀 STARTING EMOTION ENGINE...")
             self.logger.info("🎭 [EMOTION_PROCESSOR] Starting emotion processor...")
             
             # Initialize message bus client
             self.bus_client = MessageBusClient("emotion_processor")
             await self.bus_client.connect()
+            print("🎭 [EMOTION_ENGINE] ✅ Message bus client connected")
             self.logger.info("🎭 [EMOTION_PROCESSOR] Message bus client connected")
             
             # Subscribe to conversation events
             await self._setup_subscriptions()
+            print("🎭 [EMOTION_ENGINE] ✅ Subscriptions established")
             self.logger.info("🎭 [EMOTION_PROCESSOR] Subscriptions established")
             
             # Publish initial neutral state
             await self._publish_emotional_state(self.current_state)
             
+            print("🎭 [EMOTION_ENGINE] 🎉 EMOTION ENGINE STARTED SUCCESSFULLY!")
             self.logger.info("🎭 [EMOTION_PROCESSOR] Emotion processor started successfully")
             
         except Exception as e:
+            print(f"🎭 [EMOTION_ENGINE] ❌ Failed to start: {e}")
             self.logger.error(f"🎭 [EMOTION_PROCESSOR] Failed to start: {e}")
             raise
     
@@ -218,6 +228,15 @@ class EmotionEngine(BaseService):
             self._handle_conversation_turn
         )
         
+        # Subscribe to ALL sentiment responses for this engine (wildcard)
+        # This avoids per-request subscription overhead and race conditions
+        sentiment_response_pattern = f"{AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE}/emotion_engine/"
+        await self.bus_client.subscribe(
+            sentiment_response_pattern,
+            self._handle_sentiment_response
+        )
+        print(f"🎭 [EMOTION_ENGINE] 🎧 Subscribed to sentiment responses: {sentiment_response_pattern}")
+        
         # Optional: Subscribe to user emotion detection results
         if self.enable_user_emotion_detection:
             # await self.bus_client.subscribe(
@@ -232,9 +251,58 @@ class EmotionEngine(BaseService):
     # MESSAGE HANDLERS
     # ============================================================================
     
-    async def _handle_conversation_turn(self, message) -> None:
-        """Handle incoming conversation turn and generate emotional response"""
+    async def _handle_sentiment_response(self, envelope) -> None:
+        """Handle sentiment analysis responses and complete emotional processing"""
         try:
+            import time
+            receive_time = time.time()
+            
+            # MessageBusClient stores correlation_id in metadata.attributes
+            correlation_id = envelope.metadata.attributes.get("correlation_id", "")
+            pending_keys = list(self.pending_sentiment_requests.keys())
+            print(f"🎭 [EMOTION_ENGINE] 🔎 Sentiment response received with correlation_id={correlation_id}, pending={pending_keys}")
+            
+            if not correlation_id or correlation_id not in self.pending_sentiment_requests:
+                print("🎭 [EMOTION_ENGINE] ↩️  No matching pending sentiment request for this response, ignoring")
+                return
+            
+            # Get the pending request context
+            request_context = self.pending_sentiment_requests[correlation_id]
+            request_start = request_context["start_time"]
+            total_latency = receive_time - request_start
+            print(f"⏱️ [EMOTION_ENGINE] ✅ Response received after {total_latency:.3f}s total latency")
+            
+            # Parse sentiment response
+            from aico.proto.aico_modelservice_pb2 import SentimentResponse
+            sentiment_response = SentimentResponse()
+            envelope.any_payload.Unpack(sentiment_response)
+            
+            sentiment_data = {
+                "label": sentiment_response.sentiment,
+                "score": sentiment_response.confidence,
+                "valence": self._map_sentiment_to_valence(sentiment_response.sentiment)
+            }
+            
+            print(f"🎭 [EMOTION_ENGINE] ✅ Sentiment: {sentiment_response.sentiment} (confidence={sentiment_response.confidence:.2f})")
+            
+            # Complete emotional processing with sentiment data
+            await self._complete_emotional_processing(
+                message_text=request_context["message_text"],
+                user_id=request_context["user_id"],
+                conversation_id=request_context["conversation_id"],
+                sentiment_data=sentiment_data
+            )
+            
+            # Clean up
+            del self.pending_sentiment_requests[correlation_id]
+            
+        except Exception as e:
+            self.logger.error(f"Error handling sentiment response: {e}")
+    
+    async def _handle_conversation_turn(self, message) -> None:
+        """Handle incoming conversation turn - start async emotional processing"""
+        try:
+            print("🎭 [EMOTION_ENGINE] 📨 Received conversation turn event")
             self.logger.info("🎭 [EMOTION_PROCESSOR] Received conversation turn event")
             
             # Unpack ConversationMessage from envelope
@@ -248,12 +316,150 @@ class EmotionEngine(BaseService):
             
             self.logger.info(f"🎭 [EMOTION_PROCESSOR] Processing turn for user {user_id[:8]}...")
             
-            # Perform appraisal and generate emotional state
-            emotional_state = await self._process_emotional_response(
+            # Start async sentiment analysis (non-blocking)
+            await self._request_sentiment_analysis(
+                message_text=message_text,
+                user_id=user_id,
+                conversation_id=conversation_id
+            )
+            
+            # Return immediately - processing continues when sentiment arrives
+            
+        except Exception as e:
+            self.logger.error(f"Error handling conversation turn: {e}")
+    
+    # ============================================================================
+    # APPRAISAL & EMOTION GENERATION
+    # ============================================================================
+    
+    async def _process_emotional_response_with_sentiment(
+        self,
+        user_id: str,
+        message_text: str,
+        conversation_id: str,
+        sentiment_data: Dict[str, Any],
+        user_emotion: Optional[Dict[str, Any]] = None
+    ) -> EmotionalState:
+        """
+        Process emotional response using 4-stage CPM appraisal with provided sentiment.
+        
+        Implements Klaus Scherer's Component Process Model.
+        """
+        
+        # Stage 1: Relevance Assessment ("Does this matter to me?")
+        relevance = await self._assess_relevance(message_text, user_emotion, sentiment_data)
+        print(f"🎭 [EMOTION_ENGINE] Stage 1 - Relevance: {relevance:.2f}")
+        self.logger.debug(f"🎭 Appraisal Stage 1 - Relevance: {relevance:.2f}")
+        
+        # Stage 2: Implication Check ("What does this mean for my goals?")
+        goal_impact = await self._analyze_goal_impact(message_text, relevance, sentiment_data)
+        print(f"🎭 [EMOTION_ENGINE] Stage 2 - Goal Impact: {goal_impact}")
+        self.logger.debug(f"🎭 Appraisal Stage 2 - Goal Impact: {goal_impact}")
+        
+        # Stage 3: Coping Check ("Can I handle this?")
+        coping_capability = await self._determine_coping_capability(message_text, goal_impact, sentiment_data)
+        print(f"🎭 [EMOTION_ENGINE] Stage 3 - Coping: {coping_capability}")
+        self.logger.debug(f"🎭 Appraisal Stage 3 - Coping: {coping_capability}")
+        
+        # Stage 4: Normative Check ("Is this socially appropriate?")
+        social_appropriateness = await self._apply_social_regulation(goal_impact, coping_capability, sentiment_data)
+        print(f"🎭 [EMOTION_ENGINE] Stage 4 - Social Appropriateness: {social_appropriateness}")
+        self.logger.debug(f"🎭 Appraisal Stage 4 - Social Regulation: {social_appropriateness}")
+        
+        # Create appraisal result
+        appraisal = AppraisalResult(
+            relevance=relevance,
+            goal_impact=goal_impact,
+            coping_capability=coping_capability,
+            social_appropriateness=social_appropriateness,
+            user_emotion_detected=user_emotion.get("primary") if user_emotion else None,
+            crisis_indicators=self._detect_crisis_indicators(message_text, sentiment_data)
+        )
+        
+        # Generate CPM emotional state from appraisal
+        emotional_state = self._generate_cpm_emotional_state(appraisal, sentiment_data)
+        
+        print(f"🎭 [EMOTION_ENGINE] Generated state: {emotional_state.subjective_feeling.value} (v={emotional_state.mood_valence:.2f}, a={emotional_state.mood_arousal:.2f}, i={emotional_state.intensity:.2f})")
+        self.logger.debug(f"🎭 Generated CPM state: {emotional_state.subjective_feeling.value} (valence={emotional_state.mood_valence:.2f}, arousal={emotional_state.mood_arousal:.2f})")
+        
+        return emotional_state
+    
+    async def _request_sentiment_analysis(
+        self,
+        message_text: str,
+        user_id: str,
+        conversation_id: str
+    ) -> None:
+        """Request sentiment analysis from modelservice (non-blocking)"""
+        import time
+        start_time = time.time()
+        try:
+            request_id = str(uuid.uuid4())
+            
+            # Create sentiment request
+            from aico.proto.aico_modelservice_pb2 import SentimentRequest
+            request = SentimentRequest()
+            request.text = message_text
+            
+            print(f"🎭 [EMOTION_ENGINE] 🔍 Requesting sentiment analysis for: '{message_text[:50]}...'")
+            print(f"🎭 [EMOTION_ENGINE] 📤 Publishing sentiment request ID: {request_id}")
+            
+            # Store context for completing processing when response arrives
+            self.pending_sentiment_requests[request_id] = {
+                "message_text": message_text,
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "start_time": start_time
+            }
+            
+            # Build response topic for reply_to
+            response_topic = AICOTopics.build_response_topic(
+                AICOTopics.MODELSERVICE_SENTIMENT_RESPONSE,
+                "emotion_engine",
+                request_id
+            )
+            
+            # Publish the request
+            publish_start = time.time()
+            print(f"🎭 [EMOTION_ENGINE] 🔍 Publishing to topic: {AICOTopics.MODELSERVICE_SENTIMENT_REQUEST}")
+            print(f"🎭 [EMOTION_ENGINE] 🔍 With reply_to: {response_topic}")
+            print(f"🎭 [EMOTION_ENGINE] 🔍 With correlation_id: {request_id}")
+            await self.bus_client.publish(
+                AICOTopics.MODELSERVICE_SENTIMENT_REQUEST, 
+                request, 
+                correlation_id=request_id,
+                reply_to=response_topic
+            )
+            publish_time = time.time() - publish_start
+            print(f"🎭 [EMOTION_ENGINE] 📨 Published request (took {publish_time*1000:.1f}ms)")
+            print(f"🎭 [EMOTION_ENGINE] ⏳ Waiting for async response...")
+            
+            # Return immediately - response will be handled by callback
+                
+        except Exception as e:
+            print(f"🎭 [EMOTION_ENGINE] ❌ Sentiment request ERROR: {e}")
+            import traceback
+            print(f"🎭 [EMOTION_ENGINE] Traceback: {traceback.format_exc()}")
+            self.logger.error(f"Sentiment request error: {e}")
+            # Clean up
+            if request_id in self.pending_sentiment_requests:
+                del self.pending_sentiment_requests[request_id]
+    
+    async def _complete_emotional_processing(
+        self,
+        message_text: str,
+        user_id: str,
+        conversation_id: str,
+        sentiment_data: Dict[str, Any]
+    ) -> None:
+        """Complete emotional processing with sentiment data (called from callback)"""
+        try:
+            # Run appraisal with sentiment data
+            emotional_state = await self._process_emotional_response_with_sentiment(
                 user_id=user_id,
                 message_text=message_text,
                 conversation_id=conversation_id,
-                user_emotion=None  # TODO: integrate user emotion detection
+                sentiment_data=sentiment_data
             )
             
             # Update current state
@@ -262,7 +468,10 @@ class EmotionEngine(BaseService):
             
             # Log state transition if significant change
             if previous_feeling and previous_feeling != emotional_state.subjective_feeling:
+                print(f"🎭 [EMOTION_ENGINE] 🔄 State transition: {previous_feeling.value} → {emotional_state.subjective_feeling.value}")
                 self.logger.info(f"🎭 Emotional state transition: {previous_feeling.value} → {emotional_state.subjective_feeling.value}")
+            
+            print(f"🎭 [EMOTION_ENGINE] 💭 Generated state: {emotional_state.subjective_feeling.value} (valence={emotional_state.mood_valence:.2f}, arousal={emotional_state.mood_arousal:.2f})")
             
             # Publish emotional state
             await self._publish_emotional_state(emotional_state)
@@ -273,141 +482,250 @@ class EmotionEngine(BaseService):
             self.logger.info(f"🎭 [EMOTION_PROCESSOR] Generated emotional state: {emotional_state.subjective_feeling.value}")
             
         except Exception as e:
-            self.logger.error(f"Error handling conversation turn: {e}")
+            self.logger.error(f"Error completing emotional processing: {e}")
     
-    # ============================================================================
-    # APPRAISAL & EMOTION GENERATION
-    # ============================================================================
+    def _map_sentiment_to_valence(self, label: str) -> float:
+        """Map sentiment label to valence score [-1.0, 1.0]"""
+        # BERT multilingual sentiment uses star ratings
+        label_lower = label.lower()
+        if '5 star' in label_lower or '4 star' in label_lower:
+            return 0.7  # Positive
+        elif '1 star' in label_lower or '2 star' in label_lower:
+            return -0.7  # Negative
+        elif 'positive' in label_lower:
+            return 0.7
+        elif 'negative' in label_lower:
+            return -0.7
+        else:
+            return 0.0  # Neutral
     
-    async def _process_emotional_response(
-        self,
-        user_id: str,
-        message_text: str,
-        conversation_id: str,
-        user_emotion: Optional[Dict[str, Any]] = None
-    ) -> EmotionalState:
+    async def _assess_relevance(
+        self, 
+        message_text: str, 
+        user_emotion: Optional[Dict],
+        sentiment_data: Dict[str, Any]
+    ) -> float:
         """
-        Process emotional response using 4-stage appraisal.
+        Stage 1: Relevance Check - "Does this event matter to me?"
         
-        Phase 1 implementation: simple rule-based appraisal.
-        Future: integrate LLM-based appraisal assistance and memory context.
+        CPM Theory: Relevance is determined by novelty, intrinsic pleasantness,
+        and goal relevance. For a companion AI, relevance increases with:
+        - Emotional intensity (from sentiment analysis)
+        - Detected user emotion
+        - Message engagement indicators
         """
+        # Base relevance from sentiment intensity
+        sentiment_score = sentiment_data.get("score", 0.5)
+        sentiment_intensity = abs(sentiment_score - 0.5) * 2.0  # Map [0,1] to intensity [0,1]
         
-        # Stage 1: Relevance Assessment
-        relevance = self._assess_relevance(message_text, user_emotion)
-        self.logger.debug(f"🎭 Appraisal Stage 1 - Relevance: {relevance:.2f}")
+        # Emotional content detection (high relevance for emotional messages)
+        emotional_keywords = [
+            # Stress/anxiety
+            'stress', 'worried', 'anxious', 'nervous', 'scared', 'afraid', 'panic',
+            'overwhelm', 'pressure', 'tense', 'uncertain', 'doubt',
+            # Sadness/distress  
+            'sad', 'depressed', 'down', 'upset', 'hurt', 'pain', 'cry', 'tear',
+            'lonely', 'alone', 'lost', 'hopeless', 'despair',
+            # Anger/frustration
+            'angry', 'mad', 'furious', 'annoyed', 'frustrated', 'irritated',
+            # Joy/excitement
+            'happy', 'excited', 'joy', 'great', 'wonderful', 'amazing', 'love',
+            'celebrate', 'proud', 'grateful', 'thankful',
+            # Crisis indicators
+            'help', 'crisis', 'emergency', 'urgent', 'serious', 'problem',
+            'can\'t', 'unable', 'impossible', 'fail', 'lose', 'losing'
+        ]
         
-        # Stage 2: Goal Impact Analysis
-        goal_impact = self._analyze_goal_impact(message_text, relevance)
-        self.logger.debug(f"🎭 Appraisal Stage 2 - Goal Impact: {goal_impact}")
+        message_lower = message_text.lower()
+        emotional_word_count = sum(1 for keyword in emotional_keywords if keyword in message_lower)
+        emotional_density = min(emotional_word_count / 3.0, 1.0)  # Normalize
         
-        # Stage 3: Coping Assessment
-        coping_capability = self._determine_coping_capability(message_text, goal_impact)
-        self.logger.debug(f"🎭 Appraisal Stage 3 - Coping: {coping_capability}")
-        
-        # Stage 4: Social Appropriateness Check
-        social_appropriateness = self._apply_social_regulation(goal_impact, coping_capability)
-        self.logger.debug(f"🎭 Appraisal Stage 4 - Social Regulation: {social_appropriateness}")
-        
-        # Create appraisal result
-        appraisal = AppraisalResult(
-            relevance=relevance,
-            goal_impact=goal_impact,
-            coping_capability=coping_capability,
-            social_appropriateness=social_appropriateness,
-            user_emotion_detected=user_emotion.get("primary") if user_emotion else None,
-            crisis_indicators=False  # TODO: integrate crisis detection
+        # Combine factors
+        base_relevance = (
+            sentiment_intensity * 0.4 +  # Sentiment intensity
+            emotional_density * 0.4 +     # Emotional keyword density
+            0.2                            # Base engagement (always somewhat relevant)
         )
         
-        # Generate CPM emotional state from appraisal
-        emotional_state = self._generate_cpm_emotional_state(appraisal)
-        
-        self.logger.debug(f"🎭 Generated CPM state: {emotional_state.subjective_feeling.value} (valence={emotional_state.mood_valence:.2f}, arousal={emotional_state.mood_arousal:.2f})")
-        
-        return emotional_state
-    
-    def _assess_relevance(self, message_text: str, user_emotion: Optional[Dict]) -> float:
-        """Stage 1: Assess relevance - does this matter?"""
-        # Simple heuristic: longer messages and detected emotions increase relevance
-        base_relevance = min(len(message_text) / 200.0, 1.0) * 0.5
-        
+        # Boost for detected user emotion (Phase 2+ feature)
         if user_emotion:
-            emotion_boost = 0.3
-        else:
-            emotion_boost = 0.0
+            base_relevance = min(base_relevance + 0.2, 1.0)
         
-        relevance = min(base_relevance + emotion_boost + 0.2, 1.0)
-        return relevance * self.appraisal_sensitivity
+        # Apply appraisal sensitivity configuration
+        return base_relevance * self.appraisal_sensitivity
     
-    def _analyze_goal_impact(self, message_text: str, relevance: float) -> str:
-        """Stage 2: Analyze goal impact - what does this mean for companion goals?"""
-        # Simple heuristic: assume supportive opportunity for now
-        # Future: integrate intent classification and memory context
+    async def _analyze_goal_impact(
+        self,
+        message_text: str,
+        relevance: float,
+        sentiment_data: Dict[str, Any]
+    ) -> str:
+        """
+        Stage 2: Implication Check - "What does this mean for my companion goals?"
         
-        if relevance > 0.7:
+        CPM Theory: Evaluates goal conduciveness/obstruction. For AICO:
+        - Supportive opportunity: User needs emotional support
+        - Engaging opportunity: User wants interaction/conversation
+        - Neutral: Casual interaction
+        - Low priority: Minimal engagement needed
+        """
+        valence = sentiment_data.get("valence", 0.0)
+        
+        # Detect support needs (negative valence + high relevance)
+        if valence < -0.3 and relevance > 0.5:
             return "supportive_opportunity"
-        elif relevance > 0.3:
-            return "neutral"
-        else:
-            return "low_priority"
-    
-    def _determine_coping_capability(self, message_text: str, goal_impact: str) -> str:
-        """Stage 3: Determine coping capability - can I handle this?"""
-        # Phase 1: assume high capability for all non-crisis situations
-        # Future: integrate crisis detection and complexity assessment
         
-        if goal_impact == "supportive_opportunity":
-            return "high_capability"
-        else:
-            return "moderate"
+        # Detect engagement opportunities (any strong emotion)
+        if relevance > 0.6:
+            return "engaging_opportunity"
+        
+        # Moderate relevance = neutral interaction
+        if relevance > 0.3:
+            return "neutral"
+        
+        # Low relevance = low priority
+        return "low_priority"
     
-    def _apply_social_regulation(self, goal_impact: str, coping_capability: str) -> str:
-        """Stage 4: Apply social regulation - is this appropriate?"""
-        # Simple mapping for Phase 1
+    async def _determine_coping_capability(
+        self,
+        message_text: str,
+        goal_impact: str,
+        sentiment_data: Dict[str, Any]
+    ) -> str:
+        """
+        Stage 3: Coping Check - "Can I handle this appropriately?"
+        
+        CPM Theory: Assesses control and power dynamics. For AICO:
+        - High capability: Can provide appropriate support
+        - Moderate capability: Can engage but with care
+        - Requires escalation: Crisis situation beyond AI capability
+        """
+        valence = sentiment_data.get("valence", 0.0)
+        
+        # Crisis detection (very negative + crisis keywords)
+        crisis_keywords = ['suicide', 'kill myself', 'end it', 'die', 'harm myself']
+        message_lower = message_text.lower()
+        has_crisis_keyword = any(keyword in message_lower for keyword in crisis_keywords)
+        
+        if has_crisis_keyword or valence < -0.8:
+            return "requires_escalation"
+        
+        # High capability for supportive opportunities
+        if goal_impact in ["supportive_opportunity", "engaging_opportunity"]:
+            return "high_capability"
+        
+        return "moderate"
+    
+    async def _apply_social_regulation(
+        self,
+        goal_impact: str,
+        coping_capability: str,
+        sentiment_data: Dict[str, Any]
+    ) -> str:
+        """
+        Stage 4: Normative Check - "Is my response socially appropriate?"
+        
+        CPM Theory: Validates moral/social appropriateness. For AICO:
+        - Ensures companion-appropriate boundaries
+        - Maintains personality consistency
+        - Applies crisis protocols when needed
+        """
+        # Crisis protocol
+        if coping_capability == "requires_escalation":
+            return "crisis_protocol"
+        
+        # Empathetic response for support needs
         if goal_impact == "supportive_opportunity" and coping_capability == "high_capability":
             return "empathetic_response"
-        else:
-            return "neutral_response"
+        
+        # Warm engagement for interaction opportunities
+        if goal_impact == "engaging_opportunity":
+            return "warm_engagement"
+        
+        # Neutral for casual interaction
+        return "neutral_response"
     
-    def _generate_cpm_emotional_state(self, appraisal: AppraisalResult) -> EmotionalState:
-        """Generate CPM 5-component emotional state from appraisal results"""
+    def _detect_crisis_indicators(self, message_text: str, sentiment_data: Dict[str, Any]) -> bool:
+        """Detect crisis indicators requiring immediate attention"""
+        crisis_keywords = [
+            'suicide', 'kill myself', 'end it all', 'want to die',
+            'harm myself', 'hurt myself', 'no point', 'give up'
+        ]
+        message_lower = message_text.lower()
+        return any(keyword in message_lower for keyword in crisis_keywords)
+    
+    def _generate_cpm_emotional_state(
+        self, 
+        appraisal: AppraisalResult,
+        sentiment_data: Dict[str, Any]
+    ) -> EmotionalState:
+        """
+        Generate CPM 5-component emotional state from appraisal results.
         
-        # Map appraisal to CPM components (simplified for Phase 1)
+        Maps appraisal outcomes to emotional components following CPM theory:
+        - Cognitive: Appraisal results
+        - Physiological: Arousal level
+        - Motivational: Action tendencies (approach/withdraw)
+        - Motor: Expression patterns
+        - Subjective: Conscious feeling label
+        """
+        valence_from_sentiment = sentiment_data.get("valence", 0.0)
         
-        # Determine subjective feeling label
-        if appraisal.social_appropriateness == "empathetic_response":
+        # Determine subjective feeling label based on appraisal
+        if appraisal.social_appropriateness == "crisis_protocol":
+            feeling = EmotionLabel.PROTECTIVE
+            valence = 0.2
+            arousal = 0.8
+            motivational_tendency = "approach"
+        elif appraisal.social_appropriateness == "empathetic_response":
             if appraisal.relevance > 0.7:
                 feeling = EmotionLabel.WARM_CONCERN
+                valence = 0.3
+                arousal = 0.65
+            else:
+                feeling = EmotionLabel.REASSURING
+                valence = 0.4
+                arousal = 0.5
+            motivational_tendency = "approach"
+        elif appraisal.social_appropriateness == "warm_engagement":
+            if valence_from_sentiment > 0.3:
+                feeling = EmotionLabel.PLAYFUL
+                valence = 0.6
+                arousal = 0.7
             else:
                 feeling = EmotionLabel.CURIOUS
+                valence = 0.5
+                arousal = 0.6
+            motivational_tendency = "engage"
         else:
+            # Neutral response
             feeling = EmotionLabel.CALM
-        
-        # Determine mood valence and arousal
-        if feeling == EmotionLabel.WARM_CONCERN:
-            valence = 0.3  # Slightly positive (caring)
-            arousal = 0.6  # Moderately activated
-        elif feeling == EmotionLabel.CURIOUS:
-            valence = 0.5
-            arousal = 0.5
-        else:
             valence = 0.0
-            arousal = 0.3
+            arousal = 0.35
+            motivational_tendency = "neutral"
         
-        # Determine style parameters
-        if feeling == EmotionLabel.WARM_CONCERN:
-            warmth = 0.8
-            energy = 0.6
+        # Apply emotion regulation (dampen intensity based on regulation_strength)
+        arousal = arousal * (1.0 - self.regulation_strength * 0.3)
+        
+        # Determine style parameters for LLM conditioning
+        if feeling in [EmotionLabel.WARM_CONCERN, EmotionLabel.PROTECTIVE]:
+            warmth = 0.85
+            energy = 0.65
             directness = 0.5
-            engagement = 0.8
-        elif feeling == EmotionLabel.CURIOUS:
-            warmth = 0.7
-            energy = 0.6
+            engagement = 0.85
+        elif feeling == EmotionLabel.REASSURING:
+            warmth = 0.8
+            energy = 0.5
             directness = 0.6
-            engagement = 0.7
+            engagement = 0.75
+        elif feeling in [EmotionLabel.PLAYFUL, EmotionLabel.CURIOUS]:
+            warmth = 0.7
+            energy = 0.7
+            directness = 0.6
+            engagement = 0.8
         else:
             warmth = 0.6
-            energy = 0.4
+            energy = 0.45
             directness = 0.5
             engagement = 0.6
         
@@ -625,10 +943,10 @@ class EmotionEngine(BaseService):
                    VALUES ('system', ?, ?, ?, ?, ?)""",
                 (
                     compact_state["timestamp"],
-                    compact_state["feeling"],
-                    compact_state["valence"],
-                    compact_state["arousal"],
-                    compact_state["intensity"]
+                    compact_state["label"]["primary"],
+                    compact_state["mood"]["valence"],
+                    compact_state["mood"]["arousal"],
+                    compact_state["label"]["intensity"]
                 )
             )
             

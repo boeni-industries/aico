@@ -376,8 +376,18 @@ class MessageBusClient:
         while self.running:
             try:
                 # Receive message with topic
+                import time
+                recv_start = time.time()
                 topic, message_data = await self.subscriber.recv_multipart()
+                recv_time = time.time() - recv_start
                 topic = topic.decode('utf-8')
+
+                # Targeted debug: see if EmotionEngine client actually receives
+                # sentiment response topics from modelservice, and what patterns
+                # it is currently subscribed to
+                if self.client_id == "emotion_processor" and topic.startswith("modelservice/sentiment/response/v1"):
+                    print(f"📡 [BUS/emotion_processor] Received topic='{topic}' (recv_multipart took {recv_time:.3f}s)")
+                    print(f"📡 [BUS/emotion_processor] Current subscriptions={list(self.subscriptions.keys())}")
                 
                 # Skip security warnings for infrastructure components to prevent feedback loops
                 if not self.encryption_enabled and self.client_id not in ["log_consumer", "zmq_log_transport"]:

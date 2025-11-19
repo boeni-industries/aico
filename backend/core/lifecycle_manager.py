@@ -337,12 +337,8 @@ class BackendLifecycleManager:
         ai_registry.register("memory", memory_manager)
         self.logger.info("Registered 'memory' processor.")
 
-        # TODO: Register other core AI processors here as they are implemented.
-        # Example:
-        # from aico.ai.emotion import EmotionProcessor
-        # emotion_processor = EmotionProcessor(self.config)
-        # ai_registry.register("emotion", emotion_processor)
-        # self.logger.info("Registered 'emotion' processor.")
+        # EmotionEngine is already registered in _register_core_services() (lines 266-275)
+        # and will be started automatically by the service container
 
         self.logger.info("AI processors registered.")
     
