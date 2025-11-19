@@ -158,7 +158,29 @@ The following components are licensed under the MIT License:
 
 ================================================================================
 
-For a complete list of all dependencies and their licenses, run:
+5. Flutter/Dart Dependencies
+
+The following Flutter/Dart components are used in the frontend application:
+
+- Flutter SDK (BSD-3-Clause) - https://flutter.dev
+- drift (MIT) - Database ORM for Flutter
+- sqlcipher_flutter_libs (MIT option chosen) - Native SQLCipher encryption
+- flutter_riverpod (MIT) - State management
+- sodium (BSD-3-Clause) - libsodium cryptography bindings
+- flutter_inappwebview (Apache-2.0) - WebView for 3D avatar rendering
+- dio (MIT) - HTTP client
+- go_router (BSD-3-Clause) - Navigation
+- And other MIT/BSD-3-Clause licensed packages
+
+For complete Flutter dependency list:
+  cd frontend && flutter pub deps --style=list
+
+================================================================================
+
+For a complete list of all Python dependencies and their licenses, run:
   uv run pip-licenses --format=markdown --with-urls
+
+For Flutter dependencies:
+  cd frontend && flutter pub deps --style=list
 
 Last updated: November 19, 2025
