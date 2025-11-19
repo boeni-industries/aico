@@ -49,6 +49,16 @@ class EntityResolver:
         Safely extract name from node properties.
         Handles both string (correct) and list (data corruption) cases.
         """
+        # Defensive: Check if node is actually a Node object
+        if not hasattr(node, 'properties'):
+            logger.error(f"Invalid node object (no properties attribute): {type(node)} = {node}")
+            return ""
+        
+        # Defensive: Check if properties is a dict
+        if not isinstance(node.properties, dict):
+            logger.error(f"Node {getattr(node, 'id', 'unknown')} has non-dict properties: {type(node.properties)}")
+            return ""
+        
         name = node.properties.get("name", "")
         
         # Handle corrupted data where name is a list instead of string
@@ -57,7 +67,12 @@ class EntityResolver:
             name = name[0] if name else ""
             logger.warning(f"Node {node.id} has list 'name' property (data corruption): {name}")
         
-        return str(name).strip().lower()
+        # Final safety: ensure we have a string
+        if not isinstance(name, str):
+            logger.warning(f"Node {node.id} has non-string name after processing: {type(name)}")
+            name = str(name)
+        
+        return name.strip().lower()
     
     def __init__(
         self,
@@ -420,8 +435,19 @@ class EntityResolver:
         fuzzy_candidates = []
         
         for c in candidates:
+            # Defensive: Validate candidate structure
+            if not isinstance(c, dict) or "new_node" not in c or "existing_node" not in c:
+                logger.error(f"Invalid candidate structure: {type(c)}")
+                continue
+            
             new_name = self._get_node_name(c["new_node"])
             existing_name = self._get_node_name(c["existing_node"])
+            
+            # Defensive: Check if nodes have label attribute
+            if not hasattr(c["new_node"], 'label') or not hasattr(c["existing_node"], 'label'):
+                logger.error(f"Candidate nodes missing label attribute")
+                continue
+            
             same_label = c["new_node"].label == c["existing_node"].label
             
             if same_label and new_name and new_name == existing_name:

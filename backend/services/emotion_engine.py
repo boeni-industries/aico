@@ -26,6 +26,8 @@ from aico.core.bus import MessageBusClient
 from aico.core.topics import AICOTopics
 from aico.core.logging import get_logger
 from backend.core.service_container import BaseService
+from aico.proto import aico_emotion_pb2
+from google.protobuf import timestamp_pb2
 
 
 # ============================================================================
@@ -463,27 +465,35 @@ class EmotionEngine(BaseService):
     async def _publish_emotional_state(self, state: EmotionalState) -> None:
         """Publish emotional state to message bus for consumers"""
         try:
-            # Publish compact state for frontend/ConversationEngine
-            compact_state = state.to_compact_dict()
+            # Create protobuf timestamp
+            ts = timestamp_pb2.Timestamp()
+            ts.FromDatetime(state.timestamp)
             
-            await self.bus_client.publish(
-                AICOTopics.EMOTION_STATE_CURRENT,
-                compact_state
+            # Create protobuf EmotionState message
+            emotion_proto = aico_emotion_pb2.EmotionState(
+                primary=state.subjective_feeling.value,
+                confidence=state.intensity,
+                secondary=[],  # TODO: derive from appraisal
+                valence=state.mood_valence,
+                arousal=state.mood_arousal,
+                dominance=0.5  # Default neutral dominance
             )
             
-            # If LLM conditioning is enabled, also publish conditioning parameters
-            if self.enable_llm_conditioning:
-                conditioning = {
-                    "timestamp": state.timestamp.isoformat() + "Z",
-                    "emotional_tone": state.subjective_feeling.value,
-                    "style": compact_state["style"],
-                    "approach": "validate_then_support" if state.warmth > 0.7 else "neutral"
-                }
-                
-                await self.bus_client.publish(
-                    AICOTopics.LLM_PROMPT_CONDITIONING_RESPONSE,
-                    conditioning
-                )
+            # Create EmotionResponse wrapper
+            emotion_response = aico_emotion_pb2.EmotionResponse(
+                timestamp=ts,
+                source="emotion_engine",
+                emotion=emotion_proto
+            )
+            
+            # Publish protobuf message
+            await self.bus_client.publish(
+                AICOTopics.EMOTION_STATE_CURRENT,
+                emotion_response
+            )
+            
+            # Note: LLM conditioning is handled via direct service access in ConversationEngine
+            # No separate message bus publication needed for Phase 1
             
             self.logger.debug(f"Published emotional state: {state.subjective_feeling.value}")
             

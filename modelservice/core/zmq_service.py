@@ -246,7 +246,17 @@ class ModelserviceZMQService:
                 
                 # Send Protocol Buffer response if correlation_id is provided
                 if correlation_id and self.bus_client:
-                    response_topic = self._get_response_topic(topic)
+                    # Check if request specified a reply_to topic (request-specific routing)
+                    reply_to = envelope.metadata.attributes.get("reply_to")
+                    if reply_to:
+                        # Use request-specific response topic for targeted delivery
+                        response_topic = reply_to
+                        self.logger.debug(f"Using reply_to topic: {response_topic}")
+                    else:
+                        # Fallback to default response topic (legacy behavior)
+                        response_topic = self._get_response_topic(topic)
+                        self.logger.debug(f"Using default response topic: {response_topic}")
+                    
                     if response_topic:
                         await self.bus_client.publish(response_topic, response, correlation_id=correlation_id)
                         self.logger.debug(f"Response published to {response_topic}")
@@ -265,7 +275,13 @@ class ModelserviceZMQService:
                 correlation_id = None
                 
             if correlation_id and self.bus_client:
-                response_topic = self._get_response_topic(topic)
+                # Check for reply_to in error path as well
+                reply_to = envelope.metadata.attributes.get("reply_to") if hasattr(envelope, 'metadata') else None
+                if reply_to:
+                    response_topic = reply_to
+                else:
+                    response_topic = self._get_response_topic(topic)
+                
                 if response_topic:
                     self.logger.info(f"[ZMQ_SERVICE] Sending error response to topic: {response_topic}")
                     if topic == AICOTopics.MODELSERVICE_HEALTH_REQUEST:

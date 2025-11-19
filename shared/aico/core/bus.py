@@ -274,8 +274,18 @@ class MessageBusClient:
         return _get_shared_broker_public_key()
     
     async def publish(self, topic: str, payload: ProtobufMessage, 
-                     correlation_id: Optional[str] = None, attributes: Optional[Dict[str, str]] = None):
-        """Publish a protobuf message to a topic"""
+                     correlation_id: Optional[str] = None, 
+                     reply_to: Optional[str] = None,
+                     attributes: Optional[Dict[str, str]] = None):
+        """Publish a protobuf message to a topic
+        
+        Args:
+            topic: Topic to publish to
+            payload: Protobuf message payload
+            correlation_id: Optional correlation ID for request/response matching
+            reply_to: Optional specific response topic for this request (enables targeted responses)
+            attributes: Optional additional metadata attributes
+        """
         if not self.running:
             raise MessageBusError("Client not connected")
         
@@ -289,6 +299,8 @@ class MessageBusClient:
         # Add optional attributes
         if correlation_id:
             metadata.attributes["correlation_id"] = correlation_id
+        if reply_to:
+            metadata.attributes["reply_to"] = reply_to
         if attributes:
             metadata.attributes.update(attributes)
         
