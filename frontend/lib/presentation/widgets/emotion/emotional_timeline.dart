@@ -435,10 +435,10 @@ class _MetricIndicator extends StatelessWidget {
               children: [
                 // Background bar with border (shows 100%)
                 Container(
-                  height: 8,
+                  height: 6,
                   decoration: BoxDecoration(
                     color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(3),
                     border: Border.all(
                       color: Colors.white.withValues(alpha: 0.5),
                       width: 1,
@@ -452,10 +452,10 @@ class _MetricIndicator extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     widthFactor: normalizedValue.clamp(0.0, 1.0),
                     child: Container(
-                      height: 6,
+                      height: 4,
                       decoration: BoxDecoration(
                         color: color,
-                        borderRadius: BorderRadius.circular(3),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
