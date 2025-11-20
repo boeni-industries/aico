@@ -890,11 +890,12 @@ class EmotionEngine(BaseService):
             
             # Apply minimum valence floor to prevent excessive decay in positive contexts
             # Scientific basis: Fredrickson (2001) - Positive emotions should persist
-            # If previous state was positive (v>0.2), maintain minimum positive valence
-            # to avoid drift to zero during neutral inputs
-            if self.previous_state.mood_valence > 0.2 and valence < 0.15:
+            # If previous state was non-negative (v>0.1), maintain minimum positive valence
+            # to avoid drift to zero during neutral inputs or recovery scenarios
+            if self.previous_state.mood_valence > 0.1 and valence < 0.15:
+                original_valence = valence
                 valence = 0.15  # Minimum floor for positive emotional contexts
-                print(f"🛡️ [VALENCE_FLOOR] Applied minimum valence floor: {valence:.2f} (was {valence:.2f}, prev={self.previous_state.mood_valence:.2f})")
+                print(f"🛡️ [VALENCE_FLOOR] Applied minimum valence floor: {valence:.2f} (was {original_valence:.2f}, prev={self.previous_state.mood_valence:.2f})")
             
             # Supportive context bias: DISABLED per Kuppens et al. (2010)
             # Excessive inertia prevents appropriate emotional responses

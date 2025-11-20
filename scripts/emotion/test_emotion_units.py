@@ -240,6 +240,41 @@ class TestH4_ValenceDecay:
         # Should maintain minimum valence floor (0.15)
         assert state.mood_valence >= 0.15, \
             f"Valence should not decay below floor (0.15), got {state.mood_valence}"
+    
+    def test_low_valence_recovery_protection(self, emotion_engine):
+        """Low-positive states (0.1-0.2) should be protected from crashing during recovery"""
+        engine = emotion_engine
+        
+        # Start with a low-positive state (e.g., after mild concern)
+        low_positive_sentiment = {"valence": 0.0, "confidence": 0.81}
+        low_positive_appraisal = AppraisalResult(
+            relevance=0.89,
+            goal_impact="neutral",
+            coping_capability="moderate",
+            social_appropriateness="neutral_response"
+        )
+        state = engine._generate_cpm_emotional_state(low_positive_appraisal, low_positive_sentiment)
+        
+        # Manually set to low-positive state (simulating recovery scenario)
+        state.mood_valence = 0.12
+        state.mood_arousal = 0.35
+        engine.previous_state = state
+        
+        # Now simulate neutral input (like "I'm okay now")
+        neutral_sentiment = {"valence": 0.0, "confidence": 0.81}
+        neutral_appraisal = AppraisalResult(
+            relevance=0.89,
+            goal_impact="neutral",
+            coping_capability="moderate",
+            social_appropriateness="neutral_response"
+        )
+        
+        new_state = engine._generate_cpm_emotional_state(neutral_appraisal, neutral_sentiment)
+        
+        # Should apply floor protection (prev 0.12 > 0.1 threshold)
+        assert new_state.mood_valence >= 0.15, \
+            f"Low-positive state should be protected from crash, got {new_state.mood_valence}"
+        print(f"✅ Recovery protection: {state.mood_valence:.2f} → {new_state.mood_valence:.2f}")
 
 
 if __name__ == "__main__":
