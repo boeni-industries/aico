@@ -817,11 +817,14 @@ class EmotionEngine(BaseService):
         # Store target for logging
         valence = target_valence
         arousal = target_arousal
+        print(f"🎯 [AROUSAL_DEBUG] Stage 1 - Base arousal set: {arousal:.2f} (context: {appraisal.social_appropriateness})")
         
         # Apply emotion regulation FIRST (part of CPM Stage 3: Coping Potential)
         # Regulation is part of the appraisal process itself, not post-processing
         # (Scherer CPM: coping potential modulates arousal before state persistence)
+        arousal_before_regulation = arousal
         arousal = arousal * (1.0 - self.regulation_strength * 0.3)
+        print(f"🎯 [AROUSAL_DEBUG] Stage 2 - After regulation: {arousal:.2f} (was {arousal_before_regulation:.2f}, regulation_strength={self.regulation_strength:.2f})")
         
         # Extract sentiment values once for all regulation logic
         sentiment_valence = sentiment_data.get("valence", 0.0)
@@ -853,10 +856,21 @@ class EmotionEngine(BaseService):
         if (appraisal.goal_impact in ["engaging_opportunity", "supportive_opportunity", "resolution_opportunity"] and 
             sentiment_valence > 0.4 and 
             confidence > 0.35):
+            arousal_before_savoring = arousal
             print(f"✨ [SAVORING] Triggered! goal_impact={appraisal.goal_impact}, confidence={confidence:.2f}, valence before={valence:.2f}, arousal before={arousal:.2f}")
             valence *= 1.15  # Amplify valence (15% boost - increased from 10%)
             arousal *= 1.20  # Amplify arousal (20% boost - increased from 15%)
             print(f"✨ [SAVORING] After amplification: valence={valence:.2f}, arousal={arousal:.2f}")
+            print(f"🎯 [AROUSAL_DEBUG] Stage 3 - After savoring: {arousal:.2f} (was {arousal_before_savoring:.2f}, +20% boost)")
+        elif sentiment_valence > 0.4 and confidence > 0.4:
+            # Positive sentiment arousal boost (Russell's Circumplex: positive emotions have higher arousal)
+            # Only applies when savoring doesn't trigger (mutually exclusive to prevent stacking)
+            # Helps recovery scenarios and neutral-context positive engagement
+            arousal_before_positive = arousal
+            arousal *= 1.30  # +30% boost for confident positive sentiment
+            print(f"😊 [POSITIVE_BOOST] Triggered! sentiment_valence={sentiment_valence:.2f}, confidence={confidence:.2f}, arousal before={arousal_before_positive:.2f}")
+            print(f"😊 [POSITIVE_BOOST] After boost: arousal={arousal:.2f} (+30%)")
+            print(f"🎯 [AROUSAL_DEBUG] Stage 3 - After positive boost: {arousal:.2f} (was {arousal_before_positive:.2f}, +30% boost)")
         else:
             print(f"⚠️ [SAVORING] NOT triggered: goal_impact={appraisal.goal_impact}, sentiment_valence={sentiment_valence:.2f}, confidence={confidence:.2f}")
         
@@ -883,10 +897,12 @@ class EmotionEngine(BaseService):
             regulated_valence, regulated_arousal = valence, arousal
             
             # Blend previous and current states (leaky integrator model)
+            arousal_before_inertia = arousal
             valence = (valence * effective_reactivity) + (self.previous_state.mood_valence * effective_inertia)
             arousal = (arousal * effective_reactivity) + (self.previous_state.mood_arousal * effective_inertia)
             
             print(f"🧠 [INERTIA] Blended: (v={valence:.2f}, a={arousal:.2f})")
+            print(f"🎯 [AROUSAL_DEBUG] Stage 4 - After inertia: {arousal:.2f} (was {arousal_before_inertia:.2f}, previous={self.previous_state.mood_arousal:.2f})")
             
             # Apply minimum valence floor to prevent excessive decay in positive contexts
             # Scientific basis: Fredrickson (2001) - Positive emotions should persist
