@@ -28,6 +28,7 @@ from aico.core.topics import AICOTopics
 from aico.core.logging import get_logger
 from backend.core.service_container import BaseService
 from aico.proto import aico_emotion_pb2
+from backend.services.conversational_context import ConversationalContext
 from google.protobuf import timestamp_pb2
 
 
@@ -172,6 +173,9 @@ class EmotionEngine(BaseService):
         self.previous_state: Optional[EmotionalState] = None  # For inertia calculation
         self.state_history: List[Dict[str, Any]] = []  # Compact states for mood arc
         self.turns_since_state_change: int = 0  # For inertia decay
+        
+        # Conversational context tracking (C-CPM extension)
+        self.conversational_context = ConversationalContext(history_size=5)
         
         # Sentiment request tracking (correlation_id -> context for completing processing)
         self.pending_sentiment_requests: Dict[str, Dict[str, Any]] = {}
@@ -354,14 +358,26 @@ class EmotionEngine(BaseService):
         Implements Klaus Scherer's Component Process Model.
         """
         
+        # Update conversational context (C-CPM Layer 1)
+        valence = sentiment_data.get("valence", 0.0)
+        arousal = abs(valence)  # Approximate arousal from valence for context
+        
         # Stage 1: Relevance Assessment ("Does this matter to me?")
-        relevance = await self._assess_relevance(message_text, user_emotion, sentiment_data)
-        print(f"🎭 [EMOTION_ENGINE] Stage 1 - Relevance: {relevance:.2f}")
+        base_relevance = await self._assess_relevance(message_text, user_emotion, sentiment_data)
+        relevance = self.conversational_context.adjust_relevance(base_relevance, message_text)
+        print(f"🎭 [EMOTION_ENGINE] Stage 1 - Relevance: {base_relevance:.2f} → {relevance:.2f} (context-adjusted)")
         self.logger.debug(f"🎭 Appraisal Stage 1 - Relevance: {relevance:.2f}")
         
+        # Update context with current turn (after relevance calculation)
+        self.conversational_context.update(message_text, valence, arousal, relevance)
+        
         # Stage 2: Implication Check ("What does this mean for my goals?")
-        goal_impact = await self._analyze_goal_impact(message_text, relevance, sentiment_data)
-        print(f"🎭 [EMOTION_ENGINE] Stage 2 - Goal Impact: {goal_impact}")
+        base_goal_impact = await self._analyze_goal_impact(message_text, relevance, sentiment_data)
+        goal_impact = self.conversational_context.adjust_goal_impact(base_goal_impact, valence)
+        if base_goal_impact != goal_impact:
+            print(f"🎭 [EMOTION_ENGINE] Stage 2 - Goal Impact: {base_goal_impact} → {goal_impact} (episode-adjusted)")
+        else:
+            print(f"🎭 [EMOTION_ENGINE] Stage 2 - Goal Impact: {goal_impact}")
         self.logger.debug(f"🎭 Appraisal Stage 2 - Goal Impact: {goal_impact}")
         
         # Stage 3: Coping Check ("Can I handle this?")
@@ -370,8 +386,12 @@ class EmotionEngine(BaseService):
         self.logger.debug(f"🎭 Appraisal Stage 3 - Coping: {coping_capability}")
         
         # Stage 4: Normative Check ("Is this socially appropriate?")
-        social_appropriateness = await self._apply_social_regulation(goal_impact, coping_capability, sentiment_data)
-        print(f"🎭 [EMOTION_ENGINE] Stage 4 - Social Appropriateness: {social_appropriateness}")
+        base_social = await self._apply_social_regulation(goal_impact, coping_capability, sentiment_data)
+        social_appropriateness = self.conversational_context.adjust_social_appropriateness(base_social)
+        if base_social != social_appropriateness:
+            print(f"🎭 [EMOTION_ENGINE] Stage 4 - Social Appropriateness: {base_social} → {social_appropriateness} (context-adjusted)")
+        else:
+            print(f"🎭 [EMOTION_ENGINE] Stage 4 - Social Appropriateness: {social_appropriateness}")
         self.logger.debug(f"🎭 Appraisal Stage 4 - Social Regulation: {social_appropriateness}")
         
         # Create appraisal result
@@ -618,8 +638,8 @@ class EmotionEngine(BaseService):
         if has_crisis_keyword or valence < -0.8:
             return "requires_escalation"
         
-        # High capability for supportive opportunities
-        if goal_impact in ["supportive_opportunity", "engaging_opportunity"]:
+        # High capability for supportive and resolution opportunities
+        if goal_impact in ["supportive_opportunity", "engaging_opportunity", "resolution_opportunity"]:
             return "high_capability"
         
         return "moderate"
@@ -641,6 +661,10 @@ class EmotionEngine(BaseService):
         # Crisis protocol
         if coping_capability == "requires_escalation":
             return "crisis_protocol"
+        
+        # Resolution response (C-CPM extension)
+        if goal_impact == "resolution_opportunity":
+            return "calm_resolution"
         
         # Empathetic response for support needs
         if goal_impact == "supportive_opportunity" and coping_capability == "high_capability":
@@ -697,6 +721,12 @@ class EmotionEngine(BaseService):
                 valence = 0.4
                 arousal = 0.5
             motivational_tendency = "approach"
+        elif appraisal.social_appropriateness == "calm_resolution":
+            # Resolution after stress episode (C-CPM extension)
+            feeling = EmotionLabel.CALM
+            valence = 0.2  # Slightly positive (relief)
+            arousal = 0.4  # Low arousal (calm)
+            motivational_tendency = "neutral"
         elif appraisal.social_appropriateness == "warm_engagement":
             if valence_from_sentiment > 0.3:
                 feeling = EmotionLabel.PLAYFUL

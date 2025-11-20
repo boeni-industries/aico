@@ -27,12 +27,13 @@ AICO's emotion capabilities are split into two coordinated layers:
   - **Status**: Not yet implemented (Phase 2+).
 
 - **AICO Emotion Simulation (internal view)**
-  - Implemented in `/backend/services/emotion_engine.py` using AppraisalCloudPCT/CPM.
-  - Maintains AICO's own internal emotional state based on user emotion, conversation events, relationship history, and personality.
+  - Implemented in `/backend/services/emotion_engine.py` using C-CPM (Conversational Component Process Model).
+  - Maintains AICO's own internal emotional state based on user emotion, conversation events, conversational context, emotional episodes, relationship history, and personality.
+  - Tracks dialogue state, detects emotional episodes (stress → support → resolution), and understands conversation structure (greetings, gratitude, resolution).
   - Publishes to `EMOTION_STATE_CURRENT` and `LLM_PROMPT_CONDITIONING_RESPONSE` topics.
   - Provides expression guidance for text (Phase 1), voice and avatar (Phase 4).
-  - Represents AICO's "feelings" in a way that is consistent, personality-aligned, and relationship-aware.
-  - **Status**: Phase 1 complete.
+  - Represents AICO's "feelings" in a way that is consistent, personality-aligned, conversation-aware, and relationship-aware.
+  - **Status**: Phase 1 complete with C-CPM conversational extensions.
 
 The **goal** of this dual system is **believability**: AICO should both understand how you feel and exhibit a coherent emotional life of her own that evolves over time.
 
@@ -40,12 +41,13 @@ The **goal** of this dual system is **believability**: AICO should both understa
 
 **Per-turn cycle**:
 1. User sends message → `CONVERSATION_USER_INPUT` published
-2. EmotionEngine receives event, performs 4-stage appraisal
-3. Generates CPM emotional state, publishes to `EMOTION_STATE_CURRENT`
-4. **Persists state to database** - current state + history for continuity across restarts
-5. ConversationEngine retrieves state, adds to LLM system prompt
-6. LLM generates response conditioned by emotional tone
-7. Emotional state stored in memory for learning (Phase 2+)
+2. EmotionEngine receives event, updates conversational context (dialogue state, episode tracking)
+3. Performs context-enhanced 4-stage CPM appraisal
+4. Generates CPM emotional state with conversation awareness, publishes to `EMOTION_STATE_CURRENT`
+5. **Persists state to database** - current state + history + conversational context for continuity across restarts
+6. ConversationEngine retrieves state, adds to LLM system prompt
+7. LLM generates response conditioned by emotional tone and conversation context
+8. Emotional state stored in memory for learning (Phase 2+)
 
 **No scheduled jobs required** - emotions are event-driven, updating only on conversation turns per CPM research.
 
