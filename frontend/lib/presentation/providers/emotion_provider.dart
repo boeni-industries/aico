@@ -7,11 +7,17 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'emotion_provider.g.dart';
 
-/// Provider for emotion repository
+/// Repository provider
 @riverpod
 EmotionRepository emotionRepository(Ref ref) {
-  final apiClient = ref.watch(unifiedApiClientProvider);
-  return EmotionRepository(apiClient: apiClient);
+  return EmotionRepository(apiClient: ref.watch(unifiedApiClientProvider));
+}
+
+/// Emotion history provider - fetches and caches emotion history
+@riverpod
+Future<List<EmotionHistoryItem>> emotionHistory(Ref ref, {int limit = 50}) async {
+  final repository = ref.watch(emotionRepositoryProvider);
+  return repository.getEmotionHistory(limit: limit);
 }
 
 /// Provider for current emotion state with polling

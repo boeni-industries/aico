@@ -2,8 +2,11 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
+import 'package:aico_frontend/presentation/providers/emotion_provider.dart';
 import 'package:aico_frontend/presentation/providers/settings_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
+import 'package:aico_frontend/presentation/widgets/drawer/drawer_tab_switcher.dart';
+import 'package:aico_frontend/presentation/widgets/emotion/emotional_timeline.dart';
 import 'package:aico_frontend/presentation/widgets/thinking/ambient_thinking_indicator.dart';
 import 'package:aico_frontend/presentation/widgets/thinking/thinking_preview_card.dart';
 import 'package:aico_frontend/presentation/widgets/thinking_display.dart';
@@ -40,6 +43,7 @@ class HomeRightDrawer extends ConsumerStatefulWidget {
 class _HomeRightDrawerState extends ConsumerState<HomeRightDrawer> {
   bool _showThinkingPreview = false;
   Timer? _hoverTimer;
+  DrawerTab _selectedTab = DrawerTab.thinking;
 
   @override
   void dispose() {
@@ -116,6 +120,20 @@ class _HomeRightDrawerState extends ConsumerState<HomeRightDrawer> {
                   child: SafeArea(
                     child: Column(
                       children: [
+                        // Tab switcher (only when expanded)
+                        if (widget.isExpanded) ...[
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                            child: DrawerTabSwitcher(
+                              selectedTab: _selectedTab,
+                              onTabChanged: (tab) {
+                                setState(() {
+                                  _selectedTab = tab;
+                                });
+                              },
+                            ),
+                          ),
+                        ],
                         Expanded(
                           child: _buildContent(theme, conversationState, isActivelyThinking),
                         ),
@@ -147,7 +165,7 @@ class _HomeRightDrawerState extends ConsumerState<HomeRightDrawer> {
           : const SizedBox.shrink();
     }
 
-    // Progressive disclosure: Only render full ThinkingDisplay when expanded
+    // Progressive disclosure: Only render full content when expanded
     // This prevents overflow errors when collapsed to 72px width
     if (widget.isExpanded) {
       return AnimatedSwitcher(
@@ -167,19 +185,53 @@ class _HomeRightDrawerState extends ConsumerState<HomeRightDrawer> {
             ),
           );
         },
-        child: ThinkingDisplay(
-          key: const ValueKey('expanded'),
-          thinkingHistory: conversationState.thinkingHistory,
-          currentThinking: conversationState.streamingThinking,
-          isStreaming: isActivelyThinking,
-          scrollToMessageId: widget.scrollToMessageId,
-          onCollapse: widget.onToggle,
-        ),
+        child: _selectedTab == DrawerTab.thinking
+            ? ThinkingDisplay(
+                key: const ValueKey('thinking'),
+                thinkingHistory: conversationState.thinkingHistory,
+                currentThinking: conversationState.streamingThinking,
+                isStreaming: isActivelyThinking,
+                scrollToMessageId: widget.scrollToMessageId,
+                onCollapse: widget.onToggle,
+              )
+            : _buildEmotionalTimeline(),
       );
     }
 
     // Collapsed state: Only show ambient indicator (fits in 72px)
     return _buildCollapsedIndicator(conversationState, isActivelyThinking);
+  }
+
+  Widget _buildEmotionalTimeline() {
+    return Consumer(
+      builder: (context, ref, child) {
+        final historyAsync = ref.watch(emotionHistoryProvider(limit: 50));
+        
+        return historyAsync.when(
+          data: (history) => EmotionalTimeline(
+            key: const ValueKey('emotions'),
+            emotionHistory: history,
+            isLoading: false,
+            onCollapse: widget.onToggle,
+          ),
+          loading: () => EmotionalTimeline(
+            key: const ValueKey('emotions_loading'),
+            emotionHistory: const [],
+            isLoading: true,
+            onCollapse: widget.onToggle,
+          ),
+          error: (error, stack) {
+            debugPrint('Error loading emotion history: $error');
+            return EmotionalTimeline(
+              key: const ValueKey('emotions_error'),
+              emotionHistory: const [],
+              isLoading: false,
+              onCollapse: widget.onToggle,
+            );
+          },
+        );
+      },
+    );
   }
 
   Widget _buildCollapsedIndicator(ConversationState conversationState, bool isStreaming) {

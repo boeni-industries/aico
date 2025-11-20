@@ -32,17 +32,23 @@ class EmotionRepository {
   /// Get emotional state history
   Future<List<EmotionHistoryItem>> getEmotionHistory({int limit = 50}) async {
     try {
+      print('[EMOTION_REPO] Fetching emotion history with limit=$limit');
       final data = await _apiClient.get<Map<String, dynamic>>('/emotion/history?limit=$limit');
+      
+      print('[EMOTION_REPO] History response: $data');
       
       if (data != null && data['history'] != null) {
         final history = (data['history'] as List)
             .map((item) => EmotionHistoryItem.fromJson(item as Map<String, dynamic>))
             .toList();
+        print('[EMOTION_REPO] Parsed ${history.length} history items');
         return history;
       } else {
+        print('[EMOTION_REPO] No history data in response');
         return [];
       }
     } catch (e) {
+      print('[EMOTION_REPO] Error fetching history: $e');
       return [];
     }
   }

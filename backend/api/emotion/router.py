@@ -91,13 +91,25 @@ async def get_emotion_history(
         # Convert to response format (most recent first)
         history_items = []
         for state in reversed(history[-limit:]):
-            history_items.append(EmotionHistoryItem(
-                timestamp=state["timestamp"],
-                feeling=state["feeling"],
-                valence=state["valence"],
-                arousal=state["arousal"],
-                intensity=state["intensity"]
-            ))
+            # Handle both compact dict format and flat format from DB
+            if "label" in state:
+                # Compact dict format from to_compact_dict()
+                history_items.append(EmotionHistoryItem(
+                    timestamp=state["timestamp"],
+                    feeling=state["label"]["primary"],
+                    valence=state["mood"]["valence"],
+                    arousal=state["mood"]["arousal"],
+                    intensity=state["label"]["intensity"]
+                ))
+            else:
+                # Flat format from DB
+                history_items.append(EmotionHistoryItem(
+                    timestamp=state["timestamp"],
+                    feeling=state["feeling"],
+                    valence=state["valence"],
+                    arousal=state["arousal"],
+                    intensity=state["intensity"]
+                ))
         
         return EmotionHistoryResponse(
             count=len(history_items),
