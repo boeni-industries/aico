@@ -862,15 +862,6 @@ class EmotionEngine(BaseService):
             arousal *= 1.20  # Amplify arousal (20% boost - increased from 15%)
             print(f"✨ [SAVORING] After amplification: valence={valence:.2f}, arousal={arousal:.2f}")
             print(f"🎯 [AROUSAL_DEBUG] Stage 3 - After savoring: {arousal:.2f} (was {arousal_before_savoring:.2f}, +20% boost)")
-        elif sentiment_valence > 0.4 and confidence > 0.4:
-            # Positive sentiment arousal boost (Russell's Circumplex: positive emotions have higher arousal)
-            # Only applies when savoring doesn't trigger (mutually exclusive to prevent stacking)
-            # Helps recovery scenarios and neutral-context positive engagement
-            arousal_before_positive = arousal
-            arousal *= 1.30  # +30% boost for confident positive sentiment
-            print(f"😊 [POSITIVE_BOOST] Triggered! sentiment_valence={sentiment_valence:.2f}, confidence={confidence:.2f}, arousal before={arousal_before_positive:.2f}")
-            print(f"😊 [POSITIVE_BOOST] After boost: arousal={arousal:.2f} (+30%)")
-            print(f"🎯 [AROUSAL_DEBUG] Stage 3 - After positive boost: {arousal:.2f} (was {arousal_before_positive:.2f}, +30% boost)")
         else:
             print(f"⚠️ [SAVORING] NOT triggered: goal_impact={appraisal.goal_impact}, sentiment_valence={sentiment_valence:.2f}, confidence={confidence:.2f}")
         
