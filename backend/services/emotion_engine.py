@@ -686,6 +686,70 @@ class EmotionEngine(BaseService):
         message_lower = message_text.lower()
         return any(keyword in message_lower for keyword in crisis_keywords)
     
+    def _map_valence_arousal_to_label(
+        self,
+        valence: float,
+        arousal: float,
+        appraisal: AppraisalResult
+    ) -> EmotionLabel:
+        """
+        Map actual (post-inertia) valence/arousal to emotion label.
+        
+        Uses Russell's (1980) Circumplex Model of Affect with context-aware refinements.
+        
+        Scientific basis:
+        - Russell (1980): Circumplex model - emotions distributed in 2D valence/arousal space
+        - Kuppens et al. (2010): Labels should match experienced state, not target state
+        
+        Args:
+            valence: Actual emotional valence (-1 to 1)
+            arousal: Actual emotional arousal (0 to 1)
+            appraisal: Appraisal context for refinement
+        
+        Returns:
+            EmotionLabel matching the experienced emotional state
+        """
+        # Crisis situations override circumplex mapping
+        if appraisal.crisis_indicators or appraisal.social_appropriateness == "crisis_protocol":
+            return EmotionLabel.PROTECTIVE
+        
+        # Empathetic responses: Positive valence (AI concern) with high arousal = warm_concern
+        # (User distress → AI positive concern, not curiosity)
+        if appraisal.social_appropriateness == "empathetic_response":
+            if arousal > 0.5 and valence > 0.1:
+                return EmotionLabel.WARM_CONCERN  # Empathetic concern for user
+        
+        # High arousal (>0.6)
+        if arousal > 0.6:
+            if valence > 0.5:
+                return EmotionLabel.PLAYFUL  # High arousal + high valence = excitement/playfulness
+            elif valence > 0.2:
+                return EmotionLabel.CURIOUS  # High arousal + moderate valence = interest/curiosity
+            elif valence < -0.2:
+                return EmotionLabel.WARM_CONCERN  # High arousal + negative valence = concern/worry
+            else:
+                return EmotionLabel.FOCUSED  # High arousal + neutral valence = alertness
+        
+        # Moderate arousal (0.4-0.6)
+        elif arousal > 0.4:
+            if valence > 0.4:
+                return EmotionLabel.CURIOUS  # Moderate arousal + positive valence = engaged interest
+            elif valence > 0.2:
+                return EmotionLabel.CALM  # Moderate arousal + slight positive = contentment
+            elif valence < -0.2:
+                return EmotionLabel.REASSURING  # Moderate arousal + negative valence = supportive
+            else:
+                return EmotionLabel.CALM  # Moderate arousal + neutral = baseline
+        
+        # Low arousal (<0.4)
+        else:
+            if valence > 0.3:
+                return EmotionLabel.CALM  # Low arousal + positive valence = peaceful/calm
+            elif valence < -0.3:
+                return EmotionLabel.REFLECTIVE  # Low arousal + negative valence = contemplative
+            else:
+                return EmotionLabel.CALM  # Low arousal + neutral = resting state
+    
     def _generate_cpm_emotional_state(
         self, 
         appraisal: AppraisalResult,
@@ -699,74 +763,102 @@ class EmotionEngine(BaseService):
         - Physiological: Arousal level
         - Motivational: Action tendencies (approach/withdraw)
         - Motor: Expression patterns
-        - Subjective: Conscious feeling label
+        - Subjective: Conscious feeling label (assigned AFTER inertia)
+        
+        Scientific basis:
+        - Kuppens et al. (2010): Emotional inertia and psychological adjustment
+        - Russell (1980): Circumplex model of affect
+        - Bryant & Veroff (2007): Savoring positive emotions
         """
         valence_from_sentiment = sentiment_data.get("valence", 0.0)
         
-        # Determine subjective feeling label based on appraisal
-        # CPM Theory: Each emotion has fixed dimensional profile (Scherer, 2001)
+        # Generate TARGET valence/arousal from appraisal (pre-inertia)
+        # SCIENTIFIC FIX: Use sentiment valence as BASE, appraisal modulates intensity
+        # (Scherer 2019: Goal congruence determines valence, appraisal modulates arousal)
+        # (Russell 1980: Core affect dimensions map directly from stimulus valence)
+        
         if appraisal.social_appropriateness == "crisis_protocol":
-            feeling = EmotionLabel.PROTECTIVE
-            valence = 0.2
-            arousal = 0.8
+            # Crisis: High arousal, valence from sentiment but biased toward action
+            target_valence = max(0.2, valence_from_sentiment * 0.8)  # Floor at 0.2 for protective stance
+            target_arousal = 0.8
             motivational_tendency = "approach"
         elif appraisal.social_appropriateness == "empathetic_response":
-            # High relevance = deeper concern, lower relevance = general reassurance
-            if appraisal.relevance > 0.65:
-                feeling = EmotionLabel.WARM_CONCERN
-                valence = 0.3
-                arousal = 0.65
+            # Empathy: Convert user's negative sentiment to AI's positive concern
+            # (User distress → AI warm concern, not AI distress)
+            if valence_from_sentiment < 0:
+                # Convert negative sentiment to positive concern (invert and scale)
+                # More negative user sentiment = higher AI concern valence
+                target_valence = abs(valence_from_sentiment) * 0.5  # Moderate positive concern
             else:
-                feeling = EmotionLabel.REASSURING
-                valence = 0.4
-                arousal = 0.5
+                # Positive user sentiment in empathetic context: gentle positive response
+                target_valence = valence_from_sentiment * 0.6
+            # High relevance = higher arousal (deeper concern)
+            target_arousal = 0.65 if appraisal.relevance > 0.65 else 0.5
             motivational_tendency = "approach"
         elif appraisal.social_appropriateness == "calm_resolution":
-            # Resolution after stress episode (C-CPM extension)
-            feeling = EmotionLabel.CALM
-            valence = 0.2  # Slightly positive (relief)
-            arousal = 0.4  # Low arousal (calm)
+            # Resolution: Slight positive bias (relief), low arousal
+            target_valence = max(0.2, valence_from_sentiment * 0.7)  # Gentle positive bias
+            target_arousal = 0.4
             motivational_tendency = "neutral"
         elif appraisal.social_appropriateness == "warm_engagement":
-            if valence_from_sentiment > 0.3:
-                feeling = EmotionLabel.PLAYFUL
-                valence = 0.6
-                arousal = 0.7
+            # Engagement: Amplify positive valence, maintain negative for authenticity
+            if valence_from_sentiment > 0:
+                target_valence = min(1.0, valence_from_sentiment * 1.2)  # Amplify positive
             else:
-                feeling = EmotionLabel.CURIOUS
-                valence = 0.5
-                arousal = 0.6
+                target_valence = valence_from_sentiment  # Keep negative as-is
+            target_arousal = 0.7
             motivational_tendency = "engage"
         else:
-            # Neutral response
-            feeling = EmotionLabel.CALM
-            valence = 0.0
-            arousal = 0.35
+            # Neutral: Use sentiment valence directly
+            target_valence = valence_from_sentiment
+            target_arousal = 0.35
             motivational_tendency = "neutral"
+        
+        # Store target for logging
+        valence = target_valence
+        arousal = target_arousal
         
         # Apply emotion regulation FIRST (part of CPM Stage 3: Coping Potential)
         # Regulation is part of the appraisal process itself, not post-processing
         # (Scherer CPM: coping potential modulates arousal before state persistence)
         arousal = arousal * (1.0 - self.regulation_strength * 0.3)
         
+        # Extract sentiment values once for all regulation logic
+        sentiment_valence = sentiment_data.get("valence", 0.0)
+        confidence = sentiment_data.get("confidence", 0)
+        
         # Context-aware arousal amplification for high-stakes threats
         # (Sander et al., 2003 relevance theory; 2023 modern threat research)
         # Existential threats (job loss, survival) trigger heightened arousal
         threat_detected = False  # Track if threat boost was applied
+        
         if appraisal.goal_impact == "supportive_opportunity":
             # High relevance + negative sentiment + clear signal = existential threat
             relevance = appraisal.relevance
-            sentiment_valence = sentiment_data.get("valence", 0.0)  # Don't overwrite emotion valence!
-            confidence = sentiment_data.get("confidence", 0)
             
             if (relevance > 0.65 and sentiment_valence < -0.3 and confidence > 0.4):
                 # Amplify arousal for contextually relevant threats (language-agnostic)
-                print(f"🔥 [AROUSAL_BOOST] Triggered! relevance={relevance:.2f}, sentiment_valence={sentiment_valence:.2f}, confidence={confidence:.2f}, arousal before={arousal:.2f}")
+                print(f" [AROUSAL_BOOST] Triggered! relevance={relevance:.2f}, sentiment_valence={sentiment_valence:.2f}, confidence={confidence:.2f}, arousal before={arousal:.2f}")
                 arousal *= (1.0 + self.threat_arousal_boost)  # Configurable boost (default 25%)
                 threat_detected = True  # Mark for reduced inertia
-                print(f"🔥 [AROUSAL_BOOST] Arousal after boost: {arousal:.2f} (+{self.threat_arousal_boost*100:.0f}%)")
+                print(f" [AROUSAL_BOOST] Arousal after boost: {arousal:.2f} (+{self.threat_arousal_boost*100:.0f}%)")
             else:
                 print(f"⚠️ [AROUSAL_BOOST] NOT triggered: relevance={relevance:.2f} (need >0.65), sentiment_valence={sentiment_valence:.2f} (need <-0.3), confidence={confidence:.2f} (need >0.4)")
+        
+        # Savoring: Amplify positive emotions through mindful appreciation
+        # (Bryant & Veroff, 2007: Positive emotion regulation)
+        # Healthy individuals actively upregulate positive emotions
+        # Check both engaging_opportunity and supportive_opportunity (episode-adjusted)
+        # Lowered confidence threshold to 0.35 to account for conservative sentiment analyzer
+        if (appraisal.goal_impact in ["engaging_opportunity", "supportive_opportunity", "resolution_opportunity"] and 
+            sentiment_valence > 0.4 and 
+            confidence > 0.35):
+            print(f"✨ [SAVORING] Triggered! goal_impact={appraisal.goal_impact}, confidence={confidence:.2f}, valence before={valence:.2f}, arousal before={arousal:.2f}")
+            valence *= 1.15  # Amplify valence (15% boost - increased from 10%)
+            arousal *= 1.20  # Amplify arousal (20% boost - increased from 15%)
+            print(f"✨ [SAVORING] After amplification: valence={valence:.2f}, arousal={arousal:.2f}")
+        else:
+            print(f"⚠️ [SAVORING] NOT triggered: goal_impact={appraisal.goal_impact}, sentiment_valence={sentiment_valence:.2f}, confidence={confidence:.2f}")
         
         # Apply emotional inertia AFTER regulation (Kuppens et al., 2010; Scherer CPM recursive appraisal)
         # Inertia blends the REGULATED appraisal with previous state to prevent double-dampening
@@ -784,7 +876,7 @@ class EmotionEngine(BaseService):
             effective_reactivity = 1.0 - effective_inertia
             
             print(f"🧠 [INERTIA] Previous: {self.previous_state.subjective_feeling.value} (v={self.previous_state.mood_valence:.2f}, a={self.previous_state.mood_arousal:.2f})")
-            print(f"🧠 [INERTIA] Current (regulated): {feeling.value} (v={valence:.2f}, a={arousal:.2f})")
+            print(f"🧠 [INERTIA] Target (regulated): (v={valence:.2f}, a={arousal:.2f})")
             print(f"🧠 [INERTIA] Weights: inertia={effective_inertia:.2f}, reactivity={effective_reactivity:.2f}, turns={self.turns_since_state_change}")
             
             # Store regulated values for comparison
@@ -796,9 +888,23 @@ class EmotionEngine(BaseService):
             
             print(f"🧠 [INERTIA] Blended: (v={valence:.2f}, a={arousal:.2f})")
             
+            # Apply minimum valence floor to prevent excessive decay in positive contexts
+            # Scientific basis: Fredrickson (2001) - Positive emotions should persist
+            # If previous state was positive (v>0.2), maintain minimum positive valence
+            # to avoid drift to zero during neutral inputs
+            if self.previous_state.mood_valence > 0.2 and valence < 0.15:
+                valence = 0.15  # Minimum floor for positive emotional contexts
+                print(f"🛡️ [VALENCE_FLOOR] Applied minimum valence floor: {valence:.2f} (was {valence:.2f}, prev={self.previous_state.mood_valence:.2f})")
+            
             # Supportive context bias: DISABLED per Kuppens et al. (2010)
             # Excessive inertia prevents appropriate emotional responses
             # Natural inertia (weight=0.4) is sufficient for emotional continuity
+        
+        # Assign emotion label based on ACTUAL (post-inertia) valence/arousal
+        # Using Russell's (1980) Circumplex Model of Affect
+        # This ensures subjective feeling matches experienced emotional state
+        feeling = self._map_valence_arousal_to_label(valence, arousal, appraisal)
+        print(f"🎭 [EMOTION_ENGINE] Final state: {feeling.value} (v={valence:.2f}, a={arousal:.2f})")
         
         # Determine style parameters for LLM conditioning
         if feeling in [EmotionLabel.WARM_CONCERN, EmotionLabel.PROTECTIVE]:

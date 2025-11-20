@@ -84,7 +84,7 @@ class EmotionSimulationModule:
 
 ### 2. Appraisal Processing
 
-The core AppraisalCloudPCT algorithm processes the aggregated context:
+The core C-CPM algorithm processes the aggregated context:
 
 ```python
 def process_emotional_response(self) -> EmotionalState:
@@ -117,6 +117,51 @@ def process_emotional_response(self) -> EmotionalState:
     )
     
     return self.generate_cpm_emotional_state(regulated_response)
+
+def generate_cpm_emotional_state(self, appraisal: AppraisalResult, sentiment_data: Dict) -> EmotionalState:
+    """
+    Generate CPM emotional state with label assignment AFTER inertia.
+    
+    Scientific basis:
+    - Scherer (2019): Goal congruence determines valence, appraisal modulates arousal
+    - Russell (1980): Core affect dimensions map directly from stimulus valence
+    - Kuppens et al. (2010): Labels should match experienced state
+    - Bryant & Veroff (2007): Savoring amplifies positive emotions
+    """
+    # 1. Generate target valence/arousal from sentiment + appraisal modulation
+    # CRITICAL: Sentiment valence is BASE, appraisal modulates intensity
+    sentiment_valence = sentiment_data.get("valence", 0.0)
+    target_valence, target_arousal = self.appraisal_modulates_sentiment(
+        sentiment_valence, appraisal
+    )
+    
+    # 2. Apply emotion regulation (dampening)
+    arousal = target_arousal * (1.0 - self.regulation_strength * 0.3)
+    valence = target_valence
+    
+    # 3. Apply threat boost (negative emotions, high relevance)
+    if self.is_threat_detected(appraisal, sentiment_data):
+        arousal *= 1.25  # 25% boost
+        
+    # 4. Apply savoring boost (positive emotions, high confidence)
+    if self.is_savoring_triggered(appraisal, sentiment_data):
+        valence *= 1.15  # 15% boost
+        arousal *= 1.20  # 20% boost
+    
+    # 5. Apply emotional inertia (blend with previous state)
+    if self.previous_state:
+        valence = (valence * 0.6) + (self.previous_state.valence * 0.4)
+        arousal = (arousal * 0.6) + (self.previous_state.arousal * 0.4)
+    
+    # 6. Map actual valence/arousal to emotion label (Russell's Circumplex)
+    emotion_label = self.map_valence_arousal_to_label(valence, arousal, appraisal)
+    
+    return EmotionalState(
+        label=emotion_label,
+        valence=valence,
+        arousal=arousal,
+        appraisal=appraisal
+    )
 ```
 
 ### 3. Output Generation

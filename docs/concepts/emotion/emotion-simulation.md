@@ -117,8 +117,10 @@ Traditional 4-stage appraisal enhanced with context awareness:
 
 **Implementation**: `/backend/services/emotion_engine.py` (enhanced CPM stages)
 
-#### Layer 3: Emotion Generation (UNCHANGED)
+#### Layer 3: Emotion Generation (ENHANCED)
 Core CPM emotion generation with all scientific enhancements:
+
+**Recent Enhancement (Nov 2024)**: Emotion labels now assigned AFTER inertia blending using Russell's (1980) Circumplex Model, ensuring subjective feelings match actual experienced emotional states. This maintains scientifically valid emotional inertia (40% weight per Kuppens et al., 2010) while producing believable emotional transitions.
 
 AICO's emotion simulation consists of five integrated components:
 
@@ -154,10 +156,29 @@ class EmotionalState:
         self.intensity = 0.7                            # Overall emotional intensity
 ```
 
-**Data-Driven Mapping**:
-- **Rule-Based (MVP)**: Predefined appraisal-to-emotion mappings
-- **Learning-Enhanced**: Machine learning refinement of emotional appropriateness
-- **Context-Sensitive**: Situation-specific emotional response patterns
+**Emotion Label Assignment Process**:
+1. **Sentiment-Based Valence**: Sentiment analysis provides BASE valence (-1 to 1) from message content (Scherer 2019: goal congruence)
+2. **Appraisal Modulation**: Social appropriateness modulates valence intensity (amplify/dampen based on context)
+3. **Regulation**: Emotion regulation modulates arousal (dampening or amplification)
+4. **Savoring**: Positive emotions amplified 15-20% for high-confidence positive sentiment (Bryant & Veroff, 2007)
+5. **Inertia Blending**: Target values blended with previous state (40% inertia weight, Kuppens et al., 2010)
+6. **Label Mapping**: Actual (post-inertia) valence/arousal mapped to emotion label using Russell's (1980) Circumplex Model
+
+**Valence Modulation Examples**:
+- **Empathetic Response**: Amplifies negative valence (1.3x concern), dampens positive (0.6x appropriate seriousness)
+- **Warm Engagement**: Amplifies positive valence (1.2x enthusiasm), maintains negative (authenticity)
+- **Neutral Response**: Uses sentiment valence directly (no modulation)
+
+**Circumplex Mapping** (Russell, 1980):
+- **High Arousal (>0.6)**: playful (v>0.5), curious (v>0.2), warm_concern (v<-0.2), focused (neutral)
+- **Moderate Arousal (0.4-0.6)**: curious (v>0.4), calm (v>0.2), reassuring (v<-0.2)
+- **Low Arousal (<0.4)**: calm (v>0.3), reflective (v<-0.3), calm (neutral)
+
+**Scientific Basis**:
+- **Sentiment → Valence**: Direct mapping from stimulus pleasantness (Russell 1980, Scherer 2019)
+- **Appraisal → Modulation**: Context adjusts intensity, not direction (Scherer CPM 2001)
+- **Post-Inertia Labels**: Subjective feeling matches experienced state (Kuppens et al., 2010)
+- **Healthy Dynamics**: 40% inertia prevents "stuck" states while maintaining stability
 
 #### 3. Mood & Cognitive States
 Manages long-term emotional patterns and baselines:
@@ -184,6 +205,13 @@ Ensures socially appropriate and ethically constrained emotional responses:
 - **Automatic Regulation**: Rapid adjustment for extreme user emotional states
 - **Emergency Protocols**: Specialized responses for crisis situations
 - **Recovery Mechanisms**: Gradual return to normal emotional patterns
+
+**Positive Emotion Amplification (Savoring)**:
+- **Savoring Mechanism**: High-confidence positive emotions amplified 10-15% (Bryant & Veroff, 2007)
+- **Triggers**: Engaging opportunities + positive sentiment (v>0.4) + high confidence (>0.5)
+- **Effect**: Amplifies both valence and arousal for more vibrant positive emotions
+- **Scientific Basis**: Healthy individuals actively upregulate positive emotions through mindful appreciation
+- **Symmetric Design**: Balances existing threat arousal boost (25% for negative emotions)
 
 **Personality Consistency**:
 - **Trait Constraints**: Emotions aligned with established personality
@@ -299,6 +327,7 @@ See [`emotion-integration.md`](./emotion-integration.md) for system-level metric
 - **Scherer, K. R. (2001)**. Appraisal considered as a process of multilevel sequential checking. *Appraisal processes in emotion*, 92(120), 57.
 - **Russell, J. A. (1980)**. A circumplex model of affect. *Journal of Personality and Social Psychology*, 39(6), 1161.
 - **Kuppens, P., et al. (2010)**. Emotional inertia and psychological maladjustment. *Psychological Science*, 21(7), 984-991.
+- **Bryant, F. B., & Veroff, J. (2007)**. *Savoring: A new model of positive experience*. Lawrence Erlbaum Associates.
 - **LeDoux, J. E. (1996)**. *The emotional brain: The mysterious underpinnings of emotional life*. Simon and Schuster.
 
 ### Modern Extensions (2024-2025)

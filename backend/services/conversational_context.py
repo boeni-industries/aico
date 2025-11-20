@@ -135,18 +135,13 @@ class ConversationalContext:
         (works in all languages via sentiment analysis)
         """
         # Check if current episode should resolve (language-agnostic)
-        if self.current_episode:
-            print(f"🔍 [EPISODE] Checking resolution: type={self.current_episode.type}, history={self.current_episode.valence_history}, current={valence}")
-            if self.current_episode.should_resolve(valence):
-                print(f"✅ [EPISODE] RESOLUTION TRIGGERED!")
-                self.current_episode = EmotionalEpisode(
-                    type=EpisodeType.RESOLUTION,
-                    valence_history=[valence],
-                    arousal_history=[arousal],
-                )
-                return
-            else:
-                print(f"❌ [EPISODE] Resolution check failed")
+        if self.current_episode and self.current_episode.should_resolve(valence):
+            self.current_episode = EmotionalEpisode(
+                type=EpisodeType.RESOLUTION,
+                valence_history=[valence],
+                arousal_history=[arousal],
+            )
+            return
         
         # Start new stress episode
         if valence < -0.3 and arousal > 0.4:
