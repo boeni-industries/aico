@@ -43,7 +43,7 @@ final class LayoutProvider extends $NotifierProvider<Layout, LayoutState> {
   }
 }
 
-String _$layoutHash() => r'4f997f99dccf50a7be182f0af49d4246ee53ac52';
+String _$layoutHash() => r'24b4d46774dd09bd86d33c58f85384630dba2bc0';
 
 /// Notifier class for layout state management
 

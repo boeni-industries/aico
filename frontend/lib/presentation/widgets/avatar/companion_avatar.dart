@@ -1,8 +1,14 @@
+import 'dart:ui';
+
 import 'package:aico_frontend/core/providers/networking_providers.dart';
+import 'package:aico_frontend/data/models/emotion_model.dart';
 import 'package:aico_frontend/networking/services/connection_manager.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
+import 'package:aico_frontend/presentation/providers/emotion_provider.dart';
 import 'package:aico_frontend/presentation/widgets/avatar/avatar_viewer.dart';
+import 'package:aico_frontend/presentation/widgets/emotion/emotion_color_mapper.dart';
+import 'package:aico_frontend/presentation/widgets/emotion/emotion_formatter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -248,44 +254,106 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
     }
   }
 
-  String _getTooltipMessage(AvatarMode avatarMode) {
-    // Avatar mode messages take priority
-    switch (avatarMode) {
-      case AvatarMode.thinking:
-        return 'Thinking...';
-      case AvatarMode.processing:
-        return 'Processing...';
-      case AvatarMode.listening:
-        return 'Listening...';
-      case AvatarMode.speaking:
-        return 'Speaking...';
-      case AvatarMode.success:
-        return 'Done!';
-      case AvatarMode.error:
-        return 'Error occurred';
-      case AvatarMode.attention:
-        return 'Attention needed';
-      case AvatarMode.connecting:
-        return 'Connecting...';
-      case AvatarMode.idle:
-        // Fall back to connection status
-        if (!_isAuthenticated) {
-          return 'Touch to authenticate';
-        }
-        
-        switch (_currentStatus) {
-          case InternalConnectionStatus.connected:
-            return 'Ready to chat';
-          case InternalConnectionStatus.connecting:
-            return 'Connecting...';
-          case InternalConnectionStatus.disconnected:
-            return 'Reconnecting in background';
-          case InternalConnectionStatus.offline:
-            return 'Check network connection';
-          case InternalConnectionStatus.error:
-            return 'Connection issue - will retry automatically';
-        }
+  InlineSpan _buildTooltipContent(AvatarMode avatarMode, EmotionModel? emotion) {
+    // Get base status message
+    final String statusMessage = switch (avatarMode) {
+      AvatarMode.thinking => 'Thinking...',
+      AvatarMode.processing => 'Processing...',
+      AvatarMode.listening => 'Listening...',
+      AvatarMode.speaking => 'Speaking...',
+      AvatarMode.success => 'Done!',
+      AvatarMode.error => 'Error occurred',
+      AvatarMode.attention => 'Attention needed',
+      AvatarMode.connecting => 'Connecting...',
+      AvatarMode.idle => !_isAuthenticated
+          ? 'Touch to authenticate'
+          : switch (_currentStatus) {
+              InternalConnectionStatus.connected => 'Ready to chat',
+              InternalConnectionStatus.connecting => 'Connecting...',
+              InternalConnectionStatus.disconnected => 'Reconnecting in background',
+              InternalConnectionStatus.offline => 'Check network connection',
+              InternalConnectionStatus.error => 'Connection issue - will retry automatically',
+            },
+    };
+
+    // Build rich tooltip with clear hierarchy
+    final spans = <InlineSpan>[
+      // Status (primary info)
+      TextSpan(
+        text: statusMessage,
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.95),
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.02,
+        ),
+      ),
+    ];
+
+    // Add emotion section if available
+    if (emotion != null) {
+      final emotionColor = EmotionColorMapper.getColor(emotion.primary);
+      final label = EmotionFormatter.formatLabel(emotion.primary);
+      final description = EmotionFormatter.getDescription(emotion.primary);
+      final confidence = (emotion.confidence * 100).round();
+
+      spans.addAll([
+        const TextSpan(text: '\n'),
+        // Emotion indicator with color dot
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Container(
+            width: 6,
+            height: 6,
+            margin: const EdgeInsets.only(right: 6, top: 2),
+            decoration: BoxDecoration(
+              color: emotionColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: emotionColor.withValues(alpha: 0.4),
+                  blurRadius: 4,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Emotion label
+        TextSpan(
+          text: label,
+          style: TextStyle(
+            color: emotionColor,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.03,
+          ),
+        ),
+        // Confidence percentage
+        TextSpan(
+          text: ' $confidence%',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.5),
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const TextSpan(text: '\n'),
+        // Description (tertiary info)
+        TextSpan(
+          text: description,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.65),
+            fontSize: 11,
+            fontWeight: FontWeight.w400,
+            height: 1.3,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ]);
     }
+
+    return TextSpan(children: spans);
   }
 
   double _getPulseMultiplier(AvatarMode mode, double intensity) {
@@ -378,17 +446,35 @@ class _CompanionAvatarState extends ConsumerState<CompanionAvatar>
           });
         }
         
+        // Watch emotion state to keep provider alive and get updates
+        final emotion = ref.watch(emotionStateProvider);
+        
         return Tooltip(
-          message: _getTooltipMessage(avatarState.mode),
+          richMessage: _buildTooltipContent(avatarState.mode, emotion),
           decoration: BoxDecoration(
-            color: Colors.black87,
-            borderRadius: BorderRadius.circular(8),
+            // Glassmorphic tooltip matching AICO design
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withValues(alpha: 0.12),
+                Colors.white.withValues(alpha: 0.08),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.15),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 20,
+                spreadRadius: 2,
+              ),
+            ],
           ),
-          textStyle: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: AnimatedBuilder(
             animation: _pulseController,
             builder: (context, child) {
