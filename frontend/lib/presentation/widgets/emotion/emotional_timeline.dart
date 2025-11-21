@@ -96,12 +96,7 @@ class EmotionalTimeline extends StatelessWidget {
         // Content
         Expanded(
           child: isLoading
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(32.0),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
+              ? _buildSkeletonLoader(context)
               : emotionHistory.isEmpty
                   ? _buildEmptyState(context)
                   : Stack(
@@ -139,6 +134,85 @@ class EmotionalTimeline extends StatelessWidget {
                     ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSkeletonLoader(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: 5, // Show 5 skeleton items
+      itemBuilder: (context, index) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Skeleton dot
+              SizedBox(
+                width: 32,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Skeleton card
+              Expanded(
+                child: Container(
+                  height: 70,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
+                      width: 1,
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Skeleton title
+                      Container(
+                        width: 100,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Skeleton bars
+                      Row(
+                        children: List.generate(3, (i) => Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(right: i < 2 ? 8 : 0),
+                            child: Container(
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                          ),
+                        )),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

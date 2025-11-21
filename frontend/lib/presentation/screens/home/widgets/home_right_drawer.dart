@@ -203,6 +203,16 @@ class _HomeRightDrawerState extends ConsumerState<HomeRightDrawer> {
   }
 
   Widget _buildEmotionalTimeline() {
+    // Lazy loading: only fetch when Emotions tab is selected
+    if (_selectedTab != DrawerTab.emotions) {
+      return EmotionalTimeline(
+        key: const ValueKey('emotions_not_selected'),
+        emotionHistory: const [],
+        isLoading: false,
+        onCollapse: widget.onToggle,
+      );
+    }
+    
     return Consumer(
       builder: (context, ref, child) {
         final historyAsync = ref.watch(emotionHistoryProvider(limit: 50));

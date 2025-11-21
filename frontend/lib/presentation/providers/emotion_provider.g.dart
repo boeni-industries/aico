@@ -61,11 +61,25 @@ final class EmotionRepositoryProvider
 String _$emotionRepositoryHash() => r'9179701d2d27a4433b53ee94eb5e2986ce1a167d';
 
 /// Emotion history provider - fetches and caches emotion history
+///
+/// Supports smart filtering:
+/// - [limit]: Max records (default: 50)
+/// - [hours]: Last N hours
+/// - [days]: Last N days
+/// - [since]: ISO timestamp
+/// - [feeling]: Filter by emotion
 
 @ProviderFor(emotionHistory)
 const emotionHistoryProvider = EmotionHistoryFamily._();
 
 /// Emotion history provider - fetches and caches emotion history
+///
+/// Supports smart filtering:
+/// - [limit]: Max records (default: 50)
+/// - [hours]: Last N hours
+/// - [days]: Last N days
+/// - [since]: ISO timestamp
+/// - [feeling]: Filter by emotion
 
 final class EmotionHistoryProvider
     extends
@@ -78,9 +92,23 @@ final class EmotionHistoryProvider
         $FutureModifier<List<EmotionHistoryItem>>,
         $FutureProvider<List<EmotionHistoryItem>> {
   /// Emotion history provider - fetches and caches emotion history
+  ///
+  /// Supports smart filtering:
+  /// - [limit]: Max records (default: 50)
+  /// - [hours]: Last N hours
+  /// - [days]: Last N days
+  /// - [since]: ISO timestamp
+  /// - [feeling]: Filter by emotion
   const EmotionHistoryProvider._({
     required EmotionHistoryFamily super.from,
-    required int super.argument,
+    required ({
+      int limit,
+      int? hours,
+      int? days,
+      String? since,
+      String? feeling,
+    })
+    super.argument,
   }) : super(
          retry: null,
          name: r'emotionHistoryProvider',
@@ -96,7 +124,7 @@ final class EmotionHistoryProvider
   String toString() {
     return r'emotionHistoryProvider'
         ''
-        '($argument)';
+        '$argument';
   }
 
   @$internal
@@ -107,8 +135,23 @@ final class EmotionHistoryProvider
 
   @override
   FutureOr<List<EmotionHistoryItem>> create(Ref ref) {
-    final argument = this.argument as int;
-    return emotionHistory(ref, limit: argument);
+    final argument =
+        this.argument
+            as ({
+              int limit,
+              int? hours,
+              int? days,
+              String? since,
+              String? feeling,
+            });
+    return emotionHistory(
+      ref,
+      limit: argument.limit,
+      hours: argument.hours,
+      days: argument.days,
+      since: argument.since,
+      feeling: argument.feeling,
+    );
   }
 
   @override
@@ -122,12 +165,23 @@ final class EmotionHistoryProvider
   }
 }
 
-String _$emotionHistoryHash() => r'67cebddf3aebb153f15515a542870ac5eb685280';
+String _$emotionHistoryHash() => r'0aa953e8e08de86143a4f5304e151d28af9aa7d7';
 
 /// Emotion history provider - fetches and caches emotion history
+///
+/// Supports smart filtering:
+/// - [limit]: Max records (default: 50)
+/// - [hours]: Last N hours
+/// - [days]: Last N days
+/// - [since]: ISO timestamp
+/// - [feeling]: Filter by emotion
 
 final class EmotionHistoryFamily extends $Family
-    with $FunctionalFamilyOverride<FutureOr<List<EmotionHistoryItem>>, int> {
+    with
+        $FunctionalFamilyOverride<
+          FutureOr<List<EmotionHistoryItem>>,
+          ({int limit, int? hours, int? days, String? since, String? feeling})
+        > {
   const EmotionHistoryFamily._()
     : super(
         retry: null,
@@ -138,9 +192,30 @@ final class EmotionHistoryFamily extends $Family
       );
 
   /// Emotion history provider - fetches and caches emotion history
+  ///
+  /// Supports smart filtering:
+  /// - [limit]: Max records (default: 50)
+  /// - [hours]: Last N hours
+  /// - [days]: Last N days
+  /// - [since]: ISO timestamp
+  /// - [feeling]: Filter by emotion
 
-  EmotionHistoryProvider call({int limit = 50}) =>
-      EmotionHistoryProvider._(argument: limit, from: this);
+  EmotionHistoryProvider call({
+    int limit = 50,
+    int? hours,
+    int? days,
+    String? since,
+    String? feeling,
+  }) => EmotionHistoryProvider._(
+    argument: (
+      limit: limit,
+      hours: hours,
+      days: days,
+      since: since,
+      feeling: feeling,
+    ),
+    from: this,
+  );
 
   @override
   String toString() => r'emotionHistoryProvider';
@@ -182,7 +257,7 @@ final class EmotionStateProvider
   }
 }
 
-String _$emotionStateHash() => r'6ebb76828bd17ad23ecaf3b82bb08bc3b0ebe5d5';
+String _$emotionStateHash() => r'ac25c376c08cfa03249ec5d8ede1d9a852f01d71';
 
 /// Provider for current emotion state with polling
 

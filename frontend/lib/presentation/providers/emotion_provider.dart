@@ -14,10 +14,30 @@ EmotionRepository emotionRepository(Ref ref) {
 }
 
 /// Emotion history provider - fetches and caches emotion history
+/// 
+/// Supports smart filtering:
+/// - [limit]: Max records (default: 50)
+/// - [hours]: Last N hours
+/// - [days]: Last N days
+/// - [since]: ISO timestamp
+/// - [feeling]: Filter by emotion
 @riverpod
-Future<List<EmotionHistoryItem>> emotionHistory(Ref ref, {int limit = 50}) async {
+Future<List<EmotionHistoryItem>> emotionHistory(
+  Ref ref, {
+  int limit = 50,
+  int? hours,
+  int? days,
+  String? since,
+  String? feeling,
+}) async {
   final repository = ref.watch(emotionRepositoryProvider);
-  return repository.getEmotionHistory(limit: limit);
+  return repository.getEmotionHistory(
+    limit: limit,
+    hours: hours,
+    days: days,
+    since: since,
+    feeling: feeling,
+  );
 }
 
 /// Provider for current emotion state with polling
@@ -70,6 +90,9 @@ class EmotionState extends _$EmotionState {
       if (emotion != null && emotion != state) {
         print('[EMOTION_PROVIDER] Updating state to: ${emotion.primary}');
         state = emotion;
+        
+        // Invalidate emotion history cache to trigger refresh
+        ref.invalidate(emotionHistoryProvider);
       }
     } catch (e) {
       print('[EMOTION_PROVIDER] Error fetching emotion: $e');

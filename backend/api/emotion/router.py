@@ -5,8 +5,9 @@ REST API endpoints for AICO's emotion system.
 Provides access to current emotional state and history.
 """
 
-from typing import Annotated
-from fastapi import APIRouter, HTTPException, Depends
+from typing import Annotated, Optional
+from datetime import datetime, timedelta
+from fastapi import APIRouter, HTTPException, Depends, Query
 from aico.core.logging import get_logger
 from .schemas import EmotionStateResponse, EmotionHistoryResponse, EmotionHistoryItem
 from .dependencies import get_current_user, get_emotion_engine
@@ -60,56 +61,96 @@ async def get_current_emotion(
 async def get_emotion_history(
     user: Annotated[dict, Depends(get_current_user)],
     emotion_engine: Annotated[object, Depends(get_emotion_engine)],
-    limit: int = 50
+    limit: int = Query(50, ge=1, le=1000, description="Maximum number of records to return"),
+    hours: Optional[int] = Query(None, ge=1, description="Only return emotions from last N hours"),
+    days: Optional[int] = Query(None, ge=1, description="Only return emotions from last N days"),
+    since: Optional[str] = Query(None, description="ISO timestamp - only return emotions after this time"),
+    feeling: Optional[str] = Query(None, description="Filter by specific emotion (e.g., 'calm', 'playful')")
 ):
     """
-    Get AICO's emotional state history.
+    Get AICO's emotional state history from database.
     
     **Authentication required:** Bearer token
     
-    Returns a list of recent emotional states for mood arc visualization.
+    Returns a list of emotional states for mood arc visualization, queried directly from the database.
     States are ordered from most recent to oldest.
+    
+    **Smart filtering options:**
+    - `limit`: Max records (1-1000, default: 50)
+    - `hours`: Last N hours (e.g., hours=24 for last day)
+    - `days`: Last N days (e.g., days=7 for last week)
+    - `since`: ISO timestamp (e.g., 2025-11-20T00:00:00)
+    - `feeling`: Filter by emotion (e.g., 'calm', 'playful', 'warm_concern')
+    
+    **Examples:**
+    - `/history?limit=100` - Last 100 emotions
+    - `/history?days=7` - All emotions from last 7 days
+    - `/history?hours=24&feeling=calm` - All 'calm' emotions in last 24 hours
+    - `/history?since=2025-11-20T00:00:00` - All emotions since Nov 20
     
     Args:
         user: Authenticated user (injected)
         emotion_engine: Emotion engine service (injected)
-        limit: Maximum number of history entries to return (default: 50, max: 100)
+        limit: Maximum number of history entries to return
+        hours: Filter to last N hours
+        days: Filter to last N days
+        since: Filter to emotions after this timestamp
+        feeling: Filter by specific emotion label
     """
     try:
-        # Validate limit
-        if limit < 1:
-            raise HTTPException(status_code=400, detail="Limit must be at least 1")
-        if limit > 100:
-            limit = 100
+        # Build SQL query with filters
+        query = "SELECT timestamp, feeling, valence, arousal, intensity FROM emotion_history WHERE 1=1"
+        params = []
         
-        # Get history from engine
-        history = emotion_engine.state_history
+        # Time-based filters
+        if since:
+            try:
+                # Validate ISO timestamp
+                datetime.fromisoformat(since.replace('Z', '+00:00'))
+                query += " AND timestamp >= ?"
+                params.append(since)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid 'since' timestamp format. Use ISO 8601 format.")
+        elif hours:
+            cutoff = datetime.utcnow() - timedelta(hours=hours)
+            query += " AND timestamp >= ?"
+            params.append(cutoff.isoformat())
+        elif days:
+            cutoff = datetime.utcnow() - timedelta(days=days)
+            query += " AND timestamp >= ?"
+            params.append(cutoff.isoformat())
         
-        if not history:
+        # Emotion filter
+        if feeling:
+            query += " AND feeling = ?"
+            params.append(feeling)
+        
+        # Order and limit
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+        
+        # Execute query
+        db_connection = emotion_engine.db_connection
+        cursor = db_connection.execute(query, params)
+        rows = cursor.fetchall()
+        
+        if not rows:
             return EmotionHistoryResponse(count=0, history=[])
         
-        # Convert to response format (most recent first)
-        history_items = []
-        for state in reversed(history[-limit:]):
-            # Handle both compact dict format and flat format from DB
-            if "label" in state:
-                # Compact dict format from to_compact_dict()
-                history_items.append(EmotionHistoryItem(
-                    timestamp=state["timestamp"],
-                    feeling=state["label"]["primary"],
-                    valence=state["mood"]["valence"],
-                    arousal=state["mood"]["arousal"],
-                    intensity=state["label"]["intensity"]
-                ))
-            else:
-                # Flat format from DB
-                history_items.append(EmotionHistoryItem(
-                    timestamp=state["timestamp"],
-                    feeling=state["feeling"],
-                    valence=state["valence"],
-                    arousal=state["arousal"],
-                    intensity=state["intensity"]
-                ))
+        # Convert to response format (already in DESC order - most recent first)
+        history_items = [
+            EmotionHistoryItem(
+                timestamp=row[0],
+                feeling=row[1],
+                valence=row[2],
+                arousal=row[3],
+                intensity=row[4]
+            )
+            for row in rows
+        ]
+        
+        logger.info(f"Retrieved {len(history_items)} emotion history records with filters: "
+                   f"limit={limit}, hours={hours}, days={days}, since={since}, feeling={feeling}")
         
         return EmotionHistoryResponse(
             count=len(history_items),
