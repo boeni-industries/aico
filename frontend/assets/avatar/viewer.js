@@ -322,17 +322,25 @@ function startBlinking() {
         if (isBlinking || eyeMeshes.length === 0) return;
         
         isBlinking = true;
-        const blinkDuration = 150; // ms
+        const blinkDuration = 180; // ms - natural blink duration
         const startTime = Date.now();
         
         const animateBlink = () => {
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / blinkDuration, 1);
             
-            // Blink curve: quick close, quick open
-            const blinkValue = progress < 0.5 
-                ? progress * 2  // Close
-                : (1 - progress) * 2; // Open
+            // Natural blink curve: fast close, brief pause, slower open
+            let blinkValue;
+            if (progress < 0.3) {
+                // Fast closing phase (0-54ms)
+                blinkValue = progress / 0.3;
+            } else if (progress < 0.4) {
+                // Fully closed pause (54-72ms)
+                blinkValue = 1.0;
+            } else {
+                // Slower opening phase (72-180ms)
+                blinkValue = 1.0 - ((progress - 0.4) / 0.6);
+            }
             
             eyeMeshes.forEach(mesh => {
                 const dict = mesh.morphTargetDictionary;
