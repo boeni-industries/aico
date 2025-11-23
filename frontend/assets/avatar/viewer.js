@@ -16,6 +16,12 @@ let lastPlayedVariation = {}; // Tracks last played variation per group
 let blinkInterval = null;
 let isBlinking = false;
 
+// Emotion expression system
+let currentEmotion = 'neutral';
+let targetEmotionValues = {};
+let currentEmotionValues = {};
+const emotionTransitionSpeed = 0.05; // Smooth transition speed
+
 // Initialize the scene
 function init() {
     console.log('[AICO Avatar] Initializing...');
@@ -385,6 +391,156 @@ function stopBlinking() {
     isBlinking = false;
 }
 
+// Emotion expression system - matches AICO's canonical emotion labels
+const emotionPresets = {
+    // Baseline states
+    neutral: {
+        // Completely relaxed, no expression
+    },
+    calm: {
+        mouthSmileLeft: 0.1,
+        mouthSmileRight: 0.1,
+        eyeSquintLeft: 0.1,
+        eyeSquintRight: 0.1
+    },
+    
+    // Engaged/positive states
+    curious: {
+        browOuterUpLeft: 0.4,
+        browOuterUpRight: 0.4,
+        eyeWideLeft: 0.3,
+        eyeWideRight: 0.3,
+        mouthSmileLeft: 0.2,
+        mouthSmileRight: 0.2
+    },
+    playful: {
+        mouthSmileLeft: 0.6,
+        mouthSmileRight: 0.6,
+        cheekSquintLeft: 0.3,
+        cheekSquintRight: 0.3,
+        browOuterUpLeft: 0.3,
+        browOuterUpRight: 0.3,
+        eyeWideLeft: 0.2,
+        eyeWideRight: 0.2
+    },
+    
+    // Supportive/caring states
+    warm_concern: {
+        browInnerUp: 0.3,
+        mouthSmileLeft: 0.3,
+        mouthSmileRight: 0.3,
+        eyeSquintLeft: 0.2,
+        eyeSquintRight: 0.2
+    },
+    protective: {
+        browDownLeft: 0.3,
+        browDownRight: 0.3,
+        mouthSmileLeft: 0.2,
+        mouthSmileRight: 0.2,
+        eyeSquintLeft: 0.3,
+        eyeSquintRight: 0.3
+    },
+    
+    // Active/engaged states
+    focused: {
+        eyeSquintLeft: 0.3,
+        eyeSquintRight: 0.3,
+        browDownLeft: 0.2,
+        browDownRight: 0.2
+    },
+    encouraging: {
+        mouthSmileLeft: 0.6,
+        mouthSmileRight: 0.6,
+        browOuterUpLeft: 0.4,
+        browOuterUpRight: 0.4,
+        eyeWideLeft: 0.2,
+        eyeWideRight: 0.2
+    },
+    reassuring: {
+        mouthSmileLeft: 0.5,
+        mouthSmileRight: 0.5,
+        browInnerUp: 0.2,
+        eyeSquintLeft: 0.2,
+        eyeSquintRight: 0.2
+    },
+    
+    // Reflective/subdued states
+    apologetic: {
+        browInnerUp: 0.5,
+        mouthFrownLeft: 0.2,
+        mouthFrownRight: 0.2,
+        eyeSquintLeft: 0.2,
+        eyeSquintRight: 0.2
+    },
+    tired: {
+        eyeSquintLeft: 0.4,
+        eyeSquintRight: 0.4,
+        browDownLeft: 0.2,
+        browDownRight: 0.2,
+        mouthFrownLeft: 0.1,
+        mouthFrownRight: 0.1
+    },
+    reflective: {
+        eyeSquintLeft: 0.2,
+        eyeSquintRight: 0.2,
+        browDownLeft: 0.2,
+        browDownRight: 0.2,
+        mouthPucker: 0.1
+    }
+};
+
+// Set emotion expression
+function setEmotion(emotion) {
+    if (!emotionPresets[emotion]) {
+        console.warn(`[AICO Avatar] Unknown emotion: ${emotion}`);
+        return;
+    }
+    
+    currentEmotion = emotion;
+    targetEmotionValues = { ...emotionPresets[emotion] };
+    console.log(`[AICO Avatar] Emotion set to: ${emotion}`);
+}
+
+// Apply emotion expressions with smooth transitions
+function applyEmotionExpression() {
+    if (eyeMeshes.length === 0) return;
+    
+    // Smoothly interpolate current values toward target values
+    for (const morphTarget in targetEmotionValues) {
+        const target = targetEmotionValues[morphTarget];
+        const current = currentEmotionValues[morphTarget] || 0;
+        const newValue = current + (target - current) * emotionTransitionSpeed;
+        currentEmotionValues[morphTarget] = newValue;
+    }
+    
+    // Reset any morph targets not in current emotion
+    for (const morphTarget in currentEmotionValues) {
+        if (!(morphTarget in targetEmotionValues)) {
+            const current = currentEmotionValues[morphTarget];
+            const newValue = current * (1 - emotionTransitionSpeed);
+            currentEmotionValues[morphTarget] = newValue;
+            if (Math.abs(newValue) < 0.01) {
+                delete currentEmotionValues[morphTarget];
+            }
+        }
+    }
+    
+    // Apply to all eye meshes
+    eyeMeshes.forEach(mesh => {
+        const dict = mesh.morphTargetDictionary;
+        const influences = mesh.morphTargetInfluences;
+        
+        for (const morphTarget in currentEmotionValues) {
+            if (dict[morphTarget] !== undefined) {
+                influences[dict[morphTarget]] = currentEmotionValues[morphTarget];
+            }
+        }
+    });
+}
+
+// Expose setEmotion to Flutter
+window.setAvatarEmotion = setEmotion;
+
 // Apply eye gaze to look at camera
 function applyEyeGaze() {
     if (eyeMeshes.length === 0) return;
@@ -425,8 +581,9 @@ function animate() {
         mixer.update(delta);
     }
     
-    // Apply eye gaze after animation updates
+    // Apply eye gaze and emotion expressions after animation updates
     applyEyeGaze();
+    applyEmotionExpression();
     
     // Render scene
     renderer.render(scene, camera);

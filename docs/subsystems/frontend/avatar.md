@@ -6,39 +6,43 @@ title: Avatar System Vision
 
 ## Current Implementation Status
 
-**Last Updated**: November 17, 2025
+**Last Updated**: November 23, 2025
 
-### ✅ Implemented (Phase 1 Complete)
+### ✅ Implemented (Phase 1 & 2 Partial Complete)
 - **Three.js WebGL Rendering**: Full 3D avatar rendering with transparent background
-- **InAppWebView Integration**: Localhost server (port 8080) serving avatar assets
-- **Ready Player Me Model**: GLB model loading with GLTFLoader
+- **InAppWebView Integration**: Localhost server (port 8779) serving avatar assets
+- **Ready Player Me Model**: GLB model with ARKit blend shapes (52 morph targets)
 - **3-Point Lighting**: Professional lighting setup (key, fill, rim + ambient)
-- **Animation System**: Separate animation files (idle.glb, talking.glb) with AnimationMixer
+- **Animation System**: GLB animation files with AnimationMixer and variation system
+- **Animation Variations**: Base idle + 7 variations (3-10s random intervals, no repeats)
 - **State Synchronization**: JavaScript bridge connecting Flutter ↔ Three.js
+- **Natural Blinking**: ARKit morph targets with realistic 180ms asymmetric blink curve
+- **Emotion Expressions**: 12 canonical emotions via ARKit blend shapes with smooth transitions
+- **Emotion Integration**: Auto-syncs with EmotionProvider (2s polling)
+- **Eye Gaze Control**: Natural 30% downward gaze for warm eye contact
 - **Background Gradients**: Radial gradients that transition based on avatar state (1.2s smooth transitions)
 - **Animation Crossfading**: 0.5s smooth transitions between animation states
 - **Performance**: 60 FPS rendering with hardware acceleration
 
 ### 🚧 Not Yet Implemented
 - **Lip-Sync System**: No phoneme-to-viseme mapping yet
-- **Emotion Mapping**: AppraisalCloudPCT not connected to facial expressions
-- **Micro-Expressions**: No fleeting emotional signals via morph targets
-- **Gaze Tracking**: No eye movement or head tracking
-- **Procedural Animations**: No breathing cycles, weight shifts, or micro-movements
+- **Speaking Animation**: talking.glb not yet integrated
+- **Gaze Tracking**: No dynamic eye movement or head tracking
+- **Procedural Animations**: No breathing cycles or weight shifts
 - **Quality Tiers**: No adaptive LOD or quality system
 - **3D Environment**: No living space or ambient activities
 - **Multi-Device Sync**: No avatar state roaming
 - **Customization**: No appearance customization UI
 
-### 📊 Current Limitations
-- **Static Avatar**: Avatar is confined to circular viewport (~15% screen space)
-- **Limited Animations**: Only idle and talking states, no emotional variety
-- **No Facial Expressions**: Blend shapes not utilized
-- **No Environmental Response**: Background gradients are the only dynamic element
-- **No Spatial Awareness**: Avatar doesn't respond to user position or input
+### 📊 Current Capabilities
+- **Emotional Expressiveness**: 12 canonical emotions with smooth transitions
+- **Natural Behaviors**: Realistic blinking (2-6s intervals), eye gaze, idle variations
+- **Animation Variety**: 8 total idle animations with intelligent variation system
+- **Real-time Sync**: Facial expressions auto-sync with backend emotion state
+- **ARKit Integration**: Full 52 morph target support for future expansion
 
-### 🎯 Next Priority (Phase 2)
-Focus on emotional expressiveness and conversation awareness to bring the avatar to life beyond basic rendering.
+### 🎯 Next Priority (Phase 2 Completion)
+Complete lip-sync system and speaking animations to enable full voice interaction.
 
 ---
 
@@ -569,19 +573,26 @@ The avatar's ambient activities are driven by AICO's autonomous agency:
 - JavaScript bridge for Flutter ↔ Three.js communication
 - State-driven background color updates (idle, thinking, speaking, etc.)
 
-### Phase 2: Expression & Emotion
+### Phase 2: Expression & Emotion 🚧 **PARTIAL COMPLETE**
 **Goal**: Emotional expressiveness and conversation awareness
 
-- [ ] **Lip-Sync System**: Phoneme-to-viseme mapping for voice output
-- [ ] **Emotion Mapping**: Connect AppraisalCloudPCT to blend shape animations
-- [ ] **Micro-Expressions**: Implement fleeting emotional signals via morph targets (40-200ms duration)
-- [ ] **Gaze System**: Natural eye movement via bone manipulation
-- [ ] **Ambient Reactions**: Breathing cycles, subtle head tracking, idle micro-movements
-- [ ] **Gesture Interactions**: Tap (attention ping), long press (settings), swipe up (focus mode), pinch (zoom)
-- [ ] **Conversation States**: Listening, thinking, speaking animations
-- [ ] **Quality Tiers**: Implement adaptive LOD and quality system
+- [x] **Natural Blinking**: ARKit morph targets with 180ms asymmetric blink curve (fast close, pause, slow open)
+- [x] **Emotion Mapping**: 12 canonical emotions connected to ARKit blend shapes with smooth transitions
+- [x] **Emotion Integration**: Auto-syncs with EmotionProvider (2s polling) for real-time facial expressions
+- [x] **Eye Gaze**: Natural 30% downward gaze for warm eye contact
+- [x] **Idle Variations**: Base idle + 7 variations with intelligent random selection (3-10s intervals)
+- [x] **Animation System**: Smooth crossfading (0.5s) between animation states
+- [ ] **Lip-Sync System**: Phoneme-to-viseme mapping for voice output (planned)
+- [ ] **Speaking Animation**: talking.glb integration (planned)
+- [ ] **Micro-Expressions**: Fleeting emotional signals via morph targets 40-200ms (planned)
+- [ ] **Dynamic Gaze**: Eye movement via bone manipulation (planned)
+- [ ] **Procedural Breathing**: Chest movement cycles (planned)
+- [ ] **Gesture Interactions**: Tap, long press, swipe gestures (planned)
+- [ ] **Quality Tiers**: Adaptive LOD system (planned)
 
 **Success Criteria**: Avatar expresses emotions clearly and lip-syncs accurately
+- ✅ **Emotion Expression**: Complete (12 canonical emotions with smooth transitions)
+- 🚧 **Lip-Sync**: Pending voice integration
 
 **Ambient Reactions Detail:**
 - **Breathing Cycles**: Chest movement synced to 4-second inhale/exhale rhythm

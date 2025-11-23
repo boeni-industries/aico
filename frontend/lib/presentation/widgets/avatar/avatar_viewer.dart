@@ -1,5 +1,6 @@
 import 'package:aico_frontend/core/platform/transparent_webview_channel.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
+import 'package:aico_frontend/presentation/providers/emotion_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -44,6 +45,13 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
     ref.listen(avatarRingStateProvider, (previous, next) {
       if (_isReady && _webViewController != null) {
         _applyAvatarState(next);
+      }
+    });
+    
+    // Listen to emotion changes and update facial expression
+    ref.listen(emotionStateProvider, (previous, next) {
+      if (_isReady && _webViewController != null && next != null) {
+        _setAvatarEmotion(next.primary);
       }
     });
     
@@ -152,6 +160,23 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
     // No need to update WebView background - keep it transparent
     
     debugPrint('[AvatarViewer] ✅ State update complete');
+  }
+  
+  /// Set avatar facial expression based on emotion
+  /// 
+  /// Maps AICO's emotion states to blend shape presets in Three.js.
+  /// Emotions smoothly transition using interpolation.
+  void _setAvatarEmotion(String emotion) {
+    debugPrint('[AvatarViewer] 😊 Setting emotion: $emotion');
+    
+    if (_webViewController == null || !_isReady) {
+      return;
+    }
+    
+    // Call JavaScript function to update facial expression
+    _webViewController!.evaluateJavascript(
+      source: "window.setAvatarEmotion('$emotion')",
+    );
   }
   
   @override

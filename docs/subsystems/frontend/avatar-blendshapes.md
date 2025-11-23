@@ -245,30 +245,47 @@ influences[dict['browDownRight']] = 0.3;
 influences[dict['mouthPucker']] = 0.2;
 ```
 
+## Current Implementation
+
+### Natural Blinking ✅ *Implemented*
+Realistic blink behavior using `eyeBlinkLeft` and `eyeBlinkRight`:
+- **Duration**: 180ms total (scientifically accurate)
+- **Timing**: Random intervals 2-6 seconds
+- **Curve**: Asymmetric (fast close 54ms, pause 18ms, slow open 108ms)
+- **Implementation**: `startBlinking()` in `viewer.js`
+
+### Emotion Expression System ✅ *Implemented*
+12 canonical emotions mapped to ARKit blend shapes:
+- **Emotions**: neutral, calm, curious, playful, warm_concern, protective, focused, encouraging, reassuring, apologetic, tired, reflective
+- **Transition**: Smooth 5% interpolation per frame (~1-2 seconds)
+- **Integration**: Auto-syncs with `EmotionProvider` (2s polling)
+- **Implementation**: `emotionPresets` and `applyEmotionExpression()` in `viewer.js`
+
+### Eye Gaze Control ✅ *Implemented*
+Natural eye contact using `eyeLookDownLeft/Right`:
+- **Direction**: 30% downward gaze for warm eye contact
+- **Application**: Applied every frame after animation updates
+- **Implementation**: `applyEyeGaze()` in `viewer.js`
+
+### Animation Variation System ✅ *Implemented*
+Dynamic idle animations with natural variations:
+- **Base**: `idle.glb` plays most of the time
+- **Variations**: 7 variations (`idle_var1.glb` - `idle_var7.glb`)
+- **Timing**: Random intervals 3-10 seconds
+- **Logic**: No same variation twice in a row
+- **Transitions**: 0.5s crossfade between animations
+- **Implementation**: `loadAnimationGroup()` and variation system in `viewer.js`
+
 ## Future Use Cases
 
-### Lip Sync for Speech
+### Lip Sync for Speech 🚧 *Planned*
 Use mouth morph targets synchronized with audio phonemes:
 - **A/E sounds:** `jawOpen`, `mouthFunnel`
 - **O sounds:** `mouthPucker`, `mouthFunnel`
 - **M/B/P sounds:** `mouthClose`, `mouthPressLeft/Right`
 - **F/V sounds:** `mouthRollLower`, `mouthUpperUpLeft/Right`
 
-### Emotional State Indicators
-Map conversation sentiment to facial expressions:
-- Positive sentiment → smile blend
-- Negative sentiment → frown blend
-- Questioning → eyebrow raise
-- Listening → subtle eye movements
-
-### Idle Micro-Expressions
-Add subtle life-like movements:
-- Random blinks every 3-5 seconds
-- Occasional eyebrow raises
-- Slight mouth movements
-- Eye gaze variations
-
-### User Interaction Feedback
+### User Interaction Feedback 🚧 *Planned*
 Visual feedback for user actions:
 - User speaks → avatar shows listening expression
 - Processing → thinking expression
@@ -289,6 +306,7 @@ Visual feedback for user actions:
 
 ## Version History
 
+- **2025-11-23:** Added emotion expression system (12 canonical emotions), natural blinking (180ms asymmetric), animation variation system
 - **2025-11-17:** Initial documentation with full ARKit blendshape set
 - Avatar ID: `6918f89f132e61458ce01a74`
-- Implementation: Eye gaze control for camera eye contact
+- Implementation: Eye gaze control, blinking, emotion expressions, idle variations
