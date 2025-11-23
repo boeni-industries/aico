@@ -581,9 +581,9 @@ The avatar's ambient activities are driven by AICO's autonomous agency:
 - [x] **Emotion Integration**: Auto-syncs with EmotionProvider (2s polling) for real-time facial expressions
 - [x] **Eye Gaze**: Natural 30% downward gaze for warm eye contact
 - [x] **Idle Variations**: Base idle + 7 variations with intelligent random selection (3-10s intervals)
-- [x] **Animation System**: Smooth crossfading (0.5s) between animation states
+- [x] **Talking Variations**: Base talking + 5 variations with dynamic cycling (2-6s intervals)
+- [x] **Animation System**: Universal animation group system with smooth crossfading (0.5s)
 - [ ] **Lip-Sync System**: Phoneme-to-viseme mapping for voice output (planned)
-- [ ] **Speaking Animation**: talking.glb integration (planned)
 - [ ] **Micro-Expressions**: Fleeting emotional signals via morph targets 40-200ms (planned)
 - [ ] **Dynamic Gaze**: Eye movement via bone manipulation (planned)
 - [ ] **Procedural Breathing**: Chest movement cycles (planned)
@@ -592,7 +592,10 @@ The avatar's ambient activities are driven by AICO's autonomous agency:
 
 **Success Criteria**: Avatar expresses emotions clearly and lip-syncs accurately
 - ✅ **Emotion Expression**: Complete (12 canonical emotions with smooth transitions)
+- ✅ **Animation System**: Complete (universal system with idle + talking groups)
 - 🚧 **Lip-Sync**: Pending voice integration
+
+See [Avatar Animation System](./avatar-animations.md) for complete animation documentation.
 
 **Ambient Reactions Detail:**
 - **Breathing Cycles**: Chest movement synced to 4-second inhale/exhale rhythm

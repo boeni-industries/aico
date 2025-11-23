@@ -91,6 +91,10 @@ dependencies:
   
   # 3D Avatar rendering - WebView + Three.js
   flutter_inappwebview: ^6.1.5
+  
+  # Markdown rendering with full styling control
+  flutter_markdown: ^0.7.4+1
+  flutter_highlight: ^0.7.0
 
   stack_trace: any
   uuid: any

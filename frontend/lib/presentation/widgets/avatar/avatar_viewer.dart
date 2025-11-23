@@ -1,4 +1,5 @@
 import 'package:aico_frontend/core/platform/transparent_webview_channel.dart';
+import 'package:aico_frontend/presentation/providers/avatar_controller_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_state_provider.dart';
 import 'package:aico_frontend/presentation/providers/emotion_provider.dart';
 import 'package:flutter/foundation.dart';
@@ -34,6 +35,15 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
   void initState() {
     super.initState();
     debugPrint('[AvatarViewer] Initializing WebView avatar viewer');
+    
+    // Register animation callbacks with avatar controller
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final controller = ref.read(avatarControllerProvider);
+      controller.registerCallbacks(
+        onStartTalking: startTalking,
+        onStopTalking: stopTalking,
+      );
+    });
   }
   
   
@@ -179,8 +189,46 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
     );
   }
   
+  /// Start talking animation (switch from idle to talking state)
+  /// 
+  /// Called when AICO starts responding (first streaming chunk).
+  /// Triggers talking animation group with automatic variations.
+  void startTalking() {
+    debugPrint('[AvatarViewer] 🗣️ Starting talking animation');
+    
+    if (_webViewController == null || !_isReady) {
+      debugPrint('[AvatarViewer] ⚠️ Cannot start talking - WebView not ready');
+      return;
+    }
+    
+    _webViewController!.evaluateJavascript(
+      source: "window.startTalking()",
+    );
+  }
+  
+  /// Stop talking animation (switch from talking to idle state)
+  /// 
+  /// Called when AICO finishes responding (streaming complete).
+  /// Returns to idle animation group with automatic variations.
+  void stopTalking() {
+    debugPrint('[AvatarViewer] 🤫 Stopping talking animation');
+    
+    if (_webViewController == null || !_isReady) {
+      debugPrint('[AvatarViewer] ⚠️ Cannot stop talking - WebView not ready');
+      return;
+    }
+    
+    _webViewController!.evaluateJavascript(
+      source: "window.stopTalking()",
+    );
+  }
+  
   @override
   void dispose() {
+    // Unregister callbacks
+    final controller = ref.read(avatarControllerProvider);
+    controller.unregisterCallbacks();
+    
     _webViewController?.dispose();
     super.dispose();
   }

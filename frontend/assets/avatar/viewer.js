@@ -187,6 +187,18 @@ async function loadAnimations() {
             variationInterval: { min: 3, max: 10 } // Random seconds between variations
         });
         
+        await loadAnimationGroup(gltfLoader, 'talking', {
+            base: './animations/talking.glb',
+            variations: [
+                './animations/talking_var1.glb',
+                './animations/talking_var2.glb',
+                './animations/talking_var3.glb',
+                './animations/talking_var4.glb',
+                './animations/talking_var5.glb'
+            ],
+            variationInterval: { min: 2, max: 6 } // Shorter intervals for talking variations
+        });
+        
         // Disable morph target tracks in all animations to allow manual control
         for (const name in animations) {
             const clip = animations[name];
@@ -540,6 +552,49 @@ function applyEmotionExpression() {
 
 // Expose setEmotion to Flutter
 window.setAvatarEmotion = setEmotion;
+
+// Avatar state management (idle vs talking)
+let currentAvatarState = 'idle';
+
+// Switch to talking state
+function startTalking() {
+    if (currentAvatarState === 'talking') return;
+    
+    console.log('[AICO Avatar] 🗣️ Switching to TALKING state');
+    currentAvatarState = 'talking';
+    
+    // Stop idle animation group
+    stopAnimationGroup('idle');
+    
+    // Start talking animation group
+    if (animationGroups.talking) {
+        startAnimationGroup('talking');
+    } else {
+        console.warn('[AICO Avatar] Talking animation group not loaded');
+    }
+}
+
+// Switch to idle state
+function stopTalking() {
+    if (currentAvatarState === 'idle') return;
+    
+    console.log('[AICO Avatar] 🤫 Switching to IDLE state');
+    currentAvatarState = 'idle';
+    
+    // Stop talking animation group
+    stopAnimationGroup('talking');
+    
+    // Start idle animation group
+    if (animationGroups.idle) {
+        startAnimationGroup('idle');
+    } else {
+        console.warn('[AICO Avatar] Idle animation group not loaded');
+    }
+}
+
+// Expose talking state functions to Flutter
+window.startTalking = startTalking;
+window.stopTalking = stopTalking;
 
 // Apply eye gaze to look at camera
 function applyEyeGaze() {
