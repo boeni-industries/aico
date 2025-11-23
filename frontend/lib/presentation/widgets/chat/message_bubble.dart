@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:aico_frontend/presentation/widgets/chat/thinking_bubble.dart';
+import 'package:aico_frontend/presentation/widgets/chat/markdown_content.dart';
 import 'package:flutter/material.dart';
 
 /// Message bubble widget that displays either a thinking animation or message content
@@ -298,13 +299,21 @@ class _MessageBubbleState extends State<MessageBubble>
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                trimmedContent,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  height: 1.5,
-                  letterSpacing: 0.2,
+              // Use markdown rendering for AI messages, plain text for user messages
+              if (widget.isFromAico)
+                MarkdownContent(
+                  data: trimmedContent,
+                  isDark: isDark,
+                  accentColor: widget.accentColor,
+                )
+              else
+                Text(
+                  trimmedContent,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    height: 1.5,
+                    letterSpacing: 0.2,
+                  ),
                 ),
-              ),
               if (widget.content.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
