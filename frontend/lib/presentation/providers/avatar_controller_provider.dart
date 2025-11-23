@@ -51,11 +51,10 @@ class AvatarController extends ChangeNotifier {
   }
 }
 
-@riverpod
+@Riverpod(keepAlive: true)
 AvatarController avatarController(Ref ref) {
   final controller = AvatarController();
-  ref.onDispose(() {
-    controller.dispose();
-  });
+  // Note: keepAlive=true means this won't auto-dispose
+  // Callbacks will persist for the app lifetime
   return controller;
 }

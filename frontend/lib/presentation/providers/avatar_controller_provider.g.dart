@@ -26,7 +26,7 @@ final class AvatarControllerProvider
         argument: null,
         retry: null,
         name: r'avatarControllerProvider',
-        isAutoDispose: true,
+        isAutoDispose: false,
         dependencies: null,
         $allTransitiveDependencies: null,
       );
@@ -53,4 +53,4 @@ final class AvatarControllerProvider
   }
 }
 
-String _$avatarControllerHash() => r'd35bf73c203de29e850f6f06edc5a17bacb624f7';
+String _$avatarControllerHash() => r'749943227699daef705a311645202a8a00e11a4e';

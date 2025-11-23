@@ -36,14 +36,14 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
     super.initState();
     debugPrint('[AvatarViewer] Initializing WebView avatar viewer');
     
-    // Register animation callbacks with avatar controller
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final controller = ref.read(avatarControllerProvider);
-      controller.registerCallbacks(
-        onStartTalking: startTalking,
-        onStopTalking: stopTalking,
-      );
-    });
+    // Register animation callbacks with avatar controller IMMEDIATELY
+    // Don't wait for post-frame callback - controller needs these NOW
+    final controller = ref.read(avatarControllerProvider);
+    controller.registerCallbacks(
+      onStartTalking: startTalking,
+      onStopTalking: stopTalking,
+    );
+    debugPrint('[AvatarViewer] ✅ Registered callbacks with AvatarController');
   }
   
   

@@ -296,10 +296,23 @@ function playRandomVariation(groupName) {
     playAnimation(variation);
     
     const variationDuration = animations[variation].duration * 1000;
-    setTimeout(() => {
+    const timeout = setTimeout(() => {
         playAnimation(group.base);
-        scheduleNextVariation(groupName);
+        
+        // For talking: chain immediately if still talking, otherwise schedule with delay
+        if (groupName === 'talking' && isTalkingContinuous) {
+            // Continuous chaining for talking - play next variation immediately
+            playRandomVariation(groupName);
+        } else {
+            // Normal delayed scheduling for idle
+            scheduleNextVariation(groupName);
+        }
     }, variationDuration);
+    
+    // Store timeout for talking so we can cancel it on stopTalking()
+    if (groupName === 'talking') {
+        talkingChainTimeout = timeout;
+    }
 }
 
 // Stop animation group variation cycling
@@ -555,6 +568,22 @@ window.setAvatarEmotion = setEmotion;
 
 // Avatar state management (idle vs talking)
 let currentAvatarState = 'idle';
+let isTalkingContinuous = false; // Flag for continuous talking animation chaining
+let talkingChainTimeout = null; // Track the timeout for talking animation chaining
+
+// Start continuous talking animation (no delays between variations)
+function startTalkingContinuous() {
+    const group = animationGroups.talking;
+    if (!group) return;
+    
+    // Play base animation first
+    playAnimation(group.base);
+    
+    // Immediately start chaining variations
+    if (group.variations.length > 0) {
+        playRandomVariation('talking');
+    }
+}
 
 // Switch to talking state
 function startTalking() {
@@ -562,13 +591,14 @@ function startTalking() {
     
     console.log('[AICO Avatar] 🗣️ Switching to TALKING state');
     currentAvatarState = 'talking';
+    isTalkingContinuous = true; // Enable continuous chaining
     
     // Stop idle animation group
     stopAnimationGroup('idle');
     
-    // Start talking animation group
+    // Start talking animation group with continuous chaining
     if (animationGroups.talking) {
-        startAnimationGroup('talking');
+        startTalkingContinuous();
     } else {
         console.warn('[AICO Avatar] Talking animation group not loaded');
     }
@@ -578,15 +608,25 @@ function startTalking() {
 function stopTalking() {
     if (currentAvatarState === 'idle') return;
     
-    console.log('[AICO Avatar] 🤫 Switching to IDLE state');
+    console.log('[AICO Avatar] 🤫 Switching to IDLE state - IMMEDIATE transition');
     currentAvatarState = 'idle';
+    isTalkingContinuous = false; // Disable continuous chaining
+    
+    // Cancel any pending talking animation chain
+    if (talkingChainTimeout) {
+        clearTimeout(talkingChainTimeout);
+        talkingChainTimeout = null;
+        console.log('[AICO Avatar] Cancelled pending talking animation');
+    }
     
     // Stop talking animation group
     stopAnimationGroup('talking');
     
-    // Start idle animation group
+    // IMMEDIATELY transition to idle (crossfade will handle smooth transition)
     if (animationGroups.idle) {
-        startAnimationGroup('idle');
+        const group = animationGroups.idle;
+        playAnimation(group.base); // This will crossfade from current talking animation
+        scheduleNextVariation('idle'); // Resume normal idle variation scheduling
     } else {
         console.warn('[AICO Avatar] Idle animation group not loaded');
     }
