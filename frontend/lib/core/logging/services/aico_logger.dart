@@ -319,11 +319,21 @@ class AICOLogger {
   /// Generate topic from module and function
   static String _generateTopic(String module, String function) {
     final moduleParts = module.split('.');
+    
+    // Extract category from module (e.g., 'frontend.data.repositories' -> 'data')
+    String category = 'app';
     if (moduleParts.length >= 2) {
-      final category = moduleParts[1]; // e.g., 'ui', 'api', 'storage'
-      return '$category/${function.toLowerCase()}';
+      category = moduleParts[1]; // e.g., 'ui', 'api', 'storage', 'data'
     }
-    return 'app/${function.toLowerCase()}';
+    
+    // Sanitize function name: remove dots, convert to lowercase
+    // e.g., 'TtsRepositoryImpl.initialize' -> 'ttsrepositoryimpl_initialize'
+    String sanitizedFunction = function
+        .replaceAll('.', '_')  // Replace dots with underscores
+        .toLowerCase();
+    
+    // Use slash notation as required by backend
+    return '$category/$sanitizedFunction';
   }
 
   /// Process a log entry through the pipeline

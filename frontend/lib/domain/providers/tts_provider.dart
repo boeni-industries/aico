@@ -17,10 +17,12 @@ TtsRepository ttsRepository(Ref ref) {
 /// TTS state notifier using modern Riverpod pattern
 @riverpod
 class Tts extends _$Tts {
-  TtsRepository get _repository => ref.read(ttsRepositoryProvider);
+  late final TtsRepository _repository;
 
   @override
   TtsState build() {
+    // Keep a reference to the repository to prevent disposal issues
+    _repository = ref.watch(ttsRepositoryProvider);
     _initialize();
     _listenToStateChanges();
     return TtsState.initial();

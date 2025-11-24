@@ -1026,5 +1026,42 @@ CORE_SCHEMA = register_schema("core", "core", priority=0)({
             "DROP TABLE IF EXISTS emotion_history",
             "DROP TABLE IF EXISTS emotion_state",
         ]
+    ),
+    
+    18: SchemaVersion(
+        version=18,
+        name="Fix Schema v16 Mistake - Correct AMS Behavioral Feedback Table",
+        description="Fix v16 error: Rename misnamed ams_feedback_events, create proper ams_behavioral_feedback table",
+        sql_statements=[
+            # Rename the incorrectly named table from v16
+            "ALTER TABLE ams_feedback_events RENAME TO temp_memory_album_feedback",
+            
+            # Create the CORRECT AMS Behavioral Learning feedback table
+            """CREATE TABLE IF NOT EXISTS ams_behavioral_feedback (
+                event_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                skill_id TEXT,
+                reward INTEGER NOT NULL CHECK (reward IN (-1, 0, 1)),
+                reason TEXT,
+                free_text TEXT,
+                timestamp TEXT NOT NULL,
+                processed INTEGER DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (skill_id) REFERENCES skills(skill_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_ams_behavioral_feedback_user ON ams_behavioral_feedback(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_ams_behavioral_feedback_skill ON ams_behavioral_feedback(skill_id)",
+            "CREATE INDEX IF NOT EXISTS idx_ams_behavioral_feedback_processed ON ams_behavioral_feedback(processed)",
+            
+            # Note: DROP temp table removed - causes lock issues, will be cleaned in v19
+        ],
+        rollback_statements=[
+            "DROP INDEX IF EXISTS idx_ams_behavioral_feedback_processed",
+            "DROP INDEX IF EXISTS idx_ams_behavioral_feedback_skill",
+            "DROP INDEX IF EXISTS idx_ams_behavioral_feedback_user",
+            "DROP TABLE IF EXISTS ams_behavioral_feedback",
+            "ALTER TABLE temp_memory_album_feedback RENAME TO ams_feedback_events",
+        ]
     )
 })

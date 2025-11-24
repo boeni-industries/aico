@@ -67,7 +67,21 @@ class ConversationAudioSettingsNotifier extends _$ConversationAudioSettingsNotif
     final newChannel = state.replyChannel == ReplyChannel.textOnly
         ? ReplyChannel.textAndVoice
         : ReplyChannel.textOnly;
-    setReplyChannel(newChannel);
+    
+    debugPrint('[ConversationAudioSettings] 🔊 Toggling reply channel: ${state.replyChannel} → $newChannel');
+    
+    // When enabling voice replies, also disable silent mode
+    if (newChannel == ReplyChannel.textAndVoice && state.isSilent) {
+      state = state.copyWith(
+        replyChannel: newChannel,
+        isSilent: false,
+      );
+      _persist();
+      debugPrint('[ConversationAudioSettings] ✅ Reply channel: $newChannel, Silent mode disabled, shouldPlayTTS: ${state.shouldPlayTTS}');
+    } else {
+      setReplyChannel(newChannel);
+      debugPrint('[ConversationAudioSettings] ✅ Reply channel: $newChannel, shouldPlayTTS: ${state.shouldPlayTTS}');
+    }
   }
 
   /// Enable/disable silent mode (privacy mode)

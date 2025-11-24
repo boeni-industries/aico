@@ -396,9 +396,13 @@ class ConversationNotifier extends _$ConversationNotifier {
         
         // TTS Auto-play: Speak AI response if voice replies are enabled
         final audioSettings = ref.read(conversationAudioSettingsProvider);
+        debugPrint('[ConversationProvider] 🔊 TTS Check - replyChannel: ${audioSettings.replyChannel}, isSilent: ${audioSettings.isSilent}, shouldPlayTTS: ${audioSettings.shouldPlayTTS}');
+        
         if (audioSettings.shouldPlayTTS && finalResponse.trim().isNotEmpty) {
-          debugPrint('[ConversationProvider] 🔊 Auto-playing TTS for AI response');
+          debugPrint('[ConversationProvider] 🔊 Auto-playing TTS for AI response (${finalResponse.length} chars)');
           ref.read(ttsProvider.notifier).speak(finalResponse);
+        } else {
+          debugPrint('[ConversationProvider] 🔇 TTS skipped - shouldPlayTTS: ${audioSettings.shouldPlayTTS}, responseEmpty: ${finalResponse.trim().isEmpty}');
         }
       },
       (String error) {
