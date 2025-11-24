@@ -299,15 +299,23 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
                       ),
                     ),
                     
-                    // Read Aloud
-                    _buildActionButton(
-                      icon: _executedAction == 'read_aloud' 
-                          ? Icons.check_rounded 
-                          : Icons.volume_up_rounded,
-                      tooltip: 'Read aloud',
-                      onTap: _handleReadAloud,
-                      isExecuted: _executedAction == 'read_aloud',
-                      isEnabled: true,
+                    // Read Aloud (toggle play/stop)
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final ttsState = ref.watch(ttsProvider);
+                        final isSpeaking = ttsState.status == TtsStatus.speaking;
+                        
+                        return _buildActionButton(
+                          icon: isSpeaking 
+                              ? Icons.stop_rounded 
+                              : Icons.volume_up_rounded,
+                          tooltip: isSpeaking ? 'Stop reading' : 'Read aloud',
+                          onTap: _handleReadAloud,
+                          isExecuted: false,
+                          isEnabled: true,
+                          isActive: isSpeaking,
+                        );
+                      },
                     ),
                     
                     // Thumbs Up
