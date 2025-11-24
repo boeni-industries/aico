@@ -17,7 +17,6 @@ class ModalAwareLayout extends ConsumerWidget {
   final Widget messages;
   final Widget input;
   final Widget? sidebar;
-  final VoidCallback? onShowChat;
 
   const ModalAwareLayout({
     super.key,
@@ -25,7 +24,6 @@ class ModalAwareLayout extends ConsumerWidget {
     required this.messages,
     required this.input,
     this.sidebar,
-    this.onShowChat,
   });
 
   @override
@@ -39,7 +37,6 @@ class ModalAwareLayout extends ConsumerWidget {
             messages: messages,
             input: input,
             layoutState: layoutState,
-            onShowChat: onShowChat,
           )
         : _HorizontalLayout(
             avatar: avatar,
@@ -47,7 +44,6 @@ class ModalAwareLayout extends ConsumerWidget {
             input: input,
             sidebar: sidebar,
             layoutState: layoutState,
-            onShowChat: onShowChat,
           );
   }
 }
@@ -60,7 +56,6 @@ class _HorizontalLayout extends StatelessWidget {
   final Widget input;
   final Widget? sidebar;
   final LayoutState layoutState;
-  final VoidCallback? onShowChat;
 
   const _HorizontalLayout({
     required this.avatar,
@@ -68,7 +63,6 @@ class _HorizontalLayout extends StatelessWidget {
     required this.input,
     this.sidebar,
     required this.layoutState,
-    this.onShowChat,
   });
 
   @override
@@ -134,14 +128,7 @@ class _HorizontalLayout extends StatelessWidget {
             child: input,
           ),
 
-        // Voice mode with messages: show minimized chat indicator
-        // Initial state: don't show indicator (user sees "I'm here" message)
-        if (!isChatVisible && hasMessages)
-          Positioned(
-            bottom: 140, // Above input field (input is ~80px + 20px margin)
-            right: 40,
-            child: _MinimizedChatIndicator(onTap: onShowChat),
-          ),
+        // Voice mode: Chat is accessible via keyboard button in input area
       ],
     );
   }
@@ -154,14 +141,12 @@ class _VerticalLayout extends StatelessWidget {
   final Widget messages;
   final Widget input;
   final LayoutState layoutState;
-  final VoidCallback? onShowChat;
 
   const _VerticalLayout({
     required this.avatar,
     required this.messages,
     required this.input,
     required this.layoutState,
-    this.onShowChat,
   });
 
   @override
@@ -182,14 +167,7 @@ class _VerticalLayout extends StatelessWidget {
         if (isChatVisible)
           Expanded(child: messages),
 
-        // Voice mode with messages: minimized chat indicator
-        // Initial state: empty space (user sees "I'm here" in avatar area)
-        if (!isChatVisible && hasMessages)
-          Expanded(
-            child: Center(
-              child: _MinimizedChatIndicator(onTap: onShowChat),
-            ),
-          ),
+        // Voice mode: Chat is accessible via keyboard button in input area
         
         // Initial state: spacer
         if (!isChatVisible && !hasMessages)
