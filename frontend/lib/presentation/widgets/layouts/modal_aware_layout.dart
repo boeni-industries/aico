@@ -69,7 +69,6 @@ class _HorizontalLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     final avatarWidthPercent = layoutState.getAvatarWidthPercent(false);
     final isChatVisible = layoutState.isChatVisible;
-    final hasMessages = layoutState.hasMessages;
 
     return Stack(
       children: [
@@ -182,102 +181,6 @@ class _VerticalLayout extends StatelessWidget {
           child: input,
         ),
       ],
-    );
-  }
-}
-
-/// Minimized chat indicator for voice mode
-/// Shows a glassmorphic button to expand chat UI
-class _MinimizedChatIndicator extends StatefulWidget {
-  final VoidCallback? onTap;
-  
-  const _MinimizedChatIndicator({this.onTap});
-
-  @override
-  State<_MinimizedChatIndicator> createState() => _MinimizedChatIndicatorState();
-}
-
-class _MinimizedChatIndicatorState extends State<_MinimizedChatIndicator> {
-  bool _isHovered = false;
-  bool _isPressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final accentColor = const Color(0xFFB8A1EA);
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        onTapDown: (_) => setState(() => _isPressed = true),
-        onTapUp: (_) => setState(() => _isPressed = false),
-        onTapCancel: () => setState(() => _isPressed = false),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          decoration: BoxDecoration(
-            // Glassmorphic background
-            color: isDark
-                ? Colors.white.withValues(alpha: _isPressed ? 0.12 : _isHovered ? 0.10 : 0.06)
-                : Colors.white.withValues(alpha: _isPressed ? 0.85 : _isHovered ? 0.75 : 0.65),
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: _isHovered ? 0.20 : 0.12)
-                  : Colors.white.withValues(alpha: _isHovered ? 0.50 : 0.35),
-              width: 1.5,
-            ),
-            boxShadow: [
-              // Main floating shadow
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.12),
-                blurRadius: _isHovered ? 32 : 24,
-                offset: Offset(0, _isPressed ? 8 : 12),
-                spreadRadius: -6,
-              ),
-              // Accent glow on hover
-              if (_isHovered)
-                BoxShadow(
-                  color: accentColor.withValues(alpha: 0.25),
-                  blurRadius: 40,
-                  spreadRadius: -8,
-                ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.chat_bubble_outline_rounded,
-                size: 20,
-                color: _isHovered
-                    ? accentColor
-                    : (isDark
-                        ? Colors.white.withValues(alpha: 0.75)
-                        : Colors.black.withValues(alpha: 0.70)),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'Show chat',
-                style: TextStyle(
-                  color: _isHovered
-                      ? accentColor
-                      : (isDark
-                          ? Colors.white.withValues(alpha: 0.75)
-                          : Colors.black.withValues(alpha: 0.70)),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

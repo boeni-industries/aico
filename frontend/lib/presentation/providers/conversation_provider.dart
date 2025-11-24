@@ -6,10 +6,12 @@ import 'package:aico_frontend/core/providers/networking_providers.dart';
 import 'package:aico_frontend/data/database/message_database.dart' hide Message;
 import 'package:aico_frontend/data/repositories/message_repository_impl.dart';
 import 'package:aico_frontend/domain/entities/message.dart';
+import 'package:aico_frontend/domain/providers/tts_provider.dart';
 import 'package:aico_frontend/domain/repositories/message_repository.dart';
 import 'package:aico_frontend/domain/usecases/send_message_usecase.dart';
 import 'package:aico_frontend/presentation/providers/auth_provider.dart';
 import 'package:aico_frontend/presentation/providers/avatar_controller_provider.dart';
+import 'package:aico_frontend/presentation/providers/conversation_audio_settings_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:uuid/uuid.dart';
 
@@ -391,6 +393,13 @@ class ConversationNotifier extends _$ConversationNotifier {
           streamingThinking: null, // Clear streaming thinking
           thinkingHistory: updatedHistory, // Update history
         );
+        
+        // TTS Auto-play: Speak AI response if voice replies are enabled
+        final audioSettings = ref.read(conversationAudioSettingsProvider);
+        if (audioSettings.shouldPlayTTS && finalResponse.trim().isNotEmpty) {
+          debugPrint('[ConversationProvider] 🔊 Auto-playing TTS for AI response');
+          ref.read(ttsProvider.notifier).speak(finalResponse);
+        }
       },
       (String error) {
         // Handle streaming error

@@ -116,7 +116,6 @@ class HomeInputArea extends ConsumerWidget {
                       ? accentColor 
                       : theme.colorScheme.onSurface.withValues(alpha: 0.4),
                   isEnabled: !isActive,
-                  tooltip: isSpeakerEnabled ? 'Voice replies enabled' : 'Voice replies muted',
                 ),
                 const SizedBox(width: 8),
                 // Mic/Keyboard toggle (input channel + layout)
@@ -127,7 +126,6 @@ class HomeInputArea extends ConsumerWidget {
                   size: 48,
                   foregroundColor: isVoiceMode ? accentColor : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   isEnabled: !isActive,
-                  tooltip: isVoiceMode ? 'Switch to text mode' : 'Switch to voice mode',
                 ),
                 const SizedBox(width: 8),
                 // Send button
@@ -138,7 +136,6 @@ class HomeInputArea extends ConsumerWidget {
                   size: 48,
                   foregroundColor: accentColor,
                   isEnabled: !isActive,
-                  tooltip: 'Send message',
                 ),
               ],
             ),
