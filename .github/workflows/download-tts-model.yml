@@ -1,10 +1,11 @@
 name: Download TTS Model
 
 on:
+  # Manual trigger
   workflow_dispatch: {}
-  push:
-    paths:
-      - '.github/workflows/download-tts-model.yml'
+
+  # Reusable workflow: can be called from other workflows (e.g. frontend build)
+  workflow_call: {}
 
 jobs:
   download-model:

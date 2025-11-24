@@ -96,6 +96,9 @@ dependencies:
   flutter_markdown: ^0.7.4+1
   flutter_highlight: ^0.7.0
 
+  # Neural TTS engine (Kokoro-82M via ONNX)
+  kokoro_tts_flutter: ^0.2.0+1
+
   stack_trace: any
   uuid: any
 dev_dependencies:
@@ -139,6 +142,9 @@ flutter:
     - assets/avatar/libs/addons/utils/
     - assets/avatar/models/
     - assets/avatar/animations/
+    # Neural TTS model assets (downloaded at build/CI time)
+    - assets/tts/kokoro-v1.0.onnx
+    - assets/tts/voices.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
