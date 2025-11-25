@@ -102,6 +102,9 @@ class TtsIsolateService {
       ),
     );
 
+    // Create a completer to wait for isolate initialization
+    final initCompleter = Completer<void>();
+
     // Listen for messages from isolate
     _receivePort!.listen((message) {
       if (message is SendPort) {
@@ -109,6 +112,9 @@ class TtsIsolateService {
         _sendPort = message;
         _isInitialized = true;
         AICOLog.info('✅ TTS isolate initialized');
+        if (!initCompleter.isCompleted) {
+          initCompleter.complete();
+        }
       } else if (message is TtsSynthesisResult) {
         // Synthesis completed successfully
         final completer = _pendingRequests.remove(message.id);
@@ -120,11 +126,13 @@ class TtsIsolateService {
       }
     });
 
-    // Wait for isolate to be ready
-    await Future.delayed(const Duration(milliseconds: 100));
-    if (!_isInitialized) {
-      throw Exception('TTS isolate failed to initialize');
-    }
+    // Wait for isolate to send its SendPort (with timeout)
+    await initCompleter.future.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () {
+        throw Exception('TTS isolate initialization timed out');
+      },
+    );
   }
 
   /// Synthesize TTS audio
