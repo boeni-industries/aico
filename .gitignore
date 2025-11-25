@@ -78,6 +78,7 @@ Thumbs.db
 *.log
 .aico/
 site/
+frontend/assets/tts/
 
 # Misc
 *.bak
