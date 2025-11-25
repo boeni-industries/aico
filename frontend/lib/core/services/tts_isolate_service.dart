@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:isolate';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:kokoro_tts_flutter/kokoro_tts_flutter.dart';
 import 'package:aico_frontend/core/logging/aico_log.dart';
@@ -173,44 +174,60 @@ class TtsIsolateService {
     Kokoro? kokoro;
 
     try {
+      debugPrint('[TTS_ISOLATE] Starting isolate initialization...');
+      
       // CRITICAL: Initialize BackgroundIsolateBinaryMessenger to enable platform plugins
       BackgroundIsolateBinaryMessenger.ensureInitialized(initData.rootIsolateToken);
+      debugPrint('[TTS_ISOLATE] BackgroundIsolateBinaryMessenger initialized');
 
       // Send our SendPort back to main isolate
       initData.sendPort.send(receivePort.sendPort);
+      debugPrint('[TTS_ISOLATE] SendPort sent to main isolate');
 
       // Initialize Kokoro TTS
+      debugPrint('[TTS_ISOLATE] Creating Kokoro config...');
       final config = KokoroConfig(
         modelPath: initData.modelPath,
         voicesPath: initData.voicesPath,
       );
+      debugPrint('[TTS_ISOLATE] Initializing Kokoro...');
       kokoro = Kokoro(config);
       await kokoro.initialize();
+      debugPrint('[TTS_ISOLATE] ✅ Kokoro initialized successfully');
 
       // Listen for synthesis requests
+      debugPrint('[TTS_ISOLATE] Ready to receive synthesis requests');
       await for (final message in receivePort) {
         if (message is TtsSynthesisRequest) {
           try {
+            debugPrint('[TTS_ISOLATE] Received synthesis request: ${message.id}');
+            debugPrint('[TTS_ISOLATE] Text length: ${message.text.length}, Voice: ${message.voice}');
             final startTime = DateTime.now();
 
             // Perform synthesis
+            debugPrint('[TTS_ISOLATE] Starting Kokoro synthesis...');
             final result = await kokoro.createTTS(
               text: message.text,
               voice: message.voice,
               speed: message.speed,
             );
+            debugPrint('[TTS_ISOLATE] Synthesis complete, audio samples: ${result.audio.length}');
 
             final synthesisTime = DateTime.now().difference(startTime);
 
             // Send result back
+            debugPrint('[TTS_ISOLATE] Sending result back to main isolate...');
             initData.sendPort.send(TtsSynthesisResult(
               id: message.id,
               audioSamples: result.audio.map((e) => e.toDouble()).toList(),
               sampleRate: result.sampleRate,
               synthesisTime: synthesisTime,
             ));
-          } catch (e) {
+            debugPrint('[TTS_ISOLATE] ✅ Result sent successfully');
+          } catch (e, stackTrace) {
             // Send error back
+            debugPrint('[TTS_ISOLATE] ❌ Synthesis error: $e');
+            debugPrint('[TTS_ISOLATE] Stack trace: $stackTrace');
             initData.sendPort.send(TtsSynthesisError(
               id: message.id,
               message: e.toString(),
