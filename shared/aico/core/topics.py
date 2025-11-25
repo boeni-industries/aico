@@ -325,6 +325,18 @@ class AICOTopics:
         return f"ai/{component}/{operation}/{version}/{correlation_id}"
     
     @staticmethod
+    def build_response_topic(base_topic: str, service_id: str, request_id: str) -> str:
+        """Build request-specific response topic: <base_topic>/<service_id>/<request_id>
+        
+        Example:
+            base_topic = "modelservice/chat/response/v1"
+            service_id = "conversation_engine"
+            request_id = "abc-123"
+            returns: "modelservice/chat/response/v1/conversation_engine/abc-123"
+        """
+        return f"{base_topic}/{service_id}/{request_id}"
+    
+    @staticmethod
     def build_logs_topic(topic: str) -> str:
         """Build full logs topic by prefixing with logs domain"""
         if topic.startswith("logs/"):

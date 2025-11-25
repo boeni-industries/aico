@@ -924,7 +924,8 @@ def _get_db_connection():
     # Create database connection
     conn = _get_database_connection(str(db_file))
     
-    # Initialize isolated CLI logging with configuration
+    # Initialize isolated CLI logging with the SAME connection
+    # This is efficient - we reuse the connection for both command and logging
     try:
         initialize_cli_logging(conn, config)
         # Verify CLI logging works by creating a test logger
@@ -1273,6 +1274,7 @@ def exec(
     """Execute raw SQL query"""
     conn = _get_db_connection()
     
+    cursor = None
     try:
         # Safety check for destructive operations
         query_upper = query.upper().strip()
@@ -1357,6 +1359,16 @@ def exec(
     except Exception as e:
         console.print(f"[red]Error executing query: {e}[/red]")
         raise typer.Exit(1)
+    finally:
+        # CRITICAL: Clean up CLI logging manager BEFORE closing connection
+        # This releases the reference so connection can be fully closed
+        from cli.utils.logging import _cli_logging_manager
+        _cli_logging_manager.cleanup()
+        
+        # Now close cursor and connection
+        if cursor:
+            cursor.close()
+        conn.close()
 
 
 # Removed sync and snapshot commands - use 'aico db init' for database creation and updates

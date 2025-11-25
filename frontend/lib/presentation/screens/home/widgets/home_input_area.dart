@@ -1,12 +1,15 @@
 import 'dart:ui';
 
+import 'package:aico_frontend/domain/entities/conversation_audio_settings.dart';
+import 'package:aico_frontend/presentation/providers/conversation_audio_settings_provider.dart';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
+import 'package:aico_frontend/presentation/providers/layout_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:aico_frontend/presentation/widgets/common/animated_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Message input area with glassmorphic styling
+/// Message input area with glassmorphic styling and audio controls
 class HomeInputArea extends ConsumerWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -32,7 +35,11 @@ class HomeInputArea extends ConsumerWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final conversationState = ref.watch(conversationProvider);
+    final layoutState = ref.watch(layoutProvider);
+    final audioSettings = ref.watch(conversationAudioSettingsProvider);
     final isActive = conversationState.isSendingMessage || conversationState.isStreaming;
+    final isVoiceMode = layoutState.modality == ConversationModality.voice;
+    final isSpeakerEnabled = audioSettings.replyChannel == ReplyChannel.textAndVoice && !audioSettings.isSilent;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 12),
@@ -98,15 +105,30 @@ class HomeInputArea extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
+                // Speaker toggle (reply channel control)
                 AnimatedButton(
-                  key: voiceButtonKey,
-                  onPressed: onVoice,
-                  icon: Icons.mic_rounded,
+                  onPressed: () {
+                    ref.read(conversationAudioSettingsProvider.notifier).toggleReplyChannel();
+                  },
+                  icon: isSpeakerEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded,
                   size: 48,
-                  foregroundColor: accentColor,
+                  foregroundColor: isSpeakerEnabled 
+                      ? accentColor 
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.4),
                   isEnabled: !isActive,
                 ),
                 const SizedBox(width: 8),
+                // Mic/Keyboard toggle (input channel + layout)
+                AnimatedButton(
+                  key: voiceButtonKey,
+                  onPressed: onVoice,
+                  icon: isVoiceMode ? Icons.keyboard_rounded : Icons.mic_rounded,
+                  size: 48,
+                  foregroundColor: isVoiceMode ? accentColor : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  isEnabled: !isActive,
+                ),
+                const SizedBox(width: 8),
+                // Send button
                 AnimatedButton(
                   key: sendButtonKey,
                   onPressed: onSend,

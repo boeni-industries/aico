@@ -92,6 +92,7 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
   JourneyNode? _hoveredNode;
   double _currentZoom = 1.0;
   final ScrollController _scrollController = ScrollController();
+  double _timelineWidth = 0.0;
   
   @override
   void initState() {
@@ -137,32 +138,45 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
               // Scrollable timeline
               SingleChildScrollView(
                 controller: _scrollController,
-                child: MouseRegion(
-                  cursor: _hoveredNode != null 
-                      ? SystemMouseCursors.click 
-                      : SystemMouseCursors.basic,
-                  onHover: (event) => _handleHover(event.localPosition),
-                  onExit: (_) => setState(() => _hoveredNode = null),
-                  child: SizedBox(
-                    width: MediaQuery.of(context).size.width,
-                    height: _calculateTimelineHeight(),
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTapUp: (details) => _handleTap(details.localPosition),
-                      child: CustomPaint(
-                        painter: JourneyMapPainter(
-                          nodes: widget.nodes,
-                          chapters: widget.chapters,
-                          zoom: _currentZoom,
-                          hoveredNode: _hoveredNode,
-                        ),
-                        size: Size(
-                          MediaQuery.of(context).size.width,
-                          _calculateTimelineHeight(),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Store timeline width for overlay positioning
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (_timelineWidth != constraints.maxWidth) {
+                        setState(() {
+                          _timelineWidth = constraints.maxWidth;
+                        });
+                      }
+                    });
+                    
+                    return MouseRegion(
+                      cursor: _hoveredNode != null 
+                          ? SystemMouseCursors.click 
+                          : SystemMouseCursors.basic,
+                      onHover: (event) => _handleHover(event.localPosition, constraints.maxWidth),
+                      onExit: (_) => setState(() => _hoveredNode = null),
+                      child: SizedBox(
+                        width: constraints.maxWidth,
+                        height: _calculateTimelineHeight(),
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapUp: (details) => _handleTap(details.localPosition, constraints.maxWidth),
+                          child: CustomPaint(
+                            painter: JourneyMapPainter(
+                              nodes: widget.nodes,
+                              chapters: widget.chapters,
+                              zoom: _currentZoom,
+                              hoveredNode: _hoveredNode,
+                            ),
+                            size: Size(
+                              constraints.maxWidth,
+                              _calculateTimelineHeight(),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ),
               // Speech bubble overlay - outside scroll area
@@ -331,9 +345,17 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
     final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
     final visibleY = nodeY - scrollOffset;
     
+    // Position bubble to align the tail pointer with the node
+    // The tail is positioned at the vertical center of the bubble (size.height / 2 in GlassBubblePainter)
+    // Bubble structure: padding (14px top + 14px bottom = 28px) + text content
+    // Text: fontSize 13, lineHeight 1.5, typically 2-3 lines = ~40-60px
+    // Total bubble height: 28 + 50 (avg text) = ~78px, center at 39px
+    // Fine-tuned to 42px to account for actual rendered height
+    final bubbleVerticalOffset = 42.0; // Offset to align bubble tail center with node
+    
     return Positioned(
-      left: MediaQuery.of(context).size.width / 2 + 24,
-      top: math.max(10, visibleY - 30), // Adjust for scroll and prevent top cutoff
+      left: _timelineWidth / 2 + 24,
+      top: math.max(10, visibleY - bubbleVerticalOffset), // Align bubble tail with node, prevent top cutoff
       child: IgnorePointer(
         child: Container(
           constraints: const BoxConstraints(maxWidth: 280),
@@ -442,24 +464,30 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
     return firstNodeY + (daySpan * pixelsPerDay) + 200; // +200 bottom padding
   }
   
-  void _handleHover(Offset position) {
+  void _handleHover(Offset position, double widgetWidth) {
     // Find node at hover position
-    final centerX = MediaQuery.of(context).size.width / 2;
+    final centerX = widgetWidth / 2;
+    
+    // Account for scroll offset - position is relative to viewport, nodes are in absolute timeline coordinates
+    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final absoluteY = position.dy + scrollOffset;
     
     JourneyNode? newHoveredNode;
+    double minDistance = double.infinity;
     
+    // Find the CLOSEST node within hover radius, not just the first one
     for (final node in widget.nodes) {
       // Use same positioning logic as painter
       final y = _getNodeYPosition(node);
       
       final distance = math.sqrt(
-        math.pow(position.dx - centerX, 2) + math.pow(position.dy - y, 2)
+        math.pow(position.dx - centerX, 2) + math.pow(absoluteY - y, 2)
       );
       
-      // Same radius as tap
-      if (distance < 120) {
+      // Check if within hover radius and closer than previous candidates
+      if (distance < 120 && distance < minDistance) {
         newHoveredNode = node;
-        break;
+        minDistance = distance;
       }
     }
     
@@ -471,37 +499,42 @@ class _JourneyMapWidgetState extends State<JourneyMapWidget> {
     }
   }
   
-  void _handleTap(Offset position) {
-    print('Journey Map tapped at: $position');
-    
+  void _handleTap(Offset position, double widgetWidth) {
     // Find node at tap position
-    final centerX = MediaQuery.of(context).size.width / 2;
+    final centerX = widgetWidth / 2;
     
-    for (int i = 0; i < widget.nodes.length; i++) {
-      final node = widget.nodes[i];
+    // Account for scroll offset - position is relative to viewport, nodes are in absolute timeline coordinates
+    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final absoluteY = position.dy + scrollOffset;
+    
+    JourneyNode? closestNode;
+    double minDistance = double.infinity;
+    
+    // Find the CLOSEST node within tap radius, not just the first one
+    for (final node in widget.nodes) {
       // Use same positioning logic as painter
       final y = _getNodeYPosition(node);
       
       final distance = math.sqrt(
-        math.pow(position.dx - centerX, 2) + math.pow(position.dy - y, 2)
+        math.pow(position.dx - centerX, 2) + math.pow(absoluteY - y, 2)
       );
       
-      print('Node $i at y=$y, distance=$distance');
-      
-      // Large tap target area - 120px radius to make tapping easier
-      if (distance < 120) {
-        print('Node $i tapped! Opening detail...');
-        // Node tapped!
-        node.onTap();
-        return;
+      // Check if within tap radius and closer than previous candidates
+      if (distance < 120 && distance < minDistance) {
+        closestNode = node;
+        minDistance = distance;
       }
     }
     
-    print('No node tapped');
-    // No node tapped, clear hover
-    setState(() {
-      _hoveredNode = null;
-    });
+    if (closestNode != null) {
+      // Node tapped!
+      closestNode.onTap();
+    } else {
+      // No node tapped, clear hover
+      setState(() {
+        _hoveredNode = null;
+      });
+    }
   }
 }
 

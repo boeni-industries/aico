@@ -33,23 +33,30 @@ class HomeToolbar extends StatelessWidget {
       child: isVisible && hasMessages
           ? Container(
               height: 56,
+              margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
               decoration: BoxDecoration(
-                // EXACT same background as conversation container
+                // Stronger background for visibility without glassmorphic card
                 color: isDark
-                    ? Colors.white.withValues(alpha: 0.04)
-                    : Colors.white.withValues(alpha: 0.6),
-                // Only round bottom corners - top edge merges seamlessly
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(GlassTheme.radiusXLarge),
-                  bottomRight: Radius.circular(GlassTheme.radiusXLarge),
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : Colors.white.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(GlassTheme.radiusLarge),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Colors.white.withValues(alpha: 0.5),
+                  width: 1,
                 ),
-                // NO borders - container borders continue seamlessly
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
-                    blurRadius: 20,
+                    color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.12),
+                    blurRadius: 24,
                     offset: const Offset(0, 8),
                     spreadRadius: -4,
+                  ),
+                  BoxShadow(
+                    color: accentColor.withValues(alpha: 0.15),
+                    blurRadius: 32,
+                    spreadRadius: -8,
                   ),
                 ],
               ),

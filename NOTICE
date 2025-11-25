@@ -1,0 +1,186 @@
+AICO - AI Companion
+Copyright (c) 2025 Boeni Industries AG
+
+This software is licensed under the MIT License.
+
+================================================================================
+
+THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
+
+This project incorporates components from the projects listed below. The original
+copyright notices and the licenses under which Boeni Industries AG received such
+components are set forth below for informational purposes. Boeni Industries AG
+licenses these components to you under the project's MIT license.
+
+================================================================================
+
+1. LMDB (Lightning Memory-Mapped Database)
+   Copyright (c) 2011-2024 Howard Chu, Symas Corp.
+   License: OpenLDAP Public License 2.8 (OLDAP-2.8)
+   
+   The OpenLDAP Public License
+   Version 2.8, 17 August 2003
+   
+   Redistribution and use of this software and associated documentation
+   ("Software"), with or without modification, are permitted provided
+   that the following conditions are met:
+   
+   1. Redistributions in source form must retain copyright statements
+      and notices,
+   
+   2. Redistributions in binary form must reproduce applicable copyright
+      statements and notices, this list of conditions, and the following
+      disclaimer in the documentation and/or other materials provided
+      with the distribution, and
+   
+   3. Redistributions must contain a verbatim copy of this document.
+   
+   The OpenLDAP Foundation may revise this license from time to time.
+   Each revision is distinguished by a version number. You may use
+   this Software under terms of this license revision or under the
+   terms of any subsequent revision of the license.
+   
+   THIS SOFTWARE IS PROVIDED BY THE OPENLDAP FOUNDATION AND ITS
+   CONTRIBUTORS ``AS IS'' AND ANY EXPRESSED OR IMPLIED WARRANTIES,
+   INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+   AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT
+   SHALL THE OPENLDAP FOUNDATION, ITS CONTRIBUTORS, OR THE AUTHOR(S)
+   OR OWNER(S) OF THE SOFTWARE BE LIABLE FOR ANY DIRECT, INDIRECT,
+   INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+   BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+   LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+   CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+   LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+   ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+   POSSIBILITY OF SUCH DAMAGE.
+
+================================================================================
+
+2. Apache 2.0 Licensed Components
+
+The following components are licensed under the Apache License 2.0:
+
+- grand-cypher (Apache-2.0)
+- hnswlib (Apache-2.0)
+- sentencepiece (Apache-2.0)
+- hf-xet (Apache-2.0)
+- chromadb (Apache-2.0)
+- transformers (Apache-2.0)
+- sentence-transformers (Apache-2.0)
+- gliner (Apache-2.0)
+- And other Apache-licensed dependencies
+
+   Apache License
+   Version 2.0, January 2004
+   http://www.apache.org/licenses/
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+================================================================================
+
+3. BSD Licensed Components
+
+The following components are licensed under various BSD licenses (BSD-3-Clause,
+BSD-2-Clause, BSD):
+
+- protobuf (BSD-3-Clause)
+- torch (BSD)
+- numpy (BSD)
+- scipy (BSD)
+- And other BSD-licensed dependencies
+
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions are met:
+
+   1. Redistributions of source code must retain the above copyright notice,
+      this list of conditions and the following disclaimer.
+
+   2. Redistributions in binary form must reproduce the above copyright notice,
+      this list of conditions and the following disclaimer in the documentation
+      and/or other materials provided with the distribution.
+
+   3. Neither the name of the copyright holder nor the names of its
+      contributors may be used to endorse or promote products derived from
+      this software without specific prior written permission.
+
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+   AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+   ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+   LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+   CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+   SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+   POSSIBILITY OF SUCH DAMAGE.
+
+================================================================================
+
+4. MIT Licensed Components
+
+The following components are licensed under the MIT License:
+
+- libsql (MIT)
+- fastapi (MIT)
+- pydantic (MIT)
+- typer (MIT)
+- rich (MIT)
+- And other MIT-licensed dependencies
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+
+================================================================================
+
+5. Flutter/Dart Dependencies
+
+The following Flutter/Dart components are used in the frontend application:
+
+- Flutter SDK (BSD-3-Clause) - https://flutter.dev
+- drift (MIT) - Database ORM for Flutter
+- sqlcipher_flutter_libs (MIT option chosen) - Native SQLCipher encryption
+- flutter_riverpod (MIT) - State management
+- sodium (BSD-3-Clause) - libsodium cryptography bindings
+- flutter_inappwebview (Apache-2.0) - WebView for 3D avatar rendering
+- dio (MIT) - HTTP client
+- go_router (BSD-3-Clause) - Navigation
+- And other MIT/BSD-3-Clause licensed packages
+
+For complete Flutter dependency list:
+  cd frontend && flutter pub deps --style=list
+
+================================================================================
+
+For a complete list of all Python dependencies and their licenses, run:
+  uv run pip-licenses --format=markdown --with-urls
+
+For Flutter dependencies:
+  cd frontend && flutter pub deps --style=list
+
+Last updated: November 19, 2025

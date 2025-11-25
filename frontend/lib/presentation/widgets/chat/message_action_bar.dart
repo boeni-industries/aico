@@ -1,3 +1,5 @@
+import 'package:aico_frontend/domain/entities/tts_state.dart';
+import 'package:aico_frontend/domain/providers/tts_provider.dart';
 import 'package:aico_frontend/presentation/providers/memory_album_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,7 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// 
 /// Actions:
 /// - User Messages: [Copy] | [Remember]
-/// - AICO Messages: [Copy] | [Remember] [Regenerate]
+/// - AICO Messages: [Copy] | [Remember] | [Read Aloud] [Thumbs Up/Down]
 class MessageActionBar extends ConsumerStatefulWidget {
   /// Message content for actions (e.g., copy text)
   final String messageContent;
@@ -146,6 +148,26 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
     });
   }
   
+  /// Read aloud this message (toggle play/stop)
+  Future<void> _handleReadAloud() async {
+    if (widget.messageContent.isEmpty) return;
+
+    // Haptic feedback
+    HapticFeedback.lightImpact();
+
+    // Check current TTS state
+    final ttsState = ref.read(ttsProvider);
+    final isCurrentlySpeaking = ttsState.status == TtsStatus.speaking;
+
+    if (isCurrentlySpeaking) {
+      // Stop current playback
+      await ref.read(ttsProvider.notifier).stop();
+    } else {
+      // Start reading this message
+      await ref.read(ttsProvider.notifier).speak(widget.messageContent);
+    }
+  }
+
   /// Remember this message
   Future<void> _handleRememberThis() async {
     if (widget.messageContent.isEmpty) return;
@@ -275,6 +297,25 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
                           ],
                         ),
                       ),
+                    ),
+                    
+                    // Read Aloud (toggle play/stop)
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final ttsState = ref.watch(ttsProvider);
+                        final isSpeaking = ttsState.status == TtsStatus.speaking;
+                        
+                        return _buildActionButton(
+                          icon: isSpeaking 
+                              ? Icons.stop_rounded 
+                              : Icons.volume_up_rounded,
+                          tooltip: isSpeaking ? 'Stop reading' : 'Read aloud',
+                          onTap: _handleReadAloud,
+                          isExecuted: false,
+                          isEnabled: true,
+                          isActive: isSpeaking,
+                        );
+                      },
                     ),
                     
                     // Thumbs Up

@@ -126,7 +126,6 @@ class ConversationEngine(BaseService):
             raise ValueError("CRITICAL: Missing core.modelservice.ollama.default_models.conversation.name - model name must be explicitly configured")
         
         self.logger.info(f"Conversation engine using model: {self.model_name}")
-        
 
     def get_active_features(self) -> List[str]:
         """Return a list of enabled AI integration features."""
@@ -197,18 +196,18 @@ class ConversationEngine(BaseService):
             self._handle_user_input
         )
         
-        # Subscribe to LLM responses (always enabled)
-        await self.bus_client.subscribe(
-            AICOTopics.MODELSERVICE_CHAT_RESPONSE,
-            self._handle_llm_response
-        )
+        # Note: LLM response subscriptions are now dynamic per-request
+        # Each request subscribes to its own response topic: modelservice/chat/response/v1/conversation_engine/{request_id}
+        # This eliminates cross-talk between conversation engine and other services (KG, etc.)
         
         # Optional component subscriptions
-        if self.enable_emotion_integration:
-            await self.bus_client.subscribe(
-                AICOTopics.EMOTION_ANALYSIS_RESPONSE,
-                self._handle_emotion_response
-            )
+        # Note: Emotion integration uses direct service access (emotion_engine.get_current_state())
+        # User emotion detection (Phase 2+) will subscribe to AI_EMOTION_ANALYSIS_RESPONSE
+        # if self.enable_emotion_integration:
+        #     await self.bus_client.subscribe(
+        #         AICOTopics.AI_EMOTION_ANALYSIS_RESPONSE,
+        #         self._handle_emotion_response
+        #     )
         
         if self.enable_personality_integration:
             await self.bus_client.subscribe(
@@ -650,14 +649,26 @@ class ConversationEngine(BaseService):
                 stream=True
             )
             
+            # Build request-specific response topic for targeted delivery
+            response_topic = AICOTopics.build_response_topic(
+                AICOTopics.MODELSERVICE_CHAT_RESPONSE,
+                "conversation_engine",
+                request_id
+            )
+            
+            # Subscribe to our specific response topic before sending request
+            await self.bus_client.subscribe(response_topic, self._handle_llm_response)
+            
             await self.bus_client.publish(
                 AICOTopics.MODELSERVICE_CHAT_REQUEST,
                 completions_request,
-                correlation_id=request_id
+                correlation_id=request_id,
+                reply_to=response_topic  # Tell modelservice where to send response
             )
             
             # Mark request sent and start streaming handler
             self.pending_responses[request_id]["llm_request_sent"] = True
+            self.pending_responses[request_id]["response_topic"] = response_topic  # Track for cleanup
             asyncio.create_task(self._handle_streaming_response(request_id, AICOTopics.MODELSERVICE_COMPLETIONS_STREAM))
             
         except Exception as e:
@@ -881,6 +892,78 @@ class ConversationEngine(BaseService):
         if identity_parts:
             prompt_parts.append("\n".join(identity_parts))
         
+        # Add emotional conditioning if available (Phase 1 emotion system)
+        if self.enable_emotion_integration:
+            try:
+                emotion_engine = self.container.get_service("emotion_engine")
+                if emotion_engine:
+                    # Get current emotional state (compact projection)
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            # Skip in this case - emotion will still be published to bus
+                            pass
+                        else:
+                            emotional_state = asyncio.run(emotion_engine.get_current_state())
+                            if emotional_state:
+                                style = emotional_state.get("style", {})
+                                label = emotional_state.get("label", {})
+                                
+                                # Build concise emotional guidance
+                                emotion_guidance = []
+                                emotion_guidance.append(f"Current emotional tone: {label.get('primary', 'calm')}")
+                                
+                                # Add style hints
+                                warmth = style.get("warmth", 0.6)
+                                energy = style.get("energy", 0.5)
+                                directness = style.get("directness", 0.5)
+                                
+                                if warmth > 0.7:
+                                    emotion_guidance.append("Respond with warmth and care.")
+                                if energy > 0.6:
+                                    emotion_guidance.append("Show engaged, active energy.")
+                                elif energy < 0.4:
+                                    emotion_guidance.append("Maintain a calm, gentle presence.")
+                                if directness > 0.7:
+                                    emotion_guidance.append("Be direct and clear.")
+                                elif directness < 0.4:
+                                    emotion_guidance.append("Be gentle and indirect.")
+                                
+                                if emotion_guidance:
+                                    prompt_parts.append("\n".join(emotion_guidance))
+                                    self.logger.debug(f"🎭 Added emotional conditioning: {label.get('primary', 'calm')}")
+                    except RuntimeError:
+                        # No event loop
+                        emotional_state = asyncio.run(emotion_engine.get_current_state())
+                        if emotional_state:
+                            style = emotional_state.get("style", {})
+                            label = emotional_state.get("label", {})
+                            
+                            emotion_guidance = []
+                            emotion_guidance.append(f"Current emotional tone: {label.get('primary', 'calm')}")
+                            
+                            warmth = style.get("warmth", 0.6)
+                            energy = style.get("energy", 0.5)
+                            directness = style.get("directness", 0.5)
+                            
+                            if warmth > 0.7:
+                                emotion_guidance.append("Respond with warmth and care.")
+                            if energy > 0.6:
+                                emotion_guidance.append("Show engaged, active energy.")
+                            elif energy < 0.4:
+                                emotion_guidance.append("Maintain a calm, gentle presence.")
+                            if directness > 0.7:
+                                emotion_guidance.append("Be direct and clear.")
+                            elif directness < 0.4:
+                                emotion_guidance.append("Be gentle and indirect.")
+                            
+                            if emotion_guidance:
+                                prompt_parts.append("\n".join(emotion_guidance))
+                                self.logger.debug(f"🎭 Added emotional conditioning: {label.get('primary', 'calm')}")
+            except Exception as e:
+                self.logger.warning(f"🎭 Failed to add emotional conditioning: {e}")
+        
         # Add memory context if available
         if memory_context:
             memory_data = memory_context.get("memory_context", {})
@@ -974,13 +1057,11 @@ class ConversationEngine(BaseService):
                 self.logger.error(f"Failed to extract correlation_id from LLM response: {e}")
                 return
             
-            print(f"💬 [CONVERSATION_ENGINE] 🔍 Checking pending responses for {correlation_id}")
-            print(f"💬 [CONVERSATION_ENGINE] 📋 Pending requests: {list(self.pending_responses.keys())}")
-            
             # Find matching request using correlation ID
+            # Note: With request-specific response topics, we should ALWAYS find a match
+            # If not found, it indicates a bug in subscription/cleanup logic
             if correlation_id and correlation_id in self.pending_responses:
-                print(f"💬 [CONVERSATION_ENGINE] ✅ Found matching request for {correlation_id}")
-                self.logger.info(f"🔍 [ENGINE_FLOW] ✅ Found matching request for correlation_id: {correlation_id}")
+                self.logger.debug(f"Processing response for correlation_id: {correlation_id}")
                 request_id = correlation_id
                 pending_data = self.pending_responses[request_id]
                 user_context = pending_data["user_context"]
@@ -1025,10 +1106,9 @@ class ConversationEngine(BaseService):
                 else:
                     print(f"💬 [CONVERSATION_ENGINE] 🔒 Keeping request {request_id} (direct_api_call or already cleaned)")
             else:
-                self.logger.error(f"🔍 [ENGINE_FLOW] ❌ NO MATCHING REQUEST for correlation_id: {correlation_id}")
-                self.logger.error(f"🔍 [ENGINE_FLOW] Available pending requests: {list(self.pending_responses.keys())}")
-                self.logger.warning(f"No matching request found for correlation_id: {correlation_id}")
-                self.logger.debug(f"Pending requests: {list(self.pending_responses.keys())}")
+                # This should NEVER happen with request-specific topics
+                # If it does, it indicates a bug in subscription/cleanup logic
+                self.logger.error(f"BUG: Received response for unknown correlation_id: {correlation_id} (subscription leak detected)")
                     
         except Exception as e:
             self.logger.error(f"Error handling LLM response: {e}")
@@ -1053,6 +1133,15 @@ class ConversationEngine(BaseService):
     async def _cleanup_request(self, request_id: str) -> None:
         """Clean up completed request"""
         if request_id in self.pending_responses:
+            # Unsubscribe from request-specific response topic
+            response_topic = self.pending_responses[request_id].get("response_topic")
+            if response_topic:
+                try:
+                    await self.bus_client.unsubscribe(response_topic)
+                    self.logger.debug(f"Unsubscribed from {response_topic}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to unsubscribe from {response_topic}: {e}")
+            
             del self.pending_responses[request_id]
             self.logger.debug(f"Cleaned up request {request_id}")
     

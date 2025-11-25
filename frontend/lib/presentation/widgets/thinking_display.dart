@@ -2,12 +2,13 @@ import 'dart:ui';
 import 'package:aico_frontend/presentation/providers/conversation_provider.dart';
 import 'package:aico_frontend/presentation/theme/glassmorphism.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Widget to display AI's inner monologue (thinking) in the right drawer
 /// Following AICO guidelines: Stateless presentation widget, data from provider
 /// Research-based design inspired by Claude Artifacts, ChatGPT reasoning display,
 /// and modern AI UX patterns with timeline visualization
-class ThinkingDisplay extends StatefulWidget {
+class ThinkingDisplay extends ConsumerStatefulWidget {
   final List<ThinkingTurn> thinkingHistory; // From provider
   final String? currentThinking; // Currently streaming thinking
   final bool isStreaming;
@@ -24,10 +25,10 @@ class ThinkingDisplay extends StatefulWidget {
   });
 
   @override
-  State<ThinkingDisplay> createState() => _ThinkingDisplayState();
+  ConsumerState<ThinkingDisplay> createState() => _ThinkingDisplayState();
 }
 
-class _ThinkingDisplayState extends State<ThinkingDisplay>
+class _ThinkingDisplayState extends ConsumerState<ThinkingDisplay>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;

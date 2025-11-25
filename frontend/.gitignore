@@ -17,3 +17,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# TTS assets (downloaded/generated, not tracked in Git)
+assets/tts/

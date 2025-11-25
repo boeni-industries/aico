@@ -202,6 +202,7 @@ class WorkingMemoryStore:
             with self.env.begin(db=db) as txn:
                 cursor = txn.cursor()
                 # Iterate through all keys to find messages for this user
+                # CRITICAL: Collect ALL messages first, then sort, then limit
                 for key, value in cursor:
                     data = json.loads(value.decode('utf-8'))
                     
@@ -211,11 +212,11 @@ class WorkingMemoryStore:
                             continue
 
                         history.append(data)
-                        if len(history) >= limit:
-                            break
+                        # Don't break early - collect ALL messages for proper sorting
 
-            # Sort by timestamp
+            # Sort by timestamp (newest first) THEN limit
             history.sort(key=lambda x: x.get("_stored_at"), reverse=True)
+            history = history[:limit]  # Take only the most recent N messages after sorting
             
             logger.info(f"🔍 [WORKING_MEMORY] ✅ Retrieved {len(history)} messages from user history")
             return history

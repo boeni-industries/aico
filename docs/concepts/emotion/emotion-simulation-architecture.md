@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the technical architecture for AICO's Emotion Simulation module, focusing on its integration with the message bus system and data exchange formats. For conceptual information about the emotion model, see [`/docs/concepts/emotion/emotion-sim.md`](./emotion-sim.md).
+This document describes the technical architecture for AICO's Emotion Simulation module, focusing on its integration with the message bus system and data exchange formats. For conceptual information about the emotion model, see [`emotion-simulation.md`](./emotion-simulation.md). For a big-picture view of how detection and simulation integrate across the system to create a believable emotional companion, see [`emotion-integration.md`](./emotion-integration.md).
 
 ## Bus Integration Architecture
 
@@ -31,11 +31,28 @@ The Emotion Simulation module participates in the following message bus topics:
 
 ## Message Schemas
 
-Detailed message format specifications are documented in [`emotion_sim_msg.md`](./emotion-sim-msg.md). These include illustrative JSON structures for all input and output message types used by the Emotion Simulation module.
+Detailed message format specifications are documented in [`emotion-messages.md`](./emotion-messages.md). These include illustrative JSON structures for all input and output message types used by the Emotion Simulation module.
 
 **Key Message Types:**
 - **Input**: `user.emotion.detected`, `conversation.message`, `conversation.context`, `personality.state`
 - **Output**: `emotion.state.current`, `emotion.expression.voice`, `emotion.expression.avatar`, `emotion.expression.text`
+
+## Dual Emotion System in the Architecture
+
+The architecture distinguishes clearly between **user emotion detection** and **AICO's simulated emotional state**, while wiring both into the same message-driven backbone:
+
+- **User Emotion Detection (Input Layer)**
+  - Emotion recognition components publish user-focused events such as `user.emotion.detected` and `voice.analysis`, which describe the user's affect (primary/secondary labels, valence/arousal, stress indicators).
+  - These messages are treated as upstream inputs into the Emotion Simulation pipeline and are also available to other components (e.g., AMS, crisis detection) via standardized topics.
+
+- **AICO Simulated Emotion (Internal State Layer)**
+  - The Emotion Simulation module consumes user emotion, conversation context, personality state, and memory hints to produce AICO's internal `EmotionalState`.
+  - This state is published as `emotion.state.current` and used to generate downstream expression messages (`emotion.expression.text`, `emotion.expression.voice`, `emotion.expression.avatar`) and experience records (`emotion.memory.store`).
+
+- **Integration with Memory and Frontend**
+  - `emotion.memory.store` encapsulates both user emotion and AICO's simulated emotional response for each significant interaction so that the memory system (working, semantic, KG, AMS) can learn which emotional strategies are effective over time.
+  - Frontend and embodiment clients can subscribe to or fetch `emotion.state.current` (or its REST/WebSocket equivalents) to drive mood colors, strongest-emotion indicators, and simple mood-history visualizations, ensuring that UI, avatar, and text share a coherent emotional state.
+
 ## Processing Pipeline
 
 ### 1. Input Aggregation
@@ -67,7 +84,7 @@ class EmotionSimulationModule:
 
 ### 2. Appraisal Processing
 
-The core AppraisalCloudPCT algorithm processes the aggregated context:
+The core C-CPM algorithm processes the aggregated context:
 
 ```python
 def process_emotional_response(self) -> EmotionalState:
@@ -100,6 +117,51 @@ def process_emotional_response(self) -> EmotionalState:
     )
     
     return self.generate_cpm_emotional_state(regulated_response)
+
+def generate_cpm_emotional_state(self, appraisal: AppraisalResult, sentiment_data: Dict) -> EmotionalState:
+    """
+    Generate CPM emotional state with label assignment AFTER inertia.
+    
+    Scientific basis:
+    - Scherer (2019): Goal congruence determines valence, appraisal modulates arousal
+    - Russell (1980): Core affect dimensions map directly from stimulus valence
+    - Kuppens et al. (2010): Labels should match experienced state
+    - Bryant & Veroff (2007): Savoring amplifies positive emotions
+    """
+    # 1. Generate target valence/arousal from sentiment + appraisal modulation
+    # CRITICAL: Sentiment valence is BASE, appraisal modulates intensity
+    sentiment_valence = sentiment_data.get("valence", 0.0)
+    target_valence, target_arousal = self.appraisal_modulates_sentiment(
+        sentiment_valence, appraisal
+    )
+    
+    # 2. Apply emotion regulation (dampening)
+    arousal = target_arousal * (1.0 - self.regulation_strength * 0.3)
+    valence = target_valence
+    
+    # 3. Apply threat boost (negative emotions, high relevance)
+    if self.is_threat_detected(appraisal, sentiment_data):
+        arousal *= 1.25  # 25% boost
+        
+    # 4. Apply savoring boost (positive emotions, high confidence)
+    if self.is_savoring_triggered(appraisal, sentiment_data):
+        valence *= 1.15  # 15% boost
+        arousal *= 1.20  # 20% boost
+    
+    # 5. Apply emotional inertia (blend with previous state)
+    if self.previous_state:
+        valence = (valence * 0.6) + (self.previous_state.valence * 0.4)
+        arousal = (arousal * 0.6) + (self.previous_state.arousal * 0.4)
+    
+    # 6. Map actual valence/arousal to emotion label (Russell's Circumplex)
+    emotion_label = self.map_valence_arousal_to_label(valence, arousal, appraisal)
+    
+    return EmotionalState(
+        label=emotion_label,
+        valence=valence,
+        arousal=arousal,
+        appraisal=appraisal
+    )
 ```
 
 ### 3. Output Generation
@@ -213,30 +275,102 @@ The Emotion Simulation module consists of four core components that work togethe
 
 ### 2. Appraisal Processing Component
 
-**Purpose**: Implements the core AppraisalCloudPCT algorithm to evaluate situational significance and generate emotional appraisals.
+**Purpose**: Implements Klaus Scherer's Component Process Model (CPM) to evaluate situational significance and generate emotional appraisals through sequential stimulus evaluation.
+
+**Scientific Foundation**:
+- Based on Scherer (2001, 2009) Component Process Model
+- Sequential appraisal with "systems economy" - expensive processing only for relevant stimuli
+- Processes novelty, intrinsic pleasantness, and motivational consistency
+- Reference: PMC2781886 "Emotions are emergent processes"
 
 **Responsibilities**:
-- **Relevance Assessment**: Evaluates "Does this situation matter to me?" based on user emotional state and context
-- **Goal Impact Analysis**: Determines "What does this mean for my companion goals?" considering relationship phase and user needs
-- **Coping Evaluation**: Assesses "Can I handle this appropriately?" based on personality traits and situation complexity
-- **Normative Checking**: Validates "Is my response socially appropriate?" considering relationship boundaries and social context
+- **Relevance Assessment (Stage 1)**: Evaluates "Does this situation matter to me?" using sentiment intensity and emotional keyword density
+- **Goal Impact Analysis (Stage 2)**: Determines "What does this mean for my companion goals?" with sensitivity-adjusted thresholds
+- **Coping Evaluation (Stage 3)**: Assesses "Can I handle this appropriately?" based on personality traits and situation complexity
+- **Normative Checking (Stage 4)**: Validates "Is my response socially appropriate?" considering relationship boundaries and social context
 
 **Processing Stages**:
-1. **Stage 1 - Relevance**: Calculates relevance score (0.0-1.0) based on user emotional intensity and interaction context
-2. **Stage 2 - Implication**: Analyzes impact on companion relationship goals (supportive, neutral, challenging)
-3. **Stage 3 - Coping**: Determines appropriate response capability and approach style
-4. **Stage 4 - Normative**: Applies social appropriateness filters and relationship boundary checks
+
+1. **Stage 1 - Relevance Detection** (First Selective Filter)
+   - **Intrinsic Pleasantness**: Sentiment confidence (0-1 range)
+   - **Motivational Consistency**: Emotional keyword density (0-1 range)
+   - **Base Engagement**: Minimum relevance threshold (0.2)
+   - **Formula**: `relevance = (sentiment_confidence × 0.4) + (keyword_density × 0.4) + 0.2`
+   - **Output**: Raw relevance score (0-1, undampened)
+   - **Note**: Sensitivity NOT applied to relevance values (preserves value domain)
+
+2. **Stage 2 - Implication Analysis** (Sequential Processing)
+   - **Sensitivity Application**: Applied to decision thresholds, not appraisal values
+   - **Threshold Adjustment**: `effective_threshold = base_threshold × appraisal_sensitivity`
+   - **Example**: With sensitivity=0.7, threshold 0.5 becomes 0.35 (more responsive)
+   - **Categories**:
+     - `supportive_opportunity`: valence < -0.3 AND relevance > (0.5 × sensitivity)
+     - `engaging_opportunity`: relevance > (0.6 × sensitivity)
+     - `neutral`: relevance > (0.3 × sensitivity)
+     - `low_priority`: relevance ≤ (0.3 × sensitivity)
+
+3. **Stage 3 - Coping Assessment**
+   - Determines appropriate response capability and approach style
+   - Crisis detection for situations beyond AI capability
+   - Personality-based coping strategy selection
+
+4. **Stage 4 - Normative Regulation**
+   - Social appropriateness filters
+   - Relationship boundary checks
+   - Crisis protocol activation
 
 **Key Features**:
-- **Configurable Sensitivity**: Adjustable appraisal sensitivity parameters
-- **Context Weighting**: Different weights for various contextual factors
+- **Scientifically Validated**: Implements Scherer's CPM with proper sequential processing
+- **Value Domain Preservation**: Maintains 0-1 range throughout appraisal pipeline
+- **Configurable Sensitivity**: Adjusts decision thresholds (not raw values) for responsiveness tuning
 - **Crisis Detection**: Special handling for crisis situations requiring immediate response
 
 **Output**: `AppraisalResult` containing relevance scores, goal impacts, and response strategies
 
+**Implementation Notes**:
+- Sentiment intensity uses confidence directly (not distance from neutral)
+- Sensitivity parameter (default 0.7) affects Stage 2 thresholds only
+- Sequential processing ensures logical dependencies between stages
+- Follows CPM's "systems economy" principle for computational efficiency
+
+**Emotional Inertia (Temporal Dynamics)**:
+
+Implements emotional state persistence based on Kuppens et al. (2010) and Scherer's CPM recursive appraisal:
+
+- **Leaky Integrator Model**: Blends previous and current emotional states
+  - Formula: `new_state = (current_appraisal × reactivity) + (previous_state × inertia)`
+  - Default weights: 60% reactivity, 40% inertia (healthy range: 0.3-0.5)
+  - Prevents rapid state switching while maintaining responsiveness
+
+- **Temporal Decay**: Inertia influence decreases over conversation turns
+  - Formula: `effective_inertia = inertia_weight × (1.0 - decay_rate × turns_elapsed)`
+  - Default decay: 10% per turn
+  - Allows gradual return to baseline after emotional episodes
+
+- **Supportive Context Bias**: Maintains supportive tone during stress recovery
+  - When previous state was supportive (WARM_CONCERN, REASSURING, PROTECTIVE)
+  - Positive sentiment after stress → REASSURING (not PLAYFUL)
+  - Implements CPM's "recursive appraisal until monitoring subsystem signals termination"
+
+- **Scientific Validation**:
+  - Kuppens et al. (2010): "Emotional inertia = resistance to change"
+  - Puccetti et al. (2021): "Leaky integrator neurons with accumulation and decay"
+  - Scherer CPM: "Recursive appraisal process continuously updating results"
+
+**Configuration** (core.yaml):
+```yaml
+emotion:
+  inertia:
+    enabled: true
+    weight: 0.4              # Previous state influence (0.3-0.5 healthy)
+    reactivity: 0.6          # Current appraisal influence
+    decay_per_turn: 0.1      # Decay rate per conversation turn
+    supportive_context_bias: true  # Maintain supportive tone
+```
+
 ### 3. Emotion Regulation Component
 
-**Purpose**: Applies social, ethical, and personality constraints to ensure appropriate emotional responses.
+**Purpose**: Applies social, ethical, and personality constraints to ensure appropriate emotional responses, including context-aware arousal modulation for high-stakes threats.
 
 **Responsibilities**:
 - **Social Appropriateness**: Ensures emotional responses are suitable for the current relationship phase and social context
@@ -244,19 +378,54 @@ The Emotion Simulation module consists of four core components that work togethe
 - **Personality Alignment**: Modulates emotional intensity and expression style based on personality traits
 - **Boundary Maintenance**: Enforces companion relationship boundaries and ethical constraints
 - **Intensity Modulation**: Adjusts emotional expression intensity based on user state and context
+- **Threat Amplification**: Amplifies arousal for existential threats (job loss, survival) based on relevance and sentiment
 
 **Regulation Strategies**:
 - **Intensity Scaling**: Reduces or amplifies emotional expression based on appropriateness
+  - Base regulation: Dampens arousal by ~9% (default `regulation_strength: 0.3`)
+  - Formula: `arousal = arousal × (1.0 - regulation_strength × 0.3)`
+  - Scientific basis: Gross (2015) - healthy emotional regulation dampens arousal by 10-15%
+  
+- **Context-Aware Arousal Amplification**: Heightens arousal for high-stakes existential threats
+  - Triggers when: High relevance (>0.65) + negative sentiment + clear signal (confidence >0.4)
+  - Amplification: 15% boost to arousal (research-validated range)
+  - Formula: `arousal *= 1.15` (applied after base regulation, before inertia)
+  - **Scientific Validation**:
+    - **Sander et al. (2003)**: Relevance theory - amygdala processes goal-relevant stimuli
+    - **Frontiers Psychology (2023)**: "Modern threats trigger powerful fear response when immediate harm is perceived"
+    - **PMC (2023)**: Job insecurity produces heightened anxiety and psychological arousal
+    - **Frontiers Psychology (2021)**: "Heightened psychological arousal" in response to existential threats
+  - Language-agnostic: Uses sentiment analysis features, not keyword matching
+  
 - **Style Adaptation**: Modifies expression style (e.g., more gentle, more confident) based on context
 - **Crisis Override**: Special protocols for handling user emotional crises
 - **Relationship Respect**: Maintains appropriate emotional distance based on relationship development
+
+**Processing Order** (CPM-compliant):
+1. Base regulation (Stage 3: Coping Potential)
+2. Context-aware threat amplification (relevance-based modulation)
+3. Emotional inertia blending (temporal persistence)
 
 **Key Features**:
 - **Configurable Constraints**: Adjustable regulation strength and personality influence
 - **Multi-layered Filtering**: Multiple regulation passes for different constraint types
 - **Context Sensitivity**: Different regulation strategies for different situational contexts
+- **Multilingual Support**: Threat detection uses sentiment model output, not language-specific keywords
 
-**Output**: Regulated `EmotionalState` with appropriate constraints applied
+**Configuration** (core.yaml):
+```yaml
+emotion:
+  regulation_strength: 0.3  # Base dampening (0.3 = 9% reduction)
+```
+
+**Scientific References**:
+- Gross, J. J. (2015). Emotion regulation: Current status and future prospects. *Psychological Inquiry*, 26(1), 1-26.
+- Sander, D., Grafman, J., & Zalla, T. (2003). The human amygdala: An evolved system for relevance detection. *Reviews in the Neurosciences*, 14(4), 303-316.
+- Štolhoferová, I., et al. (2023). Human emotional evaluation of ancestral and modern threats: Fear, disgust, and anger. *Frontiers in Psychology*, 14, 1321053.
+- Castro-Castañeda, R., et al. (2023). Job insecurity and company behavior: Influence of fear of job loss. *International Journal of Environmental Research and Public Health*, 20(5), 4168.
+- Wilson, J. M., et al. (2021). The threat of COVID-19 and job insecurity impact on depression and anxiety. *Frontiers in Psychology*, 12, 648572.
+
+**Output**: Regulated `EmotionalState` with appropriate constraints and context-aware modulation applied
 
 ### 4. Output Synthesis Component
 
@@ -321,7 +490,17 @@ The Emotion Simulation module consists of four core components that work togethe
 │ System          │    │                 │    │ Engine          │
 │ System          │    │                 │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-```
+
+## 2025 Integration Notes
+
+The architecture for Emotion Simulation is implemented with the following integration constraints in mind:
+
+- **Conversation Engine integration**: `emotion.expression.text` is treated as conditioning input to the Conversation Engine and LLM (tone, approach, style parameters), keeping the LLM as the central generator while CPM acts as a controller.
+- **Modelservice as appraiser**: Where appropriate, the Emotion Simulation module can request appraisal-related signals (e.g., relevance, goal impact) from the modelservice, but these are combined with deterministic rules and memory context rather than used as the sole source of truth.
+- **Memory and AMS coupling**: `emotion.memory.store` experiences are persisted using the existing working/semantic/KG infrastructure, and AMS can use emotional outcomes as feedback when choosing strategies and skills.
+- **Knowledge Graph linkage**: Emotion-related patterns (preferred support strategies, typical stressors) are stored as properties on KG nodes, allowing downstream tasks to query relationship-level affective information.
+- **Modality-agnostic expression API**: The internal representation of emotional output is a compact, modality-independent profile that is translated into voice/avatar/text parameters by downstream systems, keeping embodiment flexible.
+- **Safety and evaluation hooks**: Regulation components expose hooks for safety filters (crisis handling, boundary enforcement) and emit metrics/events that can be consumed by the existing monitoring and evaluation tooling.
 
 ## Configuration
 

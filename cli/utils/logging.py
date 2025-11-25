@@ -8,6 +8,7 @@ work independently and don't interfere with backend logging.
 
 import json
 import sqlite3
+import atexit
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -28,7 +29,7 @@ class CLILogger:
     def __init__(self, subsystem: str, module: str, db_connection, config_manager):
         self.subsystem = subsystem
         self.module = module
-        self.db = db_connection
+        self.db = db_connection  # Store connection - will be cleaned up by manager
         self.config = config_manager
         self._validate_logs_table()
     
@@ -122,7 +123,6 @@ class CLILogger:
             print(f"\n=== CLI LOGGING SYSTEM FAILURE ===", file=sys.stderr)
             print(f"CRITICAL: Failed to write log to database: {e}", file=sys.stderr)
             print(f"Message that failed to log: {level.name} {self.subsystem}.{self.module}: {message}", file=sys.stderr)
-            print(f"Database connection: {self.db}", file=sys.stderr)
             import traceback
             traceback.print_exc(file=sys.stderr)
             print(f"=== END CLI LOGGING FAILURE ===", file=sys.stderr)
@@ -173,10 +173,20 @@ class CLILoggingManager:
             raise RuntimeError("CRITICAL: Database connection is required for CLI logging")
         if not config_manager:
             raise RuntimeError("CRITICAL: Configuration manager is required for CLI logging")
+        
+        # Clean up previous connection if it exists
+        self.cleanup()
             
         self._db_connection = db_connection
         self._config_manager = config_manager
         # Clear any existing loggers to force re-creation with new connection
+        self._loggers.clear()
+    
+    def cleanup(self):
+        """Clean up resources - clear references but DON'T close connection (command owns it)"""
+        # Just clear references - the connection is owned by the command, not us
+        self._db_connection = None
+        self._config_manager = None
         self._loggers.clear()
     
     def get_logger(self, subsystem: str, module: str) -> CLILogger:
@@ -202,6 +212,9 @@ class CLILoggingManager:
 
 # Global CLI logging manager instance
 _cli_logging_manager = CLILoggingManager()
+
+# Register cleanup handler to close database connections on exit
+atexit.register(_cli_logging_manager.cleanup)
 
 def initialize_cli_logging(db_connection, config_manager):
     """Initialize CLI logging system with database connection and configuration"""

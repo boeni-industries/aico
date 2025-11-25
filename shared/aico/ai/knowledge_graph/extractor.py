@@ -36,6 +36,27 @@ def normalize_relation_type(relation_type: str) -> str:
     return relation_type.upper().replace(" ", "_")
 
 
+def safe_get_name(node: Node) -> str:
+    """
+    Safely extract name from node properties.
+    Handles both string (correct) and list (data corruption) cases.
+    
+    Args:
+        node: Node to extract name from
+        
+    Returns:
+        Name as string
+    """
+    name = node.properties.get("name", "")
+    
+    # Handle corrupted data where name is a list instead of string
+    if isinstance(name, list):
+        name = name[0] if name else ""
+        logger.warning(f"Node {node.id} has list 'name' property (data corruption): {name}")
+    
+    return str(name)
+
+
 def normalize_entity_label(label: str) -> str:
     """
     Normalize entity label to canonical form.
@@ -894,7 +915,11 @@ Return valid JSON only, no explanation."""
         """Find existing node or create placeholder."""
         # Check if node already exists in current graph
         for node in graph.nodes:
-            if node.properties.get("name", "").lower() == entity_name.lower():
+            name = node.properties.get("name", "")
+            # Handle corrupted data where name is a list
+            if isinstance(name, list):
+                name = name[0] if name else ""
+            if str(name).lower() == entity_name.lower():
                 return node
         
         # Check if node exists in context
@@ -1041,7 +1066,7 @@ class MultiPassExtractor:
                 {
                     "id": node.id,
                     "label": node.label,
-                    "name": node.properties.get("name", "")
+                    "name": safe_get_name(node)
                 }
                 for node in entity_graph.nodes
             ]
@@ -1089,15 +1114,15 @@ class MultiPassExtractor:
                 "existing_nodes": [
                     {
                         "label": node.label,
-                        "name": node.properties.get("name", "")
+                        "name": safe_get_name(node)
                     }
                     for node in existing_graph.nodes
                 ],
                 "existing_relationships": [
                     {
-                        "source": existing_graph.get_node_by_id(edge.source_id).properties.get("name", ""),
+                        "source": safe_get_name(existing_graph.get_node_by_id(edge.source_id)),
                         "relation": edge.relation_type,
-                        "target": existing_graph.get_node_by_id(edge.target_id).properties.get("name", "")
+                        "target": safe_get_name(existing_graph.get_node_by_id(edge.target_id))
                     }
                     for edge in existing_graph.edges
                     if existing_graph.get_node_by_id(edge.source_id) and existing_graph.get_node_by_id(edge.target_id)

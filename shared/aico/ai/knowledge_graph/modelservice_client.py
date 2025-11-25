@@ -57,22 +57,10 @@ class ModelserviceClient:
             await asyncio.wait_for(self.bus_client.connect(), timeout=timeout)
             logger.info("🔍 [KG CLIENT] Message bus connection successful")
             
-            # Subscribe to response topics
-            logger.info(f"🔍 [KG CLIENT] Subscribing to {AICOTopics.MODELSERVICE_NER_RESPONSE}")
-            await self.bus_client.subscribe(
-                AICOTopics.MODELSERVICE_NER_RESPONSE,
-                self._handle_ner_response
-            )
-            logger.info(f"🔍 [KG CLIENT] Subscribing to {AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE}")
-            await self.bus_client.subscribe(
-                AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
-                self._handle_embeddings_response
-            )
-            logger.info(f"🔍 [KG CLIENT] Subscribing to {AICOTopics.MODELSERVICE_CHAT_RESPONSE}")
-            await self.bus_client.subscribe(
-                AICOTopics.MODELSERVICE_CHAT_RESPONSE,
-                self._handle_completions_response
-            )
+            # Note: Response subscriptions are now dynamic per-request
+            # Each request subscribes to its own response topic: {base_topic}/kg_client/{request_id}
+            # This eliminates cross-talk with conversation engine and other services
+            logger.info("🔍 [KG CLIENT] Using dynamic per-request response subscriptions")
             
             self._connected = True
             logger.info("🔍 [KG CLIENT] Modelservice client fully connected and subscribed")
@@ -125,15 +113,33 @@ class ModelserviceClient:
         self._pending_requests[request_id] = future
         
         try:
-            # Publish request
+            # Build request-specific response topic
+            response_topic = AICOTopics.build_response_topic(
+                AICOTopics.MODELSERVICE_NER_RESPONSE,
+                "kg_client",
+                request_id
+            )
+            
+            # Subscribe to our specific response topic
+            await self.bus_client.subscribe(response_topic, self._handle_ner_response)
+            
+            # Publish request with reply_to
             await self.bus_client.publish(
                 AICOTopics.MODELSERVICE_NER_REQUEST,
                 ner_request,
-                correlation_id=request_id
+                correlation_id=request_id,
+                reply_to=response_topic
             )
             
             # Wait for response with timeout
-            response = await asyncio.wait_for(future, timeout=30.0)
+            try:
+                response = await asyncio.wait_for(future, timeout=30.0)
+            finally:
+                # Cleanup: unsubscribe from response topic
+                try:
+                    await self.bus_client.unsubscribe(response_topic)
+                except Exception as e:
+                    logger.warning(f"Failed to unsubscribe from {response_topic}: {e}")
             
             if not response.get("success", False):
                 logger.error(f"NER request failed: {response.get('error', 'Unknown error')}")
@@ -149,7 +155,7 @@ class ModelserviceClient:
         except asyncio.TimeoutError:
             logger.error(f"NER request timed out after 30s for request_id: {request_id}")
             # Don't remove from pending - response might still arrive
-            return {"entities": []}
+            return {"entities": {}}  # Return empty dict, not list
     
     async def generate_embeddings(
         self,
@@ -171,8 +177,10 @@ class ModelserviceClient:
         # This allows modelservice to process them in parallel if it supports it,
         # and at minimum reduces client-side sequential waiting
         
-        # Phase 1: Send all requests (non-blocking)
-        request_map = {}  # request_id -> (future, text_index)
+        # Phase 1: Prepare all requests (non-blocking)
+        request_map = {}  # request_id -> (future, text_index, response_topic)
+        subscribe_tasks = []
+        publish_tasks = []
         
         for i, text in enumerate(texts):
             request_id = str(uuid.uuid4())
@@ -185,17 +193,31 @@ class ModelserviceClient:
             # Create future for response
             future = asyncio.Future()
             self._pending_requests[request_id] = future
-            request_map[request_id] = (future, i)
             
-            # Publish request (non-blocking - don't await response yet)
-            await self.bus_client.publish(
+            # Build request-specific response topic
+            response_topic = AICOTopics.build_response_topic(
+                AICOTopics.MODELSERVICE_EMBEDDINGS_RESPONSE,
+                "kg_client",
+                request_id
+            )
+            
+            # Store for concurrent execution
+            request_map[request_id] = (future, i, response_topic)
+            subscribe_tasks.append(self.bus_client.subscribe(response_topic, self._handle_embeddings_response))
+            publish_tasks.append(self.bus_client.publish(
                 AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
                 embeddings_request,
-                correlation_id=request_id
-            )
+                correlation_id=request_id,
+                reply_to=response_topic
+            ))
+        
+        # Execute all subscriptions and publishes concurrently
+        await asyncio.gather(*subscribe_tasks)
+        await asyncio.gather(*publish_tasks)
         
         # Phase 2: Gather all responses concurrently
         embeddings = [None] * len(texts)  # Pre-allocate with correct order
+        response_topics_to_cleanup = []  # Track topics for cleanup
         
         # Use asyncio.gather to wait for all futures concurrently
         futures_list = [request_map[rid][0] for rid in request_map.keys()]
@@ -208,7 +230,8 @@ class ModelserviceClient:
             )
             
             # Process responses in order
-            for request_id, (future, text_idx) in request_map.items():
+            for request_id, (future, text_idx, response_topic) in request_map.items():
+                response_topics_to_cleanup.append(response_topic)
                 response_idx = list(request_map.keys()).index(request_id)
                 response = responses[response_idx]
                 
@@ -227,6 +250,13 @@ class ModelserviceClient:
             for i in range(len(embeddings)):
                 if embeddings[i] is None:
                     embeddings[i] = [0.0] * 768
+        finally:
+            # Cleanup: unsubscribe from all response topics
+            for response_topic in response_topics_to_cleanup:
+                try:
+                    await self.bus_client.unsubscribe(response_topic)
+                except Exception as e:
+                    logger.warning(f"Failed to unsubscribe from {response_topic}: {e}")
         
         logger.debug(f"Generated {len(embeddings)} embeddings concurrently")
         return {"embeddings": embeddings}
@@ -283,15 +313,33 @@ class ModelserviceClient:
         self._pending_requests[request_id] = future
         
         try:
-            # Publish request
+            # Build request-specific response topic
+            response_topic = AICOTopics.build_response_topic(
+                AICOTopics.MODELSERVICE_CHAT_RESPONSE,
+                "kg_client",
+                request_id
+            )
+            
+            # Subscribe to our specific response topic
+            await self.bus_client.subscribe(response_topic, self._handle_completions_response)
+            
+            # Publish request with reply_to
             await self.bus_client.publish(
                 AICOTopics.MODELSERVICE_CHAT_REQUEST,
                 completions_request,
-                correlation_id=request_id
+                correlation_id=request_id,
+                reply_to=response_topic
             )
             
             # Wait for response with timeout
-            response = await asyncio.wait_for(future, timeout=60.0)
+            try:
+                response = await asyncio.wait_for(future, timeout=60.0)
+            finally:
+                # Cleanup: unsubscribe from response topic
+                try:
+                    await self.bus_client.unsubscribe(response_topic)
+                except Exception as e:
+                    logger.warning(f"Failed to unsubscribe from {response_topic}: {e}")
             
             if not response.get("success", False):
                 logger.error(f"Completions request failed: {response.get('error', 'Unknown error')}")

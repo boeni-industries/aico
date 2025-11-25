@@ -223,6 +223,36 @@ service_auth:
       - "system:read"
       - "admin:read"
 
+# Emotion Engine Configuration
+emotion:
+  # CPM appraisal sensitivity (0.0-1.0)
+  appraisal_sensitivity: 0.7  # How sensitive to emotional triggers
+  
+  # Emotional regulation strength (0.0-1.0)
+  regulation_strength: 0.3  # How much to regulate intense emotions (0.3 = 9% dampening)
+  
+  # Context-aware arousal amplification for existential threats
+  # Based on LeDoux (1996) amygdala research and modern threat appraisal studies
+  # When triggered, arousal is amplified AND inertia is reduced to 30% (amygdala override)
+  # This allows acute threat responses to dominate emotional state
+  threat_arousal_boost: 0.25  # Arousal multiplier for high-stakes threats (0.25 = 25% increase)
+  
+  # Emotional inertia (temporal dynamics) 
+  # Based on Kuppens et al. (2010) and Scherer's CPM recursive appraisal
+  inertia:
+    enabled: true  # Enable emotional state persistence
+    weight: 0.4  # Influence of previous state (0.0-1.0, healthy range: 0.3-0.5)
+    reactivity: 0.6  # Influence of current appraisal (0.0-1.0, should sum to 1.0 with weight)
+    decay_per_turn: 0.1  # Decay of previous state influence per conversation turn
+    supportive_context_bias: true  # Maintain supportive tone after stress episodes
+  
+  # Feature flags
+  enable_user_emotion_detection: false  # Phase 2+ feature
+  enable_llm_conditioning: true  # Condition LLM responses with emotional state
+  
+  # State history
+  max_history_size: 100  # Maximum emotional states to keep in history
+
 # Conversation Engine Configuration
 conversation:
   max_context_messages: 10
@@ -231,7 +261,7 @@ conversation:
   
   # Feature flags for AI components
   features:
-    enable_emotion_integration: false
+    enable_emotion_integration: true  # ENABLED - Phase 1 complete
     enable_personality_integration: false
     enable_memory_integration: true
     enable_embodiment: false
@@ -265,10 +295,17 @@ services:
     enabled: true
     encryption: true
     
+  # Emotion engine service configuration
+  emotion_engine:
+    enabled: true
+    appraisal_sensitivity: 0.7
+    regulation_strength: 0.8
+  
   # Conversation engine service configuration
   conversation_engine:
     enabled: true
     memory_integration: true
+    emotion_integration: true
     
   # Rate limiting service configuration
   rate_limiting:

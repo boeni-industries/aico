@@ -267,31 +267,37 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
     });
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA), // Design principle: soft white-neutral background
+      backgroundColor: const Color(0xFF181A21), // Dark mode background
       body: SafeArea(
         child: FadeTransition(
           opacity: _fadeAnimation,
           child: Center(
               child: Container(
-                constraints: const BoxConstraints(maxWidth: 480), // Constrained width, not full screen
+                constraints: const BoxConstraints(maxWidth: 480),
                 padding: EdgeInsets.symmetric(
-                  horizontal: 24, 
+                  horizontal: 40, // Floating composition: 40px from edges
                   vertical: math.max(32, MediaQuery.of(context).padding.top + 16),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                  // Connection indicator card
+                  // Connection indicator card - Glassmorphism
                   Container(
                     padding: const EdgeInsets.all(48),
                     decoration: BoxDecoration(
-                      color: Colors.white, // Design principle: white surface for cards
-                      borderRadius: BorderRadius.circular(24), // Design principle: rounded corners
+                      color: Colors.white.withValues(alpha: 0.05), // Glassmorphism: semi-transparent
+                      borderRadius: BorderRadius.circular(36), // XLarge radius for main containers
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.1), // Luminous border
+                        width: 1.5,
+                      ),
                       boxShadow: [
+                        // Floating depth shadow
                         BoxShadow(
-                          color: const Color(0xFF243455).withValues(alpha: 0.09), // Design principle: soft shadow
-                          blurRadius: 24,
-                          offset: const Offset(0, 8),
+                          color: Colors.black.withValues(alpha: 0.4),
+                          blurRadius: 40,
+                          offset: const Offset(0, 20),
+                          spreadRadius: -10,
                         ),
                       ],
                     ),
@@ -366,7 +372,7 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
                 child: CircularProgressIndicator(
                   value: progressValue,
                   strokeWidth: 3,
-                  backgroundColor: const Color(0xFF243455).withValues(alpha: 0.08),
+                  backgroundColor: Colors.white.withValues(alpha: 0.1), // Subtle white for dark background
                   valueColor: AlwaysStoppedAnimation<Color>(
                     _getStatusColor(theme, state),
                   ),
@@ -375,13 +381,17 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
             },
           ),
           
-          // Center icon
+          // Center icon with glassmorphism
           Container(
             width: 48,
             height: 48,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: _getStatusColor(theme, state).withValues(alpha: 0.08),
+              color: _getStatusColor(theme, state).withValues(alpha: 0.15), // Slightly more visible on dark
+              border: Border.all(
+                color: _getStatusColor(theme, state).withValues(alpha: 0.3),
+                width: 1,
+              ),
             ),
             child: Icon(
               _getStatusIcon(state),
@@ -411,11 +421,11 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
               fontFamily: 'Inter',
               fontSize: 24, // 1.5rem
               fontWeight: FontWeight.w600,
-              color: Color(0xFF1A1A1A),
+              color: Colors.white, // White text for dark background
               letterSpacing: 0.02,
             ),
             textAlign: TextAlign.center,
-            maxLines: 2, // Allow wrapping for very long messages
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
           
@@ -432,14 +442,14 @@ class _StartupConnectionScreenState extends ConsumerState<StartupConnectionScree
                 child: Center(
                   child: Text(
                     state.message!,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 16, // 1.0rem body
                       fontWeight: FontWeight.w400,
-                      color: Color(0xFF6B7280),
+                      color: Colors.white.withValues(alpha: 0.7), // Dimmed white for secondary text
                     ),
                     textAlign: TextAlign.center,
-                    maxLines: 4, // Allow more lines if space permits
+                    maxLines: 4,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
