@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:aico_frontend/core/logging/aico_log.dart';
+import 'package:aico_frontend/core/services/tts_isolate_service.dart';
 import 'package:aico_frontend/domain/entities/tts_state.dart';
 import 'package:aico_frontend/domain/repositories/tts_repository.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:kokoro_tts_flutter/kokoro_tts_flutter.dart'; 
+import 'package:uuid/uuid.dart'; 
 
 /// TTS repository implementation with neural TTS (bundled model)
 class TtsRepositoryImpl implements TtsRepository {
@@ -13,9 +14,10 @@ class TtsRepositoryImpl implements TtsRepository {
   TtsState _currentState = TtsState.initial();
   bool _isDisposed = false;
 
-  Kokoro? _kokoro;
+  TtsIsolateService? _isolateService;
   AudioPlayer? _audioPlayer;
   bool _isAvailable = false;
+  final _uuid = const Uuid();
 
   TtsRepositoryImpl();
 
@@ -31,14 +33,12 @@ class TtsRepositoryImpl implements TtsRepository {
       AICOLog.info('🎤 Starting TTS initialization...');
       _updateState(_currentState.copyWith(status: TtsStatus.initializing));
 
-      // Model is bundled in assets - just load it
-      const config = KokoroConfig(
+      // Initialize TTS isolate service for zero-blocking synthesis
+      _isolateService = TtsIsolateService(
         modelPath: 'assets/tts/kokoro-v1.0.onnx',
         voicesPath: 'assets/tts/voices.json',
       );
-
-      _kokoro = Kokoro(config);
-      await _kokoro!.initialize();
+      await _isolateService!.initialize();
 
       _audioPlayer = AudioPlayer();
 
@@ -77,7 +77,7 @@ class TtsRepositoryImpl implements TtsRepository {
   @override
   Future<void> speak(String text) async {
     AICOLog.info('🎤 TTS speak() called with ${text.length} chars');
-    debugPrint('🎤 [TTS] speak() - _isAvailable: $_isAvailable, _isDisposed: $_isDisposed, _kokoro: ${_kokoro != null}, _audioPlayer: ${_audioPlayer != null}');
+    debugPrint('🎤 [TTS] speak() - _isAvailable: $_isAvailable, _isDisposed: $_isDisposed, _isolateService: ${_isolateService != null}, _audioPlayer: ${_audioPlayer != null}');
     
     if (text.isEmpty) {
       AICOLog.warn('Attempted to speak empty text');
@@ -85,7 +85,7 @@ class TtsRepositoryImpl implements TtsRepository {
     }
 
     if (!_isAvailable) {
-      AICOLog.warn('TTS unavailable - _isAvailable=$_isAvailable, _kokoro=${_kokoro != null}, _audioPlayer=${_audioPlayer != null}');
+      AICOLog.warn('TTS unavailable - _isAvailable=$_isAvailable, _isolateService=${_isolateService != null}, _audioPlayer=${_audioPlayer != null}');
       debugPrint('🔴 [TTS] BLOCKED: _isAvailable is false!');
       return;
     }
@@ -102,28 +102,35 @@ class TtsRepositoryImpl implements TtsRepository {
       final chunks = _splitTextIntoChunks(text, maxChars: 350); // Increased for fewer chunks
       AICOLog.info('🎤 Split text into ${chunks.length} chunks');
 
-      // Pre-synthesize first chunk to reduce initial delay
-      dynamic currentResult = await _kokoro!.createTTS(
-        text: chunks[0],
-        voice: 'af_heart',
-        speed: 1.0,
+      // Pre-synthesize first chunk in background isolate (ZERO UI BLOCKING!)
+      TtsSynthesisResult currentResult = await _isolateService!.synthesize(
+        TtsSynthesisRequest(
+          id: _uuid.v4(),
+          text: chunks[0],
+          voice: 'af_heart',
+          speed: 1.0,
+        ),
       );
+      AICOLog.info('🎤 First chunk synthesized in ${currentResult.synthesisTime.inMilliseconds}ms');
 
       for (int i = 0; i < chunks.length; i++) {
         AICOLog.info('🎤 Playing chunk ${i + 1}/${chunks.length}');
 
-        // Start synthesizing next chunk while playing current
-        Future<dynamic>? nextChunkFuture;
+        // Start synthesizing next chunk in background while playing current
+        Future<TtsSynthesisResult>? nextChunkFuture;
         if (i + 1 < chunks.length) {
-          nextChunkFuture = _kokoro!.createTTS(
-            text: chunks[i + 1],
-            voice: 'af_heart',
-            speed: 1.0,
+          nextChunkFuture = _isolateService!.synthesize(
+            TtsSynthesisRequest(
+              id: _uuid.v4(),
+              text: chunks[i + 1],
+              voice: 'af_heart',
+              speed: 1.0,
+            ),
           );
         }
 
         // Convert current chunk to WAV
-        final audioBytes = _convertToWav(currentResult.audio, currentResult.sampleRate);
+        final audioBytes = _convertToWav(currentResult.audioSamples, currentResult.sampleRate);
 
         // Play the audio
         await _audioPlayer!.setAudioSource(
@@ -135,7 +142,7 @@ class TtsRepositoryImpl implements TtsRepository {
         // Wait for next chunk synthesis to complete (if started)
         if (nextChunkFuture != null) {
           currentResult = await nextChunkFuture;
-          AICOLog.info('🎤 Chunk ${i + 2} pre-synthesized during playback');
+          AICOLog.info('🎤 Chunk ${i + 2} pre-synthesized in ${currentResult.synthesisTime.inMilliseconds}ms during playback');
         }
 
         // Wait for playback to complete
@@ -330,13 +337,11 @@ class TtsRepositoryImpl implements TtsRepository {
     if (_isDisposed) return;
     _isDisposed = true;
     
-    if (_audioPlayer != null) {
-      await _audioPlayer!.dispose();
-    }
+    // Dispose audio player
+    await _audioPlayer?.dispose();
     
-    if (_isAvailable && _kokoro != null) {
-      _kokoro!.dispose();
-    }
+    // Dispose isolate service (kills background isolate)
+    await _isolateService?.dispose();
     
     if (!_stateController.isClosed) {
       await _stateController.close();
