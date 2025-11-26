@@ -178,6 +178,24 @@ modelservice:
       # Note: Use 'embeddings' as the key name (matches DEFAULT_MODELS)
       embeddings:
         model_id: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+  
+  # Text-to-Speech (TTS) configuration
+  tts:
+    enabled: true
+    model: "xtts_v2"  # Coqui XTTS v2 - multilingual neural TTS
+    
+    # Voice configuration per language
+    voices:
+      en: "Daisy Studious"  # English female voice
+      de: "Daisy Studious"  # German (same voice works for multiple languages)
+      # Other supported languages: es, fr, it, pt, pl, tr, ru, nl, cs, ar, zh-cn, hu, ko, ja, hi
+    
+    # Default synthesis parameters
+    speed: 1.0  # Speech speed multiplier (0.5-2.0)
+    
+    # Custom voice cloning (optional)
+    # Place WAV files in modelservice/assets/voices/
+    custom_voice_path: null  # Path to custom voice WAV file (overrides built-in voices)
 
 # Task Scheduler configuration
 scheduler:

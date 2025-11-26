@@ -156,15 +156,18 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
       return;
     }
     
-    // Map avatar mode to animation name
-    final animationName = state.mode == AvatarMode.speaking ? 'talking' : 'idle';
-    
-    debugPrint('[AvatarViewer] 🎬 Triggering animation: $animationName');
-    
-    // Trigger animation in Three.js
-    _webViewController!.evaluateJavascript(
-      source: "window.playAnimation('$animationName')",
-    );
+    // Trigger appropriate animation function based on mode
+    if (state.mode == AvatarMode.speaking) {
+      debugPrint('[AvatarViewer] 🎬 Starting talking animation');
+      _webViewController!.evaluateJavascript(
+        source: "window.startTalking()",
+      );
+    } else {
+      debugPrint('[AvatarViewer] 🎬 Stopping talking animation (returning to idle)');
+      _webViewController!.evaluateJavascript(
+        source: "window.stopTalking()",
+      );
+    }
     
     // Background aura is now handled in Flutter (CompanionAvatar)
     // No need to update WebView background - keep it transparent
@@ -177,8 +180,6 @@ class _AvatarViewerState extends ConsumerState<AvatarViewer> with AutomaticKeepA
   /// Maps AICO's emotion states to blend shape presets in Three.js.
   /// Emotions smoothly transition using interpolation.
   void _setAvatarEmotion(String emotion) {
-    debugPrint('[AvatarViewer] 😊 Setting emotion: $emotion');
-    
     if (_webViewController == null || !_isReady) {
       return;
     }

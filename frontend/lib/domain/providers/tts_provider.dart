@@ -38,9 +38,10 @@ class Tts extends _$Tts {
     });
   }
 
-  /// Speak text using TTS
-  Future<void> speak(String text) async {
-    await _repository.speak(text);
+  /// Speak text using TTS (fire-and-forget, non-blocking)
+  void speak(String text) {
+    // Don't await - let it run in background
+    _repository.speak(text);
   }
 
   /// Stop current speech

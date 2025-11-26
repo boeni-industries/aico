@@ -292,6 +292,123 @@ final ttsProvider = StateNotifierProvider<TtsNotifier, TtsState>((ref) {
 - Audio output device errors
 - Network timeout (model download)
 
+## Backend TTS (Modelservice)
+
+### Coqui XTTS v2
+
+**Technology**: Coqui XTTS v2 - Neural TTS with voice cloning
+
+**Features**:
+- 58 built-in multilingual speakers
+- 17 language support
+- Voice cloning from 6-second samples
+- Streaming audio synthesis
+- WAV format output
+
+### Configuration
+
+Voices are configured in `config/defaults/core.yaml`:
+
+```yaml
+modelservice:
+  tts:
+    enabled: true
+    model: "xtts_v2"
+    voices:
+      en: "Daisy Studious"  # English female
+      de: "Daisy Studious"  # German (same voice)
+    speed: 1.0
+    custom_voice_path: null  # Optional WAV file path
+```
+
+### Available Voices by Language
+
+#### Female Voices
+- **Claribel Dervla** - Clear, professional
+- **Daisy Studious** - Warm, friendly (default)
+- **Gracie Wise** - Mature, authoritative
+- **Tammie Ema** - Energetic, young
+- **Alison Dietlinde** - Soft, gentle
+- **Ana Florence** - Elegant, refined
+- **Annmarie Nele** - Casual, approachable
+- **Asya Anara** - Exotic, mysterious
+- **Brenda Stern** - Strong, confident
+- **Gitta Nikolina** - Playful, cheerful
+- **Henriette Usha** - Sophisticated, calm
+- **Sofia Hellen** - Smooth, melodic
+- **Tammy Grit** - Determined, bold
+- **Tanja Adelina** - Sweet, caring
+- **Vjollca Johnnie** - Unique, distinctive
+
+#### Male Voices
+- **Andrew Chipper** - Upbeat, friendly
+- **Badr Odhiambo** - Deep, resonant
+- **Dionisio Schuyler** - Theatrical, expressive
+- **Royston Min** - Calm, measured
+- **Viktor Eka** - Strong, commanding
+- **Abrahan Mack** - Warm, trustworthy
+- **Adde Michal** - Young, energetic
+- **Baldur Sanjin** - Mature, wise
+- **Craig Gutsy** - Bold, adventurous
+- **Damien Black** - Mysterious, dark
+- **Gilberto Mathias** - Friendly, approachable
+- **Ilkin Urbano** - Urban, modern
+- **Kazuhiko Atallah** - Precise, technical
+- **Ludvig Milivoj** - Noble, refined
+- **Suad Qasim** - Authoritative, serious
+- **Torcull Diarmuid** - Rugged, strong
+- **Viktor Menelaos** - Heroic, brave
+- **Zacharie Aimilios** - Gentle, kind
+
+#### Neutral/Androgynous Voices
+- **Nova Hogarth** - Futuristic, neutral
+- **Maja Ruoho** - Balanced, clear
+- **Uta Obando** - Versatile, adaptable
+
+### Supported Languages
+
+All voices work across all languages:
+- **en** - English
+- **de** - German  
+- **es** - Spanish
+- **fr** - French
+- **it** - Italian
+- **pt** - Portuguese
+- **pl** - Polish
+- **tr** - Turkish
+- **ru** - Russian
+- **nl** - Dutch
+- **cs** - Czech
+- **ar** - Arabic
+- **zh-cn** - Chinese (Simplified)
+- **hu** - Hungarian
+- **ko** - Korean
+- **ja** - Japanese
+- **hi** - Hindi
+
+### Voice Cloning
+
+For custom voices, provide a 6-30 second WAV file:
+
+1. Place WAV file in `modelservice/assets/voices/`
+2. Set `custom_voice_path` in config
+3. Restart modelservice
+
+Custom voice overrides built-in speakers for all languages.
+
+### Performance
+
+| Metric | Value |
+|--------|-------|
+| Model Size | 1.8GB (auto-downloaded) |
+| Latency | ~500ms per chunk |
+| Quality | Excellent, natural |
+| Memory | ~2GB RAM |
+| Languages | 17 |
+| Speakers | 58 built-in |
+
 ## Conclusion
 
 AICO's single-tier TTS architecture provides immediate, private, and high-quality voice synthesis without backend dependencies. The optional neural TTS tier enables premium experiences and character voice consistency while maintaining the core local-first principle. Custom voice training ensures brand consistency and emotional expressiveness for AI companion personalities.
+
+The backend modelservice provides Coqui XTTS v2 for high-quality neural TTS with 58 built-in voices across 17 languages, supporting both pre-configured speakers and custom voice cloning.

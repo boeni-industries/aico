@@ -163,8 +163,8 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
       // Stop current playback
       await ref.read(ttsProvider.notifier).stop();
     } else {
-      // Start reading this message
-      await ref.read(ttsProvider.notifier).speak(widget.messageContent);
+      // Start reading this message (fire-and-forget, non-blocking)
+      ref.read(ttsProvider.notifier).speak(widget.messageContent);
     }
   }
 

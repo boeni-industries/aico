@@ -29,6 +29,9 @@ class ModelserviceZMQService:
         # Initialize logger first
         self.logger = get_logger("modelservice", "zmq_service")
         
+        # Store full config manager for handlers
+        self.config_manager = config
+        
         # Configuration is stored under 'core' domain in the config manager
         core_config = config.get("core", {})
         self.config = core_config.get("modelservice", {})
@@ -39,8 +42,8 @@ class ModelserviceZMQService:
         
         self.logger.info("About to instantiate ModelserviceZMQHandlers...")
         try:
-            # Pass the bus client to handlers for streaming support
-            self.handlers = ModelserviceZMQHandlers(self.config, ollama_manager, None)  # Will be set later
+            # Pass the config manager to handlers for TTS configuration
+            self.handlers = ModelserviceZMQHandlers(self.config, ollama_manager, None, config_manager=self.config_manager)
             self.logger.info("ModelserviceZMQHandlers instantiated successfully")
         except Exception as e:
             self.logger.error(f"CRITICAL: Failed to instantiate ModelserviceZMQHandlers: {e}")
@@ -60,6 +63,7 @@ class ModelserviceZMQService:
             AICOTopics.MODELSERVICE_INTENT_REQUEST: self.handlers.handle_intent_request,
             AICOTopics.MODELSERVICE_SENTIMENT_REQUEST: self.handlers.handle_sentiment_request,
             AICOTopics.MODELSERVICE_STATUS_REQUEST: self.handlers.handle_status_request,
+            AICOTopics.MODELSERVICE_TTS_REQUEST: self.handlers.handle_tts_request,
             # Ollama management topics
             AICOTopics.OLLAMA_STATUS_REQUEST: self._handle_ollama_status,
             AICOTopics.OLLAMA_MODELS_REQUEST: self._handle_ollama_models,

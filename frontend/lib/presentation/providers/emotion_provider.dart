@@ -78,17 +78,14 @@ class EmotionState extends _$EmotionState {
       final repository = ref.read(emotionRepositoryProvider);
       final emotion = await repository.getCurrentEmotion();
       
-      print('[EMOTION_PROVIDER] Fetched emotion: ${emotion?.primary ?? "null"}');
-      
       // Check if provider is still mounted before updating state
       if (!ref.mounted) {
-        print('[EMOTION_PROVIDER] Provider disposed, skipping state update');
         return;
       }
       
       // Only update if emotion changed
       if (emotion != null && emotion != state) {
-        print('[EMOTION_PROVIDER] Updating state to: ${emotion.primary}');
+        print('[EMOTION] State changed: ${state?.primary ?? "null"} → ${emotion.primary}');
         state = emotion;
         
         // Invalidate emotion history cache to trigger refresh

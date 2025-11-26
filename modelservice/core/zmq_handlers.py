@@ -18,10 +18,12 @@ from aico.core.topics import AICOTopics as AICOTopics
 from .ollama_manager import OllamaManager
 from .transformers_manager import TransformersManager
 from aico.core.version import get_modelservice_version
+from modelservice.handlers.tts_handler import TtsHandler
 from aico.proto.aico_modelservice_pb2 import (
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
     EmbeddingsRequest, EmbeddingsResponse, NerResponse, EntityList, EntityWithConfidence, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus,
-    SentimentRequest, SentimentResponse, IntentClassificationRequest, IntentClassificationResponse
+    SentimentRequest, SentimentResponse, IntentClassificationRequest, IntentClassificationResponse,
+    TtsRequest, TtsStreamChunk
 )
 from google.protobuf.timestamp_pb2 import Timestamp
 
@@ -31,7 +33,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 class ModelserviceZMQHandlers:
     """ZeroMQ message handlers for modelservice functionality."""
     
-    def __init__(self, config: dict, ollama_manager, message_bus_client=None):
+    def __init__(self, config: dict, ollama_manager, message_bus_client=None, config_manager=None):
         # Initialize logger first
         self.logger = get_logger("modelservice", "core.zmq_handlers")
         
@@ -47,16 +49,23 @@ class ModelserviceZMQHandlers:
         self.message_bus_client = message_bus_client
         self.version = get_modelservice_version()
         
+        # Store config manager for components that need it
+        self.config_manager = config_manager
+        
         # SpaCy manager removed - using GLiNER via TransformersManager
         
         # Initialize Transformers manager lazily (only when needed)
-        self.config_manager = None
         self.transformers_manager = None
         
         self.logger.info("About to initialize NER system...")
         # Initialize GLiNER models asynchronously - will be done during startup
         self.ner_initialized = False
         self.transformers_initialized = False
+        
+        # Initialize TTS handler with config manager
+        self.tts_handler = TtsHandler(config_manager=self.config_manager)
+        self.tts_initialized = False
+        
         self.logger.info("ModelserviceZMQHandlers initialization complete")
     
     def get_transformer_model(self, model_name: str) -> Any:
@@ -1215,6 +1224,83 @@ class ModelserviceZMQHandlers:
                 "available": False,
                 "error": str(e)
             }
+    
+    async def initialize_tts_system(self):
+        """
+        Initialize the TTS system using Coqui XTTS.
+        
+        This will block until the model is downloaded and loaded.
+        On first run, this downloads ~1.8GB from HuggingFace.
+        
+        Raises:
+            Exception: If TTS initialization fails
+        """
+        if self.tts_initialized:
+            return
+        
+        self.logger.info("Starting TTS system initialization...")
+        self.logger.info("⏳ This may take several minutes on first run (downloading ~1.8GB model)...")
+        
+        await self.tts_handler.initialize()
+        self.tts_initialized = True
+        self.logger.info("✅ TTS system initialized successfully")
+    
+    async def handle_tts_request(self, request: TtsRequest):
+        """
+        Handle TTS request and stream audio chunks.
+        
+        Args:
+            request: TtsRequest protobuf message
+            
+        Yields:
+            TtsStreamChunk messages with audio data
+        """
+        if not self.tts_initialized:
+            # Try to initialize on first request
+            await self.initialize_tts_system()
+            
+            if not self.tts_initialized:
+                # Still not initialized - return error
+                yield TtsStreamChunk(
+                    audio_data=b"",
+                    sample_rate=0,
+                    is_final=True,
+                    error="TTS system not initialized"
+                )
+                return
+        
+        try:
+            self.logger.info(f"🎤 TTS request: {len(request.text)} chars, language: {request.language}")
+            
+            # Stream audio chunks
+            async for audio_bytes, sample_rate in self.tts_handler.synthesize_stream(
+                text=request.text,
+                language=request.language,
+                speed=request.speed if request.speed else 1.0
+            ):
+                yield TtsStreamChunk(
+                    audio_data=audio_bytes,
+                    sample_rate=sample_rate,
+                    is_final=False
+                )
+            
+            # Send final chunk
+            yield TtsStreamChunk(
+                audio_data=b"",
+                sample_rate=22050,
+                is_final=True
+            )
+            
+            self.logger.info("✅ TTS request completed")
+            
+        except Exception as e:
+            self.logger.error(f"TTS request failed: {e}", error=e)
+            yield TtsStreamChunk(
+                audio_data=b"",
+                sample_rate=0,
+                is_final=True,
+                error=str(e)
+            )
     
     # REMOVED: Coreference resolution handler (V3 cleanup)
     # FastCoref doesn't work for first-person pronouns - moved to future property graph implementation
