@@ -120,6 +120,7 @@ class AvatarRingStateNotifier extends _$AvatarRingStateNotifier {
   
   /// Set avatar to speaking mode (voice output)
   void startSpeaking({double intensity = 0.7, Map<String, dynamic>? audioData}) {
+    debugPrint('[AvatarRingState] 🎬 Setting mode to SPEAKING (intensity: $intensity)');
     state = state.copyWith(
       mode: AvatarMode.speaking,
       intensity: intensity,
@@ -171,6 +172,7 @@ class AvatarRingStateNotifier extends _$AvatarRingStateNotifier {
   
   /// Return to idle state
   void returnToIdle() {
+    debugPrint('[AvatarRingState] 🛑 Returning to IDLE mode');
     state = const AvatarRingState(
       mode: AvatarMode.idle,
       intensity: 0.5,

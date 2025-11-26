@@ -9,6 +9,7 @@ import 'package:aico_frontend/domain/repositories/tts_repository.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
 /// TTS repository implementation with backend streaming and LRU cache
 class TtsRepositoryImpl implements TtsRepository {
@@ -113,21 +114,19 @@ class TtsRepositoryImpl implements TtsRepository {
         _addToCache(cacheKey, wavData);
       }
       
-      // NOW set status to speaking (animation starts here)
-      _updateState(_currentState.copyWith(
-        status: TtsStatus.speaking,
-        currentText: text,
-        progress: 0.0,
-      ));
-      
-      // Play the audio using just_audio
+      // Set up audio source first
       await _audioPlayer?.setAudioSource(
         _BytesAudioSource(wavData),
       );
       
-      // Listen to player state changes
-      _audioStreamSubscription = _audioPlayer?.playerStateStream.listen((state) {
-        if (state.processingState == ProcessingState.completed) {
+      // Set up completion listener - SIMPLE: just wait for completed state
+      _audioStreamSubscription?.cancel();
+      _audioStreamSubscription = _audioPlayer?.playerStateStream.listen((playerState) {
+        debugPrint('🎵 [TTS] Player state: ${playerState.processingState}, playing: ${playerState.playing}');
+        
+        // When playback completes, return to idle
+        if (playerState.processingState == ProcessingState.completed) {
+          debugPrint('🎵 [TTS] ✅ Playback completed - returning to idle');
           _updateState(_currentState.copyWith(
             status: TtsStatus.idle,
             currentText: null,
@@ -136,7 +135,17 @@ class TtsRepositoryImpl implements TtsRepository {
         }
       });
       
+      // NOW set status to speaking and start playback
+      debugPrint('🎵 [TTS] Setting status to SPEAKING');
+      _updateState(_currentState.copyWith(
+        status: TtsStatus.speaking,
+        currentText: text,
+        progress: 0.0,
+      ));
+      
+      // Start playback
       await _audioPlayer?.play();
+      debugPrint('🎵 [TTS] Playback started');
       
     } catch (e, stackTrace) {
       AICOLog.error('TTS speak failed', error: e, stackTrace: stackTrace);
