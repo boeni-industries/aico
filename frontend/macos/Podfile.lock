@@ -25,8 +25,6 @@ PODS:
   - shared_preferences_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
-  - sherpa_onnx_macos (1.12.17):
-    - FlutterMacOS
   - "sodium_libs (3.4.6+4)":
     - Flutter
     - FlutterMacOS
@@ -53,7 +51,6 @@ DEPENDENCIES:
   - path_provider_foundation (from `Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin`)
   - screen_retriever_macos (from `Flutter/ephemeral/.symlinks/plugins/screen_retriever_macos/macos`)
   - shared_preferences_foundation (from `Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin`)
-  - sherpa_onnx_macos (from `Flutter/ephemeral/.symlinks/plugins/sherpa_onnx_macos/macos`)
   - sodium_libs (from `Flutter/ephemeral/.symlinks/plugins/sodium_libs/darwin`)
   - sqlcipher_flutter_libs (from `Flutter/ephemeral/.symlinks/plugins/sqlcipher_flutter_libs/macos`)
   - window_manager (from `Flutter/ephemeral/.symlinks/plugins/window_manager/macos`)
@@ -86,8 +83,6 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/screen_retriever_macos/macos
   shared_preferences_foundation:
     :path: Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin
-  sherpa_onnx_macos:
-    :path: Flutter/ephemeral/.symlinks/plugins/sherpa_onnx_macos/macos
   sodium_libs:
     :path: Flutter/ephemeral/.symlinks/plugins/sodium_libs/darwin
   sqlcipher_flutter_libs:
@@ -108,7 +103,6 @@ SPEC CHECKSUMS:
   path_provider_foundation: 0b743cbb62d8e47eab856f09262bb8c1ddcfe6ba
   screen_retriever_macos: 776e0fa5d42c6163d2bf772d22478df4b302b161
   shared_preferences_foundation: 5086985c1d43c5ba4d5e69a4e8083a389e2909e6
-  sherpa_onnx_macos: e2b0e985942ce57ea00f1072012df9c6e4a1d99a
   sodium_libs: 1f7bf838268f3e93d861748eac0380c8bdfcc937
   SQLCipher: eb79c64049cb002b4e9fcb30edb7979bf4706dfc
   sqlcipher_flutter_libs: b2e241f8261d6fbda9bca91e9a14f64e47413a64

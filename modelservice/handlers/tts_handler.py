@@ -61,12 +61,24 @@ class TtsHandler:
             # Accept Coqui license automatically (non-commercial CPML)
             os.environ["COQUI_TOS_AGREED"] = "1"
             
-            # Load XTTS v2 model (auto-downloads on first run)
+            # Load XTTS v2 model - use CPU for compatibility
+            # Note: XTTS gpu=True only works with CUDA, not macOS Metal
+            # We'll move to Metal manually after loading
+            self._logger.info(f"🚀 Initializing XTTS (will move to Metal if available)")
+            
             self._tts = await asyncio.to_thread(
                 TTS,
                 "tts_models/multilingual/multi-dataset/xtts_v2",
-                gpu=False  # Use CPU for compatibility
+                gpu=False  # Load on CPU first
             )
+            
+            # Move to Metal/MPS if available for speed
+            import torch
+            if torch.backends.mps.is_available():
+                self._logger.info("🚀 Moving TTS model to Metal GPU for acceleration")
+                self._tts.to("mps")
+            else:
+                self._logger.info("⚠️ Metal GPU not available, using CPU")
             
             # Load voice configuration from config - REQUIRED
             if not self._config:
@@ -177,17 +189,37 @@ class TtsHandler:
             raise RuntimeError("TTS handler not initialized")
         
         try:
+            import time
+            overall_start = time.time()
+            
+            # Clean markdown and special formatting from text
+            clean_start = time.time()
+            cleaned_text = self._clean_text_for_tts(text)
+            clean_time = time.time() - clean_start
+            self._logger.info(f"🎤 Original text: {len(text)} chars, cleaned: {len(cleaned_text)} chars")
+            print("=" * 80)
+            print(f"📝 [TTS] PREPROCESSED TEXT ({len(cleaned_text)} chars):")
+            print(cleaned_text)
+            print(f"⏱️ [TTS TIMING] Text cleaning: {clean_time*1000:.2f}ms")
+            print("=" * 80)
+            
             # Split text into sentences for streaming
-            chunks = self._split_text(text)
+            split_start = time.time()
+            chunks = self._split_text(cleaned_text)
+            split_time = time.time() - split_start
+            print(f"⏱️ [TTS TIMING] Text splitting: {split_time*1000:.2f}ms ({len(chunks)} chunks)")
             self._logger.info(f"🎤 Synthesizing {len(chunks)} chunks for language: {language}")
             
             for i, chunk in enumerate(chunks):
                 if not chunk.strip():
                     continue
                 
-                self._logger.debug(f"Synthesizing chunk {i+1}/{len(chunks)}: {chunk[:50]}...")
+                chunk_start = time.time()
+                self._logger.info(f"🎤 Synthesizing chunk {i+1}/{len(chunks)}: '{chunk[:50]}...'")
+                print(f"🎤 [TTS] Chunk {i+1}/{len(chunks)}: {len(chunk)} chars")
                 
                 # Synthesize chunk
+                synthesis_start = time.time()
                 if self._voice_path:
                     audio = await asyncio.to_thread(
                         self._tts.tts,
@@ -207,33 +239,79 @@ class TtsHandler:
                         speed=speed
                     )
                 
-                # Convert to WAV bytes
+                synthesis_time = time.time() - synthesis_start
+                print(f"⏱️ [TTS TIMING] Chunk {i+1} synthesis: {synthesis_time*1000:.2f}ms")
+                
+                # Convert to raw PCM bytes (int16)
+                import numpy as np
+                pcm_start = time.time()
                 sample_rate = 22050  # XTTS default sample rate
-                wav_bytes = self._to_wav(audio, sample_rate)
                 
-                yield (wav_bytes, sample_rate)
+                # Convert float32 audio to int16 PCM
+                audio_np = np.array(audio)
+                pcm_data = (audio_np * 32767).astype(np.int16)
+                pcm_bytes = pcm_data.tobytes()
                 
-            self._logger.info(f"✅ TTS synthesis complete ({len(chunks)} chunks)")
+                pcm_time = time.time() - pcm_start
+                print(f"⏱️ [TTS TIMING] Chunk {i+1} PCM conversion: {pcm_time*1000:.2f}ms ({len(pcm_bytes)} bytes)")
+                
+                chunk_total = time.time() - chunk_start
+                print(f"⏱️ [TTS TIMING] Chunk {i+1} TOTAL: {chunk_total*1000:.2f}ms")
+                
+                yield (pcm_bytes, sample_rate)
+                
+            overall_time = time.time() - overall_start
+            print(f"⏱️ [TTS TIMING] ========== TOTAL SYNTHESIS TIME: {overall_time*1000:.2f}ms ==========")
+            self._logger.info(f"✅ TTS synthesis complete ({len(chunks)} chunks) in {overall_time:.2f}s")
             
         except Exception as e:
             self._logger.error(f"TTS synthesis failed: {e}")
             raise
     
-    def _split_text(self, text: str, max_chars: int = 500) -> list[str]:
+    def _clean_text_for_tts(self, text: str) -> str:
         """
-        Split text into chunks at sentence boundaries.
+        Clean text for TTS by removing markdown and special formatting.
+        
+        Args:
+            text: Raw text with markdown
+            
+        Returns:
+            Cleaned text suitable for TTS
+        """
+        import re
+        
+        # Remove markdown bold/italic
+        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)  # **bold**
+        text = re.sub(r'\*([^*]+)\*', r'\1', text)      # *italic*
+        text = re.sub(r'__([^_]+)__', r'\1', text)      # __bold__
+        text = re.sub(r'_([^_]+)_', r'\1', text)        # _italic_
+        
+        # Remove markdown links [text](url)
+        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+        
+        # Remove emojis (optional - they don't speak well)
+        text = re.sub(r'[🎁🕒📚🌟😊🎉✨💫🔥👋]', '', text)
+        
+        # Remove extra whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        return text
+    
+    def _split_text(self, text: str, max_chars: int = 100) -> list[str]:
+        """
+        Split text into VERY small chunks for minimal latency.
         
         Args:
             text: Text to split
-            max_chars: Maximum characters per chunk
+            max_chars: Maximum characters per chunk (smaller = faster first response)
             
         Returns:
             List of text chunks
         """
         import re
         
-        # Split on sentence boundaries
-        sentences = re.split(r'(?<=[.!?])\s+', text)
+        # Split ONLY on periods for sentence boundaries - keep exclamations together
+        sentences = re.split(r'(?<=[.])\s+', text)
         
         chunks = []
         current_chunk = ""

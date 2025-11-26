@@ -4,6 +4,11 @@ TTS API Router
 REST API endpoints for text-to-speech synthesis via modelservice.
 """
 
+# IMMEDIATE DEBUG - Before any imports
+print("=" * 100)
+print("🔥🔥🔥 TTS ROUTER.PY BEING LOADED - BEFORE IMPORTS")
+print("=" * 100)
+
 from typing import Annotated
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -14,6 +19,15 @@ from backend.api.conversation.dependencies import get_current_user
 from .schemas import TtsSynthesizeRequest
 
 logger = get_logger("aico.api.tts", "router")
+
+# MODULE LOAD DEBUG - This should print on every module reload
+print("=" * 80)
+print("🔥 TTS ROUTER MODULE LOADED - VERSION 3 - ENVELOPE UNPACKING")
+print("=" * 80)
+import sys
+print(f"Module path: {__file__}")
+print(f"Python: {sys.version}")
+print("=" * 80)
 
 router = APIRouter()
 
@@ -83,8 +97,14 @@ async def synthesize_tts(
     **Supported Languages:**
     en, de, es, fr, it, pt, pl, tr, ru, nl, cs, ar, zh, ja, hu, ko, hi
     """
+    print("=" * 100)
+    print("🎤 TTS ENDPOINT CALLED - NEW CODE V3")
+    print(f"Request data: {request_data}")
+    print("=" * 100)
+    
     try:
-        logger.info(f"🎤 TTS request: {len(request_data.text)} chars, language: {request_data.language}")
+        logger.info(f"🎤 TTS request (NEW CODE v2): {len(request_data.text)} chars, language: {request_data.language}")
+        print(f"🎤 Logger called successfully")
         
         # Create TTS request protobuf
         tts_request = TtsRequest(
@@ -96,42 +116,128 @@ async def synthesize_tts(
         if request_data.voice:
             tts_request.voice = request_data.voice
         
-        # Serialize request
-        request_bytes = tts_request.SerializeToString()
-        
-        # Send request to modelservice
+        # Send request to modelservice (publish expects protobuf object, not bytes)
+        print(f"📤 [TTS ROUTER] Publishing TTS request to topic: {AICOTopics.MODELSERVICE_TTS_REQUEST}")
+        print(f"📤 [TTS ROUTER] Request: text={len(tts_request.text)} chars, language={tts_request.language}")
         await bus_client.publish(
             AICOTopics.MODELSERVICE_TTS_REQUEST,
-            request_bytes
+            tts_request  # Pass the protobuf object directly
         )
+        print(f"✅ [TTS ROUTER] TTS request published successfully")
         
         # Stream audio chunks as they arrive
         async def audio_stream():
             """Generator that yields audio chunks from modelservice"""
+            subscription_id = None
             try:
+                print("🎵 [TTS ROUTER V3] Starting audio_stream generator")
+                logger.info("🎵 [TTS ROUTER V3] Starting audio_stream generator")
+                
+                # Subscribe to TTS stream with callback
+                chunks_received = []
+                streaming_complete = False
+                
+                async def handle_tts_chunk(envelope):
+                    nonlocal streaming_complete
+                    try:
+                        import time
+                        receive_time = time.time()
+                        print(f"📦 [TTS ROUTER V3] Received envelope at {receive_time}: {type(envelope)}")
+                        logger.info(f"📦 [TTS ROUTER V3] Received envelope: {type(envelope)}")
+                        
+                        # Unpack TTS chunk from protobuf envelope
+                        unpack_start = time.time()
+                        chunk = TtsStreamChunk()
+                        envelope.any_payload.Unpack(chunk)
+                        unpack_time = time.time() - unpack_start
+                        
+                        print(f"✅ [TTS ROUTER V3] Unpacked chunk in {unpack_time*1000:.2f}ms - is_final={chunk.is_final}, has_audio={len(chunk.audio_data) if chunk.audio_data else 0} bytes, error={chunk.error}")
+                        logger.info(f"✅ [TTS ROUTER V3] Successfully unpacked chunk - is_final={chunk.is_final}, has_audio={len(chunk.audio_data) if chunk.audio_data else 0} bytes")
+                        
+                        # Check for errors
+                        if chunk.error:
+                            print(f"❌ [TTS ROUTER V3] TTS synthesis error: {chunk.error}")
+                            logger.error(f"TTS synthesis error: {chunk.error}")
+                            streaming_complete = True
+                            return True
+                        
+                        # Check if final chunk
+                        if chunk.is_final:
+                            print(f"🏁 [TTS ROUTER V3] Final chunk received - total audio chunks: {len(chunks_received)}")
+                            logger.info("✅ TTS synthesis complete")
+                            streaming_complete = True
+                            return False  # Don't stop subscription yet - let loop finish yielding
+                        
+                        # Store audio data
+                        if chunk.audio_data:
+                            chunks_received.append(chunk.audio_data)
+                            print(f"💾 [TTS ROUTER V3] Stored audio chunk #{len(chunks_received)} ({len(chunk.audio_data)} bytes)")
+                        else:
+                            print(f"⚠️ [TTS ROUTER V3] Received chunk with no audio data")
+                        
+                        return False  # Continue listening
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing TTS chunk: {e}")
+                        streaming_complete = True
+                        return True
+                
                 # Subscribe to TTS stream
-                async for message in bus_client.subscribe_stream(AICOTopics.MODELSERVICE_TTS_STREAM):
-                    # Parse TTS chunk
-                    chunk = TtsStreamChunk()
-                    chunk.ParseFromString(message)
-                    
-                    # Check for errors
-                    if chunk.error:
-                        logger.error(f"TTS synthesis error: {chunk.error}")
-                        break
-                    
-                    # Check if final chunk
-                    if chunk.is_final:
-                        logger.info("✅ TTS synthesis complete")
-                        break
-                    
-                    # Yield audio data
-                    if chunk.audio_data:
-                        yield chunk.audio_data
+                print(f"🎧 [TTS ROUTER V3] Subscribing to {AICOTopics.MODELSERVICE_TTS_STREAM}")
+                subscription_id = await bus_client.subscribe(AICOTopics.MODELSERVICE_TTS_STREAM, handle_tts_chunk)
+                print(f"🎧 [TTS ROUTER V3] Subscribed with ID: {subscription_id}")
+                
+                # Wait for chunks and yield them
+                import asyncio
+                import time
+                loop_start = time.time()
+                iteration = 0
+                total_bytes_yielded = 0
+                while not streaming_complete:
+                    iteration += 1
+                    if chunks_received:
+                        yield_start = time.time()
+                        print(f"🔄 [TTS ROUTER V3] Iteration {iteration}: Yielding {len(chunks_received)} chunks")
+                        # Yield all accumulated chunks
+                        for i, audio_data in enumerate(chunks_received):
+                            print(f"📤 [TTS ROUTER V3] Yielding chunk {i+1}/{len(chunks_received)} ({len(audio_data)} bytes)")
+                            yield audio_data
+                            total_bytes_yielded += len(audio_data)
+                        yield_time = time.time() - yield_start
+                        print(f"⏱️ [TTS ROUTER TIMING] Yielded {len(chunks_received)} chunks in {yield_time*1000:.2f}ms")
+                        chunks_received.clear()
+                    else:
+                        if iteration % 100 == 0:  # Log every 100 iterations to avoid spam
+                            print(f"⏳ [TTS ROUTER V3] Iteration {iteration}: Waiting for chunks... (streaming_complete={streaming_complete})")
+                    await asyncio.sleep(0.01)  # Small delay to allow chunks to accumulate
+                
+                # Yield any remaining chunks after streaming_complete
+                if chunks_received:
+                    yield_start = time.time()
+                    print(f"🔄 [TTS ROUTER V3] Final yield: {len(chunks_received)} remaining chunks")
+                    for i, audio_data in enumerate(chunks_received):
+                        print(f"📤 [TTS ROUTER V3] Yielding final chunk {i+1}/{len(chunks_received)} ({len(audio_data)} bytes)")
+                        yield audio_data
+                        total_bytes_yielded += len(audio_data)
+                    yield_time = time.time() - yield_start
+                    print(f"⏱️ [TTS ROUTER TIMING] Final yield: {len(chunks_received)} chunks in {yield_time*1000:.2f}ms")
+                    chunks_received.clear()
+                
+                loop_total = time.time() - loop_start
+                print(f"⏱️ [TTS ROUTER TIMING] Total loop time: {loop_total*1000:.2f}ms ({total_bytes_yielded} bytes yielded)")
+                print(f"🎬 [TTS ROUTER V3] Streaming loop ended - streaming_complete={streaming_complete}")
                         
             except Exception as e:
                 logger.error(f"Error streaming TTS audio: {e}")
                 raise
+            finally:
+                # Clean up subscription
+                if subscription_id:
+                    try:
+                        await bus_client.unsubscribe(subscription_id)
+                        print(f"🧹 [TTS ROUTER V3] Unsubscribed from TTS stream (ID: {subscription_id})")
+                    except Exception as e:
+                        logger.error(f"Error unsubscribing from TTS stream: {e}")
         
         return StreamingResponse(
             audio_stream(),
@@ -145,7 +251,14 @@ async def synthesize_tts(
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print("=" * 100)
+        print("❌ TTS SYNTHESIS EXCEPTION:")
+        print(tb)
+        print("=" * 100)
         logger.error(f"TTS synthesis failed: {e}")
+        logger.error(f"Traceback: {tb}")
         raise HTTPException(
             status_code=500,
             detail=f"TTS synthesis failed: {str(e)}"

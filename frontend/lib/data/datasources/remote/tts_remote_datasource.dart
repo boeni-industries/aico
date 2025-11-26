@@ -26,21 +26,31 @@ class TtsRemoteDataSourceImpl implements TtsRemoteDataSource {
     double speed = 1.0,
   }) async* {
     try {
-      AICOLog.info('🎤 Requesting TTS synthesis: ${text.length} chars, language: $language');
+      AICOLog.info('🎤 Requesting TTS synthesis from backend: ${text.length} chars, language: $language');
       
-      // TODO: Implement actual backend TTS request
-      // For now, this is a placeholder that will be implemented when
-      // the Gateway API endpoint is ready
+      // Build request data
+      final requestData = {
+        'text': text,
+        'language': language,
+        'speed': speed,
+      };
       
-      // The implementation will:
-      // 1. Send TTS request to Gateway
-      // 2. Receive streaming audio chunks
-      // 3. Yield each chunk as it arrives
+      // Get the underlying API client for binary streaming
+      final apiClient = _resilientApi.apiClient;
+      await apiClient.initialize();
       
-      AICOLog.warn('TTS backend integration not yet implemented');
+      // Stream binary audio chunks from backend
+      await for (final chunk in apiClient.streamBinary(
+        'POST',
+        '/tts/synthesize',
+        data: requestData,
+      )) {
+        if (chunk.isNotEmpty) {
+          yield Uint8List.fromList(chunk);
+        }
+      }
       
-      // Placeholder: yield empty data to signal completion
-      yield Uint8List(0);
+      AICOLog.info('✅ TTS streaming complete');
       
     } catch (e, stackTrace) {
       AICOLog.error('TTS synthesis request failed', error: e, stackTrace: stackTrace);

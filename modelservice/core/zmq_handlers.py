@@ -1255,6 +1255,13 @@ class ModelserviceZMQHandlers:
         Yields:
             TtsStreamChunk messages with audio data
         """
+        print("=" * 100)
+        print(f"🎤 [MODELSERVICE] TTS REQUEST RECEIVED!")
+        print(f"Text: {request.text[:100]}...")
+        print(f"Language: {request.language}")
+        print(f"TTS initialized: {self.tts_initialized}")
+        print("=" * 100)
+        
         if not self.tts_initialized:
             # Try to initialize on first request
             await self.initialize_tts_system()

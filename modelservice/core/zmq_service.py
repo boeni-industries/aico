@@ -141,6 +141,7 @@ class ModelserviceZMQService:
             AICOTopics.MODELSERVICE_EMBEDDINGS_REQUEST,
             AICOTopics.MODELSERVICE_NER_REQUEST,
             AICOTopics.MODELSERVICE_SENTIMENT_REQUEST,
+            AICOTopics.MODELSERVICE_TTS_REQUEST,  # TTS synthesis requests
             AICOTopics.OLLAMA_STATUS_REQUEST,
             AICOTopics.OLLAMA_MODELS_REQUEST,
             AICOTopics.OLLAMA_MODELS_PULL_REQUEST,
@@ -150,12 +151,16 @@ class ModelserviceZMQService:
         ]
             
             subscribed_topics = []
+            print(f"🔍 [MODELSERVICE] About to subscribe to {len(modelservice_topics)} topics...")
             for topic in modelservice_topics:
                 if topic in self.topic_handlers:
+                    print(f"🎧 [MODELSERVICE] Subscribing to: {topic}")
                     await self.bus_client.subscribe(topic, self._handle_message)
                     subscribed_topics.append(topic)
+                    print(f"✅ [MODELSERVICE] Subscribed to: {topic}")
                     self.logger.info(f"Subscribed to topic: {topic}")
                 else:
+                    print(f"⚠️ [MODELSERVICE] Topic {topic} NOT in topic_handlers - skipping")
                     self.logger.warning(f"No handler found for topic {topic} during subscription")
             
             self.logger.info(f"Successfully subscribed to {len(subscribed_topics)} modelservice topics")
@@ -244,6 +249,27 @@ class ModelserviceZMQService:
                 if topic == AICOTopics.MODELSERVICE_CHAT_REQUEST:
                     # Chat requests need correlation_id for streaming
                     response = await self.topic_handlers[topic](request_payload, correlation_id)
+                elif topic == AICOTopics.MODELSERVICE_TTS_REQUEST:
+                    # TTS requests are streaming - handle async generator
+                    import time
+                    stream_start = time.time()
+                    print(f"🎤 [MODELSERVICE ZMQ] Handling TTS streaming request")
+                    chunk_count = 0
+                    async for chunk in self.topic_handlers[topic](request_payload):
+                        chunk_count += 1
+                        # Publish each chunk to the stream topic
+                        publish_start = time.time()
+                        print(f"📤 [MODELSERVICE ZMQ] Publishing TTS chunk #{chunk_count} (is_final={chunk.is_final})")
+                        await self.bus_client.publish(
+                            AICOTopics.MODELSERVICE_TTS_STREAM,
+                            chunk
+                        )
+                        publish_time = time.time() - publish_start
+                        print(f"✅ [MODELSERVICE ZMQ] Chunk #{chunk_count} published in {publish_time*1000:.2f}ms")
+                    stream_total = time.time() - stream_start
+                    print(f"⏱️ [MODELSERVICE ZMQ TIMING] Total streaming time: {stream_total*1000:.2f}ms ({chunk_count} chunks)")
+                    print(f"🎤 [MODELSERVICE ZMQ] TTS streaming complete - {chunk_count} chunks published")
+                    return  # No single response to send
                 else:
                     # Other handlers don't need correlation_id yet
                     response = await self.topic_handlers[topic](request_payload)

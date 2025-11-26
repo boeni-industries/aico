@@ -8,6 +8,59 @@ part of 'tts_provider.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
+/// TTS remote datasource provider
+
+@ProviderFor(ttsRemoteDataSource)
+const ttsRemoteDataSourceProvider = TtsRemoteDataSourceProvider._();
+
+/// TTS remote datasource provider
+
+final class TtsRemoteDataSourceProvider
+    extends
+        $FunctionalProvider<
+          TtsRemoteDataSource,
+          TtsRemoteDataSource,
+          TtsRemoteDataSource
+        >
+    with $Provider<TtsRemoteDataSource> {
+  /// TTS remote datasource provider
+  const TtsRemoteDataSourceProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'ttsRemoteDataSourceProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$ttsRemoteDataSourceHash();
+
+  @$internal
+  @override
+  $ProviderElement<TtsRemoteDataSource> $createElement(
+    $ProviderPointer pointer,
+  ) => $ProviderElement(pointer);
+
+  @override
+  TtsRemoteDataSource create(Ref ref) {
+    return ttsRemoteDataSource(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(TtsRemoteDataSource value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<TtsRemoteDataSource>(value),
+    );
+  }
+}
+
+String _$ttsRemoteDataSourceHash() =>
+    r'fd72e46c49fdc8b3bc491e320275e451b3dc0549';
+
 /// TTS repository provider
 
 @ProviderFor(ttsRepository)
@@ -52,7 +105,7 @@ final class TtsRepositoryProvider
   }
 }
 
-String _$ttsRepositoryHash() => r'c9e2c7ba21c5959bbd6137e316c2fec0b10b56b0';
+String _$ttsRepositoryHash() => r'ab32648169878fceffa24f6279c99e225f22b98c';
 
 /// TTS state notifier using modern Riverpod pattern
 
@@ -89,7 +142,7 @@ final class TtsProvider extends $NotifierProvider<Tts, TtsState> {
   }
 }
 
-String _$ttsHash() => r'20e7027fe88429fc3b17be987751f0b6dec6adb1';
+String _$ttsHash() => r'65ec5d21415e8e9342992a45855459722d593f11';
 
 /// TTS state notifier using modern Riverpod pattern
 

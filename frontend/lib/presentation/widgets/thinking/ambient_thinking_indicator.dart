@@ -78,21 +78,18 @@ class _AmbientThinkingIndicatorState extends State<AmbientThinkingIndicator>
     final isDark = theme.brightness == Brightness.dark;
     final purpleAccent = isDark ? const Color(0xFFB9A7E6) : const Color(0xFFB8A1EA);
 
-    // Don't show anything if no thoughts and not streaming
-    if (widget.thoughtCount == 0 && !widget.isStreaming) {
-      return const SizedBox.shrink();
-    }
-
     return MouseRegion(
       onEnter: (_) => widget.onHoverStart?.call(),
       onExit: (_) => widget.onHoverEnd?.call(),
       child: GestureDetector(
         onTap: widget.onTap,
         child: Semantics(
-          label: 'Thinking indicator',
+          label: 'Right drawer',
           hint: widget.isStreaming
-              ? 'AICO is actively thinking. Press to view reasoning process.'
-              : 'AICO has ${widget.thoughtCount} thoughts. Press to view history.',
+              ? 'AICO is actively thinking. Press to view reasoning and emotions.'
+              : widget.thoughtCount > 0
+                  ? 'AICO has ${widget.thoughtCount} thoughts. Press to view thinking and emotions.'
+                  : 'Press to view AICO\'s emotional journey.',
           button: true,
           child: SizedBox(
             width: 72, // Full drawer width

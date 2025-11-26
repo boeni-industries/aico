@@ -1,15 +1,25 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import 'package:aico_frontend/core/providers/networking_providers.dart';
+import 'package:aico_frontend/data/datasources/remote/tts_remote_datasource.dart';
 import 'package:aico_frontend/data/repositories/tts_repository_impl.dart';
 import 'package:aico_frontend/domain/entities/tts_state.dart';
 import 'package:aico_frontend/domain/repositories/tts_repository.dart';
 
 part 'tts_provider.g.dart';
 
+/// TTS remote datasource provider
+@riverpod
+TtsRemoteDataSource ttsRemoteDataSource(Ref ref) {
+  final resilientApi = ref.watch(resilientApiServiceProvider);
+  return TtsRemoteDataSourceImpl(resilientApi);
+}
+
 /// TTS repository provider
 @riverpod
 TtsRepository ttsRepository(Ref ref) {
-  final repository = TtsRepositoryImpl();
+  final remoteDataSource = ref.watch(ttsRemoteDataSourceProvider);
+  final repository = TtsRepositoryImpl(remoteDataSource);
   ref.onDispose(() => repository.dispose());
   return repository;
 }

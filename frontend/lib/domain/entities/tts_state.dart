@@ -2,8 +2,8 @@ import 'package:equatable/equatable.dart';
 
 /// Engine type for TTS synthesis.
 enum TtsEngine {
-  /// Neural Kokoro on-device TTS
-  neural,
+  /// Backend TTS via API (Coqui XTTS v2)
+  backend,
 }
 
 /// High-level status of the TTS system.

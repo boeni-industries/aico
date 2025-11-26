@@ -246,6 +246,7 @@ class AICOMessageBusHost:
             AICOTopics.ALL_CONVERSATION,
             AICOTopics.ALL_EMOTION,
             AICOTopics.ALL_PERSONALITY,
+            "modelservice/*",  # Access to all modelservice topics including TTS
             "system/status/*",
             "admin/*"
         ]
