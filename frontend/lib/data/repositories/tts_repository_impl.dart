@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:typed_data';
 
 import 'package:aico_frontend/core/logging/aico_log.dart';
@@ -6,8 +7,10 @@ import 'package:aico_frontend/data/datasources/remote/tts_remote_datasource.dart
 import 'package:aico_frontend/domain/entities/tts_state.dart';
 import 'package:aico_frontend/domain/repositories/tts_repository.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
 
-/// TTS repository implementation with backend streaming
+/// TTS repository implementation with backend streaming and LRU cache
 class TtsRepositoryImpl implements TtsRepository {
   final TtsRemoteDataSource _remoteDataSource;
   final _stateController = StreamController<TtsState>.broadcast();
@@ -17,6 +20,12 @@ class TtsRepositoryImpl implements TtsRepository {
   AudioPlayer? _audioPlayer;
   bool _isAvailable = false;
   StreamSubscription? _audioStreamSubscription;
+
+  // LRU cache for audio data (text hash -> WAV bytes)
+  final _audioCache = LinkedHashMap<String, Uint8List>();
+  static const int _maxCacheSize = 20; // Max 20 cached audio files
+  static const int _maxCacheBytes = 50 * 1024 * 1024; // 50MB max
+  int _currentCacheBytes = 0;
 
   TtsRepositoryImpl(this._remoteDataSource);
 
@@ -56,36 +65,60 @@ class TtsRepositoryImpl implements TtsRepository {
     if (text.isEmpty || !_isAvailable) return;
 
     try {
+      // Generate cache key from text
+      final cacheKey = _generateCacheKey(text);
+      
+      // Check cache first
+      Uint8List? wavData = _audioCache[cacheKey];
+      
+      if (wavData != null) {
+        AICOLog.info('🎯 Cache HIT for text (${text.length} chars)');
+        // Move to end (most recently used)
+        _audioCache.remove(cacheKey);
+        _audioCache[cacheKey] = wavData;
+      } else {
+        AICOLog.info('🎤 Cache MISS - Requesting TTS from backend: ${text.length} chars');
+        
+        // Set status to preparing (NOT speaking yet)
+        _updateState(_currentState.copyWith(
+          status: TtsStatus.initializing,
+          currentText: text,
+          progress: 0.0,
+        ));
+        
+        // Collect raw PCM chunks
+        final pcmBuffer = <int>[];
+        int chunkCount = 0;
+        
+        await for (final chunk in _remoteDataSource.synthesize(
+          text: text,
+          language: 'en', // TODO: Get from user preferences
+          speed: 1.0,
+        )) {
+          chunkCount++;
+          pcmBuffer.addAll(chunk);
+          AICOLog.info('📦 Chunk $chunkCount: ${chunk.length} bytes PCM data');
+        }
+        
+        if (pcmBuffer.isEmpty) {
+          throw Exception('No audio data received from backend');
+        }
+        
+        AICOLog.info('✅ Received $chunkCount chunks, total ${pcmBuffer.length} bytes PCM data');
+        
+        // Add WAV header to raw PCM data
+        wavData = _addWavHeader(Uint8List.fromList(pcmBuffer), sampleRate: 22050, channels: 1);
+        
+        // Add to cache
+        _addToCache(cacheKey, wavData);
+      }
+      
+      // NOW set status to speaking (animation starts here)
       _updateState(_currentState.copyWith(
         status: TtsStatus.speaking,
         currentText: text,
         progress: 0.0,
       ));
-      
-      AICOLog.info('🎤 Requesting TTS from backend: ${text.length} chars');
-      
-      // Collect raw PCM chunks
-      final pcmBuffer = <int>[];
-      int chunkCount = 0;
-      
-      await for (final chunk in _remoteDataSource.synthesize(
-        text: text,
-        language: 'en', // TODO: Get from user preferences
-        speed: 1.0,
-      )) {
-        chunkCount++;
-        pcmBuffer.addAll(chunk);
-        AICOLog.info('📦 Chunk $chunkCount: ${chunk.length} bytes PCM data');
-      }
-      
-      if (pcmBuffer.isEmpty) {
-        throw Exception('No audio data received from backend');
-      }
-      
-      AICOLog.info('✅ Received $chunkCount chunks, total ${pcmBuffer.length} bytes PCM data');
-      
-      // Add WAV header to raw PCM data
-      final wavData = _addWavHeader(Uint8List.fromList(pcmBuffer), sampleRate: 22050, channels: 1);
       
       // Play the audio using just_audio
       await _audioPlayer?.setAudioSource(
@@ -151,6 +184,36 @@ class TtsRepositoryImpl implements TtsRepository {
     if (!_stateController.isClosed) {
       _stateController.add(newState);
     }
+  }
+
+  /// Generate cache key from text (SHA256 hash)
+  String _generateCacheKey(String text) {
+    final bytes = utf8.encode(text.trim().toLowerCase());
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+
+  /// Add audio to cache with LRU eviction
+  void _addToCache(String key, Uint8List data) {
+    final dataSize = data.length;
+    
+    // Evict oldest entries if cache is full
+    while (_audioCache.length >= _maxCacheSize || 
+           (_currentCacheBytes + dataSize) > _maxCacheBytes) {
+      if (_audioCache.isEmpty) break;
+      
+      final oldestKey = _audioCache.keys.first;
+      final oldestData = _audioCache.remove(oldestKey);
+      if (oldestData != null) {
+        _currentCacheBytes -= oldestData.length;
+        AICOLog.info('🗑️ Evicted cache entry (${oldestData.length} bytes)');
+      }
+    }
+    
+    // Add new entry
+    _audioCache[key] = data;
+    _currentCacheBytes += dataSize;
+    AICOLog.info('💾 Cached audio: ${_audioCache.length} entries, ${(_currentCacheBytes / 1024 / 1024).toStringAsFixed(1)}MB');
   }
 
   /// Add WAV header to raw PCM data

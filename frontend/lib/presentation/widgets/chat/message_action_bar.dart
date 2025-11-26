@@ -299,21 +299,25 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
                       ),
                     ),
                     
-                    // Read Aloud (toggle play/stop)
+                    // Read Aloud (toggle play/stop with loading spinner)
                     Consumer(
                       builder: (context, ref, child) {
                         final ttsState = ref.watch(ttsProvider);
                         final isSpeaking = ttsState.status == TtsStatus.speaking;
+                        final isInitializing = ttsState.status == TtsStatus.initializing;
                         
                         return _buildActionButton(
                           icon: isSpeaking 
                               ? Icons.stop_rounded 
                               : Icons.volume_up_rounded,
-                          tooltip: isSpeaking ? 'Stop reading' : 'Read aloud',
+                          tooltip: isInitializing 
+                              ? 'Preparing voice...'
+                              : (isSpeaking ? 'Stop reading' : 'Read aloud'),
                           onTap: _handleReadAloud,
                           isExecuted: false,
                           isEnabled: true,
                           isActive: isSpeaking,
+                          isLoading: isInitializing,
                         );
                       },
                     ),
@@ -357,6 +361,7 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
     bool isExecuted = false,
     bool isEnabled = true,
     bool isActive = false,
+    bool isLoading = false,
   }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -413,12 +418,22 @@ class _MessageActionBarState extends ConsumerState<MessageActionBar>
                   ),
                 );
               },
-              child: Icon(
-                icon,
-                key: ValueKey(icon),
-                size: 18,
-                color: iconColor,
-              ),
+              child: isLoading
+                  ? SizedBox(
+                      key: const ValueKey('loading'),
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(iconColor),
+                      ),
+                    )
+                  : Icon(
+                      icon,
+                      key: ValueKey(icon),
+                      size: 18,
+                      color: iconColor,
+                    ),
             ),
           ),
         ),
