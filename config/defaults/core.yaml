@@ -182,20 +182,43 @@ modelservice:
   # Text-to-Speech (TTS) configuration
   tts:
     enabled: true
-    model: "xtts_v2"  # Coqui XTTS v2 - multilingual neural TTS
     
-    # Voice configuration per language
-    voices:
-      en: "Daisy Studious"  # English female voice
-      de: "Daisy Studious"  # German (same voice works for multiple languages)
-      # Other supported languages: es, fr, it, pt, pl, tr, ru, nl, cs, ar, zh-cn, hu, ko, ja, hi
+    # TTS Engine Selection
+    # Options:
+    #   - "xtts": Coqui XTTS v2 - High-quality voice cloning, slower (~20s for 700 chars)
+    #   - "piper": Piper TTS - Ultra-fast synthesis (<300ms), no voice cloning
+    engine: "piper"  # Testing Piper for speed
     
-    # Default synthesis parameters
+    # XTTS Configuration (used when engine="xtts")
+    xtts:
+      model: "xtts_v2"  # Coqui XTTS v2 - multilingual neural TTS
+      
+      # Voice configuration per language
+      voices:
+        en: "Daisy Studious"  # English female voice
+        de: "Daisy Studious"  # Lighter, younger-sounding voice
+        # Other supported languages: es, fr, it, pt, pl, tr, ru, nl, cs, ar, zh-cn, hu, ko, ja, hi
+      
+      # Custom voice cloning (optional)
+      # Place WAV files in modelservice/assets/voices/
+      custom_voice_path: null  # Path to custom voice WAV file (overrides built-in voices)
+    
+    # Piper Configuration (used when engine="piper")
+    piper:
+      # Voice models per language (downloaded automatically on first use)
+      voices:
+        en: "en_US-amy-medium"  # Alba voice - clear, professional English
+        de: "de_DE-eva_k-x_low"  # Eva K voice - natural German
+      
+      # Voice quality settings
+      # Options: x_low (fastest), low, medium (balanced), high (best quality)
+      quality: "medium"  # Default quality level
+    
+    # Common synthesis parameters (applies to both engines)
     speed: 1.0  # Speech speed multiplier (0.5-2.0)
     
-    # Custom voice cloning (optional)
-    # Place WAV files in modelservice/assets/voices/
-    custom_voice_path: null  # Path to custom voice WAV file (overrides built-in voices)
+    # Language detection
+    auto_detect_language: true  # Automatically detect language from text
 
 # Task Scheduler configuration
 scheduler:

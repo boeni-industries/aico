@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import AsyncGenerator, Optional
 
 from aico.core.logging import get_logger
+from aico.ai.utils import detect_language
 
 
 class TtsHandler:
@@ -105,21 +106,32 @@ class TtsHandler:
                 print(error_msg, flush=True)
                 raise RuntimeError("TTS handler requires configuration manager")
             
-            self._logger.info("Loading TTS configuration from core.yaml...")
-            tts_config = self._config.get("core.modelservice.tts", {})
-            
-            if not tts_config:
+            self._logger.info("Loading TTS configuration from config (XTTS-specific)")
+            tts_config = self._config.get("core.modelservice.tts.xtts", None)
+            if tts_config is None:
                 error_msg = (
                     "\n" + "="*80 + "\n"
-                    "❌ CRITICAL ERROR: No 'modelservice.tts' section found in core.yaml!\n"
-                    "Expected configuration path: modelservice.tts\n"
-                    "TTS cannot initialize without voice configuration.\n"
-                    "Please check config/defaults/core.yaml\n"
+                    "❌ FATAL: XTTS configuration not found!\n"
+                    "Expected path: core.modelservice.tts.xtts\n"
+                    "This is a critical configuration error.\n"
+                    "Check config/defaults/core.yaml for proper structure.\n"
                     "="*80
                 )
                 self._logger.error(error_msg)
                 print(error_msg, flush=True)
-                raise RuntimeError("Missing modelservice.tts configuration in core.yaml")
+                raise RuntimeError("XTTS configuration missing at core.modelservice.tts.xtts")
+            
+            if not tts_config:
+                error_msg = (
+                    "\n" + "="*80 + "\n"
+                    "❌ FATAL: XTTS configuration is empty!\n"
+                    "Path: core.modelservice.tts.xtts\n"
+                    "Configuration exists but contains no data.\n"
+                    "="*80
+                )
+                self._logger.error(error_msg)
+                print(error_msg, flush=True)
+                raise RuntimeError("XTTS configuration is empty")
             
             self._logger.info(f"✅ Found TTS config: {tts_config}")
             
@@ -128,19 +140,20 @@ class TtsHandler:
             if not self._voices:
                 error_msg = (
                     "\n" + "="*80 + "\n"
-                    "❌ CRITICAL ERROR: No voices configured in modelservice.tts.voices!\n"
+                    "❌ CRITICAL ERROR: No voices configured in modelservice.tts.xtts.voices!\n"
                     "At minimum, configure 'en' and 'de' voices in core.yaml\n"
                     "Example:\n"
                     "  modelservice:\n"
                     "    tts:\n"
-                    "      voices:\n"
-                    "        en: \"Daisy Studious\"\n"
-                    "        de: \"Daisy Studious\"\n"
+                    "      xtts:\n"
+                    "        voices:\n"
+                    "          en: \"Daisy Studious\"\n"
+                    "          de: \"Daisy Studious\"\n"
                     "="*80
                 )
                 self._logger.error(error_msg)
                 print(error_msg, flush=True)
-                raise RuntimeError("No voices configured in modelservice.tts.voices")
+                raise RuntimeError("No voices configured in modelservice.tts.xtts.voices")
             
             self._logger.info(f"✅ Configured voices: {self._voices}")
             
@@ -213,6 +226,39 @@ class TtsHandler:
             import numpy as np
             
             overall_start = time.time()
+            
+            # Auto-detect language if enabled (or if language is empty/invalid)
+            auto_detect = self._config.get("core.modelservice.tts.auto_detect_language", None)
+            if auto_detect is None:
+                # Config key missing - fail loudly
+                error_msg = (
+                    "\n" + "="*80 + "\n"
+                    "❌ FATAL: auto_detect_language configuration missing!\n"
+                    "Expected path: core.modelservice.tts.auto_detect_language\n"
+                    "This must be explicitly set to true or false.\n"
+                    "="*80
+                )
+                self._logger.error(error_msg)
+                print(error_msg, flush=True)
+                raise RuntimeError("auto_detect_language configuration missing")
+            
+            # Convert to boolean if needed
+            auto_detect = bool(auto_detect)
+            
+            # Debug logging
+            print(f"🔍 [DEBUG] auto_detect={auto_detect}, language='{language}', language.strip()='{language.strip() if language else 'None'}'", flush=True)
+            self._logger.info(f"🔍 [DEBUG] auto_detect={auto_detect}, language='{language}'")
+            
+            if auto_detect or not language or language.strip() == "":
+                # Use 'en' as fallback if detection fails
+                fallback_lang = language if language and language.strip() else "en"
+                result = detect_language(text, fallback=fallback_lang)
+                self._logger.info(f"🔍 Detected language: {result.language} (confidence: {result.confidence:.2f})")
+                print(f"🔍 Detected language: {result.language} (confidence: {result.confidence:.2f})", flush=True)
+                language = result.language
+            else:
+                print(f"🔍 [DEBUG] Skipping detection - using provided language: {language}", flush=True)
+                self._logger.info(f"🔍 [DEBUG] Skipping detection - using provided language: {language}")
             
             # Clean markdown and special formatting from text
             clean_start = time.time()

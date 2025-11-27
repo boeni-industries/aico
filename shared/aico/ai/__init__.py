@@ -14,6 +14,7 @@ from .processors import (
     AIProcessorRegistry,
     ai_registry
 )
+from .utils import detect_language, LanguageDetectionResult
 
 __all__ = [
     'ProcessingContext',
@@ -22,5 +23,7 @@ __all__ = [
     'MemoryProcessor', 
     'EmbodimentProcessor',
     'AIProcessorRegistry',
-    'ai_registry'
+    'ai_registry',
+    'detect_language',
+    'LanguageDetectionResult',
 ]

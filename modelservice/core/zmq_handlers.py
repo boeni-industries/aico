@@ -18,7 +18,7 @@ from aico.core.topics import AICOTopics as AICOTopics
 from .ollama_manager import OllamaManager
 from .transformers_manager import TransformersManager
 from aico.core.version import get_modelservice_version
-from modelservice.handlers.tts_handler import TtsHandler
+from modelservice.handlers.tts_factory import TtsFactory
 from aico.proto.aico_modelservice_pb2 import (
     HealthResponse, CompletionsResponse, ModelsResponse, ModelInfoResponse,
     EmbeddingsRequest, EmbeddingsResponse, NerResponse, EntityList, EntityWithConfidence, StatusResponse, ModelInfo, ServiceStatus, OllamaStatus,
@@ -62,8 +62,8 @@ class ModelserviceZMQHandlers:
         self.ner_initialized = False
         self.transformers_initialized = False
         
-        # Initialize TTS handler with config manager
-        self.tts_handler = TtsHandler(config_manager=self.config_manager)
+        # Initialize TTS handler with config manager (uses factory for engine selection)
+        self.tts_handler = TtsFactory.create_handler(config_manager=self.config_manager)
         self.tts_initialized = False
         
         self.logger.info("ModelserviceZMQHandlers initialization complete")

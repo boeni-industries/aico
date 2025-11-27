@@ -90,12 +90,14 @@ async def synthesize_tts(
     
     **Parameters:**
     - `text`: Text to synthesize (1-5000 characters)
-    - `language`: ISO 639-1 language code (default: "en")
+    - `language`: Language code (empty = auto-detect, default: auto-detect)
     - `speed`: Speech speed multiplier 0.5-2.0 (default: 1.0)
     - `voice`: Optional custom voice identifier
     
-    **Supported Languages:**
-    en, de, es, fr, it, pt, pl, tr, ru, nl, cs, ar, zh, ja, hu, ko, hi
+    **Language Detection:**
+    - Backend automatically detects language from text (FastText, 95% accuracy)
+    - Supports 217 languages
+    - Leave `language` empty for automatic detection (recommended)
     """
     print("=" * 100)
     print("🎤 TTS ENDPOINT CALLED - NEW CODE V3")

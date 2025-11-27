@@ -9,7 +9,12 @@ import sys
 import os
 import asyncio
 import signal
+import warnings
 from pathlib import Path
+
+# Suppress harmless SyntaxWarnings from third-party dependencies (Python 3.13)
+# These are from jsonlines, pysbd (used by Coqui TTS) - not our code
+warnings.filterwarnings('ignore', category=SyntaxWarning)
 
 # Fix Windows asyncio event loop compatibility with ZMQ
 if sys.platform == "win32":

@@ -30,6 +30,7 @@ dependencies = [
     "chromadb>=1.0.16", # Phase 2 semantic memory - core functionality
     "grand-cypher", # GQL/Cypher query language support for knowledge graph
     "hnswlib", # HNSW approximate nearest neighbor search for entity resolution
+    "fast-langdetect>=0.2.1", # Ultra-fast language detection (80x faster, 95% accuracy, 217 languages)
 ]
 
 [project.optional-dependencies]
@@ -56,6 +57,7 @@ modelservice = [
     "gliner==0.2.22", # Advanced entity extraction (requires transformers <=4.51.0)
     "sentence-transformers>=5.1.1", # Multilingual embeddings for semantic memory
     "coqui-tts", # Source specified in tool.uv.sources, dependencies overridden
+    "piper-tts>=1.2.0", # Fast neural TTS (100x faster than XTTS, no voice cloning)
 ]
 
 test = [
