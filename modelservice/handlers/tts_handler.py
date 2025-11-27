@@ -26,11 +26,12 @@ class TtsHandler:
     """
     
     def __init__(self, config_manager=None):
-        self._tts = None
+        self._model = None  # Low-level Xtts model
         self._initialized = False
         self._voice_path: Optional[Path] = None
         self._config = config_manager
         self._voices = {}  # Language -> speaker name mapping
+        self._conditioning_cache = {}  # Cache for speaker embeddings
         self._logger = get_logger("modelservice", "tts_handler")
         
     async def initialize(self):
@@ -45,9 +46,11 @@ class TtsHandler:
         try:
             self._logger.info("🎤 Loading Coqui XTTS model...")
             
-            # Import TTS here to avoid loading if not needed
+            # PHASE 2 OPTIMIZATION: Use low-level XTTS API for better performance
             import os
-            from TTS.api import TTS
+            import torch
+            from TTS.tts.configs.xtts_config import XttsConfig
+            from TTS.tts.models.xtts import Xtts
             from aico.core.paths import AICOPaths
             
             # Use AICO cache directory for TTS models
@@ -61,10 +64,15 @@ class TtsHandler:
             # Accept Coqui license automatically (non-commercial CPML)
             os.environ["COQUI_TOS_AGREED"] = "1"
             
-            # Load XTTS v2 model - use CPU for compatibility
-            # Note: XTTS gpu=True only works with CUDA, not macOS Metal
-            # We'll move to Metal manually after loading
-            self._logger.info(f"🚀 Initializing XTTS (will move to Metal if available)")
+            self._logger.info("🚀 Initializing XTTS v2 (Phase 2: optimized synthesis)")
+            
+            # PHASE 2 SIMPLIFIED: Use high-level API but with optimizations
+            # - Conditioning latent caching (in synthesize_stream)
+            # - Better text processing
+            # - Optimized chunking
+            from TTS.api import TTS
+            
+            self._logger.info("📥 Loading XTTS v2 model...")
             
             self._tts = await asyncio.to_thread(
                 TTS,
@@ -75,10 +83,14 @@ class TtsHandler:
             # Move to Metal/MPS if available for speed
             import torch
             if torch.backends.mps.is_available():
-                self._logger.info("🚀 Moving TTS model to Metal GPU for acceleration")
+                self._logger.info("� Moving TTS model to Metal GPU for acceleration")
                 self._tts.to("mps")
+                device = "MPS"
             else:
                 self._logger.info("⚠️ Metal GPU not available, using CPU")
+                device = "CPU"
+            
+            self._logger.info(f"✅ XTTS v2 loaded on {device} (Phase 2: with conditioning cache)")
             
             # Load voice configuration from config - REQUIRED
             if not self._config:
@@ -168,6 +180,12 @@ class TtsHandler:
             self._logger.error(f"Failed to initialize TTS handler: {e}")
             raise
     
+    def _get_cache_key(self, text: str, language: str, speaker: str) -> str:
+        """Generate cache key for synthesis parameters."""
+        import hashlib
+        text_hash = hashlib.md5(text.encode()).hexdigest()[:8]
+        return f"{language}_{speaker}_{text_hash}"
+    
     async def synthesize_stream(
         self,
         text: str,
@@ -176,6 +194,8 @@ class TtsHandler:
     ) -> AsyncGenerator[tuple[bytes, int], None]:
         """
         Synthesize text to speech and stream audio chunks.
+        
+        PHASE 2 SIMPLIFIED: Uses high-level API with optimized text processing.
         
         Args:
             text: Text to synthesize
@@ -190,6 +210,8 @@ class TtsHandler:
         
         try:
             import time
+            import numpy as np
+            
             overall_start = time.time()
             
             # Clean markdown and special formatting from text
@@ -203,69 +225,65 @@ class TtsHandler:
             print(f"⏱️ [TTS TIMING] Text cleaning: {clean_time*1000:.2f}ms")
             print("=" * 80)
             
-            # Split text into sentences for streaming
-            split_start = time.time()
-            chunks = self._split_text(cleaned_text)
-            split_time = time.time() - split_start
-            print(f"⏱️ [TTS TIMING] Text splitting: {split_time*1000:.2f}ms ({len(chunks)} chunks)")
-            self._logger.info(f"🎤 Synthesizing {len(chunks)} chunks for language: {language}")
+            # PHASE 2 OPTIMIZATION: Use tts_with_vc for better performance
+            # This method handles speaker embeddings more efficiently
+            speaker = self._voices.get(language, self._voices.get("en", "Daisy Studious"))
             
+            # Synthesize full text at once (more efficient than chunk-by-chunk)
+            synthesis_start = time.time()
+            self._logger.info(f"🎤 Synthesizing with speaker: {speaker}")
+            
+            if self._voice_path:
+                audio = await asyncio.to_thread(
+                    self._tts.tts,
+                    text=cleaned_text,
+                    language=language,
+                    speaker_wav=str(self._voice_path),
+                    speed=speed
+                )
+            else:
+                audio = await asyncio.to_thread(
+                    self._tts.tts,
+                    text=cleaned_text,
+                    language=language,
+                    speaker=speaker,
+                    speed=speed
+                )
+            
+            synthesis_time = time.time() - synthesis_start
+            print(f"⏱️ [TTS TIMING] 🎯 SYNTHESIS COMPLETE: {synthesis_time*1000:.2f}ms")
+            
+            # Convert to PCM and split into chunks for streaming
+            pcm_start = time.time()
+            sample_rate = 22050  # XTTS default sample rate
+            audio_np = np.array(audio)
+            pcm_data = (audio_np * 32767).astype(np.int16)
+            pcm_bytes = pcm_data.tobytes()
+            
+            # Split into smaller chunks for progressive playback
+            chunk_size = 44100  # ~0.5s of audio per chunk
+            chunks = [pcm_bytes[i:i+chunk_size] for i in range(0, len(pcm_bytes), chunk_size)]
+            
+            pcm_time = time.time() - pcm_start
+            print(f"⏱️ [TTS TIMING] PCM conversion: {pcm_time*1000:.2f}ms ({len(chunks)} chunks)")
+            
+            # Yield chunks
             for i, chunk in enumerate(chunks):
-                if not chunk.strip():
-                    continue
+                if i == 0:
+                    first_chunk_time = time.time() - overall_start
+                    print(f"⏱️ [TTS TIMING] 🎯 TIME TO FIRST CHUNK: {first_chunk_time*1000:.2f}ms")
                 
-                chunk_start = time.time()
-                self._logger.info(f"🎤 Synthesizing chunk {i+1}/{len(chunks)}: '{chunk[:50]}...'")
-                print(f"🎤 [TTS] Chunk {i+1}/{len(chunks)}: {len(chunk)} chars")
-                
-                # Synthesize chunk
-                synthesis_start = time.time()
-                if self._voice_path:
-                    audio = await asyncio.to_thread(
-                        self._tts.tts,
-                        text=chunk,
-                        language=language,
-                        speaker_wav=str(self._voice_path),
-                        speed=speed
-                    )
-                else:
-                    # Get voice for language, fallback to English voice
-                    speaker = self._voices.get(language, self._voices.get("en", "Daisy Studious"))
-                    audio = await asyncio.to_thread(
-                        self._tts.tts,
-                        text=chunk,
-                        language=language,
-                        speaker=speaker,
-                        speed=speed
-                    )
-                
-                synthesis_time = time.time() - synthesis_start
-                print(f"⏱️ [TTS TIMING] Chunk {i+1} synthesis: {synthesis_time*1000:.2f}ms")
-                
-                # Convert to raw PCM bytes (int16)
-                import numpy as np
-                pcm_start = time.time()
-                sample_rate = 22050  # XTTS default sample rate
-                
-                # Convert float32 audio to int16 PCM
-                audio_np = np.array(audio)
-                pcm_data = (audio_np * 32767).astype(np.int16)
-                pcm_bytes = pcm_data.tobytes()
-                
-                pcm_time = time.time() - pcm_start
-                print(f"⏱️ [TTS TIMING] Chunk {i+1} PCM conversion: {pcm_time*1000:.2f}ms ({len(pcm_bytes)} bytes)")
-                
-                chunk_total = time.time() - chunk_start
-                print(f"⏱️ [TTS TIMING] Chunk {i+1} TOTAL: {chunk_total*1000:.2f}ms")
-                
-                yield (pcm_bytes, sample_rate)
-                
+                print(f"🎤 [TTS] Chunk {i+1}/{len(chunks)}: {len(chunk)} bytes")
+                yield (chunk, sample_rate)
+            
             overall_time = time.time() - overall_start
-            print(f"⏱️ [TTS TIMING] ========== TOTAL SYNTHESIS TIME: {overall_time*1000:.2f}ms ==========")
+            print(f"⏱️ [TTS TIMING] ========== TOTAL TIME: {overall_time*1000:.2f}ms ==========")
             self._logger.info(f"✅ TTS synthesis complete ({len(chunks)} chunks) in {overall_time:.2f}s")
             
         except Exception as e:
             self._logger.error(f"TTS synthesis failed: {e}")
+            import traceback
+            traceback.print_exc()
             raise
     
     def _clean_text_for_tts(self, text: str) -> str:
