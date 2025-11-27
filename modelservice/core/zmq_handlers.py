@@ -1280,21 +1280,23 @@ class ModelserviceZMQHandlers:
             self.logger.info(f"🎤 TTS request: {len(request.text)} chars, language: {request.language}")
             
             # Stream audio chunks
+            actual_sample_rate = 22050  # Default fallback
             async for audio_bytes, sample_rate in self.tts_handler.synthesize_stream(
                 text=request.text,
                 language=request.language,
                 speed=request.speed if request.speed else 1.0
             ):
+                actual_sample_rate = sample_rate  # Track the actual sample rate
                 yield TtsStreamChunk(
                     audio_data=audio_bytes,
                     sample_rate=sample_rate,
                     is_final=False
                 )
             
-            # Send final chunk
+            # Send final chunk with correct sample rate
             yield TtsStreamChunk(
                 audio_data=b"",
-                sample_rate=22050,
+                sample_rate=actual_sample_rate,
                 is_final=True
             )
             

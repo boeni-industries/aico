@@ -207,8 +207,8 @@ modelservice:
     piper:
       # Voice models per language (downloaded automatically on first use)
       voices:
-        en: "en_US-amy-medium"  # Alba voice - clear, professional English
-        de: "de_DE-eva_k-x_low"  # Eva K voice - natural German
+        en: "en_US-amy-medium"  # Amy voice - clear, professional English
+        de: "de_DE-kerstin-low"  # Kerstin - German female voice (testing artifacts)
       
       # Voice quality settings
       # Options: x_low (fastest), low, medium (balanced), high (best quality)

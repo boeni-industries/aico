@@ -105,10 +105,10 @@ class TtsRepositoryImpl implements TtsRepository {
           throw Exception('No audio data received from backend');
         }
         
-        AICOLog.info('✅ Received $chunkCount chunks, total ${pcmBuffer.length} bytes PCM data');
+        AICOLog.info('✅ Received $chunkCount chunks, total ${pcmBuffer.length} bytes (complete WAV file from backend)');
         
-        // Add WAV header to raw PCM data
-        wavData = _addWavHeader(Uint8List.fromList(pcmBuffer), sampleRate: 22050, channels: 1);
+        // Backend now sends complete WAV file with proper header - no need to add one
+        wavData = Uint8List.fromList(pcmBuffer);
         
         // Add to cache
         _addToCache(cacheKey, wavData);
@@ -119,14 +119,17 @@ class TtsRepositoryImpl implements TtsRepository {
         _BytesAudioSource(wavData),
       );
       
-      // Set up completion listener - SIMPLE: just wait for completed state
+      // Set up completion listener
       _audioStreamSubscription?.cancel();
-      _audioStreamSubscription = _audioPlayer?.playerStateStream.listen((playerState) {
+      _audioStreamSubscription = _audioPlayer?.playerStateStream.listen((playerState) async {
         debugPrint('🎵 [TTS] Player state: ${playerState.processingState}, playing: ${playerState.playing}');
         
-        // When playback completes, return to idle
+        // When playback completes, pause and rewind to avoid pop/click
+        // This is the recommended practice from just_audio documentation
         if (playerState.processingState == ProcessingState.completed) {
-          debugPrint('🎵 [TTS] ✅ Playback completed - returning to idle');
+          debugPrint('🎵 [TTS] ✅ Playback completed - pausing and rewinding');
+          await _audioPlayer?.pause();
+          await _audioPlayer?.seek(Duration.zero);
           _updateState(_currentState.copyWith(
             status: TtsStatus.idle,
             currentText: null,
@@ -223,55 +226,6 @@ class TtsRepositoryImpl implements TtsRepository {
     _audioCache[key] = data;
     _currentCacheBytes += dataSize;
     AICOLog.info('💾 Cached audio: ${_audioCache.length} entries, ${(_currentCacheBytes / 1024 / 1024).toStringAsFixed(1)}MB');
-  }
-
-  /// Add WAV header to raw PCM data
-  Uint8List _addWavHeader(Uint8List pcmData, {required int sampleRate, required int channels}) {
-    final int byteRate = sampleRate * channels * 2; // 16-bit = 2 bytes per sample
-    final int dataSize = pcmData.length;
-    final int fileSize = 36 + dataSize;
-    
-    final header = ByteData(44);
-    
-    // RIFF header
-    header.setUint8(0, 0x52); // 'R'
-    header.setUint8(1, 0x49); // 'I'
-    header.setUint8(2, 0x46); // 'F'
-    header.setUint8(3, 0x46); // 'F'
-    header.setUint32(4, fileSize, Endian.little);
-    
-    // WAVE header
-    header.setUint8(8, 0x57);  // 'W'
-    header.setUint8(9, 0x41);  // 'A'
-    header.setUint8(10, 0x56); // 'V'
-    header.setUint8(11, 0x45); // 'E'
-    
-    // fmt subchunk
-    header.setUint8(12, 0x66); // 'f'
-    header.setUint8(13, 0x6D); // 'm'
-    header.setUint8(14, 0x74); // 't'
-    header.setUint8(15, 0x20); // ' '
-    header.setUint32(16, 16, Endian.little); // Subchunk1Size (16 for PCM)
-    header.setUint16(20, 1, Endian.little);  // AudioFormat (1 = PCM)
-    header.setUint16(22, channels, Endian.little);
-    header.setUint32(24, sampleRate, Endian.little);
-    header.setUint32(28, byteRate, Endian.little);
-    header.setUint16(32, channels * 2, Endian.little); // BlockAlign
-    header.setUint16(34, 16, Endian.little); // BitsPerSample
-    
-    // data subchunk
-    header.setUint8(36, 0x64); // 'd'
-    header.setUint8(37, 0x61); // 'a'
-    header.setUint8(38, 0x74); // 't'
-    header.setUint8(39, 0x61); // 'a'
-    header.setUint32(40, dataSize, Endian.little);
-    
-    // Combine header + PCM data
-    final result = Uint8List(44 + dataSize);
-    result.setRange(0, 44, header.buffer.asUint8List());
-    result.setRange(44, 44 + dataSize, pcmData);
-    
-    return result;
   }
 
   @override

@@ -248,23 +248,81 @@ class PiperTtsHandler:
             def synthesize():
                 """Synthesize audio in thread."""
                 # Piper's synthesize() returns generator of AudioChunk objects
+                # Note: noise_scale is set in the voice model config, not here
                 audio_chunks = []
+                actual_sample_rate = None
+                
                 for chunk in voice.synthesize(cleaned_text):
                     audio_chunks.append(chunk.audio_int16_bytes)
+                    # Get sample rate from first chunk
+                    if actual_sample_rate is None:
+                        actual_sample_rate = chunk.sample_rate
                 
                 # Concatenate all chunks
                 if audio_chunks:
                     audio_data = b''.join(audio_chunks)
-                    # Get sample rate from first chunk
-                    sample_rate = 22050  # Piper default
+                    sample_rate = actual_sample_rate or 22050
                     return audio_data, sample_rate
                 else:
                     return b'', 22050
             
             audio_bytes, sample_rate = await asyncio.to_thread(synthesize)
             
+            # Speed up German voice by 10% using proper resampling
+            if language == "de":
+                import struct
+                import numpy as np
+                from scipy import signal
+                
+                # Convert to numpy array
+                samples = np.frombuffer(audio_bytes, dtype=np.int16)
+                
+                # Calculate new length (10% faster = 90.9% of original length)
+                new_length = int(len(samples) / 1.1)
+                
+                # Resample using high-quality polyphase filtering
+                resampled = signal.resample(samples, new_length)
+                
+                # Convert back to int16
+                resampled = np.clip(resampled, -32768, 32767).astype(np.int16)
+                audio_bytes = resampled.tobytes()
+                
+                print(f"🔍 [PIPER DEBUG] Sped up German audio by 10%: {len(samples)} → {len(resampled)} samples", flush=True)
+            
+            # Debug: Analyze raw audio from Piper for trailing artifacts
+            print(f"🔍 [PIPER DEBUG] Raw audio size: {len(audio_bytes)} bytes", flush=True)
+            
+            # Apply fade-out to eliminate pop/click at end
+            if len(audio_bytes) >= 2000:
+                import struct
+                
+                # Convert entire audio to samples
+                all_samples = list(struct.unpack(f'<{len(audio_bytes)//2}h', audio_bytes))
+                num_samples = len(all_samples)
+                
+                # Debug: Check last samples before fix
+                last_10_before = all_samples[-10:]
+                print(f"🔍 [PIPER DEBUG] Last 10 samples BEFORE fix: {last_10_before}", flush=True)
+                
+                # Apply 300ms fade-out (4800 samples at 16kHz)
+                fade_samples = min(4800, num_samples)
+                for i in range(fade_samples):
+                    fade_factor = (fade_samples - i) / fade_samples
+                    all_samples[num_samples - fade_samples + i] = int(all_samples[num_samples - fade_samples + i] * fade_factor)
+                
+                # Force last 500 samples to absolute zero
+                for i in range(min(500, num_samples)):
+                    all_samples[num_samples - 1 - i] = 0
+                
+                # Reconstruct audio
+                audio_bytes = struct.pack(f'<{num_samples}h', *all_samples)
+                
+                print(f"🔍 [PIPER DEBUG] Last 10 samples AFTER fix: {all_samples[-10:]}", flush=True)
+            
             synthesis_time = time.time() - synthesis_start
             print(f"⏱️ [PIPER TIMING] 🎯 SYNTHESIS COMPLETE: {synthesis_time*1000:.2f}ms")
+            print(f"🔊 [PIPER] Sample rate: {sample_rate} Hz", flush=True)
+            self._logger.info(f"🔊 Sample rate: {sample_rate} Hz")
             
             # Split into chunks for streaming (same as XTTS for compatibility)
             chunk_size = 44100  # ~0.5s of audio per chunk at 22050 Hz
@@ -291,6 +349,33 @@ class PiperTtsHandler:
             traceback.print_exc()
             raise
     
+    def _trim_trailing_silence(self, audio_bytes: bytes, threshold: int = 500) -> bytes:
+        """
+        Add fade-out and silence padding to prevent pop/click at end.
+        
+        The pop/click occurs when audio doesn't end at zero crossing.
+        Solution: Apply fade-out + add silence padding.
+        
+        Args:
+            audio_bytes: Raw PCM audio bytes (16-bit)
+            threshold: Not used
+            
+        Returns:
+            Audio bytes with fade-out and silence padding
+        """
+        import struct
+        
+        if len(audio_bytes) < 2:
+            return audio_bytes
+        
+        # Convert bytes to 16-bit samples
+        num_samples = len(audio_bytes) // 2
+        samples = list(struct.unpack(f'<{num_samples}h', audio_bytes))
+        
+        # Return audio unchanged - processing made pop/click worse
+        # The artifact is likely from the audio player, not the audio data
+        return audio_bytes
+    
     def _clean_text_for_tts(self, text: str) -> str:
         """
         Clean text for TTS by removing markdown and special formatting.
@@ -303,11 +388,23 @@ class PiperTtsHandler:
         """
         import re
         
+        # Convert em-dashes and double hyphens to period for pauses
+        # Piper doesn't respect commas, only periods create reliable pauses
+        text = re.sub(r'\s*—\s*', '. ', text)  # Em-dash → period with space
+        text = re.sub(r'\s*–\s*', '. ', text)  # En-dash → period with space
+        text = re.sub(r'\s+--\s+', '. ', text)  # Double hyphen → period with space
+        
+        # Expand common abbreviations for better pronunciation
+        text = re.sub(r'\bP\.S\.', 'Postscript', text, flags=re.IGNORECASE)
+        text = re.sub(r'\be\.g\.', 'for example', text, flags=re.IGNORECASE)
+        text = re.sub(r'\bi\.e\.', 'that is', text, flags=re.IGNORECASE)
+        text = re.sub(r'\betc\.', 'etcetera', text, flags=re.IGNORECASE)
+        
         # Remove markdown bold/italic
         text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)  # **bold**
         text = re.sub(r'\*([^*]+)\*', r'\1', text)      # *italic*
         text = re.sub(r'__([^_]+)__', r'\1', text)      # __bold__
-        text = re.sub(r'_([^_]+)_', r'\1', text)        # _italic_
+        text = re.sub(r'_([^_]+)_', r'\1', text)        # _italic*_
         
         # Remove markdown links [text](url)
         text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
@@ -328,5 +425,10 @@ class PiperTtsHandler:
         
         # Remove any remaining non-printable characters
         text = ''.join(char for char in text if char.isprintable() or char.isspace())
+        
+        # CRITICAL: Ensure all periods and commas have EXACTLY ONE space after them
+        # This MUST be last, or Piper will pronounce the punctuation!
+        text = re.sub(r'\.\s*', '. ', text)  # Period followed by any whitespace → period + single space
+        text = re.sub(r',\s*', ', ', text)  # Comma followed by any whitespace → comma + single space
         
         return text

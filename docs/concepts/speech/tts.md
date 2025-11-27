@@ -294,7 +294,33 @@ final ttsProvider = StateNotifierProvider<TtsNotifier, TtsState>((ref) {
 
 ## Backend TTS (Modelservice)
 
-### Coqui XTTS v2
+AICO's backend supports two TTS engines: **Piper TTS** (ultra-fast, local) and **Coqui XTTS v2** (high-quality, voice cloning). The system automatically detects language and applies appropriate text preprocessing.
+
+### Piper TTS (Recommended)
+
+**Technology**: Piper - Fast, local neural TTS via ONNX Runtime
+
+**Features**:
+- Ultra-fast synthesis (~300ms for full sentences)
+- 15-24x faster than XTTS
+- Multiple quality levels (x_low, low, medium, high)
+- 100+ voices across 40+ languages
+- On-device processing, no cloud dependencies
+- Automatic voice model download
+
+**Performance**:
+- Synthesis: ~300ms per sentence
+- Model size: 5-30MB per voice (quality dependent)
+- Sample rates: 16kHz (low quality) or 22.05kHz (medium/high)
+- Memory: ~100MB RAM per loaded voice
+
+**Voice Quality Levels**:
+- `x_low`: 16kHz, 5-7M params (fastest, lowest quality)
+- `low`: 16kHz, 15-20M params (fast, good quality)
+- `medium`: 22.05kHz, 15-20M params (balanced)
+- `high`: 22.05kHz, 28-32M params (best quality, slower)
+
+### Coqui XTTS v2 (High-Quality Alternative)
 
 **Technology**: Coqui XTTS v2 - Neural TTS with voice cloning
 
@@ -304,24 +330,86 @@ final ttsProvider = StateNotifierProvider<TtsNotifier, TtsState>((ref) {
 - Voice cloning from 6-second samples
 - Streaming audio synthesis
 - WAV format output
+- Excellent quality, natural prosody
+
+**Performance**:
+- Synthesis: ~500ms per chunk
+- Model size: 1.8GB (auto-downloaded)
+- Sample rate: 22.05kHz
+- Memory: ~2GB RAM
 
 ### Configuration
 
-Voices are configured in `config/defaults/core.yaml`:
+Both engines are configured in `config/defaults/core.yaml`:
 
 ```yaml
 modelservice:
   tts:
     enabled: true
-    model: "xtts_v2"
-    voices:
-      en: "Daisy Studious"  # English female
-      de: "Daisy Studious"  # German (same voice)
+    engine: "piper"  # or "xtts"
+    auto_detect_language: true
+    
+    # XTTS Configuration
+    xtts:
+      voices:
+        en: "Daisy Studious"
+        de: "Daisy Studious"
+      custom_voice_path: null
+    
+    # Piper Configuration
+    piper:
+      voices:
+        en: "en_US-amy-medium"
+        de: "de_DE-kerstin-low"
+      quality: "medium"
+    
     speed: 1.0
-    custom_voice_path: null  # Optional WAV file path
 ```
 
-### Available Voices by Language
+### Piper Available Voices
+
+#### German Female Voices
+- **`de_DE-kerstin-low`** - Clear, professional (recommended, sped up 10%)
+- **`de_DE-ramona-low`** - Younger-sounding, natural
+- **`de_DE-pavoque-low`** - Alternative option
+
+#### English Voices
+- **`en_US-amy-medium`** - Clear, professional (default)
+- **`en_US-lessac-medium`** - Warm, friendly
+- **`en_US-libritts-high`** - Highest quality, slower
+- **`en_GB-alan-medium`** - British male
+- Many more available in [Piper voice samples](https://rhasspy.github.io/piper-samples/)
+
+### Audio Processing & Optimizations
+
+**Text Preprocessing**:
+- Automatic markdown removal (bold, italic, links)
+- Emoji removal (comprehensive Unicode ranges)
+- Em-dash/en-dash conversion to periods (for proper pauses)
+- Abbreviation expansion (P.S. → Postscript, e.g. → for example)
+- Ensures space after punctuation (critical for Piper pause detection)
+
+**Audio Post-Processing**:
+- **German voice speed-up**: 10% faster using scipy polyphase resampling
+  - Prevents "Mickey Mouse" effect while improving pace
+  - High-quality interpolation maintains audio fidelity
+- **Trailing artifact removal**: 300ms fade-out + 500 samples forced to zero
+  - Eliminates pop/click sounds at end of playback
+  - Ensures smooth audio termination at zero crossing
+
+**Sample Rate Handling**:
+- Automatic detection from voice model (16kHz or 22.05kHz)
+- Proper WAV header construction with correct sample rate
+- Backend buffers all audio before sending complete WAV file
+- Frontend receives ready-to-play WAV with no additional processing
+
+**Known Limitations**:
+- Piper doesn't respect comma pauses (only periods create pauses)
+- Voice synthesis is non-deterministic (slight variations between runs)
+- Low-quality German voices have inherent noise characteristics
+- No medium/high quality female German voices available in Piper
+
+### XTTS Available Voices by Language
 
 #### Female Voices
 - **Claribel Dervla** - Clear, professional
@@ -396,19 +484,33 @@ For custom voices, provide a 6-30 second WAV file:
 
 Custom voice overrides built-in speakers for all languages.
 
-### Performance
+### Performance Comparison
 
-| Metric | Value |
-|--------|-------|
-| Model Size | 1.8GB (auto-downloaded) |
-| Latency | ~500ms per chunk |
-| Quality | Excellent, natural |
-| Memory | ~2GB RAM |
-| Languages | 17 |
-| Speakers | 58 built-in |
+| Metric | Piper TTS | XTTS v2 |
+|--------|-----------|---------|
+| Model Size | 5-30MB per voice | 1.8GB |
+| Synthesis Time | ~300ms | ~500ms per chunk |
+| Speed vs XTTS | 15-24x faster | Baseline |
+| Quality | Good to Excellent | Excellent |
+| Memory | ~100MB | ~2GB RAM |
+| Languages | 40+ | 17 |
+| Voices | 100+ | 58 built-in |
+| Voice Cloning | No | Yes (6s samples) |
+| Sample Rate | 16-22.05kHz | 22.05kHz |
 
 ## Conclusion
 
-AICO's single-tier TTS architecture provides immediate, private, and high-quality voice synthesis without backend dependencies. The optional neural TTS tier enables premium experiences and character voice consistency while maintaining the core local-first principle. Custom voice training ensures brand consistency and emotional expressiveness for AI companion personalities.
+AICO's TTS system provides flexible, high-quality voice synthesis across multiple tiers:
 
-The backend modelservice provides Coqui XTTS v2 for high-quality neural TTS with 58 built-in voices across 17 languages, supporting both pre-configured speakers and custom voice cloning.
+**Frontend (Local-First)**:
+- Platform-native TTS for instant, zero-setup voice output
+- Optional Kokoro neural TTS for premium, consistent character voices
+- Complete privacy with on-device processing
+
+**Backend (Modelservice)**:
+- **Piper TTS** (recommended): Ultra-fast synthesis (15-24x faster than XTTS) with 100+ voices across 40+ languages
+- **XTTS v2** (alternative): High-quality synthesis with voice cloning capabilities
+- Automatic language detection and text preprocessing
+- Optimized audio processing with speed adjustments and artifact removal
+
+The system prioritizes speed and quality while maintaining privacy and local-first operation. Piper TTS provides the best balance of performance and quality for most use cases, with XTTS available for scenarios requiring voice cloning or maximum quality.

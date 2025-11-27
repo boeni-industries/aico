@@ -136,11 +136,12 @@ async def synthesize_tts(
                 logger.info("🎵 [TTS ROUTER V3] Starting audio_stream generator")
                 
                 # Subscribe to TTS stream with callback
-                chunks_received = []
+                all_audio_chunks = []  # Buffer ALL chunks before sending
                 streaming_complete = False
+                detected_sample_rate = None
                 
                 async def handle_tts_chunk(envelope):
-                    nonlocal streaming_complete
+                    nonlocal streaming_complete, detected_sample_rate, all_audio_chunks
                     try:
                         import time
                         receive_time = time.time()
@@ -153,8 +154,13 @@ async def synthesize_tts(
                         envelope.any_payload.Unpack(chunk)
                         unpack_time = time.time() - unpack_start
                         
-                        print(f"✅ [TTS ROUTER V3] Unpacked chunk in {unpack_time*1000:.2f}ms - is_final={chunk.is_final}, has_audio={len(chunk.audio_data) if chunk.audio_data else 0} bytes, error={chunk.error}")
-                        logger.info(f"✅ [TTS ROUTER V3] Successfully unpacked chunk - is_final={chunk.is_final}, has_audio={len(chunk.audio_data) if chunk.audio_data else 0} bytes")
+                        print(f"✅ [TTS ROUTER V3] Unpacked chunk in {unpack_time*1000:.2f}ms - is_final={chunk.is_final}, has_audio={len(chunk.audio_data) if chunk.audio_data else 0} bytes, sample_rate={chunk.sample_rate}, error={chunk.error}")
+                        logger.info(f"✅ [TTS ROUTER V3] Successfully unpacked chunk - is_final={chunk.is_final}, has_audio={len(chunk.audio_data) if chunk.audio_data else 0} bytes, sample_rate={chunk.sample_rate}")
+                        
+                        # Track sample rate from first chunk
+                        if detected_sample_rate is None and chunk.sample_rate > 0:
+                            detected_sample_rate = chunk.sample_rate
+                            print(f"🔊 [TTS ROUTER] Detected sample rate: {detected_sample_rate} Hz")
                         
                         # Check for errors
                         if chunk.error:
@@ -165,15 +171,15 @@ async def synthesize_tts(
                         
                         # Check if final chunk
                         if chunk.is_final:
-                            print(f"🏁 [TTS ROUTER V3] Final chunk received - total audio chunks: {len(chunks_received)}")
+                            print(f"🏁 [TTS ROUTER V3] Final chunk received - total audio chunks buffered: {len(all_audio_chunks)}")
                             logger.info("✅ TTS synthesis complete")
                             streaming_complete = True
                             return False  # Don't stop subscription yet - let loop finish yielding
                         
-                        # Store audio data
+                        # Store audio data in buffer
                         if chunk.audio_data:
-                            chunks_received.append(chunk.audio_data)
-                            print(f"💾 [TTS ROUTER V3] Stored audio chunk #{len(chunks_received)} ({len(chunk.audio_data)} bytes)")
+                            all_audio_chunks.append(chunk.audio_data)
+                            print(f"💾 [TTS ROUTER V3] Buffered audio chunk #{len(all_audio_chunks)} ({len(chunk.audio_data)} bytes)")
                         else:
                             print(f"⚠️ [TTS ROUTER V3] Received chunk with no audio data")
                         
@@ -189,45 +195,64 @@ async def synthesize_tts(
                 subscription_id = await bus_client.subscribe(AICOTopics.MODELSERVICE_TTS_STREAM, handle_tts_chunk)
                 print(f"🎧 [TTS ROUTER V3] Subscribed with ID: {subscription_id}")
                 
-                # Wait for chunks and yield them
+                # Wait for all chunks to be buffered
                 import asyncio
                 import time
+                import struct
                 loop_start = time.time()
-                iteration = 0
-                total_bytes_yielded = 0
-                while not streaming_complete:
-                    iteration += 1
-                    if chunks_received:
-                        yield_start = time.time()
-                        print(f"🔄 [TTS ROUTER V3] Iteration {iteration}: Yielding {len(chunks_received)} chunks")
-                        # Yield all accumulated chunks
-                        for i, audio_data in enumerate(chunks_received):
-                            print(f"📤 [TTS ROUTER V3] Yielding chunk {i+1}/{len(chunks_received)} ({len(audio_data)} bytes)")
-                            yield audio_data
-                            total_bytes_yielded += len(audio_data)
-                        yield_time = time.time() - yield_start
-                        print(f"⏱️ [TTS ROUTER TIMING] Yielded {len(chunks_received)} chunks in {yield_time*1000:.2f}ms")
-                        chunks_received.clear()
-                    else:
-                        if iteration % 100 == 0:  # Log every 100 iterations to avoid spam
-                            print(f"⏳ [TTS ROUTER V3] Iteration {iteration}: Waiting for chunks... (streaming_complete={streaming_complete})")
-                    await asyncio.sleep(0.01)  # Small delay to allow chunks to accumulate
+                print("⏳ [TTS ROUTER] Waiting for all audio chunks to be buffered...")
                 
-                # Yield any remaining chunks after streaming_complete
-                if chunks_received:
-                    yield_start = time.time()
-                    print(f"🔄 [TTS ROUTER V3] Final yield: {len(chunks_received)} remaining chunks")
-                    for i, audio_data in enumerate(chunks_received):
-                        print(f"📤 [TTS ROUTER V3] Yielding final chunk {i+1}/{len(chunks_received)} ({len(audio_data)} bytes)")
-                        yield audio_data
-                        total_bytes_yielded += len(audio_data)
-                    yield_time = time.time() - yield_start
-                    print(f"⏱️ [TTS ROUTER TIMING] Final yield: {len(chunks_received)} chunks in {yield_time*1000:.2f}ms")
-                    chunks_received.clear()
+                while not streaming_complete:
+                    await asyncio.sleep(0.01)  # Wait for synthesis to complete
+                
+                # Now create complete WAV file with correct size
+                if not all_audio_chunks:
+                    print("⚠️ [TTS ROUTER] No audio chunks received!")
+                    return
+                
+                # Concatenate all audio data
+                print(f"🔧 [TTS ROUTER] Concatenating {len(all_audio_chunks)} audio chunks...")
+                audio_data = b''.join(all_audio_chunks)
+                data_size = len(audio_data)
+                print(f"✅ [TTS ROUTER] Total audio data: {data_size} bytes")
+                
+                # Create proper WAV header with correct sizes
+                if detected_sample_rate is None:
+                    detected_sample_rate = 22050  # Fallback
+                    print(f"⚠️ [TTS ROUTER] No sample rate detected, using fallback: {detected_sample_rate} Hz")
+                
+                sample_rate = detected_sample_rate
+                channels = 1
+                bits_per_sample = 16
+                byte_rate = sample_rate * channels * bits_per_sample // 8
+                block_align = channels * bits_per_sample // 8
+                file_size = 36 + data_size  # Total file size - 8
+                
+                wav_header = struct.pack('<4sI4s4sIHHIIHH4sI',
+                    b'RIFF',
+                    file_size,  # Correct file size
+                    b'WAVE',
+                    b'fmt ',
+                    16,  # fmt chunk size
+                    1,   # PCM format
+                    channels,
+                    sample_rate,
+                    byte_rate,
+                    block_align,
+                    bits_per_sample,
+                    b'data',
+                    data_size  # Correct data size
+                )
+                
+                print(f"📝 [TTS ROUTER] Created WAV header: {sample_rate} Hz, {channels} ch, {bits_per_sample} bit, {data_size} bytes data")
+                
+                # Yield complete WAV file (header + data)
+                yield wav_header
+                yield audio_data
                 
                 loop_total = time.time() - loop_start
-                print(f"⏱️ [TTS ROUTER TIMING] Total loop time: {loop_total*1000:.2f}ms ({total_bytes_yielded} bytes yielded)")
-                print(f"🎬 [TTS ROUTER V3] Streaming loop ended - streaming_complete={streaming_complete}")
+                print(f"⏱️ [TTS ROUTER TIMING] Total processing time: {loop_total*1000:.2f}ms")
+                print(f"✅ [TTS ROUTER] Complete WAV file sent ({len(wav_header) + data_size} bytes total)")
                         
             except Exception as e:
                 logger.error(f"Error streaming TTS audio: {e}")
